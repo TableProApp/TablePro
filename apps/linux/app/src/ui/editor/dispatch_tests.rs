@@ -298,3 +298,86 @@ fn editor_dispatch_resumes_after_success_cancel_and_timeout() {
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 4);
     fixture.finish(parameterized, success());
 }
+
+fn exposed_toolbar(fixture: &EditorFixture) -> ([gtk::Button; 3], [gtk::Widget; 2]) {
+    let model = fixture.controller.model();
+    model.cancel_button.set_visible(true);
+    model.running_spinner.set_visible(true);
+    model.longer_timeout_button.set_label("Run again with a longer timeout");
+    model.longer_timeout_button.set_visible(true);
+    model.status.set_label("Received 1000000 rows");
+    let secondary = model.pin_button.parent().unwrap();
+    secondary
+        .observe_children()
+        .iter::<gtk::glib::Object>()
+        .flatten()
+        .filter_map(|child| child.downcast::<gtk::MenuButton>().ok())
+        .next()
+        .unwrap()
+        .set_visible(true);
+    (
+        [
+            model.run_button.clone(),
+            model.cancel_button.clone(),
+            model.longer_timeout_button.clone(),
+        ],
+        [model.run_button.parent().unwrap(), secondary],
+    )
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn editor_actions_fit_narrow_rows_with_running_and_retry_controls() {
+    let fixture = EditorFixture::new();
+    let root = fixture.controller.widget();
+    let (buttons, bars) = exposed_toolbar(&fixture);
+    assert!(root.measure(gtk::Orientation::Horizontal, -1).0 <= 600);
+    let window = gtk::Window::builder()
+        .default_width(630)
+        .default_height(700)
+        .child(root)
+        .build();
+    window.present();
+    let css = gtk::CssProvider::new();
+    for widget in [bars[0].clone(), bars[1].clone(), buttons[2].clone().upcast()] {
+        widget.add_css_class("resource-toolbar");
+    }
+    gtk::style_context_add_provider_for_display(&root.display(), &css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    for style in ["", ".resource-toolbar { font-size: 20px; }"] {
+        css.load_from_string(style);
+        for width in [630, 600, 910] {
+            window.set_default_size(width, 700);
+            let ready = std::rc::Rc::new(std::cell::Cell::new(false));
+            let observed = ready.clone();
+            let frames = std::cell::Cell::new(0);
+            window.add_tick_callback(move |_, _| {
+                frames.set(frames.get() + 1);
+                if frames.get() < 2 {
+                    return gtk::glib::ControlFlow::Continue;
+                }
+                observed.set(true);
+                gtk::glib::ControlFlow::Break
+            });
+            spin_until(|| ready.get() && root.width() > 0 && buttons.iter().all(|button| button.width() > 0));
+            assert!(root.width() <= width);
+            for bar in &bars {
+                assert!(bar.measure(gtk::Orientation::Horizontal, -1).0 <= root.width());
+            }
+            for button in &buttons {
+                let bounds = button.compute_bounds(root).unwrap();
+                assert!(bounds.x() >= 0.0 && bounds.y() >= 0.0);
+                assert!(
+                    bounds.x() + bounds.width() <= root.width() as f32 + 0.5,
+                    "button={} requested={width} actual={} style={style} bounds={bounds:?}",
+                    button.label().unwrap_or_default(),
+                    root.width()
+                );
+                assert!(bounds.y() + bounds.height() <= root.height() as f32 + 0.5);
+                assert!(button.is_visible());
+            }
+            assert!(fixture.controller.model().source_view.height() > 0);
+        }
+    }
+    gtk::style_context_remove_provider_for_display(&root.display(), &css);
+    window.close();
+}

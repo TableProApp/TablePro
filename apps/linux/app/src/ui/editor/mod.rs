@@ -305,7 +305,7 @@ impl SimpleComponent for SqlEditor {
     view! {
         #[root]
         adw::BreakpointBin {
-            set_width_request: 640,
+            set_width_request: 600,
             set_height_request: 240,
 
             #[wrap(Some)]
@@ -318,40 +318,12 @@ impl SimpleComponent for SqlEditor {
                     set_margin_bottom: 8,
                     set_margin_start: 8,
                     set_margin_end: 8,
-
-                    gtk::Box {
-                        set_hexpand: true,
-                    },
-
-                    #[name = "fold_button"]
-                    gtk::Button {
-                        set_label: &crate::tr!("Fold block"),
-                        set_tooltip_text: Some(crate::tr!("Fold the SQL block at the cursor").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => SqlEditorInput::ToggleFold,
-                    },
-
-                    #[name = "unfold_button"]
-                    gtk::Button {
-                        set_label: &crate::tr!("Unfold all"),
-                        set_tooltip_text: Some(crate::tr!("Show all folded SQL blocks").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => SqlEditorInput::UnfoldAll,
-                    },
-
                     #[name = "cursor_info"]
                     gtk::Label {
                         set_halign: gtk::Align::End,
                         add_css_class: "dim-label",
                         add_css_class: "monospace",
                         set_margin_end: 8,
-                    },
-
-                    #[name = "warnings_button"]
-                    gtk::MenuButton {
-                        set_label: &crate::tr!("SQL warnings"),
-                        set_tooltip_text: Some(crate::tr!("Character suggestions; SQL is not changed").as_str()),
-                        set_visible: false,
                     },
 
                     #[name = "running_spinner"]
@@ -365,23 +337,6 @@ impl SimpleComponent for SqlEditor {
                     gtk::Label {
                         set_halign: gtk::Align::End,
                         add_css_class: "dim-label",
-                    },
-
-                    #[name = "longer_timeout_button"]
-                    gtk::Button {
-                        set_visible: false,
-                        set_tooltip_text: Some(crate::tr!("Runs the same query again. The saved query timeout does not change.").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => SqlEditorInput::RunWithLongerTimeout,
-                    },
-
-                    #[name = "pin_button"]
-                    gtk::Button {
-                        set_label: &crate::tr!("Pin results"),
-                        set_tooltip_text: Some(crate::tr!("Keep these results above the results of the next run").as_str()),
-                        set_sensitive: false,
-                        add_css_class: "flat",
-                        connect_clicked => SqlEditorInput::TogglePin,
                     },
 
                     #[name = "cancel_button"]
@@ -403,20 +358,63 @@ impl SimpleComponent for SqlEditor {
                         },
                     },
 
-                    #[name = "explain_button"]
-                    gtk::Button {
-                        set_label: &crate::tr!("Explain"),
-                        set_tooltip_text: Some(crate::tr!("Explain query plan").as_str()),
-                        add_css_class: "flat",
-                        connect_clicked => SqlEditorInput::Explain,
-                    },
-
                     #[name = "run_button"]
                     gtk::Button {
                         set_label: &crate::tr!("Run"),
                         set_tooltip_text: Some(crate::tr!("Run query (Ctrl+Return)").as_str()),
                         add_css_class: "suggested-action",
                         connect_clicked => SqlEditorInput::Run,
+                    },
+                },
+
+                add_top_bar = &gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_margin_top: 8,
+                    set_margin_bottom: 8,
+                    set_margin_start: 8,
+                    set_margin_end: 8,
+                    gtk::Box {
+                        set_hexpand: true,
+                    },
+                    #[name = "fold_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Fold block"),
+                        set_tooltip_text: Some(crate::tr!("Fold the SQL block at the cursor").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::ToggleFold,
+                    },
+
+                    #[name = "unfold_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Unfold all"),
+                        set_tooltip_text: Some(crate::tr!("Show all folded SQL blocks").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::UnfoldAll,
+                    },
+
+                    #[name = "warnings_button"]
+                    gtk::MenuButton {
+                        set_label: &crate::tr!("SQL warnings"),
+                        set_tooltip_text: Some(crate::tr!("Character suggestions; SQL is not changed").as_str()),
+                        set_visible: false,
+                    },
+
+                    #[name = "pin_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Pin results"),
+                        set_tooltip_text: Some(crate::tr!("Keep these results above the results of the next run").as_str()),
+                        set_sensitive: false,
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::TogglePin,
+                    },
+
+                    #[name = "explain_button"]
+                    gtk::Button {
+                        set_label: &crate::tr!("Explain"),
+                        set_tooltip_text: Some(crate::tr!("Explain query plan").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::Explain,
                     },
 
                     #[name = "split_button"]
@@ -429,6 +427,17 @@ impl SimpleComponent for SqlEditor {
                         },
                     },
                 },
+
+                #[name = "longer_timeout_button"]
+                add_top_bar = &gtk::Button {
+                        set_visible: false,
+                        set_halign: gtk::Align::End,
+                        set_margin_end: 8,
+                        set_margin_bottom: 8,
+                        set_tooltip_text: Some(crate::tr!("Runs the same query again. The saved query timeout does not change.").as_str()),
+                        add_css_class: "flat",
+                        connect_clicked => SqlEditorInput::RunWithLongerTimeout,
+                    },
 
                 #[wrap(Some)]
                 set_content = &gtk::Paned {

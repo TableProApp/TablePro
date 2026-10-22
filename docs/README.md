@@ -93,6 +93,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [Editor toolbar rows, October 21](evidence/editor-toolbar-rows-2026-10-21/README.md): reproduced minimum-width mismatch, bounded action rows and headless allocation regression.
+
 - [0.2.0 release qualification, October 21](evidence/release-0.2.0-2026-10-21/README.md): candidate package checks, functional and profiling observations, with final publication and desktop acceptance recorded separately.
 - [Installed 0.2.0 GTK safety run, October 21](evidence/installed-gtk-0.2.0-2026-10-21/README.md): 93 source-matched installed-package scenarios passed under Xvfb/AT-SPI; native Wayland visual acceptance remains separate.
 
