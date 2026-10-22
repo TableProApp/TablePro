@@ -721,7 +721,7 @@ final class ConnectionCoordinator {
     // MARK: - Database / Schema Switching
 
     // A MongoDB `use` moves the session itself, so the lists and the picker follow it there. The run that asks may be
-    // one Stop cancelled after the `use`, and the move it made still stands.
+    // one Stop cancelled after the `use`, and the move it made still stands, so the switch runs outside that run.
     func followSessionDatabase() async {
         guard supportsDatabaseSwitching, !anotherWindowHoldsEditor,
               let current = session?.driver.currentDatabase, current != activeDatabase else { return }
