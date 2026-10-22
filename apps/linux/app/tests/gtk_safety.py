@@ -1070,6 +1070,8 @@ def run_scenario(binary, scenario):
         shutil.rmtree(base, ignore_errors=True)
     if failure is not None:
         raise AssertionError(f"{failure}\napplication stderr:\n{stderr}") from failure
+    if "does not have a minimum size" in stderr:
+        raise AssertionError(f"a window with breakpoints has no minimum size:\n{stderr}")
 
 
 def dismissed_approval_denies(database, _base):
