@@ -731,6 +731,16 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::editor_waits_for_its_session_before_accepting_any_run_input"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::commenting_selected_lines_publishes_one_complete_query_change"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate"
     ]
   ],
   "keyring": [

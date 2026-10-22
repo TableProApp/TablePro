@@ -17,6 +17,9 @@
 
 ### Fixed
 
+- Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
+
+- Closing SQL editors releases their retained query text and search state.
 - Large JSON previews use less temporary memory.
 - Saving workspaces with large SQL drafts uses less temporary memory.
 

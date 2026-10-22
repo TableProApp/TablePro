@@ -153,6 +153,7 @@ struct EditorFixture {
     connection_id: Uuid,
     calls: Arc<AtomicUsize>,
     requests: mpsc::Receiver<PendingQuery>,
+    outputs: mpsc::Receiver<super::SqlEditorOutput>,
     _runtime: tokio::runtime::Runtime,
 }
 
@@ -191,6 +192,7 @@ impl EditorFixture {
                 environment: tablepro_transport::SshEnvironment::builtin(tablepro_ssh::UnknownHostKey::Refuse),
             },
         ));
+        let (output_sender, outputs) = mpsc::channel();
         let controller = SqlEditor::builder()
             .launch(SqlEditorInit {
                 schema_index: Default::default(),
@@ -200,7 +202,9 @@ impl EditorFixture {
                 database: database.clone(),
                 preferences: crate::services::preferences::PreferencesStore::new(),
             })
-            .detach();
+            .connect_receiver(move |_, output| {
+                let _ = output_sender.send(output);
+            });
         drop(_entered);
         Self {
             open_wait,
@@ -209,6 +213,7 @@ impl EditorFixture {
             connection_id,
             calls,
             requests: incoming,
+            outputs,
             _runtime: runtime,
         }
     }
@@ -376,6 +381,80 @@ fn editor_dispatch_resumes_after_success_cancel_and_timeout() {
     assert_eq!(parameterized.parameters, [Value::Int(2)]);
     assert_eq!(fixture.calls.load(Ordering::SeqCst), 4);
     fixture.finish(parameterized, success());
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn commenting_selected_lines_publishes_one_complete_query_change() {
+    let fixture = EditorFixture::new();
+    let buffer = fixture.controller.model().source_view.buffer();
+    let original = "SELECT '東京';\n".repeat(100);
+    buffer.set_text(&original);
+    let context = gtk::glib::MainContext::default();
+    while context.iteration(false) {}
+    while fixture.outputs.try_recv().is_ok() {}
+    buffer.select_range(&buffer.start_iter(), &buffer.end_iter());
+    fixture.controller.emit(SqlEditorInput::ToggleLineComment);
+    let expected = "-- SELECT '東京';\n".repeat(100);
+    spin_until(|| buffer.text(&buffer.start_iter(), &buffer.end_iter(), true) == expected);
+    let deadline = Instant::now() + Duration::from_millis(100);
+    while Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    let changes: Vec<_> = fixture
+        .outputs
+        .try_iter()
+        .filter_map(|output| match output {
+            super::SqlEditorOutput::QueryChanged(text) => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        changes,
+        vec![expected],
+        "one user action must publish only its completed query"
+    );
+    let buffer = buffer.downcast::<sourceview5::Buffer>().unwrap();
+    buffer.undo();
+    assert_eq!(buffer.text(&buffer.start_iter(), &buffer.end_iter(), true), original);
+}
+
+fn published_queries(fixture: &EditorFixture) -> Vec<String> {
+    let context = gtk::glib::MainContext::default();
+    let deadline = Instant::now() + Duration::from_millis(50);
+    while Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    fixture
+        .outputs
+        .try_iter()
+        .filter_map(|output| match output {
+            super::SqlEditorOutput::QueryChanged(text) => Some(text),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn query_publication_waits_for_nested_actions_and_keeps_ordinary_edits_immediate() {
+    let fixture = EditorFixture::new();
+    let buffer = fixture.controller.model().source_view.buffer();
+    published_queries(&fixture);
+    buffer.begin_user_action();
+    buffer.begin_user_action();
+    buffer.insert(&mut buffer.end_iter(), " SELECT 2;");
+    buffer.end_user_action();
+    assert!(published_queries(&fixture).is_empty());
+    buffer.end_user_action();
+    assert_eq!(published_queries(&fixture), ["SELECT 1; SELECT 2;"]);
+    buffer.begin_user_action();
+    buffer.end_user_action();
+    assert!(published_queries(&fixture).is_empty());
+    buffer.insert(&mut buffer.end_iter(), " SELECT 3;");
+    assert_eq!(published_queries(&fixture), ["SELECT 1; SELECT 2; SELECT 3;"]);
 }
 
 fn exposed_toolbar(fixture: &EditorFixture) -> ([gtk::Button; 3], [gtk::Widget; 2]) {

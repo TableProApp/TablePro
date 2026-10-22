@@ -6,6 +6,7 @@ mod find_bar;
 mod finish_notice;
 mod folding;
 pub(crate) mod open_file;
+mod query_changes;
 mod run_lifecycle;
 mod session_lexing;
 use run_lifecycle::{clear_results_box, dim_previous_results};
@@ -579,21 +580,13 @@ impl SimpleComponent for SqlEditor {
             .connect_cursor_position_notify(move |_| refresh_on_cursor());
 
         let drop_generation = std::rc::Rc::new(DropGeneration::default());
-        let sender_for_change = sender.clone();
-        let refresh_on_change = refresh_completion.clone();
-        let drop_generation_for_change = drop_generation.clone();
-        let folding_for_change = folding.clone();
-        widgets.source_view.buffer().connect_changed(move |buffer| {
-            drop_generation_for_change.changed();
-            if let Some(buffer) = buffer.downcast_ref::<sourceview5::Buffer>() {
-                folding_for_change.borrow_mut().clear(buffer);
-            }
-            let (start, end) = buffer.bounds();
-            let text = buffer.text(&start, &end, true).to_string();
-            let _ = sender_for_change.output(SqlEditorOutput::QueryChanged(text));
-            refresh_on_change();
-        });
-
+        query_changes::install(
+            &widgets.source_view,
+            drop_generation.clone(),
+            folding.clone(),
+            sender.clone(),
+            refresh_completion,
+        );
         split_view::install_shortcuts(&widgets.source_view, &sender);
         split_view::install_shortcuts(split_view.secondary_view(), &sender);
         split_view::install_drop_target(&widgets.source_view, &sender, &drop_generation);

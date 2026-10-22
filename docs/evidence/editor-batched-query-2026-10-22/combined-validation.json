@@ -1,0 +1,25 @@
+{
+  "merge_parents": [
+    "d505f8fcff07b41936b48275b20748a8f8a4f587",
+    "4eec7a808a2611398efcdebc3fbbf2f74ba1602a"
+  ],
+  "preflight": "passed",
+  "app_unit_count": 718,
+  "gtk_widget_count": 107,
+  "app_all_target_clippy": "passed",
+  "runtime_and_tests_sha256": {
+    "apps/linux/app/src/ui/editor/mod.rs": "f7f95360f16b6cb87db1eba1109ddcc78e9d50b81ffc7fa572d9b7771e58ca67",
+    "apps/linux/app/src/ui/editor/query_changes.rs": "956cc172a4e2b414a4261ffe17ced9d6a3c5cc8e356a31355b39cfd6d9e55e2b",
+    "apps/linux/app/src/ui/editor/completion_provider.rs": "c0109ec01971be1e049c57906cc9fd2468c901a3f881f180d3f2e584be698766",
+    "apps/linux/app/src/ui/editor/find_bar.rs": "65a28aa518332265240a4ead5002a47b0954cc3897cd617d1a4d204a5feb65c2",
+    "apps/linux/app/src/ui/editor/dispatch_tests.rs": "61415e5c7607f02ab734a6dab0b695d0db0cc6e517ca10c31fe3abdf31435cec",
+    "scripts/isolated-tests.json": "2ade5bebc0a3b480a4e9be444d10099cb490a927c70689e11e7939b4ae7b9e52"
+  },
+  "log_sha256": {
+    "preflight": "7cdb5f552f6c1cad073faf8efecb337dda8ee7a790ab784056fa5507b21b5d20",
+    "app-unit": "9eeb878e591db66f7013f3e45c06b6e3a0dc3b999925b6645a038aab0dbc2e2f",
+    "clippy": "5962b3a2654aa13a37ef97b702ed0e93511ae91d94f12413faec0d498a55c822",
+    "widgets": "ffc629c8d9d7f1d928c9be1d91320960a0dd75efed4ba0aaa4ba9cc887e71201"
+  },
+  "forgejo": "pending"
+}
