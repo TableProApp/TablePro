@@ -97,9 +97,10 @@ impl SqlEditor {
 
     pub(super) fn sync_session_controls(&self) {
         let id = self.toolbar_transaction_id();
-        self.session_button.set_label(&crate::tr!("Session"));
+        let label = self.transaction_clock.label_at(std::time::Instant::now());
+        self.session_button.set_label(&label);
         self.session_button
-            .update_property(&[gtk::accessible::Property::Label(&crate::tr!("Session"))]);
+            .update_property(&[gtk::accessible::Property::Label(&label)]);
         self.transaction_actions.id.set(id);
         self.transaction_actions.row.set_visible(id.is_some());
         self.transaction_actions.row.set_sensitive(self.session_action_idle());

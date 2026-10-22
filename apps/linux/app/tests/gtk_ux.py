@@ -167,8 +167,21 @@ def scenarios(ui):
         assert len(files) == 1, files
         return json.loads(files[0].read_text())["connections"]
 
+    def grid_cell_label(cell_text):
+        for node in ui.descendants(ui.application_node()):
+            if ui.node_role(node) == pyatspi.ROLE_LABEL and ui.node_name(node) == cell_text:
+                parent = node.parent
+                if parent is not None and ui.node_role(parent) == pyatspi.ROLE_TABLE_CELL:
+                    return node
+        return None
+
     def open_cell_menu(cell_text):
-        cell = ui.wait_for_node(name=cell_text, role=pyatspi.ROLE_LABEL)
+        deadline = time.monotonic() + 3
+        cell = grid_cell_label(cell_text)
+        while cell is None and time.monotonic() < deadline:
+            time.sleep(ui.POLL_SECONDS)
+            cell = grid_cell_label(cell_text)
+        cell = cell or ui.wait_for_node(name=cell_text, role=pyatspi.ROLE_LABEL)
         extents = cell.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
         x11_click(extents.x + min(extents.width, 40) // 2, extents.y + extents.height // 2)
         time.sleep(0.4)
@@ -1692,12 +1705,12 @@ GLib.MainLoop().run()
         ui.wait_for_node_containing("Showing 1 of 3 loaded rows", role=pyatspi.ROLE_LABEL)
         ui.wait_for_node(name="apple", role=pyatspi.ROLE_LABEL, present=False)
         export_visible, export_all_loaded = 6, 7
-        for item, rows in ((export_visible, "1 loaded rows / current page"), (export_all_loaded, "3 loaded rows / current page")):
+        for item, rows in ((export_visible, "1 loaded rows"), (export_all_loaded, "3 loaded rows")):
             reopen_cell_menu("pear")
             invoke_menu_item(item)
-            ui.wait_for_node_containing(rows, role=pyatspi.ROLE_LABEL)
+            ui.wait_for_node(name=rows, role=pyatspi.ROLE_LABEL)
             ui.press_x11_key("Escape")
-            ui.wait_for_node_containing(rows, role=pyatspi.ROLE_LABEL, present=False)
+            ui.wait_for_node(name=rows, role=pyatspi.ROLE_LABEL, present=False)
         second = next(
             node for node in ui.descendants(ui.application_node())
             if ui.node_role(node) == pyatspi.ROLE_PAGE_TAB and ui.node_name(node).startswith("2 · ")
