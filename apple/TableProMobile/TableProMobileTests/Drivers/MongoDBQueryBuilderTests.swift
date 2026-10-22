@@ -115,7 +115,11 @@ struct MongoDBQueryBuilderTests {
         let merged = MongoDBPluginDriver.kinds(page, keepingFrom: previous, of: fields)
         #expect(merged["a"] == .int32)
         #expect(merged["n"] == .string)
-        #expect(merged["b"] == .document)
+        #expect(merged["b"] == nil, "A field the filter read stays unknown when it was unknown before the page")
+
+        let restored = MongoDBPluginDriver.kinds(page, keepingFrom: [:], of: fields)
+        #expect(restored["a"] == nil)
+        #expect(restored["n"] == .string)
     }
 
     @Test("Only a find in the session's database with no projection teaches the collection's kinds")

@@ -16,7 +16,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     private let columnKindLock = NSLock()
     private let rawFilterNormalizer = MongoDBRawFilterNormalizer()
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
-    private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
+    // What filters are typed by: top-level fields and nested paths. Kept apart from the kinds writes are typed by, since
+    // a filtered page leaves the fields it filtered on alone here and must still type the next write by what it read.
+    private var filterKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
     private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
@@ -373,6 +375,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             for: sampled, documents: docs, representation: uuidRepresentation
         )
         rememberColumnKinds(kinds, for: sampled, collection: table)
+        rememberFilterKinds(from: docs, columns: sampled, kinds: kinds, collection: table)
 
         let sampledColumns = sampled.enumerated().map { index, name in
             PluginColumnInfo(
@@ -1011,9 +1014,11 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             for: sampled, documents: documents, representation: uuidRepresentation
         )
         if recordsKinds {
-            rememberColumnKinds(sampledKinds, for: sampled, collection: collection, keeping: filteredFields)
+            rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
+            rememberFilterKinds(
+                from: documents, columns: sampled, kinds: sampledKinds, collection: collection, keeping: filteredFields
+            )
             rememberIdentityKinds(of: documents, collection: collection)
-            rememberFieldPathKinds(from: documents, collection: collection, keeping: filteredFields)
             rememberBinarySubtypes(of: documents, collection: collection)
             rememberFieldKinds(of: documents, collection: collection)
         }
@@ -1060,28 +1065,44 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         return result
     }
 
-    private func rememberColumnKinds(
-        _ kinds: [BsonValueKind],
-        for columns: [String],
-        collection: String,
-        keeping filteredFields: Set<String> = []
-    ) {
+    private func rememberColumnKinds(_ kinds: [BsonValueKind], for columns: [String], collection: String) {
         guard !collection.isEmpty else { return }
         var byName: [String: BsonValueKind] = [:]
         for (index, name) in columns.enumerated() where index < kinds.count {
             byName[name] = kinds[index]
         }
         let key = columnKindKey(collection)
+        columnKindLock.withLock { columnKindsByCollection[key] = byName }
+    }
+
+    /// Recorded from the documents a browse already fetched, on the session driver that will
+    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
+    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
+    /// the filter path never reads.
+    private func rememberFilterKinds(
+        from documents: [[String: Any]],
+        columns: [String],
+        kinds: [BsonValueKind],
+        collection: String,
+        keeping filteredFields: Set<String> = []
+    ) {
+        guard !collection.isEmpty, !documents.isEmpty else { return }
+        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
+        var learned = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
+        for (index, name) in columns.enumerated() where index < kinds.count {
+            learned[name] = kinds[index]
+        }
+        let key = columnKindKey(collection)
         columnKindLock.withLock {
-            columnKindsByCollection[key] = Self.kinds(
-                byName, keepingFrom: columnKindsByCollection[key] ?? [:], of: filteredFields
+            filterKindsByCollection[key] = Self.kinds(
+                learned, keepingFrom: filterKindsByCollection[key] ?? [:], of: filteredFields
             )
         }
     }
 
     // A filtered page holds only the values its filter let through, so it says nothing about the fields it filtered
-    // on: a field holding 1 and "1" filtered by `!= 1` returns only strings. Those keep the kind they had, or the
-    // page's count, typed again after the page, would count other documents than the page shows.
+    // on: a field holding 1 and "1" filtered by `!= 1` returns only strings. Those keep what was known of them, an
+    // unknown kind included, or the page's count, typed again after the page, would count other documents.
     static func kinds(
         _ page: [String: BsonValueKind],
         keepingFrom previous: [String: BsonValueKind],
@@ -1089,9 +1110,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     ) -> [String: BsonValueKind] {
         var merged = page
         for field in filteredFields {
-            if let kept = previous[field] {
-                merged[field] = kept
-            }
+            merged[field] = previous[field]
         }
         return merged
     }
@@ -1136,27 +1155,6 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         columnKindLock.withLock { identityKindsByCollection[key, default: []].formUnion(held) }
     }
 
-    /// Recorded from the documents a browse already fetched, on the session driver that will
-    /// build the filter. Sampling through `sampleFieldPaths` cannot do it: that call is routed
-    /// through `MetadataConnectionPool`, so it lands on a different driver instance whose cache
-    /// the filter path never reads.
-    private func rememberFieldPathKinds(
-        from documents: [[String: Any]],
-        collection: String,
-        keeping filteredFields: Set<String> = []
-    ) {
-        guard !collection.isEmpty, !documents.isEmpty else { return }
-        let sampled = Array(documents.prefix(MongoStreamProjection.sampleSize))
-        let kinds = BsonDocumentFlattener.fieldPathKinds(from: sampled, representation: uuidRepresentation)
-        guard !kinds.isEmpty else { return }
-        let key = columnKindKey(collection)
-        columnKindLock.withLock {
-            fieldPathKindsByCollection[key] = Self.kinds(
-                kinds, keepingFrom: fieldPathKindsByCollection[key] ?? [:], of: filteredFields
-            )
-        }
-    }
-
     /// Kinds a filter can be typed against: the flat columns the grid shows, plus every nested
     /// path the picker offers. Without the nested half, a filter on a nested Date or ObjectId is
     /// compared as a string and MongoDB's type bracketing returns nothing.
@@ -1164,8 +1162,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         let key = columnKindKey(collection, database: database)
         return columnKindLock.withLock {
             (declaredSchemasByCollection[key]?.valueKinds ?? [:])
-                .merging(fieldPathKindsByCollection[key] ?? [:]) { _, sampled in sampled }
-                .merging(columnKindsByCollection[key] ?? [:]) { _, top in top }
+                .merging(filterKindsByCollection[key] ?? [:]) { _, sampled in sampled }
         }
     }
 
@@ -1191,7 +1188,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         let isStale = { (key: String) in MongoCollectionCacheKey.names(key, collection: table) }
         columnKindLock.withLock {
             columnKindsByCollection = columnKindsByCollection.filter { !isStale($0.key) }
-            fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
+            filterKindsByCollection = filterKindsByCollection.filter { !isStale($0.key) }
             declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
             identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
         }
