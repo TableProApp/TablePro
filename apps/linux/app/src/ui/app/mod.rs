@@ -92,6 +92,7 @@ pub struct App {
     mcp_bridge: Option<Arc<tablepro_mcp::McpBridge>>,
     window: adw::ApplicationWindow,
     split_view: adw::OverlaySplitView,
+    sidebar_toggle: gtk::ToggleButton,
     sidebar_reveal: std::rc::Rc<std::cell::Cell<u32>>,
     window_title: adw::WindowTitle,
     header_bar: adw::HeaderBar,
@@ -296,6 +297,13 @@ impl SimpleComponent for App {
                         set_popover = &gtk::Popover {},
                     },
 
+                    #[name = "sidebar_toggle"]
+                    pack_start = &gtk::ToggleButton {
+                        set_icon_name: "sidebar-show-symbolic",
+                        set_tooltip_text: Some(crate::tr!("Tables sidebar").as_str()),
+                        set_visible: false,
+                    },
+
                     #[name = "databases_button"]
                     pack_start = &gtk::MenuButton {
                         set_icon_name: "network-server-symbolic",
@@ -464,8 +472,13 @@ impl SimpleComponent for App {
 
         init_css::install_pending_change_css();
 
-        let window_handles =
-            init_window::install_window_lifecycle(&widgets.window, &widgets.split_view, &workspace, &sender);
+        let window_handles = init_window::install_window_lifecycle(
+            &widgets.window,
+            &widgets.split_view,
+            &widgets.sidebar_toggle,
+            &workspace,
+            &sender,
+        );
 
         let sidebar = init_sidebar::build_sidebar(&widgets, &sender);
 
@@ -511,6 +524,7 @@ impl SimpleComponent for App {
             mcp_bridge,
             window: root.clone(),
             split_view: widgets.split_view.clone(),
+            sidebar_toggle: widgets.sidebar_toggle.clone(),
             sidebar_reveal: std::rc::Rc::default(),
             window_title: widgets.window_title.clone(),
             header_bar: widgets.header_bar.clone(),
@@ -602,6 +616,7 @@ impl SimpleComponent for App {
         open_request::forward_open_signal(sender.input_sender());
         sender.input(AppMsg::ReloadConnections);
         model.content_holder.set_content(Some(&model.history_paned));
+        model.set_sidebar_connected(false);
         model.show_welcome_page(sender.clone());
 
         widgets

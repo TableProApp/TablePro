@@ -104,7 +104,7 @@ impl App {
         self.read_only = self.window_metadata().map(|m| m.read_only).unwrap_or(false);
         self.read_only_badge.set_visible(self.read_only);
         self.show_database_switcher(&driver_id, id, &sender);
-        super::sidebar_state::reveal_sidebar(&self.split_view, &self.sidebar_reveal);
+        self.show_sidebar_for_new_connection();
         self.disconnect_action.set_enabled(true);
         self.table_search.set_text("");
         // Build the unified workspace tab tree (Browse + Editor share one
@@ -240,6 +240,7 @@ impl App {
         self.databases_button.set_visible(false);
         self.connected = false;
         super::sidebar_state::hide_sidebar(&self.split_view, &self.sidebar_reveal);
+        self.set_sidebar_connected(false);
         self.disconnect_action.set_enabled(false);
         self.refresh_window_title();
         self.table_search.set_text("");
@@ -695,6 +696,7 @@ impl App {
             self.switch_cancel_audit_was_disabled = None;
             self.connected = false;
             super::sidebar_state::hide_sidebar(&self.split_view, &self.sidebar_reveal);
+            self.set_sidebar_connected(false);
             self.disconnect_action.set_enabled(false);
             self.refresh_window_title();
             self.show_toast(&crate::tr!("This connection is already open in another window."));

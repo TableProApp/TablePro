@@ -4,7 +4,7 @@ use tablepro_app_services::workspace::CloseAfterSave;
 
 use relm4::adw::prelude::*;
 use relm4::gtk::glib;
-use relm4::{ComponentSender, adw};
+use relm4::{ComponentSender, adw, gtk};
 use uuid::Uuid;
 
 use super::{App, AppMsg};
@@ -28,6 +28,7 @@ pub(super) struct WindowLifecycleHandles {
 pub(super) fn install_window_lifecycle(
     window: &adw::ApplicationWindow,
     split_view: &adw::OverlaySplitView,
+    sidebar_toggle: &gtk::ToggleButton,
     workspace: &crate::services::workspace_state::WorkspaceStore,
     sender: &ComponentSender<App>,
 ) -> WindowLifecycleHandles {
@@ -270,6 +271,12 @@ pub(super) fn install_window_lifecycle(
         adw::LengthUnit::Sp,
     ));
     breakpoint.add_setter(split_view, "collapsed", Some(&true.into()));
+    breakpoint.add_setter(sidebar_toggle, "visible", Some(&true.into()));
+    sidebar_toggle
+        .bind_property("active", split_view, "show-sidebar")
+        .bidirectional()
+        .sync_create()
+        .build();
     window.add_breakpoint(breakpoint);
     handles
 }

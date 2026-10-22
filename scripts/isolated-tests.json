@@ -600,6 +600,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::app::sidebar_state::tests::the_sidebar_stays_closed_in_a_narrow_window_and_never_opens_empty"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::dispatch_tests::editor_inputs_cannot_dispatch_or_cancel_an_active_query"
     ],
     [
