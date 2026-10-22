@@ -21,6 +21,20 @@ extension TableViewCoordinator {
         return GridViewportSample(firstVisibleRow: visibleRows.location, offset: max(0, offset))
     }
 
+    // The clip view keeps its offset in points, so a new row height would otherwise bring other rows into view.
+    func keepingFirstVisibleRow(_ change: () -> Void) {
+        guard let tableView, let sample = viewportSample(), tableView.rowHeight > 0 else {
+            change()
+            return
+        }
+        let previousHeight = tableView.rowHeight
+        change()
+        let offset = sample.offset * tableView.rowHeight / previousHeight
+        let rowOrigin = tableView.rect(ofRow: sample.firstVisibleRow).minY
+        let horizontalOffset = tableView.enclosingScrollView?.contentView.bounds.origin.x ?? 0
+        tableView.scroll(NSPoint(x: horizontalOffset, y: rowOrigin + offset - headerInset(of: tableView)))
+    }
+
     func applyViewportPlacement(_ placement: GridViewportPlacement) {
         guard let tableView, tableView.numberOfRows > 0 else { return }
         let tableRows = tableRowsProvider()

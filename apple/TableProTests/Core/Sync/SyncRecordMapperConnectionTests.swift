@@ -31,7 +31,8 @@ struct SyncRecordMapperConnectionTests {
         "redisDatabase",
         "startupCommands",
         "sortOrder",
-        "isFavorite"
+        "isFavorite",
+        "sshRoute"
     ]
 
     private static let rebuiltFromRecord: Set<String> = ["sshTunnelMode"]
@@ -58,8 +59,7 @@ struct SyncRecordMapperConnectionTests {
         "cloudflareTunnelMode",
         "cloudSQLProxyMode",
         "socksProxyMode",
-        "tunnelCommandMode",
-        "sshRoute"
+        "tunnelCommandMode"
     ]
 
     private static func storedValues(of connection: DatabaseConnection) -> [String: String] {
@@ -91,6 +91,12 @@ struct SyncRecordMapperConnectionTests {
         connection.additionalFields = ["schema": "public"]
         connection.connectTimeoutSeconds = 12
         connection.queryTimeoutSeconds = 0
+        connection.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: .init(host: "db", port: nil, username: "", jumpHosts: []),
+            hops: [],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
         return connection
     }
 
@@ -117,12 +123,6 @@ struct SyncRecordMapperConnectionTests {
         )
         connection.tunnelCommandMode = .inline(
             TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
-        )
-        connection.sshRoute = PublishedSSHRoute(
-            publisher: UUID(),
-            input: .init(host: "db", port: nil, username: "", jumpHosts: []),
-            hops: [],
-            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
         )
         return connection
     }
@@ -245,6 +245,7 @@ struct SyncRecordMapperConnectionTests {
         #expect(decoded.sortOrder == connection.sortOrder)
         #expect(decoded.connectTimeoutSeconds == 12)
         #expect(decoded.queryTimeoutSeconds == 0)
+        #expect(decoded.sshRoute == connection.sshRoute)
     }
 
     @Test("Timeouts use their deployed wire fields without duplicating query timeout in JSON")

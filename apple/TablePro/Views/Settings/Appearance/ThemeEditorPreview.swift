@@ -5,12 +5,12 @@ import TableProGrammars
 import TableProPluginKit
 import TableProTheme
 
-/// The real SQL editor and the real data grid drawing the draft through a fixed scope, so the
-/// preview cannot disagree with the app: every one of the theme's slots shows here as it shows in a
-/// window, keyword weight and selection rules included.
+// The real editor and grid on a fixed scope, so the preview cannot disagree with a window.
 internal struct ThemeEditorPreview: View {
     internal let scope: ThemeScope
     internal let appearance: ThemeAppearance
+    // A fixed scope publishes no changes, so a font size set elsewhere reaches the preview only as a remount.
+    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     internal static let editorHeight: CGFloat = 150
     internal static let gridHeight: CGFloat = 150
@@ -24,6 +24,7 @@ internal struct ThemeEditorPreview: View {
                 ThemePreviewGrid(scope: scope)
                     .frame(height: Self.gridHeight)
             }
+            .id([themeEngine.editorFonts.font, themeEngine.dataGridFonts.regular])
         }
         .frame(height: Self.editorHeight + Self.gridHeight + 1)
         .accessibilityElement(children: .contain)

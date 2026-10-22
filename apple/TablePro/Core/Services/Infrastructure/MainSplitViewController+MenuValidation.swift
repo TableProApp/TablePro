@@ -751,7 +751,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
         if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
-        if let zoom = Self.zoomEnablement(action, typography: AppSettingsManager.shared.typography) {
+        if let zoom = FontSizeZoom.editor.enablement(action, typography: AppSettingsManager.shared.typography) {
             return zoom
         }
         return Self.isEnabled(action, context: menuValidationContext(naming: menuItem))

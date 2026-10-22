@@ -15,6 +15,7 @@ import Foundation
 import os
 import TableProCoreTypes
 import TableProMSSQLCore
+import TableProPluginKit
 
 nonisolated private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
@@ -272,7 +273,6 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     /// stop a call through this gate and never through db-lib.
     private let requestGate = MSSQLRequestGate()
 
-    private static let kerberosEnvLock = NSLock()
     private static let loginStartLock = NSLock()
     private static let deadlineQueue = DispatchQueue(label: "com.TablePro.freetds.connect-deadline", qos: .userInitiated)
 
@@ -372,13 +372,15 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     ) throws -> UnsafeMutablePointer<DBPROCESS>? {
         Self.loginStartLock.lock()
         defer { Self.loginStartLock.unlock() }
-        let timeoutMilliseconds = deadline.remainingMilliseconds
-        guard timeoutMilliseconds > 0 else {
-            throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+        return try withKerberosEnvironmentIfNeeded(deadline: deadline) {
+            let timeoutMilliseconds = deadline.remainingMilliseconds
+            guard timeoutMilliseconds > 0 else {
+                throw MSSQLCoreError.connectionTimedOut(isKerberos: options.authMethod == .windows)
+            }
+            let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
+            _ = dbsetlogintime(seconds)
+            return dbopen(login, serverName)
         }
-        let seconds = Int32(max(1, (timeoutMilliseconds + 999) / 1_000))
-        _ = dbsetlogintime(seconds)
-        return withKerberosEnvironmentIfNeeded { dbopen(login, serverName) }
     }
 
     private func discardKerberosCache() {
@@ -422,28 +424,26 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
         if let kind = MSSQLTLSClassifier.classifySSLError(detail) {
             return .tlsHandshakeFailed(kind: kind, serverMessage: detail)
         }
-        if options.authMethod == .windows, let kind = MSSQLKerberosClassifier.classify(detail) {
+        if options.authMethod == .windows, let kind = KerberosFailureClassifier.classify(detail) {
             return .kerberosAuthFailed(kind: kind, serverMessage: detail)
         }
         return .connectionFailed("Failed to connect to \(options.host):\(options.port): \(msg)")
     }
 
     private func withKerberosEnvironmentIfNeeded(
-        _ body: () -> UnsafeMutablePointer<DBPROCESS>?
-    ) -> UnsafeMutablePointer<DBPROCESS>? {
-        guard let cachePath = options.kerberosCachePath else { return body() }
-        Self.kerberosEnvLock.lock()
-        let previous = getenv("KRB5CCNAME").map { String(cString: $0) }
-        setenv("KRB5CCNAME", "FILE:\(cachePath)", 1)
-        defer {
-            if let previous {
-                setenv("KRB5CCNAME", previous, 1)
-            } else {
-                unsetenv("KRB5CCNAME")
-            }
-            Self.kerberosEnvLock.unlock()
+        deadline: MSSQLConnectDeadline,
+        _ body: () throws -> UnsafeMutablePointer<DBPROCESS>?
+    ) throws -> UnsafeMutablePointer<DBPROCESS>? {
+        guard options.authMethod == .windows else { return try body() }
+        do {
+            return try KerberosCredentialCache.using(
+                options.kerberosCachePath,
+                until: Date(timeIntervalSinceNow: Double(deadline.remainingMilliseconds) / 1_000),
+                body
+            )
+        } catch is KerberosCredentialCache.WaitTimedOut {
+            throw MSSQLCoreError.connectionTimedOut(isKerberos: true)
         }
-        return body()
     }
 
     private func adopt(_ proc: UnsafeMutablePointer<DBPROCESS>) {

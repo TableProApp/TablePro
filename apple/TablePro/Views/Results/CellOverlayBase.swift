@@ -25,6 +25,7 @@ class CellOverlayBase: NSObject {
     private var appResignObserver: NSObjectProtocol?
     private var windowResignKeyObserver: NSObjectProtocol?
     private var outsideClickMonitor: Any?
+    private var isFollowingGrid = false
     /// Held for the life of the open overlay: its subscription is what repaints the text on a theme
     /// change.
     private var textStyle: ThemeTextViewStyle?
@@ -112,6 +113,20 @@ class CellOverlayBase: NSObject {
             hostTableView.window?.makeFirstResponder(hostTableView)
         }
         onRemove?()
+    }
+
+    // A zoom resizes the value and moves its cell, so the overlay follows instead of ending the edit as a
+    // column resize or a scroll would.
+    func followGrid(through change: () -> Void) {
+        isFollowingGrid = true
+        defer { isFollowingGrid = false }
+        change()
+        guard let container, let hostTableView, let scrollView = hostTableView.enclosingScrollView,
+              let textView = (container.subviews.first as? NSScrollView)?.documentView as? NSTextView else { return }
+        hostTableView.scrollRowToVisible(row)
+        textView.font = ThemeEngine.shared.valueFont
+        let cellFrame = Self.displayedCellFrame(in: hostTableView, column: column, row: row)
+        container.frame = scrollView.convert(Self.overlayFrame(for: cellFrame, value: textView.string), from: hostTableView)
     }
 
     static func overlayFrame(for cellFrame: NSRect, value: String) -> NSRect {
@@ -205,6 +220,7 @@ class CellOverlayBase: NSObject {
                 queue: .main
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    guard self?.isFollowingGrid == false else { return }
                     self?.handleDismiss(reason: .scroll)
                 }
             }
@@ -216,6 +232,7 @@ class CellOverlayBase: NSObject {
         ].map { name in
             NotificationCenter.default.addObserver(forName: name, object: hostTableView, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    guard self?.isFollowingGrid == false else { return }
                     self?.handleDismiss(reason: .columnGeometry)
                 }
             }

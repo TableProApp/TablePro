@@ -112,4 +112,16 @@ struct PublishedSSHRouteTests {
         second.target.host = "10.0.0.6"
         #expect(!first.leadsToSameHosts(as: second))
     }
+
+    @Test("Two Macs naming the same jump host differently reach the same hosts")
+    func aliasesDoNotMatter() {
+        let first = Self.route()
+        var second = Self.route()
+        second.hops[0].alias = "jump-host"
+        second.hops[0].id = PublishedSSHRoute.derivedHopId(alias: "jump-host", occurrence: 0)
+        second.target.alias = "database"
+        #expect(first.leadsToSameHosts(as: second))
+        second.hops[0].port = 2_222
+        #expect(!first.leadsToSameHosts(as: second))
+    }
 }

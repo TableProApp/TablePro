@@ -11,6 +11,8 @@ import CLibPQ
 import Foundation
 import os
 import OSLog
+import TableProCoreTypes
+import TableProKerberos
 import TableProPluginKit
 import TableProPostgreSQLCore
 
@@ -58,6 +60,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let applicationName: String?
     private let suppressServerSideCancel: Bool
     private let connectTimeout: LibPQConnectTimeout
+    private let kerberos: LibPQKerberosSignIn?
 
     private let stateLock = NSLock()
     let cancellationGate = PluginQueryCancellationGate()
@@ -119,7 +122,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         suppressServerSideCancel: Bool = false,
         connectTimeout: LibPQConnectTimeout = LibPQConnectTimeout(
             milliseconds: LibPQConnectTimeout.defaultMilliseconds
-        )
+        ),
+        kerberos: LibPQKerberosSignIn? = nil
     ) {
         self.host = host
         self.port = port
@@ -131,9 +135,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.applicationName = applicationName
         self.suppressServerSideCancel = suppressServerSideCancel
         self.connectTimeout = connectTimeout
+        self.kerberos = kerberos
     }
 
     deinit {
+        if let cachePath = kerberos?.cachePath {
+            KerberosTicket.discard(cachePath)
+        }
         let handle = conn
         let sink = serverMessages
         let cleanupQueue = queue
@@ -183,8 +191,26 @@ final class LibPQPluginConnection: @unchecked Sendable {
             timeout: connectTimeout,
             nowMicroseconds: Int64(PQgetCurrentTimeUSec())
         )
-        guard let connection = connectionString.withCString({ PQconnectStart($0) }) else {
-            throw LibPQPluginError.connectionFailed
+        // The ticket is only read while signing in.
+        defer {
+            if let cachePath = kerberos?.cachePath {
+                KerberosTicket.discard(cachePath)
+            }
+        }
+        let connection = try signingIn(until: deadline) { () throws -> OpaquePointer in
+            guard let connection = connectionString.withCString({ PQconnectStart($0) }) else {
+                throw LibPQPluginError.connectionFailed
+            }
+            do {
+                guard PQstatus(connection) != CONNECTION_BAD else {
+                    throw connectionError(from: connection)
+                }
+                try pollUntilConnected(connection, deadline: deadline, reportingStage: report)
+                return connection
+            } catch {
+                PQfinish(connection)
+                throw error
+            }
         }
         bootstrapTransportFailed = false
 
@@ -193,11 +219,6 @@ final class LibPQPluginConnection: @unchecked Sendable {
             if !adopted { PQfinish(connection) }
         }
 
-        guard PQstatus(connection) != CONNECTION_BAD else {
-            throw connectionError(from: connection)
-        }
-
-        try pollUntilConnected(connection, deadline: deadline, reportingStage: report)
         guard PQsetnonblocking(connection, 1) == 0 else { throw connectionError(from: connection) }
         try configureEstablishedConnection(connection, deadline: deadline)
         let sink = LibPQServerMessageSink.install(on: connection)
@@ -211,6 +232,21 @@ final class LibPQPluginConnection: @unchecked Sendable {
         stateLock.unlock()
         activeConnectDeadline = deadline
         adopted = true
+    }
+
+    // PQconnectStart can already acquire the GSS credential, so the whole start sits in the scope.
+    private func signingIn<T>(until deadline: LibPQConnectDeadline, _ body: () throws -> T) throws -> T {
+        guard let kerberos else { return try body() }
+        let remaining = deadline.remainingMicroseconds(nowMicroseconds: Int64(PQgetCurrentTimeUSec())) ?? 0
+        do {
+            return try KerberosCredentialCache.using(
+                kerberos.cachePath,
+                until: Date(timeIntervalSinceNow: Double(remaining) / 1_000_000),
+                body
+            )
+        } catch is KerberosCredentialCache.WaitTimedOut {
+            throw LibPQPluginError.connectionTimedOut
+        }
     }
 
     /// The core calls this only after schema and flavor-specific catalog probes. Until then every
@@ -312,6 +348,12 @@ final class LibPQPluginConnection: @unchecked Sendable {
         let error = getError(from: connection)
         if let sslError = LibPQSSLClassifier.classifySSLError(error.message) {
             return sslError
+        }
+        if kerberos != nil, let kind = KerberosFailureClassifier.classify(error.message) {
+            return LibPQKerberosSignIn.failure(kind: kind, serverMessage: error.message)
+        }
+        if kerberos == nil, let refusal = LibPQKerberosSignIn.refusedForAnotherSignIn(error.message) {
+            return refusal
         }
         return error
     }
@@ -524,12 +566,13 @@ final class LibPQPluginConnection: @unchecked Sendable {
             host: host,
             port: port,
             user: user,
-            password: password,
+            password: kerberos == nil ? password : nil,
             database: database,
             sslConfig: sslConfig,
             options: options,
             applicationName: applicationName,
-            connectTimeoutSeconds: connectTimeout.nativeSeconds
+            connectTimeoutSeconds: connectTimeout.nativeSeconds,
+            kerberos: kerberos
         )
     }
 

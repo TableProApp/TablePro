@@ -47,6 +47,7 @@ DEFINE SCHEMA
         sshConfigJson        BYTES QUERYABLE SORTABLE,
         sshEnabled           INT64 QUERYABLE SORTABLE,
         sshProfileId         STRING QUERYABLE SEARCHABLE SORTABLE,
+        sshRouteJson         BYTES QUERYABLE SORTABLE,
         sslConfigJson        BYTES QUERYABLE SORTABLE,
         sslEnabled           INT64 QUERYABLE SORTABLE,
         startupCommands      STRING QUERYABLE SEARCHABLE SORTABLE,

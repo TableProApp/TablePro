@@ -61,7 +61,7 @@ struct SyncedWriteFailureTests {
         #expect(savedToken != nil)
     }
 
-    @Test("A pulled saved query that could not be saved holds only the token: the cache moves and connections go up")
+    @Test("A pulled saved query that could not be saved holds the token and stays out of the cache, and connections go up")
     func unsavedSavedQueryHoldsOnlyTheToken() async throws {
         let query = SavedQuery(name: "One", query: "SELECT 1")
         let record = SyncRecordMapper.toRecord(query, zoneID: zoneID)
@@ -80,7 +80,7 @@ struct SyncedWriteFailureTests {
         let pushed = await transport.pushedRecords.compactMap(SyncRecordMapper.toConnection).map(\.id)
         #expect(pushed == [local.id])
         let cache = SyncRecordCache(directory: fixture.root.appendingPathComponent("Cache"), defaults: nil)
-        #expect(cache.record(for: record.recordID) != nil)
+        #expect(cache.record(for: record.recordID) == nil)
 
         try setLibraryWritable(true)
         await state.syncCoordinator.sync()

@@ -72,6 +72,13 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     func connect() async throws {
         let server = try Self.serverEndpoint(for: config)
+        let timeout = LibPQConnectTimeout(additionalFields: config.additionalFields)
+        let started = ContinuousClock.now
+        let kerberos = try await LibPQKerberosSignIn.resolve(
+            additionalFields: config.additionalFields,
+            timeoutMilliseconds: timeout.milliseconds
+        )
+        let elapsedMilliseconds = Int(started.duration(to: .now) / .milliseconds(1))
         let pqConn = LibPQPluginConnection(
             host: server.host,
             port: server.port,
@@ -84,7 +91,8 @@ final class LibPQDriverCore: @unchecked Sendable {
                 forPurpose: config.additionalFields["connectionPurpose"]
             ),
             suppressServerSideCancel: singleConnectionMode,
-            connectTimeout: LibPQConnectTimeout(additionalFields: config.additionalFields)
+            connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
+            kerberos: kerberos
         )
 
         do {

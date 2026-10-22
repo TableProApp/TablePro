@@ -580,7 +580,16 @@ final class SyncCoordinator: ObservableObject {
         var outcome: PushOutcome
         var interruption: Error?
         do {
-            outcome = try await transport.push(records: batch.records, deletions: deletions)
+            let transport = transport
+            outcome = try await SyncConflictRebase.push(
+                records: batch.records,
+                deletions: deletions,
+                edits: batch.editsByRecordID
+            ) {
+                try await transport.push(records: $0, deletions: $1)
+            } fetch: {
+                try await transport.fetch(recordIDs: $0)
+            }
         } catch let interrupted as SyncPushInterruption {
             outcome = interrupted.completed
             interruption = interrupted.cause
@@ -590,7 +599,7 @@ final class SyncCoordinator: ObservableObject {
         }
         outcome.acceptMissingDeletions(of: deletions)
 
-        recordCache.store(Array(outcome.savedRecords.values))
+        recordCache.store(outcome.savedBases(pushed: batch.editsByRecordID))
         recordCache.remove(Array(outcome.deletedRecordIDs))
 
         let savedRecords = settleSavedRecords(outcome, batch: batch, identities: identities, snapshot: snapshot)
@@ -720,14 +729,20 @@ final class SyncCoordinator: ObservableObject {
         let deletedRecordIDs = result.deletedRecordIDs.filter { recordID in
             echoGuard?.withholdsDeletion(recordID, tracker: changeTracker) != true
         }
+        let pendingEdits = await recordNamesWithPendingEdits()
+        let admitted = PullResult(
+            changedRecords: result.changedRecords.filter { !pendingEdits.contains($0.recordID.recordName) },
+            deletedRecordIDs: result.deletedRecordIDs,
+            newToken: result.newToken
+        )
         let storesPersisted = applyRemoteChanges(
-            result,
+            admitted,
             deletedRecordIDs: deletedRecordIDs,
             settings: settings,
             echoGuard: echoGuard
         )
         let favoritesOutcome = await services.sqlFavoriteManager.applyRemote(
-            remoteSQLFavoriteBatch(from: result, deletedRecordIDs: deletedRecordIDs, settings: settings),
+            remoteSQLFavoriteBatch(from: admitted, deletedRecordIDs: deletedRecordIDs, settings: settings),
             echoGuard: echoGuard
         )
 
@@ -745,8 +760,10 @@ final class SyncCoordinator: ObservableObject {
             metadataStorage.saveToken(newToken)
         }
 
-        recordCache.store(result.changedRecords.filter { record in
+        // Only what the local copy took: a record of a category this Mac does not sync stays out until a full fetch applies it.
+        recordCache.store(admitted.changedRecords.filter { record in
             echoGuard?.withholds(record.recordID, tracker: changeTracker) != true
+                && SyncRecordType(rawValue: record.recordType).map { settings.syncs($0) } == true
         })
         recordCache.remove(result.deletedRecordIDs)
 
@@ -754,6 +771,29 @@ final class SyncCoordinator: ObservableObject {
             "Pull completed: \(result.changedRecords.count) changed, \(result.deletedRecordIDs.count) deleted"
         )
         return true
+    }
+
+    // Left alone by a pull, a copy with an edit waiting to go up keeps it, and its push is refused and merges
+    // the edit onto the newer record. Built the way the push builds it, so only a real change counts; a
+    // connection merges on pull instead.
+    private func recordNamesWithPendingEdits() async -> Set<String> {
+        let snapshot = changeTracker.editSnapshot()
+        guard !snapshot.dirty.isEmpty else { return [] }
+        let merged = SyncEchoGuard.typesMergedOnPull.map(\.rawValue)
+        let batch = await collectPushBatch(
+            snapshot: snapshot,
+            boundary: syncBoundary(settings: services.appSettingsStorage.loadSync()),
+            zoneID: await transport.currentZoneID
+        )
+        var names = Set(batch.edits.lazy
+            .filter { $0.hasBase && $0.changesContent && !merged.contains($0.record.recordType) }
+            .map(\.recordID.recordName))
+        // An edit made while the batch was read is newer than anything it saw.
+        for identity in changeTracker.editSnapshot().dirty
+            where !SyncEchoGuard.typesMergedOnPull.contains(identity.type) && changeTracker.hasEdit(identity, since: snapshot) {
+            names.insert(identity.type.recordName(for: identity.id))
+        }
+        return names
     }
 
     // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
@@ -907,17 +947,13 @@ final class SyncCoordinator: ObservableObject {
     @discardableResult
     private func mergeLocalEdits(into remoteRecord: CKRecord, localConnection: DatabaseConnection) -> DatabaseConnection? {
         guard let base = recordCache.record(for: remoteRecord.recordID) else { return nil }
-
-        let localRecord = SyncRecordMapper.toCKRecord(localConnection, in: remoteRecord.recordID.zoneID)
-        guard let merged = remoteRecord.copy() as? CKRecord else { return nil }
-
-        let localFields = localRecord.fields(ConnectionSyncField.self)
-        let baseFields = base.fields(ConnectionSyncField.self)
-        let mergedFields = merged.fields(ConnectionSyncField.self)
-        for field in ConnectionSyncField.allCases where field != .modifiedAtLocal {
-            guard !CKRecord.isEqualRecordValue(localFields[field], baseFields[field]) else { continue }
-            mergedFields[field] = localFields[field]
-        }
+        let edit = SyncRecordMapper.connectionEdit(
+            localConnection,
+            in: remoteRecord.recordID.zoneID,
+            base: base,
+            publisher: services.connectionStorage.sshRoutePublisherId
+        )
+        guard let merged = edit.rebased(onto: remoteRecord) else { return nil }
 
         do {
             return try SyncRecordMapper.toConnection(merged)

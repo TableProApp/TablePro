@@ -28382,6 +28382,14 @@
         }
       }
     },
+    "Ask your administrator to register postgres/host.domain.com in the realm, and connect by hostname rather than IP address." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Ask your administrator to register the name in the server's gssapi_principal_name setting, and connect by hostname rather than IP address." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Ask your administrator to register the SPN, for example MSSQLSvc/host.domain.com:1433, and connect by hostname rather than IP address." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -87714,6 +87722,10 @@
         }
       }
     },
+    "GSS Encryption" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Guidance the AI sees on every chat turn for this connection: table conventions, columns to avoid, join hints, business rules the schema doesn't show." : {
       "localizations" : {
         "fr" : {
@@ -97987,6 +97999,10 @@
         }
       }
     },
+    "Kerberos (GSSAPI)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Kerberos authentication failed: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -98028,6 +98044,9 @@
           }
         }
       }
+    },
+    "Kerberos needs the server's hostname, not an IP address. Service principals aren't registered against IP addresses." : {
+
     },
     "Kerberos Principal" : {
       "extractionState" : "manual",
@@ -134746,6 +134765,8 @@
       }
     },
     "Preferred" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -147534,6 +147555,8 @@
       }
     },
     "Required" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -186619,6 +186642,10 @@
     "The map cannot place SRID %d. It reads longitude and latitude, such as SRID 4326, and Web Mercator." : {
 
     },
+    "The MariaDB Kerberos service principal is not registered." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The MCP server could not bind a port (%@)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187744,6 +187771,10 @@
           }
         }
       }
+    },
+    "The PostgreSQL Kerberos service principal is not registered." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The pre-connect script was not approved." : {
 
@@ -192842,6 +192873,10 @@
         }
       }
     },
+    "This account signs in with Kerberos. Set Authentication to Kerberos (GSSAPI), then reconnect." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This account uses a password verifier the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -193566,6 +193601,10 @@
           }
         }
       }
+    },
+    "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection switched database with USE, which reconnecting would undo." : {
       "extractionState" : "manual",
@@ -197836,6 +197875,10 @@
           }
         }
       }
+    },
+    "This server signs in with Kerberos. Set Authentication to Kerberos (GSSAPI), then reconnect." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This sets %1$lld of %2$lld cells. The others cannot be edited." : {
 

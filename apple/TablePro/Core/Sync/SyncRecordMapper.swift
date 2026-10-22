@@ -32,7 +32,12 @@ enum SyncDecodeError: Error, LocalizedError {
 /// Pure-function mapper between local models and CKRecord
 struct SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
-    private static let encoder = JSONEncoder()
+    // Unsorted keys come out in another order on each encode, and a merge compares fields by their bytes.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
     private static let decoder = JSONDecoder()
 
     /// Current schema version stamped on every record
@@ -85,11 +90,8 @@ struct SyncRecordMapper {
 
     // MARK: - Connection
 
-    /// Writes the optional fields whether or not they hold anything, for the reason
-    /// `toCKRecord(sqlFavorite:in:)` gives: a connection moved out of its group, stripped of its
-    /// tags or of its AI rules pushed a record that said nothing about them, and the next pull put
-    /// them back. On the server's own record a nil names the key only where the server still has a
-    /// value; a record built fresh has nothing to compare against, so it names every empty key.
+    // Optional fields are written even when empty: a key the record never names keeps the server's
+    // value, so an emptied group, tag or AI rule came back on the next pull.
     static func toCKRecord(
         _ connection: DatabaseConnection,
         in zone: CKRecordZone.ID,
@@ -108,10 +110,7 @@ struct SyncRecordMapper {
         fields[.color] = connection.color.rawValue
         fields[.iconName] = LibrarySymbolCatalog.normalizedName(connection.iconName)
         fields[.safeModeLevel] = connection.preferredSafeModeLevel.rawValue
-        /// `safeModeLevel` superseded `isReadOnly`, but both are still on the wire and this mapper
-        /// still reads the old one when the new one is absent. Writing only the new one left the
-        /// old one holding whatever it last held, so a connection taken out of read-only on a Mac
-        /// stayed read-only for anything reading the legacy field.
+        // Older readers still read `isReadOnly` when `safeModeLevel` is absent.
         fields[.isReadOnly] = Int64(connection.preferredSafeModeLevel == .readOnly ? 1 : 0)
         fields[.modifiedAtLocal] = Date()
         fields[.schemaVersion] = schemaVersion
@@ -121,7 +120,7 @@ struct SyncRecordMapper {
 
         let tagIdStrings = connection.tagIds.map(\.uuidString)
         fields[.tagIds] = tagIdStrings.isEmpty ? nil : tagIdStrings
-        /// Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
+        // Cleared with `tagIds`, because a record with no `tagIds` is read through this one.
         fields[.tagId] = tagIdStrings.first
         fields[.groupId] = connection.groupId?.uuidString
         fields[.aiPolicy] = connection.aiPolicy?.rawValue ?? unrecognizedAIPolicy(in: fields)
@@ -132,6 +131,11 @@ struct SyncRecordMapper {
         fields[.redisDatabase] = connection.redisDatabase.map { Int64($0) }
         fields[.startupCommands] = connection.startupCommands.flatMap { $0.isEmpty ? nil : $0 }
         fields[.sshProfileId] = connection.sshProfileId?.uuidString
+        // Only a change is written: a route another build wrote stays, and a record built without the
+        // server's copy names no route, so a push after the cache was dropped cannot clear another Mac's.
+        if connection.sshRoute != Self.sshRoute(in: fields) {
+            fields[.sshRouteJson] = connection.sshRoute?.encoded()
+        }
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
@@ -189,8 +193,7 @@ struct SyncRecordMapper {
         let port = (fields[.port] as? Int64).map { Int($0) } ?? 0
         let database = fields[.database] as? String ?? ""
         let username = fields[.username] as? String ?? ""
-        /// `colorTag` is where iOS wrote a connection's colour as hex before the two platforms
-        /// converged on this enum, so a colour set on an iPhone shows up here rather than nowhere.
+        // Older iOS builds wrote the colour as hex to `colorTag`.
         let colorRaw = fields[.color] as? String
             ?? fields[.colorTag] as? String
             ?? ConnectionColor.none.rawValue
@@ -283,7 +286,63 @@ struct SyncRecordMapper {
         if let queryTimeoutSeconds = validQueryTimeout(queryTimeoutSeconds ?? legacyQueryTimeout) {
             connection.queryTimeoutSeconds = queryTimeoutSeconds
         }
+        connection.sshRoute = sshRoute(in: fields)
         return connection
+    }
+
+    private static func sshRoute(in fields: SyncRecordFields<ConnectionSyncField>) -> PublishedSSHRoute? {
+        (fields[.sshRouteJson] as? Data).flatMap(PublishedSSHRoute.decoded(from:))
+    }
+
+    // Only the Mac that published a route clears it, so a copy cached before this build read the
+    // field does not wipe the route another Mac published.
+    static func keepingForeignRoute(
+        of connection: DatabaseConnection,
+        in base: CKRecord?,
+        publisher: UUID
+    ) -> DatabaseConnection {
+        guard connection.sshRoute == nil,
+              let route = base.flatMap({ sshRoute(in: $0.fields(ConnectionSyncField.self)) }),
+              route.publisher != publisher
+        else { return connection }
+        var kept = connection
+        kept.sshRoute = route
+        return kept
+    }
+
+    // `base` is left untouched, so the edit is what the push changes on the server's copy, and the
+    // base read and written again keeps a value only iOS spells differently out of the edit.
+    static func connectionEdit(
+        _ connection: DatabaseConnection,
+        in zone: CKRecordZone.ID,
+        base: CKRecord?,
+        publisher: UUID
+    ) -> SyncRecordEdit {
+        let kept = keepingForeignRoute(of: connection, in: base, publisher: publisher)
+        let record = toCKRecord(kept, in: zone, base: base?.copy() as? CKRecord)
+        let baseAsWritten = base.flatMap { try? toConnection($0) }.map { toCKRecord($0, in: zone) }
+        return SyncRecordEdit(ConnectionSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
+            settleRoute(in: merged, server: server, publisher: publisher)
+        }
+    }
+
+    // An edit judged its route against an older copy, so the route lands on the server's by the rules a dial uses.
+    static func settleRoute(in merged: CKRecord, server: CKRecord, publisher: UUID) {
+        let mergedFields = merged.fields(ConnectionSyncField.self)
+        let serverFields = server.fields(ConnectionSyncField.self)
+        let current = sshRoute(in: serverFields)
+        guard rebasedRoute(wanted: sshRoute(in: mergedFields), server: current, publisher: publisher) == current else { return }
+        mergedFields[.sshRouteJson] = serverFields[.sshRouteJson]
+    }
+
+    static func rebasedRoute(
+        wanted: PublishedSSHRoute?,
+        server: PublishedSSHRoute?,
+        publisher: UUID
+    ) -> PublishedSSHRoute? {
+        guard let server else { return wanted }
+        guard let wanted else { return server.publisher == publisher ? nil : server }
+        return server.leadsToSameHosts(as: wanted) ? server : wanted
     }
 
     /// A policy a newer release added reads as nil on this Mac. Writing that nil back would clear
@@ -312,9 +371,7 @@ struct SyncRecordMapper {
 
     // MARK: - Connection Group
 
-    /// Writes `parentId` and `iconName` whether or not they hold anything, for the reason the
-    /// connection mapper gives: a group dragged to the top level, or set back to the folder, has
-    /// to clear the server's value or the next pull restores it.
+    // `parentId` and `iconName` are written even when empty, or a group moved to the top level keeps its old parent.
     static func toCKRecord(_ group: ConnectionGroup, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
         let record = record(type: .group, id: group.id.uuidString, in: zone, base: base)
 
@@ -357,9 +414,8 @@ struct SyncRecordMapper {
 
     // MARK: - Connection Tag
 
-    static func toCKRecord(_ tag: ConnectionTag, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .tag, id: tag.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.tag.rawValue, recordID: recordID)
+    static func toCKRecord(_ tag: ConnectionTag, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .tag, id: tag.id.uuidString, in: zone, base: base)
 
         let fields = record.fields(ConnectionTagSyncField.self)
         fields[.tagId] = tag.id.uuidString
@@ -398,10 +454,10 @@ struct SyncRecordMapper {
     static func toCKRecord(
         category: String,
         settingsData: Data,
-        in zone: CKRecordZone.ID
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil
     ) -> CKRecord {
-        let recordID = recordID(type: .settings, id: category, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.settings.rawValue, recordID: recordID)
+        let record = record(type: .settings, id: category, in: zone, base: base)
 
         let fields = record.fields(AppSettingsSyncField.self)
         fields[.category] = category
@@ -410,6 +466,44 @@ struct SyncRecordMapper {
         fields[.schemaVersion] = schemaVersion
 
         return record
+    }
+
+    static func settingsEdit(
+        category: String,
+        settingsData: Data,
+        in zone: CKRecordZone.ID,
+        base: CKRecord?
+    ) -> SyncRecordEdit {
+        let record = toCKRecord(category: category, settingsData: settingsData, in: zone, base: base?.copy() as? CKRecord)
+        let baseData = base.flatMap(Self.settingsData(from:))
+        // A base an older build wrote in another key order holds the same options, which is no edit.
+        let baseAsWritten = SyncJSONMerge.sameDocument(baseData, settingsData) ? record : nil
+        let mergesOptions = mergesOptions(of: category)
+        return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
+            guard mergesOptions, let document = SyncJSONMerge.document(
+                base: baseData,
+                local: settingsData,
+                server: Self.settingsData(from: server)
+            ) else { return }
+            merged.fields(AppSettingsSyncField.self)[.settingsJson] = category == CustomSlashCommandStorage.syncCategory
+                ? Self.renamingCommandCollisions(in: document)
+                : document
+        }
+    }
+
+    // Only where options stand alone: a shortcut chord has to stay unique, the active AI provider has to be one
+    // of the providers, and a theme is one design, replaced whole on pull too. Those go up whole.
+    private static func mergesOptions(of category: String) -> Bool {
+        category != AppSettingsCategory.keyboard
+            && category != AppSettingsCategory.ai
+            && ThemeCatalog.themeId(forSyncCategory: category) == nil
+    }
+
+    private static func renamingCommandCollisions(in document: Data) -> Data {
+        guard let commands = try? decoder.decode([CustomSlashCommand].self, from: document),
+              let renamed = try? encoder.encode(CustomSlashCommandStorage.renamingCollisions(commands))
+        else { return document }
+        return renamed
     }
 
     static func settingsCategory(from record: CKRecord) -> String? {
@@ -429,10 +523,10 @@ struct SyncRecordMapper {
     static func toCKRecord(
         favoriteEntry entry: FavoriteTablesStorage.FavoriteEntry,
         recordId favoriteId: String,
-        in zone: CKRecordZone.ID
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil
     ) -> CKRecord {
-        let recordID = recordID(type: .tableFavorite, id: favoriteId, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.tableFavorite.rawValue, recordID: recordID)
+        let record = record(type: .tableFavorite, id: favoriteId, in: zone, base: base)
 
         let fields = record.fields(FavoriteTableSyncField.self)
         fields[.connectionId] = entry.connectionId.uuidString
@@ -470,10 +564,12 @@ struct SyncRecordMapper {
 
     // MARK: - Favorite Database
 
-    static func toCKRecord(favoriteDatabase entry: FavoriteDatabaseEntry, in zone: CKRecordZone.ID) -> CKRecord {
-        let favoriteId = FavoriteDatabasesStorage.syncId(for: entry)
-        let recordID = recordID(type: .favoriteDatabase, id: favoriteId, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.favoriteDatabase.rawValue, recordID: recordID)
+    static func toCKRecord(
+        favoriteDatabase entry: FavoriteDatabaseEntry,
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil
+    ) -> CKRecord {
+        let record = record(type: .favoriteDatabase, id: FavoriteDatabasesStorage.syncId(for: entry), in: zone, base: base)
 
         let fields = record.fields(FavoriteDatabaseSyncField.self)
         fields[.connectionId] = entry.connectionId.uuidString
@@ -507,18 +603,11 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite
 
-    /// Writes the optional fields whether or not they hold anything.
-    ///
-    /// `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so a key the pushed record never
-    /// names keeps whatever the server has, and writing a field only when it was set therefore
-    /// meant a field the user emptied was never emptied anywhere else: marking a query Global
-    /// cleared `connectionId` locally, pushed a record that said nothing about it, and the next
-    /// pull put the old connection back. `absentValues: .clear` is what names the key, measured as
-    /// putting it in `changedKeys()` and leaving it out of `allKeys()` on a record built here.
-    static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID) -> CKRecord {
-        let record = record(type: .favorite, id: favorite.id.uuidString, in: zone, base: nil)
+    // Optional fields are written even when empty, or a query marked Global kept its old connection (#3045).
+    static func toCKRecord(sqlFavorite favorite: SQLFavorite, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .favorite, id: favorite.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: .clear)
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.favoriteId] = favorite.id.uuidString
         fields[.name] = favorite.name
         fields[.query] = favorite.query
@@ -560,12 +649,15 @@ struct SyncRecordMapper {
 
     // MARK: - SQL Favorite Folder
 
-    /// Writes the optional fields whether or not they hold anything, for the reason
-    /// `toCKRecord(sqlFavorite:in:)` gives.
-    static func toCKRecord(sqlFavoriteFolder folder: SQLFavoriteFolder, in zone: CKRecordZone.ID) -> CKRecord {
-        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zone, base: nil)
+    // Optional fields are written even when empty, as for a query.
+    static func toCKRecord(
+        sqlFavoriteFolder folder: SQLFavoriteFolder,
+        in zone: CKRecordZone.ID,
+        base: CKRecord? = nil
+    ) -> CKRecord {
+        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: .clear)
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.folderId] = folder.id.uuidString
         fields[.name] = folder.name
         fields[.parentId] = folder.parentId?.uuidString
@@ -600,12 +692,11 @@ struct SyncRecordMapper {
 
     // MARK: - Table Folder
 
-    /// Writes `schema` whether or not it holds anything, for the reason `toCKRecord(sqlFavorite:in:)`
-    /// gives: a folder moved to a database with no schema must clear the one it had.
-    static func toCKRecord(tableFolder folder: TableFolder, in zone: CKRecordZone.ID) -> CKRecord {
-        let record = record(type: .tableFolder, id: folder.id.uuidString, in: zone, base: nil)
+    // `schema` is written even when empty, or a folder moved to a database with no schema keeps the old one.
+    static func toCKRecord(tableFolder folder: TableFolder, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .tableFolder, id: folder.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(TableFolderSyncField.self, absentValues: .clear)
+        let fields = record.fields(TableFolderSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.folderId] = folder.id.uuidString
         fields[.connectionId] = folder.scope.connectionId.uuidString
         fields[.database] = folder.scope.database
@@ -642,10 +733,10 @@ struct SyncRecordMapper {
         )
     }
 
-    static func toCKRecord(tableFolderItem item: TableFolderItem, in zone: CKRecordZone.ID) -> CKRecord {
-        let record = record(type: .tableFolderItem, id: item.syncId, in: zone, base: nil)
+    static func toCKRecord(tableFolderItem item: TableFolderItem, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .tableFolderItem, id: item.syncId, in: zone, base: base)
 
-        let fields = record.fields(TableFolderItemSyncField.self, absentValues: .clear)
+        let fields = record.fields(TableFolderItemSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.connectionId] = item.scope.connectionId.uuidString
         fields[.database] = item.scope.database
         fields[.schema] = item.scope.schema
@@ -687,11 +778,10 @@ struct SyncRecordMapper {
 
     // MARK: - SSH Profile
 
-    static func toCKRecord(_ profile: SSHProfile, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .sshProfile, id: profile.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.sshProfile.rawValue, recordID: recordID)
+    static func toCKRecord(_ profile: SSHProfile, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .sshProfile, id: profile.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(SSHProfileSyncField.self, absentValues: .clear)
+        let fields = record.fields(SSHProfileSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.host] = profile.host
@@ -772,14 +862,11 @@ struct SyncRecordMapper {
 
     // MARK: - Credential Profile
 
-    /// The password never goes in, and neither does the payload of a `.source` mode: it can name a
-    /// shell command, and one that arrived over iCloud is a command this Mac never agreed to run.
-    /// A source-backed profile therefore travels as `prompt`.
-    static func toCKRecord(_ profile: CredentialProfile, in zone: CKRecordZone.ID) -> CKRecord {
-        let recordID = recordID(type: .credentialProfile, id: profile.id.uuidString, in: zone)
-        let record = CKRecord(recordType: SyncRecordType.credentialProfile.rawValue, recordID: recordID)
+    // No password, and no `.source` payload: it can name a shell command this Mac never agreed to run.
+    static func toCKRecord(_ profile: CredentialProfile, in zone: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .credentialProfile, id: profile.id.uuidString, in: zone, base: base)
 
-        let fields = record.fields(CredentialProfileSyncField.self, absentValues: .clear)
+        let fields = record.fields(CredentialProfileSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.profileId] = profile.id.uuidString
         fields[.name] = profile.name
         fields[.username] = profile.username

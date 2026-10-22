@@ -28,6 +28,7 @@ let package = Package(
         .library(name: "TableProSync", targets: ["TableProSync"]),
         .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
+        .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
         .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
@@ -138,6 +139,11 @@ let package = Package(
             name: "TableProMSSQLCore",
             dependencies: ["TableProCoreTypes", "TableProSQLGrammar"],
             path: "Sources/TableProMSSQLCore"
+        ),
+        .target(
+            name: "TableProKerberos",
+            dependencies: ["TableProCoreTypes"],
+            path: "Sources/TableProKerberos"
         ),
         .target(
             name: "TableProTeradataCore",
@@ -373,6 +379,11 @@ let package = Package(
             name: "TableProMSSQLCoreTests",
             dependencies: ["TableProMSSQLCore", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
+        ),
+        .testTarget(
+            name: "TableProKerberosTests",
+            dependencies: ["TableProKerberos"],
+            path: "Tests/TableProKerberosTests"
         ),
         .testTarget(
             name: "TableProTLSClientIdentityTests",

@@ -2,6 +2,7 @@ import CloudKit
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProSSHTransport
 import TableProSync
 import TableProSyncTransport
 import Testing
@@ -43,6 +44,7 @@ private actor FakeSyncTransport: IOSSyncTransport {
     private var pullErrors: [any Error] = []
     private var interruption: (savedCount: Int, cause: CKError)?
     private var newToken: CKServerChangeToken?
+    private var newerServerCopies: [CKRecord.ID: CKRecord] = [:]
     private(set) var pushedRecords: [CKRecord] = []
     private(set) var pushedDeletions: [CKRecord.ID] = []
     private(set) var pushCount = 0
@@ -103,6 +105,15 @@ private actor FakeSyncTransport: IOSSyncTransport {
         newToken = token
     }
 
+    // The next save of that record is refused as CloudKit refuses one built on an older copy.
+    func holdNewerCopy(_ server: CKRecord) {
+        newerServerCopies[server.recordID] = server
+    }
+
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        [:]
+    }
+
     func accountStatus() async throws -> CKAccountStatus {
         let status = accountStatuses.first ?? .available
         if accountStatuses.count > 1 {
@@ -147,15 +158,26 @@ private actor FakeSyncTransport: IOSSyncTransport {
             return PushOutcome(failures: Dictionary(uniqueKeysWithValues: ids.map { ($0, itemFailure) }))
         }
         let missing = deletions.filter { recordsTheServerNeverHad.contains($0.recordName) }
+        var refused: [CKRecord.ID: SyncItemFailure] = [:]
+        for record in records {
+            guard let server = newerServerCopies.removeValue(forKey: record.recordID) else { continue }
+            refused[record.recordID] = SyncItemFailure(
+                code: .serverRecordChanged,
+                serverRecord: server,
+                clientRecord: record,
+                message: "Server record changed"
+            )
+        }
+        let saved = records.filter { refused[$0.recordID] == nil }
         return PushOutcome(
-            savedRecords: Dictionary(uniqueKeysWithValues: records.map { ($0.recordID, $0) }),
+            savedRecords: Dictionary(uniqueKeysWithValues: saved.map { ($0.recordID, $0) }),
             deletedRecordIDs: Set(deletions).subtracting(missing),
-            failures: Dictionary(uniqueKeysWithValues: missing.map { recordID in
+            failures: refused.merging(missing.map { recordID in
                 (
                     recordID,
                     SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: nil, message: "Record not found")
                 )
-            })
+            }, uniquingKeysWith: { first, _ in first })
         )
     }
 }
@@ -244,6 +266,59 @@ struct IOSSyncCoordinatorTests {
         await coordinator.sync()
 
         #expect(box.connections.first?.sshProfileId == profileId)
+    }
+
+    @Test("A build that reads the Mac's SSH route fetches everything once")
+    func routeReaderFetchesEverythingOnce() async throws {
+        let box = LibraryStateBox()
+        metadata.lastAccountId = "account-a"
+        var older = IOSSyncCoordinator.readableRecordTypes
+        older.remove(ConnectionSyncField.sshRouteContentKind)
+        _ = metadata.adoptReadableRecordTypes(older)
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        let coordinator = makeCoordinator(box: box, transport: FakeSyncTransport(remoteRecords: [], box: box))
+
+        await coordinator.sync()
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == nil)
+
+        metadata.userDefaults.set(Data([1, 2, 3]), forKey: tokenKey)
+        await coordinator.sync()
+        #expect(metadata.userDefaults.data(forKey: tokenKey) == Data([1, 2, 3]))
+    }
+
+    @Test("A copy with an edit waiting to go up still takes the route a pull brings, and its push keeps it")
+    func dirtyCopyTakesThePulledRoute() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(
+            name: "Alias",
+            type: .postgresql,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "db", username: "")
+        )
+        box.connections = [local]
+        let route = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(local.sshConfiguration).publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "bastion", host: "b.example", port: 22, username: "jump")],
+            target: .init(alias: "db", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        let routeData = try #require(route.encoded())
+        let remote = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        remote[ConnectionSyncField.sshRouteJson.key] = routeData as CKRecordValue
+        let transport = FakeSyncTransport(remoteRecords: [remote], box: box)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.duringPull = {
+            box.connections[0].name = "Renamed here"
+            coordinator.markDirty(local.id)
+        }
+
+        await coordinator.sync()
+
+        let stored = try #require(box.connections.first)
+        #expect(stored.name == "Renamed here")
+        #expect(stored.sshRoute == route)
+        let pushed = try #require(await transport.pushedRecords.first { $0.recordID == remote.recordID })
+        #expect(pushed[ConnectionSyncField.sshRouteJson.key] as? Data == routeData)
     }
 
     @Test("A cached profile link whose save failed is read again on the next sync")
@@ -1359,6 +1434,121 @@ struct IOSSyncCoordinatorTests {
         #expect(box.connections.isEmpty)
         #expect(box.savedQueries?.queries.isEmpty == true)
         #expect(await transport.pushedDeletions.count == 2)
+    }
+
+    private func copy(_ record: CKRecord) throws -> CKRecord {
+        try #require(record.copy() as? CKRecord)
+    }
+
+    @Test("A copy with an edit waiting to go up sends only that edit, keeping what the Mac changed")
+    func dirtyCopyKeepsTheMacsChange() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Production", type: .postgresql, host: "db", port: 5_432)
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(ConnectionSyncField.self)[.name] = "Production (Mac)"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].port = 6_543
+        coordinator.markDirty(local.id)
+
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        let sent = try #require(SyncRecordMapper.toConnection(pushed))
+        #expect(sent.name == "Production (Mac)")
+        #expect(sent.port == 6_543)
+        let stored = try #require(box.connections.first)
+        #expect(stored.name == "Production (Mac)")
+        #expect(stored.port == 6_543)
+        #expect(coordinator.status.error == nil)
+    }
+
+    @Test("A field set back to its old value while a merged save is in flight reaches iCloud on the next sync")
+    func undoDuringMergedSaveIsPushed() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Production", type: .postgresql, host: "db", port: 5_432)
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(ConnectionSyncField.self)[.name] = "Production (Mac)"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].port = 6_543
+        coordinator.markDirty(local.id)
+        var undone = false
+        box.duringPush = {
+            guard !undone else { return }
+            undone = true
+            box.connections[0].port = 5_432
+            coordinator.markDirty(local.id)
+        }
+
+        await coordinator.sync()
+        #expect(box.connections.first?.port == 5_432)
+
+        let merged = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        await transport.holdNewerCopy(merged)
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        let sent = try #require(SyncRecordMapper.toConnection(pushed))
+        #expect(sent.name == "Production (Mac)")
+        #expect(sent.port == 5_432)
+        #expect(box.connections.first?.port == 5_432)
+        #expect(box.connections.first?.name == "Production (Mac)")
+    }
+
+    @Test("A merged save this device could not store holds the run like a pull that was not saved")
+    func unstoredMergedSaveIsReported() async throws {
+        let box = LibraryStateBox()
+        let local = DatabaseConnection(name: "Production", type: .postgresql, host: "db", port: 5_432)
+        box.connections = [local]
+        let cached = SyncRecordMapper.toRecord(local, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(ConnectionSyncField.self)[.name] = "Production (Mac)"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.connections[0].port = 6_543
+        coordinator.markDirty(local.id)
+        box.duringPush = { box.saves = false }
+
+        await coordinator.sync()
+
+        #expect(coordinator.status == .error(.pullNotSaved))
+    }
+
+    @Test("A saved query edited here keeps the name another device gave it")
+    func dirtySavedQueryKeepsAnotherDevicesName() async throws {
+        let box = LibraryStateBox()
+        let query = SavedQuery(name: "Daily", query: "SELECT 1")
+        box.savedQueries = SavedQueryContents(queries: [query])
+        let cached = SyncRecordMapper.toRecord(query, zoneID: zoneID)
+        SyncRecordCache(directory: cacheDirectory, defaults: nil).store([cached])
+        let server = try copy(cached)
+        server.fields(SQLFavoriteSyncField.self)[.name] = "Daily report"
+        let transport = FakeSyncTransport(remoteRecords: [server], box: box)
+        await transport.holdNewerCopy(server)
+        let coordinator = makeCoordinator(box: box, transport: transport)
+        box.savedQueries?.queries[0].query = "SELECT 2"
+        coordinator.markDirty(savedQueries: [query.id])
+
+        await coordinator.sync()
+
+        let pushed = try #require(await transport.pushedRecords.last { $0.recordID == cached.recordID })
+        let sent = try #require(SyncRecordMapper.toSavedQuery(pushed))
+        #expect(sent.name == "Daily report")
+        #expect(sent.query == "SELECT 2")
+        let stored = try #require(box.savedQueries?.queries.first)
+        #expect(stored.name == "Daily report")
+        #expect(stored.query == "SELECT 2")
     }
 
     private static func makeChangeToken() throws -> CKServerChangeToken {

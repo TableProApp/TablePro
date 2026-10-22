@@ -242,6 +242,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
             return .driverNotFound(connection.type.mobileDisplayName)
         }
         guard connection.macSocketPath == nil else { return .localSocketNotSupported }
+        guard !KerberosAuthFields.isSelected(in: connection.additionalFields) else { return .kerberosNotSupported }
         return nil
     }
 

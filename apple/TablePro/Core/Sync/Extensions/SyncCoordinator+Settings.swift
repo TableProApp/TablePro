@@ -8,6 +8,7 @@ extension SyncCoordinator {
     func settingsData(for category: String) -> Data? {
         let storage = services.appSettingsStorage
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
 
         do {
             switch category {
@@ -82,12 +83,16 @@ extension SyncCoordinator {
     static let formatterContentKind = "\(SyncRecordType.settings.rawValue)/\(AppSettingsCategory.formatter).v1"
 
     static var readableContent: Set<String> {
-        Set(SyncRecordType.verifiedInProduction.map(\.rawValue)).union([Self.themeContentKind, Self.formatterContentKind])
+        Set(SyncRecordType.verifiedInProduction.map(\.rawValue))
+            .union([Self.themeContentKind, Self.formatterContentKind, ConnectionSyncField.sshRouteContentKind])
     }
 
     // Only what this Mac applies: a pull skips a category that is off and still moves the token past it.
     static func readableContent(for settings: SyncSettings) -> Set<String> {
         var content = Set(SyncRecordType.verifiedInProduction.filter { settings.syncs($0) }.map(\.rawValue))
+        if settings.syncs(.connection) {
+            content.insert(ConnectionSyncField.sshRouteContentKind)
+        }
         if settings.syncs(.settings) {
             content.insert(Self.themeContentKind)
             content.insert(Self.formatterContentKind)

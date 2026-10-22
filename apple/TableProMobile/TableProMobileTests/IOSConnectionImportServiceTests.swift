@@ -3,6 +3,7 @@ import TableProConnectionLibrary
 import TableProDatabase
 import TableProImport
 import TableProModels
+import TableProSSHTransport
 import Testing
 
 @testable import TableProMobile
@@ -496,6 +497,41 @@ struct IOSConnectionImportServiceTests {
             #expect(try store.retrieve(forKey: keyAccount) == "PASTED KEY", "\(ssh?.authMethod ?? "no tunnel")")
             #expect(appState.connections.first { $0.id == existing.id }?.isFavorite == true)
         }
+    }
+
+    @Test("Replacing a connection keeps the route a Mac dialed for the same tunnel")
+    func replaceKeepsTheMacRoute() async throws {
+        var existing = DatabaseConnection(
+            name: "Alias",
+            type: .postgresql,
+            host: "db.example.com",
+            port: 5_432,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
+        )
+        existing.sshRoute = PublishedSSHRoute(
+            publisher: UUID(),
+            input: try #require(existing.sshConfiguration).publishedRouteInput,
+            hops: [.init(id: UUID(), alias: "edge", host: "edge.example.com", port: 22, username: "jump")],
+            target: .init(alias: "bastion.example.com", host: "10.0.0.5", port: 22, username: "deploy")
+        )
+        #expect(appState.addConnection(existing))
+        var imported = settings(name: existing.name, host: existing.host, ssh: tunnel(authMethod: "password"))
+        imported.database = ""
+        imported.username = ""
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
+        let preview = try await analyzed(bundle)
+        let row = try ref(of: existing.name, in: preview)
+        var selection = ImportSelection.defaults(for: preview)
+        selection.setSelected(true, connection: row, in: preview)
+        let resolved = selection.resolve(row, as: .replace(existing.id), in: preview)
+        #expect(resolved)
+
+        _ = await apply(preview, selection)
+
+        let replaced = try #require(appState.connections.first { $0.id == existing.id })
+        #expect(replaced.sshRoute == existing.sshRoute)
+        #expect(replaced.sshRouteInEffect == existing.sshRoute)
     }
 
     // The link makes this device send the Mac profile's password to whatever server the tunnel names.

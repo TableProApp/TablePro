@@ -192,6 +192,10 @@ private actor ZoneServer: SyncTransport {
         return outcome
     }
 
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        [:]
+    }
+
     func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         pulls.append(token == nil ? .full : .delta)
         duringPull()

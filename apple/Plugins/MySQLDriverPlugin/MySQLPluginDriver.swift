@@ -172,11 +172,15 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let sslConfig = config.ssl
         let connectTimeout = MySQLConnectTimeout(additionalFields: config.additionalFields)
         let connectDeadline = MySQLConnectDeadline(timeout: connectTimeout)
+        let kerberos = try await MariaDBKerberosSignIn.resolve(
+            additionalFields: config.additionalFields,
+            deadline: connectDeadline
+        )
 
         let conn = MariaDBPluginConnection(
             transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
             user: config.username,
-            password: password,
+            password: kerberos == nil ? password : nil,
             database: activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
@@ -184,7 +188,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
             connectTimeoutMilliseconds: connectTimeout.milliseconds,
-            refreshPassword: config.refreshPassword
+            refreshPassword: config.refreshPassword,
+            kerberos: kerberos
         )
 
         try await conn.connect(deadline: connectDeadline)

@@ -1,30 +1,44 @@
 import Foundation
 @preconcurrency import GSS
 import TableProCoreTypes
-import TableProMSSQLCore
 
-enum MSSQLKerberosCredentials {
+public enum KerberosTicketError: Error, Equatable, Sendable {
+    case rejected(kind: KerberosFailureKind, message: String)
+}
+
+// A principal and password typed into a connection get their own FILE cache, so the ticket never
+// joins the user's credentials or replaces the one kinit put in the default cache.
+public enum KerberosTicket {
     private static let acquisitionQueue = DispatchQueue(
-        label: "com.TablePro.mssql.kerberos-acquire",
+        label: "com.TablePro.kerberos.acquire",
         qos: .userInitiated
     )
 
-    static func acquireTicket(principal: String, password: String, timeoutMilliseconds: Int) async throws -> String {
+    public static func acquire(
+        principal: String,
+        password: String,
+        timeoutMilliseconds: Int,
+        timeoutError: @escaping @Sendable () -> Error
+    ) async throws -> String {
         let cachePath = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("tablepro-krb5-\(UUID().uuidString)")
         return try await runCancellableBlocking(
             on: acquisitionQueue,
             deadline: .milliseconds(timeoutMilliseconds),
-            timeoutError: { MSSQLCoreError.connectionTimedOut(isKerberos: true) },
+            timeoutError: timeoutError,
             work: {
-                try acquireTicketSync(principal: principal, password: password, cachePath: cachePath)
+                try acquireSync(principal: principal, password: password, cachePath: cachePath)
                 return cachePath
             },
-            discardLateResult: { path in try? FileManager.default.removeItem(atPath: path) }
+            discardLateResult: { discard($0) }
         )
     }
 
-    private static func acquireTicketSync(principal: String, password: String, cachePath: String) throws {
+    public static func discard(_ cachePath: String) {
+        try? FileManager.default.removeItem(atPath: cachePath)
+    }
+
+    private static func acquireSync(principal: String, password: String, cachePath: String) throws {
         let importedName = try importName(principal)
         defer {
             var releaseMinor: OM_uint32 = 0
@@ -49,10 +63,10 @@ enum MSSQLKerberosCredentials {
         guard status == 0 else {
             let message = errorRef?.takeRetainedValue().localizedDescription
                 ?? String(localized: "Kerberos ticket request failed")
-            try? FileManager.default.removeItem(atPath: cachePath)
-            throw MSSQLCoreError.kerberosAuthFailed(
-                kind: MSSQLKerberosClassifier.classify(message) ?? .wrongPassword,
-                serverMessage: message
+            discard(cachePath)
+            throw KerberosTicketError.rejected(
+                kind: KerberosFailureClassifier.classify(message) ?? .wrongPassword,
+                message: message
             )
         }
 
@@ -73,12 +87,9 @@ enum MSSQLKerberosCredentials {
             return gss_import_name(&minor, &buffer, &__gss_c_nt_user_name_oid_desc, &name)
         }
         guard status == 0, let name else {
-            throw MSSQLCoreError.kerberosAuthFailed(
+            throw KerberosTicketError.rejected(
                 kind: .principalUnknown,
-                serverMessage: String(
-                    format: String(localized: "Invalid Kerberos principal: %@"),
-                    principal
-                )
+                message: String(format: String(localized: "Invalid Kerberos principal: %@"), principal)
             )
         }
         return name

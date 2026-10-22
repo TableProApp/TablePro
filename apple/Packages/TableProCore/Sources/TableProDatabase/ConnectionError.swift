@@ -5,6 +5,7 @@ public enum ConnectionError: Error, LocalizedError, Equatable {
     case notConnected
     case sshNotSupported
     case localSocketNotSupported
+    case kerberosNotSupported
     case previousSessionStillClosing
 
     public var errorDescription: String? {
@@ -17,6 +18,8 @@ public enum ConnectionError: Error, LocalizedError, Equatable {
             return String(localized: "SSH tunneling is not available on this platform")
         case .localSocketNotSupported:
             return String(localized: "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad.")
+        case .kerberosNotSupported:
+            return String(localized: "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do.")
         case .previousSessionStillClosing:
             return String(localized: "The previous session is still closing")
         }

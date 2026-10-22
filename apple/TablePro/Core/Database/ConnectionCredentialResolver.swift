@@ -39,6 +39,10 @@ enum ConnectionCredentialResolver {
         if let minter = iamPasswordMinter(for: connection, fields: fields) {
             return try await minter.mint(deadline: deadline)
         }
+        // A ticket signs in, so a password source left on the connection is never run.
+        if KerberosAuthFields.isSelected(in: connection.additionalFields) {
+            return ResolvedSignIn(username: nil, password: "")
+        }
         return try await resolveStoredSignIn(for: connection, override: override)
     }
 

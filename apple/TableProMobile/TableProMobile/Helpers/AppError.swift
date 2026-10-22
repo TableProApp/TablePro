@@ -56,7 +56,7 @@ nonisolated extension AppError {
     // The device refuses these before any network work, so a second attempt fails the same way.
     var canRetry: Bool {
         switch underlying as? ConnectionError {
-        case .driverNotFound?, .localSocketNotSupported?:
+        case .driverNotFound?, .localSocketNotSupported?, .kerberosNotSupported?:
             false
         default:
             true
@@ -264,6 +264,14 @@ nonisolated enum ErrorClassifier {
                 title: String(localized: "Socket Unavailable"),
                 message: error.localizedDescription,
                 recovery: String(localized: "Open it on the Mac, or change it there to connect by host and port."),
+                underlying: error
+            )
+        case .kerberosNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "Kerberos Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Open it on the Mac, or change it there to sign in with a password."),
                 underlying: error
             )
         }

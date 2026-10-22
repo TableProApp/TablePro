@@ -149,7 +149,7 @@ struct DataGridView: NSViewRepresentable {
     // MARK: - NSViewRepresentable
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = DataGridScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
@@ -173,7 +173,7 @@ struct DataGridView: NSViewRepresentable {
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         tableView.gridStyleMask = []
         tableView.intercellSpacing = NSSize(width: 1, height: 0)
-        tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
+        tableView.rowHeight = DataGridMetrics.rowHeight(settings.rowHeight, font: ThemeEngine.shared.dataGridFonts.regular)
         tableView.usesAutomaticRowHeights = false
         DataGridBodyChrome.applyThemeColors(to: tableView, scope: context.coordinator.themeScope)
 
@@ -295,7 +295,7 @@ struct DataGridView: NSViewRepresentable {
         let rowDisplayCount = coordinator.valueFilteredIDs?.count ?? latestRows.count
         let columnCount = latestRows.columns.count
         let settings = AppSettingsManager.shared.dataGrid
-        let rowHeight = CGFloat(settings.rowHeight.rawValue)
+        let rowHeight = DataGridMetrics.rowHeight(settings.rowHeight, font: ThemeEngine.shared.dataGridFonts.regular)
         let alternatingRows = settings.showAlternateRows
         let columnComments = Self.effectiveColumnComments(for: latestRows)
 
@@ -391,10 +391,7 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
-        if tableView.rowHeight != rowHeight {
-            tableView.rowHeight = rowHeight
-            coordinator.repaintRowGutter()
-        }
+        coordinator.applyRowHeight(rowHeight)
         if tableView.usesAlternatingRowBackgroundColors != alternatingRows {
             tableView.usesAlternatingRowBackgroundColors = alternatingRows
             coordinator.repaintRowGutter()

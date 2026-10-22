@@ -117,21 +117,36 @@ struct CloudSQLIAMAuthTests {
 
     // MARK: - The picker
 
-    @Test("MySQL and PostgreSQL offer Cloud SQL IAM next to AWS IAM on one picker")
+    @Test("MySQL and PostgreSQL offer Cloud SQL IAM next to AWS IAM on one picker, and PostgreSQL Kerberos after them")
     func pickerOffersCloudSQLIAM() {
+        let cloudSQL = ["off", "accessKey", "profile", "sso", "gcpApplicationDefault", "gcpServiceAccount"]
+        #expect(authOptions(for: .mysql) == cloudSQL)
+        #expect(authOptions(for: .postgresql) == cloudSQL + [KerberosAuthFields.method])
         for type in [DatabaseType.mysql, .postgresql] {
-            let options = authOptions(for: type)
-            #expect(options == ["off", "accessKey", "profile", "sso", "gcpApplicationDefault", "gcpServiceAccount"])
             let fieldIds = PluginManager.shared.additionalConnectionFields(for: type).map(\.id)
             #expect(fieldIds.filter { $0 == "awsAuth" }.count == 1)
             #expect(fieldIds.contains(GoogleCloudSQLAuthFields.serviceAccountKeyFieldId))
         }
     }
 
-    @Test("Engines without Cloud SQL IAM sign-in keep the AWS-only picker")
+    @Test("Engines without Cloud SQL IAM sign-in keep the AWS picker, with Kerberos on MariaDB")
     func otherEnginesKeepAWSOnly() {
-        #expect(authOptions(for: .mariadb) == ["off", "accessKey", "profile", "sso"])
+        #expect(authOptions(for: .mariadb) == ["off", "accessKey", "profile", "sso", KerberosAuthFields.method])
         #expect(AWSAuthFields.standard().contains { $0.id == GoogleCloudSQLAuthFields.serviceAccountKeyFieldId } == false)
+    }
+
+    @Test("Kerberos fields sit on the PostgreSQL and MariaDB forms only, and GSS Encryption on PostgreSQL only")
+    func kerberosFieldsPerEngine() {
+        let kerberosIds = [KerberosAuthFields.principalFieldId, KerberosAuthFields.passwordFieldId]
+        for type in [DatabaseType.postgresql, .mariadb] {
+            let ids = PluginManager.shared.additionalConnectionFields(for: type).map(\.id)
+            #expect(kerberosIds.allSatisfy { ids.contains($0) }, "\(type.rawValue)")
+        }
+        let mysqlIds = PluginManager.shared.additionalConnectionFields(for: .mysql).map(\.id)
+        #expect(!mysqlIds.contains(KerberosAuthFields.principalFieldId))
+        #expect(PluginManager.shared.additionalConnectionFields(for: .postgresql).contains { $0.id == KerberosAuthFields.gssEncryptionFieldId })
+        #expect(!PluginManager.shared.additionalConnectionFields(for: .mariadb).contains { $0.id == KerberosAuthFields.gssEncryptionFieldId })
+        #expect(PluginManager.shared.secureConnectionFieldIds(for: .mariadb).contains(KerberosAuthFields.passwordFieldId))
     }
 
     @Test("The key field shows only for the service account mode, and is stored as a secret")
@@ -158,12 +173,26 @@ struct CloudSQLIAMAuthTests {
         #expect(aws.usesAWSIAM && !aws.usesGoogleCloudIAM && aws.usesIAMToken)
         let plain = connection(type: .mysql, auth: "off")
         #expect(!plain.usesAWSIAM && !plain.usesGoogleCloudIAM && !plain.usesIAMToken)
+        let kerberos = connection(type: .postgresql, auth: KerberosAuthFields.method)
+        #expect(kerberos.iamSignIn == nil && !kerberos.usesIAMToken)
     }
 
-    @Test("Cloud SQL IAM hides the password field and the prompt")
+    @Test("Kerberos never runs the password source a connection kept from before")
+    func kerberosSkipsThePasswordSource() async throws {
+        var kerberos = connection(type: .postgresql, auth: KerberosAuthFields.method)
+        kerberos.passwordSource = .env(variable: "TABLEPRO_TEST_UNSET_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))")
+
+        let signIn = try await ConnectionCredentialResolver.resolveSignIn(for: kerberos, fields: kerberos.additionalFields)
+
+        #expect(signIn == ResolvedSignIn(username: nil, password: ""))
+    }
+
+    @Test("Cloud SQL IAM and Kerberos hide the password field and the prompt")
     func hidesPassword() {
         #expect(PluginManager.shared.hidesPassword(for: connection(type: .postgresql, auth: "gcpApplicationDefault")))
         #expect(PluginManager.shared.hidesPassword(for: connection(type: .mysql, auth: "gcpServiceAccount")))
+        #expect(PluginManager.shared.hidesPassword(for: connection(type: .postgresql, auth: KerberosAuthFields.method)))
+        #expect(PluginManager.shared.hidesPassword(for: connection(type: .mariadb, auth: KerberosAuthFields.method)))
     }
 
     // MARK: - What mints the password

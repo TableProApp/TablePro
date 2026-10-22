@@ -4,9 +4,17 @@ import os
 import TableProSyncTransport
 
 struct SyncPushBatch {
-    var records: [CKRecord] = []
+    var edits: [SyncRecordEdit] = []
     var deletions: [CKRecord.ID] = []
     var supersededTombstones: Set<SyncRecordIdentity> = []
+
+    var records: [CKRecord] {
+        edits.map(\.record)
+    }
+
+    var editsByRecordID: [CKRecord.ID: SyncRecordEdit] {
+        Dictionary(edits.map { ($0.recordID, $0) }, uniquingKeysWith: { _, last in last })
+    }
 
     var uniqueDeletions: [CKRecord.ID] {
         Array(Set(deletions))
@@ -14,14 +22,14 @@ struct SyncPushBatch {
 }
 
 enum SyncPushDisposition {
-    case push(CKRecord)
+    case push(SyncRecordEdit)
     case hold
     case drop
 }
 
 private struct BuiltRecord {
     let id: String
-    let record: CKRecord
+    let edit: SyncRecordEdit
 }
 
 private struct CollectedRecords {
@@ -35,8 +43,8 @@ private struct CollectedRecords {
 
     mutating func add(_ id: String, _ disposition: SyncPushDisposition) {
         switch disposition {
-        case .push(let record):
-            built.append(BuiltRecord(id: id, record: record))
+        case .push(let edit):
+            built.append(BuiltRecord(id: id, edit: edit))
         case .hold:
             heldIds.insert(id)
         case .drop:
@@ -53,6 +61,24 @@ extension SyncCoordinator {
         profiles.refreshingLinkedProfile(connection)
     }
 
+    // Built on a copy of the cached record, so the edit compares against the untouched one.
+    private func edit<Field: SyncSchemaField>(
+        _ field: Field.Type,
+        _ type: SyncRecordType,
+        id: String,
+        in zoneID: CKRecordZone.ID,
+        build: (CKRecord?) -> CKRecord,
+        reread: (CKRecord) -> CKRecord? = { _ in nil }
+    ) -> SyncRecordEdit {
+        let base = recordCache.record(for: SyncRecordMapper.recordID(type: type, id: id, in: zoneID))
+        return SyncRecordEdit(
+            field,
+            record: build(base?.copy() as? CKRecord),
+            base: base,
+            baseAsWritten: base.flatMap(reread)
+        )
+    }
+
     func collectPushBatch(
         snapshot: SyncEditSnapshot,
         boundary: SyncBoundary,
@@ -63,16 +89,18 @@ extension SyncCoordinator {
         if boundary.includes(.connection) {
             let storage = services.connectionStorage
             let profiles = services.sshProfileStorage
+            let routePublisher = storage.sshRoutePublisherId
             await collectRecords(of: .connection, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let connections = storage.loadConnections()
                 return storage.lastLoadFailed ? nil : connections
             } disposition: { (connection: DatabaseConnection) in
                 guard connection.participatesInSync else { return .drop }
                 let recordID = SyncRecordMapper.recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
-                return .push(SyncRecordMapper.toCKRecord(
+                return .push(SyncRecordMapper.connectionEdit(
                     Self.syncedTunnel(of: connection, profiles: profiles),
                     in: zoneID,
-                    base: recordCache.record(for: recordID)
+                    base: recordCache.record(for: recordID),
+                    publisher: routePublisher
                 ))
             }
         }
@@ -83,8 +111,11 @@ extension SyncCoordinator {
                 let groups = groupStorage.loadGroups()
                 return groupStorage.storeIsUnreadable ? nil : groups
             } disposition: { (group: ConnectionGroup) in
-                let recordID = SyncRecordMapper.recordID(type: .group, id: group.id.uuidString, in: zoneID)
-                return .push(SyncRecordMapper.toCKRecord(group, in: zoneID, base: recordCache.record(for: recordID)))
+                .push(edit(ConnectionGroupSyncField.self, .group, id: group.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(group, in: zoneID, base: base)
+                } reread: { base in
+                    SyncRecordMapper.toGroup(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                })
             }
         }
 
@@ -93,7 +124,13 @@ extension SyncCoordinator {
             await collectRecords(of: .tag, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let tags = tagStorage.loadTags()
                 return tagStorage.storeIsUnreadable ? nil : tags
-            } disposition: { (tag: ConnectionTag) in .push(SyncRecordMapper.toCKRecord(tag, in: zoneID)) }
+            } disposition: { (tag: ConnectionTag) in
+                .push(edit(ConnectionTagSyncField.self, .tag, id: tag.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(tag, in: zoneID, base: base)
+                } reread: { base in
+                    SyncRecordMapper.toTag(base).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                })
+            }
         }
 
         if boundary.includes(.sshProfile) {
@@ -101,7 +138,13 @@ extension SyncCoordinator {
             await collectRecords(of: .sshProfile, snapshot: snapshot, boundary: boundary, into: &batch, zoneID: zoneID) {
                 let profiles = storage.loadProfiles()
                 return storage.lastLoadFailed ? nil : profiles
-            } disposition: { (profile: SSHProfile) in .push(SyncRecordMapper.toCKRecord(profile, in: zoneID)) }
+            } disposition: { (profile: SSHProfile) in
+                .push(edit(SSHProfileSyncField.self, .sshProfile, id: profile.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(profile, in: zoneID, base: base)
+                } reread: { base in
+                    (try? SyncRecordMapper.toSSHProfile(base)).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                })
+            }
         }
 
         if boundary.includes(.credentialProfile) {
@@ -111,7 +154,13 @@ extension SyncCoordinator {
             ) {
                 let profiles = storage.loadProfiles()
                 return storage.lastLoadFailed ? nil : profiles
-            } disposition: { (profile: CredentialProfile) in .push(SyncRecordMapper.toCKRecord(profile, in: zoneID)) }
+            } disposition: { (profile: CredentialProfile) in
+                .push(edit(CredentialProfileSyncField.self, .credentialProfile, id: profile.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(profile, in: zoneID, base: base)
+                } reread: { base in
+                    (try? SyncRecordMapper.toCredentialProfile(base)).map { SyncRecordMapper.toCKRecord($0, in: zoneID) }
+                })
+            }
         }
 
         if boundary.includes(.settings) {
@@ -187,7 +236,7 @@ extension SyncCoordinator {
             return
         }
         let pushable = Set(collected.built.map(\.id))
-        batch.records.append(contentsOf: collected.built.map(\.record))
+        batch.edits.append(contentsOf: collected.built.map(\.edit))
         discardUnpushable(type, dirtyIds: dirtyIds.subtracting(collected.heldIds), pushable: pushable)
         let superseded = appendTombstones(of: type, sparing: pushable, boundary: boundary, to: &batch, zoneID: zoneID)
         batch.supersededTombstones.formUnion(superseded.map { SyncRecordIdentity(type: type, id: $0) })
@@ -243,7 +292,12 @@ extension SyncCoordinator {
             let owner = SyncBoundary.owner(ofRecordId: category, type: .settings)
             guard boundary.includes(.settings, owner: owner) else { return .hold }
             guard let data = settingsData(for: category) else { return .drop }
-            return .push(SyncRecordMapper.toCKRecord(category: category, settingsData: data, in: zoneID))
+            return .push(SyncRecordMapper.settingsEdit(
+                category: category,
+                settingsData: data,
+                in: zoneID,
+                base: recordCache.record(for: SyncRecordMapper.recordID(type: .settings, id: category, in: zoneID))
+            ))
         }
         append(.settings, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
@@ -265,11 +319,11 @@ extension SyncCoordinator {
     ) {
         let dirtyIds = snapshot.dirtyIds(for: .tableFavorite)
         let favorites = dirtyIds.isEmpty ? [] : services.favoriteTablesStorage.loadFavorites()
-        let collected = Self.collectTableFavorites(favorites, dirtyIds: dirtyIds, boundary: boundary, zoneID: zoneID)
+        let collected = collectTableFavorites(favorites, dirtyIds: dirtyIds, boundary: boundary, zoneID: zoneID)
         append(.tableFavorite, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
 
-    private static func collectTableFavorites(
+    private func collectTableFavorites(
         _ favorites: Set<FavoriteTablesStorage.FavoriteEntry>,
         dirtyIds: Set<String>,
         boundary: SyncBoundary,
@@ -285,7 +339,9 @@ extension SyncCoordinator {
             let admitted = boundary.includes(.tableFavorite, owner: entry.connectionId)
             for recordId in recordIds where dirtyIds.contains(recordId) {
                 collected.add(recordId, admitted ? .push(
-                    SyncRecordMapper.toCKRecord(favoriteEntry: entry, recordId: recordId, in: zoneID)
+                    edit(FavoriteTableSyncField.self, .tableFavorite, id: recordId, in: zoneID) { base in
+                        SyncRecordMapper.toCKRecord(favoriteEntry: entry, recordId: recordId, in: zoneID, base: base)
+                    }
                 ) : .hold)
             }
         }
@@ -306,7 +362,13 @@ extension SyncCoordinator {
             id: FavoriteDatabasesStorage.syncId(for:)
         ) { entry in
             guard boundary.includes(.favoriteDatabase, owner: entry.connectionId) else { return .hold }
-            return .push(SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID))
+            return .push(edit(
+                FavoriteDatabaseSyncField.self, .favoriteDatabase, id: FavoriteDatabasesStorage.syncId(for: entry), in: zoneID
+            ) { base in
+                SyncRecordMapper.toCKRecord(favoriteDatabase: entry, in: zoneID, base: base)
+            } reread: { base in
+                (try? SyncRecordMapper.favoriteDatabase(from: base)).map { SyncRecordMapper.toCKRecord(favoriteDatabase: $0, in: zoneID) }
+            })
         }
         append(.favoriteDatabase, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
@@ -326,7 +388,11 @@ extension SyncCoordinator {
             id: { $0.id.uuidString }
         ) { folder in
             guard boundary.includes(.tableFolder, owner: folder.scope.connectionId) else { return .hold }
-            return .push(SyncRecordMapper.toCKRecord(tableFolder: folder, in: zoneID))
+            return .push(edit(TableFolderSyncField.self, .tableFolder, id: folder.id.uuidString, in: zoneID) { base in
+                SyncRecordMapper.toCKRecord(tableFolder: folder, in: zoneID, base: base)
+            } reread: { base in
+                (try? SyncRecordMapper.tableFolder(from: base)).map { SyncRecordMapper.toCKRecord(tableFolder: $0, in: zoneID) }
+            })
         }
         append(.tableFolder, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
@@ -346,7 +412,11 @@ extension SyncCoordinator {
             id: \.syncId
         ) { item in
             guard boundary.includes(.tableFolderItem, owner: item.scope.connectionId) else { return .hold }
-            return .push(SyncRecordMapper.toCKRecord(tableFolderItem: item, in: zoneID))
+            return .push(edit(TableFolderItemSyncField.self, .tableFolderItem, id: item.syncId, in: zoneID) { base in
+                SyncRecordMapper.toCKRecord(tableFolderItem: item, in: zoneID, base: base)
+            } reread: { base in
+                (try? SyncRecordMapper.tableFolderItem(from: base)).map { SyncRecordMapper.toCKRecord(tableFolderItem: $0, in: zoneID) }
+            })
         }
         append(.tableFolderItem, dirtyIds: dirtyIds, collected: collected, boundary: boundary, into: &batch, zoneID: zoneID)
     }
@@ -363,7 +433,11 @@ extension SyncCoordinator {
                 await manager.favoritesForSync()
             } disposition: { (favorite: SQLFavorite) in
                 guard boundary.includes(.favorite, owner: favorite.connectionId) else { return .hold }
-                return .push(SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID))
+                return .push(edit(SQLFavoriteSyncField.self, .favorite, id: favorite.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(sqlFavorite: favorite, in: zoneID, base: base)
+                } reread: { base in
+                    (try? SyncRecordMapper.sqlFavorite(from: base)).map { SyncRecordMapper.toCKRecord(sqlFavorite: $0, in: zoneID) }
+                })
             }
         }
 
@@ -374,7 +448,13 @@ extension SyncCoordinator {
                 await manager.foldersForSync()
             } disposition: { (folder: SQLFavoriteFolder) in
                 guard boundary.includes(.favoriteFolder, owner: folder.connectionId) else { return .hold }
-                return .push(SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID))
+                return .push(edit(SQLFavoriteFolderSyncField.self, .favoriteFolder, id: folder.id.uuidString, in: zoneID) { base in
+                    SyncRecordMapper.toCKRecord(sqlFavoriteFolder: folder, in: zoneID, base: base)
+                } reread: { base in
+                    (try? SyncRecordMapper.sqlFavoriteFolder(from: base)).map {
+                        SyncRecordMapper.toCKRecord(sqlFavoriteFolder: $0, in: zoneID)
+                    }
+                })
             }
         }
     }

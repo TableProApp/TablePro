@@ -338,23 +338,31 @@ struct GeneralPaneView: View {
 
     @ViewBuilder
     private var kerberosCaption: some View {
-        if type.pluginTypeId == "SQL Server",
-           coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows" {
+        if usesWindowsAuthentication || KerberosAuthFields.isSelected(in: coordinator.auth.additionalFieldValues) {
             Label(
                 String(localized: "Leave the principal and password blank to use your existing Kerberos ticket. Run kinit user@REALM.COM in Terminal first if you don't have one."),
                 systemImage: "info.circle"
             )
             .font(.caption)
             .foregroundStyle(.secondary)
-            if hostIsIPAddress {
-                Label(
-                    String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses."),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(.yellow)
+            // MariaDB's server names its own principal, so only these two take it from the host.
+            if hostIsIPAddress, usesWindowsAuthentication || type.pluginTypeId == "PostgreSQL" {
+                Label(kerberosHostWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
             }
         }
+    }
+
+    private var kerberosHostWarning: String {
+        if usesWindowsAuthentication {
+            return String(localized: "Windows Authentication needs the server's hostname, not an IP address. Kerberos service principals aren't registered against IP addresses.")
+        }
+        return String(localized: "Kerberos needs the server's hostname, not an IP address. Service principals aren't registered against IP addresses.")
+    }
+
+    private var usesWindowsAuthentication: Bool {
+        type.pluginTypeId == "SQL Server" && coordinator.auth.additionalFieldValues["mssqlAuthMethod"] == "windows"
     }
 
     private var hostIsIPAddress: Bool {

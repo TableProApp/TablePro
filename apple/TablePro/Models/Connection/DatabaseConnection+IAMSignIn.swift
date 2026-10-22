@@ -15,7 +15,8 @@ enum IAMSignInMethod: Equatable, Sendable {
     /// The Authentication picker keeps the `awsAuth` id it had before it offered Google Cloud, so
     /// this is the one place that tells its values apart.
     init?(pickerValue: String?) {
-        guard let pickerValue, !pickerValue.isEmpty, pickerValue != "off" else { return nil }
+        guard let pickerValue, !pickerValue.isEmpty, pickerValue != "off",
+              pickerValue != KerberosAuthFields.method else { return nil }
         switch pickerValue {
         case GoogleCloudSQLAuthFields.applicationDefault:
             self = .googleCloud(.applicationDefault)

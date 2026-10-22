@@ -33,14 +33,55 @@ struct SyncRecordMapperSSHRouteTests {
         #expect(pulled.sshProfileId == profileId)
     }
 
+    private static let routeKey = ConnectionSyncField.sshRouteJson.key
+
+    @Test("A pulled record brings the route a Mac dialed, and the tunnel dials it")
+    func pullReadsRoute() throws {
+        let connection = tunnelled()
+        let route = try route(for: connection)
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        record[Self.routeKey] = try #require(route.encoded()) as CKRecordValue
+
+        let pulled = try #require(SyncRecordMapper.toConnection(record))
+
+        #expect(pulled.sshRoute == route)
+        #expect(pulled.sshConfigurationForDialing?.host == "10.0.0.5")
+        #expect(pulled.sshConfigurationForDialing?.jumpHosts.map { $0.host } == ["b.example"])
+    }
+
+    @Test("A route this build cannot read is ignored and the connection still arrives")
+    func unreadableRouteIsIgnored() throws {
+        let record = SyncRecordMapper.toRecord(tunnelled(), zoneID: zoneID)
+        record[Self.routeKey] = Data(#"{"version":2,"legs":[]}"#.utf8) as CKRecordValue
+
+        let pulled = try #require(SyncRecordMapper.toConnection(record))
+
+        #expect(pulled.sshRoute == nil)
+        #expect(pulled.sshConfigurationForDialing?.host == "db")
+    }
+
     @Test("This device never writes the route")
     func iosNeverWritesRoute() throws {
         var connection = tunnelled()
         connection.sshRoute = try route(for: connection)
 
         let fresh = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
-        #expect(fresh["sshRouteJson"] == nil)
-        #expect(!fresh.changedKeys().contains("sshRouteJson"))
+        #expect(fresh[Self.routeKey] == nil)
+        #expect(!fresh.changedKeys().contains(Self.routeKey))
+    }
+
+    @Test("An edit here leaves the Mac's route on the record")
+    func editKeepsTheMacRoute() throws {
+        let base = SyncRecordMapper.toRecord(tunnelled(), zoneID: zoneID)
+        let routeData = try #require(try route(for: tunnelled()).encoded())
+        base[Self.routeKey] = routeData as CKRecordValue
+        var edited = try #require(SyncRecordMapper.toConnection(base))
+        edited.name = "Renamed"
+        edited.sshRoute = nil
+
+        SyncRecordMapper.updateRecord(base, with: edited)
+
+        #expect(base[Self.routeKey] as? Data == routeData)
     }
 
     @Test("A record built from scratch keeps the SSH profile link this copy knows of")

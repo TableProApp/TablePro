@@ -43,6 +43,10 @@ actor RecordingSyncTransport: IOSSyncTransport {
         return PullResult(changedRecords: remoteRecords, deletedRecordIDs: remoteDeletions, newToken: newToken)
     }
 
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        [:]
+    }
+
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         pushedRecords.append(contentsOf: records)
         pushedDeletions.append(contentsOf: deletions)
