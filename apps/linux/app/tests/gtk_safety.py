@@ -920,13 +920,19 @@ def write_fixture(base, audit_available=True, environment="prod", mcp_token=Fals
 
 def start_application(binary, environment, restored=False):
     environment.setdefault("G_DEBUG", "fatal-criticals")
-    process = subprocess.Popen(
-        [str(binary)],
-        env=environment,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    stderr_capture = tempfile.TemporaryFile(mode="w+", encoding="utf-8")
+    try:
+        process = subprocess.Popen(
+            [str(binary)],
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_capture,
+            text=True,
+        )
+    except Exception:
+        stderr_capture.close()
+        raise
+    process.stderr = stderr_capture
     try:
         if restored == "empty":
             wait_for_node(name="BookiE", role=pyatspi.ROLE_FRAME)
@@ -944,8 +950,16 @@ def start_application(binary, environment, restored=False):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
-        stderr = process.stderr.read() if process.stderr is not None else ""
+        stderr = read_application_stderr(process)
         raise AssertionError(f"application did not expose its expected window: {stderr}")
+
+
+def read_application_stderr(process):
+    if process.stderr is None or process.stderr.closed:
+        return ""
+    with process.stderr as stderr:
+        stderr.seek(0)
+        return stderr.read()
 
 
 def stop_application(process):
@@ -956,7 +970,7 @@ def stop_application(process):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
-    stderr = process.stderr.read() if process.stderr is not None else ""
+    stderr = read_application_stderr(process)
     if process.returncode not in {0, -signal.SIGTERM}:
         raise AssertionError(f"application exited with {process.returncode}: {stderr}")
     return stderr
