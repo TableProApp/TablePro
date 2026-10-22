@@ -236,86 +236,24 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     // MARK: - URI Construction
 
     private func buildUri() -> String {
-        let scheme = useSrv ? "mongodb+srv" : "mongodb"
-        var uri = "\(scheme)://"
-
-        if !user.isEmpty {
-            let encodedUser = user.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? user
-            if let password = password, !password.isEmpty {
-                let encodedPassword = password.addingPercentEncoding(
-                    withAllowedCharacters: .urlPasswordAllowed
-                ) ?? password
-                uri += "\(encodedUser):\(encodedPassword)@"
-            } else {
-                uri += "\(encodedUser)@"
-            }
-        }
-
-        if useSrv {
-            let srvHost = Self.stripPort(fromSrvHost: host)
-            let encodedHost = srvHost.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? srvHost
-            uri += encodedHost
-        } else if let hosts = MongoDBHostList.uriHosts(host, defaultPort: port) {
-            uri += hosts
-        } else if host.contains(",") {
-            let segments = host.split(separator: ",").compactMap { segment -> String? in
-                let parts = segment.split(separator: ":", maxSplits: 1)
-                guard let first = parts.first else { return nil }
-                let h = String(first).trimmingCharacters(in: .whitespaces)
-                guard !h.isEmpty else { return nil }
-                let encodedH = h.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? h
-                if parts.count > 1 {
-                    return "\(encodedH):\(parts[1].trimmingCharacters(in: .whitespaces))"
-                }
-                return "\(encodedH):\(port)"
-            }
-            uri += segments.isEmpty ? "localhost:\(port)" : segments.joined(separator: ",")
-        } else {
-            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
-            uri += "\(encodedHost):\(port)"
-        }
-
-        let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
-        uri += database.isEmpty ? "/" : "/\(encodedDb)"
-
-        let encodedAuthSource = resolvedAuthSource
-            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? resolvedAuthSource
-        var params = connectTimeout.uriParameters
-        params.append("authSource=\(encodedAuthSource)")
-
-        params.append(contentsOf: MongoDBSSLMapping.uriParameters(
-            for: ssl,
-            certificateKeyFile: clientCertificateFile?.path
-        ))
-
-        if let rp = readPreference, !rp.isEmpty {
-            params.append("readPreference=\(rp)")
-        }
-        if let wc = writeConcern, !wc.isEmpty {
-            params.append("w=\(wc)")
-        }
-        if let mechanism = authMechanism, !mechanism.isEmpty {
-            params.append("authMechanism=\(mechanism)")
-        }
-        if let rs = replicaSet, !rs.isEmpty {
-            params.append("replicaSet=\(rs)")
-        }
-
-        var explicitKeys: Set<String> = [
-            "connectTimeoutMS", "serverSelectionTimeoutMS",
-            "authSource", "authMechanism", "replicaSet",
-            "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames",
-            "tlsCAFile", "tlsCertificateKeyFile"
-        ]
-        if let readPreference, !readPreference.isEmpty { explicitKeys.insert("readPreference") }
-        if let writeConcern, !writeConcern.isEmpty { explicitKeys.insert("w") }
-        for (key, value) in extraUriParams where !explicitKeys.contains(key) {
-            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
-            params.append("\(key)=\(encodedValue)")
-        }
-
-        uri += "?" + params.joined(separator: "&")
-        return uri
+        MongoDBConnectionURI(
+            useSrv: useSrv,
+            host: host,
+            port: port,
+            user: user,
+            password: password,
+            database: database,
+            options: MongoDBConnectionURI.options(
+                connectTimeout: connectTimeout,
+                authSource: resolvedAuthSource,
+                ssl: MongoDBSSLMapping.uriOptions(for: ssl, certificateKeyFile: clientCertificateFile?.path),
+                readPreference: readPreference,
+                writeConcern: writeConcern,
+                authMechanism: authMechanism,
+                replicaSet: replicaSet,
+                extraParams: extraUriParams
+            )
+        ).text
     }
 
     /// Strips a trailing `:port` from a hostname intended for an SRV URI.
@@ -388,10 +326,13 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
 
             self.client = newClient
             let configuredWriteConcern = MongoWriteConcern(client: newClient)
+            // Read here, on the connection's queue, so building a browse query never waits on the server.
+            let version = self.fetchServerVersionSync()
 
             self.stateLock.lock()
             self._isConnected = true
             self._writeConcern = configuredWriteConcern
+            self._cachedServerVersion = version
             self.stateLock.unlock()
 
             logger.info("Connected to MongoDB at \(self.host):\(self.port)")
@@ -611,6 +552,13 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         return nil
         #endif
     }
+
+    var knownServerVersion: String? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _cachedServerVersion
+    }
+
     func currentDatabase() -> String { database }
 
     // MARK: - Command Execution

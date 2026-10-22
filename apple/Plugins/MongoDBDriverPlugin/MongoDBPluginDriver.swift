@@ -243,7 +243,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                             from: documents, startTime: startTime,
                             isTruncated: isTruncated, collection: collection,
                             declared: declared,
-                            typesIdentity: self.readsCollectionIdentities(outcome)
+                            recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb)
                         )
                     }
                 ),
@@ -260,8 +260,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// one never sees. Read again on a first page, so a refresh picks up a changed validator, and
     /// reused while paging.
     private func declaredColumns(for outcome: MongoScriptStatementResult) async throws -> MongoDBCollectionSchema {
-        guard outcome.producedDocuments,
-              let find = outcome.find, find.returnsWholeDocuments, find.database == currentDb,
+        guard outcome.producedDocuments, outcome.returnsStoredDocuments(in: currentDb), let find = outcome.find,
               let collection = outcome.collection, !collection.isEmpty,
               let conn = mongoConnection else {
             return .empty
@@ -968,7 +967,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
                     from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
-                    isTruncated: isTruncated, collection: collection
+                    isTruncated: isTruncated, collection: collection,
+                    recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb)
                 )
             }
         )
@@ -991,7 +991,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         isTruncated: Bool = false,
         collection: String = "",
         declared: MongoDBCollectionSchema = .empty,
-        typesIdentity: Bool = false
+        recordsKinds: Bool = false
     ) -> PluginQueryResult {
         let documents = read.dictionaries
         if documents.isEmpty {
@@ -1006,13 +1006,13 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         let sampledKinds = BsonDocumentFlattener.columnKinds(
             for: sampled, documents: documents, representation: uuidRepresentation
         )
-        rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
-        if typesIdentity {
+        if recordsKinds {
+            rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
             rememberIdentityKinds(of: documents, collection: collection)
+            rememberFieldPathKinds(from: documents, collection: collection)
+            rememberBinarySubtypes(of: documents, collection: collection)
+            rememberFieldKinds(of: documents, collection: collection)
         }
-        rememberFieldPathKinds(from: documents, collection: collection)
-        rememberBinarySubtypes(of: documents, collection: collection)
-        rememberFieldKinds(of: documents, collection: collection)
         let unseen = MongoDBCollectionShape.declaredColumnsMissing(from: sampled, schema: declared)
         let columns = sampled + unseen
         let kinds = sampledKinds + unseen.map { declared.field(named: $0)?.valueKind ?? .null }
@@ -1094,12 +1094,6 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
     }
 
-    // A find in this database returns the collection's own `_id`s. A pipeline's `_id` is often a group key, and typing
-    // a grid row's `_id` by it aims the row's write at another document or at none.
-    private func readsCollectionIdentities(_ outcome: MongoScriptStatementResult) -> Bool {
-        outcome.find?.database == currentDb
-    }
-
     // Added to rather than replaced: a row keeps the `_id` kinds every find of its collection held, so a later read of
     // one document, a value lookup or another tab's, never types the `_id` of a row it did not return.
     private func rememberIdentityKinds(of documents: [[String: Any]], collection: String) {
@@ -1141,7 +1135,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         let normalizer = rawFilterNormalizer
         return MongoDBQueryBuilder(
             columnKinds: filterKinds(for: collection, database: database),
-            rawFilterNormalizer: { normalizer.normalize($0) }
+            rawFilterNormalizer: { normalizer.normalize($0) },
+            matchesShownText: MongoDBCapabilities.parse(mongoConnection?.knownServerVersion).supportsRegexMatch
         )
     }
 

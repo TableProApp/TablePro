@@ -54,6 +54,22 @@ struct ScopedDriverRoutingTests {
         #expect(explicit?.schema == "staging", "An explicit schema still passes through")
     }
 
+    @Test("A filtered count runs with the page where the driver types filters by the rows it read")
+    func filteredCountRunsWithThePage() {
+        let mongo = Self.makeSession(type: .mongodb, browseDatabase: "app")
+        let mysql = Self.makeSession(type: .mysql, browseDatabase: "app")
+        defer {
+            DatabaseManager.shared.removeSession(for: mongo.id)
+            DatabaseManager.shared.removeSession(for: mysql.id)
+        }
+
+        let scope = Self.scope(mongo, database: "app")
+        #expect(DatabaseManager.shared.rowCountRunsWithPage(scope, filtered: true))
+        #expect(DatabaseManager.shared.executionRoute(for: scope) == .sessionDriver)
+        #expect(!DatabaseManager.shared.rowCountRunsWithPage(scope, filtered: false))
+        #expect(!DatabaseManager.shared.rowCountRunsWithPage(Self.scope(mysql, database: "app"), filtered: true))
+    }
+
     @Test("A pin-capable engine keeps the user's SQL on the session driver")
     func pinCapableEngineUsesTheSessionDriver() throws {
         let connection = Self.makeSession(type: .mysql, browseDatabase: "inventory")

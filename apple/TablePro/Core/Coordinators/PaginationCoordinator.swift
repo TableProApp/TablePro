@@ -251,7 +251,7 @@ final class PaginationCoordinator: ObservableObject {
         countSQL: String?
     ) async -> Result<Int?, Error> {
         do {
-            let count = try await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk) { driver in
+            let count = try await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: !filters.isEmpty) { driver in
                 if let browseFilters {
                     return try await driver.fetchExactRowCount(table: tableName, browseFilters: browseFilters)
                 }

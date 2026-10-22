@@ -79,21 +79,26 @@ struct MongoDBOnIOSTests {
     @Test("From MongoDB 4.2, search matches a number, a date or an ObjectId by its text as well")
     func searchMatchesShownText() {
         let filter = MongoDBBackedDriver.filterDocument(
-            for: request(search: "4.2", searchColumns: ["age", "name"]), builder: MongoDBQueryBuilder(), matchesShownText: true
+            for: request(search: "4.2", searchColumns: ["age", "name"]),
+            builder: MongoDBQueryBuilder(matchesShownText: true)
         )
 
         #expect(filter.contains(#"{"age": {"$regex": "4\\.2", "$options": "i"}}"#))
-        #expect(filter.contains(#"{"$expr": {"$regexMatch": {"input": {"$convert": {"input": "$age", "to": "string", "onError": "", "onNull": ""}}, "regex": "4\\.2", "options": "i"}}}"#))
-        #expect(filter.contains(#""input": "$name""#))
+        #expect(filter.contains(MongoDBShownText.regexMatch(field: "age", pattern: "4\\.2", ignoresCase: true)))
+        #expect(filter.contains(MongoDBShownText.regexMatch(field: "name", pattern: "4\\.2", ignoresCase: true)))
         #expect(filter.hasPrefix(#"{"$or": ["#))
     }
 
     @Test("Before 4.2, or on a server whose version is not known, search sends no $regexMatch")
     func searchWithoutRegexMatch() {
         let filter = MongoDBBackedDriver.filterDocument(
-            for: request(search: "42", searchColumns: ["age"]), builder: MongoDBQueryBuilder(), matchesShownText: false
+            for: request(search: "42", searchColumns: ["age"]), builder: MongoDBQueryBuilder()
         )
         #expect(!filter.contains("$regexMatch"))
+        let unconnected = MongoDBPluginDriver(config: DriverConnectionConfig(
+            host: "db.example.com", port: 27_017, username: "u", password: "p", database: "app"
+        ))
+        #expect(unconnected.filterQueryBuilder(for: "users").matchesShownText == false)
         #expect(MongoDBCapabilities.parse("4.2.1").supportsRegexMatch)
         #expect(!MongoDBCapabilities.parse("4.0.28").supportsRegexMatch)
         #expect(!MongoDBCapabilities.parse(nil).supportsRegexMatch)

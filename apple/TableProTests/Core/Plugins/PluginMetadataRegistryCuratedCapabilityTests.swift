@@ -292,6 +292,20 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(StructureEditEligibility.allows(.dropColumn, on: .table, matrix: built.structureEditing.structureEdits))
     }
 
+    @Test("MongoDB keeps how its filters read fields when its plugin registers")
+    func mongoDBKeepsHowItsFiltersReadFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockMongoDBPlugin.self)
+
+        #expect(
+            built.capabilities.patternFiltersReadAnyColumn == true,
+            "Search all rows would drop number, date and boolean fields"
+        )
+        #expect(
+            built.capabilities.filtersTypedByReadRows == true,
+            "A pooled count would type a filter by nothing and disagree with the page"
+        )
+    }
+
     @Test("DynamoDB keeps its full-scan count when its plugin registers")
     func dynamoDBKeepsItsFullScanCount() {
         let registry = PluginMetadataRegistry.shared
@@ -554,6 +568,8 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
         #expect(built.capabilities.columnsAreSampled == false)
+        #expect(built.capabilities.patternFiltersReadAnyColumn == false)
+        #expect(built.capabilities.filtersTypedByReadRows == false)
         #expect(built.capabilities.tlsImpliedPorts.isEmpty)
         #expect(built.capabilities.verifiesServerWithSystemTrust == false)
         #expect(built.capabilities.supportsPerConnectionCertificatePaths == true)

@@ -103,6 +103,21 @@ struct FindMatcherTests {
         #expect(FindMatcher.nearestMatchIndex(to: 99, in: matches) == 0)
         #expect(FindMatcher.nearestMatchIndex(to: 0, in: []) == nil)
     }
+
+    @Test("a server search sends only text columns unless the engine's patterns read any column")
+    func serverSearchableColumns() {
+        let typed: [ColumnType] = [
+            .integer(rawType: "INTEGER"), .decimal(rawType: "FLOAT"), .timestamp(rawType: "TIMESTAMP"),
+            .boolean(rawType: "BOOLEAN"), .json(rawType: "JSON")
+        ]
+        for type in typed {
+            #expect(!FindMatcher.isServerSearchable(type))
+            #expect(FindMatcher.isServerSearchable(type, patternReadsAnyColumn: true))
+        }
+        #expect(FindMatcher.isServerSearchable(.text(rawType: "ObjectId")))
+        #expect(!FindMatcher.isServerSearchable(.blob(rawType: "BLOB"), patternReadsAnyColumn: true))
+        #expect(!FindMatcher.isServerSearchable(.spatial(rawType: "GEOMETRY"), patternReadsAnyColumn: true))
+    }
 }
 
 struct TabFindStateTests {

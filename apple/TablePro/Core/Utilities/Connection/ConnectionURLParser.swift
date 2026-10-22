@@ -769,10 +769,11 @@ struct ConnectionURLParser {
         let params = queryString.split(separator: "&", omittingEmptySubsequences: true)
         for param in params {
             let parts = param.split(separator: "=", maxSplits: 1)
-            guard let key = parts.first else { continue }
-            let value = parts.count > 1 ? String(parts[1]) : nil
-            guard let value else { continue }
-            let keyStr = String(key).lowercased()
+            guard let encodedKey = parts.first, parts.count > 1 else { continue }
+            // Decoded once, as URLQueryItem decodes the standard form's query.
+            let key = String(encodedKey).removingPercentEncoding ?? String(encodedKey)
+            let value = String(parts[1]).removingPercentEncoding ?? String(parts[1])
+            let keyStr = key.lowercased()
             if keyStr == "useprivatekey" {
                 ext.usePrivateKey = value.lowercased() == "true"
                 continue
@@ -786,10 +787,10 @@ struct ConnectionURLParser {
                 continue
             }
             if keyStr == "agentsocket" {
-                ext.agentSocket = value.removingPercentEncoding ?? value
+                ext.agentSocket = value
                 continue
             }
-            applyQueryParam(key: String(key), value: value, to: &ext, dbType: dbType)
+            applyQueryParam(key: key, value: value, to: &ext, dbType: dbType)
         }
         return ext
     }

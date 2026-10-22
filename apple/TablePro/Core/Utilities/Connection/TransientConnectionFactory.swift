@@ -64,8 +64,14 @@ internal enum TransientConnectionFactory {
 
         connection.additionalFields.merge(parsed.additionalFields) { _, imported in imported }
 
+        // The same field mapping as Import from URL, so an opened link reads legacy UUIDs the way its sender set.
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
-            if key != "authMechanism" && key != "replicaSet" {
+            switch key {
+            case "authMechanism", "replicaSet":
+                continue
+            case "uuidRepresentation":
+                connection.additionalFields["mongoUuidRepresentation"] = value
+            default:
                 connection.additionalFields["mongoParam_\(key)"] = value
             }
         }

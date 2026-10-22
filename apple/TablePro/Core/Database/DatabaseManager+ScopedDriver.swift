@@ -130,6 +130,24 @@ extension DatabaseManager {
         }
     }
 
+    /// On an engine that types a filter by the rows its driver read, a filtered count runs where the page did, or the
+    /// same filter would match other rows.
+    func rowCountRunsWithPage(_ scope: DatabaseScope, filtered: Bool) -> Bool {
+        filtered && activeSessions[scope.connectionId]?.connection.type.filtersTypedByReadRows == true
+    }
+
+    /// A count that runs with the page is cancelled on the server when a page turn supersedes it.
+    func withRowCountDriver<T: Sendable>(
+        scope: DatabaseScope,
+        filtered: Bool,
+        _ body: @Sendable @escaping (DatabaseDriver) async throws -> T
+    ) async throws -> T {
+        guard rowCountRunsWithPage(scope, filtered: filtered) else {
+            return try await withMetadataDriver(scope: scope, workload: .bulk, body)
+        }
+        return try await withCancellableRead(scope: scope, route: executionRoute(for: scope), body)
+    }
+
     /// A table tab's read is a SELECT the app built from the tab's own table, so it depends on
     /// nothing the session holds: no transaction, no temp table, no variable. That makes it the one
     /// kind of work that can follow a route change it waited through. A database switch on an engine

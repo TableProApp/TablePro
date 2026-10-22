@@ -129,6 +129,14 @@ extension DatabaseType {
         PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.columnsAreSampled ?? false
     }
 
+    var patternFiltersReadAnyColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.patternFiltersReadAnyColumn ?? false
+    }
+
+    var filtersTypedByReadRows: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: self)?.capabilities.filtersTypedByReadRows ?? false
+    }
+
     var authenticationIsDatabaseScoped: Bool {
         PluginMetadataRegistry.shared.snapshot(for: self)?
             .capabilities.authenticationIsDatabaseScoped ?? false

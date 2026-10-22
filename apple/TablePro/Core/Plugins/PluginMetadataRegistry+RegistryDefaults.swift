@@ -67,7 +67,9 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
                     authenticationIsDatabaseScoped: true,
-                    columnsAreSampled: true
+                    columnsAreSampled: true,
+                    patternFiltersReadAnyColumn: true,
+                    filtersTypedByReadRows: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

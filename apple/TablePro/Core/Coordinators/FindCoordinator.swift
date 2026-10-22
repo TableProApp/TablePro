@@ -66,9 +66,10 @@ final class FindCoordinator: ObservableObject {
         guard !term.isEmpty else { return }
 
         let buffer = parent.tabSessionRegistry.tableRows(for: tab.id)
+        let readsAnyColumn = parent.connection.type.patternFiltersReadAnyColumn
         let searchable = buffer.columns.indices.filter { index in
             guard index < buffer.columnTypes.count else { return true }
-            return FindMatcher.isServerSearchable(buffer.columnTypes[index])
+            return FindMatcher.isServerSearchable(buffer.columnTypes[index], patternReadsAnyColumn: readsAnyColumn)
         }
         guard !searchable.isEmpty else { return }
 

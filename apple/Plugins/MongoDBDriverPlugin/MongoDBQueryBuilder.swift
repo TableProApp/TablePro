@@ -14,23 +14,28 @@ nonisolated struct MongoDBQueryBuilder {
     /// typed by the user, instead of a field name and an operator.
     static let rawFilterColumn = "__RAW__"
 
-    /// Matches no document, on any collection, without a collection scan. Emitted when every
-    /// condition of a non-empty filter had to be dropped, because widening to the whole
-    /// collection would report success while showing rows the filter excludes.
+    /// Matches no document, on any collection, without a collection scan. Emitted when a condition
+    /// of a non-empty filter cannot be built, because running the rest would report success while
+    /// showing rows the filter excludes.
     static let impossibleFilter = "{\"_id\": {\"$in\": []}}"
 
     let columnKinds: [String: BsonValueKind]
 
     /// Rewrites a raw filter row into canonical Extended JSON, so `find` and `countDocuments`
-    /// receive the same document. Without one, raw filter rows are dropped.
+    /// receive the same document. Without one, a raw filter row refuses the filter.
     let rawFilterNormalizer: (@Sendable (String) -> String?)?
+
+    // From MongoDB 4.2 a contains, starts with or ends with filter also matches a value that is not a string by its text.
+    let matchesShownText: Bool
 
     init(
         columnKinds: [String: BsonValueKind] = [:],
-        rawFilterNormalizer: (@Sendable (String) -> String?)? = nil
+        rawFilterNormalizer: (@Sendable (String) -> String?)? = nil,
+        matchesShownText: Bool = false
     ) {
         self.columnKinds = columnKinds
         self.rawFilterNormalizer = rawFilterNormalizer
+        self.matchesShownText = matchesShownText
     }
 
     // MARK: - Base Query
@@ -58,12 +63,13 @@ nonisolated struct MongoDBQueryBuilder {
         columns: [String] = [],
         limit: Int = 200,
         offset: Int = 0
-    ) -> String {
-        buildQuery(
-            collection: collection,
-            filterDocument: buildFilterDocument(from: queryFilters, logicMode: logicMode),
-            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
-        )
+    ) -> String? {
+        exactFilterDocument(from: queryFilters, logicMode: logicMode).map {
+            buildQuery(
+                collection: collection, filterDocument: $0,
+                sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+            )
+        }
     }
 
     func buildQuery(
@@ -125,6 +131,15 @@ nonisolated struct MongoDBQueryBuilder {
         from filters: [PluginQueryFilter],
         logicMode: String = "and"
     ) -> String {
+        exactFilterDocument(from: filters, logicMode: logicMode) ?? Self.impossibleFilter
+    }
+
+    /// Nil when a row cannot be built: a raw document that does not normalize, a name that reads as an operator, a
+    /// missing bound. Running the other rows without it would, under "match all", show rows the filter excludes.
+    func exactFilterDocument(
+        from filters: [PluginQueryFilter],
+        logicMode: String = "and"
+    ) -> String? {
         guard !filters.isEmpty else { return "{}" }
 
         var clauses: [MongoDBFilterClause] = []
@@ -133,15 +148,13 @@ nonisolated struct MongoDBQueryBuilder {
 
         for filter in filters {
             guard filter.column != Self.rawFilterColumn else {
-                if let raw = rawFilterClause(for: filter) {
-                    clauses.append(raw)
-                }
+                guard let raw = rawFilterClause(for: filter) else { return nil }
+                clauses.append(raw)
                 continue
             }
             guard let scope = filter.elementScope, !scope.isEmpty else {
-                if let clause = buildClause(for: filter, field: filter.column) {
-                    clauses.append(clause)
-                }
+                guard let clause = buildClause(for: filter, field: filter.column) else { return nil }
+                clauses.append(clause)
                 continue
             }
             if scoped[scope] == nil {
@@ -153,11 +166,9 @@ nonisolated struct MongoDBQueryBuilder {
         for scope in scopeOrder {
             guard let clause = elementMatchClause(
                 scope: scope, filters: scoped[scope] ?? [], logicMode: logicMode
-            ) else { continue }
+            ) else { return nil }
             clauses.append(clause)
         }
-
-        guard !clauses.isEmpty else { return Self.impossibleFilter }
 
         if clauses.count == 1 {
             return "{\(clauses[0].json)}"
@@ -240,10 +251,11 @@ nonisolated struct MongoDBQueryBuilder {
         logicMode: String
     ) -> MongoDBFilterClause? {
         guard Self.isPlainFieldName(scope) else { return nil }
+        // `$expr` reads the top-level document only, so a condition on one element matches by `$regex` alone.
         let inner = filters.compactMap { filter -> MongoDBFilterClause? in
-            buildClause(for: filter, field: Self.relativePath(filter.column, under: scope))
+            buildClause(for: filter, field: Self.relativePath(filter.column, under: scope), readsShownText: false)
         }
-        guard !inner.isEmpty else { return nil }
+        guard !inner.isEmpty, inner.count == filters.count else { return nil }
 
         let body: String
         if logicMode == "and" || inner.count == 1 {
@@ -269,12 +281,22 @@ nonisolated struct MongoDBQueryBuilder {
         MongoCollectionAccessor.expression(for: name)
     }
 
-    private func buildClause(for filter: PluginQueryFilter, field rawField: String) -> MongoDBFilterClause? {
+    private func buildClause(
+        for filter: PluginQueryFilter,
+        field rawField: String,
+        readsShownText: Bool = true
+    ) -> MongoDBFilterClause? {
         guard Self.isPlainFieldName(rawField), Self.isPlainFieldName(filter.column) else { return nil }
         let kind = columnKinds[filter.column]
         let field = Self.escapeJsonString(rawField)
         let ignoresCase = !filter.isCaseSensitive && MongoDBFilterValue.supportsRegexMatching(kind)
         let value = filter.value
+        let pattern = { (pattern: String, negated: Bool) in
+            patternClause(
+                field: rawField, pattern: pattern, ignoresCase: !filter.isCaseSensitive,
+                negated: negated, readsShownText: readsShownText
+            )
+        }
 
         switch filter.op {
         case "=":
@@ -311,23 +333,13 @@ nonisolated struct MongoDBQueryBuilder {
         case "<=":
             return MongoDBFilterClause(key: field, body: "{\"$lte\": \(typed(value, kind))}")
         case "CONTAINS":
-            return MongoDBFilterClause(
-                key: field, body: Self.regexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
-            )
+            return pattern(escapeRegexChars(value), false)
         case "NOT CONTAINS":
-            return MongoDBFilterClause(
-                key: field, body: Self.negatedRegexBody(pattern: escapeRegexChars(value), ignoresCase: ignoresCase)
-            )
+            return pattern(escapeRegexChars(value), true)
         case "STARTS WITH":
-            let pattern = "^\(escapeRegexChars(value))"
-            return MongoDBFilterClause(
-                key: field, body: Self.regexBody(pattern: pattern, ignoresCase: ignoresCase)
-            )
+            return pattern("^\(escapeRegexChars(value))", false)
         case "ENDS WITH":
-            let pattern = "\(escapeRegexChars(value))$"
-            return MongoDBFilterClause(
-                key: field, body: Self.regexBody(pattern: pattern, ignoresCase: ignoresCase)
-            )
+            return pattern("\(escapeRegexChars(value))$", false)
         case "IS NULL":
             return MongoDBFilterClause(key: field, body: "null")
         case "IS NOT NULL":
@@ -359,6 +371,27 @@ nonisolated struct MongoDBQueryBuilder {
         default:
             return nil
         }
+    }
+
+    /// A `$regex` matches a string, or a string in an array, and nothing else. A pattern asks about text, so the case
+    /// it ignores is the filter's own, whatever the column's sampled kind.
+    private func patternClause(
+        field: String,
+        pattern: String,
+        ignoresCase: Bool,
+        negated: Bool,
+        readsShownText: Bool
+    ) -> MongoDBFilterClause {
+        let key = Self.escapeJsonString(field)
+        guard matchesShownText, readsShownText, MongoDBShownText.reads(field: field) else {
+            let body = negated
+                ? Self.negatedRegexBody(pattern: pattern, ignoresCase: ignoresCase)
+                : Self.regexBody(pattern: pattern, ignoresCase: ignoresCase)
+            return MongoDBFilterClause(key: key, body: body)
+        }
+        let regex = "{\"\(key)\": \(Self.regexBody(pattern: pattern, ignoresCase: ignoresCase))}"
+        let shown = MongoDBShownText.regexMatch(field: field, pattern: pattern, ignoresCase: ignoresCase)
+        return MongoDBFilterClause(key: negated ? "$nor" : "$or", body: "[\(regex), \(shown)]")
     }
 
     /// `secondValue` is authoritative when the caller supplies it. `value` still arrives joined as

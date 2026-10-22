@@ -1,3 +1,4 @@
+import CLibMongoc
 import Foundation
 @testable import TableProMobile
 import TableProPluginKit
@@ -89,10 +90,11 @@ struct MongoDBPluginConnectionTests {
         let file = try #require(try MongoDBClientCertificateFile.joining(fixture.ssl))
         defer { file.remove() }
 
-        let parameters = MongoDBSSLMapping.uriParameters(for: fixture.ssl, certificateKeyFile: file.path)
+        let options = MongoDBSSLMapping.uriOptions(for: fixture.ssl, certificateKeyFile: file.path)
 
-        let encoded = try #require(file.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
-        #expect(parameters.filter { $0.hasPrefix("tlsCertificateKeyFile=") } == ["tlsCertificateKeyFile=\(encoded)"])
+        #expect(options.filter { $0.key == "tlsCertificateKeyFile" } == [
+            MongoDBURIOption(key: "tlsCertificateKeyFile", value: file.path)
+        ])
     }
 
     @Test("A certificate alone, or a key at the certificate's own path, is passed as it is")
@@ -108,7 +110,9 @@ struct MongoDBPluginConnectionTests {
         for ssl in [alone, samePath, disabled] {
             #expect(try MongoDBClientCertificateFile.joining(ssl)?.path == nil)
         }
-        #expect(MongoDBSSLMapping.uriParameters(for: alone).contains("tlsCertificateKeyFile=/certs/client.pem"))
+        #expect(MongoDBSSLMapping.uriOptions(for: alone).contains(
+            MongoDBURIOption(key: "tlsCertificateKeyFile", value: "/certs/client.pem")
+        ))
     }
 
     @Test("A key file that cannot be read fails with its path")
@@ -124,6 +128,144 @@ struct MongoDBPluginConnectionTests {
             try MongoDBClientCertificateFile.joining(ssl)
         }
         #expect(error.message.contains(missing))
+    }
+}
+
+// libmongoc decodes every option value and splits options on a raw `&`, so each test reads the built URI back with it.
+struct MongoDBConnectionURITests {
+    private func uri(
+        host: String = "db.example.com",
+        ssl: [MongoDBURIOption] = [],
+        authSource: String = "admin",
+        readPreference: String? = nil,
+        writeConcern: String? = nil,
+        authMechanism: String? = nil,
+        replicaSet: String? = nil,
+        extraParams: [String: String] = [:]
+    ) -> String {
+        MongoDBConnectionURI(
+            useSrv: false, host: host, port: 27_017, user: "u", password: "p@ss:w/rd", database: "app",
+            options: MongoDBConnectionURI.options(
+                connectTimeout: MongoDBConnectTimeout(milliseconds: 5_000),
+                authSource: authSource,
+                ssl: ssl,
+                readPreference: readPreference,
+                writeConcern: writeConcern,
+                authMechanism: authMechanism,
+                replicaSet: replicaSet,
+                extraParams: extraParams
+            )
+        ).text
+    }
+
+    private func parsed(_ text: String) throws -> OpaquePointer {
+        var error = bson_error_t()
+        let parsed = text.withCString { mongoc_uri_new_with_error($0, &error) }
+        return try #require(parsed, "libmongoc refused \(text)")
+    }
+
+    private func option(_ uri: OpaquePointer, _ key: String) -> String? {
+        mongoc_uri_get_option_as_utf8(uri, key, nil).map { String(cString: $0) }
+    }
+
+    @Test("A `&` or `=` in a field reaches libmongoc as part of its value, never as an option of its own")
+    func fieldValuesCannotStartAnOption() throws {
+        let caFile = "/Users/me/R&D/My Certs/c+a;b#1%.pem"
+        let text = uri(
+            ssl: MongoDBSSLMapping.uriOptions(for: SSLConfiguration(mode: .verifyIdentity, caCertificatePath: caFile)),
+            authSource: "adm&in",
+            replicaSet: "rs&tlsAllowInvalidCertificates=true"
+        )
+        let parsed = try parsed(text)
+        defer { mongoc_uri_destroy(parsed) }
+
+        #expect(String(cString: mongoc_uri_get_replica_set(parsed)) == "rs&tlsAllowInvalidCertificates=true")
+        #expect(String(cString: mongoc_uri_get_auth_source(parsed)) == "adm&in")
+        #expect(option(parsed, MONGOC_URI_TLSCAFILE) == caFile)
+        #expect(!mongoc_uri_has_option(parsed, MONGOC_URI_TLSALLOWINVALIDCERTIFICATES))
+        #expect(text.contains("replicaSet=rs%26tlsAllowInvalidCertificates%3Dtrue"))
+    }
+
+    // libmongoc refuses a read preference or mechanism it does not know, so these stay one value it can name.
+    @Test("A read preference, write concern or mechanism is encoded whole")
+    func dropdownValuesAreEncodedWhole() {
+        let text = uri(
+            readPreference: "secondary&appname=x",
+            writeConcern: "majority&journal=false",
+            authMechanism: "SCRAM-SHA-256&authSource=evil"
+        )
+        #expect(text.contains("readPreference=secondary%26appname%3Dx"))
+        #expect(text.contains("w=majority%26journal%3Dfalse"))
+        #expect(text.contains("authMechanism=SCRAM-SHA-256%26authSource%3Devil"))
+        #expect(!text.contains("&appname="))
+    }
+
+    @Test("A typed parameter keeps its value whole, and a key with `&` in it cannot inject one")
+    func typedParametersAreEncoded() throws {
+        let parsed = try parsed(uri(extraParams: ["appname": "My App+1 & co/é", "tlsInsecure=true&x": "1"]))
+        defer { mongoc_uri_destroy(parsed) }
+
+        #expect(option(parsed, MONGOC_URI_APPNAME) == "My App+1 & co/é")
+        #expect(!mongoc_uri_get_option_as_bool(parsed, MONGOC_URI_TLSINSECURE, false))
+    }
+
+    @Test("A typed parameter named like a field's key in any case never overrides the field")
+    func typedParameterKeysCompareWithoutCase() throws {
+        let options = MongoDBConnectionURI.options(
+            connectTimeout: MongoDBConnectTimeout(milliseconds: 5_000),
+            authSource: "admin",
+            ssl: [],
+            readPreference: "nearest",
+            writeConcern: nil,
+            authMechanism: nil,
+            replicaSet: "rs0",
+            extraParams: ["REPLICASET": "other", "authsource": "evil", "ReadPreference": "primary", "w": "majority"]
+        )
+        let keys = options.map { $0.key.lowercased() }
+
+        #expect(Set(keys).count == keys.count)
+        #expect(options.contains(MongoDBURIOption(key: "replicaSet", value: "rs0")))
+        #expect(options.contains(MongoDBURIOption(key: "authSource", value: "admin")))
+        #expect(options.contains(MongoDBURIOption(key: "readPreference", value: "nearest")))
+        #expect(options.contains(MongoDBURIOption(key: "w", value: "majority")))
+    }
+
+    @Test("With TLS on, the SSL mode owns certificate checking, and no typed TLS parameter conflicts with it")
+    func typedTLSParametersYieldToTheSSLMode() throws {
+        let typed = ["tlsInsecure": "true", "tlsDisableOCSPEndpointCheck": "true"]
+        let required = MongoDBSSLMapping.uriOptions(for: SSLConfiguration(mode: .required))
+        let relaxed = try parsed(uri(ssl: required, extraParams: typed))
+        defer { mongoc_uri_destroy(relaxed) }
+        #expect(mongoc_uri_get_option_as_bool(relaxed, MONGOC_URI_TLSALLOWINVALIDCERTIFICATES, false))
+        #expect(!mongoc_uri_has_option(relaxed, MONGOC_URI_TLSINSECURE))
+        #expect(!mongoc_uri_has_option(relaxed, MONGOC_URI_TLSDISABLEOCSPENDPOINTCHECK))
+
+        let verified = MongoDBSSLMapping.uriOptions(for: SSLConfiguration(mode: .verifyIdentity))
+        let strict = try parsed(uri(ssl: verified, extraParams: typed))
+        defer { mongoc_uri_destroy(strict) }
+        #expect(!mongoc_uri_has_option(strict, MONGOC_URI_TLSINSECURE))
+        #expect(mongoc_uri_get_option_as_bool(strict, MONGOC_URI_TLSDISABLEOCSPENDPOINTCHECK, false))
+
+        let plain = try parsed(uri(extraParams: ["tlsInsecure": "true"]))
+        defer { mongoc_uri_destroy(plain) }
+        #expect(mongoc_uri_get_option_as_bool(plain, MONGOC_URI_TLSINSECURE, false))
+    }
+
+    @Test("The user, password and database still read back as typed")
+    func userInfoAndDatabaseRoundTrip() throws {
+        let parsed = try parsed(uri())
+        defer { mongoc_uri_destroy(parsed) }
+
+        #expect(String(cString: mongoc_uri_get_username(parsed)) == "u")
+        #expect(String(cString: mongoc_uri_get_password(parsed)) == "p@ss:w/rd")
+        #expect(String(cString: mongoc_uri_get_database(parsed)) == "app")
+    }
+
+    @Test("A host list MongoDBHostList cannot read keeps a typed port out of the options")
+    func unreadableHostListCannotStartTheOptions() {
+        let text = uri(host: "a.example.com:1/?tlsInsecure=true,b.example.com")
+
+        #expect(text.hasPrefix("mongodb://u:p%40ss%3Aw%2Frd@a.example.com:1%2F%3FtlsInsecure%3Dtrue,b.example.com:27017/app?"))
     }
 }
 

@@ -41,6 +41,10 @@ nonisolated enum MongoDBDialPlan {
             throw DatabaseError(message: srvBehindTunnelMessage)
         }
         fields[hostsField] = nil
+        // The driver reads option keys without case, so an imported `directconnection=false` would still apply.
+        for key in fields.keys where key.lowercased() == directConnectionField.lowercased() {
+            fields[key] = nil
+        }
         fields[directConnectionField] = "true"
         return fields
     }

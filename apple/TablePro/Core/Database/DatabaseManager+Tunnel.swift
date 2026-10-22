@@ -72,6 +72,10 @@ extension DatabaseManager {
             }
         }
         if connection.type.pluginTypeId == "MongoDB", !connection.usesMongoSrv {
+            // The driver reads option keys without case, so an imported `directconnection=false` would still apply.
+            for key in effectiveFields.keys where key.lowercased() == "mongoparam_directconnection" {
+                effectiveFields[key] = nil
+            }
             effectiveFields["mongoParam_directConnection"] = "true"
         }
         if connection.type.pluginTypeId == "Redis" {

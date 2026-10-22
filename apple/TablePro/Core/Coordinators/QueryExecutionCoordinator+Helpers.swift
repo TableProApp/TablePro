@@ -780,7 +780,7 @@ extension QueryExecutionCoordinator {
             }) else { return nil }
             return .count(count, isApproximate: true)
         case let .filteredNonSQL(filters, logicMode):
-            guard let count = try? await DatabaseManager.shared.withMetadataDriver(scope: scope, workload: .bulk, { driver in
+            guard let count = try? await DatabaseManager.shared.withRowCountDriver(scope: scope, filtered: true, { driver in
                 try await driver.fetchFilteredRowCount(table: tableName, filters: filters, logicMode: logicMode)
             }) else { return .clear }
             return .count(count, isApproximate: false)
