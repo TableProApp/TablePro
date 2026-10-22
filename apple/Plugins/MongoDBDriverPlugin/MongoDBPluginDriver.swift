@@ -1101,18 +1101,29 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     }
 
     // A filtered page holds only the values its filter let through, so it says nothing about the fields it filtered
-    // on: a field holding 1 and "1" filtered by `!= 1` returns only strings. Those keep what was known of them, an
-    // unknown kind included, or the page's count, typed again after the page, would count other documents.
+    // on or the paths under them, which an `$elemMatch` names relative to its array: a field holding 1 and "1"
+    // filtered by `!= 1` returns only strings. Those keep what was known of them, an unknown kind included, or the
+    // page's count, typed again after the page, would count other documents.
     static func kinds(
         _ page: [String: BsonValueKind],
         keepingFrom previous: [String: BsonValueKind],
         of filteredFields: Set<String>
     ) -> [String: BsonValueKind] {
+        guard !filteredFields.isEmpty else { return page }
         var merged = page
-        for field in filteredFields {
-            merged[field] = previous[field]
+        for path in Set(page.keys).union(previous.keys) where isUnder(path, anyOf: filteredFields) {
+            merged[path] = previous[path]
         }
         return merged
+    }
+
+    private static func isUnder(_ path: String, anyOf fields: Set<String>) -> Bool {
+        var candidate = Substring(path)
+        while true {
+            if fields.contains(String(candidate)) { return true }
+            guard let dot = candidate.lastIndex(of: ".") else { return false }
+            candidate = candidate[..<dot]
+        }
     }
 
     /// Added to rather than replaced, so a value keeps its subtype after another page or another tab

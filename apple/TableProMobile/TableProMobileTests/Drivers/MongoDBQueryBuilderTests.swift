@@ -120,6 +120,18 @@ struct MongoDBQueryBuilderTests {
         let restored = MongoDBPluginDriver.kinds(page, keepingFrom: [:], of: fields)
         #expect(restored["a"] == nil)
         #expect(restored["n"] == .string)
+
+        let scoped = MongoDBQueryBuilder().buildFilterDocument(from: [
+            PluginQueryFilter(
+                column: "tags.score", op: "!=", value: "1", isCaseSensitive: true, secondValue: nil, elementScope: "tags"
+            )
+        ])
+        let elementFields = MongoFilterFields.named(in: scoped)
+        let element = MongoDBPluginDriver.kinds(
+            ["tags.score": .string, "other": .string], keepingFrom: ["tags.score": .int32], of: elementFields
+        )
+        #expect(element["tags.score"] == .int32)
+        #expect(element["other"] == .string)
     }
 
     @Test("Only a find in the session's database with no projection teaches the collection's kinds")
