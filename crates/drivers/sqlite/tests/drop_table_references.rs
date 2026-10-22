@@ -73,3 +73,50 @@ async fn a_table_that_only_references_itself_can_be_dropped() {
 
     connection.execute("DROP TABLE tree").await.unwrap();
 }
+
+#[tokio::test]
+async fn dropping_a_referenced_parent_in_an_attached_database_is_refused() {
+    let directory = tempfile::TempDir::new().expect("temp dir");
+    let main = directory.path().join("main.db").to_string_lossy().to_string();
+    let attached = directory.path().join("aux.db").to_string_lossy().to_string();
+    let connection = SqliteDriver
+        .connect(ConnectOptions {
+            database: main,
+            ..Default::default()
+        })
+        .await
+        .expect("connect");
+    let mut session = connection.open_session().await.expect("session");
+    let control = tablepro_core::OperationControl::with_timeout(std::time::Duration::from_secs(30));
+    for sql in [
+        format!("ATTACH DATABASE '{attached}' AS aux"),
+        "CREATE TABLE aux.customers (id INTEGER PRIMARY KEY)".into(),
+        "CREATE TABLE aux.orders (id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id) ON DELETE CASCADE)"
+            .into(),
+        "INSERT INTO aux.customers VALUES (1)".into(),
+        "INSERT INTO aux.orders VALUES (10, 1)".into(),
+    ] {
+        session.query_params_controlled(&sql, &[], &control).await.unwrap();
+    }
+
+    let error = session
+        .query_params_controlled("DROP TABLE aux.customers", &[], &control)
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("orders"), "{error}");
+    let unqualified = session
+        .query_params_controlled("DROP TABLE customers", &[], &control)
+        .await
+        .unwrap_err();
+    assert!(unqualified.to_string().contains("orders"), "{unqualified}");
+    session
+        .query_params_controlled("DROP TABLE IF EXISTS missing.customers", &[], &control)
+        .await
+        .unwrap();
+    let count = session
+        .query_params_controlled("SELECT COUNT(*) FROM aux.orders", &[], &control)
+        .await
+        .unwrap();
+    assert_eq!(count.rows[0][0], Value::Int(1));
+}
