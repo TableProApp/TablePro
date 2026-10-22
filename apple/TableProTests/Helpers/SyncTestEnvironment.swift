@@ -162,6 +162,9 @@ actor ScriptedSyncTransport: SyncTransport {
     private(set) var accountIdValue = ScriptedSyncTransport.accountId
     private(set) var everyItemFails: (code: CKError.Code, retryAfter: TimeInterval?)?
     private(set) var pullError: (any Error)?
+    private var newerServerCopies: [CKRecord.ID: CKRecord?] = [:]
+    private var fetchableCopies: [CKRecord.ID: CKRecord] = [:]
+    private var missingFromServer: Set<CKRecord.ID> = []
 
     func setAccountStatus(_ status: CKAccountStatus) {
         accountStatusValue = status
@@ -177,6 +180,26 @@ actor ScriptedSyncTransport: SyncTransport {
 
     func failPulls(with error: (any Error)?) {
         pullError = error
+    }
+
+    // The next save of the record is refused as CloudKit refuses one built on an older copy, carrying
+    // `server` as the copy it holds; nil stands for a refusal that names no copy.
+    func holdNewerCopy(_ server: CKRecord?, of recordID: CKRecord.ID) {
+        newerServerCopies[recordID] = .some(server)
+    }
+
+    // What a fetch by id returns, for a refusal that came without the server's copy.
+    func serveOnFetch(_ server: CKRecord) {
+        fetchableCopies[server.recordID] = server
+    }
+
+    // The next save of a record built on a cached copy fails as one deleted elsewhere does.
+    func deleteElsewhere(_ recordID: CKRecord.ID) {
+        missingFromServer.insert(recordID)
+    }
+
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        fetchableCopies.filter { recordIDs.contains($0.key) }
     }
 
     init(
@@ -249,6 +272,20 @@ actor ScriptedSyncTransport: SyncTransport {
             return outcome
         }
         for record in records {
+            if missingFromServer.remove(record.recordID) != nil {
+                outcome.recordFailure(
+                    SyncItemFailure(code: .unknownItem, serverRecord: nil, clientRecord: record, message: "Record not found"),
+                    for: record.recordID
+                )
+                continue
+            }
+            if let server = newerServerCopies.removeValue(forKey: record.recordID) {
+                outcome.recordFailure(
+                    SyncItemFailure(code: .serverRecordChanged, serverRecord: server, clientRecord: record, message: "Server record changed"),
+                    for: record.recordID
+                )
+                continue
+            }
             guard rejectedRecordIDs.contains(record.recordID) else {
                 outcome.recordSave(record)
                 continue

@@ -44,6 +44,7 @@ public struct PushOutcome: Sendable {
     public private(set) var savedRecords: [CKRecord.ID: CKRecord]
     public private(set) var deletedRecordIDs: Set<CKRecord.ID>
     public private(set) var failures: [CKRecord.ID: SyncItemFailure]
+    public private(set) var rebasedRecordIDs: Set<CKRecord.ID> = []
 
     public init(
         savedRecords: [CKRecord.ID: CKRecord] = [:],
@@ -53,6 +54,11 @@ public struct PushOutcome: Sendable {
         self.savedRecords = savedRecords
         self.deletedRecordIDs = deletedRecordIDs
         self.failures = failures
+    }
+
+    // A rebased save also holds another device's change, which the local copy takes from the next pull.
+    public var savedRecordsOfLocalCopies: [CKRecord] {
+        savedRecords.filter { !rebasedRecordIDs.contains($0.key) }.map(\.value)
     }
 
     public var hasFailures: Bool { !failures.isEmpty }
@@ -113,10 +119,22 @@ public struct PushOutcome: Sendable {
         }
     }
 
+    public mutating func markRebased(_ recordIDs: [CKRecord.ID]) {
+        rebasedRecordIDs.formUnion(recordIDs)
+    }
+
+    // A record sent again after a refusal can land in a later outcome than its failure.
     public mutating func merge(_ other: PushOutcome) {
         savedRecords.merge(other.savedRecords) { _, new in new }
         deletedRecordIDs.formUnion(other.deletedRecordIDs)
         failures.merge(other.failures) { _, new in new }
+        for recordID in other.savedRecords.keys {
+            failures[recordID] = nil
+        }
+        for recordID in other.deletedRecordIDs {
+            failures[recordID] = nil
+        }
+        rebasedRecordIDs.formUnion(other.rebasedRecordIDs)
     }
 
     public mutating func absorbPartialErrors(from error: CKError) {

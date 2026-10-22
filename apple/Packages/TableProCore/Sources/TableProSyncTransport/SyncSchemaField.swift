@@ -32,20 +32,12 @@ public extension SyncSchemaField where Self: RawRepresentable, Self.RawValue == 
 }
 
 public struct SyncRecordFields<Field: SyncSchemaField> {
-    /// What writing nil means for a key the record does not already hold.
-    ///
-    /// `CKModifyRecordsOperation.savePolicy` is `.changedKeys`, so the server keeps whatever it has
-    /// for any key the pushed record never names, and a key is named only once something assigns to
-    /// it. The two answers are therefore genuinely different pushes, and which one is right depends
-    /// on what the record being built is.
+    // What nil means for a key the record does not hold. A save sends only the keys the record names
+    // (WWDC 2014, session 231), so an unnamed key keeps the server's value.
     public enum AbsentValueWrite: Sendable {
-        /// Say nothing about the key, so the server keeps its value. Correct for a mapper that
-        /// merges into the record the server last gave us, whose job is to leave alone what it was
-        /// not asked about.
+        // For a mapper merging into the server's copy, which leaves alone what it was not asked about.
         case leave
-        /// Name the key with no value, so the server clears it. Correct for a mapper that builds
-        /// the whole record from the local model, where a field with no value is a value: it is the
-        /// user having emptied it.
+        // For a mapper building the whole record from the local model, where an empty field was emptied.
         case clear
     }
 

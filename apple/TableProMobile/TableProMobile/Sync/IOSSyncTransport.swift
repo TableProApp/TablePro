@@ -9,6 +9,7 @@ nonisolated protocol IOSSyncTransport: Sendable {
     func ensureZoneExists() async throws
     func pull(since token: CKServerChangeToken?) async throws -> PullResult
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord]
 }
 
 extension CloudKitSyncEngine: IOSSyncTransport {}

@@ -26,4 +26,8 @@ struct UnreachableSyncTransport: IOSSyncTransport {
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         PushOutcome(savedRecords: [:], deletedRecordIDs: [])
     }
+
+    func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        throw CKError(.notAuthenticated)
+    }
 }

@@ -8,6 +8,7 @@ extension SyncCoordinator {
     func settingsData(for category: String) -> Data? {
         let storage = services.appSettingsStorage
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
 
         do {
             switch category {

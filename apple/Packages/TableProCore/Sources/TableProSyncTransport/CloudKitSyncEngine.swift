@@ -163,12 +163,7 @@ public actor CloudKitSyncEngine {
     private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws -> PushOutcome {
         guard let database else { throw Self.unavailable }
         return try await withRetry {
-            let operation = CKModifyRecordsOperation(
-                recordsToSave: records,
-                recordIDsToDelete: deletions
-            )
-            operation.savePolicy = .changedKeys
-            operation.isAtomic = false
+            let operation = Self.modifyOperation(saving: records, deleting: deletions)
 
             return try await withCheckedThrowingContinuation { continuation in
                 var outcome = PushOutcome()
@@ -210,7 +205,25 @@ public actor CloudKitSyncEngine {
         }
     }
 
+    // A record built on a cached copy that is no longer the server's is refused with
+    // `serverRecordChanged` and the server's copy, so the caller merges its edit onto that copy.
+    static func modifyOperation(saving records: [CKRecord], deleting deletions: [CKRecord.ID]) -> CKModifyRecordsOperation {
+        let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: deletions)
+        operation.savePolicy = .ifServerRecordUnchanged
+        operation.isAtomic = false
+        return operation
+    }
+
     // MARK: - Pull
+
+    public func fetch(recordIDs: [CKRecord.ID]) async throws -> [CKRecord.ID: CKRecord] {
+        guard !recordIDs.isEmpty else { return [:] }
+        guard let database else { throw Self.unavailable }
+        let results = try await withRetry {
+            try await database.records(for: recordIDs)
+        }
+        return results.compactMapValues { try? $0.get() }
+    }
 
     public func pull(since token: CKServerChangeToken?) async throws -> PullResult {
         var changedRecords: [CKRecord] = []

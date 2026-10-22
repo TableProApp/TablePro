@@ -41,6 +41,11 @@ public final class SyncRecordCache {
         record(named: recordID.recordName)
     }
 
+    public func holdsRecord(named recordName: String) -> Bool {
+        migrateIfNeeded()
+        return FileManager.default.fileExists(atPath: fileURL(for: recordName).path)
+    }
+
     // A record's name is the same in every zone, so a caller with no zone at hand can still read it.
     public func record(named recordName: String) -> CKRecord? {
         migrateIfNeeded()

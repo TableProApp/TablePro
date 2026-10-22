@@ -9,7 +9,12 @@ import TableProSyncTransport
 
 public enum SyncRecordMapper {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncRecordMapper")
-    private static let encoder = JSONEncoder()
+    // Two encodes of one dictionary can order its keys differently, and an edit compares bytes.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
     private static let decoder = JSONDecoder()
 
     private static let schemaVersion: Int64 = 1
@@ -27,6 +32,12 @@ public enum SyncRecordMapper {
         SyncRecordType.parse(recordName: recordName)
     }
 
+    private static func record(type: SyncRecordType, id: String, in zone: CKRecordZone.ID, base: CKRecord?) -> CKRecord {
+        let recordID = recordID(type: type, id: id, in: zone)
+        if let base, base.recordID == recordID { return base }
+        return CKRecord(recordType: type.rawValue, recordID: recordID)
+    }
+
     // iOS wrote hex to `colorTag` before both apps converged on `color`.
     private static func color(from fields: SyncRecordFields<ConnectionSyncField>) -> ConnectionColor {
         if let stored = fields[.color] as? String {
@@ -40,7 +51,7 @@ public enum SyncRecordMapper {
 
     // MARK: - Connection -> CKRecord
 
-    // Under `.changedKeys` only a named key reaches the server, so every field `updateRecord` would clear is named here too.
+    // Only a named key reaches the server, so every field `updateRecord` would clear is named here too.
     public static func toRecord(_ connection: DatabaseConnection, zoneID: CKRecordZone.ID) -> CKRecord {
         let id = recordID(type: .connection, id: connection.id.uuidString, in: zoneID)
         let record = CKRecord(recordType: SyncRecordType.connection.rawValue, recordID: id)
@@ -345,7 +356,7 @@ public enum SyncRecordMapper {
         let record = CKRecord(recordType: SyncRecordType.group.rawValue, recordID: id)
 
         // Built whole from the local group, so an empty parent or icon is the user's choice and has
-        // to reach the server, which keeps any key a `.changedKeys` push leaves unnamed.
+        // to reach the server, which keeps any key a push leaves unnamed.
         let fields = record.fields(ConnectionGroupSyncField.self, absentValues: .clear)
         fields[.groupId] = group.id.uuidString
         fields[.name] = group.name
@@ -447,12 +458,11 @@ public enum SyncRecordMapper {
 
     // MARK: - Saved Query -> CKRecord
 
-    // Built whole from the local query, so an emptied keyword, folder or connection is named and cleared on the server.
-    public static func toRecord(_ query: SavedQuery, zoneID: CKRecordZone.ID) -> CKRecord {
-        let id = recordID(type: .favorite, id: query.id.uuidString, in: zoneID)
-        let record = CKRecord(recordType: SyncRecordType.favorite.rawValue, recordID: id)
+    // A record built whole names an emptied keyword, folder or connection, so the server clears it.
+    public static func toRecord(_ query: SavedQuery, zoneID: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .favorite, id: query.id.uuidString, in: zoneID, base: base)
 
-        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: .clear)
+        let fields = record.fields(SQLFavoriteSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.favoriteId] = query.id.uuidString
         fields[.name] = query.name
         fields[.query] = query.query
@@ -496,11 +506,10 @@ public enum SyncRecordMapper {
 
     // MARK: - Saved Query Folder -> CKRecord
 
-    public static func toRecord(_ folder: SavedQueryFolder, zoneID: CKRecordZone.ID) -> CKRecord {
-        let id = recordID(type: .favoriteFolder, id: folder.id.uuidString, in: zoneID)
-        let record = CKRecord(recordType: SyncRecordType.favoriteFolder.rawValue, recordID: id)
+    public static func toRecord(_ folder: SavedQueryFolder, zoneID: CKRecordZone.ID, base: CKRecord? = nil) -> CKRecord {
+        let record = record(type: .favoriteFolder, id: folder.id.uuidString, in: zoneID, base: base)
 
-        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: .clear)
+        let fields = record.fields(SQLFavoriteFolderSyncField.self, absentValues: record === base ? .leave : .clear)
         fields[.folderId] = folder.id.uuidString
         fields[.name] = folder.name
         fields[.parentId] = folder.parentId?.uuidString
@@ -535,5 +544,77 @@ public enum SyncRecordMapper {
             createdAt: fields[.createdAt] as? Date,
             updatedAt: fields[.updatedAt] as? Date
         )
+    }
+
+    // MARK: - Edits
+
+    // What a push of each local copy changes on the cached server record. The base is read and written
+    // again here, so a value only the Mac spells differently is not part of the edit.
+    public static func edit(_ connection: DatabaseConnection, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionSyncField.self, base: base) {
+            updateRecord($0, with: connection)
+        } build: {
+            toRecord(connection, zoneID: zoneID)
+        } reread: {
+            toConnection($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ group: ConnectionGroup, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionGroupSyncField.self, base: base) {
+            updateRecord($0, with: group)
+        } build: {
+            toRecord(group, zoneID: zoneID)
+        } reread: {
+            toGroup($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ tag: ConnectionTag, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(ConnectionTagSyncField.self, base: base) {
+            updateRecord($0, with: tag)
+        } build: {
+            toRecord(tag, zoneID: zoneID)
+        } reread: {
+            toTag($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ query: SavedQuery, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(SQLFavoriteSyncField.self, base: base) {
+            _ = toRecord(query, zoneID: $0.recordID.zoneID, base: $0)
+        } build: {
+            toRecord(query, zoneID: zoneID)
+        } reread: {
+            toSavedQuery($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    public static func edit(_ folder: SavedQueryFolder, base: CKRecord?, zoneID: CKRecordZone.ID) -> SyncRecordEdit {
+        edit(SQLFavoriteFolderSyncField.self, base: base) {
+            _ = toRecord(folder, zoneID: $0.recordID.zoneID, base: $0)
+        } build: {
+            toRecord(folder, zoneID: zoneID)
+        } reread: {
+            toSavedQueryFolder($0).map { toRecord($0, zoneID: zoneID) }
+        }
+    }
+
+    // Written into a copy, so `base` stays what the server last held.
+    private static func edit<Field: SyncSchemaField>(
+        _ field: Field.Type,
+        base: CKRecord?,
+        update: (CKRecord) -> Void,
+        build: () -> CKRecord,
+        reread: (CKRecord) -> CKRecord?
+    ) -> SyncRecordEdit {
+        let record: CKRecord
+        if let copy = base?.copy() as? CKRecord {
+            update(copy)
+            record = copy
+        } else {
+            record = build()
+        }
+        return SyncRecordEdit(field, record: record, base: base, baseAsWritten: base.flatMap(reread))
     }
 }
