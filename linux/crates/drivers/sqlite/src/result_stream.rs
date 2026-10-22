@@ -35,6 +35,8 @@ pub(crate) struct StreamOutcome {
     pub rows: u64,
     /// The sink stopped reading, so the rest of the run was skipped.
     pub consumer_gone: bool,
+    /// A stop came between two statements, so the rest was not run.
+    pub halted: bool,
     result_sets: usize,
 }
 
@@ -75,16 +77,23 @@ pub(crate) async fn count(connection: &mut SqlxConnection, statement: &Statement
     }
 }
 
-/// Run SQL the user wrote, one statement after another, until one fails
-/// or the sink stops reading.
+/// Run SQL the user wrote, one statement after another, until one fails,
+/// the sink stops reading or `halt` says a stop came. The interrupt
+/// reaches a statement only every thousand instructions, so a short one
+/// would otherwise run after the stop.
 pub(crate) async fn run_script(
     connection: &mut SqlxConnection,
     sql: &str,
     limit: Option<RowLimit>,
     sink: &mut dyn ResultSink,
+    halt: impl Fn() -> bool,
 ) -> Result<StreamOutcome, DriverError> {
     let mut outcome = StreamOutcome::default();
     for statement in split_statements(sql) {
+        if halt() {
+            outcome.halted = true;
+            break;
+        }
         run_statement(connection, statement, &[], limit, sink, &mut outcome).await?;
         if outcome.consumer_gone {
             break;
