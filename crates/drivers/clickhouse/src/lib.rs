@@ -395,6 +395,7 @@ impl Connection for ClickhouseConnection {
             unique: false,
             primary: true,
             predicate: None,
+            has_expression_key: false,
         }])
     }
 

@@ -565,6 +565,7 @@ impl Connection for MssqlConnection {
                     unique,
                     primary,
                     predicate: None,
+                    has_expression_key: false,
                 }),
             }
         }

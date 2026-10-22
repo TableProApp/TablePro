@@ -331,7 +331,8 @@ impl Connection for MysqlConnection {
             "SELECT
                 CAST(index_name AS CHAR) AS index_name,
                 non_unique,
-                CAST(column_name AS CHAR) AS column_name
+                CAST(column_name AS CHAR) AS column_name,
+                CAST(seq_in_index AS SIGNED) AS seq_in_index
             FROM information_schema.statistics
             WHERE table_schema = COALESCE(?, DATABASE())
               AND table_name = ?
@@ -344,9 +345,17 @@ impl Connection for MysqlConnection {
         .map_err(map_sqlx_error)?;
         let mut by_name: std::collections::BTreeMap<String, IndexInfo> = std::collections::BTreeMap::new();
         for r in rows {
-            let name: String = r.get(0);
+            let name: String = r.try_get(0).map_err(map_sqlx_error)?;
             let non_unique: i64 = r.try_get(1).unwrap_or(0);
-            let column: String = r.get(2);
+            let column: Option<String> = r.try_get(2).map_err(map_sqlx_error)?;
+            let expression = column.is_none();
+            let key = match column {
+                Some(column) => column,
+                None => {
+                    index_key_expression(&self.pool, schema, table, &name, r.try_get(3).map_err(map_sqlx_error)?)
+                        .await?
+                }
+            };
             let entry = by_name.entry(name.clone()).or_insert_with(|| IndexInfo {
                 constraint: None,
                 name: name.clone(),
@@ -354,8 +363,10 @@ impl Connection for MysqlConnection {
                 unique: non_unique == 0,
                 primary: name == "PRIMARY",
                 predicate: None,
+                has_expression_key: false,
             });
-            entry.columns.push(column);
+            entry.has_expression_key |= expression;
+            entry.columns.push(key);
         }
         Ok(by_name.into_values().collect())
     }
@@ -856,6 +867,30 @@ const UNQUOTED_DEFAULT_TYPE_PREFIXES: [&str; 12] = [
     "bit",
     "year",
 ];
+
+async fn index_key_expression(
+    pool: &Pool<MySql>,
+    schema: Option<&str>,
+    table: &str,
+    index: &str,
+    seq_in_index: i64,
+) -> Result<String, DriverError> {
+    let expression: Option<String> = sqlx::query_scalar(
+        "SELECT CAST(expression AS CHAR)
+        FROM information_schema.statistics
+        WHERE table_schema = COALESCE(?, DATABASE())
+          AND table_name = ? AND index_name = ? AND seq_in_index = ?",
+    )
+    .bind(schema)
+    .bind(table)
+    .bind(index)
+    .bind(seq_in_index)
+    .fetch_optional(pool)
+    .await
+    .map_err(map_sqlx_error)?
+    .flatten();
+    Ok(format!("({})", expression.unwrap_or_else(|| "expression".to_string())))
+}
 
 // MySQL reports a literal default in information_schema.column_default as
 // its bare value (`pending`, an empty string for ''), which is not a valid

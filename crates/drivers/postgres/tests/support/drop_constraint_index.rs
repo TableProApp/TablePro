@@ -85,3 +85,31 @@ async fn replacing_an_index_and_a_foreign_key_under_the_same_name_changes_the_ta
     let key = &conn.fetch_foreign_keys(None, "swap").await.unwrap()[0];
     assert_eq!(key.on_delete.as_deref(), Some("CASCADE"));
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_expression_index_is_marked_and_not_rebuilt_as_a_column_index() {
+    let (_c, opts) = start_pg().await;
+    let conn = connect(opts).await;
+    conn.execute("CREATE TABLE people (id int PRIMARY KEY, email text)")
+        .await
+        .unwrap();
+    conn.execute("CREATE INDEX people_email_lower ON people (lower(email), id)")
+        .await
+        .unwrap();
+    conn.execute("CREATE INDEX people_email ON people (email)")
+        .await
+        .unwrap();
+
+    let indexes = conn.fetch_indexes(None, "people").await.unwrap();
+    let functional = indexes.iter().find(|index| index.name == "people_email_lower").unwrap();
+    assert!(functional.has_expression_key);
+    assert_eq!(functional.columns, ["lower(email)", "id"]);
+    let error = tablepro_core::sql_ddl::build_create_index("postgres", None, "people", functional).unwrap_err();
+    assert!(
+        matches!(error, tablepro_core::sql_ddl::BuildDdlError::ExpressionIndex),
+        "{error:?}"
+    );
+    let plain = indexes.iter().find(|index| index.name == "people_email").unwrap();
+    assert!(!plain.has_expression_key);
+}

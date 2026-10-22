@@ -343,19 +343,15 @@ impl Connection for SqliteConnection {
             if primary {
                 saw_primary = true;
             }
-            let sql = format!("PRAGMA index_info({})", quote_ident(&name));
-            let info_rows = sqlx::query(sqlx::AssertSqlSafe(sql))
-                .fetch_all(&mut *connection)
-                .await
-                .map_err(map_sqlx_error)?;
-            let columns: Vec<String> = info_rows
-                .into_iter()
-                .map(|c| c.try_get::<String, _>(2).unwrap_or_default())
-                .collect();
+            let keys = index_keys(&mut connection, &name).await?;
             out.push(IndexInfo {
                 constraint: None,
                 name,
-                columns,
+                has_expression_key: keys.iter().any(Option::is_none),
+                columns: keys
+                    .into_iter()
+                    .map(|key| key.unwrap_or_else(|| "(expression)".into()))
+                    .collect(),
                 unique: unique == 1,
                 primary,
                 predicate: None,
@@ -374,6 +370,7 @@ impl Connection for SqliteConnection {
                     unique: true,
                     primary: true,
                     predicate: None,
+                    has_expression_key: false,
                 });
             }
         }
@@ -694,6 +691,18 @@ async fn declared_table_columns(
         .flatten()
         .filter_map(|row| Some((row.try_get::<String, _>(1).ok()?, row.try_get::<String, _>(2).ok()?)))
         .collect()
+}
+
+async fn index_keys(connection: &mut SqlxSqliteConnection, index: &str) -> Result<Vec<Option<String>>, DriverError> {
+    let sql = format!("PRAGMA index_info({})", quote_ident(index));
+    sqlx::query(sqlx::AssertSqlSafe(sql))
+        .fetch_all(connection)
+        .await
+        .map_err(map_sqlx_error)?
+        .iter()
+        .map(|row| row.try_get::<Option<String>, _>(2))
+        .collect::<Result<_, _>>()
+        .map_err(map_sqlx_error)
 }
 
 async fn refresh_schema(connection: &mut SqlxSqliteConnection, schema: &str) -> Result<(), DriverError> {

@@ -66,6 +66,7 @@ fn indexes() -> Vec<IndexInfo> {
         primary: false,
         predicate: None,
         constraint: None,
+        has_expression_key: false,
     }]
 }
 

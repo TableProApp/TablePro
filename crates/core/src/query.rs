@@ -29,6 +29,8 @@ pub struct IndexInfo {
     pub predicate: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub constraint: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_expression_key: bool,
 }
 
 /// Foreign-key constraint metadata. `on_delete` / `on_update` carry

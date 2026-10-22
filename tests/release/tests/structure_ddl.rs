@@ -69,6 +69,7 @@ async fn a_created_table_matches_the_drafted_columns_indexes_and_keys() {
                 unique: true,
                 primary: false,
                 predicate: None,
+                has_expression_key: false,
             }],
             fks: vec![],
         }],

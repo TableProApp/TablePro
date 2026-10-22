@@ -85,6 +85,7 @@ mod tests {
             unique: true,
             primary: false,
             predicate: Some("deleted_at IS NULL".into()),
+            has_expression_key: false,
         };
         assert_eq!(index_subtitle(&index), "lower(email) WHERE deleted_at IS NULL");
     }

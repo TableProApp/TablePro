@@ -38,3 +38,28 @@ async fn composite_indexes_and_foreign_keys_report_every_column_in_order() {
     assert_eq!(keys[0].on_delete.as_deref(), Some("CASCADE"));
     assert_eq!(keys[0].on_update, None);
 }
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_functional_key_part_is_listed_as_its_expression() {
+    let (_container, options) = start_mysql().await;
+    let connection = connect(options).await;
+    connection
+        .execute(
+            "CREATE TABLE people (id INT PRIMARY KEY, email VARCHAR(100), \
+             KEY people_email_lower ((lower(email)), id), KEY people_email (email))",
+        )
+        .await
+        .unwrap();
+
+    let indexes = connection.fetch_indexes(None, "people").await.unwrap();
+    let functional = indexes.iter().find(|index| index.name == "people_email_lower").unwrap();
+    assert!(functional.has_expression_key);
+    assert_eq!(functional.columns.len(), 2);
+    assert!(functional.columns[0].starts_with('(') && functional.columns[0].contains("email"));
+    assert_eq!(functional.columns[1], "id");
+    let plain = indexes.iter().find(|index| index.name == "people_email").unwrap();
+    assert!(!plain.has_expression_key);
+    assert_eq!(plain.columns, ["email"]);
+    assert!(indexes.iter().any(|index| index.primary));
+}

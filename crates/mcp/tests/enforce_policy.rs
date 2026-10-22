@@ -913,6 +913,7 @@ impl Connection for StubConn {
             unique: true,
             primary: true,
             predicate: None,
+            has_expression_key: false,
         }])
     }
     async fn fetch_foreign_keys(&self, _: Option<&str>, _: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {

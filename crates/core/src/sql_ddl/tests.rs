@@ -125,6 +125,7 @@ fn create_table_with_secondary_index() {
         unique: true,
         primary: false,
         predicate: None,
+        has_expression_key: false,
     };
     let stmts = build_create_table("postgres", None, "users", &cols, &[idx], &[]).unwrap();
     assert_eq!(stmts.len(), 2);
@@ -142,6 +143,7 @@ fn create_table_skips_primary_index() {
         unique: true,
         primary: true,
         predicate: None,
+        has_expression_key: false,
     };
     let stmts = build_create_table("postgres", None, "users", &cols, &[pk_idx], &[]).unwrap();
     assert_eq!(stmts.len(), 1, "primary index must not produce a separate CREATE INDEX");
@@ -752,6 +754,7 @@ fn create_index_basic() {
         unique: true,
         primary: false,
         predicate: None,
+        has_expression_key: false,
     };
     assert_eq!(
         build_create_index("postgres", None, "users", &idx).unwrap(),
@@ -768,6 +771,7 @@ fn create_index_refuses_a_partial_index_instead_of_dropping_its_predicate() {
         unique: true,
         primary: false,
         predicate: Some("deleted_at IS NULL".into()),
+        has_expression_key: false,
     };
     let err = build_create_index("postgres", None, "users", &idx).unwrap_err();
     assert!(matches!(err, BuildDdlError::PartialIndex));
@@ -782,6 +786,7 @@ fn create_index_compound_columns() {
         unique: false,
         primary: false,
         predicate: None,
+        has_expression_key: false,
     };
     let sql = build_create_index("mysql", None, "t", &idx).unwrap();
     assert_eq!(sql, "CREATE INDEX `idx_a_b` ON `t` (`a`, `b`)");
@@ -796,6 +801,7 @@ fn create_index_rejects_empty_name() {
         unique: false,
         primary: false,
         predicate: None,
+        has_expression_key: false,
     };
     let err = build_create_index("postgres", None, "t", &idx).unwrap_err();
     assert!(matches!(err, BuildDdlError::EmptyIndexName));
@@ -810,6 +816,7 @@ fn create_index_mssql() {
         unique: true,
         primary: false,
         predicate: None,
+        has_expression_key: false,
     };
     let sql = build_create_index("mssql", None, "t", &idx).unwrap();
     assert_eq!(sql, "CREATE UNIQUE INDEX [idx_a_b] ON [t] ([a], [b])");

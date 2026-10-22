@@ -10,6 +10,7 @@ fn index(name: &str, columns: &[&str], unique: bool) -> IndexInfo {
         primary: false,
         predicate: None,
         constraint: None,
+        has_expression_key: false,
     }
 }
 
@@ -102,4 +103,19 @@ fn removing_one_of_two_indexes_leaves_the_other_alone() {
         matches!(ops.as_slice(), [StructureOp::DropIndex { index_name, .. }] if index_name == "idx_b"),
         "{ops:?}"
     );
+}
+
+#[test]
+fn create_index_refuses_an_expression_key_instead_of_quoting_it_as_a_column() {
+    let idx = IndexInfo {
+        constraint: None,
+        name: "users_email_lower".into(),
+        columns: vec!["(lower(`email`))".into()],
+        unique: false,
+        primary: false,
+        predicate: None,
+        has_expression_key: true,
+    };
+    let err = super::build_create_index("mysql", None, "users", &idx).unwrap_err();
+    assert!(matches!(err, super::BuildDdlError::ExpressionIndex));
 }
