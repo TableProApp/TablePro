@@ -347,7 +347,7 @@ Use a keyed table with a nullable text column and values above 8 KiB. Include CR
 ## SQL code folding
 
 - [x] Place the cursor inside a multiline CASE block and press Ctrl+Shift+[. The block body folds and its opening and closing lines remain visible. **2026-10-22 native Wayland, dark:** passed on the installed 0.2.0 binary; the CASE body hid while `SELECT CASE` and `END AS case_value` remained visible, and the accessible query text was unchanged. Screenshot: `/tmp/bookie-folded.png`.
-- [ ] Click the fold marker in the gutter. The body returns without changing the query text. **Not verified 2026-10-22:** AT-SPI pointer injection did not activate the marker; the available native pointer tool requires system authentication to install.
+- [x] Click the fold marker in the gutter. The body returns without changing the query text. **2026-10-22 native Wayland, dark:** passed on the installed 0.2.0 binary. A down-chevron appeared beside the multiline CASE; clicking it restored the hidden body. The CASE query remained unsaved and was not run. Screenshot: `/tmp/bookie-case-gutter-click-success.png`.
 - [x] Fold two blocks, then use Unfold all and Ctrl+Shift+]. Both show the complete query. **2026-10-22 native Wayland, dark:** two CASE blocks folded independently; Unfold all restored both, and Ctrl+Shift+] restored the single-block case. The sentinel statement remained unchanged.
 - [x] Edit the query while a block is folded. The editor reveals the full query and clears stale fold markers. **2026-10-22 native Wayland, dark:** typing `s` at the end of the folded `'one'` literal changed it to `'ones'` and revealed the full CASE body. The test query was not run or saved. Screenshot: `/tmp/bookie-edit-unfolded.png`.
 
