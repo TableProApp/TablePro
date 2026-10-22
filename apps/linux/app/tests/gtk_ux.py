@@ -114,7 +114,7 @@ def scenarios(ui):
     ssh_trust_prompt_roles = (pyatspi.ROLE_ALERT, pyatspi.ROLE_FRAME)
 
     def wait_for_adw_dialog(name, present=True):
-        if os.environ.get("TABLEPRO_GTK_OLD_ADW") == "1":
+        if gtk_input.uses_old_adw():
             return None
         return ui.wait_for_node(name=name, role=pyatspi.ROLE_DIALOG, present=present)
 
