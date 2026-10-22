@@ -124,6 +124,7 @@ struct RowChangeStatementFactory {
         ) {
             return .driverWritten(driverStatements)
         }
+        try refuseMatchesReachingOtherRows(in: changes, deletedRowIDs: deletedRowIDs)
         return .counted(
             try hostStatements(
                 for: changes,
@@ -132,6 +133,44 @@ struct RowChangeStatementFactory {
                 insertedRowIDs: insertedRowIDs
             )
         )
+    }
+
+    // These engines write their own rows, yet their saves reach the host's UPDATE and DELETE, keyed on a key the
+    // engine does not keep unique, with no row count to hold them to (#3776). Dameng enforces its primary key.
+    private static let enginesWithoutUniqueRowMatch: Set<DatabaseType> = [.clickhouse, .snowflake, .trino]
+
+    private func refuseMatchesReachingOtherRows(in changes: [RowChange], deletedRowIDs: Set<RowID>) throws {
+        let reason: String
+        if Self.enginesWithoutUniqueRowMatch.contains(databaseType) {
+            reason = String(
+                format: String(
+                    localized: "This version of TablePro cannot write %@ rows from the grid. Use a SQL statement instead."
+                ),
+                databaseType.displayName
+            )
+        } else if databaseType == .dameng, primaryKeyColumns.isEmpty {
+            reason = String(
+                format: String(
+                    localized: """
+                    This version of TablePro cannot write rows of a %@ table without a primary key from the grid. \
+                    Use a SQL statement instead.
+                    """
+                ),
+                databaseType.displayName
+            )
+        } else {
+            return
+        }
+        for change in changes {
+            switch change.type {
+            case .update:
+                throw DataWriteError.changeRefused(table: tableName, kind: .update, reason: reason)
+            case .delete where deletedRowIDs.contains(change.rowID):
+                throw DataWriteError.changeRefused(table: tableName, kind: .delete, reason: reason)
+            case .insert, .delete:
+                continue
+            }
+        }
     }
 
     /// A value staged for a column the server owns can never be written, however it got staged: the grid offers no
