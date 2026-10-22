@@ -478,8 +478,10 @@ struct SyncRecordMapper {
         let baseData = base.flatMap(Self.settingsData(from:))
         // A base an older build wrote in another key order holds the same options, which is no edit.
         let baseAsWritten = SyncJSONMerge.sameDocument(baseData, settingsData) ? record : nil
+        // A theme is one design, replaced whole on pull too, so its colors are not mixed with another Mac's.
+        let mergesOptions = ThemeCatalog.themeId(forSyncCategory: category) == nil
         return SyncRecordEdit(AppSettingsSyncField.self, record: record, base: base, baseAsWritten: baseAsWritten) { merged, server in
-            guard let document = SyncJSONMerge.document(
+            guard mergesOptions, let document = SyncJSONMerge.document(
                 base: baseData,
                 local: settingsData,
                 server: Self.settingsData(from: server)

@@ -195,6 +195,20 @@ struct SyncConflictRebaseTests {
         #expect(document == ["a": 2, "b": 2])
     }
 
+    @Test("A theme both Macs changed goes up whole from this Mac, never mixed")
+    func themeIsNotMixed() throws {
+        let category = ThemeCatalog.syncCategory(for: "ocean")
+        let base = SyncRecordMapper.toCKRecord(category: category, settingsData: Data(#"{"a":1,"b":1}"#.utf8), in: Self.zoneID)
+        let server = try copy(base)
+        server.fields(AppSettingsSyncField.self)[.settingsJson] = Data(#"{"a":2,"b":1}"#.utf8)
+        let mine = Data(#"{"a":1,"b":2}"#.utf8)
+
+        let edit = SyncRecordMapper.settingsEdit(category: category, settingsData: mine, in: Self.zoneID, base: base)
+
+        let merged = try #require(edit.rebased(onto: server))
+        #expect(SyncRecordMapper.settingsData(from: merged) == mine)
+    }
+
     @Test("A settings category an older build cached in another key order is no pending edit")
     func respelledSettingsAreNoEdit() {
         let base = SyncRecordMapper.toCKRecord(category: "dataGrid", settingsData: Data(#"{"b":1,"a":2}"#.utf8), in: Self.zoneID)
