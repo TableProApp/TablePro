@@ -678,6 +678,36 @@ struct ConnectionURLFormatterTests {
         #expect(opened.additionalFields["mongoParam_uuidRepresentation"] == nil)
     }
 
+    @Test("A copied MongoDB URL leaves out a typed parameter the driver ignores beside a field")
+    func mongoIgnoredParametersAreNotCopied() {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "app", username: "user", type: .mongodb,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity),
+            additionalFields: [
+                "mongoParam_AUTHSource": "other", "mongoParam_tls": "false", "mongoParam_sslAllowInvalidCertificates": "true",
+                "mongoParam_tlsInsecure": "true", "mongoParam_uuidRepresentation": "javaLegacy", "mongoParam_appName": "x"
+            ]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        for ignored in ["AUTHSource", "tls=", "sslAllowInvalidCertificates", "tlsInsecure", "uuidRepresentation"] {
+            #expect(!url.contains(ignored), "\(url)")
+        }
+        #expect(url.contains("appName=x"))
+    }
+
+    @Test("A connection name with a plus copies and opens as itself")
+    func nameWithPlusRoundTrips() {
+        let conn = DatabaseConnection(
+            name: "C++ Shop & Co", host: "host", port: 5_432, database: "app", username: "user", type: .postgresql
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.connectionName == "C++ Shop & Co")
+    }
+
     @Test("An SSH URL's MongoDB options are decoded once, as a standard URL's are")
     func mongoSSHURLDecodesOptions() throws {
         let url = "mongodb+ssh://me@bastion.example.com/u:p@10.0.0.5:27017/app"

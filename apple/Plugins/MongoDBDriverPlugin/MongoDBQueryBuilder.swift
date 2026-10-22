@@ -116,28 +116,36 @@ nonisolated struct MongoDBQueryBuilder {
         exactFilterDocument(from: filters, logicMode: logicMode) ?? Self.impossibleFilter
     }
 
-    /// Nil when a row cannot be built: a raw document that does not normalize, a name that reads as an operator, a
-    /// missing bound. Running the other rows without it would, under "match all", show rows the filter excludes, and
-    /// a query that failed to build would leave a refresh to reload the table unfiltered, so the caller matches nothing.
+    /// Nil when a row cannot be built under "match all" (a raw document that does not normalize, a name that reads as
+    /// an operator, a missing bound), since the other rows alone would show rows the filter excludes. Under "match
+    /// any" the row only adds documents, so the rest still run. The caller matches nothing rather than return no
+    /// query, which a refresh would answer by reloading the table unfiltered.
     private func exactFilterDocument(
         from filters: [PluginQueryFilter],
         logicMode: String = "and"
     ) -> String? {
         guard !filters.isEmpty else { return "{}" }
 
+        let matchesAll = logicMode == "and"
         var clauses: [MongoDBFilterClause] = []
         var scopeOrder: [String] = []
         var scoped: [String: [PluginQueryFilter]] = [:]
 
         for filter in filters {
             guard filter.column != Self.rawFilterColumn else {
-                guard let raw = rawFilterClause(for: filter) else { return nil }
-                clauses.append(raw)
+                if let raw = rawFilterClause(for: filter) {
+                    clauses.append(raw)
+                } else if matchesAll {
+                    return nil
+                }
                 continue
             }
             guard let scope = filter.elementScope, !scope.isEmpty else {
-                guard let clause = buildClause(for: filter, field: filter.column) else { return nil }
-                clauses.append(clause)
+                if let clause = buildClause(for: filter, field: filter.column) {
+                    clauses.append(clause)
+                } else if matchesAll {
+                    return nil
+                }
                 continue
             }
             if scoped[scope] == nil {
@@ -147,11 +155,14 @@ nonisolated struct MongoDBQueryBuilder {
         }
 
         for scope in scopeOrder {
-            guard let clause = elementMatchClause(
-                scope: scope, filters: scoped[scope] ?? [], logicMode: logicMode
-            ) else { return nil }
-            clauses.append(clause)
+            if let clause = elementMatchClause(scope: scope, filters: scoped[scope] ?? [], logicMode: logicMode) {
+                clauses.append(clause)
+            } else if matchesAll {
+                return nil
+            }
         }
+
+        guard !clauses.isEmpty else { return nil }
 
         if clauses.count == 1 {
             return "{\(clauses[0].json)}"
@@ -238,7 +249,7 @@ nonisolated struct MongoDBQueryBuilder {
         let inner = filters.compactMap { filter -> MongoDBFilterClause? in
             buildClause(for: filter, field: Self.relativePath(filter.column, under: scope), readsShownText: false)
         }
-        guard !inner.isEmpty, inner.count == filters.count else { return nil }
+        guard !inner.isEmpty, logicMode != "and" || inner.count == filters.count else { return nil }
 
         let body: String
         if logicMode == "and" || inner.count == 1 {

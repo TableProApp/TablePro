@@ -83,7 +83,7 @@ struct MongoDBQueryBuilderTests {
         #expect(!match.contains("options"))
     }
 
-    @Test("A row that cannot be built makes the filter match nothing rather than run the other rows")
+    @Test("Under match all a row that cannot be built matches nothing; under match any the other rows still run")
     func unbuildableRowMatchesNothing() {
         let rows = [
             PluginQueryFilter(column: "$where", op: "=", value: "1"),
@@ -91,7 +91,8 @@ struct MongoDBQueryBuilderTests {
         ]
         let builder = MongoDBQueryBuilder()
         #expect(builder.buildFilterDocument(from: rows, logicMode: "and") == MongoDBQueryBuilder.impossibleFilter)
-        #expect(builder.buildFilterDocument(from: rows, logicMode: "or") == MongoDBQueryBuilder.impossibleFilter)
+        #expect(builder.buildFilterDocument(from: rows, logicMode: "or") == #"{"n": 5}"#)
+        #expect(builder.buildFilterDocument(from: [rows[0]], logicMode: "or") == MongoDBQueryBuilder.impossibleFilter)
         let raw = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "=", value: "{\"status\": \"a\"")
         #expect(builder.buildFilterDocument(from: [raw, rows[1]]) == MongoDBQueryBuilder.impossibleFilter)
     }

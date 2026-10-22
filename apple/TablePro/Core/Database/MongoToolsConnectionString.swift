@@ -18,27 +18,6 @@ internal enum MongoToolsConnectionString {
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
 
-    private static let fieldOwnedParameterKeys: Set<String> = [
-        "authSource", "authMechanism", "replicaSet",
-        "tls", "tlsAllowInvalidCertificates", "tlsAllowInvalidHostnames", "tlsCAFile", "tlsCertificateKeyFile"
-    ]
-
-    // With TLS on, the SSL mode decides certificate checking, and the driver refuses a revocation switch beside the
-    // `tlsInsecure` that already turns it off.
-    private static let ownedByTLS = ["tlsInsecure"]
-
-    // The driver still reads the old `ssl` names as their `tls` options, so a typed one would override a field.
-    private static let deprecatedAliases = [
-        "ssl": "tls",
-        "sslinsecure": "tlsinsecure",
-        "sslallowinvalidcertificates": "tlsallowinvalidcertificates",
-        "sslallowinvalidhostnames": "tlsallowinvalidhostnames",
-        "sslcertificateauthorityfile": "tlscafile",
-        "sslclientcertificatekeyfile": "tlscertificatekeyfile",
-        "sslclientcertificatekeypassword": "tlscertificatekeyfilepassword"
-    ]
-    private static let impliedByInsecure = ["tlsDisableOCSPEndpointCheck", "tlsDisableCertificateRevocationCheck"]
-
     static func make(for connection: DatabaseConnection, host: String) -> String {
         let scheme = connection.usesMongoSrv ? "mongodb+srv" : "mongodb"
         let base = "\(scheme)://\(userInfo(connection))\(hosts(connection, host: host))/"
@@ -135,24 +114,11 @@ internal enum MongoToolsConnectionString {
         }
         parameters.append(contentsOf: tlsParameters(for: connection))
         let setKeys = parameters.compactMap { $0.split(separator: "=", maxSplits: 1).first.map(String.init) }
-        let tls = setKeys.contains("tls") ? ownedByTLS : []
-        let implied = setKeys.contains("tlsInsecure") ? impliedByInsecure : []
-        return parameters + extraParameters(connection, excluding: setKeys + fieldOwnedParameterKeys + tls + implied)
-    }
-
-    // The driver reads keys without case, so a typed parameter named like a field's key in any case is dropped.
-    private static func extraParameters(_ connection: DatabaseConnection, excluding keys: [String]) -> [String] {
-        var taken = Set(keys.map { $0.lowercased() })
-        return connection.additionalFields
-            .compactMap { key, value -> (String, String)? in
-                guard key.hasPrefix("mongoParam_") else { return nil }
-                let name = String(key.dropFirst("mongoParam_".count))
-                guard !name.isEmpty else { return nil }
-                return (name, value)
-            }
-            .sorted { $0.0 < $1.0 }
-            .filter { taken.insert(deprecatedAliases[$0.0.lowercased()] ?? $0.0.lowercased()).inserted }
-            .map { "\(encodedValue($0.0))=\(encodedValue($0.1))" }
+        let typed = MongoTypedParameters.sent(
+            by: connection, besides: setKeys,
+            tls: setKeys.contains("tls"), skipsVerification: setKeys.contains("tlsInsecure")
+        )
+        return parameters + typed.map { "\(encodedValue($0.key))=\(encodedValue($0.value))" }
     }
 
     private static func encodedHost(_ host: String) -> String {

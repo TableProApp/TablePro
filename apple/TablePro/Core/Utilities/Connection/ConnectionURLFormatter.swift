@@ -259,13 +259,7 @@ struct ConnectionURLFormatter {
         var params: [String] = []
 
         if !connection.name.isEmpty {
-            let encoded = connection.name
-                .replacingOccurrences(of: " ", with: "+")
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-                .replacingOccurrences(of: "&", with: "%26")
-                .replacingOccurrences(of: "=", with: "%3D")
-                ?? connection.name
-            params.append("name=\(encoded)")
+            params.append("name=\(formEncode(connection.name))")
         }
 
         if ssh.enabled && ssh.authMethod == .privateKey {
@@ -295,13 +289,7 @@ struct ConnectionURLFormatter {
 
         if let tagId = connection.tagIds.first,
            let tag = TagStorage.shared.tag(for: tagId) {
-            let encoded = tag.name
-                .replacingOccurrences(of: " ", with: "+")
-                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-                .replacingOccurrences(of: "&", with: "%26")
-                .replacingOccurrences(of: "=", with: "%3D")
-                ?? tag.name
-            params.append("env=\(encoded)")
+            params.append("env=\(formEncode(tag.name))")
         }
 
         params.append(contentsOf: mongoParameters(connection))
@@ -309,30 +297,32 @@ struct ConnectionURLFormatter {
         return params.joined(separator: "&")
     }
 
-    // The standard option names, so the URL opens in other MongoDB tools as well as here. The fields come first and a
-    // typed parameter named like one is left out, as the driver reads keys without case.
+    // The standard option names, so the URL opens in other MongoDB tools as well as here: the fields, then the typed
+    // parameters the driver sends beside them.
     private static func mongoParameters(_ connection: DatabaseConnection) -> [String] {
-        let fields: [(String, String?)] = [
+        let fields: [(key: String, value: String?)] = [
             ("authSource", connection.mongoAuthSource),
             ("authMechanism", connection.mongoAuthMechanism),
             ("replicaSet", connection.mongoReplicaSet),
             ("readPreference", connection.mongoReadPreference),
             ("w", connection.mongoWriteConcern),
-            ("uuidRepresentation", connection.additionalFields["mongoUuidRepresentation"]?.nilIfEmpty)
+            ("uuidRepresentation", connection.additionalFields["mongoUuidRepresentation"].flatMap { $0.isEmpty ? nil : $0 })
         ]
-        var options = fields.compactMap { key, value in value.flatMap { $0.isEmpty ? nil : (key, $0) } }
-        var taken = Set(options.map { $0.0.lowercased() })
-        let typed = connection.additionalFields
-            .compactMap { key, value -> (String, String)? in
-                guard key.hasPrefix("mongoParam_"), !value.isEmpty else { return nil }
-                let name = String(key.dropFirst("mongoParam_".count))
-                return name.isEmpty ? nil : (name, value)
-            }
-            .sorted { $0.0 < $1.0 }
-        for option in typed where taken.insert(option.0.lowercased()).inserted {
-            options.append(option)
-        }
-        return options.map { "\(percentEncodeMongoOption($0.0))=\(percentEncodeMongoOption($0.1))" }
+        let written = fields.compactMap { key, value in value.map { (key: key, value: $0) } }
+        // An SRV connection always runs TLS, without verification while the SSL mode is still Disabled.
+        let ssl = connection.usesMongoSrv && !connection.sslConfig.isEnabled
+            ? SSLConfiguration(mode: .required) : connection.sslConfig
+        let typed = MongoTypedParameters.sent(
+            by: connection, besides: written.map(\.key),
+            tls: ssl.isEnabled, skipsVerification: ssl.mode == .preferred || ssl.mode == .required
+        )
+        return (written + typed).map { "\(percentEncodeMongoOption($0.key))=\(percentEncodeMongoOption($0.value))" }
+    }
+
+    // The parser reads `name` and `env` form-style, a space as `+`, so a literal `+` is written `%2B`.
+    private static func formEncode(_ value: String) -> String {
+        let allowed = unreservedAllowed.union(CharacterSet(charactersIn: " "))
+        return (value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value).replacingOccurrences(of: " ", with: "+")
     }
 
     // Other MongoDB drivers split options on `;` and read `+` as a space, so only unreserved characters stay literal.

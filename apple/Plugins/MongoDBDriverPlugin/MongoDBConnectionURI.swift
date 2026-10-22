@@ -108,8 +108,9 @@ nonisolated struct MongoDBConnectionURI: Sendable {
         if ssl.contains(where: { $0.key == "tlsAllowInvalidCertificates" }) {
             taken.formUnion(["tlsdisableocspendpointcheck", "tlsdisablecertificaterevocationcheck"])
         }
-        for key in extraParams.keys.sorted() where taken.insert(canonicalKey(key)).inserted {
-            options.append(MongoDBURIOption(key: key, value: extraParams[key] ?? ""))
+        for (key, value) in extraParams.sorted(by: { $0.key < $1.key })
+            where !value.isEmpty && taken.insert(canonicalKey(key)).inserted {
+            options.append(MongoDBURIOption(key: key, value: value))
         }
         return options
     }
