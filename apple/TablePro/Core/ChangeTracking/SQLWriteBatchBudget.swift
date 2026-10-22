@@ -46,9 +46,9 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
         self.rendersValuesAsLiterals = rendersValuesAsLiterals
     }
 
-    /// The engines whose driver inlines a parameter rather than binding it.
+    // ClickHouse writes the values of a statement too long for the URL into it as escaped literals, binary as hex (#3777).
     internal static func rendersValuesAsLiterals(_ databaseType: DatabaseType) -> Bool {
-        databaseType == .databend
+        databaseType == .databend || databaseType == .clickhouse
     }
 
     /// The engine's bind-parameter ceiling over the row's width, clamped by its multi-row `VALUES`

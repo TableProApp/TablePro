@@ -144,6 +144,12 @@ struct EscapedParameterValueTests {
         #expect(driver.escapedParameterValue("a\u{1A}b") == "'a\\Zb'")
     }
 
+    @Test("A quote or backslash a combining mark follows is still escaped")
+    func combiningMarkAfterQuoteEscaped() {
+        #expect(driver.escapedParameterValue("x'\u{301} OR 1=1 --") == "'x''\u{301} OR 1=1 --'")
+        #expect(driver.escapedParameterValue(#"x\"# + "\u{301}") == #"'x\\"# + "\u{301}'")
+    }
+
     @Test("SQL injection attempt quoted")
     func sqlInjectionQuoted() {
         #expect(driver.escapedParameterValue("1 OR 1=1") == "'1 OR 1=1'")
@@ -176,6 +182,11 @@ struct SqlStandardEscapeTests {
     @Test("Single quote still doubled")
     func singleQuoteStillDoubled() {
         #expect(driver.escapedParameterValue("O'Brien") == "'O''Brien'")
+    }
+
+    @Test("A quote a combining mark follows is still doubled")
+    func combiningMarkAfterQuoteDoubled() {
+        #expect(driver.escapedParameterValue("x'\u{301} OR 1=1 --") == "'x''\u{301} OR 1=1 --'")
     }
 
     @Test("NUL bytes still stripped")

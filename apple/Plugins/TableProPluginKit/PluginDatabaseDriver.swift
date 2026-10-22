@@ -1653,32 +1653,33 @@ public extension PluginDatabaseDriver {
         if Self.isNumericLiteral(value) {
             return value
         }
-        var escaped = ""
-        escaped.reserveCapacity(value.count + 2)
+        var escaped = String.UnicodeScalarView()
         escaped.append("'")
         let escapeBackslashes = requiresBackslashEscapingInLiterals
-        for char in value {
-            switch char {
+        // Scalars, not Characters: a quote with a combining mark after it is one Character no case matched, so it
+        // went out single and ended the literal.
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "'":
-                escaped.append("''")
+                escaped.append(contentsOf: "''".unicodeScalars)
             case "\0":
                 continue
             case "\\" where escapeBackslashes:
-                escaped.append("\\\\")
+                escaped.append(contentsOf: #"\\"#.unicodeScalars)
             case "\n" where escapeBackslashes:
-                escaped.append("\\n")
+                escaped.append(contentsOf: #"\n"#.unicodeScalars)
             case "\r" where escapeBackslashes:
-                escaped.append("\\r")
+                escaped.append(contentsOf: #"\r"#.unicodeScalars)
             case "\t" where escapeBackslashes:
-                escaped.append("\\t")
+                escaped.append(contentsOf: #"\t"#.unicodeScalars)
             case "\u{1A}" where escapeBackslashes:
-                escaped.append("\\Z")
+                escaped.append(contentsOf: #"\Z"#.unicodeScalars)
             default:
-                escaped.append(char)
+                escaped.append(scalar)
             }
         }
         escaped.append("'")
-        return escaped
+        return String(escaped)
     }
 
     static func isNumericLiteral(_ value: String) -> Bool {

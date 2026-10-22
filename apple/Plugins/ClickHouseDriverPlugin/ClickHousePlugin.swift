@@ -220,19 +220,24 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         Self.escapeStringLiteral(value)
     }
 
-    /// The backslash goes first, or every escape written after it is escaped again.
+    // Only escapes ClickHouse decodes: it reads an unknown one such as MySQL's `\Z` as a backslash and the letter.
     static func escapeStringLiteral(_ value: String) -> String {
-        var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-        result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
-        result = result.replacingOccurrences(of: "\n", with: "\\n", options: .literal)
-        result = result.replacingOccurrences(of: "\r", with: "\\r", options: .literal)
-        result = result.replacingOccurrences(of: "\t", with: "\\t", options: .literal)
-        result = result.replacingOccurrences(of: "\0", with: "\\0", options: .literal)
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b", options: .literal)
-        result = result.replacingOccurrences(of: "\u{0C}", with: "\\f", options: .literal)
-        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z", options: .literal)
-        return result
+        var escaped = String.UnicodeScalarView()
+        escaped.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": escaped.append(contentsOf: #"\\"#.unicodeScalars)
+            case "'": escaped.append(contentsOf: "''".unicodeScalars)
+            case "\n": escaped.append(contentsOf: #"\n"#.unicodeScalars)
+            case "\r": escaped.append(contentsOf: #"\r"#.unicodeScalars)
+            case "\t": escaped.append(contentsOf: #"\t"#.unicodeScalars)
+            case "\0": escaped.append(contentsOf: #"\0"#.unicodeScalars)
+            case "\u{08}": escaped.append(contentsOf: #"\b"#.unicodeScalars)
+            case "\u{0C}": escaped.append(contentsOf: #"\f"#.unicodeScalars)
+            default: escaped.append(scalar)
+            }
+        }
+        return String(escaped)
     }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
