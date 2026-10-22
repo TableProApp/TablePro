@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use tablepro_core::{ColumnInfo, QueryResult};
+use tablepro_core::{ColumnInfo, MAX_QUERY_RESULT_BYTES, QueryResult};
 
 pub(super) const MAX_RETAINED_STREAM_PAGES: usize = 4;
 
@@ -33,7 +33,8 @@ pub struct StreamedResult {
 
 #[derive(Default)]
 pub(super) struct StreamPageCache {
-    pages: VecDeque<(u64, Arc<QueryResult>)>,
+    pages: VecDeque<(u64, Arc<QueryResult>, usize)>,
+    retained_bytes: usize,
     columns: Option<Vec<ColumnInfo>>,
     next_page: u64,
     empty_pages: u64,
@@ -60,22 +61,28 @@ impl StreamPageCache {
             return Ok(());
         }
         self.total_rows = self.total_rows.saturating_add(result.rows.len());
-        self.pages.push_back((index, result));
+        let bytes = result.estimated_row_bytes();
+        self.retained_bytes = self.retained_bytes.saturating_add(bytes);
+        self.pages.push_back((index, result, bytes));
         self.next_page = self.next_page.saturating_add(1);
-        if self.pages.len() > MAX_RETAINED_STREAM_PAGES {
-            self.pages.pop_front();
+        while self.pages.len() > 1
+            && (self.pages.len() > MAX_RETAINED_STREAM_PAGES || self.retained_bytes > MAX_QUERY_RESULT_BYTES)
+        {
+            if let Some((_, _, bytes)) = self.pages.pop_front() {
+                self.retained_bytes = self.retained_bytes.saturating_sub(bytes);
+            }
         }
         Ok(())
     }
 
     #[cfg(test)]
-    pub(super) fn pages(&self) -> &VecDeque<(u64, Arc<QueryResult>)> {
+    pub(super) fn pages(&self) -> &VecDeque<(u64, Arc<QueryResult>, usize)> {
         &self.pages
     }
 
     #[cfg(test)]
     pub(super) fn first_page(&self) -> u64 {
-        self.pages.front().map_or(self.next_page, |(index, _)| *index)
+        self.pages.front().map_or(self.next_page, |(index, _, _)| *index)
     }
 
     pub(super) fn total_rows(&self) -> usize {
@@ -96,8 +103,8 @@ impl StreamPageCache {
             .zip(self.columns.clone())
             .map(|(query, columns)| crate::ui::export_dialog::StreamExportRequest { query, columns });
         StreamedResult {
-            pages: self.pages.iter().map(|(_, page)| page.clone()).collect(),
-            page_indices: self.pages.iter().map(|(index, _)| *index).collect(),
+            pages: self.pages.iter().map(|(_, page, _)| page.clone()).collect(),
+            page_indices: self.pages.iter().map(|(index, _, _)| *index).collect(),
             total_pages: self.next_page.saturating_sub(self.empty_pages),
             total_rows: self.total_rows,
             terminal,
@@ -147,9 +154,47 @@ mod tests {
         assert_eq!(cache.first_page(), 1);
         assert_eq!(cache.total_rows(), (MAX_RETAINED_STREAM_PAGES + 1));
         assert_eq!(
-            cache.pages().iter().map(|(index, _)| *index).collect::<Vec<_>>(),
+            cache.pages().iter().map(|(index, _, _)| *index).collect::<Vec<_>>(),
             (1..=MAX_RETAINED_STREAM_PAGES as u64).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn wide_pages_evict_by_bytes_before_the_page_count_limit() {
+        let mut cache = StreamPageCache::default();
+        let mut retired = None;
+        for index in 0..3 {
+            let mut result = page(&["payload"], &[]).as_ref().clone();
+            result.rows = vec![vec![Value::Text("x".repeat(24 * 1024 * 1024))]];
+            let result = Arc::new(result);
+            if index == 0 {
+                retired = Some(Arc::downgrade(&result));
+            }
+            cache.append(index, result).unwrap();
+        }
+        assert_eq!(cache.pages().len(), 2);
+        assert!(retired.unwrap().upgrade().is_none());
+        let snapshot = cache.snapshot(StreamTerminal::Complete, None);
+        assert_eq!(snapshot.page_indices, vec![1, 2]);
+        assert_eq!(snapshot.total_rows, 3);
+        assert_eq!(snapshot.total_pages, 3);
+        assert_eq!(snapshot.pages[0].rows[0][0], Value::Text("x".repeat(24 * 1024 * 1024)));
+    }
+
+    #[test]
+    fn the_newest_page_is_kept_even_when_it_alone_exceeds_the_byte_budget() {
+        let mut cache = StreamPageCache::default();
+        let mut result = page(&["payload"], &[]).as_ref().clone();
+        result.rows = vec![vec![Value::Bytes(vec![7; 65 * 1024 * 1024])]];
+        let result = Arc::new(result);
+        let retired = Arc::downgrade(&result);
+        cache.append(0, result).unwrap();
+        assert_eq!(cache.pages().len(), 1);
+        assert_eq!(cache.total_rows(), 1);
+        cache.append(1, page(&["payload"], &[2])).unwrap();
+        assert!(retired.upgrade().is_none());
+        assert_eq!(cache.first_page(), 1);
+        assert_eq!(cache.total_rows(), 2);
     }
 
     #[test]

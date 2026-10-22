@@ -205,6 +205,14 @@ pub struct QueryResult {
     pub truncated: bool,
 }
 
+impl QueryResult {
+    pub fn estimated_row_bytes(&self) -> usize {
+        self.rows
+            .iter()
+            .fold(0usize, |total, row| total.saturating_add(row_size(row)))
+    }
+}
+
 /// Ordered row sets returned by one query execution. The truncation flag and
 /// query budget apply to the whole batch, not independently to each set.
 #[derive(Debug, Clone)]
@@ -417,6 +425,22 @@ mod tests {
         object.insert(key, serde_json::Value::String(value));
         let object_size = std::mem::size_of::<(String, serde_json::Value)>() + key_capacity + value_capacity;
         assert_eq!(super::json_heap_size(&serde_json::Value::Object(object)), object_size);
+    }
+
+    #[test]
+    fn result_row_estimate_counts_owned_capacity_and_row_containers() {
+        let mut text = String::with_capacity(128);
+        text.push('x');
+        let capacity = text.capacity();
+        let result = QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![Value::Text(text)], vec![]],
+            truncated: false,
+        };
+        assert_eq!(
+            result.estimated_row_bytes(),
+            capacity + std::mem::size_of::<Value>() + 2 * std::mem::size_of::<Vec<Value>>()
+        );
     }
 
     #[test]

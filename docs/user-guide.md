@@ -38,7 +38,7 @@ Use First, Previous, Next and Last to move through table pages. Unsorted tables 
 
 Ctrl+E opens a SQL editor tab for the current connection.
 
-Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
+Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows within a shared 64 MiB estimated row budget, always keeping the newest page; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
 
 Automatic completion, statement shading and character diagnostics are available for SQL buffers up to 200,000 UTF-8 bytes. Larger files remain editable, saveable and executable; automatic assistance is disabled to bound background analysis.
 

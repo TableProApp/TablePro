@@ -18,8 +18,10 @@ Documented application limits, behavior differences and known defects. Entries l
   received-row summary identifies the retained range when earlier rows have
   been discarded; those rows cannot be revisited without running the query
   again. Row ranges are positions in the result, not database row identifiers.
-  That cache is bounded by page and row count, not by cell
-  bytes. A synthetic profile with four pinned results and one active stream
+  That cache also retains at most 64 MiB of estimated row storage, except
+  that the newest page is always kept even if it alone exceeds the budget.
+  Incoming decoding, concurrent snapshots, pins, widgets and allocator retention
+  remain outside this cache estimate. A synthetic profile with four pinned results and one active stream
   reached 1,325 MiB RSS; see the [profile evidence](evidence/stream-retention-synthetic-2026-10-16/README.md).
   This does not measure normal queries or the complete process ceiling. Other
   engines and unsupported statement shapes remain materialized.

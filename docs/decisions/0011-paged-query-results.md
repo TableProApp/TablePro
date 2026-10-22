@@ -35,3 +35,9 @@ Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions ha
 
 - Whether MySQL and SQL Server can use their native streaming without holding a transaction open.
 - Whether the retained budget should be rows, bytes or both.
+
+## Clarification, October 22, 2026
+
+The maintainer selected both page-count and estimated-byte retention limits. The UI stream cache retains at most four pages within the existing 64 MiB query-result estimated-row budget. The newest page is always kept, including a single oversized page. Older pages leave the forward-only window without changing their values or received-row counts; the existing pager reports the remaining range. This resolves the retained-budget open question for the active stream cache.
+
+The estimate reuses core row/value accounting and excludes column metadata, widgets, incoming driver buffers, overlapping result snapshots, other tabs, pins and allocator-retained pages. It is not a process-memory ceiling. Broader ownership and profiling acceptance remain under [#1032](https://github.com/cozyGarage/BookiE/issues/1032). The earlier implementation-status paragraph describes the prior page-only implementation; this clarification records the approved follow-up, whose gate acceptance remains pending.
