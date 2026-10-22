@@ -426,22 +426,6 @@ nonisolated struct BsonDocumentFlattener {
 
     // MARK: - Type Inference
 
-    /// The kind every non-null value of a field shares, or nil when they differ or there are none.
-    static func uniformKind(
-        of field: String,
-        in documents: [[String: Any]],
-        representation: MongoDBUuidRepresentation
-    ) -> BsonValueKind? {
-        var shared: BsonValueKind?
-        for doc in documents {
-            guard let value = doc[field], !(value is NSNull) else { continue }
-            let kind = valueKind(for: value, representation: representation)
-            if let shared, shared != kind { return nil }
-            shared = kind
-        }
-        return shared
-    }
-
     /// Every kind each top-level field holds in the documents, nulls aside.
     static func heldKinds(
         in documents: [[String: Any]],

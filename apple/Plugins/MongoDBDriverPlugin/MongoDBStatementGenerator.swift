@@ -20,10 +20,9 @@ nonisolated struct MongoDBStatementGenerator {
     /// Kinds the collection's validator declares. The server rejects any other type for these
     /// fields, so they outrank what the sampled documents happen to hold.
     var declaredKinds: [String: BsonValueKind] = [:]
-    /// The kind every sampled `_id` shares, or nil when they differ. An `_id` filter has to carry the
-    /// row's own type, and a majority kind would quote an ObjectId in a mostly-string collection and
-    /// match nothing.
-    var identityKind: BsonValueKind?
+    // Every `_id` kind the finds of this collection held, or nil before any. An `_id` filter has to carry the row's own
+    // type, and a majority kind would quote an ObjectId in a mostly-string collection and match nothing.
+    var identityKinds: Set<BsonValueKind>?
     /// Every kind each field held in the documents read, which says whether a cell showing `{` or
     /// `[` holds a document or an array or a string that reads the same.
     var fieldKinds: MongoDBFieldKinds = .empty
@@ -448,11 +447,11 @@ nonisolated struct MongoDBStatementGenerator {
         }
     }
 
-    // The validator's `_id` kind, else the last read's when its `_id`s shared one, else the one kind every read held.
+    // The validator's `_id` kind, else the one kind every find held.
     private var uniformIdentityKind: BsonValueKind? {
-        if let kind = declaredKinds[MongoDBCollectionDDL.idField] ?? identityKind { return kind }
-        guard let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField), held.count == 1 else { return nil }
-        return held.first
+        if let kind = declaredKinds[MongoDBCollectionDDL.idField] { return kind }
+        guard let identityKinds, identityKinds.count == 1 else { return nil }
+        return identityKinds.first
     }
 
     /// An embedded document compares field by field in order, so a document `_id` has to be sent in
@@ -473,7 +472,7 @@ nonisolated struct MongoDBStatementGenerator {
             return binary
         }
         let idKind = uniformIdentityKind
-        if idKind == nil, let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField), held.count > 1,
+        if idKind == nil, let held = identityKinds, held.count > 1,
            let reading = try heldIdentityJson(idValue, held: held) {
             return reading
         }
@@ -502,7 +501,7 @@ nonisolated struct MongoDBStatementGenerator {
     private func heldIdentityJson(_ text: String, held: Set<BsonValueKind>) throws -> String? {
         var readings: [IdentityValue: String] = [:]
         for kind in Self.identityReadingOrder where held.contains(kind) {
-            guard let (value, json) = identityReading(text, as: kind), readings[value] == nil else { continue }
+            guard let (value, json) = try identityReading(text, as: kind), readings[value] == nil else { continue }
             readings[value] = json
         }
         guard readings.count <= 1 else { throw MongoDBWriteRefusal.ambiguousIdentity }
@@ -510,14 +509,14 @@ nonisolated struct MongoDBStatementGenerator {
     }
 
     private enum IdentityValue: Hashable {
-        case string, objectId, date, boolean, integer, double, decimal
+        case string, objectId, date, boolean, integer, double, decimal, document
     }
 
     private static let identityReadingOrder: [BsonValueKind] = [
-        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double
+        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double, .document
     ]
 
-    private func identityReading(_ text: String, as kind: BsonValueKind) -> (IdentityValue, String)? {
+    private func identityReading(_ text: String, as kind: BsonValueKind) throws -> (IdentityValue, String)? {
         let isInteger = Int64(text) != nil
         switch kind {
         case .string:
@@ -537,6 +536,9 @@ nonisolated struct MongoDBStatementGenerator {
             guard let json = typedJson(text, kind: kind), let parsed = Double(text),
                   NumberText.text(for: parsed) == text else { return nil }
             return (isInteger ? .integer : .double, json)
+        case .document:
+            guard let parsed = try? MongoDocumentText.Value(parsing: text), case .object = parsed else { return nil }
+            return (.document, try shellJson(parsed, field: MongoDBCollectionDDL.idField))
         default:
             return nil
         }

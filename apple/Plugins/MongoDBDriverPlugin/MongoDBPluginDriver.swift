@@ -18,7 +18,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     private var columnKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var fieldPathKindsByCollection: [String: [String: BsonValueKind]] = [:]
     private var declaredSchemasByCollection: [String: MongoDBCollectionSchema] = [:]
-    private var identityKindsByCollection: [String: BsonValueKind] = [:]
+    private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
     private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
 
@@ -832,7 +832,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                 columns: columns,
                 columnKinds: columnKindsByCollection[key] ?? [:],
                 declaredKinds: declared.valueKinds,
-                identityKind: identityKindsByCollection[key],
+                identityKinds: identityKindsByCollection[key],
                 fieldKinds: fieldKindsByCollection[key] ?? .empty,
                 binarySubtypes: binarySubtypesByCollection[key] ?? .empty,
                 declaredBinaryFields: Self.binaryFields(declaredBy: declared),
@@ -990,7 +990,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         )
         rememberColumnKinds(sampledKinds, for: sampled, collection: collection)
         if typesIdentity {
-            rememberIdentityKind(of: documents, collection: collection)
+            rememberIdentityKinds(of: documents, collection: collection)
         }
         rememberFieldPathKinds(from: documents, collection: collection)
         rememberBinarySubtypes(of: documents, collection: collection)
@@ -1082,13 +1082,16 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         outcome.find?.database == currentDb
     }
 
-    private func rememberIdentityKind(of documents: [[String: Any]], collection: String) {
+    // Added to rather than replaced: a row keeps the `_id` kinds every find of its collection held, so a later read of
+    // one document, a value lookup or another tab's, never types the `_id` of a row it did not return.
+    private func rememberIdentityKinds(of documents: [[String: Any]], collection: String) {
         guard !collection.isEmpty else { return }
-        let kind = BsonDocumentFlattener.uniformKind(
-            of: MongoDBCollectionDDL.idField, in: documents, representation: uuidRepresentation
-        )
+        let held = Set(documents.compactMap { $0[MongoDBCollectionDDL.idField] }.filter { !($0 is NSNull) }.map {
+            BsonDocumentFlattener.valueKind(for: $0, representation: uuidRepresentation)
+        })
+        guard !held.isEmpty else { return }
         let key = columnKindKey(collection)
-        columnKindLock.withLock { identityKindsByCollection[key] = kind }
+        columnKindLock.withLock { identityKindsByCollection[key, default: []].formUnion(held) }
     }
 
     /// Recorded from the documents a browse already fetched, on the session driver that will

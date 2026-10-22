@@ -163,11 +163,7 @@ struct MongoDBHostListTests {
 
 struct MongoDBAmbiguousIdentityTests {
     private func generator(idKinds: Set<BsonValueKind>) -> MongoDBStatementGenerator {
-        MongoDBStatementGenerator(
-            collectionName: "users",
-            columns: ["_id", "name"],
-            fieldKinds: MongoDBFieldKinds(["_id": idKinds])
-        )
+        MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"], identityKinds: idKinds)
     }
 
     private func update(id: String) -> PluginRowChange {
@@ -209,6 +205,15 @@ struct MongoDBAmbiguousIdentityTests {
 
         #expect(text.statement.contains(#"{"_id": "5"}"#))
         #expect(!number.statement.contains(#""5""#))
+    }
+
+    @Test("Document text held both as an embedded document _id and as a string _id is refused")
+    func documentAndTextIdentityIsRefused() {
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try generator(idKinds: [.document, .string]).generateRowWrites(
+                from: [update(id: #"{"a": 1}"#)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
     }
 
     @Test("A number past 2^53 names the integer, never the double it rounds to")
@@ -258,7 +263,7 @@ struct MongoDBAmbiguousIdentityTests {
             for: Date(timeIntervalSince1970: 1_704_110_400), representation: .unspecified
         ) == "2024-01-01T12:00:00Z")
 
-        let dated = MongoDBStatementGenerator(collectionName: "events", columns: ["_id", "name"], identityKind: .date)
+        let dated = MongoDBStatementGenerator(collectionName: "events", columns: ["_id", "name"], identityKinds: [.date])
         let write = try #require(try dated.generateRowWrites(
             from: [update(id: text)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
         ).first)
