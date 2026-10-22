@@ -228,7 +228,7 @@ fn completion_popup(widget: &gtk::Widget) -> Option<gtk::Widget> {
     None
 }
 
-fn presented_completion(view: &sourceview5::View, visible: bool) -> gtk::Widget {
+fn presented_completion(view: &sourceview5::View, visible: bool, text: &str) -> gtk::Widget {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
         completion_frame();
@@ -238,7 +238,13 @@ fn presented_completion(view: &sourceview5::View, visible: bool) -> gtk::Widget 
         {
             return popup;
         }
-        assert!(std::time::Instant::now() < deadline);
+        assert!(
+            std::time::Instant::now() < deadline,
+            "text={text:?}, expected_visible={visible}, mapped={}, focus={}, popup={:?}",
+            view.is_mapped(),
+            view.has_focus(),
+            completion_popup(view.upcast_ref()).map(|popup| (popup.is_visible(), popup.width(), popup.height()))
+        );
     }
 }
 
@@ -260,7 +266,7 @@ fn populated_completion_is_presented_after_the_editor_is_rooted() {
     for text in ["do s", "do so", "sel", "do s"] {
         view.buffer().set_text(text);
         view.completion().show();
-        let popup = presented_completion(&view, text != "do so");
+        let popup = presented_completion(&view, text != "do so", text);
         if text == "do so" {
             assert!(!popup.is_visible());
             continue;
