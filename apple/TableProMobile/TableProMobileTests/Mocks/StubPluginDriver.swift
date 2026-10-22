@@ -10,6 +10,8 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // check after it.
     var rowCounts: [Int] = [1, 1, 0]
     var onFetchTables: (@Sendable () async -> Void)?
+    var currentDb = ""
+    private(set) var databasesAtExecute: [String] = []
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -35,6 +37,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         plainQueries.append(query)
+        databasesAtExecute.append(currentDb)
         return scriptedResult
     }
 
@@ -73,7 +76,9 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return scriptedResult
     }
 
-    func switchDatabase(to database: String) async throws {}
+    func switchDatabase(to database: String) async throws {
+        currentDb = database
+    }
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         await onFetchTables?()

@@ -32,6 +32,11 @@ nonisolated struct MongoDBCapabilities: Sendable, Equatable {
         return major >= 5
     }
 
+    // `$regexMatch` arrived in 4.2. A server whose version is not known is not sent it.
+    var supportsRegexMatch: Bool {
+        major > 4 || (major == 4 && minor >= 2)
+    }
+
     static func parse(_ version: String?) -> MongoDBCapabilities {
         guard let version else { return .unknown }
         let parts = version.split(separator: ".")

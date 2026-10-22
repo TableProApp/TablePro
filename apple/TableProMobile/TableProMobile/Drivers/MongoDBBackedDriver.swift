@@ -1,4 +1,5 @@
 import Foundation
+import os
 import TableProDatabase
 import TableProModels
 import TableProNumberFormatting
@@ -22,6 +23,16 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         )
     }
 
+    private let searchesShownText = OSAllocatedUnfairLock(initialState: false)
+    private var matchesShownText: Bool { searchesShownText.withLock { $0 } }
+
+    // Read once the session is open and off the main actor: a version not yet cached is a round trip to the server.
+    override func connect() async throws {
+        try await super.connect()
+        let supported = MongoDBCapabilities.parse(mongo.serverVersion).supportsRegexMatch
+        searchesShownText.withLock { $0 = supported }
+    }
+
     // With no database named, the plugin opens the first one that is not a system database.
     override var currentDatabase: String? {
         mongo.currentDb.isEmpty ? nil : mongo.currentDb
@@ -36,7 +47,7 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         let sorted = request.sortState.columns
         return builder.buildQuery(
             collection: request.table,
-            filterDocument: Self.filterDocument(for: request, builder: builder),
+            filterDocument: Self.filterDocument(for: request, builder: builder, matchesShownText: matchesShownText),
             sortColumns: sorted.indices.map { (columnIndex: $0, ascending: sorted[$0].ascending) },
             columns: sorted.map(\.name),
             limit: limit,
@@ -44,12 +55,16 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         )
     }
 
+    func pageRows(_ query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        stream(query: query, options: options, bindsToSession: true)
+    }
+
     // Bounded like the Mac's background count, so a slow count never holds the session the next page needs.
     func rowCount(_ request: TableReadRequest) async throws -> Int? {
         let builder = mongo.filterQueryBuilder(for: request.table)
-        let filter = Self.filterDocument(for: request, builder: builder)
+        let filter = Self.filterDocument(for: request, builder: builder, matchesShownText: matchesShownText)
         let mongo = mongo
-        return try await exclusively {
+        return try await inSessionDatabase {
             try await mongo.documentCount(table: request.table, filterDocument: filter, background: true)
         }
     }
@@ -75,7 +90,7 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         // Two rows mean an ObjectId and a string with the same text, which the grid shows the same.
         let query = builder.buildQuery(collection: table, filterDocument: filter, limit: 2)
         let context = statementContext(query)
-        let found = try await exclusively { try await mongo.execute(query: query, context: context) }
+        let found = try await inSessionDatabase { try await mongo.execute(query: query, context: context) }
         guard !found.rows.isEmpty else { throw CellLookupError.rowNotFound }
         guard found.rows.count == 1 else { throw DatabaseError(message: MongoDBWriteRefusal.ambiguousIdentity.reason) }
         let row = QueryResult(from: found).rows[0]
@@ -83,7 +98,9 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         // The plugin cuts a long nested value for display; the stored document holds it whole.
         if let shown = row[index], JSONTruncation.isIncompleteStructure(shown),
            let locator = found.rowLocators?.first ?? nil,
-           let whole = try await exclusively({ try await mongo.storedNestedText(table: table, locator: locator, field: column) }) {
+           let whole = try await inSessionDatabase({
+               try await mongo.storedNestedText(table: table, locator: locator, field: column)
+           }) {
             return whole
         }
         return row[index]
@@ -91,7 +108,11 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
 
     // A filter with no plugin form matches nothing rather than being dropped, which would show rows it excludes. A field
     // named like the plugin's raw-filter column would have its value read as a whole filter document, code included.
-    static func filterDocument(for request: TableReadRequest, builder: MongoDBQueryBuilder) -> String {
+    static func filterDocument(
+        for request: TableReadRequest,
+        builder: MongoDBQueryBuilder,
+        matchesShownText: Bool
+    ) -> String {
         var parts: [String] = []
         let filters = request.filters.map { filter in
             filtersAsField(filter.columnName) ? filter.pluginFilter : nil
@@ -103,18 +124,32 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
             parts.append(builder.buildFilterDocument(from: filters.compactMap { $0 }, logicMode: logic))
         }
         if let text = request.searchText, !text.isEmpty {
-            let terms = request.searchColumns.filter(filtersAsField).map {
-                PluginQueryFilter(column: $0, op: "CONTAINS", value: text, isCaseSensitive: false)
+            let columns = request.searchColumns.filter(filtersAsField)
+            let terms = columns.map { PluginQueryFilter(column: $0, op: "CONTAINS", value: text, isCaseSensitive: false) }
+            var matches = terms.isEmpty ? [] : [builder.buildFilterDocument(from: terms, logicMode: "or")]
+            if matchesShownText {
+                matches += columns.map { shownTextMatch(field: $0, text: text) }
             }
-            parts.append(terms.isEmpty
-                ? MongoDBQueryBuilder.impossibleFilter
-                : builder.buildFilterDocument(from: terms, logicMode: "or"))
+            switch matches.count {
+            case 0: parts.append(MongoDBQueryBuilder.impossibleFilter)
+            case 1: parts.append(matches[0])
+            default: parts.append("{\"$or\": [\(matches.joined(separator: ", "))]}")
+            }
         }
         switch parts.count {
         case 0: return "{}"
         case 1: return parts[0]
         default: return "{\"$and\": [\(parts.joined(separator: ", "))]}"
         }
+    }
+
+    // A regex matches strings only, so a number, a date or an ObjectId is matched by its text as well, the way a SQL
+    // search casts each column. Arrays and documents convert to nothing and stay matched by the regex alone.
+    private static func shownTextMatch(field: String, text: String) -> String {
+        let path = MongoDBQueryBuilder.escapeJsonString("$" + field)
+        let pattern = MongoDBQueryBuilder.escapeJsonString(NSRegularExpression.escapedPattern(for: text))
+        let input = "{\"$convert\": {\"input\": \"\(path)\", \"to\": \"string\", \"onError\": \"\", \"onNull\": \"\"}}"
+        return "{\"$expr\": {\"$regexMatch\": {\"input\": \(input), \"regex\": \"\(pattern)\", \"options\": \"i\"}}}"
     }
 
     private static func filtersAsField(_ name: String) -> Bool {

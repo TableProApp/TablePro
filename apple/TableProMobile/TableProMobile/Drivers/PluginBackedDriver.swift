@@ -17,6 +17,7 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     private let provesReads: Bool
     private let cancelsRunningRequest: (@Sendable () -> Void)?
     private let requestGate = SerialRequestGate()
+    private let sessionDatabase = OSAllocatedUnfairLock<String?>(initialState: nil)
     let rowIdentity: RowIdentity
 
     // `provesReads`: `readsOnly` is a proof rather than a guess, so a statement it passes runs marked read-only and the
@@ -78,6 +79,26 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         try await exclusively { currentDatabase }
     }
 
+    // A request the app makes for the database the picker names. A script's `use` can move the shell between its
+    // statements, so the request runs back there and leaves the shell where the script put it.
+    func inSessionDatabase<T: Sendable>(_ request: () async throws -> T) async throws -> T {
+        let plugin = plugin
+        return try await exclusively {
+            guard let pinned = sessionDatabase.withLock({ $0 }), let moved = currentDatabase, moved != pinned else {
+                return try await request()
+            }
+            try await plugin.switchDatabase(to: pinned)
+            let result: Result<T, Error>
+            do {
+                result = .success(try await request())
+            } catch {
+                result = .failure(error)
+            }
+            try? await plugin.switchDatabase(to: moved)
+            return try result.get()
+        }
+    }
+
     func statementContext(_ query: String) -> PluginStatementContext {
         var context = PluginStatementContext()
         context.readOnly = provesReads && readsOnly(query)
@@ -91,6 +112,8 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
             try await LocalNetworkPermission.shared.ensureAccess(for: host)
         }
         try await plugin.connect()
+        let opened = currentDatabase
+        sessionDatabase.withLock { $0 = opened }
         guard let queryTimeoutSeconds else { return }
         // A server that refuses the limit still runs queries, as on the Mac.
         do {
@@ -125,13 +148,17 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        stream(query: query, options: options, bindsToSession: false)
+    }
+
+    func stream(query: String, options: StreamOptions, bindsToSession: Bool) -> AsyncThrowingStream<StreamElement, Error> {
         let plugin = plugin
         let isRead = readsOnly(query)
         let context = statementContext(query)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let result: PluginQueryResult = try await self.exclusively {
+                    let request: () async throws -> PluginQueryResult = {
                         // Only a read may be bounded at its source: bounding abandons the rest of the statement.
                         if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
                             return bounded
@@ -140,6 +167,9 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
                             query: query, rowCap: options.maxRows, parameters: nil, context: context
                         )
                     }
+                    let result = bindsToSession
+                        ? try await self.inSessionDatabase(request)
+                        : try await self.exclusively(request)
                     Self.emit(result, options: options, into: continuation)
                     continuation.finish()
                 } catch is CancellationError {
@@ -238,23 +268,24 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     // statement queued behind it would otherwise end the read.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let plugin = plugin
-        return try await exclusively { try await plugin.fetchTables(schema: schema) }.map(TableInfo.init(from:))
+        return try await inSessionDatabase { try await plugin.fetchTables(schema: schema) }.map(TableInfo.init(from:))
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
         let plugin = plugin
-        return try await exclusively { try await plugin.fetchColumns(table: table, schema: schema) }
+        return try await inSessionDatabase { try await plugin.fetchColumns(table: table, schema: schema) }
             .enumerated().map { index, column in ColumnInfo(from: column, ordinalPosition: index) }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
         let plugin = plugin
-        return try await exclusively { try await plugin.fetchIndexes(table: table, schema: schema) }.map(IndexInfo.init(from:))
+        return try await inSessionDatabase { try await plugin.fetchIndexes(table: table, schema: schema) }
+            .map(IndexInfo.init(from:))
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
         let plugin = plugin
-        return try await exclusively { try await plugin.fetchForeignKeys(table: table, schema: schema) }
+        return try await inSessionDatabase { try await plugin.fetchForeignKeys(table: table, schema: schema) }
             .map(ForeignKeyInfo.init(from:))
     }
 
@@ -266,7 +297,10 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     // A MongoDB switch rebinds the shell, which waits for a running script, so it takes its turn too.
     func switchDatabase(to name: String) async throws {
         let plugin = plugin
-        try await exclusively { try await plugin.switchDatabase(to: name) }
+        try await exclusively {
+            try await plugin.switchDatabase(to: name)
+            sessionDatabase.withLock { $0 = name }
+        }
     }
 
     var supportsSchemas: Bool { plugin.supportsSchemas }
@@ -361,7 +395,7 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
 
     func run(_ writes: [PluginRowWrite]) async throws -> Int {
         let plugin = plugin
-        return try await exclusively {
+        return try await inSessionDatabase {
             var affected = 0
             for write in writes {
                 let result = write.parameters.isEmpty

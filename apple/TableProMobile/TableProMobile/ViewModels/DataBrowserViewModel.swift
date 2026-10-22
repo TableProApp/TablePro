@@ -205,14 +205,15 @@ final class DataBrowserViewModel {
             let pkColumns = rowIdentity == .keyColumns ? columnDetails.filter(\.isPrimaryKey).map(\.name) : []
             let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
             let driver = session.driver
-            let query = (driver as? any DriverQueryBuilding).map { builder in
+            let builder = driver as? any DriverQueryBuilding
+            let query = builder.map { builder in
                 builder.pageQuery(readRequest(table: table), limit: pagination.pageSize, offset: pagination.currentOffset)
             } ?? buildSelectQuery(table: table)
 
             await loadPage(
                 options: pageOptions(lazyContext: lazyContext), startedAt: Date(), generation: generation
             ) { options in
-                driver.executeStreaming(query: query, options: options)
+                builder?.pageRows(query, options: options) ?? driver.executeStreaming(query: query, options: options)
             }
             guard isCurrent(generation) else { return }
 

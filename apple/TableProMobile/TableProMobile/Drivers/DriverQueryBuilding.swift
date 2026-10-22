@@ -20,6 +20,9 @@ nonisolated protocol DriverQueryBuilding: DatabaseDriver {
 
     func pageQuery(_ request: TableReadRequest, limit: Int, offset: Int) -> String
 
+    // Runs a page query in the database the picker names.
+    func pageRows(_ query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error>
+
     func rowCount(_ request: TableReadRequest) async throws -> Int?
 
     // Throws CellLookupError.rowNotFound when no row holds the key.
@@ -29,6 +32,12 @@ nonisolated protocol DriverQueryBuilding: DatabaseDriver {
         column: String,
         key: [(column: String, value: String)]
     ) async throws -> String?
+}
+
+nonisolated extension DriverQueryBuilding {
+    func pageRows(_ query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        executeStreaming(query: query, options: options)
+    }
 }
 
 nonisolated extension FilterOperator {

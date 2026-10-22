@@ -76,6 +76,43 @@ struct MongoDBOnIOSTests {
         #expect(query == #"db.users.find({"$and": [{"name": "ann"}, {"$or": [{"name": {"$regex": "x", "$options": "i"}}, {"email": {"$regex": "x", "$options": "i"}}]}]}).sort({"name": 1}).skip(100).limit(50)"#)
     }
 
+    @Test("From MongoDB 4.2, search matches a number, a date or an ObjectId by its text as well")
+    func searchMatchesShownText() {
+        let filter = MongoDBBackedDriver.filterDocument(
+            for: request(search: "4.2", searchColumns: ["age", "name"]), builder: MongoDBQueryBuilder(), matchesShownText: true
+        )
+
+        #expect(filter.contains(#"{"age": {"$regex": "4\\.2", "$options": "i"}}"#))
+        #expect(filter.contains(#"{"$expr": {"$regexMatch": {"input": {"$convert": {"input": "$age", "to": "string", "onError": "", "onNull": ""}}, "regex": "4\\.2", "options": "i"}}}"#))
+        #expect(filter.contains(#""input": "$name""#))
+        #expect(filter.hasPrefix(#"{"$or": ["#))
+    }
+
+    @Test("Before 4.2, or on a server whose version is not known, search sends no $regexMatch")
+    func searchWithoutRegexMatch() {
+        let filter = MongoDBBackedDriver.filterDocument(
+            for: request(search: "42", searchColumns: ["age"]), builder: MongoDBQueryBuilder(), matchesShownText: false
+        )
+        #expect(!filter.contains("$regexMatch"))
+        #expect(MongoDBCapabilities.parse("4.2.1").supportsRegexMatch)
+        #expect(!MongoDBCapabilities.parse("4.0.28").supportsRegexMatch)
+        #expect(!MongoDBCapabilities.parse(nil).supportsRegexMatch)
+    }
+
+    @Test("A row write runs in the picker's database while a script's use has moved the shell, and leaves the shell there")
+    func writesRunInTheSessionDatabase() async throws {
+        let plugin = StubPluginDriver()
+        plugin.currentDb = "app"
+        let driver = ShellDatabaseDriver(plugin: plugin)
+        try await driver.connect()
+        plugin.currentDb = "other"
+
+        _ = try await driver.run([PluginRowWrite(statement: "db.users.updateOne({}, {})", rowIndices: [0])])
+
+        #expect(plugin.databasesAtExecute == ["app"])
+        #expect(plugin.currentDb == "other")
+    }
+
     @Test("A page with nothing to match reads the whole collection")
     func plainPage() {
         #expect(driver().pageQuery(request(), limit: 25, offset: 0) == "db.users.find({}).limit(25)")
@@ -262,4 +299,18 @@ struct MongoDBOnIOSTests {
         #expect(ExportFormat.offered(for: .mongodb) == [.json, .csv])
         #expect(ExportFormat.offered(for: .postgresql) == ExportFormat.allCases)
     }
+}
+
+private final class ShellDatabaseDriver: PluginBackedDriver, @unchecked Sendable {
+    private let stub: StubPluginDriver
+
+    init(plugin: StubPluginDriver) {
+        stub = plugin
+        super.init(
+            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in false },
+            cancelsRunningRequest: { try? plugin.cancelQuery() }
+        )
+    }
+
+    override var currentDatabase: String? { stub.currentDb.isEmpty ? nil : stub.currentDb }
 }
