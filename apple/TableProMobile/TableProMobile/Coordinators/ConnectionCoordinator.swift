@@ -86,7 +86,8 @@ final class ConnectionCoordinator {
         connection.type == .mysql || connection.type == .mariadb ||
         connection.type == .tidb || connection.type == .oceanbase ||
         connection.type == .postgresql || connection.type == .redshift ||
-        connection.type == .mssql || connection.type == .clickhouse
+        connection.type == .mssql || connection.type == .clickhouse ||
+        connection.type == .mongodb
     }
 
     var supportsSchemas: Bool {
@@ -718,6 +719,25 @@ final class ConnectionCoordinator {
     }
 
     // MARK: - Database / Schema Switching
+
+    // A MongoDB `use` moves the session itself, so the lists and the picker follow it there, once every request queued
+    // before has returned: a request Stop ended lands its `use` only then. The switch runs outside the run that asks,
+    // which Stop may have cancelled. While another window holds unsaved edits the session goes back instead, so they
+    // save where the picker says.
+    func followSessionDatabase() async {
+        guard supportsDatabaseSwitching, let driver = session?.driver as? PluginBackedDriver else { return }
+        await Task {
+            guard let used = try? await driver.settledCurrentDatabase(), used != activeDatabase,
+                  session?.driver === driver else { return }
+            guard !anotherWindowHoldsEditor else {
+                try? await driver.switchDatabase(to: activeDatabase)
+                failureAlertMessage = Self.editorHeldElsewhereMessage
+                showFailureAlert = true
+                return
+            }
+            await switchDatabase(to: used)
+        }.value
+    }
 
     func switchDatabase(to name: String) async {
         guard session != nil, name != activeDatabase, !isSwitching else { return }

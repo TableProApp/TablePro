@@ -8,7 +8,7 @@ import TableProPluginKit
 
 /// Something that reads a field by name, and would be left pointing at a path no document has, or
 /// reading values meant for another field, once the field is renamed or removed.
-enum MongoFieldDependent: Equatable {
+nonisolated enum MongoFieldDependent: Equatable {
     case index(name: String, field: String)
     case searchIndex(name: String, field: String)
     case view(name: String, field: String)

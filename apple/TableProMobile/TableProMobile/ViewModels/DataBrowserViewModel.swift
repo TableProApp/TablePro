@@ -204,13 +204,16 @@ final class DataBrowserViewModel {
             // A full value read by key would return another row's value where the key is not unique.
             let pkColumns = rowIdentity == .keyColumns ? columnDetails.filter(\.isPrimaryKey).map(\.name) : []
             let lazyContext = pkColumns.isEmpty ? nil : LazyContext(table: table.name, primaryKeyColumns: pkColumns)
-            let query = buildSelectQuery(table: table)
             let driver = session.driver
+            let builder = driver as? any DriverQueryBuilding
+            let query = builder.map { builder in
+                builder.pageQuery(readRequest(table: table), limit: pagination.pageSize, offset: pagination.currentOffset)
+            } ?? buildSelectQuery(table: table)
 
             await loadPage(
                 options: pageOptions(lazyContext: lazyContext), startedAt: Date(), generation: generation
             ) { options in
-                driver.executeStreaming(query: query, options: options)
+                builder?.pageRows(query, options: options) ?? driver.executeStreaming(query: query, options: options)
             }
             guard isCurrent(generation) else { return }
 
@@ -334,6 +337,18 @@ final class DataBrowserViewModel {
         return SortState(columns: [SortColumn(name: fallback, ascending: true)])
     }
 
+    private func readRequest(table: TableInfo) -> TableReadRequest {
+        TableReadRequest(
+            table: table.name,
+            schema: schema,
+            filters: filters.filter { $0.isEnabled && $0.isValid },
+            logicMode: filterLogicMode,
+            searchText: hasActiveSearch ? activeSearchText : nil,
+            searchColumns: searchableColumns().map(\.name),
+            sortState: sortState
+        )
+    }
+
     private func searchableColumns() -> [ColumnInfo] {
         columns.filter { col in
             let upper = col.typeName.uppercased()
@@ -344,6 +359,12 @@ final class DataBrowserViewModel {
 
     private func fetchTotalRows(session: ConnectionSession, table: TableInfo, generation: Int) async {
         do {
+            if let builder = session.driver as? any DriverQueryBuilding {
+                let total = try await builder.rowCount(readRequest(table: table))
+                guard isCurrent(generation) else { return }
+                pagination.totalRows = total
+                return
+            }
             let countQuery: String
             if hasActiveSearch {
                 countQuery = SQLBuilder.buildSearchCount(
@@ -570,6 +591,14 @@ final class DataBrowserViewModel {
     private func readValue(
         driver: DatabaseDriver, ref: CellRef, databaseType: DatabaseType, schema: String?, ofOneRow: Bool
     ) async throws -> String? {
+        if let builder = driver as? any DriverQueryBuilding {
+            return try await builder.storedValue(
+                table: ref.table,
+                schema: schema,
+                column: ref.column,
+                key: ref.primaryKey.map { (column: $0.column, value: $0.value) }
+            )
+        }
         let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
         let predicate = SQLBuilder.keyPredicate(
             ref.primaryKey.map { (column: $0.column, value: $0.value) },

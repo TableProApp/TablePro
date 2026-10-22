@@ -11,7 +11,7 @@ import TableProPluginKit
 ///
 /// Everything here is read from the catalog and nothing from the documents, so it is cheap enough
 /// for SQL Preview. What only the documents can show is `MongoFieldDataProbe`'s, on Save.
-struct MongoFieldChangeAssessment: Equatable, Sendable {
+nonisolated struct MongoFieldChangeAssessment: Equatable, Sendable {
     let refusal: String?
     /// The validator after the edits, when they change it. It runs first, as a `collMod`.
     let rewrittenValidatorJson: String?
@@ -180,7 +180,7 @@ struct MongoFieldChangeAssessment: Equatable, Sendable {
 /// top level, where it is a plain change of key. A validator that names the field anywhere else
 /// (a query operator, `$expr`, a pattern that matches it, a nested schema) cannot be rewritten
 /// faithfully and refuses the save.
-enum MongoValidatorRewrite {
+nonisolated enum MongoValidatorRewrite {
     struct Outcome: Equatable {
         let rewrittenJson: String?
         let refusal: String?
@@ -377,7 +377,7 @@ enum MongoValidatorRewrite {
 }
 
 /// One read of the catalog for a save, and what it says about the save.
-struct MongoCatalogRead {
+nonisolated struct MongoCatalogRead {
     /// The collection's `listCollections` entry exactly as the server sent it.
     let infoJson: String?
     let info: MongoCollectionInfo

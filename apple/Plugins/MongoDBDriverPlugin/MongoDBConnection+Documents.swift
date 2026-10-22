@@ -15,7 +15,7 @@ import TableProPluginKit
 /// JavaScript object on its way to the server, and JavaScript puts integer-like field names first,
 /// so a document with a field named `"2"` would be stored in an order nobody wrote. The CRUD call
 /// here also reports a server's refusal as a failed call.
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     /// Text libbson reads as a document, written back as canonical Extended JSON.
     ///
     /// Reading the user's text through libbson here is what refuses a wrapper it cannot read, such
@@ -93,6 +93,26 @@ extension MongoDBConnection {
         #endif
     }
 
+    // The same exact read without the checks an edit needs, since a view, a time-series collection or an older server
+    // can be read whole but not replaced.
+    func readMatchingDocuments(
+        database: String,
+        collection: String,
+        identity: MongoDocumentIdentity
+    ) async throws -> [MongoStoredDocument] {
+        #if canImport(CLibMongoc)
+        let options = MongoEditableDocument.readOptions(maxTimeMS: effectiveMaxTimeMS(background: false))
+        return try await readOnClient { [self] client in
+            try checkCancelled()
+            return try exactMatches(
+                client: client, database: database, collection: collection, identity: identity, options: options
+            )
+        }
+        #else
+        throw MongoDBError.libmongocUnavailable
+        #endif
+    }
+
     /// Replaces the document `filter` matches and answers how many it matched, which is 0 when the
     /// stored document is no longer the one the edit started from.
     ///
@@ -140,7 +160,7 @@ extension MongoDBConnection {
 
 #if canImport(CLibMongoc)
 /// libbson's own reading of Extended JSON, which is the only authority on what a text stores.
-struct MongoLibbsonCodec: MongoDocumentCodec {
+nonisolated struct MongoLibbsonCodec: MongoDocumentCodec {
     func isSameDocument(_ text: String, asCanonical canonical: String) -> Bool {
         guard let stored = Self.parse(canonical) else { return false }
         defer { bson_destroy(stored) }
@@ -173,7 +193,7 @@ struct MongoLibbsonCodec: MongoDocumentCodec {
     }
 }
 
-fileprivate extension MongoDBConnection {
+nonisolated fileprivate extension MongoDBConnection {
     func matchedCount(in reply: OpaquePointer) throws -> Int64 {
         let text = try canonicalText(of: reply)
         guard let data = text.data(using: .utf8),

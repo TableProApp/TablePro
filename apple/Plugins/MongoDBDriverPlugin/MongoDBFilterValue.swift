@@ -12,7 +12,7 @@ import TableProPluginKit
 /// MongoDB compares only within a BSON type (type bracketing), so a Date field compared against
 /// the string `"2024-01-01T00:00:00Z"` matches nothing and reports no error. The column's sampled
 /// kind is what tells us to wrap the text in `$date`, `$oid` or `$numberDecimal` instead.
-enum MongoDBFilterValue {
+nonisolated enum MongoDBFilterValue {
     static func json(_ value: String, kind: BsonValueKind?) -> String {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(value) { return binary }
 

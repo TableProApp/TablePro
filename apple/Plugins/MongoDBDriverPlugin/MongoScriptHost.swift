@@ -9,7 +9,7 @@ import TableProPluginKit
 /// both directions and are spliced into command documents as text, never rebuilt through
 /// `JSONSerialization`, because a document round-tripped through a Swift dictionary comes back with
 /// its fields in another order and BSON field order is part of the document.
-final class MongoScriptHost {
+nonisolated final class MongoScriptHost {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoScriptHost")
     private static let pageSize = 1_000
     private static let retainedCursors = 64

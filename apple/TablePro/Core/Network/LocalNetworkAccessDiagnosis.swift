@@ -5,6 +5,7 @@
 
 import Foundation
 import Network
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 

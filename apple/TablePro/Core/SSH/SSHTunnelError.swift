@@ -1,8 +1,3 @@
-//
-//  SSHTunnelError.swift
-//  TablePro
-//
-
 import Foundation
 
 import TableProSSHConfig
@@ -78,9 +73,11 @@ private extension AgentSocketOrigin {
     }
 }
 
-/// Error types for SSH tunnel operations
 enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
     case tunnelCreationFailed(String)
+    // jumpHost is nil when the SSH server itself failed.
+    case negotiationFailed(SSHNegotiationFailure, jumpHost: String?)
+    case jumpHostFailed(host: String, reason: String)
     case configExpansionFailed(String)
     case tunnelAlreadyExists(UUID)
     case noAvailablePort
@@ -96,6 +93,11 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .tunnelCreationFailed(let message):
             return String(format: String(localized: "SSH tunnel creation failed: %@"), message)
+        case .negotiationFailed(let failure, let jumpHost):
+            guard let jumpHost else { return failure.explanation }
+            return String(format: String(localized: "Jump host %1$@ failed: %2$@"), jumpHost, failure.explanation)
+        case .jumpHostFailed(let host, let reason):
+            return String(format: String(localized: "Jump host %1$@ failed: %2$@"), host, reason)
         case .configExpansionFailed(let message):
             return message
         case .tunnelAlreadyExists(let id):
@@ -219,9 +221,34 @@ enum SSHTunnelError: Error, LocalizedError, Equatable, Sendable {
 }
 
 extension SSHTunnelError {
+    var recoverySuggestion: String? {
+        guard case .negotiationFailed = self else { return nil }
+        return SSHNegotiationFailure.recoverySuggestion
+    }
+
     var isUserCancelledAuthentication: Bool {
         guard case .authenticationFailed(reason: .cancelled) = self else { return false }
         return true
+    }
+
+    // The error a step on a jump host ends with, naming that hop as iOS does. A cancelled sign-in
+    // stays a cancellation, and an error that names its own host or follows a host key question
+    // keeps its words.
+    func attributed(to jumpHost: String) -> SSHTunnelError {
+        switch self {
+        case .negotiationFailed(let failure, nil):
+            return .negotiationFailed(failure, jumpHost: jumpHost)
+        case .authenticationFailed(reason: .cancelled):
+            return self
+        case .tunnelCreationFailed(let message):
+            return .jumpHostFailed(host: jumpHost, reason: message)
+        case .authenticationFailed, .channelOpenFailed:
+            return .jumpHostFailed(host: jumpHost, reason: errorDescription ?? "")
+        case .negotiationFailed, .jumpHostFailed, .configExpansionFailed, .tunnelAlreadyExists, .noAvailablePort,
+             .usernameMissing, .hostKeyVerificationFailed, .socketForwardingRefused, .forwardRefused,
+             .forwardTimedOut:
+            return self
+        }
     }
 }
 
@@ -230,8 +257,9 @@ extension SSHTunnelError: ConnectionPreflightReporting {
         switch self {
         case .configExpansionFailed, .tunnelAlreadyExists, .noAvailablePort, .usernameMissing:
             return true
-        case .tunnelCreationFailed, .authenticationFailed, .hostKeyVerificationFailed, .channelOpenFailed,
-             .socketForwardingRefused, .forwardRefused, .forwardTimedOut:
+        case .tunnelCreationFailed, .negotiationFailed, .jumpHostFailed, .authenticationFailed,
+             .hostKeyVerificationFailed, .channelOpenFailed, .socketForwardingRefused, .forwardRefused,
+             .forwardTimedOut:
             return false
         }
     }

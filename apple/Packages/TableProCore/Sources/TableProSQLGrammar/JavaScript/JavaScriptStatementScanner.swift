@@ -1,5 +1,4 @@
 import Foundation
-import TableProSQLGrammar
 
 /// Finds the top-level statements of a JavaScript program.
 ///

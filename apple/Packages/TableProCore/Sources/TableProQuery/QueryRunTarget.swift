@@ -26,6 +26,15 @@ public enum QueryRunTarget: Sendable, Equatable {
             return .statement(command.text, range: command.range)
         }
 
+        if databaseType == .mongodb {
+            guard let statement = JavaScriptStatementScanner.statementAtCursor(in: text, cursorPosition: caret) else {
+                return .nothing
+            }
+            let range = statement.contentRange
+            guard range.length > 0 else { return .nothing }
+            return .statement(source.substring(with: range), range: range)
+        }
+
         // Not statementAtCursor: it returns a comment-only segment's text as a statement.
         let located = SQLStatementScanner.locatedStatementAtCursor(
             in: text,

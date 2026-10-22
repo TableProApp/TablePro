@@ -117,6 +117,7 @@ struct QueryScriptTests {
             ("SELECT 1 -- ;\n; UPDATE t SET a = 1", .mysql, false),
             ("SELECT 1\nGO\nDELETE FROM t", .mssql, true),
             ("GET a\nDEL b", .redis, false),
+            ("db.a.find({})\ndb.b.deleteMany({})", .mongodb, false),
             (Self.issue3399, .sqlite, false),
         ]
         for (text, type, batches) in scripts {
@@ -172,6 +173,18 @@ struct QueryScriptTests {
         ])
         #expect(plan("SET k \"a\nb\"", .redis).units == [QueryScript.Unit(sql: "SET k \"a\nb\"")])
         #expect(plan(" \n ", .redis).isEmpty)
+    }
+
+    @Test("MongoDB runs one unit per top-level JavaScript statement, a semicolon in a function body kept inside it")
+    func mongoSplitsIntoStatements() {
+        #expect(plan("db.a.find({})\ndb.b.find({x: 1})", .mongodb).units == [
+            QueryScript.Unit(sql: "db.a.find({})"), QueryScript.Unit(sql: "db.b.find({x: 1})"),
+        ])
+        let body = "db.a.find({}).forEach(function (d) { var x = d.n; print(x); });"
+        #expect(plan(body, .mongodb).units == [QueryScript.Unit(sql: body)])
+        #expect(plan("db.a.find({}); // done\n", .mongodb).units == [QueryScript.Unit(sql: "db.a.find({});")])
+        #expect(plan(" \n// note\n", .mongodb).isEmpty)
+        #expect(plan("db.a.find({})\ndb.b.find({})", .mongodb).replanned(after: 0, session: nil) == nil)
     }
 
     @Test("Trimming a Redis text keeps a last argument byte Foundation counts as whitespace")

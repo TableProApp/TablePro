@@ -231,6 +231,75 @@ struct ConnectionCoordinatorCatalogTests {
         #expect(coordinator.schemas == ["public", "sales"])
     }
 
+    @Test("A database a stopped run already moved to still moves the picker and the table list")
+    func followsTheSessionDatabaseAfterAStop() async {
+        let session = usedDatabaseDriver(StubPluginDriver())
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        await coordinator.connect()
+        session.used = "archive"
+
+        let stopped = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            await coordinator.followSessionDatabase()
+        }
+        await stopped.value
+
+        #expect(coordinator.activeDatabase == "archive")
+        #expect(!coordinator.showFailureAlert)
+    }
+
+    @Test("A use a stopped request lands only when it returns still moves the picker")
+    func followsAUseLandedAfterTheRunEnded() async throws {
+        let plugin = StubPluginDriver()
+        let session = usedDatabaseDriver(plugin)
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        await coordinator.connect()
+        let (entered, enter) = AsyncStream<Void>.makeStream()
+        let (released, release) = AsyncStream<Void>.makeStream()
+        plugin.onFetchTables = {
+            guard session.used == nil else { return }
+            enter.yield()
+            for await _ in released { break }
+            session.used = "archive"
+        }
+
+        let stopped = Task { try await session.fetchTables(schema: nil) }
+        for await _ in entered { break }
+        let follow = Task { await coordinator.followSessionDatabase() }
+        release.yield()
+        _ = try await stopped.value
+        await follow.value
+
+        #expect(coordinator.activeDatabase == "archive")
+    }
+
+    @Test("While another window holds unsaved edits, a use is undone so they save where the picker says")
+    func heldEditsUndoTheUse() async {
+        let session = usedDatabaseDriver(StubPluginDriver())
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: connection, appState: appState)
+        await coordinator.connect()
+        let otherWindow = NSObject()
+        appState.setEditorHold(true, by: otherWindow, on: connection.id)
+        session.used = "archive"
+
+        await coordinator.followSessionDatabase()
+
+        #expect(coordinator.activeDatabase == "app_prod")
+        #expect(session.used == "app_prod")
+        #expect(coordinator.showFailureAlert)
+        appState.setEditorHold(false, by: otherWindow, on: connection.id)
+    }
+
+    private func usedDatabaseDriver(_ plugin: StubPluginDriver) -> UsedDatabaseDriver {
+        UsedDatabaseDriver(
+            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in true },
+            cancelsRunningRequest: { try? plugin.cancelQuery() }
+        )
+    }
+
     @Test("After a USE or a SET ROLE in the editor completion reads the session, a database switch included")
     func useKeepsCompletionOnTheSession() async {
         let session = driver(tables: ["orders"])
@@ -248,3 +317,13 @@ struct ConnectionCoordinatorCatalogTests {
     }
 }
 
+
+private final class UsedDatabaseDriver: PluginBackedDriver, @unchecked Sendable {
+    var used: String?
+    override var currentDatabase: String? { used }
+
+    override func switchDatabase(to name: String) async throws {
+        try await super.switchDatabase(to: name)
+        used = name
+    }
+}

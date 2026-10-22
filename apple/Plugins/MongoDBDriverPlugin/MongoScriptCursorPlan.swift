@@ -4,7 +4,7 @@ import Foundation
 ///
 /// A streaming export wants the shape rather than the documents, so it can hand the query to the
 /// driver's own cursor stream and page through a collection larger than memory.
-struct MongoScriptCursorPlan: Sendable {
+nonisolated struct MongoScriptCursorPlan: Sendable {
     let database: String
     let collection: String
     let isFind: Bool

@@ -188,7 +188,7 @@ struct ConnectionLibraryPublisherTests {
 
     @Test("The widget leaves out a connection this device cannot open")
     func widgetSkipsMacOnlyConnections() {
-        let mongo = DatabaseConnection(name: "Documents", type: .mongodb, sortOrder: 0)
+        let cassandra = DatabaseConnection(name: "Documents", type: .cassandra, sortOrder: 0)
         let socket = DatabaseConnection(
             name: "Local",
             type: .mysql,
@@ -198,7 +198,7 @@ struct ConnectionLibraryPublisherTests {
         let plugin = DatabaseConnection(name: "Future", type: DatabaseType(rawValue: "FuturePlugin"), sortOrder: 2)
         let postgres = connection("Orders", sortOrder: 3)
 
-        let items = ConnectionLibraryPublisher.widgetItems(for: [mongo, socket, plugin, postgres])
+        let items = ConnectionLibraryPublisher.widgetItems(for: [cassandra, socket, plugin, postgres])
 
         #expect(items.map(\.name) == ["Orders"])
     }

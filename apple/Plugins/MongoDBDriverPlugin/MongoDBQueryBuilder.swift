@@ -9,7 +9,7 @@
 import Foundation
 import TableProPluginKit
 
-struct MongoDBQueryBuilder {
+nonisolated struct MongoDBQueryBuilder {
     /// A filter row whose column is this sentinel carries a whole filter document as its value,
     /// typed by the user, instead of a field name and an operator.
     static let rawFilterColumn = "__RAW__"
@@ -59,9 +59,23 @@ struct MongoDBQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String {
-        let filterDoc = buildFilterDocument(from: queryFilters, logicMode: logicMode)
-        return decorate(
-            "\(Self.mongoCollectionAccessor(collection)).find(\(filterDoc))",
+        buildQuery(
+            collection: collection,
+            filterDocument: buildFilterDocument(from: queryFilters, logicMode: logicMode),
+            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
+        )
+    }
+
+    func buildQuery(
+        collection: String,
+        filterDocument: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
+        columns: [String] = [],
+        limit: Int = 200,
+        offset: Int = 0
+    ) -> String {
+        decorate(
+            "\(Self.mongoCollectionAccessor(collection)).find(\(filterDocument))",
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
     }

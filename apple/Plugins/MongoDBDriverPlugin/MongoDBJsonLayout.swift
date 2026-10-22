@@ -6,7 +6,7 @@ import Foundation
 /// A catalog document read through `JSONSerialization` comes back in hash order and was then
 /// written out key-sorted, which reordered a `$sort` stage, a compound index key and a validator's
 /// `properties`. Each of those orders means something to the server.
-enum MongoDBJsonLayout {
+nonisolated enum MongoDBJsonLayout {
     private static let indentUnit = "  "
 
     /// The members as one Extended JSON object on one line, in the spacing libbson uses for its

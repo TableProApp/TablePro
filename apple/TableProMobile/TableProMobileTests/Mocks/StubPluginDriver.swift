@@ -10,6 +10,9 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var rowCounts: [Int] = [1, 1, 0]
     // How many rows each writer's check after a write finds; a row means the write did not land.
     var checkRows: [Int] = []
+    var onFetchTables: (@Sendable () async -> Void)?
+    var currentDb = ""
+    private(set) var databasesAtExecute: [String] = []
 
     private(set) var boundedQueries: [(query: String, rowCap: Int)] = []
     private(set) var plainQueries: [String] = []
@@ -21,6 +24,7 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private(set) var cancelQueryCalls = 0
     private(set) var rowLookups: [(query: String, parameters: [PluginCellValue])] = []
     private(set) var checks: [(query: String, parameters: [PluginCellValue])] = []
+    private(set) var contexts: [PluginStatementContext] = []
 
     func connect() async throws {}
 
@@ -35,7 +39,23 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         plainQueries.append(query)
+        databasesAtExecute.append(currentDb)
         return scriptedResult
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        contexts.append(context)
+        return try await execute(query: query)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        contexts.append(context)
+        return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -66,7 +86,14 @@ final class StubPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return scriptedResult
     }
 
-    func fetchTables(schema: String?) async throws -> [PluginTableInfo] { [] }
+    func switchDatabase(to database: String) async throws {
+        currentDb = database
+    }
+
+    func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        await onFetchTables?()
+        return []
+    }
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] { scriptedColumns }
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] { [] }
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] { [] }

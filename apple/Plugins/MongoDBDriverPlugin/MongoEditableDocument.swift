@@ -1,7 +1,7 @@
 import Foundation
 
 /// libbson's answers the edit needs, passed in so the decisions can be made without a connection.
-protocol MongoDocumentCodec: Sendable {
+nonisolated protocol MongoDocumentCodec: Sendable {
     /// Whether `text` reads as exactly the document `canonical` holds, byte for byte in BSON.
     func isSameDocument(_ text: String, asCanonical canonical: String) -> Bool
 
@@ -14,7 +14,7 @@ protocol MongoDocumentCodec: Sendable {
 /// `isRepresentable` is libbson's own answer to whether that text reads back as the same BSON. The
 /// text alone cannot say: a stored subdocument `{"$numberInt": "5"}` prints and rereads as identical
 /// text, and rereads as an int, and every NaN prints as `"NaN"` whatever payload it carries.
-struct MongoStoredDocument: Equatable, Sendable {
+nonisolated struct MongoStoredDocument: Equatable, Sendable {
     let canonical: String
     let isRepresentable: Bool
 }
@@ -27,7 +27,7 @@ struct MongoStoredDocument: Equatable, Sendable {
 /// strength 2, and so is `NumberLong(1)` beside `1`). A sharded collection enforces that per shard, so
 /// every shard can answer with one, and a read that stopped at a count would stop on them. The read
 /// goes on until it has two exact matches, which is all the ambiguity check needs.
-struct MongoExactMatches {
+nonisolated struct MongoExactMatches {
     let identity: MongoDocumentIdentity
     private(set) var documents: [MongoStoredDocument] = []
 
@@ -47,7 +47,7 @@ struct MongoExactMatches {
 }
 
 /// Opens a stored document as the text Edit Document shows, or says why it cannot be edited.
-enum MongoEditableDocument {
+nonisolated enum MongoEditableDocument {
     /// A write command may be 16 MB plus room for the command around it, and the guarded replace
     /// carries the stored document, its signature and the replacement.
     static let commandSizeLimit = 16 * 1_024 * 1_024

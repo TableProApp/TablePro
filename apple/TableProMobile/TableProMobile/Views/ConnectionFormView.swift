@@ -106,6 +106,10 @@ struct ConnectionFormView: View {
                     oracleSection(viewModel: viewModel)
                 }
 
+                if viewModel.type == .mongodb {
+                    mongoSection(viewModel: viewModel)
+                }
+
                 if !viewModel.isFileBased {
                     Section {
                         if viewModel.type == .oracle {
@@ -440,15 +444,44 @@ struct ConnectionFormView: View {
         }
     }
 
+    private func mongoSection(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        return Section("MongoDB") {
+            TextField("Auth Database", text: $viewModel.mongoAuthSource)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+            Picker("Auth Mechanism", selection: $viewModel.mongoAuthMechanism) {
+                Text("Default").tag("")
+                Text(verbatim: "SCRAM-SHA-1").tag("SCRAM-SHA-1")
+                Text(verbatim: "SCRAM-SHA-256").tag("SCRAM-SHA-256")
+                Text(verbatim: "X.509").tag("MONGODB-X509")
+                Text("AWS IAM").tag("MONGODB-AWS")
+            }
+            TextField("Replica Set", text: $viewModel.mongoReplicaSet)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+            Toggle("Use SRV Record", isOn: $viewModel.mongoUsesSRV)
+        }
+    }
+
     @ViewBuilder
     private func serverSection(viewModel: ConnectionFormViewModel) -> some View {
         @Bindable var viewModel = viewModel
         Section {
-            TextField("Host", text: $viewModel.host)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-            TextField("Port", text: $viewModel.port)
-                .keyboardType(.numberPad)
+            if viewModel.type == .mongodb {
+                TextField("Hosts", text: $viewModel.mongoHosts)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+            } else {
+                TextField("Host", text: $viewModel.host)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                TextField("Port", text: $viewModel.port)
+                    .keyboardType(.numberPad)
+            }
             TextField("Username", text: $viewModel.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -461,6 +494,12 @@ struct ConnectionFormView: View {
         } footer: {
             if viewModel.type == .redis {
                 Text("Username is for Redis 6 and later ACL users. Leave it empty for password-only servers.")
+            } else if viewModel.type == .mongodb {
+                if let issue = viewModel.mongoHostsIssue {
+                    Text(issue)
+                } else {
+                    Text("Separate the servers of a replica set with commas.")
+                }
             }
         }
         if viewModel.offersIAM {

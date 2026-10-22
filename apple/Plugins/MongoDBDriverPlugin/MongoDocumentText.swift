@@ -8,7 +8,7 @@ import Foundation
 /// reads only the first of two documents written one after the other, and turns a top-level array
 /// into a document keyed `"0"`, `"1"`. Each of those would write something other than what the
 /// user typed without a word.
-struct MongoDocumentText: Equatable, Sendable {
+nonisolated struct MongoDocumentText: Equatable, Sendable {
     indirect enum Value: Equatable, Sendable {
         case object([Member])
         case array([Value])
@@ -94,7 +94,7 @@ struct MongoDocumentText: Equatable, Sendable {
     }
 }
 
-extension MongoDocumentText.Value {
+nonisolated extension MongoDocumentText.Value {
     /// One value read with the same strictness and depth limit as a document, and with no rule
     /// about its field names: a stored document may hold a top-level name that starts with `$`.
     init(parsing text: String) throws {
@@ -122,7 +122,7 @@ extension MongoDocumentText.Value {
     }
 }
 
-extension MongoDocumentText {
+nonisolated extension MongoDocumentText {
     static func unreadableDocument(_ reason: String) -> String {
         guard !reason.isEmpty else { return String(localized: "MongoDB cannot read this document.") }
         return String(format: String(localized: "MongoDB cannot read this document: %@"), reason)

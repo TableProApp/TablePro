@@ -810,7 +810,7 @@ private extension QueryClassifier {
         let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
         switch databaseType {
         case .mongodb:
-            return mongoClassification(StatementBlank.trimming(sql))
+            return mongoClassification(sql)
         case .elasticsearch:
             return StatementBlank.hasContent(sql) ? elasticsearchClassification(sql) : .safe
         case .etcd:

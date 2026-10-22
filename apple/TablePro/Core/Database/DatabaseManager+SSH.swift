@@ -33,6 +33,9 @@ extension DatabaseManager {
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)
         }
+        if let refusal = ConnectionTunnelError.refusal(for: connection) {
+            throw refusal
+        }
         switch enabledKinds.first {
         case .cloudflare:
             return try await buildCloudflareEffectiveConnection(for: connection, deadline: deadline)

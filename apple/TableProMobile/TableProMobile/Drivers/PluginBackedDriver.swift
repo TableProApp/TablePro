@@ -5,27 +5,103 @@ import TableProModels
 import TableProPluginKit
 
 // Runs a driver the Mac ships as a plugin, compiled into this app, the way the Mac's PluginDriverAdapter does.
-nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
+nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginBackedDriver")
 
     private let plugin: any PluginDatabaseDriver
     private let dialedHosts: [String]
     private let queryTimeoutSeconds: Int?
     private let readsOnly: @Sendable (String) -> Bool
+    private let provesReads: Bool
+    private let cancelsRunningRequest: (@Sendable () -> Void)?
+    private let requestGate = SerialRequestGate()
+    private let sessionDatabase = OSAllocatedUnfairLock<String?>(initialState: nil)
     let rowIdentity: RowIdentity
 
+    // `provesReads`: `readsOnly` is a proof rather than a guess, so a statement it passes runs marked read-only and the
+    // plugin refuses any write it makes, as the Mac's PluginStatementContext.statement does for MongoDB.
+    // `cancelsRunningRequest`: the plugin's own cancel, which stops whatever it is running, so its requests run one at
+    // a time and a cancelled one stops only itself.
     init(
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
         queryTimeoutSeconds: Int? = nil,
         rowIdentity: RowIdentity,
-        readsOnly: @escaping @Sendable (String) -> Bool
+        readsOnly: @escaping @Sendable (String) -> Bool,
+        provesReads: Bool = false,
+        cancelsRunningRequest: (@Sendable () -> Void)? = nil
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
+        self.provesReads = provesReads
+        self.cancelsRunningRequest = cancelsRunningRequest
+    }
+
+    // A cancel that lands before the plugin has started the request is cleared when it starts, so it is sent again
+    // until the request has returned.
+    func exclusively<T: Sendable>(_ request: () async throws -> T) async throws -> T {
+        guard let cancel = cancelsRunningRequest else { return try await request() }
+        try await requestGate.acquire()
+        defer { requestGate.release() }
+        let finished = OSAllocatedUnfairLock(initialState: false)
+        defer { finished.withLock { $0 = true } }
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await request()
+        } onCancel: {
+            // Under the lock, so no cancel lands once the gate has passed to the next request.
+            let cancelUnlessFinished: @Sendable () -> Bool = {
+                finished.withLock { done in
+                    if !done { cancel() }
+                    return done
+                }
+            }
+            guard !cancelUnlessFinished() else { return }
+            Task.detached {
+                repeat {
+                    try? await Task.sleep(for: .milliseconds(100))
+                } while !cancelUnlessFinished()
+            }
+        }
+    }
+
+    // The database the plugin is on once every request queued before this one has returned.
+    func settledCurrentDatabase() async throws -> String? {
+        try await exclusively { currentDatabase }
+    }
+
+    // The database the picker names, which the app's own requests run in.
+    var pinnedDatabase: String? {
+        sessionDatabase.withLock { $0 }
+    }
+
+    // A request the app makes for the database the picker names. A script's `use` can move the shell between its
+    // statements, so the request runs back there and leaves the shell where the script put it.
+    func inSessionDatabase<T: Sendable>(_ request: () async throws -> T) async throws -> T {
+        let plugin = plugin
+        return try await exclusively {
+            guard let pinned = sessionDatabase.withLock({ $0 }), let moved = currentDatabase, moved != pinned else {
+                return try await request()
+            }
+            try await plugin.switchDatabase(to: pinned)
+            let result: Result<T, Error>
+            do {
+                result = .success(try await request())
+            } catch {
+                result = .failure(error)
+            }
+            try? await plugin.switchDatabase(to: moved)
+            return try result.get()
+        }
+    }
+
+    func statementContext(_ query: String) -> PluginStatementContext {
+        var context = PluginStatementContext()
+        context.readOnly = provesReads && readsOnly(query)
+        return context
     }
 
     // MARK: - Connection
@@ -35,6 +111,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             try await LocalNetworkPermission.shared.ensureAccess(for: host)
         }
         try await plugin.connect()
+        let opened = currentDatabase
+        sessionDatabase.withLock { $0 = opened }
         guard let queryTimeoutSeconds else { return }
         // A server that refuses the limit still runs queries, as on the Mac.
         do {
@@ -55,6 +133,8 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
 
     var serverVersion: String? { plugin.serverVersion }
 
+    var currentDatabase: String? { nil }
+
     func escapeStringLiteral(_ value: String) -> String {
         plugin.escapeStringLiteral(value)
     }
@@ -62,22 +142,33 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
     // MARK: - Queries
 
     func execute(query: String) async throws -> QueryResult {
-        QueryResult(from: try await plugin.execute(query: query))
+        let context = statementContext(query)
+        return QueryResult(from: try await exclusively { try await plugin.execute(query: query, context: context) })
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
+        stream(query: query, options: options, bindsToSession: false)
+    }
+
+    func stream(query: String, options: StreamOptions, bindsToSession: Bool) -> AsyncThrowingStream<StreamElement, Error> {
         let plugin = plugin
         let isRead = readsOnly(query)
+        let context = statementContext(query)
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let result: PluginQueryResult
-                    // Only a read may be bounded at its source: bounding abandons the rest of the statement.
-                    if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
-                        result = bounded
-                    } else {
-                        result = try await plugin.executeUserQuery(query: query, rowCap: options.maxRows, parameters: nil)
+                    let request: () async throws -> PluginQueryResult = {
+                        // Only a read may be bounded at its source: bounding abandons the rest of the statement.
+                        if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
+                            return bounded
+                        }
+                        return try await plugin.executeUserQuery(
+                            query: query, rowCap: options.maxRows, parameters: nil, context: context
+                        )
                     }
+                    let result = bindsToSession
+                        ? try await self.inSessionDatabase(request)
+                        : try await self.exclusively(request)
                     Self.emit(result, options: options, into: continuation)
                     continuation.finish()
                 } catch is CancellationError {
@@ -172,40 +263,55 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
 
     // MARK: - Catalog
 
+    // A catalog read shares the connection a cancel reaches, so it takes its turn with statements: a Stop for a
+    // statement queued behind it would otherwise end the read.
     func fetchTables(schema: String?) async throws -> [TableInfo] {
-        try await plugin.fetchTables(schema: schema).map(TableInfo.init(from:))
+        let plugin = plugin
+        return try await inSessionDatabase { try await plugin.fetchTables(schema: schema) }.map(TableInfo.init(from:))
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        try await plugin.fetchColumns(table: table, schema: schema).enumerated().map { index, column in
-            ColumnInfo(from: column, ordinalPosition: index)
-        }
+        let plugin = plugin
+        return try await inSessionDatabase { try await plugin.fetchColumns(table: table, schema: schema) }
+            .enumerated().map { index, column in ColumnInfo(from: column, ordinalPosition: index) }
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        try await plugin.fetchIndexes(table: table, schema: schema).map(IndexInfo.init(from:))
+        let plugin = plugin
+        return try await inSessionDatabase { try await plugin.fetchIndexes(table: table, schema: schema) }
+            .map(IndexInfo.init(from:))
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [ForeignKeyInfo] {
-        try await plugin.fetchForeignKeys(table: table, schema: schema).map(ForeignKeyInfo.init(from:))
+        let plugin = plugin
+        return try await inSessionDatabase { try await plugin.fetchForeignKeys(table: table, schema: schema) }
+            .map(ForeignKeyInfo.init(from:))
     }
 
     func fetchDatabases() async throws -> [String] {
-        try await plugin.fetchDatabases()
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchDatabases() }
     }
 
+    // A MongoDB switch rebinds the shell, which waits for a running script, so it takes its turn too.
     func switchDatabase(to name: String) async throws {
-        try await plugin.switchDatabase(to: name)
+        let plugin = plugin
+        try await exclusively {
+            try await plugin.switchDatabase(to: name)
+            sessionDatabase.withLock { $0 = name }
+        }
     }
 
     var supportsSchemas: Bool { plugin.supportsSchemas }
 
     func fetchSchemas() async throws -> [String] {
-        try await plugin.fetchSchemas()
+        let plugin = plugin
+        return try await exclusively { try await plugin.fetchSchemas() }
     }
 
     func switchSchema(to name: String) async throws {
-        try await plugin.switchSchema(to: name)
+        let plugin = plugin
+        try await exclusively { try await plugin.switchSchema(to: name) }
     }
 
     var currentSchema: String? { plugin.currentSchema }
@@ -288,30 +394,38 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
 
     // A write with a lookup runs only on the rows the lookup finds, the way the Mac's DataWriteExecutor runs it.
     func run(_ writes: [PluginRowWrite]) async throws -> Int {
-        var affected = 0
-        for write in writes {
-            var parameters = write.parameters
-            if let lookup = write.lookup {
-                let found = try await rows(lookup.query, lookup.parameters)
-                guard found.count == lookup.rowCount else {
-                    throw found.count < lookup.rowCount ? RowChangeRefusal.rowNotFound : RowChangeRefusal.identicalRows
+        let plugin = plugin
+        return try await inSessionDatabase {
+            var affected = 0
+            for write in writes {
+                var parameters = write.parameters
+                if let lookup = write.lookup {
+                    let found = try await Self.rows(lookup.query, lookup.parameters, on: plugin)
+                    guard found.count == lookup.rowCount else {
+                        throw found.count < lookup.rowCount ? RowChangeRefusal.rowNotFound : RowChangeRefusal.identicalRows
+                    }
+                    if lookup.pinsRows {
+                        parameters += found.flatMap { $0 }
+                    }
                 }
-                if lookup.pinsRows {
-                    parameters += found.flatMap { $0 }
+                let result = parameters.isEmpty
+                    ? try await plugin.execute(query: write.statement)
+                    : try await plugin.executeParameterized(query: write.statement, parameters: parameters)
+                affected += max(result.rowsAffected, 0)
+                if let lookup = write.lookup, let check = lookup.check,
+                   try await !Self.rows(check, lookup.checkParameters, on: plugin).isEmpty {
+                    throw RowChangeRefusal.notApplied
                 }
             }
-            let result = parameters.isEmpty
-                ? try await plugin.execute(query: write.statement)
-                : try await plugin.executeParameterized(query: write.statement, parameters: parameters)
-            affected += max(result.rowsAffected, 0)
-            if let check = write.lookup?.check, try await !rows(check, write.lookup?.checkParameters ?? []).isEmpty {
-                throw RowChangeRefusal.notApplied
-            }
+            return affected
         }
-        return affected
     }
 
-    private func rows(_ query: String, _ parameters: [PluginCellValue]) async throws -> [[PluginCellValue]] {
+    private static func rows(
+        _ query: String,
+        _ parameters: [PluginCellValue],
+        on plugin: any PluginDatabaseDriver
+    ) async throws -> [[PluginCellValue]] {
         parameters.isEmpty
             ? try await plugin.execute(query: query).rows
             : try await plugin.executeParameterized(query: query, parameters: parameters).rows
@@ -329,7 +443,10 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             return "\(quoted) = ?"
         }
         let query = "SELECT 1 FROM \(plugin.quoteIdentifier(table)) WHERE \(conditions.joined(separator: " AND ")) LIMIT 2"
-        return try await plugin.executeParameterized(query: query, parameters: parameters).rows.count
+        let plugin = plugin
+        return try await inSessionDatabase {
+            try await plugin.executeParameterized(query: query, parameters: parameters).rows.count
+        }
     }
 
     private static var cannotWrite: DatabaseError {
@@ -347,7 +464,23 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
         inserted: [Int: [PluginCellValue]] = [:],
         deleted: Set<Int> = []
     ) throws -> [PluginRowWrite] {
-        guard let writes = try plugin.generateRowWrites(
+        guard let writes = try pluginRowWrites(
+            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted
+        ) else {
+            throw Self.cannotWrite
+        }
+        return writes
+    }
+
+    func pluginRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        changes: [PluginRowChange],
+        inserted: [Int: [PluginCellValue]],
+        deleted: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        try plugin.generateRowWrites(
             table: table,
             schema: schema,
             columns: columns,
@@ -357,10 +490,7 @@ nonisolated final class PluginBackedDriver: DriverRowWriting, @unchecked Sendabl
             deletedRowIndices: deleted,
             insertedRowIndices: Set(inserted.keys),
             context: PluginRowWriteContext()
-        ) else {
-            throw Self.cannotWrite
-        }
-        return writes
+        )
     }
 }
 

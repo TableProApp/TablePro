@@ -1,5 +1,6 @@
 import Foundation
 import TableProModels
+import TableProPluginKit
 import TableProRedisCore
 import TableProSQLGrammar
 
@@ -34,6 +35,12 @@ public enum SQLWriteClassifier {
     public static func isWriteQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
         if databaseType == .redis {
             return RedisCommandSplitter.commands(in: sql).contains { redisWrites($0.text) }
+        }
+        if databaseType == .mongodb {
+            let verdict = MongoStatementClassifier.verdict(
+                sql, shadowsCollection: MongoCollectionAccessor.isShadowedByDatabaseMember
+            )
+            return verdict.tier != .read
         }
         let readings = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil)
         return readings.distinct(for: sql).contains { grammar in

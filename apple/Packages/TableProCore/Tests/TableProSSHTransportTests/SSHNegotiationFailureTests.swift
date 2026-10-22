@@ -1,8 +1,3 @@
-//
-//  SSHNegotiationFailureTests.swift
-//  TableProSSHTransportTests
-//
-
 import Foundation
 import Testing
 
@@ -82,5 +77,54 @@ struct SSHNegotiationFailureTests {
         #expect(failure.serverSoftware == "OpenSSH_10.3")
         #expect(failure.supported == ["curve25519-sha256"])
         #expect(failure.supportedHostKeys == ["ssh-ed25519"])
+    }
+
+    @Test(
+        "The explanation names the stage and what TablePro supports for it",
+        arguments: [
+            (SSHNegotiationFailure.Stage.keyExchangeOrHostKey, "no key exchange or host key method in common", "key exchange methods"),
+            (.cipher, "no cipher in common", "these ciphers"),
+            (.mac, "no MAC algorithm in common", "these MAC algorithms"),
+        ]
+    )
+    func explanationNamesTheStage(stage: SSHNegotiationFailure.Stage, mismatch: String, supportedList: String) {
+        let failure = SSHNegotiationFailure(
+            stage: stage,
+            serverSoftware: "OpenSSH_10.3",
+            supported: ["first-method", "second-method"],
+            supportedHostKeys: []
+        )
+
+        #expect(failure.explanation.contains(mismatch))
+        #expect(failure.explanation.contains("The server runs OpenSSH_10.3."))
+        #expect(failure.explanation.contains(supportedList))
+        #expect(failure.explanation.contains("first-method"))
+        #expect(failure.explanation.contains("second-method"))
+    }
+
+    @Test("A key exchange failure also lists the host key types")
+    func explanationListsHostKeys() {
+        let failure = SSHNegotiationFailure(
+            stage: .keyExchangeOrHostKey,
+            serverSoftware: nil,
+            supported: ["curve25519-sha256"],
+            supportedHostKeys: ["ssh-ed25519", "rsa-sha2-512"]
+        )
+
+        #expect(failure.explanation.contains("host key types"))
+        #expect(failure.explanation.contains("rsa-sha2-512"))
+        #expect(!failure.explanation.contains("The server runs"))
+    }
+
+    @Test("An undetermined stage says only that the encryption could not be agreed")
+    func explanationForUndeterminedStage() {
+        let failure = SSHNegotiationFailure(
+            stage: .undetermined,
+            serverSoftware: nil,
+            supported: ["ignored"],
+            supportedHostKeys: []
+        )
+
+        #expect(failure.explanation == "TablePro and the SSH server could not agree on how to encrypt the connection.")
     }
 }

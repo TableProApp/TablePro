@@ -106,7 +106,13 @@ pub struct Collected(Arc<Mutex<Vec<ResultEvent>>>);
 
 impl Collected {
     pub fn sink(&self) -> Box<dyn ResultSink> {
-        Box::new(CollectingSink(self.clone()))
+        Box::new(CollectingSink(self.clone(), None))
+    }
+
+    /// Cancels `cancel` when the first result set starts, as a Stop
+    /// pressed while the first rows come in.
+    pub fn cancelling(&self, cancel: CancellationToken) -> Box<dyn ResultSink> {
+        Box::new(CollectingSink(self.clone(), Some(cancel)))
     }
 
     pub fn events(&self) -> Vec<ResultEvent> {
@@ -125,11 +131,14 @@ impl Collected {
     }
 }
 
-struct CollectingSink(Collected);
+struct CollectingSink(Collected, Option<CancellationToken>);
 
 #[async_trait]
 impl ResultSink for CollectingSink {
     async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+        if let (ResultEvent::ResultSetStarted { .. }, Some(cancel)) = (&event, &self.1) {
+            cancel.cancel();
+        }
         self.0.0.lock().unwrap_or_else(PoisonError::into_inner).push(event);
         SinkFlow::Continue
     }

@@ -8,7 +8,7 @@
 import Foundation
 import TableProPluginKit
 
-struct MongoStreamProjection {
+nonisolated struct MongoStreamProjection {
     static let sampleSize = 200
 
     let columns: [String]

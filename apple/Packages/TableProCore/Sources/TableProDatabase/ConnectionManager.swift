@@ -106,7 +106,7 @@ public final class ConnectionManager: @unchecked Sendable {
             let session = ConnectionSession(
                 connectionId: connection.id,
                 driver: driver,
-                activeDatabase: connection.database,
+                activeDatabase: connection.database.isEmpty ? driver.currentDatabase ?? "" : connection.database,
                 status: .connected
             )
             // As the session dialed: through the tunnel's port, with its TLS and verify-host overrides.

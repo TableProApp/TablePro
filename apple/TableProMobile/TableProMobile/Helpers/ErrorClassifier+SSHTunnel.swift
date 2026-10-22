@@ -1,4 +1,5 @@
 import Foundation
+import TableProSSHTransport
 
 // By case, because a translated message may hold none of the words the substring rules look for.
 // nil sends the error on to the text rules, which still give timeouts the Local Network recovery.
@@ -6,10 +7,7 @@ nonisolated extension ErrorClassifier {
     static func sshTunnelFailure(_ error: SSHTunnelError) -> AppError? {
         switch error {
         case .negotiationFailed:
-            return tunnelFailed(
-                error,
-                recovery: String(localized: "Ask the SSH server's administrator to turn on a method TablePro supports.")
-            )
+            return tunnelFailed(error, recovery: SSHNegotiationFailure.recoverySuggestion)
         case .usernameMissing:
             return tunnelFailed(
                 error,

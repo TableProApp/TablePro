@@ -10,6 +10,7 @@ struct FilterSheetView: View {
     @Binding var logicMode: FilterLogicMode
     let columns: [ColumnInfo]
     let databaseType: DatabaseType
+    var operators: [FilterOperator] = FilterOperator.allCases
     let onApply: () -> Void
     let onClear: () -> Void
 
@@ -53,7 +54,7 @@ struct FilterSheetView: View {
                             }
 
                             Picker("Operator", selection: binding.filterOperator) {
-                                ForEach(FilterOperator.allCases, id: \.self) { op in
+                                ForEach(operators, id: \.self) { op in
                                     Text(op.displayName).tag(op)
                                 }
                             }

@@ -36,6 +36,15 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var networkEncryption: OracleConnectionOptions.NetworkEncryption
     }
 
+    // The fields the Mac's MongoDB plugin declares that a connection needs to open: `hosts` stands in for Host and Port.
+    nonisolated struct MongoOptions: Equatable, Sendable {
+        var hosts: String
+        var authSource: String
+        var authMechanism: String
+        var replicaSet: String
+        var usesSRV: Bool
+    }
+
     nonisolated struct IAMOptions: Equatable, Sendable {
         var method: IAMSignIn?
         var region: String
@@ -58,6 +67,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var sslMode: SSLModeChoice?
     var sshTunnel: SSHTunnel?
     var oracle: OracleOptions?
+    var mongo: MongoOptions?
     var iam: IAMOptions?
 
     static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
@@ -88,6 +98,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.sslMode) { applySSLMode(to: &connection) }
         if changed(\.sshTunnel) { applySSHTunnel(to: &connection, changedSince: opening?.sshTunnel) }
         if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
+        if changed(\.mongo) { applyMongoOptions(to: &connection, changedSince: opening?.mongo) }
         if changed(\.iam) { applyIAMOptions(to: &connection, changedSince: opening?.iam) }
         return connection
     }
@@ -213,6 +224,20 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.networkEncryption) {
             connection.additionalFields[Key.networkEncryption] = oracle.networkEncryption.rawValue
         }
+    }
+
+    private func applyMongoOptions(to connection: inout DatabaseConnection, changedSince opening: MongoOptions?) {
+        guard let mongo else { return }
+        func changed<Value: Equatable>(_ field: KeyPath<MongoOptions, Value>) -> Bool {
+            Self.differs(field, from: opening, to: mongo)
+        }
+
+        typealias Plan = MongoDBDialPlan
+        if changed(\.hosts) { connection.additionalFields[Plan.hostsField] = mongo.hosts }
+        if changed(\.authSource) { connection.additionalFields[Plan.authSourceField] = mongo.authSource }
+        if changed(\.authMechanism) { connection.additionalFields[Plan.authMechanismField] = mongo.authMechanism }
+        if changed(\.replicaSet) { connection.additionalFields[Plan.replicaSetField] = mongo.replicaSet }
+        if changed(\.usesSRV) { connection.additionalFields[Plan.srvField] = mongo.usesSRV ? "true" : "false" }
     }
 
     private func applyIAMOptions(to connection: inout DatabaseConnection, changedSince opening: IAMOptions?) {

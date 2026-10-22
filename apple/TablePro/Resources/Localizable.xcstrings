@@ -220,6 +220,10 @@
     "Also drop the columns, functions and other objects that use this type" : {
 
     },
+    "Ask the SSH server's administrator to turn on a method TablePro supports." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "At the End" : {
 
     },
@@ -376,7 +380,14 @@
     "Inner Join" : {
 
     },
+    "It supports these host key types: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Joins" : {
+
+    },
+    "Jump host %1$@ failed: %2$@" : {
 
     },
     "KB" : {
@@ -606,6 +617,34 @@
     "Table Data" : {
 
     },
+    "TablePro and the SSH server could not agree on how to encrypt the connection." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro and the SSH server have no cipher in common." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro and the SSH server have no key exchange or host key method in common." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro and the SSH server have no MAC algorithm in common." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro supports these ciphers: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro supports these key exchange methods: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "TablePro supports these MAC algorithms: %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "That connection no longer exists in TablePro." : {
 
     },
@@ -628,6 +667,10 @@
     },
     "The changes were saved, but the type could not be read back. Reload before editing it again." : {
 
+    },
+    "The client certificate and key could not be written to a temporary file." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The column “%1$@” is no longer in “%2$@”." : {
 
@@ -686,6 +729,16 @@
     "The server refused a change. The changes before it were saved." : {
 
     },
+    "The server runs %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The SSH server closed the connection during the handshake." : {
+
+    },
+    "The SSH server ended the connection during the handshake: %@" : {
+
+    },
     "The structure of a table in an attached database cannot be changed here." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -710,6 +763,10 @@
     },
     "This change does not apply to this kind of type." : {
 
+    },
+    "This _id reads as more than one value type in this collection, such as text and an ObjectId, so TablePro cannot tell which document the row names. Use a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
 
@@ -25076,6 +25133,9 @@
     "an RFC 3339 time such as 2026-10-12T08:00:00Z" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "An SRV record names servers the tunnel cannot reach, so the connection would go around it. Turn the tunnel off, or list the servers under Hosts and turn off Use SRV Record." : {
+
     },
     "An SSM target is required, such as i-0123456789abcdef0" : {
       "localizations" : {

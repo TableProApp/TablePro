@@ -29,6 +29,23 @@ struct ConnectionManagerTests {
         #expect(retrieved != nil)
     }
 
+    @Test("A connection naming no database takes the one the driver opened, and a named one keeps its name")
+    func sessionTakesTheDriversDatabase() async throws {
+        let factory = MockDriverFactory()
+        let driver = MockDatabaseDriver()
+        driver.currentDatabase = "app"
+        factory.drivers["mock"] = driver
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore())
+
+        let unnamed = try await manager.connect(DatabaseConnection(name: "A", type: DatabaseType(rawValue: "mock")))
+        let named = try await manager.connect(
+            DatabaseConnection(name: "B", type: DatabaseType(rawValue: "mock"), database: "reports")
+        )
+
+        #expect(unnamed.activeDatabase == "app")
+        #expect(named.activeDatabase == "reports")
+    }
+
     @Test("Disconnect removes session")
     func disconnectRemovesSession() async throws {
         let factory = MockDriverFactory()

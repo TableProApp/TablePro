@@ -111,5 +111,5 @@ SQLite's pragmas do not report a foreign key's constraint name, so the definitio
 - A script is split where SQLite itself would end a statement, so the semicolons inside a trigger body do not end it. Text the splitter cannot finish, such as an unterminated string, goes to SQLite whole, so the error is SQLite's own. The splitter is tested against `sqlite3_complete` (`tests/script_plan_matches_sqlite3_complete.rs`).
 - Each statement is prepared first, so a `SELECT` that finds nothing still has its columns. A column with no declared type gets its type from the first row, sent as `ResultEvent::ColumnsResolved`.
 - The row limit stops the read one row past the limit, and the set ends with `Truncation::ReadPastLimit`. SQLite computes a row only when it is stepped, so the rest of the result is never produced.
-- A stop raises the run's flag and gives the statement the cancel grace to notice it; past that its read is dropped.
+- A stop raises the run's flag and gives the statement the cancel grace to notice it; past that its read is dropped. The flag reaches a statement only every 1,000 instructions, so the run also reads it before each statement and starts none after a stop. A run stopped between statements reads as `Cancelled`, or `TimedOut { server_cancelled: false }` at its deadline.
 - The transaction state after a run comes from `sqlite3_get_autocommit`.

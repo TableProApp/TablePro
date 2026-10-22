@@ -11,7 +11,7 @@ import os
 import TableProNumberFormatting
 import TableProPluginKit
 
-struct MongoDBStatementGenerator {
+nonisolated struct MongoDBStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBStatementGenerator")
 
     let collectionName: String
@@ -20,10 +20,9 @@ struct MongoDBStatementGenerator {
     /// Kinds the collection's validator declares. The server rejects any other type for these
     /// fields, so they outrank what the sampled documents happen to hold.
     var declaredKinds: [String: BsonValueKind] = [:]
-    /// The kind every sampled `_id` shares, or nil when they differ. An `_id` filter has to carry the
-    /// row's own type, and a majority kind would quote an ObjectId in a mostly-string collection and
-    /// match nothing.
-    var identityKind: BsonValueKind?
+    // Every `_id` kind the finds of this collection held, or nil before any. An `_id` filter has to carry the row's own
+    // type, and a majority kind would quote an ObjectId in a mostly-string collection and match nothing.
+    var identityKinds: Set<BsonValueKind>?
     /// Every kind each field held in the documents read, which says whether a cell showing `{` or
     /// `[` holds a document or an array or a string that reads the same.
     var fieldKinds: MongoDBFieldKinds = .empty
@@ -340,6 +339,11 @@ struct MongoDBStatementGenerator {
 
     // MARK: - Values
 
+    // The filter a write to a row with this `_id` text names, so a read finds the document a write would change.
+    func identityFilter(forIdText text: String) throws -> String {
+        "{\"_id\": \(try idValueJson(.text(text)))}"
+    }
+
     private func identityJson(of change: PluginRowChange) throws -> String {
         guard let idIndex = idColumnIndex, let originalRow = change.originalRow, idIndex < originalRow.count else {
             throw MongoDBWriteRefusal.missingIdentity
@@ -439,14 +443,21 @@ struct MongoDBStatementGenerator {
             if let document = try documentIdJson(text) {
                 return document
             }
-            return idValueJson(text)
+            return try idValueJson(text)
         }
+    }
+
+    // The validator's `_id` kind, else the one kind every find held.
+    private var uniformIdentityKind: BsonValueKind? {
+        if let kind = declaredKinds[MongoDBCollectionDDL.idField] { return kind }
+        guard let identityKinds, identityKinds.count == 1 else { return nil }
+        return identityKinds.first
     }
 
     /// An embedded document compares field by field in order, so a document `_id` has to be sent in
     /// the order it is stored, which is the order the grid now shows.
     private func documentIdJson(_ text: String) throws -> String? {
-        guard (declaredKinds[MongoDBCollectionDDL.idField] ?? identityKind) == .document,
+        guard uniformIdentityKind == .document,
               let parsed = try? MongoDocumentText.Value(parsing: text), case .object = parsed else {
             return nil
         }
@@ -456,11 +467,15 @@ struct MongoDBStatementGenerator {
     /// An `_id` is matched by value and type together, so a string `_id` of `1001` written as a
     /// number matches no document. The column's own kind decides when it is known; the text's
     /// shape is only the fallback.
-    private func idValueJson(_ idValue: String) -> String {
+    private func idValueJson(_ idValue: String) throws -> String {
         if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
             return binary
         }
-        let idKind = declaredKinds["_id"] ?? identityKind
+        let idKind = uniformIdentityKind
+        if idKind == nil, let held = identityKinds, held.count > 1,
+           let reading = try heldIdentityJson(idValue, held: held) {
+            return reading
+        }
         switch idKind {
         case .string:
             return "\"\(escapeJsonString(idValue))\""
@@ -478,6 +493,55 @@ struct MongoDBStatementGenerator {
             return integerJson(idValue)
         }
         return "\"\(escapeJsonString(idValue))\""
+    }
+
+    // The `_id` kinds the documents held, when they differ: the one value this text reads as among them. Text that
+    // reads as two values refuses the write. The `_id` index matches numbers by value, so the kinds an integer text
+    // reads as exactly are one value, written in the narrowest of them.
+    private func heldIdentityJson(_ text: String, held: Set<BsonValueKind>) throws -> String? {
+        var readings: [IdentityValue: String] = [:]
+        for kind in Self.identityReadingOrder where held.contains(kind) {
+            guard let (value, json) = try identityReading(text, as: kind), readings[value] == nil else { continue }
+            readings[value] = json
+        }
+        guard readings.count <= 1 else { throw MongoDBWriteRefusal.ambiguousIdentity }
+        return readings.values.first
+    }
+
+    private enum IdentityValue: Hashable {
+        case string, objectId, date, boolean, integer, double, decimal, document
+    }
+
+    private static let identityReadingOrder: [BsonValueKind] = [
+        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double, .document
+    ]
+
+    private func identityReading(_ text: String, as kind: BsonValueKind) throws -> (IdentityValue, String)? {
+        let isInteger = Int64(text) != nil
+        switch kind {
+        case .string:
+            return (.string, "\"\(escapeJsonString(text))\"")
+        case .objectId:
+            return typedJson(text, kind: kind).map { (.objectId, $0) }
+        case .date:
+            return typedJson(text, kind: kind).map { (.date, $0) }
+        case .boolean:
+            return text == "true" || text == "false" ? (.boolean, text) : nil
+        case .int32, .int64:
+            return typedJson(text, kind: kind).map { (.integer, $0) }
+        case .decimal128:
+            return typedJson(text, kind: kind).map { (isInteger ? .integer : .decimal, $0) }
+        case .double:
+            // A double shows its shortest text, so text that parses to a double showing other text came from no double.
+            guard let json = typedJson(text, kind: kind), let parsed = Double(text),
+                  NumberText.text(for: parsed) == text else { return nil }
+            return (isInteger ? .integer : .double, json)
+        case .document:
+            guard let parsed = try? MongoDocumentText.Value(parsing: text), case .object = parsed else { return nil }
+            return (.document, try shellJson(parsed, field: MongoDBCollectionDDL.idField))
+        default:
+            return nil
+        }
     }
 
     private func kind(of field: String) -> BsonValueKind? {

@@ -161,6 +161,7 @@ struct DataBrowserView: View {
                     logicMode: $viewModel.filterLogicMode,
                     columns: columns,
                     databaseType: connection.type,
+                    operators: (session?.driver as? any DriverQueryBuilding)?.filterOperators ?? FilterOperator.allCases,
                     onApply: { Task { await viewModel.applyFilters() } },
                     onClear: { Task { await viewModel.clearFilters() } }
                 )
@@ -390,7 +391,7 @@ struct DataBrowserView: View {
     private func rowContextMenu(cells: [Cell]) -> some View {
         if DataBrowserViewModel.canComplete(cells) {
             Menu("Share Row") {
-                ForEach(ExportFormat.allCases) { format in
+                ForEach(ExportFormat.offered(for: connection.type)) { format in
                     Button(format.rawValue) {
                         exportCompleted([cells]) { exportColumns, completed in
                             shareText = try ClipboardExporter.exportRow(
@@ -405,7 +406,7 @@ struct DataBrowserView: View {
             }
             .disabled(isCompletingCells)
             Menu("Copy Row") {
-                ForEach(ExportFormat.allCases) { format in
+                ForEach(ExportFormat.offered(for: connection.type)) { format in
                     Button(format.rawValue) {
                         exportCompleted([cells]) { exportColumns, completed in
                             let text = try ClipboardExporter.exportRow(
@@ -450,7 +451,7 @@ struct DataBrowserView: View {
                     Divider()
                 }
                 Section("Export") {
-                    ForEach(ExportFormat.allCases) { format in
+                    ForEach(ExportFormat.offered(for: connection.type)) { format in
                         Button {
                             exportCompleted(viewModel.window.rows.map(\.cells)) { exportColumns, completed in
                                 let text = try ClipboardExporter.exportRows(

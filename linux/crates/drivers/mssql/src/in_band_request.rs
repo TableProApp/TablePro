@@ -252,7 +252,7 @@ async fn stopped(
     match halt {
         Halt::Unsent | Halt::Finished => {
             let clean = !roll_back || roll_back_open(client, until).await;
-            (DriverError::Cancelled, clean)
+            (stop_error(watch.request(), None), clean)
         }
         Halt::Boundary | Halt::MidToken => {
             let answer = attention(client, until).await;
@@ -260,14 +260,22 @@ async fn stopped(
                 Answer::Unanswered => StopProgress::Failed,
                 Answer::Acknowledged | Answer::Garbled => StopProgress::Delivered,
             });
-            match answer {
-                Answer::Acknowledged => {
-                    let clean = halt == Halt::Boundary && (!roll_back || roll_back_open(client, until).await);
-                    (DriverError::Cancelled, clean)
-                }
-                Answer::Garbled | Answer::Unanswered => (unconfirmed_stop(watch.request()), false),
-            }
+            let clean = match answer {
+                Answer::Acknowledged => halt == Halt::Boundary && (!roll_back || roll_back_open(client, until).await),
+                Answer::Garbled | Answer::Unanswered => false,
+            };
+            (stop_error(watch.request(), Some(answer)), clean)
         }
+    }
+}
+
+/// Only an acknowledged attention says the server stopped the request.
+/// One that was never sent, or ended on its own while the stop waited
+/// for a boundary, ran as far as it was going to.
+fn stop_error(request: &StopRequest, attention: Option<Answer>) -> DriverError {
+    match attention {
+        Some(Answer::Acknowledged) => DriverError::Cancelled,
+        Some(Answer::Garbled | Answer::Unanswered) | None => unconfirmed_stop(request),
     }
 }
 
@@ -403,6 +411,23 @@ mod tests {
             .await;
 
         assert!(matches!(outcome, Err(Interrupt::Stopped(Halt::Finished))));
+    }
+
+    #[test]
+    fn only_an_acknowledged_attention_reads_as_the_server_stopping_it() {
+        let deadline = StopRequest::new();
+        deadline.request(StopReason::DeadlineElapsed);
+        let unconfirmed = DriverError::Timeout {
+            phase: tablepro_core::TimeoutPhase::Statement,
+            server_cancelled: false,
+        };
+
+        assert_eq!(
+            stop_error(&deadline, Some(Answer::Acknowledged)),
+            DriverError::Cancelled
+        );
+        assert_eq!(stop_error(&deadline, None), unconfirmed);
+        assert_eq!(stop_error(&deadline, Some(Answer::Unanswered)), unconfirmed);
     }
 
     #[tokio::test]

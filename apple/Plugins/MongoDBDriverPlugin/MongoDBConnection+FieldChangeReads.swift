@@ -19,7 +19,7 @@ import TableProPluginKit
 /// do. libmongoc 1.28 sends `listCollections` and `listIndexes` there itself: both build their
 /// cursor with no read preference, which it resolves to primary, as the enumeration specs require.
 /// An aggregation would take the connection's instead, so each one here names the primary.
-extension MongoDBConnection {
+nonisolated extension MongoDBConnection {
     func collectionInfoJson(database: String, collection: String) async throws -> String? {
         let filter = MongoCollectionInfo.filterJson(for: collection)
         return try await readCatalog { connection, client in
@@ -227,7 +227,7 @@ extension MongoDBConnection {
     }
 }
 
-extension MongoWriteConcern {
+nonisolated extension MongoWriteConcern {
     init(client: OpaquePointer) {
         guard let concern = mongoc_client_get_write_concern(client) else {
             self = .serverDefault

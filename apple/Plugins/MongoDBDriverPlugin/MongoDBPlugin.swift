@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "MongoDB Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "MongoDB support via libmongoc C driver"

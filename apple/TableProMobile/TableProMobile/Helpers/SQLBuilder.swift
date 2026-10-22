@@ -397,8 +397,10 @@ nonisolated enum SQLBuilder {
         return "ORDER BY " + clauses.joined(separator: ", ")
     }
 
+    // MongoDB has no SQL dialect; its plugin folds case in the filters it builds, as MongoDBPlugin declares.
     static func caseSensitivityStyle(for type: DatabaseType) -> SQLDialectDescriptor.CaseSensitivityStyle {
-        dialectDescriptor(for: type).caseSensitivityStyle
+        guard type != .mongodb else { return .driverManaged }
+        return dialectDescriptor(for: type).caseSensitivityStyle
     }
 
     // Mirrors each driver plugin's dialect on the Mac: iOS has no plugin bundle to ask. A type that falls to the

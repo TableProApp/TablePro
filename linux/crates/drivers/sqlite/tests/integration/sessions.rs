@@ -10,7 +10,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{TestFile, apply, batch, call, connect, query, run, run_with, statement};
+use crate::support::{Collected, TestFile, apply, batch, call, connect, query, run, run_with, statement};
 
 const UNBOUNDED: &str = "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) SELECT count(*) FROM r";
 
@@ -118,6 +118,42 @@ async fn recursive_cte_cancelled() {
     assert_eq!(session.state(), EditorSessionState::Ready);
     let (after, _) = run(session.as_ref(), "SELECT 1").await;
     assert_eq!(after.end, RunEnd::Completed);
+    session.close().await;
+    connection.close().await.unwrap();
+}
+
+/// The interrupt reaches a statement only every thousand instructions,
+/// and the DELETE needs fewer, so only not starting it keeps the row.
+#[tokio::test]
+async fn a_stop_during_one_statement_runs_nothing_after_it() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+    let (created, _) = run(
+        session.as_ref(),
+        "CREATE TABLE t (id INTEGER PRIMARY KEY); INSERT INTO t VALUES (1)",
+    )
+    .await;
+    assert_eq!(created.end, RunEnd::Completed);
+    let cancel = CancellationToken::new();
+    let collected = Collected::default();
+
+    let summary = session
+        .run(
+            UserSql::new("SELECT 1; DELETE FROM t"),
+            RunOptions::new(cancel.clone()),
+            collected.cancelling(cancel),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(summary.end, RunEnd::Cancelled);
+    assert_eq!(session.state(), EditorSessionState::Ready);
+    let (_, counted) = run(session.as_ref(), "SELECT count(*) FROM t").await;
+    assert_eq!(counted.rows(), vec![vec![Value::Int(1)]]);
     session.close().await;
     connection.close().await.unwrap();
 }

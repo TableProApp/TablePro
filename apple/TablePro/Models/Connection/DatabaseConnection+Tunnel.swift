@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 
 extension DatabaseConnection {

@@ -1,6 +1,6 @@
 import Foundation
 
-enum MongoDBCreateDatabasePlan {
+nonisolated enum MongoDBCreateDatabasePlan {
     static let firstCollectionFieldId = "mongoFirstCollection"
 
     static func firstCollectionName(from values: [String: String], databaseName: String) -> String {

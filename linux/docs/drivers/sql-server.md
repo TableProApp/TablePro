@@ -70,6 +70,8 @@ tiberius borrows its client for the whole of a request, so nothing outside the t
 2. sends the attention and waits up to half of the grace for the server's acknowledgement;
 3. on a workspace connection, rolls back any transaction the request left open (`IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION`), because an attention does not end one. An editor session keeps the user's transaction.
 
+A request that ends on its own within that quarter gets no attention, and reads as `Cancelled`, or `Timeout { server_cancelled: false }` when the deadline asked for it, since the server stopped nothing.
+
 The connection is reused only when the attention was acknowledged at a token boundary. One stopped in the middle of a token, or whose attention got no acknowledgement or something else back, is closed. During a save the attention is never sent while `COMMIT TRANSACTION` is in flight.
 
 tiberius 0.13 stops reading at the first end of message, so an attention sent while SQL Server is still waiting on the request, as in a `WAITFOR`, is never acknowledged, and the connection is closed. A pooled connection is replaced; an editor session ends and the tab opens a new one on its next run. The fix is tiberius-rs/tiberius#459. Until a release has it, `.config/nextest.toml` holds the three tests that need it out of the default run:

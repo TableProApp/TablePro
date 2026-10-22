@@ -10,7 +10,7 @@ import os
 /// so `exception` stayed nil after every failed statement and each failure, a server's refusal
 /// included, came back as a statement that returned nothing. The tests built a context of their own
 /// with the default handler, which is why none of them saw it.
-enum MongoScriptContext {
+nonisolated enum MongoScriptContext {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoScriptRuntime")
 
     static func make(
