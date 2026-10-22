@@ -11,3 +11,9 @@ The unvalidated production callback changes were removed from the branch and pre
 Separately, an 18-cycle Xvfb scenario opened, queried and closed four editors per cycle, clicked the empty-state editor action and completed a final query. All functional checks passed. Process RSS grew from 165,268 KiB initially to 202,364 KiB finally. This supports continued investigation, but does not prove a leak or explain the native freeze. The source/binary identity matches the [six-cycle evidence](../tab-cycles-2026-10-22/manifest.json).
 
 All interaction used isolated displays. No native desktop input or capture occurred. Raw control logs and the unvalidated patch remain local; they are not acceptance evidence for a fix.
+
+## Realized-window control
+
+A further control created a plain GTK TextView and a plain GtkSourceView in turn, placed each in an 800-by-600 window, presented it on an isolated 1280-by-1024 Xvfb display, pumped the main context, detached the child, destroyed the window and dropped the strong local references. After another second of main-context processing, weak upgrades still succeeded for both controls. Neither control used BookiE editor callbacks.
+
+This strengthens the limitation of the current lifetime test: even a realized native widget fails its expected release assertion. It does not establish a GTK defect, because the test environment and native lifecycle assumptions remain unverified. No disposal workaround or application change is justified by this test alone. The experimental control is preserved locally, not registered as a passing contract or proposed as a product fix.
