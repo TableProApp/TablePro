@@ -97,15 +97,17 @@ impl ReferenceMenu {
         self.section.remove_all();
         self.choices.remove_all();
         if let Some(keys) = offers.keys.as_deref() {
-            for &index in &offers.open {
-                if let Some(key) = keys.outbound.get(index) {
+            let open: Vec<(usize, KeyName)> = offers
+                .open
+                .iter()
+                .filter_map(|&index| {
+                    let key = keys.outbound.get(index)?;
                     let target = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
-                    self.choices.append_item(&choice(
-                        &key_label(&keys.table, &target, &key.ref_columns),
-                        OPEN_CHOICE,
-                        index,
-                    ));
-                }
+                    Some((index, KeyName::new(&keys.table, &target, &key.columns, &key.name)))
+                })
+                .collect();
+            for (index, label) in labelled(open) {
+                self.choices.append_item(&choice(&label, OPEN_CHOICE, index));
             }
             match offers.open.len() {
                 0 => {}
@@ -118,14 +120,16 @@ impl ReferenceMenu {
                     .append_submenu(Some(&crate::i18n::gettext("Open Referenced Row")), &self.choices),
             }
             let referencing = gio::Menu::new();
-            for &index in &offers.referencing {
-                if let Some(key) = keys.inbound.get(index) {
-                    referencing.append_item(&choice(
-                        &key_label(&keys.table, &key.table, &key.columns),
-                        REFERENCING,
-                        index,
-                    ));
-                }
+            let inbound: Vec<(usize, KeyName)> = offers
+                .referencing
+                .iter()
+                .filter_map(|&index| {
+                    let key = keys.inbound.get(index)?;
+                    Some((index, KeyName::new(&keys.table, &key.table, &key.columns, &key.name)))
+                })
+                .collect();
+            for (index, label) in labelled(inbound) {
+                referencing.append_item(&choice(&label, REFERENCING, index));
             }
             if referencing.n_items() > 0 {
                 self.section
@@ -228,15 +232,44 @@ fn choice(label: &str, action: &str, index: usize) -> gio::MenuItem {
     item
 }
 
-/// The rows an item opens: the other table, named with its schema where
-/// that is not the source's, and the columns its filter is on. Two keys
-/// from one column into one table differ there.
-fn key_label(source: &TableRef, table: &TableRef, columns: &[String]) -> String {
-    let name = match (&table.schema, table.schema == source.schema) {
-        (Some(schema), false) => format!("{schema}.{}", table.name),
-        _ => table.name.clone(),
-    };
-    menu_label(&format!("{name} ({})", columns.join(", ")))
+/// How an item names its key: the other table, with its schema where
+/// that is not the source's, and the key's columns on the side that
+/// holds it, which tell two keys into one table apart.
+struct KeyName {
+    short: String,
+    constraint: String,
+}
+
+impl KeyName {
+    fn new(source: &TableRef, table: &TableRef, columns: &[String], constraint: &str) -> Self {
+        let name = match (&table.schema, table.schema == source.schema) {
+            (Some(schema), false) => format!("{schema}.{}", table.name),
+            _ => table.name.clone(),
+        };
+        Self {
+            short: format!("{name} ({})", columns.join(", ")),
+            constraint: constraint.to_owned(),
+        }
+    }
+}
+
+/// Each key's label. Two keys from the same columns into the same table
+/// also name their constraint, since they point at different columns.
+fn labelled(names: Vec<(usize, KeyName)>) -> Vec<(usize, String)> {
+    let shared = |short: &str| names.iter().filter(|(_, name)| name.short == short).count() > 1;
+    names
+        .iter()
+        .map(|(index, name)| {
+            let label = match shared(&name.short) {
+                true => crate::i18n::gettext_f(
+                    "{key} through {constraint}",
+                    &[("key", &name.short), ("constraint", &name.constraint)],
+                ),
+                false => name.short.clone(),
+            };
+            (*index, menu_label(&label))
+        })
+        .collect()
 }
 
 /// The index a parameterized item carries.
@@ -414,11 +447,45 @@ pub(super) mod tests {
             offered,
             [
                 item("Open Referenced Row", None, None),
-                item("tenants (id)", Some("cell.open-reference"), Some(0)),
-                item("crm.customers (tenant__id, id)", Some("cell.open-reference"), Some(1)),
+                item("tenants (tenant__id)", Some("cell.open-reference"), Some(0)),
+                item(
+                    "crm.customers (tenant__id, customer__id)",
+                    Some("cell.open-reference"),
+                    Some(1)
+                ),
             ]
         );
         assert_eq!(followed(&grid), [(crm, filter(&[("tenant_id", "7"), ("id", "42")]))]);
+    }
+
+    /// One column pointing at two columns of one table gives the two
+    /// keys the same columns, so their constraints tell them apart.
+    #[gtk4::test]
+    fn keys_from_the_same_columns_into_one_table_name_their_constraints() {
+        let mut by_id = key(&["customer_id"], public("customers"), &["id"]);
+        by_id.name = "by_id".to_owned();
+        let mut by_code = key(&["customer_id"], public("customers"), &["code"]);
+        by_code.name = "by_code".to_owned();
+        let grid = orders_grid(vec![by_id, by_code]);
+
+        open_menu(&grid.cell_of(1, 1));
+
+        assert_eq!(
+            reference_items(&grid),
+            [
+                item("Open Referenced Row", None, None),
+                item(
+                    "customers (customer__id) through by__id",
+                    Some("cell.open-reference"),
+                    Some(0)
+                ),
+                item(
+                    "customers (customer__id) through by__code",
+                    Some("cell.open-reference"),
+                    Some(1)
+                ),
+            ]
+        );
     }
 
     #[gtk4::test]
