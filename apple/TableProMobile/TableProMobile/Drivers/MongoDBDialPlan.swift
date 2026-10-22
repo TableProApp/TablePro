@@ -12,6 +12,11 @@ nonisolated enum MongoDBDialPlan {
     static let replicaSetField = "mongoReplicaSet"
     static let directConnectionField = "mongoParam_directConnection"
 
+    static let srvBehindTunnelMessage = String(localized: """
+        An SRV record names servers the tunnel cannot reach, so the connection would go around it. Turn the tunnel \
+        off, or list the servers under Hosts and turn off Use SRV Record.
+        """)
+
     static let verifyNeedsCAMessage = String(localized: """
         MongoDB on this device checks the server's certificate only against a CA certificate you add. Add one in \
         the connection's SSL settings, or set SSL Mode to Required.
@@ -27,18 +32,16 @@ nonisolated enum MongoDBDialPlan {
         return listed.isEmpty ? [connection.host] : listed.map(\.host)
     }
 
-    // A tunnel forwards one port, so the seed list goes and discovery stops at the forward. An SRV name is a lookup,
-    // not a server, and stays to be resolved.
-    static func additionalFields(of connection: DatabaseConnection, preTunnelHost: String?) -> [String: String] {
+    // A tunnel forwards one port, so the seed list goes and discovery stops at the forward. An SRV name resolves to
+    // the cluster's own servers, which the driver would dial around the tunnel, so it is refused.
+    static func additionalFields(of connection: DatabaseConnection, preTunnelHost: String?) throws -> [String: String] {
         var fields = connection.additionalFields
         guard let preTunnelHost else { return fields }
-        if usesSRV(connection, preTunnelHost: preTunnelHost) {
-            fields[srvField] = "true"
-            if fields[hostsField]?.isEmpty ?? true { fields[hostsField] = preTunnelHost }
-        } else {
-            fields[hostsField] = nil
-            fields[directConnectionField] = "true"
+        guard !usesSRV(connection, preTunnelHost: preTunnelHost) else {
+            throw DatabaseError(message: srvBehindTunnelMessage)
         }
+        fields[hostsField] = nil
+        fields[directConnectionField] = "true"
         return fields
     }
 

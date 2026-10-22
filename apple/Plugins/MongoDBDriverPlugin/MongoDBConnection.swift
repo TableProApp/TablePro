@@ -254,6 +254,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
             let srvHost = Self.stripPort(fromSrvHost: host)
             let encodedHost = srvHost.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? srvHost
             uri += encodedHost
+        } else if let hosts = MongoDBHostList.uriHosts(host, defaultPort: port) {
+            uri += hosts
         } else if host.contains(",") {
             let segments = host.split(separator: ",").compactMap { segment -> String? in
                 let parts = segment.split(separator: ":", maxSplits: 1)

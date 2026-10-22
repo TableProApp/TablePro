@@ -27,6 +27,7 @@ nonisolated enum MongoDBWriteRefusal: Error, Equatable {
     case identityChanged
     case missingIdentity
     case identitySubtypeUnknown
+    case ambiguousIdentity
 
     var reason: String {
         switch self {
@@ -90,6 +91,8 @@ nonisolated enum MongoDBWriteRefusal: Error, Equatable {
             return String(localized: "This row has no _id, so TablePro cannot tell which document to change.")
         case .identitySubtypeUnknown:
             return String(localized: "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names.")
+        case .ambiguousIdentity:
+            return String(localized: "This collection holds this _id both as an ObjectId and as text, so TablePro cannot tell which document the row names. Use a query.")
         }
     }
 

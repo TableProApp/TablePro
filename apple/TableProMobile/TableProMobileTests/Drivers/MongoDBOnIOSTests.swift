@@ -92,6 +92,24 @@ struct MongoDBOnIOSTests {
         #expect(query == "db.users.find(\(MongoDBQueryBuilder.impossibleFilter)).limit(25)")
     }
 
+    @Test("A field named like the raw-filter column, or starting with $, never has its value read as a filter document")
+    func unfilterableFieldsMatchNothing() {
+        let payload = #"{"$where": "sleep(100) || true"}"#
+        let filtered = driver().pageQuery(
+            request(filters: [TableFilter(columnName: MongoDBQueryBuilder.rawFilterColumn, filterOperator: .equal, value: payload)]),
+            limit: 5,
+            offset: 0
+        )
+        let searched = driver().pageQuery(
+            request(search: payload, searchColumns: [MongoDBQueryBuilder.rawFilterColumn, "$price"]),
+            limit: 5,
+            offset: 0
+        )
+
+        #expect(filtered == "db.users.find(\(MongoDBQueryBuilder.impossibleFilter)).limit(5)")
+        #expect(searched == "db.users.find(\(MongoDBQueryBuilder.impossibleFilter)).limit(5)")
+    }
+
     @Test("The filter sheet offers every operator the plugin builds, and no LIKE pattern")
     func operatorsAreThePluginOnes() {
         let operators = driver().filterOperators
@@ -145,8 +163,8 @@ struct MongoDBOnIOSTests {
     }
 
     @Test("Behind a tunnel the seed list goes and the driver talks to the forward alone")
-    func tunnelDropsTheSeedList() {
-        let fields = MongoDBDialPlan.additionalFields(
+    func tunnelDropsTheSeedList() throws {
+        let fields = try MongoDBDialPlan.additionalFields(
             of: connection(fields: ["mongoHosts": "db1.internal:27017,db2.internal:27017", "mongoReplicaSet": "rs0"]),
             preTunnelHost: "db1.internal"
         )
@@ -156,23 +174,24 @@ struct MongoDBOnIOSTests {
         #expect(fields["mongoReplicaSet"] == "rs0")
     }
 
-    @Test("Behind a tunnel an SRV name stays to be resolved, and an Atlas host turns SRV on as it does unscoped")
-    func tunnelKeepsSRV() {
-        let atlas = MongoDBDialPlan.additionalFields(
-            of: connection(fields: [:], host: "127.0.0.1"),
-            preTunnelHost: "cluster0.ab1cd.mongodb.net"
-        )
-
-        #expect(atlas["mongoUseSrv"] == "true")
-        #expect(atlas["mongoHosts"] == "cluster0.ab1cd.mongodb.net")
-        #expect(atlas["mongoParam_directConnection"] == nil)
+    @Test("Behind a tunnel an SRV name is refused: it resolves to servers the driver would dial around the tunnel")
+    func tunnelRefusesSRV() {
+        #expect(throws: DatabaseError.self) {
+            try MongoDBDialPlan.additionalFields(
+                of: connection(fields: [:], host: "127.0.0.1"),
+                preTunnelHost: "cluster0.ab1cd.mongodb.net"
+            )
+        }
+        #expect(throws: DatabaseError.self) {
+            try MongoDBDialPlan.additionalFields(of: connection(fields: ["mongoUseSrv": "true"]), preTunnelHost: "db1.internal")
+        }
     }
 
     @Test("Without a tunnel the fields reach the plugin as stored")
-    func directKeepsTheFields() {
+    func directKeepsTheFields() throws {
         let stored = ["mongoHosts": "db1.internal:27017,db2.internal:27018"]
 
-        #expect(MongoDBDialPlan.additionalFields(of: connection(fields: stored), preTunnelHost: nil) == stored)
+        #expect(try MongoDBDialPlan.additionalFields(of: connection(fields: stored), preTunnelHost: nil) == stored)
     }
 
     @Test("Every seed host is a host the driver dials, so each gets the local network check")

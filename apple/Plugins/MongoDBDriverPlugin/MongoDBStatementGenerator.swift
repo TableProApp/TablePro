@@ -340,6 +340,11 @@ nonisolated struct MongoDBStatementGenerator {
 
     // MARK: - Values
 
+    // The filter a write to a row with this `_id` text names, so a read finds the document a write would change.
+    func identityFilter(forIdText text: String) throws -> String {
+        "{\"_id\": \(try idValueJson(.text(text)))}"
+    }
+
     private func identityJson(of change: PluginRowChange) throws -> String {
         guard let idIndex = idColumnIndex, let originalRow = change.originalRow, idIndex < originalRow.count else {
             throw MongoDBWriteRefusal.missingIdentity
@@ -438,6 +443,11 @@ nonisolated struct MongoDBStatementGenerator {
         case .text(let text):
             if let document = try documentIdJson(text) {
                 return document
+            }
+            if declaredKinds[MongoDBCollectionDDL.idField] == nil,
+               let held = fieldKinds.kinds(of: MongoDBCollectionDDL.idField),
+               held.contains(.objectId), held.contains(.string), isObjectIdString(text) {
+                throw MongoDBWriteRefusal.ambiguousIdentity
             }
             return idValueJson(text)
         }

@@ -691,6 +691,10 @@
     "This change does not apply to this kind of type." : {
 
     },
+    "This collection holds this _id both as an ObjectId and as text, so TablePro cannot tell which document the row names. Use a query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection's startup commands leave a transaction open, so rows added from Shortcuts could not be committed." : {
 
     },
@@ -25056,6 +25060,9 @@
     "an RFC 3339 time such as 2026-10-12T08:00:00Z" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "An SRV record names servers the tunnel cannot reach, so the connection would go around it. Turn the tunnel off, or list the servers under Hosts and turn off Use SRV Record." : {
+
     },
     "An SSM target is required, such as i-0123456789abcdef0" : {
       "localizations" : {

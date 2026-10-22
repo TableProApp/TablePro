@@ -15,10 +15,14 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     let rowPin: [String]
     private let readsOnly: @Sendable (String) -> Bool
     private let provesReads: Bool
+    private let cancelsRunningRequest: (@Sendable () -> Void)?
+    private let requestGate = SerialRequestGate()
     let rowIdentity: RowIdentity
 
     // `provesReads`: `readsOnly` is a proof rather than a guess, so a statement it passes runs marked read-only and the
     // plugin refuses any write it makes, as the Mac's PluginStatementContext.statement does for MongoDB.
+    // `cancelsRunningRequest`: the plugin's own cancel, which stops whatever it is running, so its requests run one at
+    // a time and a cancelled one stops only itself.
     init(
         plugin: any PluginDatabaseDriver,
         dialedHosts: [String],
@@ -27,7 +31,8 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         rowPin: [String] = [],
         rowIdentity: RowIdentity,
         readsOnly: @escaping @Sendable (String) -> Bool,
-        provesReads: Bool = false
+        provesReads: Bool = false,
+        cancelsRunningRequest: (@Sendable () -> Void)? = nil
     ) {
         self.plugin = plugin
         self.dialedHosts = dialedHosts
@@ -37,6 +42,18 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         self.rowIdentity = rowIdentity
         self.readsOnly = readsOnly
         self.provesReads = provesReads
+        self.cancelsRunningRequest = cancelsRunningRequest
+    }
+
+    func exclusively<T: Sendable>(_ request: () async throws -> T) async throws -> T {
+        guard let cancel = cancelsRunningRequest else { return try await request() }
+        try await requestGate.acquire()
+        defer { requestGate.release() }
+        return try await withTaskCancellationHandler {
+            try await request()
+        } onCancel: {
+            cancel()
+        }
     }
 
     func statementContext(_ query: String) -> PluginStatementContext {
@@ -81,7 +98,8 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     // MARK: - Queries
 
     func execute(query: String) async throws -> QueryResult {
-        QueryResult(from: try await plugin.execute(query: query, context: statementContext(query)))
+        let context = statementContext(query)
+        return QueryResult(from: try await exclusively { try await plugin.execute(query: query, context: context) })
     }
 
     func executeStreaming(query: String, options: StreamOptions) -> AsyncThrowingStream<StreamElement, Error> {
@@ -91,12 +109,12 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let result: PluginQueryResult
-                    // Only a read may be bounded at its source: bounding abandons the rest of the statement.
-                    if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
-                        result = bounded
-                    } else {
-                        result = try await plugin.executeUserQuery(
+                    let result: PluginQueryResult = try await self.exclusively {
+                        // Only a read may be bounded at its source: bounding abandons the rest of the statement.
+                        if isRead, let bounded = try await plugin.executeBoundedQuery(query: query, rowCap: options.maxRows) {
+                            return bounded
+                        }
+                        return try await plugin.executeUserQuery(
                             query: query, rowCap: options.maxRows, parameters: nil, context: context
                         )
                     }
@@ -309,14 +327,17 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
     }
 
     func run(_ writes: [PluginRowWrite]) async throws -> Int {
-        var affected = 0
-        for write in writes {
-            let result = write.parameters.isEmpty
-                ? try await plugin.execute(query: write.statement)
-                : try await plugin.executeParameterized(query: write.statement, parameters: write.parameters)
-            affected += max(result.rowsAffected, 0)
+        let plugin = plugin
+        return try await exclusively {
+            var affected = 0
+            for write in writes {
+                let result = write.parameters.isEmpty
+                    ? try await plugin.execute(query: write.statement)
+                    : try await plugin.executeParameterized(query: write.statement, parameters: write.parameters)
+                affected += max(result.rowsAffected, 0)
+            }
+            return affected
         }
-        return affected
     }
 
     // A row inserted after the lookup lands outside the pinned part, so the write never reaches it. A part merged

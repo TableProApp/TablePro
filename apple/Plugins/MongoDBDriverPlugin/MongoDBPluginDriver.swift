@@ -818,6 +818,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         writeGenerator(for: table, columns: columns).generateRestore(rows: rows, absentCells: absentCells)
     }
 
+    func identityFilter(table: String, idText: String) throws -> String {
+        try writeGenerator(for: table, columns: [MongoDBCollectionDDL.idField]).identityFilter(forIdText: idText)
+    }
+
     private func writeGenerator(for table: String, columns: [String]) -> MongoDBStatementGenerator {
         let key = columnKindKey(table)
         return columnKindLock.withLock {

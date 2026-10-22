@@ -190,7 +190,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 password: password,
                 ssl: tls,
                 preTunnelHost: preTunnelHost,
-                fields: MongoDBDialPlan.additionalFields(of: connection, preTunnelHost: preTunnelHost)
+                fields: try MongoDBDialPlan.additionalFields(of: connection, preTunnelHost: preTunnelHost)
             )
             return MongoDBBackedDriver(
                 mongo: MongoDBPluginDriver(config: config),

@@ -127,6 +127,64 @@ struct MongoDBPluginConnectionTests {
     }
 }
 
+struct MongoDBHostListTests {
+    @Test("Each host is written with its port once", arguments: [
+        ("localhost", "localhost:27017"),
+        ("db1.internal:27018, db2.internal", "db1.internal:27018,db2.internal:27017"),
+        ("[::1]:27018,[fe80::1]", "[::1]:27018,[fe80::1]:27017"),
+        ("::1", "[::1]:27017")
+    ])
+    func hostsCarryOnePort(raw: String, expected: String) {
+        #expect(MongoDBHostList.uriHosts(raw, defaultPort: 27_017) == expected)
+    }
+
+    @Test("An entry with a port that is not a number is not rewritten", arguments: ["db1:abc", "db1:70000", "[::1]x"])
+    func unreadableEntryIsLeftAlone(raw: String) {
+        #expect(MongoDBHostList.uriHosts(raw, defaultPort: 27_017) == nil)
+    }
+}
+
+struct MongoDBAmbiguousIdentityTests {
+    private func generator(idKinds: Set<BsonValueKind>) -> MongoDBStatementGenerator {
+        MongoDBStatementGenerator(
+            collectionName: "users",
+            columns: ["_id", "name"],
+            fieldKinds: MongoDBFieldKinds(["_id": idKinds])
+        )
+    }
+
+    private func update(id: String) -> PluginRowChange {
+        PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [(1, "name", .text("old"), .text("new"))],
+            originalRow: [.text(id), .text("old")]
+        )
+    }
+
+    @Test("An _id held both as an ObjectId and as text with the same hex is refused, never guessed")
+    func ambiguousIdentityIsRefused() {
+        let hex = "64b7f0c2a1b2c3d4e5f60718"
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try generator(idKinds: [.objectId, .string]).generateRowWrites(
+                from: [update(id: hex)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+        }
+    }
+
+    @Test("Text that cannot be an ObjectId, or a collection of one _id kind, still writes")
+    func unambiguousIdentityWrites() throws {
+        let mixed = try generator(idKinds: [.objectId, .string]).generateRowWrites(
+            from: [update(id: "user-42")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        let uniform = try generator(idKinds: [.objectId]).generateRowWrites(
+            from: [update(id: "64b7f0c2a1b2c3d4e5f60718")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+        )
+        #expect(mixed.count == 1)
+        #expect(uniform.count == 1)
+    }
+}
+
 private struct KeyPairFiles {
     let directory: URL
     let ssl: SSLConfiguration
