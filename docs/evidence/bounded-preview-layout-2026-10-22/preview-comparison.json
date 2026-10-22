@@ -1,0 +1,59 @@
+{
+  "result": {
+    "pid": 2276271,
+    "command_exit": 0,
+    "aborted": null,
+    "elapsed_seconds": 84.307,
+    "profiler_exit": -2
+  },
+  "peak_rss_mib": 276.75,
+  "peak_pss_mib": 238.97,
+  "cpu_seconds": 23.38,
+  "completed_cycles": 6,
+  "query_statuses": [
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 2831 ms"
+    ],
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 2490 ms"
+    ],
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 1349 ms"
+    ],
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 1428 ms"
+    ],
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 1960 ms"
+    ],
+    [
+      "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "done in 2119 ms"
+    ]
+  ],
+  "after_close_rss_mib": [
+    274.44,
+    274.48,
+    274.48,
+    275.13,
+    276.03,
+    276.75
+  ],
+  "idle_cpu_seconds": [
+    23.38,
+    23.38
+  ],
+  "versus_original_baseline": {
+    "peak_rss_percent": -44.59,
+    "cpu_percent": -56.8
+  },
+  "versus_byte_budget_only": {
+    "peak_rss_percent": -23.35,
+    "cpu_percent": -66.95
+  }
+}

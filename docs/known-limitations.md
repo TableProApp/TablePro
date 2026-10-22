@@ -31,7 +31,8 @@ Documented application limits, behavior differences and known defects. Entries l
 - **SQL result filters apply only to loaded rows** ([#609](https://github.com/cozyGarage/BookiE/issues/609)). Filter and sort actions are local, show the visible and loaded counts, and do not re-run SQL. Clearing a filter restores loaded rows. Settings carry across reruns of the same statement and pin/unpin while the result remains current or pinned. Selection follows source-row identity when the same materialized result is rerendered; a fresh query resets selection. Settings do not survive an app restart.
 - **File exports use text markers for undecodable cells** ([#883](https://github.com/cozyGarage/BookiE/issues/883)). CSV, JSON, Markdown, HTML, XML, Excel, copied text and MCP CSV content use a visible `<undecodable TYPE>` string; these text representations do not retain a separate typed marker, so a real text value with the same spelling is ambiguous. SQL export refuses the value. MCP JSON retains an explicit tagged `undecodable` value.
 - **Long cells are shown as a preview** (PERF-10). Values over 8 KiB show a typed
-  preview and byte count. View Value and Copy Value use the full value, including
+  preview and byte count. Oversized text and JSON previews show at most 512
+  Unicode characters before their size suffix. View Value and Copy Value use the full value, including
   pending edits and drafts. Browse-table values are refetched by primary key; a
   table without one cannot refetch.
 - **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
