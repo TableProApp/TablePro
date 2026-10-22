@@ -54,24 +54,6 @@ nonisolated struct MongoDBQueryBuilder {
         )
     }
 
-    /// Build: db.collection.find({filter}).sort({}).skip(offset).limit(limit)
-    func buildFilteredQuery(
-        collection: String,
-        queryFilters: [PluginQueryFilter],
-        logicMode: String = "and",
-        sortColumns: [(columnIndex: Int, ascending: Bool)] = [],
-        columns: [String] = [],
-        limit: Int = 200,
-        offset: Int = 0
-    ) -> String? {
-        exactFilterDocument(from: queryFilters, logicMode: logicMode).map {
-            buildQuery(
-                collection: collection, filterDocument: $0,
-                sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
-            )
-        }
-    }
-
     func buildQuery(
         collection: String,
         filterDocument: String,
@@ -135,8 +117,9 @@ nonisolated struct MongoDBQueryBuilder {
     }
 
     /// Nil when a row cannot be built: a raw document that does not normalize, a name that reads as an operator, a
-    /// missing bound. Running the other rows without it would, under "match all", show rows the filter excludes.
-    func exactFilterDocument(
+    /// missing bound. Running the other rows without it would, under "match all", show rows the filter excludes, and
+    /// a query that failed to build would leave a refresh to reload the table unfiltered, so the caller matches nothing.
+    private func exactFilterDocument(
         from filters: [PluginQueryFilter],
         logicMode: String = "and"
     ) -> String? {

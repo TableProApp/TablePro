@@ -104,17 +104,18 @@ struct FindMatcherTests {
         #expect(FindMatcher.nearestMatchIndex(to: 0, in: []) == nil)
     }
 
-    @Test("a server search sends only text columns unless the engine's patterns read any column")
+    @Test("a server search sends only text columns unless the engine's patterns read every scalar column")
     func serverSearchableColumns() {
         let typed: [ColumnType] = [
             .integer(rawType: "INTEGER"), .decimal(rawType: "FLOAT"), .timestamp(rawType: "TIMESTAMP"),
-            .boolean(rawType: "BOOLEAN"), .json(rawType: "JSON")
+            .boolean(rawType: "BOOLEAN")
         ]
         for type in typed {
             #expect(!FindMatcher.isServerSearchable(type))
             #expect(FindMatcher.isServerSearchable(type, patternReadsAnyColumn: true))
         }
         #expect(FindMatcher.isServerSearchable(.text(rawType: "ObjectId")))
+        #expect(!FindMatcher.isServerSearchable(.json(rawType: "JSON"), patternReadsAnyColumn: true))
         #expect(!FindMatcher.isServerSearchable(.blob(rawType: "BLOB"), patternReadsAnyColumn: true))
         #expect(!FindMatcher.isServerSearchable(.spatial(rawType: "GEOMETRY"), patternReadsAnyColumn: true))
     }

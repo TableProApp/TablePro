@@ -83,6 +83,39 @@ struct MongoDBQueryBuilderTests {
         #expect(!match.contains("options"))
     }
 
+    @Test("A row that cannot be built makes the filter match nothing rather than run the other rows")
+    func unbuildableRowMatchesNothing() {
+        let rows = [
+            PluginQueryFilter(column: "$where", op: "=", value: "1"),
+            PluginQueryFilter(column: "n", op: "=", value: "5")
+        ]
+        let builder = MongoDBQueryBuilder()
+        #expect(builder.buildFilterDocument(from: rows, logicMode: "and") == MongoDBQueryBuilder.impossibleFilter)
+        #expect(builder.buildFilterDocument(from: rows, logicMode: "or") == MongoDBQueryBuilder.impossibleFilter)
+        let raw = PluginQueryFilter(column: MongoDBQueryBuilder.rawFilterColumn, op: "=", value: "{\"status\": \"a\"")
+        #expect(builder.buildFilterDocument(from: [raw, rows[1]]) == MongoDBQueryBuilder.impossibleFilter)
+    }
+
+    @Test("A count reuses the filter its page was built with, whatever the page taught the driver since")
+    func countReusesThePageFilter() throws {
+        let driver = MongoDBPluginDriver(config: DriverConnectionConfig(
+            host: "db.example.com", port: 27_017, username: "u", password: "p", database: "app"
+        ))
+        let rows = [PluginQueryFilter(column: "a", op: "!=", value: "1")]
+        let query = try #require(driver.buildFilteredQuery(
+            table: "orders", schema: nil, queryFilters: rows, logicMode: "and",
+            sortColumns: [], columns: [], limit: 50, offset: 0, columnKinds: [:]
+        ))
+        let signature = MongoDBPluginDriver.filterSignature(rows, logicMode: "and")
+        let recorded = try #require(driver.pageFilter(signature: signature, table: "orders"))
+
+        #expect(query.contains(recorded))
+        #expect(driver.pageFilter(signature: signature, table: "customers") == nil)
+        #expect(driver.pageFilter(signature: MongoDBPluginDriver.filterSignature(rows, logicMode: "or"), table: "orders") == nil)
+        let other = [PluginQueryFilter(column: "a", op: "!=", value: "2")]
+        #expect(driver.pageFilter(signature: MongoDBPluginDriver.filterSignature(other, logicMode: "and"), table: "orders") == nil)
+    }
+
     @Test("Only a find in the session's database with no projection teaches the collection's kinds")
     func storedDocumentsAreOnlyWholeFinds() {
         func outcome(_ find: MongoScriptFindShape?) -> MongoScriptStatementResult {

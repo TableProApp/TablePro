@@ -103,8 +103,8 @@ struct PluginMetadataSnapshot: Sendable {
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
         var columnsAreSampled: Bool = false
-        /// Whether a contains, starts with or ends with filter matches a column of any type by the text it shows, so a
-        /// search can send number and date columns too. MongoDB's builder converts the value before it matches.
+        /// Whether a contains, starts with or ends with filter matches a scalar column of any type by the text it shows,
+        /// so a search can send number and date columns too. MongoDB's builder converts the value before it matches.
         var patternFiltersReadAnyColumn: Bool = false
         /// Whether the driver types a filter's values by the kinds it learned from rows it read, so a count of a
         /// filtered table runs on the driver that read the page. A pooled driver read nothing and would type the same

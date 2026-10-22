@@ -34,9 +34,13 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
     func pageQuery(_ request: TableReadRequest, limit: Int, offset: Int) -> String {
         let builder = mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
         let sorted = request.sortState.columns
+        let filter = Self.filterDocument(for: request, builder: builder)
+        mongo.recordPageFilter(
+            filter, signature: Self.signature(of: request), table: request.table, database: pinnedDatabase
+        )
         return builder.buildQuery(
             collection: request.table,
-            filterDocument: Self.filterDocument(for: request, builder: builder),
+            filterDocument: filter,
             sortColumns: sorted.indices.map { (columnIndex: $0, ascending: sorted[$0].ascending) },
             columns: sorted.map(\.name),
             limit: limit,
@@ -65,8 +69,11 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
 
     // Bounded like the Mac's background count, so a slow count never holds the session the next page needs.
     func rowCount(_ request: TableReadRequest) async throws -> Int? {
-        let builder = mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
-        let filter = Self.filterDocument(for: request, builder: builder)
+        let signature = Self.signature(of: request)
+        let filter = mongo.pageFilter(signature: signature, table: request.table, database: pinnedDatabase)
+            ?? Self.filterDocument(
+                for: request, builder: mongo.filterQueryBuilder(for: request.table, database: pinnedDatabase)
+            )
         let mongo = mongo
         return try await inSessionDatabase {
             try await mongo.documentCount(table: request.table, filterDocument: filter, background: true)
@@ -136,6 +143,18 @@ nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuil
         case 1: return parts[0]
         default: return "{\"$and\": [\(parts.joined(separator: ", "))]}"
         }
+    }
+
+    static func signature(of request: TableReadRequest) -> String {
+        let filters = request.filters.map { filter in
+            [
+                filter.columnName, filter.filterOperator.rawValue, filter.value, filter.secondValue,
+                filter.isCaseSensitive ? "1" : "0"
+            ].joined(separator: "\u{1F}")
+        }
+        let search = [request.searchText ?? "\u{0}"] + request.searchColumns
+        return ([request.logicMode == .and ? "and" : "or", search.joined(separator: "\u{1F}")] + filters)
+            .joined(separator: "\u{1E}")
     }
 
     private static func filtersAsField(_ name: String) -> Bool {

@@ -108,10 +108,26 @@ nonisolated struct MongoDBConnectionURI: Sendable {
         if ssl.contains(where: { $0.key == "tlsAllowInvalidCertificates" }) {
             taken.formUnion(["tlsdisableocspendpointcheck", "tlsdisablecertificaterevocationcheck"])
         }
-        for key in extraParams.keys.sorted() where taken.insert(key.lowercased()).inserted {
+        for key in extraParams.keys.sorted() where taken.insert(canonicalKey(key)).inserted {
             options.append(MongoDBURIOption(key: key, value: extraParams[key] ?? ""))
         }
         return options
+    }
+
+    // libmongoc still reads the old `ssl` names as their `tls` options, so a typed one would turn off a check the SSL
+    // mode asked for.
+    static let deprecatedAliases = [
+        "ssl": "tls",
+        "sslallowinvalidcertificates": "tlsallowinvalidcertificates",
+        "sslallowinvalidhostnames": "tlsallowinvalidhostnames",
+        "sslcertificateauthorityfile": "tlscafile",
+        "sslclientcertificatekeyfile": "tlscertificatekeyfile",
+        "sslclientcertificatekeypassword": "tlscertificatekeyfilepassword"
+    ]
+
+    static func canonicalKey(_ key: String) -> String {
+        let lowered = key.lowercased()
+        return deprecatedAliases[lowered] ?? lowered
     }
 
     static let fieldOwnedKeys = [

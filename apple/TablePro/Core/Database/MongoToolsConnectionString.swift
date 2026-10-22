@@ -26,6 +26,17 @@ internal enum MongoToolsConnectionString {
     // With TLS on, the SSL mode decides certificate checking, and the driver refuses a revocation switch beside the
     // `tlsInsecure` that already turns it off.
     private static let ownedByTLS = ["tlsInsecure"]
+
+    // The driver still reads the old `ssl` names as their `tls` options, so a typed one would override a field.
+    private static let deprecatedAliases = [
+        "ssl": "tls",
+        "sslinsecure": "tlsinsecure",
+        "sslallowinvalidcertificates": "tlsallowinvalidcertificates",
+        "sslallowinvalidhostnames": "tlsallowinvalidhostnames",
+        "sslcertificateauthorityfile": "tlscafile",
+        "sslclientcertificatekeyfile": "tlscertificatekeyfile",
+        "sslclientcertificatekeypassword": "tlscertificatekeyfilepassword"
+    ]
     private static let impliedByInsecure = ["tlsDisableOCSPEndpointCheck", "tlsDisableCertificateRevocationCheck"]
 
     static func make(for connection: DatabaseConnection, host: String) -> String {
@@ -140,7 +151,7 @@ internal enum MongoToolsConnectionString {
                 return (name, value)
             }
             .sorted { $0.0 < $1.0 }
-            .filter { taken.insert($0.0.lowercased()).inserted }
+            .filter { taken.insert(deprecatedAliases[$0.0.lowercased()] ?? $0.0.lowercased()).inserted }
             .map { "\(encodedValue($0.0))=\(encodedValue($0.1))" }
     }
 

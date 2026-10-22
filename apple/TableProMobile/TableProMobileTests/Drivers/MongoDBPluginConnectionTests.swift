@@ -241,9 +241,13 @@ struct MongoDBConnectionURITests {
         #expect(!mongoc_uri_has_option(relaxed, MONGOC_URI_TLSDISABLEOCSPENDPOINTCHECK))
 
         let verified = MongoDBSSLMapping.uriOptions(for: SSLConfiguration(mode: .verifyIdentity))
-        let strict = try parsed(uri(ssl: verified, extraParams: typed))
+        let aliases = ["sslAllowInvalidCertificates": "true", "SSLAllowInvalidHostnames": "true", "ssl": "false"]
+        let strict = try parsed(uri(ssl: verified, extraParams: typed.merging(aliases) { first, _ in first }))
         defer { mongoc_uri_destroy(strict) }
         #expect(!mongoc_uri_has_option(strict, MONGOC_URI_TLSINSECURE))
+        #expect(!mongoc_uri_has_option(strict, MONGOC_URI_TLSALLOWINVALIDCERTIFICATES))
+        #expect(!mongoc_uri_has_option(strict, MONGOC_URI_TLSALLOWINVALIDHOSTNAMES))
+        #expect(mongoc_uri_get_tls(strict))
         #expect(mongoc_uri_get_option_as_bool(strict, MONGOC_URI_TLSDISABLEOCSPENDPOINTCHECK, false))
 
         let plain = try parsed(uri(extraParams: ["tlsInsecure": "true"]))

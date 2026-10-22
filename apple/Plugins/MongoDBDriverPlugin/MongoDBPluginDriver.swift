@@ -21,6 +21,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     private var identityKindsByCollection: [String: Set<BsonValueKind>] = [:]
     private var binarySubtypesByCollection: [String: MongoDBBinarySubtypes] = [:]
     private var fieldKindsByCollection: [String: MongoDBFieldKinds] = [:]
+    private var pageFiltersByCollection: [String: (signature: String, document: String)] = [:]
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MongoDBPluginDriver")
 
@@ -515,8 +516,9 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         logicMode: String,
         background: Bool
     ) async throws -> Int? {
-        let filterJson = filterQueryBuilder(for: table)
-            .buildFilterDocument(from: filters, logicMode: logicMode)
+        let signature = Self.filterSignature(filters, logicMode: logicMode)
+        let filterJson = pageFilter(signature: signature, table: table)
+            ?? filterQueryBuilder(for: table).buildFilterDocument(from: filters, logicMode: logicMode)
         return try await documentCount(table: table, filterDocument: filterJson, background: background)
     }
 
@@ -785,10 +787,37 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
         let builder = filterQueryBuilder(for: table)
-        return builder.buildFilteredQuery(
-            collection: table, queryFilters: queryFilters, logicMode: logicMode,
+        let document = builder.buildFilterDocument(from: queryFilters, logicMode: logicMode)
+        recordPageFilter(document, signature: Self.filterSignature(queryFilters, logicMode: logicMode), table: table)
+        return builder.buildQuery(
+            collection: table, filterDocument: document,
             sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
         )
+    }
+
+    // A page's own rows can change the kinds that type a filter value before its count is built, so the count reuses
+    // the document the page ran: a field holding both 1 and "1" would otherwise count the documents the page left out.
+    func recordPageFilter(_ document: String, signature: String, table: String, database: String? = nil) {
+        let key = columnKindKey(table, database: database)
+        columnKindLock.withLock { pageFiltersByCollection[key] = (signature, document) }
+    }
+
+    func pageFilter(signature: String, table: String, database: String? = nil) -> String? {
+        let key = columnKindKey(table, database: database)
+        guard let page = columnKindLock.withLock({ pageFiltersByCollection[key] }), page.signature == signature else {
+            return nil
+        }
+        return page.document
+    }
+
+    static func filterSignature(_ filters: [PluginQueryFilter], logicMode: String) -> String {
+        let rows = filters.map { filter in
+            [
+                filter.column, filter.op, filter.value, filter.isCaseSensitive ? "1" : "0",
+                filter.secondValue ?? "\u{0}", filter.elementScope ?? "\u{0}"
+            ].joined(separator: "\u{1F}")
+        }
+        return ([logicMode] + rows).joined(separator: "\u{1E}")
     }
 
     func generateRowWrites(
@@ -1156,6 +1185,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             fieldPathKindsByCollection = fieldPathKindsByCollection.filter { !isStale($0.key) }
             declaredSchemasByCollection = declaredSchemasByCollection.filter { !isStale($0.key) }
             identityKindsByCollection = identityKindsByCollection.filter { !isStale($0.key) }
+            pageFiltersByCollection = pageFiltersByCollection.filter { !isStale($0.key) }
         }
     }
 }

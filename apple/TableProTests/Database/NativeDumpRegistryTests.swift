@@ -292,8 +292,12 @@ struct NativeDumpRegistryTests {
 
         var verified = connection(type: .mongodb, sslMode: .verifyIdentity, sslEnabled: true)
         verified.additionalFields["mongoParam_tlsInsecure"] = "true"
+        verified.additionalFields["mongoParam_sslInsecure"] = "true"
+        verified.additionalFields["mongoParam_sslCertificateAuthorityFile"] = "/tmp/other.pem"
         let strict = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: verified)))
         #expect(!strict.contains("tlsInsecure"))
+        #expect(!strict.contains("sslInsecure"))
+        #expect(!strict.contains("sslCertificateAuthorityFile"))
     }
 
     @Test("A bare IPv6 host reaches the tool in brackets")
