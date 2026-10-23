@@ -13,7 +13,6 @@ base64.workspace = true
 bson.workspace = true
 chrono.workspace = true
 mongodb.workspace = true
-rustls.workspace = true
 rustls-pki-types.workspace = true
 secrecy.workspace = true
 serde_json.workspace = true
