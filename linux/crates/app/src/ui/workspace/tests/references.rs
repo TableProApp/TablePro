@@ -55,7 +55,7 @@ fn serving_tables(script: &mut ConnectionScript) {
             })
             .collect(),
     ));
-    script.fetch_foreign_keys.always(FakeReply::ok(Vec::new()));
+    script.fetch_outbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script.fetch_inbound_foreign_keys.always(FakeReply::ok(Vec::new()));
 }
 

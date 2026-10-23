@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -297,6 +297,21 @@ impl Connection for PgConnection {
         self.read(
             options,
             read_op(move |client| Box::pin(async move { metadata::fetch_foreign_keys(client, &relation).await })),
+        )
+        .await
+    }
+
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
+        let relation = self.relation(table);
+        self.read(
+            options,
+            read_op(move |client| {
+                Box::pin(async move { metadata::fetch_outbound_foreign_keys(client, &relation).await })
+            }),
         )
         .await
     }

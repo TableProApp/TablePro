@@ -1,8 +1,7 @@
 use crate::column::{ColumnKind, ColumnType, ResultColumn};
-use crate::ddl::InboundForeignKey;
-use crate::edit::{EditText, edit_text};
+use crate::ddl::{InboundForeignKey, OutboundForeignKey};
+use crate::edit::{EditText, edit_text, parse_filter_text};
 use crate::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
-use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::TableRef;
 use crate::value::Value;
 
@@ -21,13 +20,18 @@ impl RowReference {
     /// whose cells are `values` under `columns`.
     pub fn referenced(
         source: &TableRef,
-        key: &ForeignKeyInfo,
+        key: &OutboundForeignKey,
         columns: &[ResultColumn],
         values: &[Value],
     ) -> Result<Self, ReferenceError> {
+        let OutboundForeignKey {
+            key,
+            parent_compares_alike,
+        } = key;
         let cells = key_cells(&key.columns, columns, values)?;
         let filter = key_filter(&key.name, cells, &key.ref_columns)?;
         let table = target(source, key.ref_schema.as_deref(), &key.ref_table)?;
+        compared_alike(*parent_compares_alike, &table)?;
         Ok(Self { table, filter })
     }
 
@@ -42,12 +46,17 @@ impl RowReference {
         let cells = key_cells(&key.referenced_columns, columns, values)?;
         let filter = key_filter(&key.name, cells, &key.columns)?;
         let table = target(source, key.table.schema.as_deref(), &key.table.name)?;
-        if !key.child_compares_alike {
-            return Err(ReferenceError::ComparedOtherwise {
-                table: key.table.name.clone(),
-            });
-        }
+        compared_alike(key.child_compares_alike, &table)?;
         Ok(Self { table, filter })
+    }
+}
+
+fn compared_alike(alike: bool, table: &TableRef) -> Result<(), ReferenceError> {
+    match alike {
+        true => Ok(()),
+        false => Err(ReferenceError::ComparedOtherwise {
+            table: table.name.clone(),
+        }),
     }
 }
 
@@ -100,35 +109,21 @@ fn key_filter(key: &str, cells: Vec<(&ColumnType, &Value)>, targets: &[String]) 
 
 /// The text the filter parses back into `value`: a blob in the `0x`
 /// form an export writes, anything else as an editor would start from.
-/// A blob in a column declared otherwise, which SQLite allows, has no
-/// such text: the filter would read it as the column's type and compare
-/// a string.
+/// The other side reads it under a type that compares alike with this
+/// column's, so text this column's own type does not read, such as a
+/// word SQLite keeps in an INTEGER column, has no filter.
 fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
-    match value {
+    let text = match value {
         Value::Bytes(bytes) if matches!(column_type.kind, ColumnKind::Bytes { .. }) => {
-            Some(format!("0x{}", crate::hex::encode_lower(bytes)))
+            format!("0x{}", crate::hex::encode_lower(bytes))
         }
-        Value::Bytes(_) => None,
-        // A key can point at a key of another numeric type, such as an
-        // integer at a numeric(10,2), and the other column parses the
-        // text: the zeros the scale pads with would make it refuse 1.00.
-        Value::Decimal(decimal) if decimal.is_finite() => Some(without_trailing_zeros(decimal.to_string())),
-        // A real key can point at a double one, which holds the real's
-        // exact value; the real's shortest text would parse as another
-        // double. A real column reads the long text back as the same real.
-        Value::Float32(value) => Some(f64::from(*value).to_string()),
+        Value::Bytes(_) => return None,
         other => match edit_text(other, column_type) {
-            EditText::Editable(text) => Some(text),
-            EditText::ReadOnly(_) => None,
+            EditText::Editable(text) => text,
+            EditText::ReadOnly(_) => return None,
         },
-    }
-}
-
-fn without_trailing_zeros(text: String) -> String {
-    match text.contains('.') {
-        true => text.trim_end_matches('0').trim_end_matches('.').to_owned(),
-        false => text,
-    }
+    };
+    parse_filter_text(&text, column_type).is_ok().then_some(text)
 }
 
 fn target(source: &TableRef, schema: Option<&str>, name: &str) -> Result<TableRef, ReferenceError> {
@@ -163,15 +158,18 @@ mod tests {
         TableRef::new(Some("sales".to_owned()), "orders".to_owned())
     }
 
-    fn key(columns: &[&str], ref_schema: Option<&str>, ref_columns: &[&str]) -> ForeignKeyInfo {
-        ForeignKeyInfo {
-            name: "orders_customer_fkey".to_owned(),
-            columns: columns.iter().map(|name| (*name).to_owned()).collect(),
-            ref_schema: ref_schema.map(str::to_owned),
-            ref_table: "customers".to_owned(),
-            ref_columns: ref_columns.iter().map(|name| (*name).to_owned()).collect(),
-            on_delete: None,
-            on_update: None,
+    fn key(columns: &[&str], ref_schema: Option<&str>, ref_columns: &[&str]) -> OutboundForeignKey {
+        OutboundForeignKey {
+            key: crate::ForeignKeyInfo {
+                name: "orders_customer_fkey".to_owned(),
+                columns: columns.iter().map(|name| (*name).to_owned()).collect(),
+                ref_schema: ref_schema.map(str::to_owned),
+                ref_table: "customers".to_owned(),
+                ref_columns: ref_columns.iter().map(|name| (*name).to_owned()).collect(),
+                on_delete: None,
+                on_update: None,
+            },
+            parent_compares_alike: true,
         }
     }
 
@@ -260,40 +258,52 @@ mod tests {
     }
 
     #[test]
-    fn a_decimal_key_is_written_without_the_zeros_of_its_scale() {
-        let columns = [typed(
-            "amount",
-            ColumnKind::Decimal {
-                precision: Some(10),
-                scale: Some(2),
-            },
-        )];
-        let key = key(&["amount"], Some("sales"), &["id"]);
-        let text_of = |mantissa| {
-            let value = Value::Decimal(crate::value::SqlDecimal::from_scaled_i128(mantissa, 2));
-            RowReference::referenced(&orders(), &key, &columns, &[value])
-                .expect("a decimal key")
-                .filter
-                .rules
-        };
+    fn a_key_whose_sides_compare_otherwise_is_refused_and_shown() {
+        let columns = [typed("weight", ColumnKind::Float(crate::column::FloatWidth::F32))];
+        let mut real_to_double = key(&["weight"], Some("sales"), &["weight"]);
+        real_to_double.parent_compares_alike = false;
 
-        assert_eq!(text_of(100), vec![eq("id", "1")]);
-        assert_eq!(text_of(150), vec![eq("id", "1.5")]);
-        assert_eq!(text_of(-1000), vec![eq("id", "-10")]);
-        assert_eq!(text_of(0), vec![eq("id", "0")]);
+        let error = RowReference::referenced(&orders(), &real_to_double, &columns, &[Value::Float32(0.1)])
+            .expect_err("a real key into a double column");
+
+        assert_eq!(
+            error,
+            ReferenceError::ComparedOtherwise {
+                table: "customers".to_owned()
+            }
+        );
+        assert!(!error.leaves_nothing_to_follow());
     }
 
     #[test]
-    fn a_single_precision_key_is_written_as_the_double_it_widens_to() {
-        let columns = [typed("weight", ColumnKind::Float(crate::column::FloatWidth::F32))];
-        let key = key(&["weight"], Some("sales"), &["weight"]);
+    fn a_value_its_own_column_type_does_not_read_is_refused() {
+        let mut integer = typed(
+            "customer_id",
+            ColumnKind::Integer(crate::column::IntegerKind {
+                width: crate::column::IntegerWidth::W64,
+                signed: true,
+            }),
+        );
+        integer.column_type.dynamic_storage = true;
+        let key = key(&["customer_id"], None, &["id"]);
+        let main = TableRef::new(None, "orders".to_owned());
 
-        let reference =
-            RowReference::referenced(&orders(), &key, &columns, &[Value::Float32(0.1)]).expect("a real key");
+        let error = RowReference::referenced(
+            &main,
+            &key,
+            std::slice::from_ref(&integer),
+            &[Value::Text("n/a".to_owned())],
+        )
+        .expect_err("a word SQLite kept in an INTEGER column");
+        let reference = RowReference::referenced(&main, &key, &[integer], &[Value::Int(7)]).expect("a number");
 
-        assert_eq!(reference.filter.rules, vec![eq("weight", "0.10000000149011612")]);
-        let parsed: f32 = "0.10000000149011612".parse().expect("a real");
-        assert_eq!(parsed, 0.1_f32, "a real column reads the text back as another value");
+        assert_eq!(
+            error,
+            ReferenceError::NoFilterText {
+                column: "id".to_owned()
+            }
+        );
+        assert_eq!(reference.filter.rules, vec![eq("id", "7")]);
     }
 
     #[test]

@@ -121,8 +121,7 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
             .map(Value::Uuid)
             .map_err(|_| EditParseError::InvalidUuid),
         ColumnKind::Date => parse_date(trimmed)
-            .or_else(|error| far_temporal(trimmed, column, purpose, parse_date).unwrap_or(Err(error)))
-            .or_else(|error| compared_across(purpose, error, || midnight_date(trimmed))),
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_date).unwrap_or(Err(error))),
         ColumnKind::Time { with_offset: true, .. } => parse_time_with_offset(trimmed),
         ColumnKind::Time {
             range: range @ (TimeRange::Duration | TimeRange::LongDuration),
@@ -135,8 +134,7 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
         } => parse_timestamp_with_offset(trimmed)
             .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp_with_offset).unwrap_or(Err(error))),
         ColumnKind::Timestamp { .. } => parse_timestamp(trimmed)
-            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp).unwrap_or(Err(error)))
-            .or_else(|error| compared_across(purpose, error, || date_at_midnight(trimmed))),
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp).unwrap_or(Err(error))),
         ColumnKind::Interval => trimmed
             .parse::<SqlInterval>()
             .map(Value::Interval)
@@ -294,37 +292,6 @@ fn parse_date(input: &str) -> Result<Value, EditParseError> {
     NaiveDate::parse_from_str(&input, "%Y-%m-%d")
         .map(|date| Value::Date(Temporal::Finite(date)))
         .map_err(|_| EditParseError::InvalidDate)
-}
-
-/// A comparison takes a value of the neighbouring type as the server
-/// casts it: a date is its midnight, and a midnight is its date. A key
-/// can point from a date at a timestamp, so the value it carries is the
-/// other type's. A stored value has to be the column's own.
-fn compared_across(
-    purpose: Purpose,
-    error: EditParseError,
-    other: impl FnOnce() -> Option<Value>,
-) -> Result<Value, EditParseError> {
-    match purpose {
-        Purpose::Compare => other().ok_or(error),
-        Purpose::Store => Err(error),
-    }
-}
-
-fn midnight_date(input: &str) -> Option<Value> {
-    match parse_timestamp(input).ok()? {
-        Value::Timestamp(Temporal::Finite(stamp)) if stamp.time() == NaiveTime::MIN => {
-            Some(Value::Date(Temporal::Finite(stamp.date())))
-        }
-        _ => None,
-    }
-}
-
-fn date_at_midnight(input: &str) -> Option<Value> {
-    match parse_date(input).ok()? {
-        Value::Date(Temporal::Finite(date)) => Some(Value::Timestamp(Temporal::Finite(date.and_time(NaiveTime::MIN)))),
-        _ => None,
-    }
 }
 
 fn parse_time(input: &str) -> Result<Value, EditParseError> {
@@ -849,33 +816,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    /// A key from a date column can point at a timestamp one, and back.
-    #[test]
-    fn a_comparison_reads_a_date_as_its_midnight_and_a_midnight_as_its_date() {
-        let date = column(ColumnKind::Date, false);
-        let stamp = column(stamp(TemporalZone::Naive), false);
-        let day = NaiveDate::from_ymd_opt(2026, 1, 1).expect("a date");
-
-        assert_eq!(
-            parse_filter_text("2026-01-01", &stamp),
-            Ok(Value::Timestamp(Temporal::Finite(day.and_time(NaiveTime::MIN))))
-        );
-        assert_eq!(
-            parse_filter_text("2026-01-01 00:00:00", &date),
-            Ok(Value::Date(Temporal::Finite(day)))
-        );
-        assert_eq!(
-            parse_filter_text("2026-01-01 08:00:00", &date),
-            Err(EditParseError::InvalidDate),
-            "a time of day is no date"
-        );
-        assert_eq!(
-            parse_literal_text("2026-01-01", &stamp),
-            Err(EditParseError::InvalidTimestamp),
-            "a stored timestamp took a bare date"
-        );
     }
 
     #[test]

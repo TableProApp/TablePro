@@ -13,9 +13,9 @@ pub struct InboundForeignKey {
     pub columns: Vec<String>,
     /// The columns of this table they point at, in the same order.
     pub referenced_columns: Vec<String>,
-    /// Whether `=` on the referencing columns finds the rows the key
-    /// matches. SQLite compares a key under the referenced columns'
-    /// affinity and collation, which a referencing column can declare
-    /// otherwise; the other engines make the two sides agree.
+    /// Whether `=` on the referencing columns, given this table's values
+    /// as text read under the referencing columns' types, finds the rows
+    /// the key matches. Columns of different types or collations compare
+    /// under a conversion that filter does not make.
     pub child_compares_alike: bool,
 }
