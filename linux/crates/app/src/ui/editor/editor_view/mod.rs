@@ -622,10 +622,14 @@ impl EditorView {
     fn one_caret_per_line(&self) {
         let buffer = self.buffer();
         let mut lines = std::collections::HashSet::from([buffer.iter_at_mark(&buffer.get_insert()).line()]);
-        self.imp()
-            .carets
-            .borrow_mut()
-            .retain(|caret| lines.insert(caret.insert(&buffer).line()));
+        let mut carets = self.imp().carets.borrow_mut();
+        let before = carets.len();
+        carets.retain(|caret| lines.insert(caret.insert(&buffer).line()));
+        let removed = carets.len() != before;
+        drop(carets);
+        if removed {
+            self.carets_changed();
+        }
     }
 
     /// A move of GTK's cursor that is not the user's, which would return to
@@ -921,7 +925,10 @@ impl EditorView {
         let indented = std::cell::Cell::new(false);
         self.at_every_caret(|place| {
             if !indented.replace(true) {
+                // Indentation the carets share takes no caret with it.
+                let replay = self.imp().replay.take();
                 self.indent_blocks(&lines, unindent);
+                self.imp().replay.replace(replay);
             }
             if !line_wise.get(place).copied().unwrap_or(true) {
                 forward();

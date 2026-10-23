@@ -178,13 +178,13 @@
         <child>
           <object class="AdwShortcutsItem" id="list-extend-selection">
             <property name="title" translatable="yes">Extend the Selection to the Clicked Row</property>
-            <property name="subtitle" translatable="yes">Shift+Click</property>
+            <property name="accelerator">&lt;Shift&gt;Pointer_Button1</property>
           </object>
         </child>
         <child>
           <object class="AdwShortcutsItem" id="list-toggle-selection">
             <property name="title" translatable="yes">Add or Remove the Clicked Row</property>
-            <property name="subtitle" translatable="yes">Ctrl+Click</property>
+            <property name="accelerator">&lt;Primary&gt;Pointer_Button1</property>
           </object>
         </child>
       </object>
@@ -362,7 +362,7 @@
         <child>
           <object class="AdwShortcutsItem" id="editor-toggle-cursor">
             <property name="title" translatable="yes">Add or Remove a Cursor</property>
-            <property name="subtitle" translatable="yes">Ctrl+Click</property>
+            <property name="accelerator">&lt;Primary&gt;Pointer_Button1</property>
           </object>
         </child>
         <child>

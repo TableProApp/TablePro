@@ -197,6 +197,19 @@ fn tab_on_lines_two_carets_share_indents_each_line_once() {
 }
 
 #[gtk4::test]
+fn unindenting_keeps_a_caret_inside_the_indentation() {
+    let shown = Shown::new("        a b");
+    shown.view.set_tab_width(4);
+    shown.cursor_at(11);
+    shown.view.toggle_caret_at(&shown.at(2));
+
+    shown.view.tab_at_every_caret(true, || {});
+
+    assert_eq!(shown.text(), "    a b");
+    assert_eq!(shown.view.caret_count(), 2);
+}
+
+#[gtk4::test]
 fn tab_indents_whole_lines_and_types_at_the_other_carets_as_one_edit() {
     let shown = Shown::new("foo\nfoo\nbar");
     let buffer = shown.buffer();
@@ -402,6 +415,10 @@ fn deleting_a_line_takes_each_line_once() {
         .emit_by_name::<()>("delete-from-cursor", &[&gtk::DeleteType::Paragraphs, &1]);
 
     assert_eq!(shown.text(), "\nb\nc", "the line's text went once");
+    assert!(
+        !shown.view.imp().completion_blocked.get(),
+        "the other caret on the line went without a word"
+    );
 }
 
 #[gtk4::test]

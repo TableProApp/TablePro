@@ -541,23 +541,6 @@ mod tests {
         entry.scope == Application || entry.action == "app.shortcuts"
     }
 
-    /// What the dialog says for a modifier and a click.
-    fn click_label(entry: &Accelerator) -> Option<String> {
-        let [accel] = entry.triggers else {
-            return None;
-        };
-        let (key, modifiers) = gtk::accelerator_parse(*accel)?;
-        if key != gdk::Key::Pointer_Button1 {
-            return None;
-        }
-        let held = if modifiers == gdk::ModifierType::SHIFT_MASK {
-            "Shift"
-        } else {
-            "Ctrl"
-        };
-        Some(format!("{held}+Click"))
-    }
-
     #[gtk4::test]
     fn every_trigger_parses() {
         for entry in ACCELERATORS {
@@ -864,11 +847,6 @@ mod tests {
             if shown_by_action_name(entry) {
                 assert_eq!(item.action_name(), entry.action);
                 assert_eq!(item.accelerator(), "", "{}", entry.action);
-            } else if let Some(click) = click_label(entry) {
-                // A keycap would read Pointer_Button1, so a click is words.
-                assert_eq!(item.accelerator(), "", "{}", entry.action);
-                assert_eq!(item.subtitle(), click, "{}", entry.action);
-                assert_eq!(item.action_name(), "", "{}", entry.action);
             } else {
                 assert_eq!(item.accelerator(), entry.triggers.join(" "), "{}", entry.action);
                 assert_eq!(item.action_name(), "", "{}", entry.action);
