@@ -27,7 +27,7 @@ use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
 use crate::call::{ClientCall, KillState, SessionKill, generated, release, remaining_millis, session};
-use crate::catalog::Reader;
+use crate::catalog::{CollectionType, Reader};
 use crate::dialect::MongoDialect;
 use crate::editor_session::MongoEditorSession;
 use crate::endpoint::MongoEndpoint;
@@ -327,9 +327,10 @@ impl Connection for MongoConnection {
                 Box::pin(async move {
                     let mut reader = reader(&context, session);
                     let mut columns = reader.fields(&database, &collection).await?;
-                    // A view takes no writes, so nothing in it names a document a
-                    // save could reach.
-                    if reader.is_view(&database, &collection).await? {
+                    // A view takes no writes, and a time-series collection keeps
+                    // no `_id` unique, so nothing names a document a save could
+                    // reach.
+                    if !reader.collection_type(&database, &collection).await?.keyed() {
                         for column in &mut columns {
                             column.primary_key = false;
                             column.default = tablepro_core::column::ColumnDefault::None;
@@ -348,9 +349,11 @@ impl Connection for MongoConnection {
         self.read(options, move |context, session| {
             Box::pin(async move {
                 let mut reader = reader(&context, session);
-                match reader.is_view(&database, &collection).await? {
-                    true => Ok(Vec::new()),
-                    false => reader.indexes(&database, &collection).await,
+                match reader.collection_type(&database, &collection).await? {
+                    CollectionType::View => Ok(Vec::new()),
+                    CollectionType::Collection | CollectionType::TimeSeries => {
+                        reader.indexes(&database, &collection).await
+                    }
                 }
             })
         })
@@ -395,16 +398,18 @@ impl Connection for MongoConnection {
             Box::pin(async move {
                 let mut reader = reader(&context, session);
                 let mut columns = reader.fields(&database, &collection).await?;
-                let view = reader.is_view(&database, &collection).await?;
-                if view {
+                let kind = reader.collection_type(&database, &collection).await?;
+                if !kind.keyed() {
                     for column in &mut columns {
                         column.primary_key = false;
                         column.default = tablepro_core::column::ColumnDefault::None;
                     }
                 }
-                let indexes = match view {
-                    true => Vec::new(),
-                    false => reader.indexes(&database, &collection).await?,
+                let indexes = match kind {
+                    CollectionType::View => Vec::new(),
+                    CollectionType::Collection | CollectionType::TimeSeries => {
+                        reader.indexes(&database, &collection).await?
+                    }
                 };
                 Ok(TableDefinition {
                     table,
@@ -412,7 +417,7 @@ impl Connection for MongoConnection {
                         .into_iter()
                         .map(|info| ColumnDefinition::new(info, ColumnAttributes::default()))
                         .collect(),
-                    primary_key: (!view).then(|| PrimaryKeyConstraint {
+                    primary_key: kind.keyed().then(|| PrimaryKeyConstraint {
                         name: Some("_id_".to_owned()),
                         columns: vec!["_id".to_owned()],
                     }),
@@ -427,14 +432,19 @@ impl Connection for MongoConnection {
     }
 
     /// A document is named by its `_id`. A view's documents are named by
-    /// nothing a write could reach, so its rows are read-only.
+    /// nothing a write could reach, and a time-series collection keeps no
+    /// `_id` unique, so their rows are read-only.
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let (database, collection) = (self.database_of(table), table.name.clone());
         self.read(options, move |context, session| {
             Box::pin(async move {
-                match reader(&context, session).is_view(&database, &collection).await? {
-                    true => Ok(RowIdentity::Unordered),
-                    false => Ok(RowIdentity::UniqueKey {
+                match reader(&context, session)
+                    .collection_type(&database, &collection)
+                    .await?
+                    .keyed()
+                {
+                    false => Ok(RowIdentity::Unordered),
+                    true => Ok(RowIdentity::UniqueKey {
                         columns: vec!["_id".to_owned()],
                     }),
                 }

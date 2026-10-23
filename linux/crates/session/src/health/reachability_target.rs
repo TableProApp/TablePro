@@ -29,6 +29,10 @@ impl ReachabilityTarget {
                 NetworkEndpoint::new(first.host(), first.port().unwrap_or(SSH_PORT))
                     .map_or(Self::Local, |endpoint| Self::for_endpoint(&endpoint))
             }
+            // The servers a DNS seed list names come from SRV records, which
+            // a reachability check of the host cannot read: the host itself
+            // may have no address at all.
+            RequestTarget::Network { ssh: None, options, .. } if options.dns_seed_list => Self::Local,
             RequestTarget::Network {
                 endpoint, ssh: None, ..
             } => Self::for_endpoint(endpoint),
@@ -109,6 +113,37 @@ mod tests {
             tls: TlsConfig::disabled(),
             options: Default::default(),
         }
+    }
+
+    #[test]
+    fn a_dns_seed_list_is_not_gated_on_its_host() {
+        let RequestTarget::Network {
+            endpoint,
+            ssh,
+            credentials,
+            database,
+            tls,
+            ..
+        } = network("cluster0.example.mongodb.net", None)
+        else {
+            unreachable!("a network target");
+        };
+        let seed_list = RequestTarget::Network {
+            endpoint,
+            ssh,
+            credentials,
+            database,
+            tls,
+            options: tablepro_core::NetworkOptions {
+                dns_seed_list: true,
+                ..Default::default()
+            },
+        };
+
+        assert_eq!(
+            ReachabilityTarget::for_request(&request(seed_list)),
+            ReachabilityTarget::Local
+        );
     }
 
     fn bastion(jumps: &[&str]) -> SshConfig {

@@ -14,7 +14,7 @@ What the connection names decides how the crate reaches it:
 | DNS Seed List on | The servers the host's SRV records name, with the options its TXT record sets (`replicaSet`, `authSource`, `loadBalanced`), and the set's discovery | The crate's |
 | SSH | A private Unix socket the driver listens on; each connection the crate opens there is a new `Transport::open()` stream through the forward, one host, `directConnection` | The driver's, around each stream |
 
-A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
+A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). The session's reachability check does not wait on a seed list's host, which may have no address of its own. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
 
 The relay socket sits in a private directory under `$XDG_RUNTIME_DIR` (the system temporary directory without one), mode 0700, and is removed with the connection. A stream the forward fails to open closes the crate's connection, and the transport's own error (the SSH master exited, the destination refused) is what the call reports.
 
@@ -47,7 +47,7 @@ A collection's columns are its top-level fields, found by the server from the fi
 
 A field's column type is its values' type: a number widens across `int`, `long`, `double` and `decimal`, a string is text, a date a timestamp with a zone, an `objectId` its own type. A field that holds documents, arrays, binary data or more than one kind of value is a JSON column, written as relaxed Extended JSON from the BSON itself, with each `long` in its canonical `{"$numberLong": "..."}` form, so the type survives an edit. A UUID (binary subtype 4) is a UUID, other binary data bytes. A field missing from a document reads as NULL.
 
-`_id` is the primary key and names a document for every save. A new row leaves `_id` out unless one is typed, and the document gets an ObjectId, as every driver gives it. A view has no key: its pages are counted off in the order the view gives, and its rows read and never write. Indexes come from `listIndexes`, `_id`'s first. The row count is the collection's metadata count, shown as an estimate.
+`_id` is the primary key and names a document for every save. A new row leaves `_id` out unless one is typed, and the document gets an ObjectId, as every driver gives it. A view has no key, and neither has a time-series collection, whose `_id` the server does not keep unique: their pages are counted off in the order they give, and their rows read and never write. Indexes come from `listIndexes`, `_id`'s first. The row count is the collection's metadata count, shown as an estimate.
 
 ## Pages, filters and saves
 
@@ -75,7 +75,7 @@ The editor runs mongosh statements. A statement ends at `;` or at the end of a l
 
 - `use <db>`, `show dbs`, `show collections`, `show users`, `show roles`.
 - `db.<collection>` or `db.getCollection("<name>")`, with `db.getSiblingDB("<db>")` in front, and the collection methods: `find`, `findOne`, `aggregate`, `countDocuments`, `estimatedDocumentCount`, `count`, `distinct`, `getIndexes`, `stats` and its sizes, the `insert`, `update`, `replace`, `delete` and `findOneAnd...` families, `findAndModify`, `remove`, `createIndex(es)`, `dropIndex(es)`, `hideIndex`, `unhideIndex`, `renameCollection` and `drop`.
-- A cursor's `sort`, `limit`, `skip`, `projection`, `hint`, `maxTimeMS`, `batchSize`, `comment`, `collation`, `allowDiskUse`, `toArray`, `pretty`, `count`, `explain` and the like.
+- A `find` cursor's `sort`, `limit`, `skip`, `projection`, `hint`, `maxTimeMS`, `batchSize`, `comment`, `collation`, `allowDiskUse`, `toArray`, `pretty`, `count`, `explain` and the like, and an `aggregate` cursor's `explain`, `toArray` and `pretty`; any other cursor method is refused rather than left out.
 - The database methods: `runCommand`, `adminCommand`, `aggregate`, `getCollectionNames`, `getCollectionInfos`, `createCollection`, `createView`, `dropDatabase`, `stats`, `serverStatus`, `version`, `currentOp`, `killOp`, the user and role helpers, and `rs.status()`, `rs.conf()`.
 - Values as mongosh writes them: unquoted keys, single quotes, regular expressions, `ObjectId`, `ISODate`, `Date`, `NumberInt`, `NumberLong`, `NumberDecimal`, `Timestamp`, `UUID`, `BinData`, `MinKey`, `MaxKey`. A whole number in the int32 range is an `int`, any other number a `double`, as mongosh stores them.
 

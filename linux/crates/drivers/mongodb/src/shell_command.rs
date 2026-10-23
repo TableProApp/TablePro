@@ -502,8 +502,15 @@ fn aggregate(target: Bson, pipeline: Vec<Bson>, options: Document, database: Str
         .and_then(Bson::as_document)
         .and_then(|stage| stage.get_document("$project").ok())
         .map_or(Columns::Discovered, crate::shell_find::projected_columns);
+    let mut explained = false;
+    for modifier in call.modifiers() {
+        match modifier.name.as_str() {
+            "explain" => explained = true,
+            "toArray" | "pretty" => {}
+            _ => return Err(unsupported("this aggregate cursor method")),
+        }
+    }
     let mut command = doc! { "aggregate": target, "pipeline": pipeline, "cursor": {} };
-    let mut explained = call.modifiers().iter().any(|method| method.name == "explain");
     for (key, value) in options {
         match key.as_str() {
             "batchSize" => {
@@ -556,6 +563,11 @@ mod tests {
             planned("db.a.aggregate([], {explain: true})"),
             Ok(Plan::Command { .. })
         ));
+        assert!(
+            planned("db.a.aggregate([]).sort({a: 1})").is_err(),
+            "an aggregate takes no sort()"
+        );
+        assert!(planned("db.a.aggregate([{$out: 'b'}]).itcount()").is_err());
     }
 
     #[test]

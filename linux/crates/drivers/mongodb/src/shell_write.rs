@@ -121,16 +121,17 @@ fn check_update(method: &ShellMethod, update: &Bson, multi: bool) -> Result<(), 
         },
         _ => None,
     };
+    let replaces = matches!(method.name.as_str(), "replaceOne" | "findOneAndReplace");
     let fits = match (method.name.as_str(), operators) {
-        ("replaceOne", Some(false)) => true,
-        ("replaceOne", _) => false,
+        (_, Some(false)) if replaces => true,
+        _ if replaces => false,
         ("update", Some(false)) => !multi,
         (_, Some(true)) => true,
         _ => false,
     };
     match fits {
         true => Ok(()),
-        false if method.name == "replaceOne" => Err(shape(method, 1, "a replacement document with no $ operators")),
+        false if replaces => Err(shape(method, 1, "a replacement document with no $ operators")),
         false => Err(shape(method, 1, "update operators such as $set, or a pipeline")),
     }
 }
@@ -271,7 +272,9 @@ fn find_and_modify(
                     as_document(second, 1)?
                 }
                 _ => {
-                    command.insert("update", second.ok_or_else(|| shape(method, 1, "an update"))?);
+                    let update = second.ok_or_else(|| shape(method, 1, "an update"))?;
+                    check_update(method, &update, false)?;
+                    command.insert("update", update);
                     options
                 }
             };
@@ -373,6 +376,10 @@ mod tests {
         assert!(refused("db.users.replaceOne({_id: 1}, {$set: {a: 1}})"));
         assert!(refused("db.users.update({}, {name: 'Ann'}, {multi: true})"));
         assert!(refused("db.users.dropIndex()"));
+        assert!(refused("db.users.findOneAndUpdate({_id: 1}, {name: 'Ann'})"));
+        assert!(refused("db.users.findOneAndReplace({_id: 1}, {$set: {a: 1}})"));
+        assert!(!refused("db.users.findOneAndUpdate({_id: 1}, {$inc: {n: 1}})"));
+        assert!(!refused("db.users.findOneAndReplace({_id: 1}, {name: 'Ann'})"));
         assert!(!refused("db.users.updateOne({_id: 1}, {$set: {name: 'Ann'}})"));
         assert!(!refused("db.users.updateOne({_id: 1}, [{$set: {n: 1}}])"));
         assert!(!refused("db.users.replaceOne({_id: 1}, {name: 'Ann'})"));

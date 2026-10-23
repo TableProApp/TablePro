@@ -123,17 +123,24 @@ impl Reader<'_> {
         Ok(objects)
     }
 
-    /// Whether the collection is a view, which takes no writes.
-    pub(crate) async fn is_view(&mut self, database: &str, collection: &str) -> Result<bool, DriverError> {
+    /// What kind of collection it is, which decides whether `_id` names
+    /// one document.
+    pub(crate) async fn collection_type(
+        &mut self,
+        database: &str,
+        collection: &str,
+    ) -> Result<CollectionType, DriverError> {
         let listed = self
             .documents(
                 database,
                 doc! { "listCollections": 1_i32, "filter": { "name": collection }, "nameOnly": true, "authorizedCollections": true },
             )
             .await?;
-        Ok(listed
-            .first()
-            .is_some_and(|entry| matches!(entry.get_str("type"), Ok("view"))))
+        Ok(match listed.first().and_then(|entry| entry.get_str("type").ok()) {
+            Some("view") => CollectionType::View,
+            Some("timeseries") => CollectionType::TimeSeries,
+            _ => CollectionType::Collection,
+        })
     }
 
     /// The fields the first documents hold, each with the types it holds,
@@ -182,6 +189,25 @@ impl Reader<'_> {
             rows,
             heap_blocks: None,
         })
+    }
+}
+
+/// What a collection is, as `listCollections` says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CollectionType {
+    Collection,
+    /// Takes no writes, and its documents are named by nothing a write
+    /// could reach.
+    View,
+    /// Holds measurements whose `_id` the server does not keep unique, so
+    /// it cannot name one for a save or a page.
+    TimeSeries,
+}
+
+impl CollectionType {
+    /// Whether `_id` names one document.
+    pub(crate) fn keyed(self) -> bool {
+        self == Self::Collection
     }
 }
 
