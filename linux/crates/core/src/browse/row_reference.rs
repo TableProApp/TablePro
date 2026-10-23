@@ -1,4 +1,4 @@
-use crate::column::{ColumnKind, ColumnType, ResultColumn};
+use crate::column::{ColumnKind, ColumnType, ResultColumn, has_dynamic_storage};
 use crate::ddl::{InboundForeignKey, OutboundForeignKey};
 use crate::edit::{EditText, edit_text, parse_filter_text};
 use crate::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
@@ -124,10 +124,12 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
         },
     };
     let parsed = parse_filter_text(&text, column_type).ok()?;
-    // SQLite keeps whatever a column is given and matches a key on that,
-    // so the filter has to bind the very value: 'true' in a BOOLEAN
-    // column would be bound as 1 and find another row.
-    let kept = !column_type.dynamic_storage || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
+    // Only SQLite stores a boolean, number or date column per row. It
+    // keeps whatever the column is given and matches a key on that, so
+    // the filter has to bind the very value: 'true' in a BOOLEAN column
+    // would be bound as 1 and find another row.
+    let any_value = column_type.dynamic_storage && !has_dynamic_storage(&column_type.kind);
+    let kept = !any_value || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
     kept.then_some(text)
 }
 
@@ -166,7 +168,7 @@ mod tests {
     use super::*;
 
     fn text_column(name: &str) -> ResultColumn {
-        typed(name, ColumnKind::Other)
+        ResultColumn::new(name, ColumnType::untyped_text("text"))
     }
 
     fn typed(name: &str, kind: ColumnKind) -> ResultColumn {
@@ -348,13 +350,32 @@ mod tests {
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Int(5)),
-            refused,
-            "a number bound as text"
+            Ok(vec![eq("id", "5")]),
+            "a NUMERIC column reads the text back as the number"
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Text("ab-12".to_owned())),
             Ok(vec![eq("id", "ab-12")])
         );
+    }
+
+    /// Other engines store a BIT or a text column per row too, and
+    /// compare it under its type, whatever spelling the filter uses.
+    #[test]
+    fn a_bit_key_follows_whatever_its_wire_padding() {
+        let bits = dynamic(
+            "flags",
+            ColumnKind::BitString {
+                length: Some(1),
+                varying: false,
+            },
+        );
+        let key = key(&["flags"], Some("sales"), &["flags"]);
+        let value = Value::Bits(crate::value::BitString::from_u64(1, 8));
+
+        let reference = RowReference::referenced(&orders(), &key, &[bits], &[value]);
+
+        assert!(reference.is_ok(), "{reference:?}");
     }
 
     #[test]

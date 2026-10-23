@@ -578,6 +578,25 @@ fn numeric_constants_are_one_token() {
 }
 
 #[test]
+fn a_digit_separator_keeps_a_number_whole_where_the_engine_reads_one() {
+    let numbers = |grammar: SqlGrammar, literal: &str| -> Vec<String> {
+        let text = format!("SELECT {literal} FROM t");
+        let plan = plan(grammar, &text);
+        plan.tokens(0..text.len())
+            .filter(|token| token.kind == ScriptTokenKind::Number)
+            .map(|token| text[token.range.clone()].to_owned())
+            .collect()
+    };
+
+    for grammar in [SqlGrammar::Sqlite, SqlGrammar::PostgreSql, SqlGrammar::ClickHouse] {
+        assert_eq!(numbers(grammar, "1_0e+2"), ["1_0e+2"], "{grammar:?}");
+        assert_eq!(numbers(grammar, "1_000.000_5"), ["1_000.000_5"], "{grammar:?}");
+        assert_eq!(numbers(grammar, "1._5"), ["1._5"], "{grammar:?}");
+    }
+    assert_eq!(numbers(SqlGrammar::MySql, "1_0e+2"), ["1_0e", "2"], "a name, then a number");
+}
+
+#[test]
 fn a_qualified_name_and_a_range_keep_their_dots() {
     let text = "SELECT t.a, a[1:2], 1..2 FROM t";
     let plan = plan(SqlGrammar::PostgreSql, text);

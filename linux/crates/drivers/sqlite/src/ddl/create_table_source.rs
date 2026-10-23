@@ -930,6 +930,28 @@ mod tests {
     }
 
     #[test]
+    fn a_column_compares_by_its_type_name_as_sqlite_keeps_it() {
+        let sql = "CREATE TABLE t (a \"BOOLEAN\", b [INTEGER], c TEXT DEFAULT 1_0e+2 COLLATE NOCASE)";
+
+        assert_eq!(kept_type_name("\"VARCHAR\"(10)"), "VARCHAR");
+        assert_eq!(kept_type_name("`a``b`"), "a`b");
+        assert_eq!(kept_type_name("VARCHAR(10)"), "VARCHAR(10)");
+        assert_eq!(
+            declared_comparison(sql, "a"),
+            Some(crate::catalog::Comparison::of("BOOLEAN", None))
+        );
+        assert_eq!(
+            declared_comparison(sql, "b"),
+            Some(crate::catalog::Comparison::of("INTEGER", None))
+        );
+        assert_eq!(
+            declared_comparison(sql, "c"),
+            Some(crate::catalog::Comparison::of("TEXT", Some("NOCASE"))),
+            "a default with digit separators"
+        );
+    }
+
+    #[test]
     fn identifiers_in_every_quote_style_read_as_their_names() {
         let source = read("CREATE TABLE \"we\"\"ird\" (\"a\"\"b\" TEXT, `c``d` INT, [e f] REAL, 'g' BLOB, plain)");
 

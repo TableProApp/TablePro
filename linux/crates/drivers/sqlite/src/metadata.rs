@@ -353,19 +353,24 @@ async fn inbound_keys(
 
 /// SQLite compares a key under the parent columns' affinity and
 /// collation, so `=` on a column declared otherwise finds other rows
-/// than the key matches. Text that does not read is taken at its word:
-/// nothing says the two sides differ.
+/// than the key matches. A definition that does not read says nothing
+/// either way, so the key is not followed. A missing table is followed,
+/// to say that it is missing.
 fn compares_alike<'a>(
     child_sql: Option<&str>,
     parent_sql: Option<&str>,
     pairs: impl IntoIterator<Item = (&'a String, &'a String)>,
 ) -> bool {
+    let (Some(child_sql), Some(parent_sql)) = (child_sql, parent_sql) else {
+        return true;
+    };
     pairs.into_iter().all(|(child_column, parent_column)| {
-        let child = child_sql.and_then(|sql| declared_comparison(sql, child_column));
-        let parent = parent_sql.and_then(|sql| declared_comparison(sql, parent_column));
-        match (child, parent) {
+        match (
+            declared_comparison(child_sql, child_column),
+            declared_comparison(parent_sql, parent_column),
+        ) {
             (Some(child), Some(parent)) => child.alike(&parent),
-            _ => true,
+            _ => false,
         }
     })
 }
