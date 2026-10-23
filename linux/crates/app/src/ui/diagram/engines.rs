@@ -1,5 +1,5 @@
 //! The diagram read from real servers: a schema of 50 tables joined by
-//! foreign keys, on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite,
+//! foreign keys, on PostgreSQL, MySQL, MariaDB, SQL Server, SQLite and DuckDB,
 //! through the app's own connector and session, as the tab reads it.
 //!
 //! `node_00` points nowhere. Every other `node_N` points at its parent
@@ -51,6 +51,7 @@ enum Engine {
     Mariadb,
     Mssql,
     Sqlite,
+    Duckdb,
 }
 
 impl Engine {
@@ -58,7 +59,7 @@ impl Engine {
         match self {
             Self::Mysql | Self::Mariadb => format!("`{name}`"),
             Self::Mssql => format!("[{name}]"),
-            Self::Postgres | Self::Sqlite => format!("\"{name}\""),
+            Self::Postgres | Self::Sqlite | Self::Duckdb => format!("\"{name}\""),
         }
     }
 }
@@ -106,7 +107,7 @@ struct Server {
     request: ConnectRequest,
     /// The schema the diagram reads.
     scope: Option<String>,
-    /// The container, or the SQLite file's folder, which goes when this
+    /// The container, or the file's folder, which goes when this
     /// does.
     _fixture: Box<dyn std::any::Any + Send>,
 }
@@ -189,7 +190,7 @@ impl Server {
             Engine::Postgres => Self::postgres().await,
             Engine::Mysql | Engine::Mariadb => Self::mysql(engine).await,
             Engine::Mssql => Self::mssql().await,
-            Engine::Sqlite => Self::sqlite().await,
+            Engine::Sqlite | Engine::Duckdb => Self::file(engine).await,
         }
     }
 
@@ -268,11 +269,21 @@ impl Server {
     }
 
     /// The main schema of a new file, which the sidebar lists with no
-    /// schema name.
-    async fn sqlite() -> Self {
+    /// schema name for SQLite and as `main` for DuckDB.
+    async fn file(engine: Engine) -> Self {
         let dir = tempfile::tempdir().expect("a temporary directory");
-        let path: PathBuf = dir.path().join("diagram.sqlite3");
-        let driver: Arc<dyn DatabaseDriver> = Arc::new(tablepro_driver_sqlite::SqliteDriver);
+        let (driver, path, scope): (Arc<dyn DatabaseDriver>, PathBuf, _) = match engine {
+            Engine::Duckdb => (
+                Arc::new(tablepro_driver_duckdb::DuckDbDriver),
+                dir.path().join("diagram.duckdb"),
+                Some("main".to_owned()),
+            ),
+            _ => (
+                Arc::new(tablepro_driver_sqlite::SqliteDriver),
+                dir.path().join("diagram.sqlite3"),
+                None,
+            ),
+        };
         let options = ConnectOptions {
             target: ConnectTarget::File(FileEndpoint::create_new(path.clone()).expect("an absolute path")),
             workspace_settings: WorkspaceSettings::workspace(false),
@@ -283,7 +294,7 @@ impl Server {
             .connect(options, CancellationToken::new())
             .await
             .expect("the new file");
-        apply(admin.as_ref(), &create_statements(Engine::Sqlite, None)).await;
+        apply(admin.as_ref(), &create_statements(engine, None)).await;
         admin.close().await.expect("the file closes");
         Self {
             request: ConnectRequest {
@@ -293,7 +304,7 @@ impl Server {
                 workspace_settings: WorkspaceSettings::workspace(false),
                 safe_mode: tablepro_core::SafeModeLevel::Off,
             },
-            scope: None,
+            scope,
             _fixture: Box::new(dir),
         }
     }
@@ -453,4 +464,9 @@ async fn sql_server_schema_of_50_tables_draws_its_keys() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sqlite_file_of_50_tables_draws_its_keys() {
     case(Engine::Sqlite).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn duckdb_file_of_50_tables_draws_its_keys() {
+    case(Engine::Duckdb).await;
 }
