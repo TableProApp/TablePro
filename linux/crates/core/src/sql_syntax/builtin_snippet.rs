@@ -133,6 +133,22 @@ const CLICKHOUSE: [BuiltinSnippet; 7] = [
     ),
 ];
 
+// DuckDB numbers a key only from a sequence, which is a statement of its
+// own, so the key is a UUID it makes.
+const DUCKDB: [BuiltinSnippet; 7] = [
+    SELECT,
+    INSERT,
+    UPDATE,
+    DELETE,
+    JOIN,
+    BuiltinSnippet::new(
+        "ctab",
+        "CREATE TABLE",
+        "CREATE TABLE ${1:table_name} (\n    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    ${2:name} ${3:VARCHAR} NOT NULL$0\n);",
+    ),
+    CREATE_INDEX,
+];
+
 /// The statements the editor offers on an engine of `grammar`. Redis is
 /// not SQL and has none.
 pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
@@ -142,6 +158,7 @@ pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
         SqlGrammar::Sqlite => &SQLITE,
         SqlGrammar::MsSql => &MSSQL,
         SqlGrammar::ClickHouse => &CLICKHOUSE,
+        SqlGrammar::DuckDb => &DUCKDB,
         SqlGrammar::Redis => &[],
     }
 }

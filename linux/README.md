@@ -309,9 +309,9 @@ added, changed or removed takes effect without a restart:
   parameters out of snippets.
 - `languages` says where a snippet shows: `sql` on every SQL connection
   and in a tab with no connection, or one engine: `postgres`, `mysql`
-  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse` or `redis`, whose
-  editor offers its own snippets and no SQL ones. Separate several with
-  `;`.
+  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse`, `duckdb` or
+  `redis`, whose editor offers its own snippets and no SQL ones.
+  Separate several with `;`.
 - A snippet for the engine replaces a `sql` one with the same trigger,
   and either replaces the built-in one.
 - A file that does not parse is skipped, and GtkSourceView logs its name.
