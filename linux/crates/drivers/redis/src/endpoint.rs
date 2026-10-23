@@ -107,7 +107,13 @@ impl RedisEndpoint {
     /// What the server is, asked on `link`. A login that may not run
     /// `INFO` still connects, without a version.
     pub(crate) async fn server_info(&self, link: &Link) -> Result<ServerInfo, DriverError> {
-        match link.send(&command(&["INFO", "server"])).await? {
+        let info = command(&["INFO", "server"]);
+        let asked = tokio::time::timeout(self.liveness.login_timeout, link.send(&info));
+        let reply = asked.await.map_err(|_| DriverError::Timeout {
+            phase: TimeoutPhase::Login,
+            server_cancelled: false,
+        })??;
+        match reply {
             Value::BulkString(bytes) => Ok(server_version::server_info(&String::from_utf8_lossy(&bytes))),
             Value::VerbatimString { text, .. } => Ok(server_version::server_info(&text)),
             _ => Ok(server_version::unknown()),

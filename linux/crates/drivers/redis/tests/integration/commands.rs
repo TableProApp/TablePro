@@ -1,17 +1,25 @@
 //! What only Redis does: its logins and numbered databases, its editor's
 //! commands and transactions, and keys and values of any bytes.
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use secrecy::SecretString;
 use tablepro_core::keyspace::{KeyScan, KeyWindow};
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
-    ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd,
-    RunOptions, ServerCode, TransactionState, UnsupportedFeature, Value,
+    ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, LivenessPolicy,
+    NetworkEndpoint, ResultEvent, RunEnd, RunOptions, ServerCode, TimeoutPhase, TlsConfig, TransactionState,
+    UnsupportedFeature, Value, WorkspaceSettings,
 };
 use tablepro_driver_redis::{RedisDriver, key_text};
+use tablepro_test_support::FaultTransport;
+use tablepro_test_support::conformance::test_liveness;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{CALL, connect, editor, fixture_options, password, rows, run, run_with, start, unique, within};
+use crate::support::{
+    CALL, connect, editor, fixture_options, options_over, password, rows, run, run_with, start, unique, within,
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -62,6 +70,44 @@ async fn a_password_alone_logs_in_as_the_default_user() {
     let (major, minor) = fixture.version().reported();
     let server = connection.server_info();
     assert_eq!((server.major, server.minor), (major, minor), "{server:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_server_that_never_answers_info_times_out_the_connect() {
+    let fixture = start().await;
+    let liveness = LivenessPolicy {
+        login_timeout: Duration::from_secs(1),
+        ..test_liveness()
+    };
+    let endpoint = NetworkEndpoint::new(fixture.host(), fixture.port()).expect("a valid endpoint");
+    let fault = Arc::new(FaultTransport::direct(endpoint, &liveness).expect("a fault transport"));
+    fault.stall_reads_after_write_containing("INFO");
+    let options = options_over(
+        fault.clone(),
+        password(&fixture.password_credentials()),
+        None,
+        TlsConfig::disabled(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let connected = tokio::time::timeout(CALL, RedisDriver.connect(options, CancellationToken::new()))
+        .await
+        .expect("the connect to end at the login timeout");
+
+    let error = connected.err();
+    assert!(
+        matches!(
+            error,
+            Some(DriverError::Timeout {
+                phase: TimeoutPhase::Login,
+                ..
+            })
+        ),
+        "{error:?}"
+    );
+    assert_eq!(fault.stalls_triggered(), 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

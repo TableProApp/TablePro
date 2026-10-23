@@ -96,10 +96,10 @@ struct WindowPlan {
 impl WindowPlan {
     fn new(kind: KeyKind, key: &[u8], window: &KeyWindow) -> Option<Self> {
         let limit = u64::from(window.limit.get());
-        let cursor = window.cursor.as_str();
-        let start: u64 = cursor.parse().unwrap_or(0);
+        let position = position(kind, &window.cursor);
+        let start: u64 = position.and_then(|position| position.parse().ok()).unwrap_or(0);
         let last = start.saturating_add(limit - 1);
-        let scan_cursor = if window.cursor.is_start() { "0" } else { cursor };
+        let scan_cursor = position.unwrap_or("0");
         let on_key = |name: &str| {
             let mut command = redis::cmd(name);
             command.arg(key);
@@ -127,10 +127,7 @@ impl WindowPlan {
             KeyKind::Hash | KeyKind::Set => read.arg(scan_cursor).arg("COUNT").arg(limit),
             KeyKind::List => read.arg(start).arg(last),
             KeyKind::SortedSet => read.arg(start).arg(last).arg("WITHSCORES"),
-            KeyKind::Stream | KeyKind::Other => {
-                let from = if window.cursor.is_start() { "-" } else { cursor };
-                read.arg(from).arg("+").arg("COUNT").arg(limit)
-            }
+            KeyKind::Stream | KeyKind::Other => read.arg(position.unwrap_or("-")).arg("+").arg("COUNT").arg(limit),
         };
         Some(Self {
             kind,
@@ -159,13 +156,13 @@ impl WindowPlan {
                     .collect();
                 Ok((
                     table(&[text_column("field"), text_column("value")], rows),
-                    scan_next(next),
+                    scan_next(self.kind, next),
                 ))
             }
             KeyKind::Set => {
                 let (next, elements) = scan_reply(read)?;
                 let rows = elements.into_iter().map(|member| vec![bytes_cell(member)]).collect();
-                Ok((table(&[text_column("member")], rows), scan_next(next)))
+                Ok((table(&[text_column("member")], rows), scan_next(self.kind, next)))
             }
             KeyKind::List => {
                 let elements = elements(read)?;
@@ -197,7 +194,7 @@ impl WindowPlan {
     /// The next index of a range read, unless the range reached the end.
     fn index_next(&self, read: u64, length: Option<u64>) -> Option<KeyCursor> {
         let next = self.start + read;
-        (read == self.limit && length.is_none_or(|length| next < length)).then(|| KeyCursor::new(next.to_string()))
+        (read == self.limit && length.is_none_or(|length| next < length)).then(|| tagged(self.kind, next))
     }
 }
 
@@ -205,8 +202,32 @@ fn table(columns: &[ResultColumn], rows: Vec<Vec<Value>>) -> QueryResult {
     QueryResult::new(Arc::<[ResultColumn]>::from(columns.to_vec()), rows)
 }
 
-fn scan_next(cursor: Vec<u8>) -> Option<KeyCursor> {
-    (cursor != b"0").then(|| KeyCursor::new(String::from_utf8_lossy(&cursor).into_owned()))
+fn scan_next(kind: KeyKind, cursor: Vec<u8>) -> Option<KeyCursor> {
+    (cursor != b"0").then(|| tagged(kind, String::from_utf8_lossy(&cursor)))
+}
+
+/// A cursor names the kind it was given for: once another client gives
+/// the key a new type, a position in the old type's terms is no position
+/// at all, and the read starts the new value over.
+fn tagged(kind: KeyKind, position: impl std::fmt::Display) -> KeyCursor {
+    KeyCursor::new(format!("{}:{position}", cursor_tag(kind)))
+}
+
+fn position(kind: KeyKind, cursor: &KeyCursor) -> Option<&str> {
+    let (tag, position) = cursor.as_str().split_once(':')?;
+    (tag == cursor_tag(kind)).then_some(position)
+}
+
+fn cursor_tag(kind: KeyKind) -> &'static str {
+    match kind {
+        KeyKind::String => "string",
+        KeyKind::Hash => "hash",
+        KeyKind::List => "list",
+        KeyKind::Set => "set",
+        KeyKind::SortedSet => "zset",
+        KeyKind::Stream => "stream",
+        KeyKind::Other => "other",
+    }
 }
 
 fn pairs(elements: Vec<Vec<u8>>) -> impl Iterator<Item = (Vec<u8>, Vec<u8>)> {
@@ -277,7 +298,7 @@ fn stream_rows(read: Reply, limit: u64) -> Result<(QueryResult, Option<KeyCursor
         last = Some(id);
     }
     let next = match last {
-        Some(id) if rows.len() as u64 == limit => after(&id).map(KeyCursor::new),
+        Some(id) if rows.len() as u64 == limit => after(&id).map(|id| tagged(KeyKind::Stream, id)),
         _ => None,
     };
     let result = table(&[text_column("id"), text_column("fields")], rows);
@@ -344,7 +365,7 @@ mod tests {
 
     #[test]
     fn a_list_window_reads_by_index_and_stops_at_the_end() {
-        let plan = WindowPlan::new(KeyKind::List, b"l", &window("2", 2)).unwrap();
+        let plan = WindowPlan::new(KeyKind::List, b"l", &window("list:2", 2)).unwrap();
 
         let (rows, next) = plan.rows(Reply::Array(vec![bulk("c"), bulk("d")]), Some(5)).unwrap();
         assert_eq!(
@@ -354,7 +375,7 @@ mod tests {
                 vec![Value::Int(3), Value::Text("d".to_owned())]
             ]
         );
-        assert_eq!(next, Some(KeyCursor::new("4")));
+        assert_eq!(next, Some(KeyCursor::new("list:4")));
         let (_, end) = plan.rows(Reply::Array(vec![bulk("c"), bulk("d")]), Some(4)).unwrap();
         assert_eq!(end, None);
     }
@@ -395,7 +416,7 @@ mod tests {
             rows.rows,
             vec![vec![Value::Text("f".to_owned()), Value::Text("v".to_owned())]]
         );
-        assert_eq!(next, Some(KeyCursor::new("12")));
+        assert_eq!(next, Some(KeyCursor::new("hash:12")));
     }
 
     #[test]
@@ -421,8 +442,26 @@ mod tests {
             rows.rows[0][1],
             Value::Json(JsonText::parse(r#"{"f":"v"}"#.to_owned()).unwrap())
         );
-        assert_eq!(next, Some(KeyCursor::new("1-2")));
+        assert_eq!(next, Some(KeyCursor::new("stream:1-2")));
         assert_eq!(after(&format!("5-{}", u64::MAX)).as_deref(), Some("6-0"));
+    }
+
+    #[test]
+    fn a_cursor_of_another_kind_reads_the_key_from_its_start() {
+        let read = |kind, cursor: &str| {
+            let plan = WindowPlan::new(kind, b"k", &window(cursor, 500)).unwrap();
+            plan.read.get_packed_command()
+        };
+        let first = |kind| {
+            let plan = WindowPlan::new(kind, b"k", &KeyWindow::first()).unwrap();
+            plan.read.get_packed_command()
+        };
+
+        assert_eq!(read(KeyKind::Hash, "stream:123-500"), first(KeyKind::Hash));
+        assert_eq!(read(KeyKind::Set, "hash:42"), first(KeyKind::Set));
+        assert_eq!(read(KeyKind::SortedSet, "list:500"), first(KeyKind::SortedSet));
+        assert_eq!(read(KeyKind::Stream, "set:9"), first(KeyKind::Stream));
+        assert_ne!(read(KeyKind::Hash, "hash:42"), first(KeyKind::Hash));
     }
 
     #[test]

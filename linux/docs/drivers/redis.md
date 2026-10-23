@@ -15,7 +15,7 @@ Every link is a redis-rs `MultiplexedConnection` on a stream of its own:
 | Export | Every reply of the commands an export reads | For the export, closed with it |
 | Probe and control | `PING` for `probe` and the link check; `CLIENT UNBLOCK` and `CLIENT KILL` for a stop | For each, closed after |
 
-A link logs in during redis-rs's handshake: `AUTH` with the username and password when there is a password (a password alone logs in as the `default` user), `SELECT` of the connection's database number, and `CLIENT SETINFO` with the app's name and version, whose errors redis-rs ignores. The driver then sends `CLIENT SETNAME TablePro` and `CLIENT ID`. A `NOAUTH` reply there means the server wants a password the connection does not have. A login whose ACL denies `CLIENT ID` connects without an id, and its editor stop can only close the link.
+A link logs in during redis-rs's handshake: `AUTH` with the username and password when there is a password (a password alone logs in as the `default` user), `SELECT` of the connection's database number, and `CLIENT SETINFO` with the app's name and version, whose errors redis-rs ignores. The driver then sends `CLIENT SETNAME TablePro` and `CLIENT ID`. A `NOAUTH` reply there means the server wants a password the connection does not have. A login whose ACL denies `CLIENT ID` connects without an id, and its editor stop can only close the link. Each step of the login, and the connect's `INFO server`, gives up at the login timeout.
 
 The connection's database is a number from 0 (the connect dialog's Database Number, empty for 0). Text that is not a number is refused before anything is opened (`ConfigError::DatabaseNumber`); a number past the server's `databases` setting is the server's `SELECT` error.
 
@@ -38,7 +38,7 @@ A key is any bytes. One that is UTF-8 with no control character and does not ope
 | Sorted set | `ZCARD` | `ZRANGE <start> <start + 499> WITHSCORES`, by rank | the next rank |
 | Stream | `XLEN` | `XRANGE <start> + COUNT 500` | the last id plus one sequence number, which every version takes |
 
-A module's type, such as ReJSON-RL, is named and not read. A value that is not UTF-8 reads as bytes, and a string cut inside a character drops the part it cut.
+Each cursor names the type it was given for. When another client gives the key a new type before Load More, the read starts the new value over instead of sending one type's position to another type's command, and the key tab reloads. A module's type, such as ReJSON-RL, is named and not read. A value that is not UTF-8 reads as bytes, and a string cut inside a character drops the part it cut.
 
 ## The editor
 
