@@ -961,6 +961,21 @@
       "tablepro-app",
       "--lib",
       "ui::grid::editing::tests::readonly_multiline_cells_keep_compact_height_and_exact_text"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connect_dialog::controls::tests::choice_rows_expose_an_activation_target"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connect_dialog::controls::tests::choice_rows_show_only_the_current_selection"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::connect_dialog::controls::tests::dropping_a_choice_row_releases_its_popup"
     ]
   ],
   "keyring": [

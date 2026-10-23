@@ -1,0 +1,19 @@
+{
+  "preflight": "passed",
+  "harness": 400,
+  "unit": 2073,
+  "sandbox": 2086,
+  "redis_cancellation": 1,
+  "app_clippy": "passed",
+  "gtk_isolated": 157,
+  "installed_without_retries": {
+    "mysql_socket_seconds": 5.027,
+    "connection_form_seconds": 4.295,
+    "keyboard_space_enter_seconds": 3.53
+  },
+  "binary_sha256": "befb19deb593cf7e838212637930e17b21eaea6ba51a3f3cb6467228aa0f7a07",
+  "profile": "dev",
+  "native_wayland": "not tested",
+  "independent_review": "not performed; self-review only",
+  "forgejo": "pending"
+}

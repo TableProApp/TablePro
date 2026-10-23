@@ -559,7 +559,7 @@ GLib.MainLoop().run()
     def connection_dialog_environment_choice_is_operable(database, base):
         ui.invoke(ui.wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node(name="Connect to PostgreSQL")
-        environment = ui.wait_for_node(name="Local", role=pyatspi.ROLE_PUSH_BUTTON)
+        environment = ui.wait_for_node(name="Environment", role=pyatspi.ROLE_TOGGLE_BUTTON)
         actions = environment.queryAction()
         names = [actions.getName(index).lower() for index in range(actions.nActions)]
         assert any(name in {"click", "activate", "press", "toggle", "default.activate"} for name in names), (

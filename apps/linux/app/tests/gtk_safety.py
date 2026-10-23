@@ -2403,7 +2403,8 @@ def mysql_unix_socket_endpoint_is_available_in_installed_form(_database, _base):
         }
         if find_node(name=name, role=pyatspi.ROLE_COMBO_BOX) is None:
             current, selected = choice_labels[(name, arrow_count)]
-            invoke(wait_for_node(name=current, role=pyatspi.ROLE_PUSH_BUTTON))
+            wait_for_node(name=current, role=pyatspi.ROLE_LABEL)
+            invoke(wait_for_node(name=name, role=pyatspi.ROLE_TOGGLE_BUTTON))
             invoke(wait_for_node(name=selected, role=pyatspi.ROLE_PUSH_BUTTON))
             return
         focus_combo(name)
@@ -2437,6 +2438,29 @@ mysql_unix_socket_endpoint_is_available_in_installed_form.environment = "local"
 mysql_unix_socket_endpoint_is_available_in_installed_form.requires_editor = False
 
 
+def connection_choice_rows_open_from_keyboard_and_close_cleanly(_database, _base):
+    for key in ("space", "Return"):
+        invoke(wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
+        wait_for_node(name="Connect to PostgreSQL")
+        row = wait_for_node(name="Driver", role=pyatspi.ROLE_LIST_ITEM)
+        button = wait_for_node(name="Driver", role=pyatspi.ROLE_TOGGLE_BUTTON)
+        for _ in range(30):
+            if any(node.getState().contains(pyatspi.STATE_FOCUSED) for node in (row, button)):
+                break
+            press_x11_key("Tab")
+        else:
+            raise AssertionError(f"Driver choice is not reachable with Tab: {accessible_snapshot()}")
+        press_x11_key(key)
+        invoke(wait_for_node(name="MySQL", role=pyatspi.ROLE_PUSH_BUTTON))
+        wait_for_node(name="Connect to MySQL")
+        press_x11_key("Escape")
+        wait_for_node(name="Connect to MySQL", present=False)
+
+
+connection_choice_rows_open_from_keyboard_and_close_cleanly.environment = "local"
+connection_choice_rows_open_from_keyboard_and_close_cleanly.requires_editor = False
+
+
 def new_connection_form_keeps_title_and_help_text_visible(_database, _base):
     invoke(wait_for_node(name="New connection", role=pyatspi.ROLE_PUSH_BUTTON))
     wait_for_node(name="Connect to PostgreSQL")
@@ -2448,8 +2472,9 @@ def new_connection_form_keeps_title_and_help_text_visible(_database, _base):
     assert help_width >= 350, f"TLS help text has too little layout width: {help_width}px"
     for name in ("Driver", "Endpoint", "TLS"):
         wait_for_node(name=name, role=pyatspi.ROLE_LIST_ITEM)
-    for name in ("PostgreSQL", "Network", "Verify Full"):
-        control = wait_for_node(name=name, role=pyatspi.ROLE_PUSH_BUTTON)
+    for name, selected in (("Driver", "PostgreSQL"), ("Endpoint", "Network"), ("TLS", "Verify Full")):
+        wait_for_node(name=selected, role=pyatspi.ROLE_LABEL)
+        control = wait_for_node(name=name, role=pyatspi.ROLE_TOGGLE_BUTTON)
         actions = control.queryAction()
         names = [actions.getName(index).lower() for index in range(actions.nActions)]
         assert any(action in {"click", "activate", "press", "toggle", "default.activate"} for action in names), (
@@ -2457,10 +2482,10 @@ def new_connection_form_keeps_title_and_help_text_visible(_database, _base):
         )
     for name in ("Port", "Connect timeout (seconds)", "Query timeout (seconds)"):
         wait_for_node(name=name)
-    invoke(wait_for_node(name="PostgreSQL", role=pyatspi.ROLE_PUSH_BUTTON))
+    invoke(wait_for_node(name="Driver", role=pyatspi.ROLE_TOGGLE_BUTTON))
     invoke(wait_for_node(name="MySQL", role=pyatspi.ROLE_PUSH_BUTTON))
     wait_for_node(name="Connect to MySQL")
-    invoke(wait_for_node(name="Network", role=pyatspi.ROLE_PUSH_BUTTON))
+    invoke(wait_for_node(name="Endpoint", role=pyatspi.ROLE_TOGGLE_BUTTON))
     invoke(wait_for_node(name="Unix socket", role=pyatspi.ROLE_PUSH_BUTTON))
     wait_for_node(name="Socket path")
 
@@ -2479,6 +2504,7 @@ def main():
         committed_editor_ddl_refreshes_sidebar,
         mysql_unix_socket_endpoint_is_available_in_installed_form,
         new_connection_form_keeps_title_and_help_text_visible,
+        connection_choice_rows_open_from_keyboard_and_close_cleanly,
         sql_character_warnings_leave_query_unchanged,
         malformed_sql_is_blocked_before_approval,
         unparseable_routine_requests_human_approval,

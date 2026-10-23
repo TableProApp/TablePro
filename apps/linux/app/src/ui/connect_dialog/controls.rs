@@ -16,6 +16,7 @@ pub(super) struct AccessibleChoice {
     selected: Rc<Cell<u32>>,
     labels: Rc<Vec<String>>,
     changed: ChoiceChanged,
+    checks: Rc<Vec<gtk::glib::WeakRef<gtk::Image>>>,
 }
 
 impl AccessibleChoice {
@@ -25,6 +26,11 @@ impl AccessibleChoice {
 
     pub(super) fn set_selected(&self, selected: u32) {
         self.selected.set(selected);
+        for (index, check) in self.checks.iter().enumerate() {
+            if let Some(check) = check.upgrade() {
+                check.set_opacity(if index as u32 == selected { 1.0 } else { 0.0 });
+            }
+        }
         self.text.set_text(
             self.labels
                 .get(selected as usize)
@@ -38,12 +44,12 @@ impl AccessibleChoice {
     }
 }
 
-fn dropdown_button(first: Option<&str>) -> (gtk::Button, gtk::Label) {
+fn dropdown_button(first: Option<&str>) -> (gtk::MenuButton, gtk::Label) {
     let text = gtk::Label::new(first);
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     content.append(&text);
     content.append(&gtk::Image::from_icon_name("pan-down-symbolic"));
-    let button = gtk::Button::builder().child(&content).build();
+    let button = gtk::MenuButton::builder().child(&content).build();
     button.add_css_class("flat");
     center_in_row(&button);
     (button, text)
@@ -64,55 +70,57 @@ pub(super) fn choice_row(
     if let Some(subtitle) = subtitle {
         row.set_subtitle(&subtitle);
     }
-    let labels = Rc::new(labels);
-    let selected = Rc::new(Cell::new(0));
-    let changed: ChoiceChanged = Rc::new(RefCell::new(None));
     let popover = gtk::Popover::new();
     let (button, text) = dropdown_button(labels.first().map(String::as_str));
-    let text_ref = text.downgrade();
+    let markers: Vec<_> = labels
+        .iter()
+        .map(|_| gtk::Image::from_icon_name("object-select-symbolic"))
+        .collect();
+    let selection = AccessibleChoice {
+        text,
+        selected: Rc::new(Cell::new(0)),
+        labels: Rc::new(labels),
+        changed: Rc::new(RefCell::new(None)),
+        checks: Rc::new(markers.iter().map(ObjectExt::downgrade).collect()),
+    };
     let choices = gtk::Box::new(gtk::Orientation::Vertical, 0);
     choices.add_css_class("menu");
-    for (index, label) in labels.iter().enumerate() {
-        let choice = gtk::Button::with_label(label);
-        choice.add_css_class("flat");
-        choice.set_halign(gtk::Align::Fill);
-        let selection = selected.clone();
-        let labels_ref = labels.clone();
-        let changed_ref = changed.clone();
-        let popover_ref = popover.downgrade();
-        let text_ref = text_ref.clone();
-        choice.connect_clicked(move |_| {
-            selection.set(index as u32);
-            if let Some(text) = text_ref.upgrade() {
-                text.set_text(labels_ref.get(index).map(String::as_str).unwrap_or_default());
-            }
-            if let Some(popover) = popover_ref.upgrade() {
-                popover.popdown();
-            }
-            if let Some(callback) = changed_ref.borrow().as_ref() {
-                callback(index as u32);
-            }
-        });
-        choices.append(&choice);
+    for (index, (label, marker)) in selection.labels.iter().zip(&markers).enumerate() {
+        choices.append(&choice_item(label, marker, index as u32, &selection, &popover));
     }
+    selection.set_selected(0);
     popover.set_child(Some(&choices));
-    popover.set_parent(&button);
-    let popup = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popup.upgrade() {
-            popover.popup();
+    button.set_popover(Some(&popover));
+    row.add_suffix(&button);
+    row.set_activatable_widget(Some(&button));
+    (row, selection)
+}
+
+fn choice_item(
+    label: &str,
+    marker: &gtk::Image,
+    index: u32,
+    selection: &AccessibleChoice,
+    popover: &gtk::Popover,
+) -> gtk::Button {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let text = gtk::Label::builder().label(label).xalign(0.0).hexpand(true).build();
+    content.append(&text);
+    content.append(marker);
+    let choice = gtk::Button::builder().child(&content).halign(gtk::Align::Fill).build();
+    choice.add_css_class("flat");
+    let selection = selection.clone();
+    let popover = popover.downgrade();
+    choice.connect_clicked(move |_| {
+        selection.set_selected(index);
+        if let Some(popover) = popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(callback) = selection.changed.borrow().as_ref() {
+            callback(index);
         }
     });
-    row.add_suffix(&button);
-    (
-        row,
-        AccessibleChoice {
-            text,
-            selected,
-            labels,
-            changed,
-        },
-    )
+    choice
 }
 
 pub(super) fn timeout_rows() -> (adw::ActionRow, gtk::SpinButton, adw::ActionRow, gtk::SpinButton) {
@@ -151,6 +159,61 @@ pub(super) fn auth_mode_for_row(row: u32) -> AuthMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn choice_rows_expose_an_activation_target() {
+        gtk::init().unwrap();
+        let (row, _) = choice_row("Driver".into(), None, vec!["PostgreSQL".into(), "SQLite".into()]);
+        assert!(
+            row.activatable_widget().is_some(),
+            "keyboard row activation has no target"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn choice_rows_show_only_the_current_selection() {
+        gtk::init().unwrap();
+        let (row, selection) = choice_row("Driver".into(), None, vec!["PostgreSQL".into(), "SQLite".into()]);
+        let button = row.activatable_widget().unwrap().downcast::<gtk::MenuButton>().unwrap();
+        let choices = button.popover().unwrap().child().unwrap();
+        let notifications = Rc::new(Cell::new(0));
+        let observed = notifications.clone();
+        selection.connect_selected_notify(move |_| observed.set(observed.get() + 1));
+        selection.set_selected(1);
+        assert_eq!(notifications.get(), 0);
+        let first = choices.first_child().unwrap().downcast::<gtk::Button>().unwrap();
+        let second = first.next_sibling().unwrap().downcast::<gtk::Button>().unwrap();
+        let marker = |item: &gtk::Button| {
+            item.child()
+                .unwrap()
+                .downcast::<gtk::Box>()
+                .unwrap()
+                .last_child()
+                .unwrap()
+        };
+        assert_eq!(marker(&first).opacity(), 0.0);
+        assert_eq!(marker(&second).opacity(), 1.0);
+        first.emit_clicked();
+        assert_eq!(selection.selected(), 0);
+        assert_eq!(notifications.get(), 1);
+        assert_eq!(marker(&first).opacity(), 1.0);
+        assert_eq!(marker(&second).opacity(), 0.0);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn dropping_a_choice_row_releases_its_popup() {
+        gtk::init().unwrap();
+        let (row, selection) = choice_row("Driver".into(), None, vec!["PostgreSQL".into()]);
+        let button = row.activatable_widget().unwrap().downcast::<gtk::MenuButton>().unwrap();
+        let popup = button.popover().unwrap().downgrade();
+        drop(button);
+        drop(row);
+        drop(selection);
+        assert!(popup.upgrade().is_none(), "discarded choice row retains its popup");
+    }
 
     #[test]
     fn a_zero_timeout_means_use_the_default() {
