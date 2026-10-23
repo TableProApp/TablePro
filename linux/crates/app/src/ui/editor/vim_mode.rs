@@ -271,10 +271,7 @@ impl SqlEditor {
 
     fn reload_file(&self, force: bool) {
         let Some(file) = self.file() else {
-            self.emit_by_name::<()>(
-                "toast",
-                &[&crate::i18n::gettext("This tab is not saved to a file.")],
-            );
+            self.emit_by_name::<()>("toast", &[&crate::i18n::gettext("This tab is not saved to a file.")]);
             return;
         };
         if force || !self.has_unsaved_file_changes() {
@@ -356,7 +353,10 @@ mod tests {
             (":w!", TabCommand::ForceWrite(None)),
             (":write!", TabCommand::ForceWrite(None)),
             (":w! a.sql", TabCommand::ForceWrite(Some("a.sql".to_owned()))),
-            (":w!  my query.sql ", TabCommand::ForceWrite(Some("my query.sql".to_owned()))),
+            (
+                ":w!  my query.sql ",
+                TabCommand::ForceWrite(Some("my query.sql".to_owned())),
+            ),
             (":e!", TabCommand::ForceEdit(None)),
             (":edit!", TabCommand::ForceEdit(None)),
             (":e! a.sql", TabCommand::ForceEdit(Some("a.sql".to_owned()))),

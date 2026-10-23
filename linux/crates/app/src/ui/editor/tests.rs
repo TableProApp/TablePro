@@ -1250,11 +1250,7 @@ fn a_tab_with_no_file_has_nothing_unsaved_to_ask_about() {
 
 /// Turn the preference on and hand over Vim's input method.
 fn vim(harness: &Harness) -> sourceview5::VimIMContext {
-    harness
-        .settings
-        .get()
-        .set_vim_keybindings(true)
-        .expect("turn Vim on");
+    harness.settings.get().set_vim_keybindings(true).expect("turn Vim on");
     harness.editor.vim_context().expect("Vim on the view")
 }
 
@@ -1276,11 +1272,7 @@ fn vim_follows_the_preference_and_leaves_the_view_as_it_was() {
     assert!(imp.text_pane.reveals_bottom_bars(), "the mode line is hidden");
     assert!(view.overwrites(), "normal mode draws no block cursor");
 
-    harness
-        .settings
-        .get()
-        .set_vim_keybindings(false)
-        .expect("turn Vim off");
+    harness.settings.get().set_vim_keybindings(false).expect("turn Vim off");
 
     assert!(!harness.editor.has_vim());
     assert!(!imp.text_pane.reveals_bottom_bars());
@@ -1308,7 +1300,10 @@ fn vim_quit_asks_the_workspace_to_close_the_tab() {
 
     assert!(vim_command(&context, ":q"));
     assert!(vim_command(&context, ":quit!"));
-    assert!(!vim_command(&context, ":nohl"), "a command of GtkSourceView's own was taken");
+    assert!(
+        !vim_command(&context, ":nohl"),
+        "a command of GtkSourceView's own was taken"
+    );
 
     assert_eq!(closes.count(), 2);
 }
@@ -1401,8 +1396,10 @@ fn vim_write_to_a_name_saves_next_to_the_tabs_file() {
     assert!(vim_command(&context, ":w weekly.sql"));
     let copy = root.path().join("weekly.sql");
     // The name is claimed empty first; the tab follows once the text is in.
-    wait_until(WAIT, || harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&copy))
-        .expect("the tab on the new file");
+    wait_until(WAIT, || {
+        harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&copy)
+    })
+    .expect("the tab on the new file");
 
     assert_eq!(std::fs::read_to_string(&copy).expect("read back"), "SELECT 1;");
 }
@@ -1460,8 +1457,10 @@ fn vim_force_write_to_a_name_replaces_another_file() {
     let context = vim(&harness);
 
     assert!(vim_command(&context, ":w! weekly.sql"));
-    wait_until(WAIT, || harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&other))
-        .expect("the tab on the other file");
+    wait_until(WAIT, || {
+        harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&other)
+    })
+    .expect("the tab on the other file");
 
     assert_eq!(std::fs::read_to_string(&other).expect("read back"), "SELECT 1;");
 }
@@ -1960,11 +1959,15 @@ mod real_keys {
         let buffer = harness.editor.buffer();
         buffer.place_cursor(&buffer.start_iter());
         harness.editor.imp().source_view.grab_focus();
-        (window, crate::test_support::KeyInjector::connect().expect("an X11 display"))
+        (
+            window,
+            crate::test_support::KeyInjector::connect().expect("an X11 display"),
+        )
     }
 
     fn press(keys: &crate::test_support::KeyInjector, key: gtk4::gdk::Key) {
-        keys.press(key, gtk4::gdk::ModifierType::empty()).expect("the key press");
+        keys.press(key, gtk4::gdk::ModifierType::empty())
+            .expect("the key press");
     }
 
     /// A key typed with Shift, such as `:` or `G` on a US layout.
@@ -2021,7 +2024,11 @@ mod real_keys {
         )
         .expect("the key press");
         wait_until(WAIT, || sent(&harness.fake).len() == 2).expect("Ctrl+Shift+Return to run in insert mode");
-        assert_eq!(buffer_text(&harness.editor.buffer()), "select 1", "Return went into the text");
+        assert_eq!(
+            buffer_text(&harness.editor.buffer()),
+            "select 1",
+            "Return went into the text"
+        );
     }
 
     /// Normal mode binds Ctrl+F to a page down, and the command line
