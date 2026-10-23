@@ -50,6 +50,18 @@ fn defaults_match_schema() -> TestResult {
     assert_eq!(fixture.settings.csv_options(), CsvOptions::default());
     assert!(fixture.settings.restore_session());
     assert!(fixture.settings.save_query_history());
+    assert!(!fixture.settings.vim_keybindings());
+    Ok(())
+}
+
+#[test]
+fn vim_keybindings_round_trip() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.set_vim_keybindings(true)?;
+    assert!(fixture.settings.vim_keybindings());
+    fixture.settings.set_vim_keybindings(false)?;
+    assert!(!fixture.settings.vim_keybindings());
     Ok(())
 }
 

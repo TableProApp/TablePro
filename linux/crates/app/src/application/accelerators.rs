@@ -385,6 +385,28 @@ pub fn component_matches(action: &str, keyval: gdk::Key, state: gdk::ModifierTyp
         .any(|(key, mods)| mods == modifiers && (key == keyval || keypad_twins(key).contains(&keyval)))
 }
 
+/// The SQL editor's own Ctrl keys, which Vim mode leaves to the editor in
+/// every mode. Escape and the other plain keys are Vim's.
+pub fn editor_keeps(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
+    let modifiers = state & gtk::accelerator_get_default_mod_mask();
+    let keyval = keyval.to_lower();
+    ACCELERATORS
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry.scope,
+                Local {
+                    owner: SqlEditor | SqlEditorTab,
+                    ..
+                }
+            )
+        })
+        .flat_map(|entry| entry.triggers.iter())
+        .filter_map(|accel| parse(accel))
+        .filter(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK))
+        .any(|(key, mods)| mods == modifiers && (key == keyval || keypad_twins(key).contains(&keyval)))
+}
+
 /// GtkPopoverMenu shows an application accelerator by itself; a Local or
 /// Component one has to be put on the item.
 pub fn menu_item(label: &str, detailed_action: &str) -> gio::MenuItem {
@@ -660,6 +682,70 @@ mod tests {
             gdk::ModifierType::CONTROL_MASK
         ));
         assert!(!component_matches("cell-editor.pick-date", gdk::Key::Return, none));
+    }
+
+    #[gtk4::test]
+    fn the_editor_keeps_its_ctrl_keys_from_vim() {
+        let ctrl = gdk::ModifierType::CONTROL_MASK;
+        let ctrl_shift = ctrl | gdk::ModifierType::SHIFT_MASK;
+        let none = gdk::ModifierType::empty();
+
+        for (key, state) in [
+            (gdk::Key::Return, ctrl),
+            (gdk::Key::KP_Enter, ctrl),
+            (gdk::Key::Return, ctrl_shift),
+            (gdk::Key::F, ctrl_shift),
+            (gdk::Key::slash, ctrl),
+            (gdk::Key::f, ctrl),
+            (gdk::Key::f, ctrl | gdk::ModifierType::LOCK_MASK),
+            (gdk::Key::h, ctrl),
+            (gdk::Key::g, ctrl),
+            (gdk::Key::G, ctrl_shift),
+            (gdk::Key::o, ctrl),
+            (gdk::Key::s, ctrl),
+            (gdk::Key::S, ctrl_shift),
+        ] {
+            assert!(editor_keeps(key, state), "{key:?} with {state:?}");
+        }
+        for (key, state) in [
+            (gdk::Key::Escape, none),
+            (gdk::Key::f, none),
+            (gdk::Key::Return, none),
+            (gdk::Key::r, ctrl),
+            (gdk::Key::d, ctrl),
+            (gdk::Key::v, ctrl),
+            (gdk::Key::f, gdk::ModifierType::ALT_MASK),
+            (gdk::Key::F6, none),
+        ] {
+            assert!(!editor_keeps(key, state), "{key:?} with {state:?}");
+        }
+    }
+
+    #[gtk4::test]
+    fn every_ctrl_key_of_the_editor_is_kept_from_vim() {
+        let mut checked = 0;
+        for entry in ACCELERATORS {
+            if !matches!(
+                entry.scope,
+                Local {
+                    owner: SqlEditor | SqlEditorTab,
+                    ..
+                }
+            ) {
+                continue;
+            }
+            for accel in entry.triggers {
+                let (key, mods) = gtk::accelerator_parse(*accel).expect("the table parses");
+                assert_eq!(
+                    editor_keeps(key, mods),
+                    mods.contains(gdk::ModifierType::CONTROL_MASK),
+                    "{accel} of {}",
+                    entry.action
+                );
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 12);
     }
 
     #[gtk4::test]

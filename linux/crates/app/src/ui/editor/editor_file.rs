@@ -67,14 +67,42 @@ impl SqlEditor {
 
     /// Ctrl+S: write to the tab's file, or ask for one.
     pub(super) fn save(&self) {
-        match self.file() {
-            Some(file) => self.write_reporting(file),
-            None => self.save_as(),
-        }
+        self.save_then(|_| {});
+    }
+
+    /// A cancelled choice or a failed write skips `then`.
+    pub(super) fn save_then(&self, then: impl FnOnce(&SqlEditor) + 'static) {
+        let weak = self.downgrade();
+        let file = self.file();
+        let chosen = file.is_none().then(|| self.choose_save_file());
+        glib::spawn_future_local(async move {
+            let file = match (file, chosen) {
+                (Some(file), _) => Some(file),
+                (None, Some(chosen)) => chosen.await,
+                (None, None) => None,
+            };
+            let (Some(file), Some(editor)) = (file, weak.upgrade()) else {
+                return;
+            };
+            if editor.write_reporting(&file).await {
+                then(&editor);
+            }
+        });
     }
 
     /// Ctrl+Shift+S: ask where to write, starting from the tab's file.
     pub(super) fn save_as(&self) {
+        let weak = self.downgrade();
+        let chosen = self.choose_save_file();
+        glib::spawn_future_local(async move {
+            if let (Some(file), Some(editor)) = (chosen.await, weak.upgrade()) {
+                editor.write_reporting(&file).await;
+            }
+        });
+    }
+
+    /// Holds only the dialog's window while it is open.
+    fn choose_save_file(&self) -> impl Future<Output = Option<gio::File>> + use<> {
         let filter = sql_filter();
         let filters = gio::ListStore::new::<gtk4::FileFilter>();
         filters.append(&filter);
@@ -89,15 +117,7 @@ impl SqlEditor {
             None => dialog.set_initial_name(Some(&suggested_file_name(&buffer_text(&self.buffer())))),
         }
         let parent = self.root().and_downcast::<gtk4::Window>();
-        let weak = self.downgrade();
-        glib::spawn_future_local(async move {
-            let Ok(file) = dialog.save_future(parent.as_ref()).await else {
-                return;
-            };
-            if let Some(editor) = weak.upgrade() {
-                editor.write_reporting(file);
-            }
-        });
+        async move { dialog.save_future(parent.as_ref()).await.ok() }
     }
 
     /// Write the text to the tab's file, for a close that chose Save.
@@ -112,13 +132,15 @@ impl SqlEditor {
         }
     }
 
-    fn write_reporting(&self, file: gio::File) {
-        let editor = self.clone();
-        glib::spawn_future_local(async move {
-            if let Err(message) = editor.write_to(&file).await {
-                editor.alert_save_failed(&message);
+    /// Whether the text landed in `file`; an alert says why it did not.
+    pub(super) async fn write_reporting(&self, file: &gio::File) -> bool {
+        match self.write_to(file).await {
+            Ok(()) => true,
+            Err(message) => {
+                self.alert_save_failed(&message);
+                false
             }
-        });
+        }
     }
 
     /// Text typed while the write runs is not in the file, so the tab

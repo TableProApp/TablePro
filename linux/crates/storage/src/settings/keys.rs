@@ -6,6 +6,7 @@ pub const QUERY_TIMEOUT_SECS: &str = "query-timeout-secs";
 pub const USE_SYSTEM_FONT: &str = "use-system-font";
 pub const CUSTOM_FONT: &str = "custom-font";
 pub const STYLE_SCHEME: &str = "style-scheme";
+pub const VIM_KEYBINDINGS: &str = "vim-keybindings";
 pub const CONNECT_DIALOG_DRIVER: &str = "connect-dialog-driver";
 pub const RESTORE_SESSION: &str = "restore-session";
 

@@ -478,6 +478,8 @@ pub(crate) enum WorkspaceInput {
         outcome: crate::workspace::WorkOutcome,
     },
     WorkspaceTabClosed(Uuid),
+    /// Close the tab as its close button does, prompts and all.
+    CloseWorkspaceTab(Uuid),
     /// Each tab still asks about its own unsaved changes.
     CloseOtherWorkspaceTabs(Uuid),
     CloseWorkspaceTabsToRight(Uuid),
@@ -1005,6 +1007,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
+            WorkspaceInput::CloseWorkspaceTab(id) => self.close_workspace_tab(id),
             WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
             WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),

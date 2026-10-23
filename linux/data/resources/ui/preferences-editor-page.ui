@@ -45,6 +45,17 @@
     </child>
     <child>
       <object class="AdwPreferencesGroup">
+        <property name="title" translatable="yes">Keyboard</property>
+        <child>
+          <object class="AdwSwitchRow" id="vim_row">
+            <property name="title" translatable="yes">Vim Keybindings</property>
+            <property name="subtitle" translatable="yes">Normal, insert and visual modes, and commands such as :w and :q</property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Running Queries</property>
         <child>
           <object class="AdwSpinRow" id="timeout_row">

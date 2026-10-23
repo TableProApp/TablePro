@@ -133,6 +133,15 @@ impl AppSettings {
         self.set_string(keys::STYLE_SCHEME, scheme)
     }
 
+    /// Whether the SQL editor runs Vim's modes and commands.
+    pub fn vim_keybindings(&self) -> bool {
+        self.settings.boolean(keys::VIM_KEYBINDINGS)
+    }
+
+    pub fn set_vim_keybindings(&self, on: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::VIM_KEYBINDINGS, on)
+    }
+
     /// The driver the connect dialog opens on. Remembered so the
     /// common case is one click, not a combo hunt every time.
     pub fn connect_dialog_driver(&self) -> String {

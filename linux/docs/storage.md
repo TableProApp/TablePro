@@ -267,6 +267,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `use-system-font` | `b` | `true` | |
 | `custom-font` | `s` | `Monospace 12` | |
 | `style-scheme` | `s` | `Adwaita` | |
+| `vim-keybindings` | `b` | `false` | |
 | `csv-null-to-empty` | `b` | `true` | |
 | `csv-line-break-to-space` | `b` | `false` | |
 | `csv-header-row` | `b` | `true` | |
