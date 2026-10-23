@@ -73,7 +73,7 @@ A `COMMIT` never crosses a network, so nothing is left to resolve afterwards (`C
 
 ### Row identity
 
-The grid names a row by its primary key, then by a UNIQUE constraint whose columns are all `NOT NULL`. A table with neither is read-only in the grid. DuckDB's `rowid` names a storage position, and a checkpoint that compacts the table after deletes hands rows new ones (`tests/integration/catalog.rs`), so an edit by rowid could change another row.
+The grid names a row by its primary key, then by a UNIQUE constraint whose columns are all `NOT NULL`. A key over a column declared with a `COLLATE` does not count: DuckDB keeps it unique byte for byte, while `=` and ORDER BY compare under the collation, so `'ABC'` and `'abc'` are two rows one predicate finds. A table with no key that counts is read-only in the grid. DuckDB's `rowid` names a storage position, and a checkpoint that compacts the table after deletes hands rows new ones (`tests/integration/catalog.rs`), so an edit by rowid could change another row.
 
 ## Structure changes
 

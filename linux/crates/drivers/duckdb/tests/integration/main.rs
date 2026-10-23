@@ -19,6 +19,8 @@ mod filter;
 #[cfg(test)]
 mod open_semantics;
 #[cfg(test)]
+mod paging;
+#[cfg(test)]
 mod round_trip;
 #[cfg(test)]
 mod sessions;

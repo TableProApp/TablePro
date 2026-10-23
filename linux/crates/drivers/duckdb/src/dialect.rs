@@ -202,7 +202,9 @@ impl SqlDialect for DuckDbDialect {
 }
 
 /// Whether a value for the column goes as text DuckDB has to cast: a
-/// column whose type has no binding of its own.
+/// column whose type has no binding of its own. An ENUM label bound as
+/// VARCHAR would compare as text, so a key read past `'sad'` in
+/// `ENUM('sad', 'ok', 'happy')` would find nothing after it.
 fn needs_cast(column: &ColumnType) -> bool {
     !matches!(
         column.kind,
@@ -213,7 +215,6 @@ fn needs_cast(column: &ColumnType) -> bool {
             | ColumnKind::Bytes { .. }
             | ColumnKind::Date
             | ColumnKind::Interval
-            | ColumnKind::Enum { .. }
     )
 }
 
@@ -361,6 +362,17 @@ mod tests {
 
         assert_eq!(bound.sql, "CAST(? AS DECIMAL(38,10))");
         assert_eq!(plain.sql, "?");
+    }
+
+    #[test]
+    fn an_enum_label_is_cast_to_its_column() {
+        let mood = column("ENUM('sad', 'ok', 'happy')");
+
+        let bound = DuckDbDialect
+            .placeholder(0, Value::Text("sad".to_owned()), BindTarget::Column(&mood))
+            .unwrap();
+
+        assert_eq!(bound.sql, "CAST(? AS ENUM('sad', 'ok', 'happy'))");
     }
 
     #[test]

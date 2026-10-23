@@ -393,10 +393,30 @@ pub(crate) fn inbound_foreign_keys(
 
 /// How a row is named again: by the primary key, else by a UNIQUE key
 /// whose columns are all NOT NULL. DuckDB's rowid moves when a
-/// checkpoint compacts the table, so it names no row.
+/// checkpoint compacts the table, so it names no row. Neither does a key
+/// over a column declared with a collation: DuckDB keeps the key unique
+/// byte for byte, while `=` and ORDER BY compare under the collation, so
+/// `'ABC'` and `'abc'` are two rows one predicate finds.
 pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Result<RowIdentity, DriverError> {
+    let collated: Vec<String> = table_sql(link, catalog, table)?
+        .map(|sql| {
+            declared_columns(&sql)
+                .into_iter()
+                .filter(|column| column.collated)
+                .map(|column| column.name)
+                .collect()
+        })
+        .unwrap_or_default();
+    let compares_bytes = |columns: &[String]| {
+        !columns
+            .iter()
+            .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)))
+    };
     let constraints = key_constraints(link, catalog, table)?;
-    if let Some((_, _, columns)) = constraints.iter().find(|(_, kind, _)| kind == "PRIMARY KEY") {
+    if let Some((_, _, columns)) = constraints
+        .iter()
+        .find(|(_, kind, columns)| kind == "PRIMARY KEY" && compares_bytes(columns))
+    {
         return Ok(RowIdentity::UniqueKey {
             columns: columns.clone(),
         });
@@ -408,7 +428,7 @@ pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Resu
         .collect();
     let unique = constraints
         .into_iter()
-        .filter(|(_, kind, _)| kind == "UNIQUE")
+        .filter(|(_, kind, columns)| kind == "UNIQUE" && compares_bytes(columns))
         .map(|(_, _, columns)| columns)
         .find(|columns| columns.iter().all(|column| not_null.contains(column)));
     Ok(match unique {

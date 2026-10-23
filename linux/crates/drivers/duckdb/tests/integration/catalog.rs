@@ -230,7 +230,9 @@ async fn inbound_keys_pair_their_columns_and_say_how_they_compare() {
 }
 
 /// A row is named by its key, or by a UNIQUE key over NOT NULL columns.
-/// Without one the grid is read-only: DuckDB's rowid names no row.
+/// Without one the grid is read-only: DuckDB's rowid names no row, and
+/// neither does a key over a collated column, which DuckDB keeps unique
+/// byte for byte while `=` compares under the collation.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_row_is_named_by_a_key_and_never_by_rowid() {
     let file = TestFile::new();
@@ -241,12 +243,16 @@ async fn a_row_is_named_by_a_key_and_never_by_rowid() {
             "CREATE TABLE keyed (id INTEGER PRIMARY KEY)",
             "CREATE TABLE coded (code VARCHAR NOT NULL UNIQUE, other VARCHAR UNIQUE)",
             "CREATE TABLE loose (a INTEGER UNIQUE)",
+            "CREATE TABLE folded (code VARCHAR COLLATE NOCASE PRIMARY KEY, id INTEGER NOT NULL UNIQUE)",
+            "CREATE TABLE folded_only (\"Code\" VARCHAR COLLATE NOCASE PRIMARY KEY)",
+            "INSERT INTO folded_only VALUES ('ABC'), ('abc')",
         ],
     )
     .await
     .unwrap();
+    let both = query(connection.as_ref(), "SELECT count(*) FROM folded_only WHERE \"Code\" = 'abc'").await;
     let mut identities = Vec::new();
-    for name in ["keyed", "coded", "loose"] {
+    for name in ["keyed", "coded", "loose", "folded", "folded_only"] {
         identities.push(
             connection
                 .row_identity(&TableRef::unqualified(name), call())
@@ -265,8 +271,13 @@ async fn a_row_is_named_by_a_key_and_never_by_rowid() {
                 columns: vec!["code".to_owned()]
             },
             RowIdentity::Unordered,
+            RowIdentity::UniqueKey {
+                columns: vec!["id".to_owned()]
+            },
+            RowIdentity::Unordered,
         ]
     );
+    assert_eq!(both.rows, vec![vec![Value::Int(2)]]);
     connection.close().await.unwrap();
 }
 
