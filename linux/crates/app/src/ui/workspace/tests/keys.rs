@@ -48,6 +48,24 @@ fn string_page(value: &str) -> FakeReply<Option<KeyPage>> {
     }))
 }
 
+/// The keyring holds the saved connection's password, so its connect
+/// asks nobody.
+fn store_password(test: &TestWindow) {
+    let (vault, id) = (test.vault.clone(), test.saved.id);
+    crate::test_support::finish_on_main(WAIT, async move {
+        tablepro_core::credentials::SecretVault::store(
+            &*vault,
+            id,
+            tablepro_core::credentials::SecretKind::DatabasePassword,
+            &secrecy::SecretString::from("s3cret"),
+            "label",
+        )
+        .await
+    })
+    .expect("the store to end")
+    .expect("the password stored");
+}
+
 /// A window on a key-value engine's workspace.
 fn keys_window(name: &str, script: impl FnOnce(&mut ConnectionScript)) -> TestWindow {
     let mut connection = ConnectionScript {
@@ -63,6 +81,7 @@ fn keys_window(name: &str, script: impl FnOnce(&mut ConnectionScript)) -> TestWi
             ..Script::default()
         },
     );
+    store_password(&test);
     test.window
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("workspace");
@@ -217,6 +236,7 @@ fn a_key_tab_is_reopened_with_the_session() {
     crate::test_support::finish_on_main(WAIT, store.flush(&test.key()))
         .expect("the flush to end")
         .expect("the record written");
+    store_password(&test);
 
     test.window
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));

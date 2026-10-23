@@ -115,7 +115,9 @@ impl SidebarView {
             keys: Cell::new(false),
             searched: Cell::new(false),
         });
-        inner.list_view.set_factory(Some(&row_factory(Rc::downgrade(&inner))));
+        inner
+            .list_view
+            .set_factory(Some(&row_factory(Rc::downgrade(&inner), false)));
         let headers = header_factory(Rc::downgrade(&inner));
         inner.list_view.set_header_factory(Some(&headers));
         inner.header_factory.replace(Some(headers));
@@ -155,6 +157,8 @@ impl SidebarView {
     /// server, so the list shows what came back as it is.
     pub(crate) fn hold_keys(&self) {
         self.inner.keys.set(true);
+        let rows = row_factory(Rc::downgrade(&self.inner), true);
+        self.inner.list_view.set_factory(Some(&rows));
         self.inner
             .list_view
             .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Keys"))]);

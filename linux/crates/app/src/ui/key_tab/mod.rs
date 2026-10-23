@@ -7,6 +7,7 @@ mod key_summary;
 mod tests;
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -100,6 +101,9 @@ struct Shown {
     length: Option<u64>,
     next: Option<KeyCursor>,
     appending: bool,
+    /// The fields or members shown, for a type read by scan: a scan step
+    /// can return an entry an earlier one already did.
+    seen: Option<HashSet<Vec<u8>>>,
 }
 
 /// Whether a read starts the value again or adds the next window.
@@ -479,12 +483,8 @@ impl Inner {
         let columns = page.rows.columns.clone();
         let cut = (page.kind == KeyKind::String && page.rows.truncated)
             .then(|| (cell_bytes(page.rows.cell(0, 0)), page.length.unwrap_or_default()));
-        let rows: Vec<RowObject> = page
-            .rows
-            .rows
-            .into_iter()
-            .map(|cells| RowObject::result(cells.into()))
-            .collect();
+        let mut seen = matches!(page.kind, KeyKind::Hash | KeyKind::Set).then(HashSet::new);
+        let rows = new_rows(page.rows.rows, seen.as_mut());
         let count = rows.len() as u64;
         let (view, selection) = build_result_grid(columns.clone(), rows, self.grid_sink(), false);
         view.update_property(&[gtk::accessible::Property::Label(&self.key)]);
@@ -506,6 +506,7 @@ impl Inner {
             length: page.length,
             next: page.next,
             appending: false,
+            seen,
         });
         match cut {
             Some((read, total)) => {
@@ -545,12 +546,7 @@ impl Inner {
             let Some(shown) = state.shown.as_mut() else {
                 return false;
             };
-            let rows: Vec<RowObject> = page
-                .rows
-                .rows
-                .into_iter()
-                .map(|cells| RowObject::result(cells.into()))
-                .collect();
+            let rows = new_rows(page.rows.rows, shown.seen.as_mut());
             shown.rows += rows.len() as u64;
             shown.store.splice(shown.store.n_items(), 0, &rows);
             shown.length = page.length;
@@ -653,6 +649,27 @@ impl Inner {
 }
 
 /// The bytes a string's cell holds.
+/// The grid's rows for a window, leaving out an entry `seen` already
+/// holds. A list keeps every element, equal ones too.
+fn new_rows(rows: Vec<Vec<tablepro_core::Value>>, mut seen: Option<&mut HashSet<Vec<u8>>>) -> Vec<RowObject> {
+    rows.into_iter()
+        .filter(|cells| match (seen.as_deref_mut(), entry_name(cells.first())) {
+            (Some(seen), Some(name)) => seen.insert(name),
+            _ => true,
+        })
+        .map(|cells| RowObject::result(cells.into()))
+        .collect()
+}
+
+/// A hash's field or a set's member, as the bytes Redis holds.
+fn entry_name(cell: Option<&tablepro_core::Value>) -> Option<Vec<u8>> {
+    match cell? {
+        tablepro_core::Value::Text(text) => Some(text.as_bytes().to_vec()),
+        tablepro_core::Value::Bytes(bytes) => Some(bytes.clone()),
+        _ => None,
+    }
+}
+
 fn cell_bytes(cell: Option<&tablepro_core::Value>) -> u64 {
     match cell {
         Some(tablepro_core::Value::Text(text)) => text.len() as u64,

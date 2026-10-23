@@ -113,6 +113,33 @@ async fn a_server_that_never_answers_info_times_out_the_connect() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
+async fn a_login_that_may_only_read_is_alive_to_the_probe() {
+    let fixture = start().await;
+    let admin = connect(&fixture).await;
+    let (granted, _) = run(
+        editor(admin.as_ref()).await.as_ref(),
+        "ACL SETUSER tp_reader on >tp_reader_pw ~* +@read",
+    )
+    .await;
+    assert_eq!(granted.end, RunEnd::Completed);
+    let reader = Credentials::Password {
+        username: "tp_reader".to_owned(),
+        password: SecretString::from("tp_reader_pw".to_owned()),
+    };
+
+    let connection = RedisDriver
+        .connect(fixture_options(&fixture, reader, None), CancellationToken::new())
+        .await
+        .expect("a connection that may only read");
+
+    connection
+        .probe(within(CALL))
+        .await
+        .expect("a NOPERM to PING is the server answering");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
 async fn the_connection_opens_the_database_it_names() {
     let fixture = start().await;
     let credentials = password(&fixture.password_credentials());

@@ -128,11 +128,12 @@ impl RedisConnection {
     }
 
     /// A `PING` on a link of its own, which never waits behind the
-    /// workspace's commands.
+    /// workspace's commands. Any reply is the server answering, a
+    /// `NOPERM` from an ACL that grants reads but not `PING` included.
     async fn check(&self, bound: Duration) -> Result<(), DriverError> {
         let ping = async {
             let link = self.endpoint.open().await?;
-            link.ask(&command(&["PING"])).await.map(|_| ())
+            link.send(&command(&["PING"])).await.map(|_| ())
         };
         match tokio::time::timeout(bound, ping).await {
             Ok(outcome) => outcome,

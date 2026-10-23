@@ -212,6 +212,38 @@ fn a_failed_window_is_asked_again_on_the_next_link() {
     assert_eq!(CallCounters::get(&fake.replacement().counters().read_key), 1);
 }
 
+fn hash_page(fields: &[&str], next: Option<&str>) -> KeyPage {
+    let rows = fields
+        .iter()
+        .map(|field| vec![Value::Text((*field).to_owned()), Value::Text("v".to_owned())])
+        .collect();
+    KeyPage {
+        kind: KeyKind::Hash,
+        type_name: "hash".to_owned(),
+        ttl: KeyTtl::Persistent,
+        length: Some(3),
+        rows: QueryResult::new(vec![text_column("field"), text_column("value")], rows),
+        next: next.map(KeyCursor::new),
+    }
+}
+
+#[gtk4::test]
+fn a_field_a_later_scan_step_returns_again_is_shown_once() {
+    let mut script = ConnectionScript::default();
+    script
+        .read_key
+        .once(FakeReply::ok(Some(hash_page(&["a", "b"], Some("hash:7")))));
+    script.read_key.once(FakeReply::ok(Some(hash_page(&["b", "c"], None))));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    tab.load_more();
+
+    wait_until(WAIT, || !tab.offers_more() && !tab.is_loading()).expect("the last window");
+    assert_eq!(tab.rows(), 3);
+    assert_eq!(tab.footer_text(), "3 shown");
+}
+
 #[gtk4::test]
 fn a_module_type_is_named_and_left_to_the_editor() {
     let mut script = ConnectionScript::default();

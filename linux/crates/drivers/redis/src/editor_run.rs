@@ -110,9 +110,15 @@ impl EditorRun {
                 }
             };
             self.track(&arguments, &reply);
+            let in_step = end.as_ref().is_none_or(|(_, kept)| *kept);
             let delivered = match reply_shape(reply) {
                 Ok(shape) => self.deliver(sink.as_mut(), shape, &options, deadline).await,
-                Err(error) => return (Ok(self.summary(started, RunEnd::Failed(error))), true),
+                Err(error) => {
+                    if !in_step {
+                        self.forget_transaction();
+                    }
+                    return (Ok(self.summary(started, RunEnd::Failed(error))), in_step);
+                }
             };
             if let Some((end, kept)) = end {
                 if !kept {
