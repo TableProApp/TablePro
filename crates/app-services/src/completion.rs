@@ -95,6 +95,19 @@ impl SchemaIndex {
         self.columns_for(table).is_some()
     }
 
+    pub fn needs_columns(&self, table: &str) -> bool {
+        let Some(key) = table_key(table, self.grammar) else {
+            return false;
+        };
+        if self.knows_columns(table) {
+            return false;
+        }
+        self.tables.iter().any(|known| {
+            table_key(known, self.grammar)
+                .is_some_and(|known| known == key || (!key.contains('\0') && bare_name(&known) == key))
+        })
+    }
+
     pub fn set_columns(&mut self, table: &str, columns: Vec<String>) {
         if let Some(key) = table_key(table, self.grammar) {
             self.columns.insert(key, columns);
@@ -419,6 +432,37 @@ fn table_references(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_requests_require_a_complete_catalog_name() {
+        let mut index = super::SchemaIndex {
+            grammar: Some(tablepro_core::sql_syntax::SqlGrammar::PostgreSql),
+            tables: vec![
+                "public.customers".into(),
+                "archive.customers".into(),
+                "public.\"Users\"".into(),
+            ],
+            ..Default::default()
+        };
+        for partial in ["c", "cu", "customer", "public.customer", "missing.customers", "users"] {
+            assert!(
+                !index.needs_columns(partial),
+                "unexpected catalog request for {partial}"
+            );
+        }
+        for known in [
+            "customers",
+            "public.customers",
+            "archive.customers",
+            "\"Users\"",
+            "public.\"Users\"",
+        ] {
+            assert!(index.needs_columns(known), "missing catalog request for {known}");
+        }
+        index.set_columns("public.customers", vec!["id".into()]);
+        assert!(!index.needs_columns("public.customers"));
+        assert!(index.needs_columns("archive.customers"));
+    }
 
     fn index() -> SchemaIndex {
         let mut index = SchemaIndex {

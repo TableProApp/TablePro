@@ -30,7 +30,7 @@ impl App {
             let mut requested = self.requested_columns.borrow_mut();
             tables
                 .into_iter()
-                .filter(|table| !index.knows_columns(table))
+                .filter(|table| index.needs_columns(table))
                 .filter(|table| table_key(table, index.grammar).is_some_and(|key| requested.insert(key)))
                 .map(|table| index.request(table))
                 .collect()

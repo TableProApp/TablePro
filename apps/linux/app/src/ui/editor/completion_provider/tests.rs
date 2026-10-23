@@ -278,3 +278,27 @@ fn populated_completion_is_presented_after_the_editor_is_rooted() {
     assert_eq!(activate(&provider, &context, "SELECT"), "do SELECT");
     window.close();
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn column_refresh_coalesces_a_burst_of_editor_changes() {
+    gtk::init().unwrap();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let observed = calls.clone();
+    let refresh = super::debounce_refresh(Rc::new(move || observed.set(observed.get() + 1)));
+    for _ in 0..8 {
+        refresh();
+    }
+    assert_eq!(calls.get(), 0, "metadata refresh ran during the typing burst");
+    let context = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while calls.get() == 0 && std::time::Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert_eq!(calls.get(), 1);
+    while context.pending() {
+        context.iteration(false);
+    }
+    assert_eq!(calls.get(), 1);
+}

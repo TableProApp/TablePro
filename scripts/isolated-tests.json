@@ -965,6 +965,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::completion_provider::tests::column_refresh_coalesces_a_burst_of_editor_changes"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::connect_dialog::controls::tests::choice_rows_expose_an_activation_target"
     ],
     [

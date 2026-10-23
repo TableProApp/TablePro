@@ -184,6 +184,26 @@ impl Provider {
     }
 }
 
+fn debounce_refresh(refresh: std::rc::Rc<dyn Fn()>) -> std::rc::Rc<dyn Fn()> {
+    let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::default();
+    Rc::new(move || {
+        if let Some(source) = pending.borrow_mut().take() {
+            source.remove();
+        }
+        let finished = Rc::downgrade(&pending);
+        let refresh = refresh.clone();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            std::time::Duration::from_millis(250),
+            move || {
+                if let Some(pending) = finished.upgrade() {
+                    pending.borrow_mut().take();
+                    refresh();
+                }
+            },
+        ));
+    })
+}
+
 pub(super) fn build_completion_refresh(
     view: sourceview5::View,
     schema_index: std::rc::Rc<std::cell::RefCell<SchemaIndex>>,
@@ -191,7 +211,7 @@ pub(super) fn build_completion_refresh(
     sender: relm4::ComponentSender<super::SqlEditor>,
 ) -> std::rc::Rc<dyn Fn()> {
     let view = view.downgrade();
-    std::rc::Rc::new(move || {
+    debounce_refresh(std::rc::Rc::new(move || {
         let Some(view) = view.upgrade() else {
             return;
         };
@@ -207,13 +227,13 @@ pub(super) fn build_completion_refresh(
         let missing: Vec<String> =
             super::completion::referenced_tables_with(&sql, cursor_byte, index.grammar, known_lexing.settings())
                 .into_iter()
-                .filter(|table| !index.knows_columns(table))
+                .filter(|table| index.needs_columns(table))
                 .collect();
         drop(index);
         if !missing.is_empty() {
             let _ = sender.output(super::SqlEditorOutput::NeedColumns(missing));
         }
-    })
+    }))
 }
 
 #[cfg(test)]

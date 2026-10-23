@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- SQL completion avoids catalog reads for incomplete table names and coalesces rapid editor changes.
 - Connection choices open from the keyboard, mark the selected option and release their popups when the dialog closes.
 
 - Multiline read-only cell previews stay compact instead of expanding query result rows to many text lines.
