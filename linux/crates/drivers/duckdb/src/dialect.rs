@@ -79,6 +79,10 @@ impl SqlDialect for DuckDbDialect {
             Value::UInt(integer) => Ok(integer.to_string()),
             Value::WideInt(integer) => Ok(integer.to_string()),
             Value::Decimal(decimal) if decimal.is_finite() => Ok(decimal.to_string()),
+            // DuckDB reads `-0.0` as a decimal, which has no negative zero,
+            // so the sign survives only in the text of a cast.
+            Value::Float32(real) if *real == 0.0 && real.is_sign_negative() => Ok("CAST('-0.0' AS FLOAT)".to_owned()),
+            Value::Float64(real) if *real == 0.0 && real.is_sign_negative() => Ok("CAST('-0.0' AS DOUBLE)".to_owned()),
             // Debug keeps the point or the exponent, so `2.0` stays a
             // DOUBLE instead of reading back as the integer 2.
             Value::Float32(real) if real.is_finite() => Ok(format!("CAST({:?} AS FLOAT)", f64::from(*real))),
@@ -429,6 +433,14 @@ mod tests {
         assert_eq!(
             dialect.literal(&Value::Float64(f64::NAN), &text).unwrap(),
             "CAST('nan' AS DOUBLE)"
+        );
+        assert_eq!(
+            dialect.literal(&Value::Float64(-0.0), &text).unwrap(),
+            "CAST('-0.0' AS DOUBLE)"
+        );
+        assert_eq!(
+            dialect.literal(&Value::Float32(-0.0), &text).unwrap(),
+            "CAST('-0.0' AS FLOAT)"
         );
         assert_eq!(dialect.literal(&Value::Bool(true), &text).unwrap(), "TRUE");
     }

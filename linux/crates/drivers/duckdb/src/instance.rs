@@ -361,6 +361,14 @@ pub(crate) fn attach_unless_open<T>(
     if in_use {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }
+    // A FIFO would hold the ATTACH, and every open in the process behind
+    // it, until something wrote to it.
+    if let Some(target) = targets
+        .iter()
+        .find(|target| std::fs::metadata(target).is_ok_and(|metadata| !metadata.is_file()))
+    {
+        return Err(DriverError::NotADatabase { path: target.clone() });
+    }
     let result = attach()?;
     // `ATTACH IF NOT EXISTS` under an alias already taken opens nothing,
     // so only a file the database now lists is claimed.
