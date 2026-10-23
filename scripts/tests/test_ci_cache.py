@@ -41,14 +41,16 @@ class CiCacheTests(unittest.TestCase):
 
     def test_old_generated_artifacts_removed_but_siblings_preserved(self):
         target = self.target('sandbox', 6)
-        (target / 'release/deps').mkdir(parents=True)
-        (target / 'release/.cargo-lock').touch()
-        (target / 'release/deps/artifact').write_text('release bytes')
+        for profile in ('release', 'ci'):
+            (target / profile / 'deps').mkdir(parents=True)
+            (target / profile / '.cargo-lock').touch()
+            (target / profile / 'deps/artifact').write_text('compiled bytes')
         (target / 'evidence.txt').write_text('keep')
         result = self.cleanup()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((target / 'debug').exists())
         self.assertFalse((target / 'release').exists())
+        self.assertFalse((target / 'ci').exists())
         self.assertEqual((target / 'evidence.txt').read_text(), 'keep')
 
     def test_recent_nightly_cache_and_unmarked_legacy_cache_survive(self):
@@ -102,6 +104,7 @@ class CiCacheTests(unittest.TestCase):
         target = self.target('linked-profile', 10)
         (target / 'debug').rename(target / 'saved')
         (target / 'debug').symlink_to(outside, target_is_directory=True)
+        (target / 'ci').symlink_to(outside, target_is_directory=True)
         marked = self.target('linked-marker', 10)
         (marked / '.bookie-last-used').unlink()
         (marked / '.bookie-last-used').symlink_to(outside / '.cargo-lock')
