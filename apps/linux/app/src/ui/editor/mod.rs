@@ -338,6 +338,7 @@ impl SimpleComponent for SqlEditor {
                     #[name = "session_button"]
                     gtk::ToggleButton {
                         set_label: &crate::tr!("Session"),
+                        set_can_shrink: true,
                         set_tooltip_text: Some(crate::tr!("Run this tab on its own connection, so settings, temporary tables and transactions carry over between runs").as_str()),
                         add_css_class: "flat",
                         connect_toggled[sender] => move |button| {
