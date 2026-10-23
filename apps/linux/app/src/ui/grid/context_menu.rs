@@ -19,6 +19,7 @@ use super::cell_context::{CellContext, CellContextStore};
 #[derive(Clone)]
 pub(super) struct GridMenus {
     context: CellContextStore,
+    cell_menu_trigger: gtk::ShortcutTrigger,
     editable_popover: gtk::PopoverMenu,
     readonly_popover: gtk::PopoverMenu,
     edit_action: gio::SimpleAction,
@@ -471,6 +472,7 @@ pub(super) fn install_grid_context_menus(
     column_view.add_controller(gesture);
     GridMenus {
         context,
+        cell_menu_trigger: crate::ui::shortcut::parse(CELL_MENU_TRIGGER),
         editable_popover,
         readonly_popover,
         edit_action,
@@ -741,7 +743,7 @@ pub(super) fn attach_cell_gesture(
     let key_view = column_view.downgrade();
     let menus = menus.clone();
     let shortcut = gtk::Shortcut::builder()
-        .trigger(&crate::ui::shortcut::parse(CELL_MENU_TRIGGER))
+        .trigger(&menus.cell_menu_trigger)
         .action(&gtk::CallbackAction::new(move |_, _| {
             let (Some(view), Some(widget)) = (key_view.upgrade(), key_widget.upgrade()) else {
                 return glib::Propagation::Proceed;
@@ -1141,18 +1143,34 @@ mod tests {
                 local_result_view: Some(local.clone()),
             },
         );
-        attach_cell_gesture(
-            label.upcast_ref(),
-            &view,
-            CellGestureOptions {
-                idx: 0,
-                column_name: "linked".into(),
-                is_editable: false,
-                is_text_editable: false,
-                supports_full_value: false,
-            },
-            &menus,
-        );
+        let sibling = gtk::Label::new(None);
+        for cell in [&label, &sibling] {
+            attach_cell_gesture(
+                cell.upcast_ref(),
+                &view,
+                CellGestureOptions {
+                    idx: 0,
+                    column_name: "linked".into(),
+                    is_editable: false,
+                    is_text_editable: false,
+                    supports_full_value: false,
+                },
+                &menus,
+            );
+        }
+        let trigger = |label: &gtk::Label| {
+            let controllers = label.observe_controllers();
+            let controller = (0..controllers.n_items())
+                .find_map(|index| controllers.item(index)?.downcast::<gtk::ShortcutController>().ok())
+                .unwrap();
+            controller
+                .item(0)
+                .and_downcast::<gtk::Shortcut>()
+                .unwrap()
+                .trigger()
+                .unwrap()
+        };
+        assert_eq!(trigger(&label), trigger(&sibling));
         (window, label, menus, local)
     }
 

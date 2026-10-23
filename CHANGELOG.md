@@ -21,6 +21,8 @@
 
 ### Changed
 
+- Large result grids reuse keyboard-menu shortcuts to reduce cell setup allocations.
+
 - Editing a cell or pasting in a table tab no longer rebuilds every loaded row on the page, so large pages with long text values stay responsive.
 - Keyboard shortcuts use a native adaptive dialog that fits smaller windows and preserves keyboard and mouse gesture descriptions.
 
