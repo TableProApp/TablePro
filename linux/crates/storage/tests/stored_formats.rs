@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use tablepro_core::{AuthMode, ClientIdentity, SafeModeLevel, TlsConfig, TlsMode};
+use tablepro_core::{AuthMode, ClientIdentity, ExternalAccess, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionStore, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
 };
@@ -57,6 +57,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         username: String::new(),
         tls: tls(TlsMode::Disable),
         safe_mode: SafeModeLevel::Off,
+        external_access: ExternalAccess::ReadOnly,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -276,6 +277,45 @@ fn a_version_2_list_writes_back_as_it_was_read() -> TestResult {
 
     assert_eq!(read.as_ref(), store.load_blocking()?.as_ref());
     assert!(String::from_utf8_lossy(&exported).contains("\"safe_mode\": \"confirm_writes\""));
+    Ok(())
+}
+
+#[test]
+fn a_list_written_before_external_access_lets_clients_read_only() -> TestResult {
+    let root = tempfile::tempdir()?;
+
+    let read = connections_from(root.path(), CONNECTIONS_V2)?;
+
+    assert!(!String::from_utf8_lossy(CONNECTIONS_V2).contains("external_access"));
+    assert!(
+        read.iter()
+            .all(|connection| connection.external_access == ExternalAccess::ReadOnly)
+    );
+    Ok(())
+}
+
+#[test]
+fn an_external_access_level_writes_back_as_it_was_set() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    store.import_blocking(Path::new("/tmp/connections-v2.json"), CONNECTIONS_V2)?;
+    let first = store.load_blocking()?.first().map(|connection| connection.id);
+    let Some(first) = first else {
+        return Err("the fixture has no connections".into());
+    };
+    store.update_blocking(first, |connection| {
+        connection.external_access = ExternalAccess::Blocked;
+    })?;
+
+    let exported = store.export_blocking()?;
+    let again = tempfile::tempdir()?;
+    let read = connections_from(again.path(), &exported)?;
+
+    assert!(String::from_utf8_lossy(&exported).contains("\"external_access\": \"blocked\""));
+    let levels: Vec<ExternalAccess> = read.iter().map(|connection| connection.external_access).collect();
+    assert_eq!(levels.iter().filter(|level| level.is_blocked()).count(), 1);
+    assert_eq!(read.iter().find(|connection| connection.id == first).map(|c| c.external_access), Some(ExternalAccess::Blocked));
     Ok(())
 }
 
