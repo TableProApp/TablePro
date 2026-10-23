@@ -33,7 +33,7 @@ final class SessionRedialer {
     func redial(
         _ connection: DatabaseConnection,
         schema: String?,
-        prompter: (any ConnectionPrompter)?,
+        prompter: ConnectionPromptQueue?,
         joining: Bool = true,
         consumer: AnyObject? = nil,
         stillWanted: @MainActor () -> Bool = { true }
@@ -85,7 +85,7 @@ final class SessionRedialer {
 
     // Returns with no dial in flight, so a caller can tear the session down without cancelling one. A window that
     // waits to take the dial's session is one of its consumers, so another window leaving does not cancel it.
-    func settled(_ connectionId: UUID, consumer: AnyObject? = nil, prompter: (any ConnectionPrompter)? = nil) async {
+    func settled(_ connectionId: UUID, consumer: AnyObject? = nil, prompter: ConnectionPromptQueue? = nil) async {
         let consumerId = consumer.map(ObjectIdentifier.init)
         while let dial = dials[connectionId] {
             if let consumerId {
@@ -110,9 +110,9 @@ final class SessionRedialer {
 // answers no and the question moves to the next window, so neither a host key question nor the dial is lost with it.
 @MainActor
 final class SharedDialPrompter: ConnectionPrompter {
-    private var askers: [(id: ObjectIdentifier?, prompter: any ConnectionPrompter)] = []
+    private var askers: [(id: ObjectIdentifier?, prompter: ConnectionPromptQueue)] = []
 
-    func add(_ id: ObjectIdentifier?, _ prompter: (any ConnectionPrompter)?) {
+    func add(_ id: ObjectIdentifier?, _ prompter: ConnectionPromptQueue?) {
         guard let prompter, id == nil || !askers.contains(where: { $0.id == id }) else { return }
         askers.append((id, prompter))
     }
@@ -122,9 +122,9 @@ final class SharedDialPrompter: ConnectionPrompter {
     }
 
     func confirm(_ question: ConnectionQuestion) async -> Bool {
-        while let asker = askers.first {
+        while let asker = askers.first(where: { !$0.prompter.hasNoScreen }) {
             if await asker.prompter.confirm(question) { return true }
-            guard let id = asker.id, !askers.contains(where: { $0.id == id }) else { return false }
+            guard passedOn(by: asker) else { return false }
         }
         return false
     }
@@ -133,10 +133,18 @@ final class SharedDialPrompter: ConnectionPrompter {
     nonisolated var answersChallenges: Bool { true }
 
     func answer(_ challenge: KeyboardInteractiveChallenge) async -> [String]? {
-        while let asker = askers.first(where: { $0.prompter.answersChallenges }) {
+        while let asker = askers.first(where: { $0.prompter.answersChallenges && !$0.prompter.hasNoScreen }) {
             if let answers = await asker.prompter.answer(challenge) { return answers }
-            guard let id = asker.id, !askers.contains(where: { $0.id == id }) else { return nil }
+            guard passedOn(by: asker) else { return nil }
         }
         return nil
+    }
+
+    // A window whose screen closed answers no before it leaves the dial, and that no is nobody's answer. It stays
+    // listed, so it is asked again once a screen shows its queue.
+    private func passedOn(by asker: (id: ObjectIdentifier?, prompter: ConnectionPromptQueue)) -> Bool {
+        if asker.prompter.hasNoScreen { return true }
+        guard let id = asker.id else { return false }
+        return !askers.contains { $0.id == id }
     }
 }

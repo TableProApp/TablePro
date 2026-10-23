@@ -1,17 +1,15 @@
 import SwiftUI
 import TableProDatabase
 
-/// Presents the attempt's questions from the screen that owns it. Attaching this at the root of the
-/// window instead makes SwiftUI dismiss whatever that root is presenting, which is what took the
-/// connection screen away and answered the host key question without the user.
-///
-/// The question on screen is held here rather than read back from the queue, so a dismissal answers
-/// the question the user was looking at and never the one waiting behind it.
+// Attach it to the screen that owns the attempt, never the window root: a root alert makes SwiftUI
+// dismiss the connection cover. `shown` is kept here so a dismissal answers what the user saw.
 struct ConnectionPromptAlert: ViewModifier {
     @Bindable var queue: ConnectionPromptQueue
 
     @State private var shown: ConnectionPrompt?
     @State private var typed: [String] = []
+    // A store rebuild swaps the queue under the same modifier, so the one shown is kept to detach it.
+    @State private var attached: ConnectionPromptQueue?
 
     func body(content: Content) -> some View {
         content
@@ -44,6 +42,19 @@ struct ConnectionPromptAlert: ViewModifier {
                 typed = Array(repeating: "", count: next?.fields.count ?? 0)
                 shown = next
             }
+            .onAppear { attach(queue) }
+            .onChange(of: ObjectIdentifier(queue)) { attach(queue) }
+            .onDisappear {
+                attached?.screenDisappeared()
+                attached = nil
+            }
+    }
+
+    private func attach(_ next: ConnectionPromptQueue) {
+        guard attached !== next else { return }
+        attached?.screenDisappeared()
+        next.screenAppeared()
+        attached = next
     }
 
     @ViewBuilder
