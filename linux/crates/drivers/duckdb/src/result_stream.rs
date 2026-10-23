@@ -549,7 +549,10 @@ fn attach_hides(statement: &str) -> bool {
             ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
             ScriptTokenKind::Punct if depth == 1 && text == "," => option_starts = true,
             ScriptTokenKind::Word | ScriptTokenKind::QuotedIdentifier if is_option_name => {
-                let name = text.strip_prefix('"').and_then(|name| name.strip_suffix('"')).unwrap_or(text);
+                let name = text
+                    .strip_prefix('"')
+                    .and_then(|name| name.strip_suffix('"'))
+                    .unwrap_or(text);
                 let turned_off = tokens.get(index + 1).is_some_and(|&(kind, value)| {
                     let value = match kind {
                         ScriptTokenKind::StringLiteral => value.trim_matches('\''),
