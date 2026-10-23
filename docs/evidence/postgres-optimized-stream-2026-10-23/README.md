@@ -1,6 +1,6 @@
 # Optimized PostgreSQL streaming investigation
 
-Source: candidate `12519fa76c0d9bda3f8fb1680faa5fc10b205d1e` from [#1520](https://github.com/cozyGarage/BookiE/pull/1520). Build profile: Cargo release, not the shipping dist profile. This is an incomplete performance investigation, not current Linux acceptance.
+Source: candidate `12519fa76c0d9bda3f8fb1680faa5fc10b205d1e` from [#1520](https://github.com/cozyGarage/BookiE/pull/1520). Build profile: Cargo release, not the shipping dist profile. This is an incomplete performance investigation, not current Linux acceptance. [#1523](https://github.com/cozyGarage/BookiE/issues/1523) owns the next isolation and regression work.
 
 The first isolated Xvfb/Cairo run requested two million generated PostgreSQL rows across six columns. The fixture configures a 60-second query deadline. The app displayed Query timed out after receiving 1695000 rows over 339 pages. It explicitly retained rows 1675001-1695000. The probe incorrectly waited only for success, so its final failure arrived after a 300-second observation bound. It produced no completed memory measurement. The [failure log](initial-failure.log) is preserved; this is not a successful two-million-row result.
 
