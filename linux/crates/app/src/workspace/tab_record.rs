@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tablepro_core::FilterSet;
 use tablepro_storage::DraftId;
 
-use super::{EditorFileRecord, SortRecord};
+use super::{DiagramPlace, EditorFileRecord, SortRecord};
 
 /// What the page size preference allows.
 const PAGE_SIZES: RangeInclusive<u64> = 100..=100_000;
@@ -29,6 +29,15 @@ pub enum TabRecord {
         schema: Option<String>,
         table: String,
     },
+    /// A schema's ER diagram. Its tables are read again when it opens,
+    /// and those the user moved go back where they were put; with none
+    /// moved, the automatic layout places them all.
+    Diagram {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schema: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        places: Vec<DiagramPlace>,
+    },
     /// The text lives in the draft store, so a script of any length
     /// costs the record one id.
     Editor {
@@ -43,6 +52,29 @@ pub enum TabRecord {
 }
 
 impl TabRecord {
+    /// How large the state a tab can be saved without is, encoded, or
+    /// `None` with none to leave out.
+    pub(super) fn optional_size(&self) -> Option<usize> {
+        let encoded = match self {
+            Self::Table {
+                filter: Some(filter), ..
+            } => serde_json::to_vec(filter),
+            Self::Diagram { places, .. } if !places.is_empty() => serde_json::to_vec(places),
+            _ => return None,
+        };
+        Some(encoded.map_or(usize::MAX, |json| json.len()))
+    }
+
+    /// Leave out what `optional_size` counts: a table tab opens on its
+    /// table's remembered filter, and a diagram is laid out afresh.
+    pub(super) fn drop_optional(&mut self) {
+        match self {
+            Self::Table { filter, .. } => *filter = None,
+            Self::Diagram { places, .. } => places.clear(),
+            Self::Structure { .. } | Self::Editor { .. } | Self::Key { .. } => {}
+        }
+    }
+
     /// The record as a tab can be built from it, or `None` when it names
     /// nothing that could exist.
     pub(super) fn clamped(self) -> Option<Self> {
@@ -73,6 +105,7 @@ impl TabRecord {
                 })
             }
             Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
+            Self::Diagram { schema, places } => Some(Self::Diagram { schema, places }),
             Self::Editor { draft, file } => Some(Self::Editor { draft, file }),
             // A key's name can be empty, as Redis lets one be.
             Self::Key { key } => Some(Self::Key { key }),

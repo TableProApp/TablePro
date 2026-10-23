@@ -12,4 +12,6 @@ pub(crate) enum SidebarEvent {
     DropTable(TableRef),
     /// A new table in this schema, or the default one.
     NewTable(Option<String>),
+    /// This schema's ER diagram, or the default one's.
+    ShowDiagram(Option<String>),
 }

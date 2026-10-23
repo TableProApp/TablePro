@@ -59,6 +59,8 @@ pub struct SessionWindow {
     pub(super) list_observer: Cell<Option<StateObserverId>>,
     pub(super) picker: OnceCell<PickerPage>,
     pub(super) dialog: RefCell<Option<ConnectDialog>>,
+    /// Manage Tags while it is open, which its rows' callbacks need.
+    pub(super) manage_tags: RefCell<Option<Rc<crate::ui::tags::ManageTagsDialog>>>,
     /// The connect dialog was asked for and opens once the SSH keys are
     /// looked for.
     pub(super) dialog_opening: Cell<bool>,

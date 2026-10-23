@@ -174,6 +174,7 @@ fn row_json_dialog(json: RowJson) -> adw::Dialog {
         format: ClipboardFormat::Json,
         rows: 1,
         skipped: 0,
+        cells: None,
     };
     let toasts = adw::ToastOverlay::new();
     toasts.set_child(Some(&scrolled));

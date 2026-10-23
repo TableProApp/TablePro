@@ -37,8 +37,9 @@ use world::{World, drain_main_context, wait_until};
 
 type Scenario = fn() -> Result<Vec<Finding>, String>;
 
-const SCENARIOS: [(&str, Scenario); 7] = [
+const SCENARIOS: [(&str, Scenario); 8] = [
     ("picker_page_controls_are_labelled", picker_page),
+    ("manage_tags_dialog_controls_are_labelled", manage_tags_dialog),
     ("connecting_page_controls_are_labelled", connecting_page),
     ("connect_failed_page_controls_are_labelled", connect_failed_page),
     ("workspace_controls_are_labelled", workspace),
@@ -107,7 +108,29 @@ fn picker_page() -> Result<Vec<Finding>, String> {
     wait_until("the saved connection in the picker", || {
         shows(&window, "TableProPickerPage") && has_row(window.upcast_ref(), &name)
     })?;
+    let search = descendants(window.upcast_ref())
+        .into_iter()
+        .find_map(|widget| widget.downcast::<gtk4::SearchBar>().ok())
+        .ok_or("the picker has no search")?;
+    search.set_search_mode(true);
+    drain_main_context();
     Ok(audit(&window))
+}
+
+fn manage_tags_dialog() -> Result<Vec<Finding>, String> {
+    let world = World::start("ManageTags", fake_driver(), FakeConnector::new([]))?;
+    let window = world.open(WindowLaunch::Picker)?;
+    wait_until("the picker", || shows(&window, "TableProPickerPage"))?;
+    WidgetExt::activate_action(&window, "win.manage-tags", None)
+        .map_err(|error| format!("win.manage-tags: {error}"))?;
+    let mut shown = None;
+    wait_until("the manage tags dialog", || {
+        shown = window.visible_dialog();
+        shown.is_some()
+    })?;
+    let dialog = shown.ok_or("no dialog")?;
+    wait_until("the tag's row", || has_row(dialog.upcast_ref(), "production"))?;
+    Ok(audit(&dialog))
 }
 
 fn connecting_page() -> Result<Vec<Finding>, String> {

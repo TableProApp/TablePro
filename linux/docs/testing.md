@@ -217,7 +217,7 @@ Every target runs it, the MySQL target on MariaDB as well, and SQLite's runs in 
 
 ### Export round trip
 
-`round_trip_suite!` checks that a file the export writes loads back with the same rows. Each driver's `crates/drivers/<engine>/tests/integration/round_trip.rs` invokes it with an engine that implements `ValueCorpusEngine` and `LargeTableEngine`:
+`round_trip_suite!` checks that a file the export writes, and rows the grid copies, load back with the same rows. Each driver's `crates/drivers/<engine>/tests/integration/round_trip.rs` invokes it with an engine that implements `ValueCorpusEngine` and `LargeTableEngine`:
 
 ```rust
 tablepro_test_support::round_trip_suite! {
@@ -229,6 +229,7 @@ tablepro_test_support::round_trip_suite! {
 
 - `csv_export_imports_back_as_the_same_rows` loads each corpus column into a table, exports it as CSV and imports the file into an empty copy, through `import_csv`, which runs the plan the import dialog runs. It does this under four pairings of export and import options that are meant to lose nothing: every delimiter, quoting always or where needed, LF, CRLF and CR line breaks, NULL written and read as `NULL`, and formulas left as they are. Row count and the text of every row have to match. A column of a kind `read_only_reason` names (bytes, arrays, spatial, variant and composite values) and a value `edit_text` gives no text for, such as a blob in a SQLite column typed by its values, have no CSV text the import reads back, so the SQL case covers them.
 - `sql_insert_export_runs_back_as_the_same_rows` exports each corpus column as SQL INSERT into an empty copy and runs the file as the editor runs one: split by the engine's grammar and sent a batch at a time. Every value has to come back with the same text and of the same kind.
+- `tsv_copy_pastes_back_as_the_same_rows` writes each corpus column's rows as the grid's Copy does, as tab-separated text and as the cells it offers beside the text (`CellsEncoder`), reads each as a paste does (`PastedTable`) and saves the rows into an empty copy as a table tab saves new ones (`plan_save`). Rows are compared in `id` order without the `id`, since a paste leaves an id the server numbers, such as SQLite's row id, to the server: by text for the text, and by text and kind for the cells, which keep how each value was stored. The columns and values the CSV case skips are skipped here too.
 - `csv_export_near_the_import_limit_imports_back`, with `near_limit: true`, fills a table through `LargeTableEngine` so its CSV under the export defaults lands within 1 MiB under `MAX_CSV_FILE_BYTES`, imports it into an empty copy, and compares a hash of every row. ClickHouse passes `false`: its import sends values in the request URL, 8 KiB a statement, so such a file takes some 8,000 statements and longer than a case may run.
 
 Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.

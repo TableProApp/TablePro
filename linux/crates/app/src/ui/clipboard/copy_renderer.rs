@@ -4,8 +4,8 @@ use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::dialect::{LiteralError, SqlDialect};
 use tablepro_core::edit::CellInput;
 use tablepro_core::export::{
-    self, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, MarkdownEncoder, RenderInsertError, RowEncoder,
-    TsvEncoder,
+    self, CellsEncoder, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, MarkdownEncoder, RenderInsertError,
+    RowEncoder, TsvEncoder,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::value::Value;
@@ -110,7 +110,8 @@ fn render_rows(
     rows: &[RowSnapshot],
     kind: CopyKind,
 ) -> Result<ClipboardPayload, CopyError> {
-    match kind {
+    let cells = copied_cells(&columns, rows, kind)?;
+    let payload = match kind {
         CopyKind::Value(column) => value_text(&columns, rows, column).map(ClipboardPayload::plain),
         CopyKind::Rows => encode(TsvEncoder::new(columns, false), rows, ClipboardFormat::Tsv),
         CopyKind::RowsWithHeaders => encode(TsvEncoder::new(columns, true), rows, ClipboardFormat::Tsv),
@@ -126,7 +127,31 @@ fn render_rows(
         ),
         CopyKind::Json => encode(JsonArrayEncoder::new(columns), rows, ClipboardFormat::Json),
         CopyKind::Markdown => encode(MarkdownEncoder::new(columns), rows, ClipboardFormat::Markdown),
+    }?;
+    Ok(ClipboardPayload {
+        cells: Some(cells),
+        ..payload
+    })
+}
+
+/// The cells beside the text, which a paste reads back as they were.
+/// A copy that names its columns lets the paste place values by name.
+fn copied_cells(columns: &Arc<[ResultColumn]>, rows: &[RowSnapshot], kind: CopyKind) -> Result<String, CopyError> {
+    let with_headers = match kind {
+        CopyKind::Value(_) | CopyKind::Rows | CopyKind::Csv => false,
+        CopyKind::RowsWithHeaders | CopyKind::CsvWithHeaders | CopyKind::Json | CopyKind::Markdown => true,
+    };
+    let CopyKind::Value(column) = kind else {
+        return encoded(CellsEncoder::new(columns.clone(), with_headers), rows);
+    };
+    let mut encoder = CellsEncoder::new(columns.get(column).cloned().into_iter().collect(), with_headers);
+    let mut out = Vec::new();
+    encoder.begin(&mut out);
+    if let Some(row) = rows.first() {
+        encoder.row(&mut out, &mut std::iter::once(row.value(column)))?;
     }
+    encoder.finish(&mut out);
+    Ok(utf8(out))
 }
 
 /// CSV as the clipboard carries it. Copied text goes as the user sees
@@ -154,6 +179,7 @@ fn render_in_clause(dialect: &dyn SqlDialect, values: &InClauseRows) -> Result<C
         format: ClipboardFormat::Sql,
         rows: rows.len() - clause.skipped,
         skipped: clause.skipped,
+        cells: None,
     })
 }
 
@@ -175,23 +201,32 @@ fn value_text(columns: &[ResultColumn], rows: &[RowSnapshot], column: usize) -> 
 }
 
 fn encode(
-    mut encoder: impl RowEncoder,
+    encoder: impl RowEncoder,
     rows: &[RowSnapshot],
     format: ClipboardFormat,
 ) -> Result<ClipboardPayload, CopyError> {
+    Ok(ClipboardPayload {
+        text: encoded(encoder, rows)?,
+        format,
+        rows: rows.len(),
+        skipped: 0,
+        cells: None,
+    })
+}
+
+fn encoded(mut encoder: impl RowEncoder, rows: &[RowSnapshot]) -> Result<String, CopyError> {
     let mut out = Vec::new();
     encoder.begin(&mut out);
     for row in rows {
         encoder.row(&mut out, &mut row.values())?;
     }
     encoder.finish(&mut out);
-    Ok(ClipboardPayload {
-        // Every encoder writes UTF-8, so the lossy branch is never taken.
-        text: String::from_utf8(out).unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned()),
-        format,
-        rows: rows.len(),
-        skipped: 0,
-    })
+    Ok(utf8(out))
+}
+
+/// Every encoder writes UTF-8, so the lossy branch is never taken.
+fn utf8(out: Vec<u8>) -> String {
+    String::from_utf8(out).unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned())
 }
 
 fn render_insert(insert: InsertCopy) -> Result<ClipboardPayload, CopyError> {
@@ -223,5 +258,6 @@ fn render_insert(insert: InsertCopy) -> Result<ClipboardPayload, CopyError> {
         format: ClipboardFormat::Sql,
         rows: rows.len(),
         skipped: 0,
+        cells: None,
     })
 }

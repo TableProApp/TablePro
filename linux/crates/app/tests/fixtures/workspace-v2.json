@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "active_tab": 3,
+  "tabs": [
+    {
+      "kind": "table",
+      "schema": "public",
+      "table": "orders",
+      "offset": 0,
+      "page_size": 1000,
+      "sort": null
+    },
+    {
+      "kind": "editor",
+      "draft": "7d0c5b1e-9a3f-4e2d-8b6c-1f0e9d8c7b6a"
+    },
+    {
+      "kind": "structure",
+      "schema": "sales",
+      "table": "customers"
+    },
+    {
+      "kind": "diagram",
+      "schema": "sales",
+      "places": [
+        {
+          "table": "customers",
+          "x": -120,
+          "y": 40
+        },
+        {
+          "table": "orders",
+          "x": 336,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "kind": "diagram"
+    },
+    {
+      "kind": "key",
+      "key": "user:1"
+    }
+  ]
+}

@@ -3,8 +3,9 @@
 /// marks them `#[ignore = "requires docker"]`.
 ///
 /// The value corpus goes out as CSV and comes back through the import,
-/// and goes out as SQL INSERT and comes back through an editor run, each
-/// into an empty copy of its table. `near_limit: true` adds a case that
+/// goes out as SQL INSERT and comes back through an editor run, and goes
+/// out as the grid's Copy and comes back as a paste saved, each into an
+/// empty copy of its table. `near_limit: true` adds a case that
 /// exports a table whose CSV lands just under the import's size limit
 /// and imports it back. It describes how fast the engine takes an
 /// import, so no capability stands behind it.
@@ -13,6 +14,7 @@ macro_rules! round_trip_suite {
     (engine: $engine:ty, docker: $docker:tt, near_limit: $near_limit:tt $(,)?) => {
         $crate::__round_trip_case! { $docker, $engine, csv_export_imports_back_as_the_same_rows }
         $crate::__round_trip_case! { $docker, $engine, sql_insert_export_runs_back_as_the_same_rows }
+        $crate::__round_trip_case! { $docker, $engine, tsv_copy_pastes_back_as_the_same_rows }
         $crate::__near_limit_case! { $near_limit, $docker, $engine }
     };
 }

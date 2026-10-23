@@ -7,5 +7,5 @@ mod picker_actions;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use connection_row::connection_row;
+pub(crate) use connection_row::{RowChoices, connection_row};
 pub(crate) use picker_actions::install_picker_actions;

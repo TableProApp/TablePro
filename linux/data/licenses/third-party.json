@@ -1170,7 +1170,7 @@
       "used_by": [
         { "crate": { "name": "tokio-stream", "version": "0.1.19" } },
         { "crate": { "name": "tokio-util", "version": "0.7.19" } },
-        { "crate": { "name": "tokio", "version": "1.53.1" } }
+        { "crate": { "name": "tokio", "version": "1.53.3" } }
       ]
     },
     {
@@ -1863,7 +1863,7 @@
     { "name": "tiberius-macros", "version": "0.1.0", "license": "MIT OR Apache-2.0" },
     { "name": "tinystr", "version": "0.8.4", "license": "Unicode-3.0" },
     { "name": "tinyvec", "version": "1.13.3", "license": "Zlib OR Apache-2.0 OR MIT" },
-    { "name": "tokio", "version": "1.53.1", "license": "MIT" },
+    { "name": "tokio", "version": "1.53.3", "license": "MIT" },
     { "name": "tokio-macros", "version": "2.7.2", "license": "MIT" },
     { "name": "tokio-postgres", "version": "0.7.18", "license": "MIT OR Apache-2.0" },
     { "name": "tokio-postgres-rustls", "version": "0.14.0", "license": "MIT" },

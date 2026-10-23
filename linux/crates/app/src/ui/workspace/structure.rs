@@ -361,6 +361,7 @@ impl WorkspaceModel {
         let Some(session) = self.context.active.get() else {
             return;
         };
+        self.diagrams_out_of_date(schema.as_deref(), table.is_some());
         if let Some(table) = table {
             session.invalidate_table(&TableRef::new(schema.clone(), table.clone()));
             let (browse_tabs, structure_tabs): (Vec<_>, Vec<_>) = self

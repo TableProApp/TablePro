@@ -8,7 +8,7 @@ mod clipboard_writer;
 mod copy_renderer;
 
 pub(crate) use clipboard_copy::{copy_payload, copy_rows, copy_text};
-pub(crate) use clipboard_format::ClipboardFormat;
+pub(crate) use clipboard_format::{CELLS_MIME_TYPE, ClipboardFormat};
 pub(crate) use clipboard_payload::ClipboardPayload;
 pub(crate) use clipboard_writer::ClipboardError;
 #[cfg(test)]

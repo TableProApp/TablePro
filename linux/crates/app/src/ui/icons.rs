@@ -1,6 +1,10 @@
 //! Every icon name the app asks the icon theme for. Keeping them in
 //! one place is what lets `all_icons_resolve` prove the set is real.
 
+pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
+pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
+pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
+pub const COMPUTER: &str = "computer-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
 pub const DIALOG_WARNING: &str = "dialog-warning-symbolic";
 pub const DOCUMENT_EDIT: &str = "document-edit-symbolic";
@@ -9,6 +13,7 @@ pub const DOCUMENT_MODIFIED: &str = "document-modified-symbolic";
 pub const DOCUMENT_OPEN: &str = "document-open-symbolic";
 pub const DOCUMENT_OPEN_RECENT: &str = "document-open-recent-symbolic";
 pub const DOCUMENT_SAVE: &str = "document-save-symbolic";
+pub const DRIVE_HARDDISK: &str = "drive-harddisk-symbolic";
 pub const EDIT_CLEAR: &str = "edit-clear-symbolic";
 pub const EDIT_COPY: &str = "edit-copy-symbolic";
 pub const EDIT_DELETE: &str = "edit-delete-symbolic";
@@ -26,9 +31,12 @@ pub const MEDIA_PLAYBACK_STOP: &str = "media-playback-stop-symbolic";
 pub const NETWORK_ERROR: &str = "network-error-symbolic";
 pub const NETWORK_SERVER: &str = "network-server-symbolic";
 pub const OPEN_MENU: &str = "open-menu-symbolic";
+pub const PACKAGE: &str = "package-x-generic-symbolic";
 pub const PAN_DOWN: &str = "pan-down-symbolic";
 pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
+pub const SECURITY_HIGH: &str = "security-high-symbolic";
+pub const STARRED: &str = "starred-symbolic";
 pub const STATEMENT_PENDING: &str = "statement-pending-symbolic";
 pub const SIDEBAR_SHOW: &str = "sidebar-show-symbolic";
 /// Not in Adwaita; GtkSourceView installs it, for its own snippet
@@ -41,7 +49,9 @@ pub const TABLE_RELATION: &str = "table-relation-symbolic";
 pub const TAB_NEW: &str = "tab-new-symbolic";
 pub const TEXT_EDITOR: &str = "text-editor-symbolic";
 pub const TEXT_X_GENERIC: &str = "text-x-generic-symbolic";
+pub const USER_HOME: &str = "user-home-symbolic";
 pub const USER_TRASH: &str = "user-trash-symbolic";
+pub const UTILITIES_TERMINAL: &str = "utilities-terminal-symbolic";
 pub const VIEW_GRID: &str = "view-grid-symbolic";
 pub const VIEW_LIST: &str = "view-list-symbolic";
 pub const VIEW_MORE: &str = "view-more-symbolic";
@@ -50,7 +60,12 @@ pub const VIEW_PIN: &str = "view-pin-symbolic";
 pub const VIEW_REFRESH: &str = "view-refresh-symbolic";
 pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
+pub const WEATHER_OVERCAST: &str = "weather-overcast-symbolic";
+pub const WEB_BROWSER: &str = "web-browser-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
+pub const ZOOM_FIT_BEST: &str = "zoom-fit-best-symbolic";
+pub const ZOOM_IN: &str = "zoom-in-symbolic";
+pub const ZOOM_OUT: &str = "zoom-out-symbolic";
 
 #[cfg_attr(
     not(test),
@@ -60,6 +75,10 @@ pub const WINDOW_CLOSE: &str = "window-close-symbolic";
     )
 )]
 pub const ALL: &[&str] = &[
+    APPLICATIONS_ENGINEERING,
+    APPLICATIONS_SCIENCE,
+    CHANGES_PREVENT,
+    COMPUTER,
     DIALOG_ERROR,
     DIALOG_WARNING,
     DOCUMENT_EDIT,
@@ -67,6 +86,7 @@ pub const ALL: &[&str] = &[
     DOCUMENT_OPEN,
     DOCUMENT_OPEN_RECENT,
     DOCUMENT_SAVE,
+    DRIVE_HARDDISK,
     EDIT_CLEAR,
     EDIT_COPY,
     EDIT_DELETE,
@@ -84,11 +104,14 @@ pub const ALL: &[&str] = &[
     NETWORK_ERROR,
     NETWORK_SERVER,
     OPEN_MENU,
+    PACKAGE,
     PAN_DOWN,
     PREFERENCES_SYSTEM,
     PROCESS_STOP,
+    SECURITY_HIGH,
     SIDEBAR_SHOW,
     SNIPPET,
+    STARRED,
     STATEMENT_PENDING,
     SUCCESS,
     SYSTEM_RUN,
@@ -97,7 +120,9 @@ pub const ALL: &[&str] = &[
     TAB_NEW,
     TEXT_EDITOR,
     TEXT_X_GENERIC,
+    USER_HOME,
     USER_TRASH,
+    UTILITIES_TERMINAL,
     VIEW_GRID,
     VIEW_LIST,
     VIEW_MORE,
@@ -106,8 +131,35 @@ pub const ALL: &[&str] = &[
     VIEW_REFRESH,
     VIEW_REVEAL,
     VIEW_SORT_ASCENDING,
+    WEATHER_OVERCAST,
+    WEB_BROWSER,
     WINDOW_CLOSE,
+    ZOOM_FIT_BEST,
+    ZOOM_IN,
+    ZOOM_OUT,
 ];
+
+/// The theme's icon for each icon a connection can carry.
+pub fn connection_icon(icon: tablepro_storage::ConnectionIcon) -> &'static str {
+    use tablepro_storage::ConnectionIcon;
+    match icon {
+        ConnectionIcon::Server => NETWORK_SERVER,
+        ConnectionIcon::Computer => COMPUTER,
+        ConnectionIcon::Disk => DRIVE_HARDDISK,
+        ConnectionIcon::Folder => FOLDER,
+        ConnectionIcon::Home => USER_HOME,
+        ConnectionIcon::Cloud => WEATHER_OVERCAST,
+        ConnectionIcon::Web => WEB_BROWSER,
+        ConnectionIcon::Terminal => UTILITIES_TERMINAL,
+        ConnectionIcon::Package => PACKAGE,
+        ConnectionIcon::Lab => APPLICATIONS_SCIENCE,
+        ConnectionIcon::Tools => APPLICATIONS_ENGINEERING,
+        ConnectionIcon::Star => STARRED,
+        ConnectionIcon::Warning => DIALOG_WARNING,
+        ConnectionIcon::Shield => SECURITY_HIGH,
+        ConnectionIcon::Lock => CHANGES_PREVENT,
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -125,6 +177,22 @@ mod tests {
         let missing: Vec<&str> = ALL.iter().copied().filter(|name| !theme.has_icon(name)).collect();
 
         assert!(missing.is_empty(), "the icon theme cannot resolve {missing:?}");
+    }
+
+    #[test]
+    fn every_connection_icon_is_one_the_set_checks_and_none_repeats() {
+        let names: std::collections::HashSet<&str> = tablepro_storage::ConnectionIcon::ALL
+            .into_iter()
+            .map(connection_icon)
+            .collect();
+
+        assert_eq!(names.len(), tablepro_storage::ConnectionIcon::ALL.len());
+        for name in names {
+            assert!(
+                ALL.contains(&name),
+                "{name} is not in ALL, so nothing checks it resolves"
+            );
+        }
     }
 
     #[test]

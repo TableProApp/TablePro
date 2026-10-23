@@ -12,6 +12,7 @@ mod close_reason;
 mod close_scope;
 mod close_step;
 mod completed_work;
+mod diagram_place;
 pub(crate) mod dialog_response;
 mod dirty_kind;
 mod dirty_tab;
@@ -75,6 +76,7 @@ pub use close_reason::CloseReason;
 pub use close_scope::CloseScope;
 pub use close_step::{CloseStep, next_close_step};
 pub use completed_work::CompletedWork;
+pub use diagram_place::DiagramPlace;
 pub(crate) use dialog_response::respond;
 #[cfg(test)]
 pub(crate) use dialog_response::{answer, visible_alert};

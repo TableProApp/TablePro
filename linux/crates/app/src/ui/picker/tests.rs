@@ -1,5 +1,4 @@
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::Duration;
 
 use gtk4 as gtk;
@@ -37,6 +36,8 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: group.map(|group| tablepro_storage::ConnectionGroupName::new(group).expect("a group name")),
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -93,6 +94,13 @@ impl Drop for Pickers {
     }
 }
 
+fn ready<const N: usize>(connections: [SavedConnection; N]) -> ConnectionListState {
+    ConnectionListState::Ready(tablepro_storage::ConnectionList::new(
+        Vec::from(connections),
+        Vec::new(),
+    ))
+}
+
 fn rows(sections: &[(String, Vec<String>)]) -> Vec<String> {
     sections.iter().flat_map(|(_, rows)| rows.clone()).collect()
 }
@@ -139,9 +147,7 @@ fn picker_renders_one_group_per_section() {
         connection("b", Some("Work")),
         connection("c", Some("R&D")),
     );
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([loose, a.clone(), b, c])));
+    pickers.list.apply(ready([loose, a.clone(), b, c]));
 
     let view = &pickers.views[0];
     assert_eq!(
@@ -153,9 +159,7 @@ fn picker_renders_one_group_per_section() {
         ]
     );
 
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([a, connection("d", None)])));
+    pickers.list.apply(ready([a, connection("d", None)]));
 
     assert_eq!(
         view.sections(),
@@ -165,17 +169,13 @@ fn picker_renders_one_group_per_section() {
         ],
         "a group with no connection left kept its section"
     );
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([connection("e", Some("Work"))])));
+    pickers.list.apply(ready([connection("e", Some("Work"))]));
     assert_eq!(
         view.sections(),
         [("Work".to_owned(), vec!["e".to_owned()])],
         "an empty ungrouped section stayed"
     );
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([connection("f", None)])));
+    pickers.list.apply(ready([connection("f", None)]));
     assert_eq!(
         view.sections(),
         [("Saved Connections".to_owned(), vec!["f".to_owned()])],
@@ -193,21 +193,17 @@ fn the_empty_page_shows_only_for_a_list_that_is_read_and_empty() {
         "a loading list offered to add one"
     );
 
-    pickers.list.apply(ConnectionListState::Ready(Arc::from([])));
+    pickers.list.apply(ready([]));
     assert_eq!(view.visible_page().as_deref(), Some("empty"));
 
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([connection("Corp", None)])));
+    pickers.list.apply(ready([connection("Corp", None)]));
     assert_eq!(view.visible_page().as_deref(), Some("list"));
 }
 
 #[gtk4::test]
 fn a_name_is_shown_as_text_not_markup() {
     let pickers = Pickers::new();
-    pickers
-        .list
-        .apply(ConnectionListState::Ready(Arc::from([connection("R&D <prod>", None)])));
+    pickers.list.apply(ready([connection("R&D <prod>", None)]));
 
     let row = descendants(&pickers.views[0])
         .into_iter()
@@ -436,5 +432,248 @@ fn a_group_picked_from_the_row_reaches_the_store() {
             .get(test.saved.id)
             .is_some_and(|saved| saved.group.is_some()),
         "a blank group took the connection out of its group"
+    );
+}
+
+fn tag(name: &str) -> tablepro_storage::ConnectionTag {
+    tablepro_storage::ConnectionTag::new(
+        tablepro_storage::ConnectionTagName::new(name).expect("a tag name"),
+        tablepro_storage::ConnectionColor::Red,
+    )
+}
+
+fn tagged(name: &str, group: Option<&str>, tags: &[&tablepro_storage::ConnectionTag]) -> SavedConnection {
+    SavedConnection {
+        tags: tags.iter().map(|tag| tag.id).collect(),
+        ..connection(name, group)
+    }
+}
+
+fn pills(view: &WelcomeView, row_title: &str) -> Vec<String> {
+    let row = descendants(view)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
+        .find(|row| row.title() == row_title)
+        .unwrap_or_else(|| panic!("no row for {row_title}"));
+    descendants(&row)
+        .into_iter()
+        .filter(|widget| widget.has_css_class("tp-tag-pill"))
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .map(|label| label.label().to_string())
+        .collect()
+}
+
+/// The issue's "Done means": both tags show, and a search for one lists
+/// every connection that has it, in every group.
+#[gtk4::test]
+fn a_search_for_a_tag_lists_every_connection_that_has_it() {
+    let pickers = Pickers::new();
+    let (acme, production) = (tag("acme"), tag("production"));
+    pickers
+        .list
+        .apply(ConnectionListState::Ready(tablepro_storage::ConnectionList::new(
+            vec![
+                tagged("acme-prod", Some("Acme"), &[&production, &acme]),
+                tagged("acme-dev", Some("Acme"), &[&acme]),
+                tagged("globex-prod", Some("Globex"), &[&production]),
+                tagged("scratch", None, &[]),
+            ],
+            vec![production.clone(), acme.clone()],
+        )));
+    let view = &pickers.views[0];
+    assert_eq!(pills(view, "acme-prod"), ["acme", "production"]);
+
+    view.set_search("production");
+
+    assert_eq!(
+        view.sections(),
+        [
+            ("Acme".to_owned(), vec!["acme-prod".to_owned()]),
+            ("Globex".to_owned(), vec!["globex-prod".to_owned()]),
+        ]
+    );
+    assert_eq!(
+        rows(&pickers.views[1].sections()).len(),
+        4,
+        "a search in one window filtered another"
+    );
+    view.set_search("");
+    assert_eq!(rows(&view.sections()).len(), 4);
+}
+
+#[gtk4::test]
+fn a_search_that_matches_nothing_says_so() {
+    let pickers = Pickers::new();
+    pickers.list.apply(ready([connection("Corp", None)]));
+    let view = &pickers.views[0];
+
+    view.set_search("nothing-like-it");
+    assert_eq!(view.visible_page().as_deref(), Some("no-results"));
+    assert!(view.sections().is_empty());
+
+    pickers
+        .list
+        .apply(ready([connection("Corp", None), connection("nothing-like-it", None)]));
+    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    assert_eq!(rows(&view.sections()), ["nothing-like-it"]);
+}
+
+#[gtk4::test]
+fn a_renamed_tag_reaches_every_row_and_the_search() {
+    let pickers = Pickers::new();
+    let production = pickers
+        .store
+        .create_tag_blocking(
+            tablepro_storage::ConnectionTagName::new("production").expect("a tag name"),
+            tablepro_storage::ConnectionColor::Red,
+        )
+        .expect("the tag");
+    let corp = tagged("Corp", None, &[&production]);
+    pickers.write(move |store| store.upsert_blocking(corp).expect("the save"));
+    wait_until(WAIT, || {
+        pickers.views.iter().all(|view| pills(view, "Corp") == ["production"])
+    })
+    .expect("the tag on every row");
+
+    pickers.write(move |store| {
+        store
+            .update_tag_blocking(tablepro_storage::ConnectionTag {
+                name: tablepro_storage::ConnectionTagName::new("prod").expect("a tag name"),
+                ..production
+            })
+            .expect("the rename");
+    });
+
+    wait_until(WAIT, || {
+        pickers.views.iter().all(|view| pills(view, "Corp") == ["prod"])
+    })
+    .expect("the new name on every row");
+    pickers.views[0].set_search("prod");
+    assert_eq!(rows(&pickers.views[0].sections()), ["Corp"]);
+}
+
+#[gtk4::test]
+fn enter_in_the_search_connects_to_the_first_match() {
+    let test = TestWindow::picker("PickerSearchEnter");
+    // Sorts first, so Enter before the search applies would pick it.
+    test.services
+        .storage
+        .connections()
+        .upsert_blocking(connection("Aardvark", None))
+        .expect("the save");
+    picker_row(&test.window, "Aardvark");
+    let (bar, entry) = test.window.picker_search().expect("the picker's search");
+
+    bar.set_search_mode(true);
+    entry.set_text("fake");
+    entry.emit_activate();
+
+    wait_until(WAIT, || !test.connector.calls().is_empty()).expect("the connect");
+    assert_eq!(test.connector.calls()[0].request.metadata.id, test.saved.id);
+}
+
+#[gtk4::test]
+fn closing_the_search_shows_every_connection_again() {
+    let test = TestWindow::picker("PickerSearchClose");
+    picker_row(&test.window, "Fake");
+    let (bar, entry) = test.window.picker_search().expect("the picker's search");
+    bar.set_search_mode(true);
+    entry.set_text("nothing-like-it");
+
+    bar.set_search_mode(false);
+
+    assert_eq!(entry.text(), "");
+    picker_row(&test.window, "Fake");
+}
+
+#[gtk4::test]
+fn ctrl_f_belongs_to_the_picker_page() {
+    let test = TestWindow::picker("PickerSearchKeys");
+    let (bar, entry) = test.window.picker_search().expect("the picker's search");
+    let page = bar
+        .ancestor(crate::ui::session_window::PickerPage::static_type())
+        .expect("the picker page");
+
+    let bound =
+        crate::test_support::shortcut_keys::owner_controller(&page, crate::application::ShortcutOwner::PickerPage)
+            .expect("the page's keys");
+    let actions: Vec<String> = crate::test_support::shortcut_keys::shortcuts(&bound)
+        .into_iter()
+        .filter_map(|shortcut| shortcut.action().and_downcast::<gtk::NamedAction>())
+        .map(|action| action.action_name().to_string())
+        .collect();
+    assert_eq!(actions, ["picker-page.search"]);
+
+    page.activate_action("picker-page.search", None)
+        .expect("picker-page.search");
+    assert!(bar.is_search_mode());
+    drop(entry);
+}
+
+#[gtk4::test]
+fn a_tag_ticked_in_the_row_menu_reaches_the_store_and_the_row() {
+    let test = TestWindow::picker("PickerTag");
+    let store = test.services.storage.connections().clone();
+    let production = store
+        .create_tag_blocking(
+            tablepro_storage::ConnectionTagName::new("production").expect("a tag name"),
+            tablepro_storage::ConnectionColor::Red,
+        )
+        .expect("the tag");
+    let action = format!("picker-row.tag-{}", production.id);
+    let mut row = picker_row(&test.window, "Fake");
+    wait_until(WAIT, || {
+        row = picker_row(&test.window, "Fake");
+        row.activate_action(&action, None).is_ok()
+    })
+    .expect("the row's tag action");
+
+    wait_until(WAIT, || {
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.tags == [production.id])
+    })
+    .expect("the tag saved");
+}
+
+#[gtk4::test]
+fn manage_tags_opens_once_per_window_and_deletes_a_tag_from_every_connection() {
+    let test = TestWindow::picker("PickerManageTags");
+    let store = test.services.storage.connections().clone();
+    let production = store
+        .create_tag_blocking(
+            tablepro_storage::ConnectionTagName::new("production").expect("a tag name"),
+            tablepro_storage::ConnectionColor::Red,
+        )
+        .expect("the tag");
+    store
+        .update_blocking(test.saved.id, |entry| entry.tags = vec![production.id])
+        .expect("the update");
+    picker_row(&test.window, "Fake");
+
+    gtk::prelude::WidgetExt::activate_action(&test.window, "win.manage-tags", None).expect("win.manage-tags");
+    wait_until(WAIT, || test.window.manage_tags().is_some()).expect("the dialog");
+    let manage = test.window.manage_tags().expect("the dialog");
+    wait_until(WAIT, || {
+        manage.rows() == [("production".to_owned(), "1 connection".to_owned())]
+    })
+    .expect("the tag's row");
+    gtk::prelude::WidgetExt::activate_action(&test.window, "win.manage-tags", None).expect("win.manage-tags");
+    drain_main_context();
+    assert!(
+        std::rc::Rc::ptr_eq(&manage, &test.window.manage_tags().expect("the dialog")),
+        "a second ask opened a second dialog"
+    );
+
+    test.window
+        .send(crate::ui::SessionWindowInput::DeleteTag(production.id));
+
+    wait_until(WAIT, || manage.rows().is_empty()).expect("the row to go");
+    assert!(
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.tags.is_empty())
     );
 }
