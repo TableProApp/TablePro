@@ -139,6 +139,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 - [Agent tooling review, October 20](archive/agent-tooling-review-2026-10-20.md): TablePro and dbx agent skills, rules and reviewer agents, and what BookiE adopted (the `fix-issue` skill) or left for gated follow-ups.
 
+- [CI build speed proposal](proposals/ci-build-speed.md): where Forgejo gate time goes, a `ci` build profile for GUI scenario jobs and sharded distro-floor scenarios, ordered after the ADR 0021 runner upgrade.
 - [Workstation test reuse proposal](proposals/workstation-test-reuse.md): bounded local execution, build metadata reuse, cache ownership and post-nightly adoption order.
 
 - [Zed editor and panel review, October 22](archive/zed-editor-panel-review-2026-10-22.md): completed research, existing PR dependencies and issue-owned results/error/message panel follow-ups.

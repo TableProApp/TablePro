@@ -127,6 +127,16 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+[profile.ci]
+inherits = "release"
+opt-level = 1
+codegen-units = 256
+debug = false
+
+[profile.ci.package."*"]
+opt-level = 3
+codegen-units = 16
+
 [profile.dist]
 inherits = "release"
 lto = "thin"

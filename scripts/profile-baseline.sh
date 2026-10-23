@@ -28,6 +28,6 @@ echo "== app memory with a large result in the grid"
 out="$(mktemp)"
 for rows in 10000 100000 300000 1000000; do
   TABLEPRO_PROFILE_ROWS="$rows" TABLEPRO_PROFILE_OUT="$out" TABLEPRO_GTK_SCENARIO=profile_large_result_in_the_grid \
-    bash scripts/test-gtk-safety.sh >/dev/null 2>&1
+    TABLEPRO_GTK_BUILD_PROFILE=release bash scripts/test-gtk-safety.sh >/dev/null 2>&1
 done
 cat "$out"

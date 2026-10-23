@@ -65,14 +65,7 @@ if [[ "${TABLEPRO_GTK_KEYRING_READY:-0}" != "1" ]] && command -v gnome-keyring-d
     gnome-keyring-daemon --daemonize --unlock --components=secrets)"
 fi
 
-TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
-if [[ -n "${TABLEPRO_GTK_BINARY:-}" ]]; then
-  test_binary="$TABLEPRO_GTK_BINARY"
-else
-  cargo build --release --locked -p tablepro-app --bin tablepro-app
-  test_binary="$TARGET_DIR/installed/usr/bin/tablepro"
-  install -Dm755 "$TARGET_DIR/release/tablepro-app" "$test_binary"
-fi
+test_binary="$(bash "$ROOT/scripts/gtk-test-binary.sh")"
 if [[ ! -x "$test_binary" ]]; then
   echo "installed GTK test binary is not executable: $test_binary" >&2
   exit 1
