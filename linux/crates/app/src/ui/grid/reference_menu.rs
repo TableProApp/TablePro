@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_core::ForeignKeyInfo;
 use tablepro_core::browse::{ReferenceError, RowReference};
 use tablepro_core::column::ResultColumn;
-use tablepro_core::ddl::InboundForeignKey;
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey};
 use tablepro_core::meta::TableRef;
 
 use super::{GridCell, GridMsg, GridSink, KeysHandle, RowObject, TabGridContext, TableKeys};
@@ -73,7 +72,7 @@ impl ReferenceMenu {
             .outbound
             .iter()
             .enumerate()
-            .filter(|(_, key)| key.columns.contains(&column.name))
+            .filter(|(_, outbound)| outbound.key.columns.contains(&column.name))
             .filter(|(_, key)| leads_somewhere(self.referenced_by(&keys.table, key, &row)))
             .map(|(index, _)| index)
             .collect();
@@ -101,7 +100,7 @@ impl ReferenceMenu {
                 .open
                 .iter()
                 .filter_map(|&index| {
-                    let key = keys.outbound.get(index)?;
+                    let key = &keys.outbound.get(index)?.key;
                     let target = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
                     Some((index, KeyName::new(&keys.table, &target, &key.columns, &key.name)))
                 })
@@ -161,10 +160,10 @@ impl ReferenceMenu {
     fn referenced_by(
         &self,
         source: &TableRef,
-        key: &ForeignKeyInfo,
+        key: &OutboundForeignKey,
         row: &RowObject,
     ) -> Result<RowReference, ReferenceError> {
-        let (columns, values) = self.key_cells(&key.columns, |index| {
+        let (columns, values) = self.key_cells(&key.key.columns, |index| {
             Some(self.tab.with_effective_value(row, index, |value, _| value.clone()))
         });
         RowReference::referenced(source, key, &columns, &values)
@@ -284,7 +283,7 @@ pub(super) mod tests {
     use gtk4 as gtk;
     use gtk4::gio;
     use gtk4::prelude::*;
-    use tablepro_core::ddl::InboundForeignKey;
+    use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey};
     use tablepro_core::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
     use tablepro_core::meta::TableRef;
     use tablepro_core::{ForeignKeyInfo, Value};
@@ -338,7 +337,13 @@ pub(super) mod tests {
             ],
             TableKeys {
                 table: public("orders"),
-                outbound,
+                outbound: outbound
+                    .into_iter()
+                    .map(|key| OutboundForeignKey {
+                        key,
+                        parent_compares_alike: true,
+                    })
+                    .collect(),
                 inbound: Vec::new(),
             },
         )

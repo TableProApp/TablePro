@@ -15,6 +15,8 @@ pub mod file_resolution;
 pub mod history_availability;
 pub mod history_preferences;
 pub mod history_service;
+pub mod mcp_service;
+pub mod mcp_status;
 pub mod pending_structure;
 pub mod save_batch;
 pub mod saved_connection_editor;

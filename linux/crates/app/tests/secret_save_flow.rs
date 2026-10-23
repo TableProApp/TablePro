@@ -46,6 +46,7 @@ fn connection(id: Uuid, ssh: Option<SavedSshConfig>) -> SavedConnection {
         username: "app".into(),
         tls: TlsConfig::verify_full(),
         safe_mode: tablepro_core::SafeModeLevel::Off,
+        external_access: tablepro_core::ExternalAccess::ReadOnly,
         auth_mode: AuthMode::Password,
         ssh,
         last_opened_at: None,

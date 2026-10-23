@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::{AuthMode, SafeModeLevel, TlsConfig};
+use tablepro_core::{AuthMode, ExternalAccess, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -30,6 +30,10 @@ pub struct SavedConnection {
     /// Required, with no default: guessing Off for a file that lost it
     /// would drop a guard the user set.
     pub safe_mode: SafeModeLevel,
+    /// What MCP clients may do here. A file written before the level
+    /// existed reads as Read Only, the level a new connection starts at.
+    #[serde(default)]
+    pub external_access: ExternalAccess,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -765,6 +769,7 @@ mod tests {
             username: "postgres".to_owned(),
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -790,6 +795,7 @@ mod tests {
             username: "postgres".into(),
             tls: TlsConfig::disabled(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
-    AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, FileEndpoint, NetworkEndpoint,
-    SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
+    AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
+    NetworkEndpoint, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
 use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
@@ -128,6 +128,7 @@ pub struct ConnectForm {
     pub remember_password: bool,
     pub tls: TlsFormState,
     pub safe_mode: SafeModeLevel,
+    pub external_access: ExternalAccess,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
     /// The ids of the tags ticked in the Appearance group.
@@ -157,6 +158,7 @@ impl ConnectForm {
             remember_password: true,
             tls: TlsFormState::new(caps.tls.as_ref()),
             safe_mode: SafeModeLevel::Off,
+            external_access: ExternalAccess::default(),
             ssh: None,
             file: None,
             tags: Vec::new(),
@@ -171,6 +173,7 @@ impl ConnectForm {
     pub fn from_saved(saved: &SavedConnection, caps: &DriverCapabilities) -> Self {
         let mut form = Self::new(&saved.driver_id, caps);
         form.safe_mode = saved.safe_mode;
+        form.external_access = saved.external_access;
         form.tags.clone_from(&saved.tags);
         form.icon = saved.icon;
         if caps.is_file_based() {
@@ -395,6 +398,7 @@ impl ConnectForm {
             username,
             tls,
             safe_mode: self.safe_mode,
+            external_access: self.external_access,
             auth_mode,
             ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),

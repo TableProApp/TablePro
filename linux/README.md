@@ -47,7 +47,7 @@ apt and dnf, and Software Updater and GNOME Software with them, install the upda
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
 
 ## Stack
 
@@ -263,6 +263,33 @@ worth knowing:
 Under Flatpak the app brings its own Kerberos configuration and reads
 tickets from the KCM cache. [Kerberos inside Flatpak](docs/drivers/sql-server.md#kerberos-inside-flatpak)
 says where the realm, the KDC and the tickets come from there.
+
+## MCP server
+
+MCP clients on this computer, such as Claude Code, can use your saved connections through TablePro ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). The server is off until you turn on **Preferences > MCP > Enable MCP Server**, and runs while TablePro is open. It listens on `127.0.0.1` only, on port 23508 unless you change it there.
+
+Copy the address and the access token from the same page into the client. With Claude Code:
+
+```bash
+claude mcp add --transport http tablepro http://127.0.0.1:23508/mcp \
+  --header "Authorization: Bearer <access token>"
+```
+
+**Regenerate Access Token** on that page turns the old token away from the next request.
+
+Each connection's **External Clients** level, under Options in its connect dialog, decides what a client may do there:
+
+| Level | A client |
+|---|---|
+| Blocked | does not see the connection |
+| Read Only, the default | reads the schema and the data |
+| Read & Write | also writes, each statement after you approve it |
+
+Read Only stops statements that write. A function the connection's login may call that reads files on the server still runs, so give such a connection a login without that privilege.
+
+A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
+
+The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. An answer keeps at most 20 result sets of 1,000 rows each, and a statement stops at 300 seconds.
 
 ## Documentation index
 

@@ -27,8 +27,8 @@ use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, SafeModeLevel, TlsConfig,
-    TransportClass, WorkspaceSettings,
+    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, SafeModeLevel,
+    TlsConfig, TransportClass, WorkspaceSettings,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
@@ -141,6 +141,14 @@ impl ConnectDialog {
         let levels: Vec<&str> = levels.iter().map(String::as_str).collect();
         imp.safe_mode_names.splice(0, imp.safe_mode_names.n_items(), &levels);
         crate::ui::combo_value::show_whole_value(&imp.safe_mode_row);
+        let access: Vec<String> = ExternalAccess::ALL
+            .into_iter()
+            .map(crate::ui::external_access::label)
+            .collect();
+        let access: Vec<&str> = access.iter().map(String::as_str).collect();
+        imp.external_access_names
+            .splice(0, imp.external_access_names.n_items(), &access);
+        crate::ui::combo_value::show_whole_value(&imp.external_access_row);
         imp.file_row.set_tasks(init.tasks.clone());
         let _ = imp.services.set(DialogServices {
             connector: init.connector,
@@ -294,6 +302,12 @@ impl ConnectDialog {
             }
         });
         let weak = self.downgrade();
+        imp.external_access_row.connect_selected_notify(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.show_external_access_subtitle();
+            }
+        });
+        let weak = self.downgrade();
         imp.auth_mode_row.connect_selected_notify(move |_| {
             if let Some(dialog) = weak.upgrade()
                 && !dialog.imp().updating.get()
@@ -379,6 +393,10 @@ impl ConnectDialog {
                 .get(imp.safe_mode_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
+            external_access: ExternalAccess::ALL
+                .get(imp.external_access_row.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
             tags: self.picked_tags(),
@@ -438,6 +456,11 @@ impl ConnectDialog {
             .position(|level| *level == form.safe_mode)
             .unwrap_or_default();
         imp.safe_mode_row.set_selected(level as u32);
+        let access = ExternalAccess::ALL
+            .iter()
+            .position(|access| *access == form.external_access)
+            .unwrap_or_default();
+        imp.external_access_row.set_selected(access as u32);
         if form.file.is_some() || imp.file_row.endpoint().is_some() {
             imp.file_row.set_endpoint(form.file.clone());
         }
@@ -468,6 +491,7 @@ impl ConnectDialog {
         let tls = if file_based { None } else { caps.tls.as_ref() };
         imp.tls_section.apply(tls, self.route(), &form.tls);
         self.show_safe_mode_subtitle();
+        self.show_external_access_subtitle();
         self.show_auth_rows();
         self.set_title(&if imp.mode.borrow().editing().is_some() {
             crate::i18n::gettext("Edit Connection")
@@ -482,6 +506,12 @@ impl ConnectDialog {
         self.imp()
             .safe_mode_row
             .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps.read_only));
+    }
+
+    fn show_external_access_subtitle(&self) {
+        self.imp()
+            .external_access_row
+            .set_subtitle(&crate::ui::external_access::subtitle(self.form().external_access));
     }
 
     fn show_auth_rows(&self) {
