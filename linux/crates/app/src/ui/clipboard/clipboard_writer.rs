@@ -2,7 +2,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use thiserror::Error;
 
-use super::ClipboardPayload;
+use super::{CELLS_MIME_TYPE, ClipboardPayload};
 
 #[derive(Debug, Error)]
 pub(crate) enum ClipboardError {
@@ -27,20 +27,32 @@ pub(super) fn holds_nul(text: &str) -> bool {
     text.contains('\0')
 }
 
-/// Put `payload` on the clipboard as its own type and as plain text, so
-/// an application that knows the type takes it, and any other gets the
-/// text. The caller has already refused text that `holds_nul`.
+/// Put `payload` on the clipboard as its own type, as the cells it
+/// holds and as plain text, so an application that knows a type takes
+/// it, and any other gets the text. The caller has already refused text
+/// that `holds_nul`.
 pub(super) fn write(clipboard: &gdk::Clipboard, payload: ClipboardPayload) -> Result<(), ClipboardError> {
-    let Some(mime_type) = payload.format.mime_type() else {
+    let mime_type = payload.format.mime_type();
+    if mime_type.is_none() && payload.cells.is_none() {
         clipboard.set_text(&payload.text);
         return Ok(());
-    };
+    }
+    let mut providers = Vec::with_capacity(3);
+    if let Some(cells) = payload.cells {
+        providers.push(gdk::ContentProvider::for_bytes(
+            CELLS_MIME_TYPE,
+            &glib::Bytes::from_owned(cells.into_bytes()),
+        ));
+    }
     let text = payload.text.to_value();
-    let bytes = glib::Bytes::from_owned(payload.text.into_bytes());
-    let provider = gdk::ContentProvider::new_union(&[
-        gdk::ContentProvider::for_bytes(mime_type, &bytes),
-        gdk::ContentProvider::for_value(&text),
-    ]);
+    if let Some(mime_type) = mime_type {
+        providers.push(gdk::ContentProvider::for_bytes(
+            mime_type,
+            &glib::Bytes::from_owned(payload.text.into_bytes()),
+        ));
+    }
+    providers.push(gdk::ContentProvider::for_value(&text));
+    let provider = gdk::ContentProvider::new_union(&providers);
     clipboard.set_content(Some(&provider)).map_err(|error| {
         tracing::warn!(%error, "the clipboard refused a copy");
         ClipboardError::Refused(error)
@@ -66,6 +78,7 @@ mod tests {
             format: ClipboardFormat::Csv,
             rows: 1,
             skipped: 0,
+            cells: None,
         };
 
         write(&clipboard, payload).expect("written");

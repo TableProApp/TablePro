@@ -18,6 +18,8 @@
         <property name="subtitle" translatable="yes">For a server whose certificate this computer does not trust</property>
         <child>
           <object class="AdwActionRow" id="ca_row">
+            <!-- The subtitle is a path, which may hold & or <. -->
+            <property name="use-markup">false</property>
             <property name="title" translatable="yes">CA certificate</property>
             <child type="suffix">
               <object class="GtkButton" id="ca_clear_button">
@@ -44,6 +46,8 @@
         </child>
         <child>
           <object class="AdwActionRow" id="certificate_row">
+            <!-- The subtitle is a path, which may hold & or <. -->
+            <property name="use-markup">false</property>
             <property name="title" translatable="yes">Client certificate</property>
             <child type="suffix">
               <object class="GtkButton" id="certificate_clear_button">
@@ -70,6 +74,8 @@
         </child>
         <child>
           <object class="AdwActionRow" id="key_row">
+            <!-- The subtitle is a path, which may hold & or <. -->
+            <property name="use-markup">false</property>
             <property name="title" translatable="yes">Client key</property>
             <child type="suffix">
               <object class="GtkButton" id="key_clear_button">

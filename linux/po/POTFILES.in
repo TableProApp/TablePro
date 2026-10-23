@@ -89,6 +89,7 @@ crates/app/src/services/secret_changes.rs
 crates/app/src/services/secret_labels.rs
 crates/app/src/services/secret_save_report.rs
 crates/app/src/services/session_context.rs
+crates/app/src/services/snippet_library.rs
 crates/app/src/services/ssh_environment.rs
 crates/app/src/services/structure_tracker.rs
 crates/app/src/services/structure_tracker_handle.rs
@@ -141,6 +142,7 @@ crates/app/src/ui/browse_tab/column_recheck.rs
 crates/app/src/ui/browse_tab/columns_fetch.rs
 crates/app/src/ui/browse_tab/command_handlers.rs
 crates/app/src/ui/browse_tab/confirming_delete.rs
+crates/app/src/ui/browse_tab/confirming_paste.rs
 crates/app/src/ui/browse_tab/count_failure_text.rs
 crates/app/src/ui/browse_tab/count_policy.rs
 crates/app/src/ui/browse_tab/data_handlers.rs
@@ -157,6 +159,9 @@ crates/app/src/ui/browse_tab/page_state.rs
 crates/app/src/ui/browse_tab/pager_bar.rs
 crates/app/src/ui/browse_tab/paging_handlers.rs
 crates/app/src/ui/browse_tab/paging_input.rs
+crates/app/src/ui/browse_tab/paste_at.rs
+crates/app/src/ui/browse_tab/paste_handlers.rs
+crates/app/src/ui/browse_tab/paste_read.rs
 crates/app/src/ui/browse_tab/pending_changes_bar.rs
 crates/app/src/ui/browse_tab/row_count.rs
 crates/app/src/ui/browse_tab/row_deletion.rs
@@ -169,6 +174,7 @@ crates/app/src/ui/browse_tab/selection_snapshot.rs
 crates/app/src/ui/browse_tab/table_filter.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
+crates/app/src/ui/browse_tab/tests/paste.rs
 crates/app/src/ui/browse_tab/tests/references.rs
 crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs

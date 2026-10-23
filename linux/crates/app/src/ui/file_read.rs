@@ -45,11 +45,12 @@ pub(crate) async fn read_capped_file(file: &gio::File, limit: usize) -> Result<V
     read
 }
 
-/// Read to the end of the stream, giving up once it passes `limit`.
+/// Read to the end of the stream, giving up once it passes `limit`. A
+/// file's or a clipboard's.
 ///
 /// The size a file reports is not enough: a remote file may report
 /// none, and a file can grow between being measured and being read.
-async fn read_capped(stream: &gio::InputStream, limit: usize) -> Result<Vec<u8>, FileReadError> {
+pub(crate) async fn read_capped(stream: &gio::InputStream, limit: usize) -> Result<Vec<u8>, FileReadError> {
     let mut contents = Vec::new();
     loop {
         let chunk = stream

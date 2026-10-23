@@ -1,6 +1,8 @@
 use tablepro_core::TableRef;
 use tablepro_core::meta::ObjectKind;
 
+use crate::services::snippet_library::OfferedSnippet;
+
 /// What a proposal names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProposalKind {
@@ -9,8 +11,13 @@ pub enum ProposalKind {
     Table,
     View,
     MaterializedView,
-    Column { data_type: String, table: TableRef },
+    Column {
+        data_type: String,
+        table: TableRef,
+    },
     Function,
+    /// Writes a statement with stops to fill in.
+    Snippet(OfferedSnippet),
 }
 
 impl ProposalKind {
@@ -37,6 +44,7 @@ impl ProposalKind {
             Self::Table => Some(crate::ui::icons::VIEW_LIST),
             Self::View | Self::MaterializedView => Some(crate::ui::icons::VIEW_REVEAL),
             Self::Function => Some(crate::ui::icons::SYSTEM_RUN),
+            Self::Snippet(_) => Some(crate::ui::icons::SNIPPET),
             Self::Keyword | Self::Column { .. } => None,
         }
     }
@@ -49,7 +57,8 @@ impl ProposalKind {
             Self::Table | Self::View | Self::MaterializedView => 1,
             Self::Schema => 2,
             Self::Function => 3,
-            Self::Keyword => 4,
+            Self::Snippet(_) => 4,
+            Self::Keyword => 5,
         }
     }
 
@@ -84,5 +93,19 @@ mod tests {
 
         assert!(column.rank() < ProposalKind::Table.rank());
         assert!(ProposalKind::Table.rank() < ProposalKind::Keyword.rank());
+    }
+
+    #[test]
+    fn a_snippet_comes_before_the_keywords() {
+        let snippet = ProposalKind::Snippet(OfferedSnippet {
+            trigger: "ins".to_owned(),
+            name: None,
+            description: None,
+            origin: crate::services::snippet_library::SnippetOrigin::BuiltIn("INSERT INTO ${1:t};$0"),
+        });
+
+        assert!(ProposalKind::Function.rank() < snippet.rank());
+        assert!(snippet.rank() < ProposalKind::Keyword.rank());
+        assert_eq!(snippet.icon_name(), Some(crate::ui::icons::SNIPPET));
     }
 }

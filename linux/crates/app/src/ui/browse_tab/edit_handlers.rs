@@ -5,12 +5,12 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::Value;
-use tablepro_core::edit::{CellInput, EditParseError, parse_edit_text};
+use tablepro_core::edit::{CellInput, EditParseError, new_draft_cell, parse_edit_text};
 
 use super::confirming_delete::ConfirmingDelete;
 use super::row_deletion::{RowDeletion, plan_row_deletion};
 use super::{BULK_DELETE_CONFIRM_THRESHOLD, BrowseModel, BrowseTabOutput, EditInput, Effects, apply_draft_changes};
-use crate::services::change_tracker::{RowKey, new_draft_cell, pk_identity};
+use crate::services::change_tracker::{RowKey, pk_identity};
 use crate::services::column_relayout::ColumnRelayout;
 use crate::services::tracker_delta::TrackerDelta;
 use crate::services::tracker_edit::TrackerEdit;
@@ -28,6 +28,7 @@ impl BrowseModel {
                 fx.input(EditInput::FocusInsertedDraft);
             }
             EditInput::FocusInsertedDraft => self.focus_inserted_draft(),
+            EditInput::SelectPastedDrafts(count) => self.select_pasted_drafts(count),
             EditInput::DeleteRows(rows) => self.delete_rows(&rows, fx),
             EditInput::GridEdit { row, column, edit } => {
                 // The cell shows what was typed until its row is drawn again.
@@ -189,7 +190,7 @@ impl BrowseModel {
         self.sync_delete_action();
     }
 
-    fn apply_edit(&mut self, edit: TrackerEdit, fx: &mut Effects) {
+    pub(super) fn apply_edit(&mut self, edit: TrackerEdit, fx: &mut Effects) {
         if self.tracker.refuses(&edit) && !std::mem::replace(&mut fx.told_edit_held, true) {
             fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
                 "This row is being saved. Change it again once the save finishes.",

@@ -123,6 +123,7 @@ nothing reaches outside it.
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
+| `snippets_dir()` | `$XDG_DATA_HOME/<dir>/snippets`: the user's SQL editor snippets, made when Preferences opens it ([README](../README.md#snippets)) |
 | `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
@@ -137,6 +138,9 @@ Everything private goes through `tablepro_storage::fs`:
 - `ensure_private_dir` creates the directory tree and sets the leaf to
   exactly 0700. `DirBuilder::mode` only applies to directories the call
   creates, so an existing 0755 directory still needs the explicit chmod.
+- `ensure_user_dir` creates a folder the user fills, such as the snippets
+  folder, and what is missing above it as 0700, and leaves one that
+  exists as it is: it may be a link to a folder other tools share.
 - `write_private_blocking` writes through `g_file_set_contents_full` with
   `CONSISTENT | DURABLE`: a reader sees the old file or the new one, never
   a mix, and the new one survives a power cut. It tightens an existing

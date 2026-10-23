@@ -6,6 +6,8 @@
     <property name="title" translatable="yes">Database file</property>
     <property name="subtitle" translatable="yes">No file chosen</property>
     <property name="subtitle-selectable">true</property>
+    <!-- The subtitle is a path, which may hold & or <. -->
+    <property name="use-markup">false</property>
     <child type="suffix">
       <object class="GtkButton" id="choose_button">
         <property name="label" translatable="yes">Choose…</property>

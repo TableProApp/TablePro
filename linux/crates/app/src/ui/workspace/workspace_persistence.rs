@@ -376,6 +376,7 @@ mod tests {
                 session: crate::services::active_session::ActiveSession::new(),
                 hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
                 close_timeout: Duration::from_secs(5),
+                snippets: crate::test_support::builtin_snippets_only(),
             });
             let page = self.view.append(&editor);
             let id = Uuid::new_v4();

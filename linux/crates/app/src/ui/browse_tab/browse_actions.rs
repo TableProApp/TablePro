@@ -73,7 +73,16 @@ pub(super) fn install_browse_actions(tab: &BrowseTab, page_size: u64) -> BrowseA
     });
     group.add_action(&page_size);
     add("refresh", || PagingInput::RequestRefresh.into());
-    add("paste-rows", || ClipboardInput::PasteNotSupported.into());
+    let paste_rows = gio::SimpleAction::new("paste-rows", None);
+    let weak = tab.downgrade();
+    paste_rows.connect_activate(move |_, _| {
+        let Some(tab) = weak.upgrade() else {
+            return;
+        };
+        let at = tab.read(BrowseModel::focused_cell).flatten();
+        tab.send(ClipboardInput::Paste(at));
+    });
+    group.add_action(&paste_rows);
     let previous = add("previous-page", || PagingInput::PrevPage.into());
     let next = add("next-page", || PagingInput::NextPage.into());
     tab.imp().pager_bar.follow_page_actions(ACTION_GROUP, &previous, &next);

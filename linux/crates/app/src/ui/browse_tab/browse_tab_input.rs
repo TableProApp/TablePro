@@ -2,6 +2,7 @@ use super::clipboard_input::ClipboardInput;
 use super::data_input::DataInput;
 use super::edit_input::EditInput;
 use super::paging_input::PagingInput;
+use super::paste_at::PasteAt;
 use super::save_input::SaveInput;
 use super::selection_input::SelectionInput;
 use crate::ui::grid::GridMsg;
@@ -70,6 +71,7 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::DeleteRows { rows } => EditInput::DeleteRows(rows).into(),
             GridMsg::InsertRow => EditInput::InsertRow.into(),
             GridMsg::DuplicateRows { rows } => EditInput::DuplicateRows(rows).into(),
+            GridMsg::Paste { at } => ClipboardInput::Paste(at.map(|(row, column)| PasteAt { row, column })).into(),
             GridMsg::FollowReference(reference) => ClipboardInput::GridFollowReference(reference).into(),
         }
     }

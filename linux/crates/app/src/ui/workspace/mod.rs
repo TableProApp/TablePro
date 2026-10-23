@@ -817,6 +817,7 @@ impl Workspace {
             exports: exports.clone(),
             read_only: session.read_only(),
             naming: naming.clone(),
+            snippets: services.snippets.clone(),
         });
         workspace_tabs::connect_tab_view(&tab_view, &index, input);
         WorkspaceTabParts {
