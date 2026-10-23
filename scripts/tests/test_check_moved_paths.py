@@ -1,6 +1,7 @@
 import importlib.util
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("moved", Path(__file__).resolve().parents[1] / "check-moved-paths.py")
@@ -21,6 +22,17 @@ class MovedPathTests(unittest.TestCase):
             old.write_text("see linux/crates/core\n")
             new.write_text("tag linux-v0.1.5 and com.tablepro.linux and crates/core\n")
             self.assertEqual([hit[0] for hit in moved.stale([str(old), str(new)])], [str(old)])
+
+    def test_scanning_text_and_invalid_utf8_closes_input_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            valid, invalid = Path(tmp, "valid.md"), Path(tmp, "invalid.md")
+            valid.write_text("see linux/crates/core\n", encoding="utf-8")
+            invalid.write_bytes(b"\xff")
+            with warnings.catch_warnings(record=True) as captured:
+                warnings.simplefilter("always", ResourceWarning)
+                found = moved.stale([str(valid), str(invalid)])
+            self.assertEqual([hit[0] for hit in found], [str(valid)])
+            self.assertEqual([item for item in captured if issubclass(item.category, ResourceWarning)], [])
 
     def test_the_app_services_crate_is_not_the_old_app_path(self):
         with tempfile.TemporaryDirectory() as tmp:

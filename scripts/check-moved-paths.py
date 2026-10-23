@@ -23,7 +23,8 @@ def stale(files):
         if name.startswith(SKIP):
             continue
         try:
-            text = open(name, encoding="utf-8").read()
+            with open(name, encoding="utf-8") as source:
+                text = source.read()
         except (OSError, UnicodeDecodeError):
             continue
         found += [(name, n, line.strip()) for n, line in enumerate(text.splitlines(), 1) if OLD.search(line)]
