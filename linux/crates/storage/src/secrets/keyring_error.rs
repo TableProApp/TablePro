@@ -15,13 +15,15 @@ pub(super) fn map_error(error: oo7::Error, stage: Stage) -> SecretError {
         oo7::Error::DBus(oo7::dbus::Error::Dismissed) => SecretError::UnlockDismissed,
         oo7::Error::DBus(oo7::dbus::Error::Service(oo7::dbus::ServiceError::IsLocked(_))) => SecretError::Locked,
         oo7::Error::File(oo7::file::Error::Locked) => SecretError::Locked,
-        oo7::Error::DBus(error @ (oo7::dbus::Error::ZBus(_) | oo7::dbus::Error::NotFound(_)))
-            if stage == Stage::Open =>
-        {
-            SecretError::ServiceUnavailable {
-                detail: error.to_string(),
-            }
-        }
+        // OpenSession's failure, such as no service owning the name on the
+        // bus, comes back wrapped as a service error.
+        oo7::Error::DBus(
+            error @ (oo7::dbus::Error::ZBus(_)
+            | oo7::dbus::Error::NotFound(_)
+            | oo7::dbus::Error::Service(oo7::dbus::ServiceError::ZBus(_))),
+        ) if stage == Stage::Open => SecretError::ServiceUnavailable {
+            detail: error.to_string(),
+        },
         // Under Flatpak, Keyring::new asks the Secret portal first, so a
         // missing portal surfaces here rather than as a D-Bus failure.
         oo7::Error::File(error @ oo7::file::Error::Portal(_)) => SecretError::PortalUnavailable {
@@ -101,6 +103,18 @@ mod tests {
 
         assert!(matches!(mapped, SecretError::ServiceUnavailable { .. }), "{mapped:?}");
         assert!(!mapped.is_retryable());
+    }
+
+    #[test]
+    fn no_service_on_the_bus_is_service_unavailable() {
+        let unknown = oo7::zbus::Error::Failure(
+            "The name org.freedesktop.secrets was not provided by any .service files".to_owned(),
+        );
+        let error = oo7::dbus::Error::Service(oo7::dbus::ServiceError::ZBus(unknown));
+
+        let mapped = map_error(error.into(), Stage::Open);
+
+        assert!(matches!(mapped, SecretError::ServiceUnavailable { .. }), "{mapped:?}");
     }
 
     #[test]

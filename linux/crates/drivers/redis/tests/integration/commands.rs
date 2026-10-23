@@ -4,13 +4,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use secrecy::SecretString;
 use tablepro_core::keyspace::{KeyScan, KeyWindow};
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
     ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, LivenessPolicy,
-    NetworkEndpoint, ResultEvent, RunEnd, RunOptions, ServerCode, TimeoutPhase, TlsConfig, TransactionState,
-    UnsupportedFeature, Value, WorkspaceSettings,
+    NetworkEndpoint, ResultEvent, ResultSink, RunEnd, RunOptions, ServerCode, SinkFlow, TimeoutPhase, TlsConfig,
+    TransactionState, UnsupportedFeature, UserSql, Value, WorkspaceSettings,
 };
 use tablepro_driver_redis::{RedisDriver, key_text};
 use tablepro_test_support::FaultTransport;
@@ -231,6 +232,39 @@ async fn a_run_stopped_before_it_starts_sends_nothing() {
     assert_eq!(session.state(), EditorSessionState::Ready);
     let (_, events) = run(session.as_ref(), &format!("EXISTS {key}")).await;
     assert_eq!(rows(&events), vec![vec![Value::Int(0)]]);
+}
+
+/// A grid that never takes what it is handed.
+struct Stuck;
+
+#[async_trait]
+impl ResultSink for Stuck {
+    async fn accept(&mut self, _event: ResultEvent) -> SinkFlow {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_stop_ends_a_run_whose_results_nobody_takes() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let cancel = CancellationToken::new();
+
+    let running = session.run(UserSql::new("PING"), RunOptions::new(cancel.clone()), Box::new(Stuck));
+    let stop = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        cancel.cancel();
+    };
+    let (summary, ()) = tokio::time::timeout(CALL, async { tokio::join!(running, stop) })
+        .await
+        .expect("the stop to end the run");
+
+    assert_eq!(summary.expect("the run's summary").end, RunEnd::Cancelled);
+    assert_eq!(session.state(), EditorSessionState::Ready);
+    let (ping, _) = run(session.as_ref(), "PING").await;
+    assert_eq!(ping.end, RunEnd::Completed);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

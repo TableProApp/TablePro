@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyTtl};
 use tablepro_core::meta::KeyKind;
-use tablepro_core::{QueryResult, Value};
+use tablepro_core::{DriverError, LossPhase, QueryResult, Value};
+use tablepro_session::fakes::FakeEstablish;
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use tokio_util::sync::CancellationToken;
 
@@ -30,9 +31,18 @@ fn list_page(from: i64, to: i64, next: Option<&str>) -> KeyPage {
 }
 
 fn opened(script: ConnectionScript) -> (KeyTab, FakeSession, crate::runtime::AppRuntime) {
+    reopened(script, [])
+}
+
+/// A tab whose session reconnects with `reconnects` once a read loses
+/// the link.
+fn reopened(
+    script: ConnectionScript,
+    reconnects: impl IntoIterator<Item = FakeEstablish>,
+) -> (KeyTab, FakeSession, crate::runtime::AppRuntime) {
     adw::init().expect("libadwaita initialises under the test backend");
     let runtime = test_runtime();
-    let fake = FakeSession::start(script, [], runtime.tasks());
+    let fake = FakeSession::start(script, reconnects, runtime.tasks());
     let tab = KeyTab::new(KeyTabInit {
         key: "queue".to_owned(),
         session: fake.session.clone(),
@@ -164,6 +174,42 @@ fn load_more_waits_for_a_refresh_still_running() {
         2,
         "a window was read under rows the refresh replaced"
     );
+}
+
+fn link_lost() -> FakeReply<Option<KeyPage>> {
+    FakeReply::err(DriverError::ConnectionLost {
+        during: LossPhase::Statement,
+    })
+}
+
+#[gtk4::test]
+fn a_failed_read_is_asked_again_on_the_next_link() {
+    let mut first = ConnectionScript::default();
+    first.read_key.always(link_lost());
+    let mut second = ConnectionScript::default();
+    second.read_key.always(FakeReply::ok(Some(list_page(0, 3, None))));
+    let (tab, fake, _runtime) = reopened(first, [FakeEstablish::Connect(second)]);
+
+    wait_until(WAIT, || tab.rows() == 3).expect("the key read on the new link");
+    assert_eq!(tab.shown_page().as_deref(), Some(CONTENT));
+    assert_eq!(CallCounters::get(&fake.replacement().counters().read_key), 1);
+}
+
+#[gtk4::test]
+fn a_failed_window_is_asked_again_on_the_next_link() {
+    let mut first = ConnectionScript::default();
+    first.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    first.read_key.always(link_lost());
+    let mut second = ConnectionScript::default();
+    second.read_key.always(FakeReply::ok(Some(list_page(2, 3, None))));
+    let (tab, fake, _runtime) = reopened(first, [FakeEstablish::Connect(second)]);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    tab.load_more();
+
+    wait_until(WAIT, || tab.rows() == 3 && !tab.is_loading()).expect("the window read on the new link");
+    assert_eq!(tab.footer_text(), "3 shown");
+    assert_eq!(CallCounters::get(&fake.replacement().counters().read_key), 1);
 }
 
 #[gtk4::test]

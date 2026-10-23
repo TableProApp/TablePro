@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use crate::endpoint::RedisEndpoint;
 use crate::errors::{invalid_arguments, is_unblocked};
 use crate::link::{Link, command};
-use crate::reply_rows::{emit, reply_shape};
+use crate::reply_rows::{ReplyShape, emit, reply_shape};
 
 /// Why a run stopped before its command did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,9 @@ enum Sent {
     Stopped {
         interrupt: Interrupt,
         reply: Option<Reply>,
+        /// No `CLIENT UNBLOCK` is still on its way. One the server never
+        /// answered may reach it during the next run, and stop that.
+        settled: bool,
     },
     /// The link failed under the command.
     Lost(DriverError),
@@ -82,10 +85,14 @@ impl EditorRun {
             }
             let (reply, end) = match self.send(&arguments, &options.cancel, deadline).await {
                 Sent::Reply(reply) => (reply, None),
-                Sent::Stopped { interrupt, reply } => {
+                Sent::Stopped {
+                    interrupt,
+                    reply,
+                    settled,
+                } => {
                     let server_cancelled =
                         matches!(&reply, Some(Reply::ServerError(error)) if is_unblocked_reply(error));
-                    let kept = reply.is_some();
+                    let kept = in_step_after_stop(reply.as_ref(), settled);
                     let end = interrupt.end(server_cancelled);
                     match reply.filter(|_| !server_cancelled) {
                         Some(reply) => (reply, Some((end, kept))),
@@ -103,15 +110,20 @@ impl EditorRun {
                 }
             };
             self.track(&arguments, &reply);
-            let flow = match reply_shape(reply) {
-                Ok(shape) => emit(sink.as_mut(), shape, Some(options.row_limit)).await,
+            let delivered = match reply_shape(reply) {
+                Ok(shape) => self.deliver(sink.as_mut(), shape, &options, deadline).await,
                 Err(error) => return (Ok(self.summary(started, RunEnd::Failed(error))), true),
             };
             if let Some((end, kept)) = end {
+                if !kept {
+                    self.forget_transaction();
+                }
                 return (Ok(self.summary(started, end)), kept);
             }
-            if flow == SinkFlow::ConsumerGone {
-                return (Ok(self.summary(started, RunEnd::Cancelled)), true);
+            match delivered {
+                Ok(SinkFlow::ConsumerGone) => return (Ok(self.summary(started, RunEnd::Cancelled)), true),
+                Ok(SinkFlow::Continue) => {}
+                Err(interrupt) => return (Ok(self.summary(started, interrupt.end(false))), true),
             }
         }
         (Ok(self.summary(started, RunEnd::Completed)), true)
@@ -139,6 +151,24 @@ impl EditorRun {
             .then_some(Interrupt::DeadlineElapsed)
     }
 
+    /// Hand the reply to the sink, unless a stop comes while the sink is
+    /// full. The reply is read whole, so the link stays in step.
+    async fn deliver(
+        &self,
+        sink: &mut dyn ResultSink,
+        shape: ReplyShape,
+        options: &RunOptions,
+        deadline: Option<Instant>,
+    ) -> Result<SinkFlow, Interrupt> {
+        tokio::select! {
+            biased;
+            flow = emit(sink, shape, Some(options.row_limit)) => Ok(flow),
+            () = options.cancel.cancelled() => Err(Interrupt::Cancelled),
+            () = self.shutdown.cancelled() => Err(Interrupt::Cancelled),
+            () = until(deadline) => Err(Interrupt::DeadlineElapsed),
+        }
+    }
+
     /// Send one command and wait for its reply, or stop it: `CLIENT
     /// UNBLOCK` ends a command waiting on a key or a replica, and the
     /// reply then comes back as an error. A command that is still busy
@@ -162,14 +192,16 @@ impl EditorRun {
             .await
             .ok()
             .and_then(Result::ok);
+        let mut settled = true;
         if let (Some(control), Some(id)) = (&control, self.link.client_id()) {
             let unblock = command(&["CLIENT", "UNBLOCK", &id.to_string(), "ERROR"]);
-            let _ = tokio::time::timeout_at(grace_ends, control.ask(&unblock)).await;
+            settled = tokio::time::timeout_at(grace_ends, control.ask(&unblock)).await.is_ok();
         }
         match tokio::time::timeout_at(grace_ends, &mut reply).await {
             Ok(Ok(reply)) => Sent::Stopped {
                 interrupt,
                 reply: Some(reply),
+                settled,
             },
             Ok(Err(error)) => Sent::Lost(self.endpoint.explain(error).await),
             Err(_) => {
@@ -178,7 +210,11 @@ impl EditorRun {
                     let grace = self.endpoint.liveness().cancel_grace;
                     let _ = tokio::time::timeout(grace, control.ask(&kill)).await;
                 }
-                Sent::Stopped { interrupt, reply: None }
+                Sent::Stopped {
+                    interrupt,
+                    reply: None,
+                    settled,
+                }
             }
         }
     }
@@ -229,6 +265,17 @@ fn next_transaction_state(name: &str, reply: &Reply, current: TransactionState) 
         ("EXEC" | "DISCARD" | "RESET", Reply::ServerError(_)) => current,
         ("EXEC" | "DISCARD" | "RESET", _) => TransactionState::Idle,
         _ => current,
+    }
+}
+
+/// Whether the link can run the next command after a stop: the reply
+/// came, and no unblock is left on its way to the server. An `UNBLOCKED`
+/// reply is the server acting on the unblock.
+fn in_step_after_stop(reply: Option<&Reply>, settled: bool) -> bool {
+    match reply {
+        Some(Reply::ServerError(error)) if is_unblocked_reply(error) => true,
+        Some(_) => settled,
+        None => false,
     }
 }
 
@@ -283,6 +330,16 @@ mod tests {
             Idle
         );
         assert_eq!(next_transaction_state("EXEC", &arity, Unknown), Unknown);
+    }
+
+    #[test]
+    fn a_link_whose_unblock_may_still_arrive_is_not_used_again() {
+        let unblocked = error("UNBLOCKED client unblocked via CLIENT UNBLOCK");
+
+        assert!(in_step_after_stop(Some(&Reply::Okay), true));
+        assert!(!in_step_after_stop(Some(&Reply::Okay), false));
+        assert!(in_step_after_stop(Some(&unblocked), false));
+        assert!(!in_step_after_stop(None, true));
     }
 
     #[test]

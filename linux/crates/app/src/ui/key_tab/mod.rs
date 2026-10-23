@@ -18,8 +18,8 @@ use libadwaita::prelude::*;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
 use tablepro_core::meta::KeyKind;
-use tablepro_session::runtime::Tasks;
-use tablepro_session::{OperationError, OperationKind, Session};
+use tablepro_session::runtime::{Tasks, WatchForwarder};
+use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
 
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportSource};
 use crate::ui::grid::{GridMsg, GridSink, RowObject, build_result_grid, present_row_json};
@@ -71,6 +71,7 @@ struct Inner {
     state: RefCell<State>,
     events: RefCell<Option<EventSink>>,
     shut_down: Cell<bool>,
+    link_watch: RefCell<Option<WatchForwarder>>,
 }
 
 #[derive(Default)]
@@ -81,6 +82,11 @@ struct State {
     /// A read from the first window is running. A window added under the
     /// old rows meanwhile would land on rows the read replaces.
     replacing: bool,
+    /// The link the last read went out on, and the newest link seen.
+    issued_on: LinkGeneration,
+    link_generation: LinkGeneration,
+    /// The read whose reply was a failure, asked again on the next link.
+    failed: Option<(KeyWindow, ReadMode)>,
     tab_loading: bool,
     /// What the grid on screen holds.
     shown: Option<Shown>,
@@ -159,8 +165,23 @@ impl KeyTab {
                 state: RefCell::new(State::default()),
                 events: RefCell::new(None),
                 shut_down: Cell::new(false),
+                link_watch: RefCell::new(None),
             }
         });
+        inner.state.borrow_mut().link_generation = inner.session.link_generation();
+        let weak = Rc::downgrade(&inner);
+        let watch = WatchForwarder::new(
+            inner.session.link_changes(),
+            move |generation: LinkGeneration| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.on_link_changed(generation);
+                }
+            },
+            |future| {
+                glib::spawn_future_local(future);
+            },
+        );
+        inner.link_watch.replace(Some(watch));
         let weak = Rc::downgrade(&inner);
         retry.connect_clicked(move |_| reload(&weak));
         let weak = Rc::downgrade(&inner);
@@ -199,6 +220,7 @@ impl KeyTab {
     pub(crate) fn shutdown(&self) {
         self.inner.shut_down.set(true);
         self.inner.events.replace(None);
+        self.inner.link_watch.replace(None);
     }
 }
 
@@ -294,33 +316,38 @@ fn load_more(this: &Weak<Inner>) {
     let Some(inner) = this.upgrade() else {
         return;
     };
-    let next = {
-        let mut state = inner.state.borrow_mut();
-        if state.replacing {
-            return;
-        }
-        let Some(shown) = state.shown.as_mut().filter(|shown| !shown.appending) else {
-            return;
-        };
-        let Some(next) = shown.next.clone() else {
-            return;
-        };
-        shown.appending = true;
-        next
-    };
-    inner.more.set_sensitive(false);
-    inner.set_tab_loading(true);
-    inner.read(KeyWindow::after(next), ReadMode::Append);
+    let next = inner.state.borrow().shown.as_ref().and_then(|shown| shown.next.clone());
+    if let Some(next) = next {
+        inner.append_window(KeyWindow::after(next));
+    }
 }
 
 impl Inner {
+    fn append_window(self: &Rc<Self>, window: KeyWindow) {
+        {
+            let mut state = self.state.borrow_mut();
+            if state.replacing {
+                return;
+            }
+            let Some(shown) = state.shown.as_mut().filter(|shown| !shown.appending) else {
+                return;
+            };
+            shown.appending = true;
+        }
+        self.more.set_sensitive(false);
+        self.set_tab_loading(true);
+        self.read(window, ReadMode::Append);
+    }
+
     fn read(self: &Rc<Self>, window: KeyWindow, mode: ReadMode) {
         let read = {
             let mut state = self.state.borrow_mut();
             state.read += 1;
+            state.issued_on = self.session.link_generation();
             state.read
         };
         let (session, key) = (self.session.clone(), self.key.clone());
+        let asked = window.clone();
         let work = async move {
             session
                 .run(OperationKind::Page, move |lease, options| {
@@ -338,18 +365,31 @@ impl Inner {
         crate::runtime::spawn_and_deliver(&self.tasks, work, move |joined| {
             let outcome = joined.unwrap_or_else(|failure| Err(OperationError::from(failure)));
             if let Some(inner) = this.upgrade() {
-                inner.landed(read, mode, outcome);
+                inner.landed(read, (asked, mode), outcome);
             }
         });
     }
 
-    fn landed(self: &Rc<Self>, read: u64, mode: ReadMode, outcome: Result<Option<KeyPage>, OperationError>) {
+    fn landed(
+        self: &Rc<Self>,
+        read: u64,
+        (window, mode): (KeyWindow, ReadMode),
+        outcome: Result<Option<KeyPage>, OperationError>,
+    ) {
         if self.shut_down.get() || read != self.state.borrow().read {
             return;
         }
-        if mode == ReadMode::Replace {
-            self.state.borrow_mut().replacing = false;
+        {
+            let mut state = self.state.borrow_mut();
+            if mode == ReadMode::Replace {
+                state.replacing = false;
+            }
+            state.failed = outcome.is_err().then_some((window, mode));
         }
+        let moved = {
+            let state = self.state.borrow();
+            outcome.is_err() && self.session.link_generation() > state.issued_on
+        };
         let presentation = match outcome {
             Ok(Some(page)) => {
                 let shown = match mode {
@@ -369,6 +409,33 @@ impl Inner {
             Err(error) => self.fail(LoadFailure::Page(Arc::new(error))),
         };
         self.present(presentation);
+        // A read that failed after its link was already replaced would
+        // wait for a reconnect that has come and gone.
+        if moved {
+            self.retry_failed();
+        }
+    }
+
+    fn on_link_changed(self: &Rc<Self>, generation: LinkGeneration) {
+        {
+            let mut state = self.state.borrow_mut();
+            if generation <= state.link_generation {
+                return;
+            }
+            state.link_generation = generation;
+        }
+        self.retry_failed();
+    }
+
+    /// Ask again for the read whose reply was a failure; a tab whose
+    /// reads all landed keeps what it shows.
+    fn retry_failed(self: &Rc<Self>) {
+        let failed = self.state.borrow_mut().failed.take();
+        match failed {
+            Some((_, ReadMode::Replace)) => reload(&Rc::downgrade(self)),
+            Some((window, ReadMode::Append)) => self.append_window(window),
+            None => {}
+        }
     }
 
     /// A failed window leaves Load More there to try again; the banner
