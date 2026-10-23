@@ -1,0 +1,67 @@
+{
+  "rows_requested": 100000,
+  "cell_payload_bytes": 0,
+  "repetition": 1,
+  "rows_loaded_inferred": 100000,
+  "truncated_inferred": false,
+  "result_status": [
+    "done in 903 ms"
+  ],
+  "first_result_seconds": 1.76,
+  "rss_before_mb": 204.1,
+  "after_load": {
+    "rss_mb": 266.6,
+    "peak_mb": 266.6
+  },
+  "after_middle": {
+    "rss_mb": 268.3,
+    "peak_mb": 268.3,
+    "visible_rows": [
+      49998,
+      50003
+    ],
+    "scrollbar_value": 1749908.0
+  },
+  "after_end": {
+    "rss_mb": 268.3,
+    "peak_mb": 268.3,
+    "visible_rows": [
+      99995,
+      100000
+    ],
+    "scrollbar_value": 3499816.0
+  },
+  "after_return_top": {
+    "rss_mb": 268.2,
+    "peak_mb": 268.2,
+    "visible_rows": [
+      1,
+      6
+    ],
+    "scrollbar_value": 0.0
+  },
+  "scroll_seconds": {
+    "middle": 3.328,
+    "end": 3.303,
+    "top": 4.578
+  },
+  "visible_person_rows": [
+    1,
+    6
+  ],
+  "scrollbar_probes": [
+    {
+      "x": 1174,
+      "y": 515,
+      "height": 184,
+      "rows": [
+        99995,
+        100000
+      ]
+    }
+  ],
+  "peak_mb": 268.2,
+  "application_source": "d980faa29",
+  "build_profile": "dev",
+  "binary_sha256": "d2b2658a0591517e5c127d54b5653e0480e608643d94c1a59e2631c95246d705"
+}
