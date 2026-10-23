@@ -597,6 +597,41 @@ fn a_replacement_over_the_cursor_takes_both_sides_at_every_caret() {
 }
 
 #[gtk4::test]
+fn text_an_input_method_takes_back_is_what_each_caret_had_before_it() {
+    let shown = Shown::new("abcdef");
+    shown.cursor_at(4);
+    shown.view.toggle_caret_at(&shown.at(3));
+    let buffer = shown.buffer();
+
+    let (mut start, mut end) = (shown.at(1), shown.at(3));
+    buffer.begin_user_action();
+    buffer.delete(&mut start, &mut end);
+    buffer.end_user_action();
+
+    assert_eq!(shown.text(), "aef", "the two characters before each caret went once");
+}
+
+/// GtkTextView deletes the selection when an input method starts
+/// composing (gtk_text_view_preedit_start_handler) and inserts the text
+/// once it commits.
+#[gtk4::test]
+fn carets_wait_for_an_input_method_to_finish_composing() {
+    let shown = Shown::new("foofoo");
+    let buffer = shown.buffer();
+    buffer.select_range(&shown.at(0), &shown.at(3));
+    assert!(shown.view.add_caret_at_next_match());
+
+    buffer.delete_selection(true, true);
+    shown.view.emit_by_name::<()>("preedit-changed", &[&"ni"]);
+    crate::test_support::drain_main_context();
+    assert_eq!(shown.view.caret_count(), 2, "the carets joined while composing");
+
+    shown.commit("\u{4f60}");
+    shown.view.emit_by_name::<()>("preedit-changed", &[&""]);
+    assert_eq!(shown.text(), "\u{4f60}\u{4f60}");
+}
+
+#[gtk4::test]
 fn a_caret_inside_text_the_cursor_replaces_goes_with_it() {
     let shown = Shown::new("selec");
     shown.cursor_at(2);

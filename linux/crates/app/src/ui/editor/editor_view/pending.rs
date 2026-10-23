@@ -37,20 +37,21 @@ impl Pending {
     }
 
     /// The same edit at `caret`, which a selection there takes the place
-    /// of, as at GTK's cursor. Around the cursor stays on its line.
+    /// of, as at GTK's cursor. Around the cursor is what `reserve` marked
+    /// before GTK's edit, or else what is around it now.
     pub(super) fn apply(&self, buffer: &gtk::TextBuffer, caret: &Caret) {
+        let reserved = match self {
+            Self::DeleteAround { .. } => caret.take_reserved(buffer),
+            _ => None,
+        };
         let (mut start, mut end) = caret.range(buffer);
         if start != end {
             buffer.delete(&mut start, &mut end);
         } else if let Self::DeleteAround { before, after } = *self {
-            let at = caret.insert(buffer);
-            let mut line_end = at;
-            if !line_end.ends_line() {
-                line_end.forward_to_line_end();
+            let (mut from, mut to) = reserved.unwrap_or_else(|| around(buffer, &caret.insert(buffer), before, after));
+            if from < to {
+                buffer.delete(&mut from, &mut to);
             }
-            let mut from = buffer.iter_at_offset(at.offset() - before.min(at.line_offset()));
-            let mut to = buffer.iter_at_offset(at.offset() + after.min(line_end.offset() - at.offset()));
-            buffer.delete(&mut from, &mut to);
         }
         let mut at = caret.insert(buffer);
         if let Self::Insert(text) = self {
@@ -58,6 +59,30 @@ impl Pending {
         }
         caret.set(buffer, &at, &at);
     }
+
+    /// Marks at each of `carets` what this edit takes there, while the
+    /// text is as GTK's edit found it: a caret it moves closer would
+    /// otherwise reach past what it would have taken alone.
+    pub(super) fn reserve(&self, buffer: &gtk::TextBuffer, carets: &[Caret]) {
+        if let Self::DeleteAround { before, after } = *self {
+            for caret in carets {
+                let (from, to) = around(buffer, &caret.insert(buffer), before, after);
+                caret.reserve(buffer, &from, &to);
+            }
+        }
+    }
+}
+
+/// `before` and `after` characters around `at`, on its line.
+fn around(buffer: &gtk::TextBuffer, at: &gtk::TextIter, before: i32, after: i32) -> (gtk::TextIter, gtk::TextIter) {
+    let mut line_end = *at;
+    if !line_end.ends_line() {
+        line_end.forward_to_line_end();
+    }
+    (
+        buffer.iter_at_offset(at.offset() - before.min(at.line_offset())),
+        buffer.iter_at_offset(at.offset() + after.min(line_end.offset() - at.offset())),
+    )
 }
 
 #[cfg(test)]

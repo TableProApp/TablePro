@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -11,12 +12,38 @@ use gtk4::prelude::*;
 #[derive(Debug)]
 pub(super) struct Caret {
     marks: RefCell<[gtk::TextMark; 2]>,
+    /// Text the edits at GTK's cursor take around this caret too, marked
+    /// before each edit moved anything, in the order the edits came.
+    reserved: RefCell<VecDeque<[gtk::TextMark; 2]>>,
 }
 
 impl Caret {
     pub(super) fn new(buffer: &gtk::TextBuffer, insert: &gtk::TextIter, anchor: &gtk::TextIter) -> Self {
         Self {
             marks: RefCell::new(marks(buffer, insert, anchor)),
+            reserved: RefCell::default(),
+        }
+    }
+
+    /// Text outside the range stays outside it, as a selection's does.
+    pub(super) fn reserve(&self, buffer: &gtk::TextBuffer, from: &gtk::TextIter, to: &gtk::TextIter) {
+        let marks = [
+            buffer.create_mark(None, from, false),
+            buffer.create_mark(None, to, true),
+        ];
+        self.reserved.borrow_mut().push_back(marks);
+    }
+
+    pub(super) fn take_reserved(&self, buffer: &gtk::TextBuffer) -> Option<(gtk::TextIter, gtk::TextIter)> {
+        let marks = self.reserved.borrow_mut().pop_front()?;
+        let range = (buffer.iter_at_mark(&marks[0]), buffer.iter_at_mark(&marks[1]));
+        delete(&marks);
+        Some(range)
+    }
+
+    pub(super) fn clear_reserved(&self) {
+        for marks in self.reserved.take() {
+            delete(&marks);
         }
     }
 
@@ -63,6 +90,7 @@ impl Caret {
 impl Drop for Caret {
     fn drop(&mut self) {
         delete(&self.marks.borrow());
+        self.clear_reserved();
     }
 }
 

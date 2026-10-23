@@ -320,6 +320,13 @@ impl EditorView {
                 view.single_caret();
             }
         });
+        // An input method's text has not come yet while it composes.
+        self.connect_preedit_changed(|view, preedit| {
+            let was = view.imp().composing.replace(!preedit.is_empty());
+            if was && preedit.is_empty() && view.has_extra_carets() {
+                view.settle_when_idle();
+            }
+        });
         self.connect_buffer_notify(|view| view.follow_buffer());
         self.follow_buffer();
         self.follow_source_signals();
@@ -810,6 +817,7 @@ impl EditorView {
             return;
         }
         if let Some(pending) = pending() {
+            pending.reserve(&self.buffer(), &imp.carets.borrow());
             imp.pending.borrow_mut().push(pending);
         }
     }
@@ -836,7 +844,8 @@ impl EditorView {
         } else if !edits.is_empty() && edits.iter().all(|edit| *edit == Pending::DeleteSelection) {
             // GTK commits text typed over a selection as two user actions,
             // the deletion and then the text (gtk_text_view_commit_text),
-            // and carets the deletion brought together still type apart.
+            // and an input method deletes it when it starts composing, so
+            // carets the deletion brought together still type apart.
             self.settle_when_idle();
         } else {
             self.settle();
@@ -848,6 +857,7 @@ impl EditorView {
         glib::idle_add_local_once(move || {
             if let Some(view) = view.upgrade()
                 && !view.imp().disposed.get()
+                && !view.imp().composing.get()
                 && view.has_extra_carets()
             {
                 view.settle();
@@ -868,6 +878,7 @@ impl EditorView {
             for edit in edits {
                 edit.apply(&buffer, caret);
             }
+            caret.clear_reserved();
         }
         buffer.end_user_action();
         primary.select(&buffer);
