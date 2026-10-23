@@ -1,0 +1,99 @@
+diff --git i/apps/linux/app/src/ui/export_dialog.rs w/apps/linux/app/src/ui/export_dialog.rs
+index bb06275d6..56f404c36 100644
+--- i/apps/linux/app/src/ui/export_dialog.rs
++++ w/apps/linux/app/src/ui/export_dialog.rs
+@@ -297,6 +297,7 @@ fn present_export(
+         suggested_name,
+         driver_id,
+     } = request;
++    let result = std::sync::Arc::new(result);
+     let null_marker = if paged.is_some() {
+         "\\N".to_string()
+     } else {
+@@ -453,7 +454,7 @@ struct SaveRequest {
+     format: ExportFormat,
+     suggested_name: String,
+     driver_id: String,
+-    result: QueryResult,
++    result: std::sync::Arc<QueryResult>,
+     paged: Option<PagedExport>,
+     include_header: bool,
+     sanitize_formulas: bool,
+@@ -525,7 +526,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
+     });
+ }
+ 
+-fn job_source(paged: &Option<PagedExport>, result: &QueryResult) -> file::JobSource {
++fn job_source(paged: &Option<PagedExport>, result: &std::sync::Arc<QueryResult>) -> file::JobSource {
+     match paged {
+         Some(paged) => file::JobSource::Paged {
+             mode: paged.mode,
+@@ -559,6 +560,37 @@ fn show_export_error(
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    #[test]
++    fn profile_loaded_export_snapshot_allocations() {
++        let result = std::sync::Arc::new(QueryResult {
++            columns: Vec::new(),
++            rows: vec![vec![tablepro_core::Value::Text("x".repeat(1024)); 128]; 128],
++            truncated: false,
++        });
++        let pending = result.clone();
++        let source = job_source(&None, &pending);
++        let file::JobSource::Loaded(loaded) = &source else {
++            panic!("expected loaded export");
++        };
++        assert_eq!(loaded.rows, result.rows);
++        std::hint::black_box((&result, &pending, &source));
++    }
++
++
++    #[test]
++    fn loaded_export_keeps_the_existing_row_allocation() {
++        let result = std::sync::Arc::new(QueryResult {
++            columns: Vec::new(),
++            rows: vec![vec![tablepro_core::Value::Text("exact export value".into())]],
++            truncated: true,
++        });
++        let file::JobSource::Loaded(loaded) = job_source(&None, &result) else {
++            panic!("expected loaded export");
++        };
++        assert_eq!(loaded.rows.as_ptr(), result.rows.as_ptr());
++        assert_eq!(loaded.rows, result.rows);
++        assert!(loaded.truncated);
++    }
+ 
+     #[test]
+     #[ignore = "requires an isolated GTK display"]
+diff --git i/apps/linux/app/src/ui/export_dialog/file.rs w/apps/linux/app/src/ui/export_dialog/file.rs
+index 20a43bdea..44c52a4d9 100644
+--- i/apps/linux/app/src/ui/export_dialog/file.rs
++++ w/apps/linux/app/src/ui/export_dialog/file.rs
+@@ -8,7 +8,7 @@
+ use tokio_util::sync::CancellationToken;
+ 
+ pub(super) enum JobSource {
+-    Loaded(tablepro_core::QueryResult),
++    Loaded(Arc<tablepro_core::QueryResult>),
+     Paged {
+         mode: super::PagedExportMode,
+         columns: Vec<tablepro_core::ColumnInfo>,
+@@ -255,7 +255,7 @@ fn an_unverified_paged_export_never_opens_its_source_or_replaces_a_file() {
+     fn a_loaded_result_still_exports_successfully() {
+         let directory = tempfile::tempdir().unwrap();
+         let path = directory.path().join("result.csv");
+-        let source = JobSource::Loaded(tablepro_core::QueryResult {
++        let source = JobSource::Loaded(Arc::new(tablepro_core::QueryResult {
+             columns: vec![tablepro_core::ColumnInfo {
+                 name: "label".into(),
+                 data_type: "text".into(),
+@@ -271,7 +271,7 @@ fn a_loaded_result_still_exports_successfully() {
+             }],
+             rows: vec![vec![tablepro_core::Value::Text("hello, export".into())]],
+             truncated: false,
+-        });
++        }));
+         write_export(
+             job(path.clone(), source),
+             &CancellationToken::new(),

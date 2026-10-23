@@ -69,3 +69,9 @@ Heaptrack exported peak-cost stacks totaling 439,099,144 bytes, matching its rep
 These subsets overlap and must not be added. They identify allocation call paths, not unreachable owners or exclusive ownership. The cell-menu path installs a gesture and shortcut controller per cell; any consolidation must preserve pointer targeting, keyboard menus, editing, selection and accessibility. Shortcut parsing alone is a small fraction of the peak, so caching it alone would not resolve the many-column cost.
 
 The exported stacks and aggregation inputs remain in local `target/quality/postgres-heaptrack-many-columns/peak-stacks.txt`. This large diagnostic file is not committed.
+
+## GTK implementation context
+
+The [current ColumnView reference](https://docs.gtk.org/gtk4/class.ColumnView.html) describes a factory-generated cell widget for each column of each visible item. The [GTK development explanation](https://blogs.gnome.org/gtk/2020/09/21/gtkcolumnview/) explicitly describes vertical virtualization with fully populated horizontal rows and warns about many columns. That article is historical design context, not proof of every current GTK implementation detail.
+
+This is consistent with the measured cell-construction stacks, but does not justify reducing supported columns or removing selection/accessibility. Before changing presentation, instrument factory setup/bind counts at the supported toolkit version and compare viewport dimensions. Prototype shared input controllers separately from any broader horizontal virtualization design. The newer toolkit floor alone has not removed the measured construction cost.

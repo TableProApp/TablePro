@@ -1,0 +1,10 @@
+reading file "<workspace>/target/quality/export-allocation-probe/baseline-2.zst" - please wait, this might take some time...
+Debuggee command was: <workspace>/target/quality/export-allocation-probe/baseline-test --exact ui::export_dialog::tests::profile_loaded_export_snapshot_allocations --test-threads=1
+finished reading file, now analyzing data:
+
+total runtime: 0.232000s.
+calls to allocation functions: 51599 (222409/s)
+temporary memory allocations: 96 (413/s)
+peak heap memory consumption: 52.16M
+peak RSS (including heaptrack overhead): 88.26M
+total memory leaked: 164.58K

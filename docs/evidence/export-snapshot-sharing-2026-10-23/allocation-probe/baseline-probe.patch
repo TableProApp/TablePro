@@ -1,0 +1,27 @@
+diff --git i/apps/linux/app/src/ui/export_dialog.rs w/apps/linux/app/src/ui/export_dialog.rs
+index bb06275d6..0e03fe967 100644
+--- i/apps/linux/app/src/ui/export_dialog.rs
++++ w/apps/linux/app/src/ui/export_dialog.rs
+@@ -560,6 +560,22 @@ fn show_export_error(
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn profile_loaded_export_snapshot_allocations() {
++        let result = QueryResult {
++            columns: Vec::new(),
++            rows: vec![vec![tablepro_core::Value::Text("x".repeat(1024)); 128]; 128],
++            truncated: false,
++        };
++        let pending = result.clone();
++        let source = job_source(&None, &pending);
++        let file::JobSource::Loaded(loaded) = &source else {
++            panic!("expected loaded export");
++        };
++        assert_eq!(loaded.rows, result.rows);
++        std::hint::black_box((&result, &pending, &source));
++    }
++
+     #[test]
+     #[ignore = "requires an isolated GTK display"]
+     fn a_full_export_shows_a_refusal_without_opening_its_source() {
