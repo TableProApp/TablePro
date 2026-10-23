@@ -477,6 +477,29 @@ async fn a_key_says_whether_its_two_sides_compare_alike() {
         .map(|key| (key.table.name.as_str(), key.child_compares_alike))
         .collect();
     assert_eq!(narrow, [("child", true), ("late", true)]);
+
+    if connection.server_info().major >= 18 {
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE EXTENSION IF NOT EXISTS btree_gist",
+                "CREATE TABLE rooms (id int4, during int4range, PRIMARY KEY (id, during WITHOUT OVERLAPS))",
+                "CREATE TABLE stays (room int4, during int4range, \
+                 FOREIGN KEY (room, PERIOD during) REFERENCES rooms (id, PERIOD during))",
+            ],
+        )
+        .await;
+        let stays = connection
+            .fetch_outbound_foreign_keys(&table("stays"), within(CALL))
+            .await
+            .expect("the keys of stays");
+        let into_rooms = connection
+            .fetch_inbound_foreign_keys(&table("rooms"), within(CALL))
+            .await
+            .expect("the keys pointing at rooms");
+        assert!(!stays[0].parent_compares_alike, "a PERIOD key matches by containment");
+        assert!(!into_rooms[0].child_compares_alike, "a PERIOD key matches by containment");
+    }
 }
 
 const CATALOG_TABLE: &[&str] = &[

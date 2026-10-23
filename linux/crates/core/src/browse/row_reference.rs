@@ -1,4 +1,4 @@
-use crate::column::{ColumnKind, ColumnType, ResultColumn, has_dynamic_storage};
+use crate::column::{ColumnKind, ColumnType, ResultColumn};
 use crate::ddl::{InboundForeignKey, OutboundForeignKey};
 use crate::edit::{EditText, edit_text, parse_filter_text};
 use crate::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
@@ -124,12 +124,11 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
         },
     };
     let parsed = parse_filter_text(&text, column_type).ok()?;
-    // Only SQLite stores a boolean, number or date column per row. It
-    // keeps whatever the column is given and matches a key on that, so
-    // the filter has to bind the very value: 'true' in a BOOLEAN column
-    // would be bound as 1 and find another row.
-    let any_value = column_type.dynamic_storage && !has_dynamic_storage(&column_type.kind);
-    let kept = !any_value || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
+    // SQLite keeps whatever a column is given and matches a key on that,
+    // so the filter has to bind the very value: 'true' in a BOOLEAN
+    // column would be bound as 1, and 'inf' in a DECIMAL one as
+    // 'Infinity'. Other engines read every value back in its own form.
+    let kept = !column_type.dynamic_storage || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
     kept.then_some(text)
 }
 
@@ -140,6 +139,9 @@ enum StoredForm<'a> {
     Real(f64),
     Text(String),
     Blob(&'a [u8]),
+    /// MySQL reads a BIT padded to whole bytes and writes the bits the
+    /// column declares, the same number either way.
+    Bits(String),
 }
 
 fn stored_form(value: &Value) -> Option<StoredForm<'_>> {
@@ -152,6 +154,11 @@ fn stored_form(value: &Value) -> Option<StoredForm<'_>> {
         Value::Float32(real) => StoredForm::Real(f64::from(*real)),
         Value::Float64(real) => StoredForm::Real(*real),
         Value::Bytes(bytes) => StoredForm::Blob(bytes),
+        Value::Bits(bits) => {
+            let text = bits.to_string();
+            let number = text.trim_start_matches('0');
+            StoredForm::Bits(if number.is_empty() { "0" } else { number }.to_owned())
+        }
         other => StoredForm::Text(crate::export::value_to_text(other)?),
     })
 }
@@ -168,7 +175,7 @@ mod tests {
     use super::*;
 
     fn text_column(name: &str) -> ResultColumn {
-        ResultColumn::new(name, ColumnType::untyped_text("text"))
+        typed(name, ColumnKind::Other)
     }
 
     fn typed(name: &str, kind: ColumnKind) -> ResultColumn {
@@ -350,17 +357,27 @@ mod tests {
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Int(5)),
-            Ok(vec![eq("id", "5")]),
-            "a NUMERIC column reads the text back as the number"
+            refused,
+            "a number bound as text"
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Text("ab-12".to_owned())),
             Ok(vec![eq("id", "ab-12")])
         );
+        let decimal = || ColumnKind::Decimal {
+            precision: None,
+            scale: None,
+        };
+        assert_eq!(
+            text_of(decimal(), Value::Text("inf".to_owned())),
+            refused,
+            "text bound as 'Infinity'"
+        );
+        assert_eq!(text_of(decimal(), Value::Text("NaN".to_owned())), Ok(vec![eq("id", "NaN")]));
     }
 
-    /// Other engines store a BIT or a text column per row too, and
-    /// compare it under its type, whatever spelling the filter uses.
+    /// MySQL marks a BIT column as stored per row too, and reads it
+    /// padded to whole bytes.
     #[test]
     fn a_bit_key_follows_whatever_its_wire_padding() {
         let bits = dynamic(

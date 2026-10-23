@@ -47,10 +47,13 @@ pub(crate) fn inbound_foreign_keys_sql() -> String {
 /// and collation, text and varchar, or integers where the filtered side
 /// holds every value. A validated key's values are all in the parent, so
 /// a narrower parent holds them. Deterministic collations compare bytes.
-/// `{narrowing}` is the integer condition, in `ct` (child) and `pt`
-/// (parent) widths.
+/// A PERIOD key (PostgreSQL 18) matches a range by containment, not
+/// `=`; `conperiod` is read through `to_jsonb` since older servers have
+/// no such column. `{narrowing}` is the integer condition, in `ct`
+/// (child) and `pt` (parent) widths.
 const COMPARES_ALIKE_SQL: &str = "\
-NOT EXISTS (
+NOT coalesce((to_jsonb(c) ->> 'conperiod')::boolean, false)
+   AND NOT EXISTS (
          SELECT 1
            FROM unnest(c.conkey, c.confkey) AS k(child, parent)
            JOIN pg_catalog.pg_attribute ca ON ca.attrelid = c.conrelid AND ca.attnum = k.child
