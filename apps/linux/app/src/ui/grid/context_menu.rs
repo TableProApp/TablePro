@@ -675,99 +675,81 @@ pub(super) struct CellGestureOptions {
     pub(super) supports_full_value: bool,
 }
 
+fn prepare_cell_menu(
+    menus: &GridMenus,
+    view: &gtk::ColumnView,
+    widget: &gtk::Widget,
+    options: &CellGestureOptions,
+) -> gtk::PopoverMenu {
+    let position = POSITION_SLOT.get(widget).unwrap_or(0);
+    select_row_for_menu(view, position);
+    menus.context.set(widget, options.idx, options.column_name.clone());
+    menus
+        .edit_action
+        .set_enabled(edit_enabled_for(widget, options.is_text_editable));
+    if let Some((action, local_result_view)) = &menus.export_loaded {
+        action.set_enabled(local_result_view.has_filter());
+    }
+    menus
+        .edit_full_value_action
+        .set_enabled(options.supports_full_value && row_has_full_text_value(view, widget, position, options.idx));
+    menus.reference_action.set_enabled(
+        menus.foreign_key_columns.contains(&options.column_name)
+            && row_object_at(view, position).is_some_and(|row| {
+                row.with_cell_value(options.idx, |value| !matches!(value, Value::Null))
+                    .unwrap_or(false)
+            }),
+    );
+    if options.is_editable {
+        menus.editable_popover.clone()
+    } else {
+        menus.readonly_popover.clone()
+    }
+}
+
 pub(super) fn attach_cell_gesture(
     widget: &gtk::Widget,
     column_view: &gtk::ColumnView,
     options: CellGestureOptions,
     menus: &GridMenus,
 ) {
-    let CellGestureOptions {
-        idx,
-        column_name,
-        is_editable,
-        is_text_editable,
-        supports_full_value,
-    } = options;
-    let popover = if is_editable {
-        menus.editable_popover.clone()
-    } else {
-        menus.readonly_popover.clone()
-    };
     let gesture_widget = widget.downgrade();
     let view = column_view.downgrade();
-    let context = menus.context.clone();
-    let edit_action = menus.edit_action.clone();
-    let export_loaded = menus.export_loaded.clone();
-    let edit_full_value_action = menus.edit_full_value_action.clone();
-    let reference_action = menus.reference_action.clone();
-    let foreign_key_columns = menus.foreign_key_columns.clone();
-    let gesture_popover = popover.clone();
-    let gesture_name = column_name.clone();
+    let gesture_menus = menus.clone();
+    let gesture_options = Rc::new(options);
+    let options = gesture_options.clone();
     let gesture = gtk::GestureClick::builder()
         .button(3)
         .propagation_phase(gtk::PropagationPhase::Capture)
         .build();
     gesture.connect_pressed(move |gesture, _, x, y| {
-        let (Some(view), Some(gesture_widget)) = (view.upgrade(), gesture_widget.upgrade()) else {
+        let (Some(view), Some(widget)) = (view.upgrade(), gesture_widget.upgrade()) else {
             return;
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        select_row_for_menu(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0));
-        context.set(&gesture_widget, idx, gesture_name.clone());
-        edit_action.set_enabled(edit_enabled_for(&gesture_widget, is_text_editable));
-        if let Some((action, local_result_view)) = &export_loaded {
-            action.set_enabled(local_result_view.has_filter());
-        }
-        edit_full_value_action.set_enabled(
-            supports_full_value
-                && row_has_full_text_value(
-                    &view,
-                    &gesture_widget,
-                    POSITION_SLOT.get(&gesture_widget).unwrap_or(0),
-                    idx,
-                ),
-        );
-        reference_action.set_enabled(
-            foreign_key_columns.contains(&gesture_name)
-                && row_at(&view, POSITION_SLOT.get(&gesture_widget).unwrap_or(0))
-                    .and_then(|row| row.get(idx).cloned())
-                    .is_some_and(|value| !matches!(value, Value::Null)),
-        );
+        let popover = prepare_cell_menu(&gesture_menus, &view, &widget, &gesture_options);
         let local = gtk::graphene::Point::new(x as f32, y as f32);
-        let (x, y) = gesture_widget
+        let (x, y) = widget
             .compute_point(&view, &local)
             .map(|point| (point.x() as i32, point.y() as i32))
             .unwrap_or((x as i32, y as i32));
-        gesture_popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
-        gesture_popover.popup();
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
+        popover.popup();
     });
     widget.add_controller(gesture);
     let key_widget = widget.downgrade();
     let key_view = column_view.downgrade();
-    let key_context = menus.context.clone();
-    let key_action = menus.edit_action.clone();
-    let key_full_value_action = menus.edit_full_value_action.clone();
+    let menus = menus.clone();
     let shortcut = gtk::Shortcut::builder()
         .trigger(&crate::ui::shortcut::parse(CELL_MENU_TRIGGER))
         .action(&gtk::CallbackAction::new(move |_, _| {
-            let (Some(key_view), Some(key_widget)) = (key_view.upgrade(), key_widget.upgrade()) else {
+            let (Some(view), Some(widget)) = (key_view.upgrade(), key_widget.upgrade()) else {
                 return glib::Propagation::Proceed;
             };
-            select_row_for_menu(&key_view, POSITION_SLOT.get(&key_widget).unwrap_or(0));
-            key_context.set(&key_widget, idx, column_name.clone());
-            key_action.set_enabled(edit_enabled_for(&key_widget, is_text_editable));
-            key_full_value_action.set_enabled(
-                supports_full_value
-                    && row_has_full_text_value(
-                        &key_view,
-                        &key_widget,
-                        POSITION_SLOT.get(&key_widget).unwrap_or(0),
-                        idx,
-                    ),
-            );
+            let popover = prepare_cell_menu(&menus, &view, &widget, &options);
             popover.set_pointing_to(
-                key_widget
-                    .compute_bounds(&key_view)
+                widget
+                    .compute_bounds(&view)
                     .map(|bounds| {
                         gtk::gdk::Rectangle::new(
                             bounds.x() as i32,
@@ -1102,5 +1084,93 @@ mod tests {
         let text = trigger.to_str().to_string();
         assert!(text.contains("Menu"), "{text}");
         assert!(text.contains("<Shift>F10"), "{text}");
+        keyboard_reference_state_follows_current_cell();
+    }
+
+    fn keyboard_reference_state_follows_current_cell() {
+        let (window, label, menus, local) = keyboard_menu_fixture();
+        window.present();
+        while glib::MainContext::default().iteration(false) {}
+        let controllers = label.observe_controllers();
+        let controller = (0..controllers.n_items())
+            .find_map(|index| controllers.item(index)?.downcast::<gtk::ShortcutController>().ok())
+            .unwrap();
+        let shortcut = controller.item(0).and_downcast::<gtk::Shortcut>().unwrap();
+        let action = shortcut.action().unwrap();
+        menus.reference_action.set_enabled(false);
+        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
+        assert!(menus.reference_action.is_enabled());
+        let export = &menus.export_loaded.as_ref().unwrap().0;
+        assert!(!export.is_enabled());
+        local.filter_by_value(0, Value::Int(7));
+        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
+        assert!(export.is_enabled());
+        local.clear_filter();
+        menus.readonly_popover.popdown();
+        POSITION_SLOT.set(&label, 1);
+        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
+        assert!(!menus.reference_action.is_enabled());
+        assert!(!export.is_enabled());
+        menus.readonly_popover.popdown();
+        window.close();
+    }
+
+    fn keyboard_menu_fixture() -> (gtk::Window, gtk::Label, GridMenus, LocalResultView) {
+        let rows = gio::ListStore::new::<crate::ui::row_object::RowObject>();
+        rows.append(&crate::ui::row_object::RowObject::new(vec![Value::Int(7)]));
+        rows.append(&crate::ui::row_object::RowObject::new(vec![Value::Null]));
+        let view = gtk::ColumnView::new(Some(gtk::SingleSelection::new(Some(rows))));
+        let label = gtk::Label::new(Some("7"));
+        POSITION_SLOT.set(&label, 0);
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.append(&view);
+        content.append(&label);
+        let window = gtk::Window::builder().child(&content).build();
+        let (sender, _receiver) = relm4::channel();
+        let local = local_result_for_menu();
+        let menus = install_grid_context_menus(
+            &view,
+            sender,
+            &[],
+            false,
+            "sqlite".into(),
+            GridMenuOptions {
+                filterable: false,
+                row_mutations_allowed: false,
+                foreign_key_columns: ["linked".into()].into(),
+                local_result_view: Some(local.clone()),
+            },
+        );
+        attach_cell_gesture(
+            label.upcast_ref(),
+            &view,
+            CellGestureOptions {
+                idx: 0,
+                column_name: "linked".into(),
+                is_editable: false,
+                is_text_editable: false,
+                supports_full_value: false,
+            },
+            &menus,
+        );
+        (window, label, menus, local)
+    }
+
+    fn local_result_for_menu() -> LocalResultView {
+        LocalResultView::new(
+            std::sync::Arc::new(QueryResult {
+                columns: Vec::new(),
+                rows: vec![vec![Value::Int(7)]],
+                truncated: false,
+            }),
+            super::super::local_filter::LocalResultSettingsStore::default(),
+            super::super::local_filter::ResultViewKey {
+                statement_identity: crate::ui::editor::StatementIdentity {
+                    statement_index: 0,
+                    digest: [0; 32],
+                },
+                result_set_index: 0,
+            },
+        )
     }
 }
