@@ -17,6 +17,8 @@ if [[ "${TABLEPRO_GTK_POSTGRES_DBUS_ACTIVE:-0}" != "1" ]]; then
     rm -rf -- "$runtime" 2>/dev/null || true
   }
   trap cleanup_runtime EXIT
+  cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+  rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
   TABLEPRO_GTK_POSTGRES_DBUS_ACTIVE=1 \
     ATSPI_DBUS_IMPLEMENTATION=dbus-daemon \
     XDG_CURRENT_DESKTOP=GNOME \
@@ -26,8 +28,8 @@ if [[ "${TABLEPRO_GTK_POSTGRES_DBUS_ACTIVE:-0}" != "1" ]]; then
     XDG_CACHE_HOME="$runtime/cache" \
     XDG_STATE_HOME="$runtime/state" \
     XDG_RUNTIME_DIR="$runtime/runtime" \
-    CARGO_HOME="${CARGO_HOME:-$(env HOME="$OLDPWD" sh -c 'echo ${CARGO_HOME:-$HOME/.cargo}')}" \
-    RUSTUP_HOME="${RUSTUP_HOME:-$(env HOME="$OLDPWD" sh -c 'echo ${RUSTUP_HOME:-$HOME/.rustup}')}" \
+    CARGO_HOME="$cargo_home" \
+    RUSTUP_HOME="$rustup_home" \
     dbus-run-session -- "$ROOT/scripts/test-gtk-postgres.sh" "$@"
   exit $?
 fi
