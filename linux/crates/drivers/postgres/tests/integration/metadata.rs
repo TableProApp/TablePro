@@ -498,7 +498,10 @@ async fn a_key_says_whether_its_two_sides_compare_alike() {
             .await
             .expect("the keys pointing at rooms");
         assert!(!stays[0].parent_compares_alike, "a PERIOD key matches by containment");
-        assert!(!into_rooms[0].child_compares_alike, "a PERIOD key matches by containment");
+        assert!(
+            !into_rooms[0].child_compares_alike,
+            "a PERIOD key matches by containment"
+        );
     }
 }
 

@@ -32,7 +32,9 @@ async fn table_rows(connection: &dyn Connection, table: &str) -> (Vec<ResultColu
         .into_iter()
         .map(|info| ResultColumn::new(info.name, info.column_type))
         .collect();
-    let rows = query(connection, &format!("SELECT * FROM {table} ORDER BY rowid")).await.rows;
+    let rows = query(connection, &format!("SELECT * FROM {table} ORDER BY rowid"))
+        .await
+        .rows;
     (columns, rows)
 }
 
@@ -79,10 +81,16 @@ async fn a_followed_key_opens_the_rows_it_matches() {
     .unwrap();
 
     assert_eq!(followed(connection.as_ref(), "pets").await, Ok(1));
-    assert_eq!(followed(connection.as_ref(), "quoted").await, Ok(1), "a quoted type name");
+    assert_eq!(
+        followed(connection.as_ref(), "quoted").await,
+        Ok(1),
+        "a quoted type name"
+    );
     assert_eq!(
         followed(connection.as_ref(), "switches").await,
-        Err(ReferenceError::NoFilterText { column: "id".to_owned() }),
+        Err(ReferenceError::NoFilterText {
+            column: "id".to_owned()
+        }),
         "'true' in a BOOLEAN column would be bound as 1"
     );
     assert_eq!(
@@ -98,7 +106,12 @@ async fn a_followed_key_opens_the_rows_it_matches() {
     let inbound = connection.fetch_inbound_foreign_keys(&owners, call()).await.unwrap();
     for key in &inbound {
         let reference = RowReference::referencing(&owners, key, &columns, &rows[1]).unwrap();
-        assert_eq!(rows_found(connection.as_ref(), &reference).await, 1, "{}", key.table.name);
+        assert_eq!(
+            rows_found(connection.as_ref(), &reference).await,
+            1,
+            "{}",
+            key.table.name
+        );
     }
     assert_eq!(inbound.len(), 2);
     connection.close().await.unwrap();

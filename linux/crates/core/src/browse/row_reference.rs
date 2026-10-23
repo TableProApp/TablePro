@@ -391,7 +391,10 @@ mod tests {
             refused,
             "text bound as 'Infinity'"
         );
-        assert_eq!(text_of(decimal(), Value::Text("NaN".to_owned())), Ok(vec![eq("id", "NaN")]));
+        assert_eq!(
+            text_of(decimal(), Value::Text("NaN".to_owned())),
+            Ok(vec![eq("id", "NaN")])
+        );
         assert_eq!(text_of(decimal(), Value::Int(5)), Ok(vec![eq("id", "5")]));
         assert_eq!(text_of(decimal(), Value::Float64(1.5)), Ok(vec![eq("id", "1.5")]));
         assert_eq!(
