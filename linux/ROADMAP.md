@@ -80,6 +80,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 |---|---|
 | Editing | GtkSourceView with SQL highlighting, a scheme that follows the light or dark style, and toggle comment |
 | Completion | Tables, views, columns, schemas, functions and keywords, with aliases resolved |
+| Snippets | SELECT, INSERT, UPDATE, DELETE, a join, CREATE TABLE and CREATE INDEX per engine, and the user's own in GtkSourceView's format from a folder read again when it changes, a snippet scoped to one engine or to all; offered in completion, with Tab between stops ([README](README.md#snippets)) |
 | Formatter | Format SQL, leaving a statement as typed when formatting would change its tokens |
 | Scripts | Split per dialect (`DELIMITER`, `GO` and `GO n`, routine and trigger bodies) and sent a statement at a time, or a batch at a time on SQL Server; each result set, row count, notice or error is its own entry, and a failure stops the script except on SQL Server. Run Selection, and run the statement at the cursor |
 | Find and replace | Ctrl+F and Ctrl+H, with case, whole word and regular expressions |
@@ -159,7 +160,6 @@ Not built yet, in no order.
 ### SQL editor
 
 - Multi-cursor editing.
-- Snippets.
 
 ### Release and project
 

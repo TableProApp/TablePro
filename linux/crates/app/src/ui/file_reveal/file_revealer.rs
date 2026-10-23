@@ -6,4 +6,11 @@ use gtk4::{gio, glib};
 /// would have been shown without starting one.
 pub(crate) trait FileRevealer {
     fn reveal(&self, file: gio::File, parent: Option<gtk::Window>) -> LocalBoxFuture<'static, Result<(), glib::Error>>;
+
+    /// Opens `folder` itself, for the user to add files to.
+    fn open_folder(
+        &self,
+        folder: gio::File,
+        parent: Option<gtk::Window>,
+    ) -> LocalBoxFuture<'static, Result<(), glib::Error>>;
 }

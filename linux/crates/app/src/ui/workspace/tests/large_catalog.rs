@@ -698,6 +698,7 @@ impl Screen {
             session: active,
             hold: Rc::new(CountingHold::new()),
             close_timeout: Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         self.panes.set_end_child(Some(&editor));
         if let Some(previous) = self.editor.replace(Some(editor.clone())) {

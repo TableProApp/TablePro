@@ -10,6 +10,7 @@ use super::fuzzy;
 use super::proposal_kind::ProposalKind;
 use super::proposal_list_imp as imp;
 use super::sql_proposal::SqlProposal;
+use crate::services::snippet_library::OfferedSnippet;
 
 /// What the completion can offer, before it is a row of the list. Built
 /// with the catalog read, away from the GTK thread.
@@ -31,6 +32,16 @@ impl Candidate {
 
     pub fn keyword(keyword: &str) -> Self {
         Self::new(ProposalKind::Keyword, keyword, keyword)
+    }
+
+    /// Matched by its trigger. It inserts through the view rather than
+    /// as text, so it has none.
+    pub fn snippet(snippet: OfferedSnippet) -> Self {
+        Self {
+            label: snippet.trigger.clone(),
+            insert_text: String::new(),
+            kind: ProposalKind::Snippet(snippet),
+        }
     }
 
     pub(super) fn proposal(&self) -> SqlProposal {
