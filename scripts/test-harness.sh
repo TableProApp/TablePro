@@ -18,4 +18,3 @@ python3 scripts/update-third-party-notices.py --check
 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 python3 scripts/tests/test_arch_candidate.py
 python3 scripts/tests/test_deb_package.py
-python3 scripts/tests/test_function_size.py

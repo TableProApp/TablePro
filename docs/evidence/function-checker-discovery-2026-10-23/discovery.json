@@ -1,0 +1,29 @@
+{
+  "base": "3b6ef5f4489f36d8e8d4604d74c65de1b6bf1e4e",
+  "before_discovered_cases": 0,
+  "after_discovered_cases": 3,
+  "after_passed_cases": 3,
+  "existing_behavior": "literal braces, lifetimes, oversized function detection",
+  "coverage_version": "7.10.6",
+  "checker_statements": 172,
+  "executed_statements": 104,
+  "missed_statements": 68,
+  "branches": 88,
+  "partial_branches": 9,
+  "focused_combined_percent": 55,
+  "latest_reference_analysis": {
+    "revision": "3b6ef5f4489f36d8e8d4604d74c65de1b6bf1e4e",
+    "new_coverage": 69.0,
+    "quality_status": "ERROR",
+    "checker_new_uncovered_lines": 172
+  },
+  "validation": {
+    "preflight": "passed",
+    "harness_tests": 397,
+    "unit_tests": 2073,
+    "sandbox_tests": 2086,
+    "redis_cancellation_tests": 1,
+    "debian_package_validation": "skipped: dpkg-deb unavailable",
+    "forgejo": "pending"
+  }
+}
