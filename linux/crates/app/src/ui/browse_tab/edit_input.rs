@@ -10,6 +10,8 @@ pub(crate) enum EditInput {
     /// Queued after an insert, so the focus lands on the column view
     /// as it is once the insert is drawn.
     FocusInsertedDraft,
+    /// Queued after a paste, as `FocusInsertedDraft` is after an insert.
+    SelectPastedDrafts(u32),
     DeleteRows(Vec<RowObject>),
     /// Checked against the cell's lock before the tracker takes it.
     GridEdit {

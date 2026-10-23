@@ -133,8 +133,11 @@ pub(super) fn workspace_record(
         })
         .collect();
     keep_filters_within(&mut snapshots, KEPT_FILTER_BUDGET);
+    keep_places_within(&mut snapshots, KEPT_PLACES_BUDGET);
     let selected = view.selected_page().and_then(|page| index.id_of(&page));
-    crate::workspace::workspace_record(&snapshots, selected)
+    let mut record = crate::workspace::workspace_record(&snapshots, selected);
+    record.shrink_to_fit();
+    record
 }
 
 /// How many bytes of filters the saved tabs keep in all. The workspace
@@ -160,6 +163,26 @@ fn keep_filters_within(snapshots: &mut [TabSnapshot], mut budget: usize) {
     }
 }
 
+/// How many bytes of diagram places the saved tabs keep in all. A table
+/// takes some 40, so this holds thousands of moved tables.
+const KEPT_PLACES_BUDGET: usize = 256 * 1024;
+
+/// Keep each diagram's places while they fit `budget`, in tab order. A
+/// diagram past it is saved without them and laid out afresh, rather
+/// than the whole file becoming unreadable.
+fn keep_places_within(snapshots: &mut [TabSnapshot], mut budget: usize) {
+    for snapshot in snapshots {
+        let Some(TabRecord::Diagram { places, .. }) = &mut snapshot.record else {
+            continue;
+        };
+        let size = serde_json::to_vec(places).map_or(usize::MAX, |json| json.len());
+        match budget.checked_sub(size) {
+            Some(left) => budget = left,
+            None => places.clear(),
+        }
+    }
+}
+
 fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
     match tab {
         WorkspaceTab::Editor(slot) => Some(TabRecord::Editor {
@@ -175,6 +198,10 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
                 table: slot.table.clone(),
             }),
         },
+        WorkspaceTab::Diagram(slot) => Some(TabRecord::Diagram {
+            schema: slot.schema.clone(),
+            places: slot.diagram.places(),
+        }),
         WorkspaceTab::Table(slot) => Some(TabRecord::Table {
             schema: slot.schema.clone(),
             table: slot.table.clone(),
@@ -272,6 +299,40 @@ mod tests {
         let mut tight = vec![filtered_table("users", "1"), filtered_table("orders", "2")];
         keep_filters_within(&mut tight, 1);
         assert_eq!(kept(&tight), [false, false]);
+    }
+
+    fn diagram(tables: usize) -> TabSnapshot {
+        TabSnapshot {
+            id: Uuid::new_v4(),
+            record: Some(TabRecord::Diagram {
+                schema: Some("public".to_owned()),
+                places: (0..tables)
+                    .map(|at| crate::workspace::DiagramPlace {
+                        table: format!("table_{at:05}"),
+                        x: 100,
+                        y: 200,
+                    })
+                    .collect(),
+            }),
+        }
+    }
+
+    /// A diagram of tens of thousands of moved tables would make the file
+    /// too large to read back; it is laid out afresh instead.
+    #[test]
+    fn diagram_places_past_the_budget_are_left_out() {
+        let mut snapshots = vec![diagram(3), diagram(20_000), diagram(2)];
+
+        keep_places_within(&mut snapshots, KEPT_PLACES_BUDGET);
+
+        let counts: Vec<usize> = snapshots
+            .iter()
+            .map(|snapshot| match &snapshot.record {
+                Some(TabRecord::Diagram { places, .. }) => places.len(),
+                _ => usize::MAX,
+            })
+            .collect();
+        assert_eq!(counts, [3, 0, 2]);
     }
 
     struct Fixture {
@@ -453,6 +514,7 @@ mod tests {
                 TabRecord::Table { table, .. } => format!("table {table}"),
                 TabRecord::Structure { table, .. } => format!("structure {table}"),
                 TabRecord::Editor { .. } => "editor".to_owned(),
+                TabRecord::Diagram { .. } => "diagram".to_owned(),
                 TabRecord::Key { key } => format!("key {key}"),
             };
             let page = view.append(&gtk::Label::new(Some(&name)));

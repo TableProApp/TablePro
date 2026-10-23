@@ -53,13 +53,13 @@ mod value_order;
 #[cfg(test)]
 pub(crate) use self::cell_edit::begin_edit;
 pub(crate) use self::cell_editability::cell_editability;
-pub(crate) use self::cell_focus::{commit_open_edit, edit_row};
+pub(crate) use self::cell_focus::{commit_open_edit, edit_row, select_top_rows};
 pub(crate) use self::cell_lock::CellLock;
 pub(crate) use self::cell_preset::{CellPreset, cell_presets};
 pub(crate) use self::column_factory::{GridSorting, build_column_view};
 pub(crate) use self::column_width_binding::ColumnWidthBinding;
 pub(crate) use self::delete_availability::{DeleteAvailability, delete_availability};
-pub(crate) use self::edit_commit::edit_context;
+pub(crate) use self::edit_commit::{CommitResult, commit_input, edit_context};
 pub(crate) use self::edit_snapshot::EditSnapshot;
 pub(crate) use self::grid_cell::GridCell;
 pub(crate) use self::grid_content::GridContent;

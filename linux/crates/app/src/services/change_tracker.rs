@@ -264,7 +264,7 @@ impl TabChangeTracker {
         if rows.is_empty() {
             return self.delta(Vec::new());
         }
-        let drafts: Vec<DraftRow> = rows
+        let mut drafts: Vec<DraftRow> = rows
             .into_iter()
             .map(|cells| {
                 let draft_id = self.next_draft_id;
@@ -276,6 +276,10 @@ impl TabChangeTracker {
                 }
             })
             .collect();
+        // Drafts are kept bottom up, the last one shown on top, so the
+        // rows go in last first to read down in their own order. Their
+        // touches keep that order for the save.
+        drafts.reverse();
         self.push_undo(UndoOp::Insert { drafts: drafts.clone() });
         self.put_drafts(drafts)
     }
@@ -1031,15 +1035,6 @@ fn insert_cells(columns: &[ColumnInfo], draft: &DraftRow) -> Vec<CellInput> {
         .collect()
 }
 
-/// What a new row holds in `column` until the user types: the server's
-/// value where it has one, else NULL.
-pub fn new_draft_cell(column: &ColumnInfo) -> CellInput {
-    match column.is_auto_increment || column.is_generated || !column.default.is_none() {
-        true => CellInput::Default,
-        false => CellInput::Value(Value::Null),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     /// A column carrying the server's spelling and the kind it means,
@@ -1074,6 +1069,7 @@ mod tests {
 
     use super::*;
     use tablepro_core::ColumnInfo;
+    use tablepro_core::edit::new_draft_cell;
 
     fn pk_col(name: &str) -> ColumnInfo {
         ColumnInfo {

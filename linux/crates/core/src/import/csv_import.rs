@@ -150,14 +150,14 @@ pub fn read_csv(bytes: &[u8], options: &CsvImportOptions, limit: Option<usize>) 
     })
 }
 
-fn malformed(error: csv::Error) -> ImportError {
+pub(super) fn malformed(error: csv::Error) -> ImportError {
     ImportError::Malformed {
         line: error.position().map(csv::Position::line),
     }
 }
 
 /// Refuse a record wider than `MAX_FIELDS` before its fields are copied.
-fn within_width(record: &csv::StringRecord) -> Result<(), ImportError> {
+pub(super) fn within_width(record: &csv::StringRecord) -> Result<(), ImportError> {
     match record.len() > MAX_FIELDS {
         true => Err(ImportError::TooManyFields {
             line: record.position().map_or(1, csv::Position::line),

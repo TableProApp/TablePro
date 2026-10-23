@@ -781,3 +781,101 @@ fn a_file_name_with_an_ampersand_shows_in_its_toast() {
     };
     wait_until(WAIT, shown).expect("the toast to name the file");
 }
+
+fn image(harness: &Harness, path: &Path, bytes: Result<Vec<u8>, String>) -> ImageExport {
+    let tasks = harness.runtime.as_ref().expect("the runtime").tasks();
+    ImageExport {
+        destination: gio::File::for_path(path),
+        bytes: tasks.spawn_blocking_task(move || bytes),
+        tab: None,
+    }
+}
+
+/// An image goes through the ledger as rows do: held and listed while it
+/// writes, and said in a toast once it is written.
+#[gtk4::test]
+fn an_image_is_written_whole_and_reported() {
+    let harness = Harness::new();
+    let path = harness.path("public-er-diagram.png");
+
+    let handle = harness
+        .ledger
+        .begin_image(image(&harness, &path, Ok(b"\x89PNG image".to_vec())))
+        .expect("started");
+    assert_eq!(harness.hold.live(), 1, "the image was not held");
+    let listed = harness
+        .ledger
+        .jobs()
+        .item(0)
+        .and_downcast::<ExportJobItem>()
+        .expect("a job");
+    assert!(listed.is_whole_file());
+    let outcome = harness.finish(handle);
+
+    assert!(matches!(outcome, ExportOutcome::Saved), "{outcome:?}");
+    assert_eq!(std::fs::read(&path).expect("the image"), b"\x89PNG image");
+    wait_until(WAIT, || harness.hold.live() == 0).expect("the hold to end");
+    assert_eq!(harness.ledger.jobs().n_items(), 0);
+}
+
+#[gtk4::test]
+fn an_image_that_could_not_be_drawn_leaves_no_file_and_says_why() {
+    let harness = Harness::new();
+    let path = harness.path("er-diagram.svg");
+
+    let outcome = harness.finish(
+        harness
+            .ledger
+            .begin_image(image(&harness, &path, Err("no surface".to_owned())))
+            .expect("started"),
+    );
+
+    assert!(
+        matches!(
+            outcome,
+            ExportOutcome::Failed {
+                failure: ExportFailure::Image(_),
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+    assert!(!path.exists(), "a half-made image was left behind");
+    let alert = visible_alert(&harness.window).expect("an alert");
+    assert!(alert.body().contains("couldn't be drawn"), "{}", alert.body());
+}
+
+#[gtk4::test]
+fn a_window_closing_while_an_image_writes_asks_first() {
+    let harness = Harness::new();
+    let path = harness.path("er-diagram.png");
+    let release = CancellationToken::new();
+    let waiting = release.clone();
+    let tasks = harness.runtime.as_ref().expect("the runtime").tasks();
+    let bytes = tasks.spawn_blocking_task(move || {
+        while !waiting.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(b"late".to_vec())
+    });
+    let handle = harness
+        .ledger
+        .begin_image(ImageExport {
+            destination: gio::File::for_path(&path),
+            bytes,
+            tab: None,
+        })
+        .expect("started");
+
+    assert!(
+        harness.ledger.blocking().is_some(),
+        "the close was not asked about the image"
+    );
+    let stopped = CloseBlocker::stop(&*harness.ledger);
+    let outcome = harness.finish(handle);
+    release.cancel();
+    finish_on_main(WAIT, stopped).expect("the stop to settle");
+
+    assert!(matches!(outcome, ExportOutcome::Stopped(_)), "{outcome:?}");
+    assert!(!path.exists(), "a stopped image was left behind");
+}

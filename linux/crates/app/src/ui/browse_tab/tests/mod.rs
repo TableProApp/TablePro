@@ -1,4 +1,5 @@
 mod load;
+mod paste;
 mod references;
 mod total;
 
