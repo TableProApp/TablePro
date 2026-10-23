@@ -53,6 +53,27 @@ async fn like_escape_matches_literal_underscore_and_percent() {
     connection.close().await.unwrap();
 }
 
+/// A binary key followed from another table arrives as its hex text.
+#[tokio::test]
+async fn a_blob_equals_its_hex_form() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE names (name BLOB)",
+            "INSERT INTO names VALUES (X'0AFF'), (X'0A'), ('0x0aff')",
+        ],
+    )
+    .await
+    .unwrap();
+    let table = TableRef::unqualified("names");
+
+    assert_eq!(matching(connection.as_ref(), &table, FilterOp::Eq, "0x0aff").await, 1);
+    assert_eq!(matching(connection.as_ref(), &table, FilterOp::NotEq, "0x0A").await, 2);
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn insensitive_filter_matches_mixed_case() {
     let file = TestFile::new().await;

@@ -119,7 +119,11 @@ impl TestWindow {
         }
         connection.probe.always(FakeReply::ok(()));
         connection.list_schemas.always(FakeReply::ok(Vec::new()));
-        connection.list_objects.always(FakeReply::ok(Vec::new()));
+        // A test that lists the database's objects for every read keeps
+        // its list.
+        if !connection.list_objects.answers_always() {
+            connection.list_objects.always(FakeReply::ok(Vec::new()));
+        }
         let mut drivers = DriverRegistry::new();
         let capabilities = if network {
             &FakeDriver::NETWORK_CAPABILITIES

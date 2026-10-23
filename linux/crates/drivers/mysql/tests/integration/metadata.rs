@@ -175,7 +175,13 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
             .await
             .expect("the child");
 
+        let alone = connection
+            .fetch_inbound_foreign_keys(&table("parent"), within(CALL))
+            .await
+            .expect("the keys pointing at the parent");
+
         let inbound = &parent.inbound_foreign_keys;
+        assert_eq!(&alone, inbound, "{flavour:?}");
         assert_eq!(inbound.len(), 1, "{flavour:?}");
         assert_eq!(inbound[0].name, "child_parent");
         assert_eq!(inbound[0].table.name, "child");

@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::TableDefinition;
+use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -294,6 +294,21 @@ impl Connection for MssqlConnection {
             options,
             read_op(move |client, watch| {
                 Box::pin(async move { metadata::fetch_foreign_keys(client, watch, &relation).await })
+            }),
+        )
+        .await
+    }
+
+    async fn fetch_inbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<InboundForeignKey>, DriverError> {
+        let relation = self.relation(table);
+        self.read(
+            options,
+            read_op(move |client, watch| {
+                Box::pin(async move { metadata::fetch_inbound_foreign_keys(client, watch, &relation).await })
             }),
         )
         .await

@@ -559,10 +559,10 @@ fn the_loading_page_names_a_table_with_an_ampersand() {
         &fake.session,
         &runtime,
         &stores,
-        "R&D",
-        Default::default(),
-        Default::default(),
-        false,
+        super::Opening {
+            table: "R&D",
+            ..super::Opening::users()
+        },
     );
     let shown = || crate::test_support::status_page_description(&tab.imp().loading_page);
 

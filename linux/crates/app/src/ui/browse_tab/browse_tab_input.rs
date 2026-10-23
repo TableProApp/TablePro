@@ -70,6 +70,7 @@ impl From<GridMsg> for BrowseTabInput {
             GridMsg::DeleteRows { rows } => EditInput::DeleteRows(rows).into(),
             GridMsg::InsertRow => EditInput::InsertRow.into(),
             GridMsg::DuplicateRows { rows } => EditInput::DuplicateRows(rows).into(),
+            GridMsg::FollowReference(reference) => ClipboardInput::GridFollowReference(reference).into(),
         }
     }
 }

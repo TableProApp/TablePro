@@ -121,7 +121,8 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
             .map(Value::Uuid)
             .map_err(|_| EditParseError::InvalidUuid),
         ColumnKind::Date => parse_date(trimmed)
-            .or_else(|error| far_temporal(trimmed, column, purpose, parse_date).unwrap_or(Err(error))),
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_date).unwrap_or(Err(error)))
+            .or_else(|error| compared_across(purpose, error, || midnight_date(trimmed))),
         ColumnKind::Time { with_offset: true, .. } => parse_time_with_offset(trimmed),
         ColumnKind::Time {
             range: range @ (TimeRange::Duration | TimeRange::LongDuration),
@@ -134,7 +135,8 @@ fn strict_value(input: &str, column: &ColumnType, purpose: Purpose) -> Result<Va
         } => parse_timestamp_with_offset(trimmed)
             .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp_with_offset).unwrap_or(Err(error))),
         ColumnKind::Timestamp { .. } => parse_timestamp(trimmed)
-            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp).unwrap_or(Err(error))),
+            .or_else(|error| far_temporal(trimmed, column, purpose, parse_timestamp).unwrap_or(Err(error)))
+            .or_else(|error| compared_across(purpose, error, || date_at_midnight(trimmed))),
         ColumnKind::Interval => trimmed
             .parse::<SqlInterval>()
             .map(Value::Interval)
@@ -294,6 +296,37 @@ fn parse_date(input: &str) -> Result<Value, EditParseError> {
         .map_err(|_| EditParseError::InvalidDate)
 }
 
+/// A comparison takes a value of the neighbouring type as the server
+/// casts it: a date is its midnight, and a midnight is its date. A key
+/// can point from a date at a timestamp, so the value it carries is the
+/// other type's. A stored value has to be the column's own.
+fn compared_across(
+    purpose: Purpose,
+    error: EditParseError,
+    other: impl FnOnce() -> Option<Value>,
+) -> Result<Value, EditParseError> {
+    match purpose {
+        Purpose::Compare => other().ok_or(error),
+        Purpose::Store => Err(error),
+    }
+}
+
+fn midnight_date(input: &str) -> Option<Value> {
+    match parse_timestamp(input).ok()? {
+        Value::Timestamp(Temporal::Finite(stamp)) if stamp.time() == NaiveTime::MIN => {
+            Some(Value::Date(Temporal::Finite(stamp.date())))
+        }
+        _ => None,
+    }
+}
+
+fn date_at_midnight(input: &str) -> Option<Value> {
+    match parse_date(input).ok()? {
+        Value::Date(Temporal::Finite(date)) => Some(Value::Timestamp(Temporal::Finite(date.and_time(NaiveTime::MIN)))),
+        _ => None,
+    }
+}
+
 fn parse_time(input: &str) -> Result<Value, EditParseError> {
     if let Ok(time) = NaiveTime::parse_from_str(input, "%H:%M:%S%.f") {
         return Ok(Value::Time(SqlTime::from_time_of_day(time)));
@@ -427,15 +460,24 @@ fn parse_bits(input: &str) -> Result<Value, EditParseError> {
 /// takes one here.
 pub fn parse_filter_text(input: &str, column: &ColumnType) -> Result<Value, EditParseError> {
     match column.kind {
+        // The form an export and a copy write a blob in.
+        ColumnKind::Bytes { .. } => parse_hex_bytes(input.trim()),
         // A filter on a column with no editable text form compares text
         // the user typed; the dialect decides what that means.
-        ColumnKind::Bytes { .. }
-        | ColumnKind::Spatial
-        | ColumnKind::Array { .. }
-        | ColumnKind::Variant
-        | ColumnKind::Composite => Ok(Value::Text(input.to_owned())),
+        ColumnKind::Spatial | ColumnKind::Array { .. } | ColumnKind::Variant | ColumnKind::Composite => {
+            Ok(Value::Text(input.to_owned()))
+        }
         _ => parse(input, column, Purpose::Compare),
     }
+}
+
+fn parse_hex_bytes(input: &str) -> Result<Value, EditParseError> {
+    input
+        .strip_prefix("0x")
+        .or_else(|| input.strip_prefix("0X"))
+        .and_then(crate::hex::decode)
+        .map(Value::Bytes)
+        .ok_or(EditParseError::InvalidBytes)
 }
 
 /// A `TimeTz` from text, for the engines that have one.
@@ -809,15 +851,49 @@ mod tests {
         }
     }
 
+    /// A key from a date column can point at a timestamp one, and back.
     #[test]
-    fn a_filter_on_a_binary_column_compares_text() {
+    fn a_comparison_reads_a_date_as_its_midnight_and_a_midnight_as_its_date() {
+        let date = column(ColumnKind::Date, false);
+        let stamp = column(stamp(TemporalZone::Naive), false);
+        let day = NaiveDate::from_ymd_opt(2026, 1, 1).expect("a date");
+
+        assert_eq!(
+            parse_filter_text("2026-01-01", &stamp),
+            Ok(Value::Timestamp(Temporal::Finite(day.and_time(NaiveTime::MIN))))
+        );
+        assert_eq!(
+            parse_filter_text("2026-01-01 00:00:00", &date),
+            Ok(Value::Date(Temporal::Finite(day)))
+        );
+        assert_eq!(
+            parse_filter_text("2026-01-01 08:00:00", &date),
+            Err(EditParseError::InvalidDate),
+            "a time of day is no date"
+        );
+        assert_eq!(
+            parse_literal_text("2026-01-01", &stamp),
+            Err(EditParseError::InvalidTimestamp),
+            "a stored timestamp took a bare date"
+        );
+    }
+
+    #[test]
+    fn a_filter_on_a_binary_column_reads_the_hex_form_an_export_writes() {
         let binary = column(bytes(), false);
 
         assert_eq!(
-            parse_filter_text("0xff", &binary),
-            Ok(Value::Text("0xff".to_owned())),
-            "a filter could not be typed against a binary column"
+            parse_filter_text(" 0x0aFF ", &binary),
+            Ok(Value::Bytes(vec![0x0a, 0xff]))
         );
+        assert_eq!(parse_filter_text("0X", &binary), Ok(Value::Bytes(Vec::new())));
+        for text in ["ff", "0xf", "0xzz", ""] {
+            assert_eq!(
+                parse_filter_text(text, &binary),
+                Err(EditParseError::InvalidBytes),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

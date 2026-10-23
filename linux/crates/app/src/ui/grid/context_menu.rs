@@ -74,6 +74,7 @@ pub(super) fn prepare_menu(menus: &GridMenus, cell: &GridCell, column_view: &gtk
     let rows = menu_rows_of(column_view, cell);
     menus.context.set(cell, &rows);
     menus.actions.arm(cell, &rows);
+    menus.references.arm(cell);
     match cell.lock() {
         None => menus.editable_popover.clone(),
         Some(_) => menus.readonly_popover.clone(),
@@ -114,18 +115,9 @@ mod tests {
     use crate::services::change_tracker::RowKey;
     use crate::test_support::{FocusThief, after_next_frame, descendants, drain_main_context, wait_until};
     use crate::ui::grid::test_grid::{
-        Grid, WAIT, focus_in_grid, key, page, two_text_columns, two_text_rows, two_text_values,
+        Grid, WAIT, focus_in_grid, key, open_menu, page, two_text_columns, two_text_rows, two_text_values,
     };
     use crate::ui::grid::{ColumnWidthBinding, GridCell, GridMsg, RowObject};
-
-    fn open_menu(cell: &GridCell) {
-        let controllers = cell.observe_controllers();
-        let gesture = (0..controllers.n_items())
-            .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
-            .find(|gesture| gesture.button() == 3)
-            .expect("a cell answers a right-click");
-        gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
-    }
 
     fn choose(grid: &Grid, actions: &[&str]) {
         for action in actions {

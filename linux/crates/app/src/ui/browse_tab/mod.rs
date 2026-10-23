@@ -45,6 +45,7 @@ mod save_input;
 mod selection_handlers;
 mod selection_input;
 mod selection_snapshot;
+mod table_filter;
 #[cfg(test)]
 mod tests;
 
@@ -58,9 +59,10 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use tablepro_core::ColumnInfo;
+use tablepro_core::browse::RowReference;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{RowIdentity, TableRef};
+use tablepro_core::{ColumnInfo, FilterSet};
 use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
@@ -88,9 +90,10 @@ pub(crate) use self::row_total::RowTotal;
 pub(crate) use self::save_input::SaveInput;
 pub(crate) use self::selection_input::SelectionInput;
 use self::selection_snapshot::SelectionSnapshot;
+pub(crate) use self::table_filter::TableFilter;
 use super::filter_strip::FilterStrip;
 use super::grid::{
-    ColumnWidthBinding, GridRowIndex, GridSink, RowJsonRequest, RowObject, TabGridContext, present_row_json,
+    ColumnWidthBinding, GridRowIndex, GridSink, KeysHandle, RowJsonRequest, RowObject, TabGridContext, present_row_json,
 };
 use super::tab_load::{ContentLoad, FirstLoad, start_first_load};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -120,6 +123,7 @@ pub struct BrowseTabInit {
     pub page_size: u64,
     pub initial_offset: u64,
     pub initial_sort: Option<(usize, bool)>,
+    pub filter: TableFilter,
     pub column_widths: crate::persistence::ColumnWidthStore,
     pub filter_settings: crate::persistence::FilterSettingsStore,
     /// The session the tab reads through. The tab belongs to it and is
@@ -137,13 +141,12 @@ impl BrowseTab {
         let tab: Self = glib::Object::new();
         let imp = tab.imp();
 
-        // Restore the saved filter for this (connection, schema, table)
-        // up front so both the model and the inline strip start with the
-        // same FilterSet.
-        let initial_filter = init
-            .connection_id
-            .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
-            .unwrap_or_default();
+        // The model and the inline strip start with the same FilterSet.
+        let (initial_filter, reveal_filter) = init.filter.opening(|| {
+            init.connection_id
+                .map(|id| init.filter_settings.filters(id, init.schema.as_deref(), &init.table))
+                .unwrap_or_default()
+        });
         let widgets = layout::build(
             &tab,
             &layout::LayoutInit {
@@ -153,10 +156,14 @@ impl BrowseTab {
             },
         );
         let filter_strip = layout::filter_strip(&tab, &initial_filter);
+        if reveal_filter {
+            filter_strip.set_revealed(true);
+        }
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
         let link_generation = init.session.link_generation();
         let dialect = init.session.current_dialect();
         let link_changes = init.session.link_changes();
+        let keys = KeysHandle::new(TableRef::new(init.schema.clone(), init.table.clone()));
         let model = BrowseModel {
             this: tab.downgrade(),
             session: init.session,
@@ -169,6 +176,7 @@ impl BrowseTab {
             link_generation,
             identity: None,
             dialect,
+            keys,
             tracker: init.tracker,
             schema: init.schema,
             table: init.table,
@@ -312,6 +320,12 @@ impl BrowseTab {
         self.read(|model| model.current_sort).flatten()
     }
 
+    /// The filter the rows on screen were read under, not what the strip
+    /// holds before Apply.
+    pub fn applied_filter(&self) -> FilterSet {
+        self.read(|model| model.current_filter.clone()).unwrap_or_default()
+    }
+
     /// A read of the tab's rows is running.
     pub fn is_loading(&self) -> bool {
         self.read(|model| model.tab_loading).unwrap_or(false)
@@ -327,6 +341,17 @@ impl BrowseTab {
             false,
             glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
                 f(tab, payload.borrow::<ExportOffer>().clone());
+            }),
+        )
+    }
+
+    /// The grid asked to open the rows a foreign key leads to.
+    pub(crate) fn connect_follow_reference<F: Fn(&Self, RowReference) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "follow-reference",
+            false,
+            glib::closure_local!(move |tab: &Self, payload: glib::BoxedAnyObject| {
+                f(tab, payload.borrow::<RowReference>().clone());
             }),
         )
     }
@@ -412,6 +437,9 @@ impl BrowseTab {
             BrowseTabOutput::StopSaveRequested => self.emit_by_name::<()>("stop-save-requested", &[]),
             BrowseTabOutput::LoadingChanged(loading) => self.emit_by_name::<()>("loading-changed", &[&loading]),
             BrowseTabOutput::RefreshRequested => self.emit_by_name::<()>("refresh-requested", &[]),
+            BrowseTabOutput::FollowReference(reference) => {
+                self.emit_by_name::<()>("follow-reference", &[&glib::BoxedAnyObject::new(reference)]);
+            }
         }
     }
 
@@ -480,6 +508,9 @@ pub(crate) struct BrowseModel {
     /// The current connection's dialect, which says whether a filter can
     /// be written for it. Read again after every reconnect.
     dialect: Option<Arc<dyn SqlDialect>>,
+    /// The table's foreign keys, which every grid the tab builds reads
+    /// as its menu opens.
+    keys: KeysHandle,
 
     tracker: TabTrackerHandle,
     schema: Option<String>,
@@ -564,6 +595,8 @@ pub(crate) enum BrowseTabOutput {
     LoadingChanged(bool),
     /// F5 asked the window to read the tab again.
     RefreshRequested,
+    /// The grid asked to open the rows a foreign key leads to.
+    FollowReference(RowReference),
 }
 
 impl BrowseModel {
@@ -596,6 +629,7 @@ impl BrowseModel {
                 schema: self.schema.clone(),
                 table: self.table.clone(),
             }),
+            keys: Some(self.keys.clone()),
         }
     }
 

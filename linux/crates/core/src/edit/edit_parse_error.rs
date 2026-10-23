@@ -45,6 +45,8 @@ pub enum EditParseError {
     InvalidInterval,
     #[error("enter a bit string of 0 and 1")]
     InvalidBits,
+    #[error("enter bytes as 0x and hex digits")]
+    InvalidBytes,
     #[error("this column holds {expected} bits")]
     BitLengthMismatch { expected: u32 },
     #[error("this is not one of the values this column allows")]
