@@ -83,7 +83,10 @@ def validate_manifest(path, strict=False):
         recorded_selector, exact = test_selector(focused.get("command", ""))
         selectors = selector if isinstance(selector, list) else [selector]
         if recorded_selector is not None and not any(
-            recorded_selector == item or (isinstance(item, str) and item.endswith(f"::{recorded_selector}"))
+            recorded_selector == item
+            or (not exact and isinstance(item, str)
+                and item.removesuffix("::*").removesuffix("::") == recorded_selector.removesuffix("::"))
+            or (isinstance(item, str) and item.endswith(f"::{recorded_selector}"))
             for item in selectors
         ):
             (errors if strict else warnings).append(f"{path}: test selector {selector!r} differs from focused command {recorded_selector!r}")
@@ -97,6 +100,9 @@ def validate_manifest(path, strict=False):
             content = log.read_text(errors="replace")
             exact_names = "|".join(re.escape(item) for item in selectors if isinstance(item, str))
             completed = re.findall(rf"^test (?:.*::)?(?:{exact_names}) \.\.\. ok$", content, re.MULTILINE) if exact_names else []
+            if not exact and isinstance(selector, str):
+                module = re.escape(selector.removesuffix("::*").removesuffix("::"))
+                completed = re.findall(rf"^test (?:.*::)?{module}(?:::[^ ]+)? \.\.\. ok$", content, re.MULTILINE) if module else []
             expected_tests = int(expected_count.group(1))
             selector_count_mismatch = isinstance(selector, list) and expected_tests != len(selectors)
             if len(completed) != expected_tests or selector_count_mismatch or (exact and recorded_selector not in selectors):

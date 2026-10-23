@@ -1,0 +1,7 @@
+# Module-filter evidence validation
+
+Follow-up for [issue 1534](https://github.com/cozyGarage/BookiE/issues/1534). The validator treated module filters as exact leaf names, rejecting successful module-child tests and equivalent module::* metadata versus module:: Cargo commands.
+
+Three positive cases fail before the repair. Afterward, all nine focused manifest tests pass, including negative cases for unrelated modules, similarly prefixed module names and wrong counts, plus exact selectors rejecting module children. Exact selectors and existing source/log digest checks remain in place. This pins evidence parsing, not application behavior.
+
+The historical MongoDB stale-grid packet no longer reports selector warnings. It still reports source drift and three log-digest mismatches; those are not suppressed or rewritten. The MySQL packet now passes metadata equivalence, but its retained log is only an RTK summary (`cargo test: 20 passed...`), with no individual test names or native Cargo result line. Its executed-selector and result-summary warnings remain correct under the current evidence contract. Accepting this packet without the original log would weaken verification, so it remains unqualified. No historical source is requalified by this repair. Full local preflight passed. The final focused suite contains nine tests. The preflight began before integrating documentation and existing test-discovery changes from Linux; a refreshed harness remains required before acceptance. Forgejo acceptance is pending.

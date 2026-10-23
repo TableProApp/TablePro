@@ -78,6 +78,34 @@ class EvidenceManifestTests(unittest.TestCase):
         path.write_text(json.dumps(manifest))
         self.assertEqual(VALIDATOR.validate_manifest(path, strict=True)[0], [])
 
+    def test_manifest_accepts_module_filters_with_matching_children(self):
+        for selector in ("module", "module::", "module::*"):
+            with self.subTest(selector=selector):
+                log = "test module::first ... ok\ntest module::second ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"
+                path, manifest = self.fixture(selector=selector, log_content=log)
+                manifest["validation"]["focused_test"].update(
+                    command="cargo test -p package module::", result="2 passed, 0 failed"
+                )
+                path.write_text(json.dumps(manifest))
+                self.assertEqual(VALIDATOR.validate_manifest(path, strict=True)[0], [])
+
+    def test_module_filter_rejects_unrelated_names_and_wrong_counts(self):
+        for names, count in [(["other::first", "other::second"], 2), (["module_extra::first", "module_extra::second"], 2), (["module::first", "module::second"], 1)]:
+            with self.subTest(names=names, count=count):
+                log = "".join(f"test {name} ... ok\n" for name in names)
+                log += f"test result: ok. {len(names)} passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"
+                path, manifest = self.fixture(selector="module::*", log_content=log)
+                manifest["validation"]["focused_test"].update(command="cargo test -p package module::", result=f"{count} passed, 0 failed")
+                path.write_text(json.dumps(manifest))
+                self.assertTrue(VALIDATOR.validate_manifest(path, strict=True)[0])
+
+    def test_exact_selector_does_not_accept_module_children(self):
+        log = "test module::child ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n"
+        path, manifest = self.fixture(selector="module", log_content=log)
+        manifest["validation"]["focused_test"]["command"] = "cargo test -p package module -- --exact"
+        path.write_text(json.dumps(manifest))
+        self.assertTrue(VALIDATOR.validate_manifest(path, strict=True)[0])
+
     def test_manifest_accepts_single_source_digest_with_source_file(self):
         path, manifest = self.fixture()
         source = path.parent / "source.rs"
