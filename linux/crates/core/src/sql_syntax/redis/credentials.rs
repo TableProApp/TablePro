@@ -10,8 +10,9 @@ const SECRET_PARAMETERS: &[&str] = &[
     "tls-client-key-file-pass",
 ];
 
-/// Words in a script body that reach a password through `redis.call`.
-const SCRIPT_MARKERS: &[&str] = &["auth", "requirepass", "masterauth", "primaryauth", "setuser"];
+/// Words in a script body that reach a password through `redis.call`,
+/// besides the password parameters themselves.
+const SCRIPT_MARKERS: &[&str] = &["auth", "setuser"];
 
 /// Whether Redis commands the user ran may go into the query history.
 ///
@@ -58,7 +59,10 @@ fn carries_secret(arguments: &[Vec<u8>]) -> bool {
         ("SENTINEL", Some("CONFIG")) => word(2).as_deref() == Some("SET"),
         ("EVAL" | "EVAL_RO" | "SCRIPT" | "FUNCTION", _) => arguments.iter().skip(1).any(|body| {
             let body = String::from_utf8_lossy(body).to_ascii_lowercase();
-            SCRIPT_MARKERS.iter().any(|marker| body.contains(marker))
+            SCRIPT_MARKERS
+                .iter()
+                .chain(SECRET_PARAMETERS)
+                .any(|marker| body.contains(marker))
         }),
         _ => false,
     }
@@ -86,6 +90,8 @@ mod tests {
             "SENTINEL SET mymaster auth-pass s3cret",
             "SENTINEL CONFIG SET sentinel-pass s3cret",
             "EVAL \"return redis.call('auth', 's3cret')\" 0",
+            "SCRIPT LOAD \"return redis.call('CONFIG','SET','tls-key-file-pass','s3cret')\"",
+            "EVAL \"redis.call('config', 'set', 'TLS-CLIENT-KEY-FILE-PASS', 's3cret')\" 0",
             "GET a\nAUTH s3cret",
         ] {
             assert!(withheld(text), "{text}");
