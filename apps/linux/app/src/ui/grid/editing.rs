@@ -283,7 +283,7 @@ fn show_calendar_popover(label: &CellEditor, col_index: usize, sender: &relm4::S
     if let Ok(parsed) = chrono::NaiveDate::parse_from_str(label.text().as_str(), "%Y-%m-%d")
         && let Ok(dt) = glib::DateTime::from_local(parsed.year(), parsed.month() as i32, parsed.day() as i32, 0, 0, 0.0)
     {
-        calendar.set_date(Some(&dt));
+        calendar.set_date(&dt);
     }
 
     let popover = gtk::Popover::builder().child(&calendar).build();

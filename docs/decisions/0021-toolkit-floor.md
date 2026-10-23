@@ -37,6 +37,10 @@ The gtk-rs API level is separate from the runtime floor. libadwaita and GtkSourc
 
 The distro-floor CI job builds and tests on `debian:testing` only. No job tests an older toolkit, and fixes are not backported to older toolkits.
 
+## Implementation clarification, October 23
+
+The shortcuts migration replaces the deprecated GTK shortcuts window with `AdwShortcutsDialog`. With that migration the GTK Rust API features can advance to `gnome_50` plus `v4_24`, and GLib to `v2_88`, matching the accepted runtime floor. The earlier API-level exception records the state before this migration; it no longer describes the migrated code. Toolkit requirements and distribution support do not change.
+
 ## Rationale
 
 One floor removes per-version branches from the app and the test tier and makes the floor the same stack developers run. Users on older distributions have a path that does not depend on BookiE carrying workarounds: a newer distribution release or, once offered, the Flatpak build.

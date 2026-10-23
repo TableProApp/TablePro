@@ -166,17 +166,12 @@ fn make_shortcut(trigger: &str, action: &str) -> gtk::Shortcut {
         .build()
 }
 
-pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
-    let dialog = gtk::ShortcutsWindow::builder()
+pub(super) fn build_shortcuts_dialog() -> adw::ShortcutsDialog {
+    let dialog = adw::ShortcutsDialog::builder()
         .title(crate::tr!("Keyboard Shortcuts"))
-        .modal(true)
-        .build();
-    let section = gtk::ShortcutsSection::builder()
-        .section_name("shortcuts")
-        .max_height(10)
         .build();
     add_shortcut_group(
-        &section,
+        &dialog,
         &crate::tr!("General"),
         &[
             ("<Primary>e", crate::tr!("Open SQL editor")),
@@ -194,7 +189,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         ],
     );
     add_shortcut_group(
-        &section,
+        &dialog,
         &crate::tr!("Browse table"),
         &[
             ("F2", crate::tr!("Edit focused cell (or press Return)")),
@@ -220,7 +215,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         ],
     );
     add_shortcut_group(
-        &section,
+        &dialog,
         &crate::tr!("Row selection"),
         &[
             ("Shift-click", crate::tr!("Extend selection to the clicked row")),
@@ -228,7 +223,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         ],
     );
     add_shortcut_group(
-        &section,
+        &dialog,
         &crate::tr!("SQL editor"),
         &[
             ("<Primary>Return", crate::tr!("Run query")),
@@ -248,7 +243,7 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
         ],
     );
     add_shortcut_group(
-        &section,
+        &dialog,
         &crate::tr!("Context-sensitive actions"),
         &[
             (
@@ -269,22 +264,22 @@ pub(super) fn build_shortcuts_dialog() -> gtk::ShortcutsWindow {
             ),
         ],
     );
-    dialog.add_section(&section);
     dialog
 }
 
-fn add_shortcut_group(section: &gtk::ShortcutsSection, title: &str, entries: &[(&str, String)]) {
-    let group = gtk::ShortcutsGroup::builder().title(title).build();
+fn add_shortcut_group(dialog: &adw::ShortcutsDialog, title: &str, entries: &[(&str, String)]) {
+    let group = adw::ShortcutsSection::new(Some(title));
     for (accelerator, title) in entries {
-        let shortcut = gtk::ShortcutsShortcut::builder().title(title).build();
-        if gtk::accelerator_parse(*accelerator).is_some() {
-            shortcut.set_accelerator(Some(accelerator));
+        let shortcut = if gtk::accelerator_parse(*accelerator).is_some() {
+            adw::ShortcutsItem::new(title, accelerator)
         } else {
-            shortcut.set_subtitle(Some(&localized_browse_key(accelerator)));
-        }
-        group.append(&shortcut);
+            let shortcut = adw::ShortcutsItem::new(title, "");
+            shortcut.set_subtitle(&localized_browse_key(accelerator));
+            shortcut
+        };
+        group.add(shortcut);
     }
-    section.append(&group);
+    dialog.add(group);
 }
 
 fn localized_browse_key(key: &str) -> String {
@@ -374,54 +369,22 @@ mod window_shortcut_tests {
 #[cfg(test)]
 mod dialog_tests {
     use super::build_shortcuts_dialog;
-    use relm4::gtk::{self, prelude::*};
+    use adw::prelude::*;
+    use relm4::{adw, gtk};
 
-    fn shortcuts_under(
-        widget: &gtk::Widget,
-        found: &mut Vec<gtk::ShortcutsShortcut>,
-        visited: &mut std::collections::HashSet<usize>,
-    ) {
-        if !visited.insert(widget.as_ptr() as usize) {
-            return;
-        }
-        if let Some(shortcut) = widget.downcast_ref::<gtk::ShortcutsShortcut>() {
-            found.push(shortcut.clone());
-        }
-        let mut next = widget.first_child();
-        while let Some(child) = next {
-            shortcuts_under(&child, found, visited);
-            next = child.next_sibling();
-        }
-    }
-
-    #[test]
-    #[ignore = "requires an isolated GTK display"]
-    fn the_shortcuts_window_lists_keys_and_describes_mouse_gestures() {
-        relm4::adw::init().unwrap();
-        let dialog = build_shortcuts_dialog();
-        let mut found = Vec::new();
-        shortcuts_under(
-            dialog.upcast_ref::<gtk::Widget>(),
-            &mut found,
-            &mut std::collections::HashSet::new(),
-        );
-        let entries = found
-            .iter()
-            .map(|item| {
-                (
-                    item.title().unwrap_or_default().to_string(),
-                    item.accelerator().unwrap_or_default().to_string(),
-                    item.subtitle().unwrap_or_default().to_string(),
-                )
-            })
-            .collect::<std::collections::HashSet<_>>();
-        assert!(entries.len() > 40, "only {} distinct entries", entries.len());
-        let mut sections = Vec::new();
+    fn visible_contents(dialog: &adw::ShortcutsDialog) -> (Vec<String>, Vec<String>) {
+        let mut labels = Vec::new();
+        let mut accelerators = Vec::new();
         let mut pending = vec![dialog.clone().upcast::<gtk::Widget>()];
         while let Some(widget) = pending.pop() {
-            if let Ok(section) = widget.clone().downcast::<gtk::ShortcutsSection>() {
-                sections.push(section);
-                continue;
+            if let Some(label) = widget.downcast_ref::<gtk::Label>().filter(|label| label.is_mapped()) {
+                labels.push(label.text().to_string());
+            }
+            if let Some(label) = widget
+                .downcast_ref::<adw::ShortcutLabel>()
+                .filter(|label| label.is_mapped())
+            {
+                accelerators.push(label.accelerator().to_string());
             }
             let mut child = widget.first_child();
             while let Some(next) = child {
@@ -429,43 +392,49 @@ mod dialog_tests {
                 pending.push(next);
             }
         }
-        assert_eq!(sections.len(), 1);
-        assert_eq!(
-            sections[0].max_height(),
-            10,
-            "the rows split into columns that fit the screen"
-        );
-        let mut rows = Vec::new();
-        shortcuts_under(
-            sections[0].upcast_ref(),
-            &mut rows,
-            &mut std::collections::HashSet::new(),
-        );
-        let distinct = rows
-            .iter()
-            .map(|row| (row.title().unwrap_or_default(), row.accelerator().unwrap_or_default()))
-            .collect::<std::collections::HashSet<_>>();
-        assert_eq!(distinct.len(), rows.len(), "a shortcut row is listed twice");
-        let accelerator = |title: &str| {
-            found
-                .iter()
-                .find(|s| s.title().as_deref() == Some(title))
-                .map(|s| s.accelerator())
+        (labels, accelerators)
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn the_shortcuts_window_lists_keys_and_describes_mouse_gestures() {
+        adw::init().unwrap();
+        let window = adw::Window::new();
+        window.set_default_size(400, 600);
+        window.present();
+        let dialog = build_shortcuts_dialog();
+        dialog.present(Some(&window));
+        let context = gtk::glib::MainContext::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let (labels, accelerators) = loop {
+            while context.pending() {
+                context.iteration(false);
+            }
+            let contents = visible_contents(&dialog);
+            if contents.0.iter().any(|text| text == "Quit") || std::time::Instant::now() >= deadline {
+                break contents;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
         };
-        assert_eq!(accelerator("Quit").flatten().as_deref(), Some("<Primary>q"));
-        let gesture = found
-            .iter()
-            .find(|s| s.subtitle().as_deref() == Some("Ctrl-click"))
-            .unwrap();
-        assert_eq!(gesture.title().as_deref(), Some("Toggle the clicked row in selection"));
-        assert!(gesture.accelerator().is_none());
-        let title_count = |title: &str| entries.iter().filter(|item| item.0 == title).count();
-        assert_eq!(
-            title_count("Save grid edits, the SQL file, or table structure changes"),
-            1
-        );
-        assert_eq!(title_count("Edit focused cell (or press Return)"), 1);
-        assert!(entries.iter().any(|item| item.1 == "Up"));
-        assert!(entries.iter().any(|item| item.1 == "Down"));
+        for title in [
+            "Quit",
+            "Toggle the clicked row in selection",
+            "Ctrl-click",
+            "Shift-click",
+            "Save grid edits, the SQL file, or table structure changes",
+            "Edit focused cell (or press Return)",
+        ] {
+            assert_eq!(
+                labels.iter().filter(|text| text.as_str() == title).count(),
+                1,
+                "{title}"
+            );
+        }
+        assert!(accelerators.len() > 40);
+        for accelerator in ["<Primary>q", "Up", "Down"] {
+            assert!(accelerators.iter().any(|value| value == accelerator), "{accelerator}");
+        }
+        dialog.force_close();
+        window.close();
     }
 }
