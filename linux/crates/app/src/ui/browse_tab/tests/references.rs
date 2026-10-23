@@ -4,7 +4,7 @@ use std::rc::Rc;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
 use tablepro_core::browse::RowReference;
 use tablepro_core::column::{ColumnKind, TextLength};
-use tablepro_core::ddl::InboundForeignKey;
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey};
 use tablepro_core::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
 use tablepro_core::meta::TableRef;
 use tablepro_core::{ColumnInfo, DriverError, ForeignKeyInfo};
@@ -16,15 +16,18 @@ use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::grid::{GridMsg, TableKeys};
 
-fn name_key() -> ForeignKeyInfo {
-    ForeignKeyInfo {
-        name: "users_name_fkey".to_owned(),
-        columns: vec!["name".to_owned()],
-        ref_schema: None,
-        ref_table: "people".to_owned(),
-        ref_columns: vec!["name".to_owned()],
-        on_delete: None,
-        on_update: None,
+fn name_key() -> OutboundForeignKey {
+    OutboundForeignKey {
+        key: ForeignKeyInfo {
+            name: "users_name_fkey".to_owned(),
+            columns: vec!["name".to_owned()],
+            ref_schema: None,
+            ref_table: "people".to_owned(),
+            ref_columns: vec!["name".to_owned()],
+            on_delete: None,
+            on_update: None,
+        },
+        parent_compares_alike: true,
     }
 }
 
@@ -78,7 +81,9 @@ fn remembered(harness: &Harness) -> FilterSet {
 fn the_tab_reads_its_tables_keys_both_ways_with_its_columns() {
     let mut script = serving_table();
     script.query_bound.always(FakeReply::ok(rows(&["Ada"])));
-    script.fetch_foreign_keys.always(FakeReply::ok(vec![name_key()]));
+    script
+        .fetch_outbound_foreign_keys
+        .always(FakeReply::ok(vec![name_key()]));
     script
         .fetch_inbound_foreign_keys
         .always(FakeReply::ok(vec![orders_key()]));
@@ -101,14 +106,17 @@ fn a_failed_key_read_leaves_the_rows_and_is_asked_again_on_the_next_link() {
     let mut first = serving_table();
     first.query_bound.always(FakeReply::ok(rows(&["kept"])));
     first
-        .fetch_foreign_keys
+        .fetch_outbound_foreign_keys
         .always(FakeReply::err(DriverError::server("permission denied")));
     let mut second = serving_table();
-    second.fetch_foreign_keys.always(FakeReply::ok(vec![name_key()]));
+    second
+        .fetch_outbound_foreign_keys
+        .always(FakeReply::ok(vec![name_key()]));
     let harness = Harness::open(first, [FakeEstablish::Connect(second)]);
     let counters = harness.connection.counters();
     wait_until(WAIT, || harness.shown() == text(&["kept"])).expect("the first page");
-    wait_until(WAIT, || CallCounters::get(&counters.fetch_foreign_keys) == 1).expect("the keys were asked for");
+    wait_until(WAIT, || CallCounters::get(&counters.fetch_outbound_foreign_keys) == 1)
+        .expect("the keys were asked for");
     drain_main_context();
     assert_eq!(harness.visible_page().as_deref(), Some("grid"));
     assert!(keys_of(&harness).outbound.is_empty());

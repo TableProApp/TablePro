@@ -9,8 +9,8 @@ use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
 use sqlx::{AssertSqlSafe, Row};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{
-    ColumnDefinition, GeneratedColumn, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind,
-    TableDefinition, TableSource,
+    ColumnDefinition, GeneratedColumn, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
+    SchemaObjectKind, TableDefinition, TableSource,
 };
 use tablepro_core::meta::{
     EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo,
@@ -118,6 +118,40 @@ pub(crate) async fn fetch_foreign_keys(
         false => create_statement(connection, table).await?,
     };
     resolve_foreign_keys(connection, table, keys, create.as_deref()).await
+}
+
+pub(crate) async fn fetch_outbound_foreign_keys(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+) -> Result<Vec<OutboundForeignKey>, DriverError> {
+    let keys = fetch_foreign_keys(connection, table).await?;
+    let child_sql = match keys.is_empty() {
+        true => None,
+        false => create_statement(connection, table).await?,
+    };
+    let mut parents: HashMap<String, Option<String>> = HashMap::new();
+    let mut outbound = Vec::with_capacity(keys.len());
+    for key in keys {
+        let parent_sql = match parents.get(&key.ref_table) {
+            Some(sql) => sql.clone(),
+            None => {
+                let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
+                let sql = create_statement(connection, &parent).await?;
+                parents.insert(key.ref_table.clone(), sql.clone());
+                sql
+            }
+        };
+        let parent_compares_alike = compares_alike(
+            child_sql.as_deref(),
+            parent_sql.as_deref(),
+            key.columns.iter().zip(&key.ref_columns),
+        );
+        outbound.push(OutboundForeignKey {
+            key,
+            parent_compares_alike,
+        });
+    }
+    Ok(outbound)
 }
 
 /// The table's foreign keys by pragma id, each with whether it points
@@ -308,27 +342,37 @@ async fn inbound_keys(
             *column = declared_spelling(column, shape.columns.iter().map(|declared| declared.name.as_str()));
         }
         let child = child_sql.get(&key.table.name).and_then(Option::as_deref);
-        key.child_compares_alike = compares_alike(parent_sql.as_deref(), child, key);
+        key.child_compares_alike = compares_alike(
+            child,
+            parent_sql.as_deref(),
+            key.columns.iter().zip(&key.referenced_columns),
+        );
     }
     Ok(keys)
 }
 
 /// SQLite compares a key under the parent columns' affinity and
-/// collation, so `=` on a child column declared otherwise finds other
-/// rows than the key matches. Text that does not read is taken at its
-/// word: nothing says the two sides differ.
-fn compares_alike(parent_sql: Option<&str>, child_sql: Option<&str>, key: &InboundForeignKey) -> bool {
-    key.columns
-        .iter()
-        .zip(&key.referenced_columns)
-        .all(|(child_column, parent_column)| {
-            let child = child_sql.and_then(|sql| declared_comparison(sql, child_column));
-            let parent = parent_sql.and_then(|sql| declared_comparison(sql, parent_column));
-            match (child, parent) {
-                (Some(child), Some(parent)) => child.finds_as(&parent),
-                _ => true,
-            }
-        })
+/// collation, so `=` on a column declared otherwise finds other rows
+/// than the key matches. A definition that does not read says nothing
+/// either way, so the key is not followed. A missing table is followed,
+/// to say that it is missing.
+fn compares_alike<'a>(
+    child_sql: Option<&str>,
+    parent_sql: Option<&str>,
+    pairs: impl IntoIterator<Item = (&'a String, &'a String)>,
+) -> bool {
+    let (Some(child_sql), Some(parent_sql)) = (child_sql, parent_sql) else {
+        return true;
+    };
+    pairs.into_iter().all(|(child_column, parent_column)| {
+        match (
+            declared_comparison(child_sql, child_column),
+            declared_comparison(parent_sql, parent_column),
+        ) {
+            (Some(child), Some(parent)) => child.alike(&parent),
+            _ => false,
+        }
+    })
 }
 
 /// How a row can be named again: the primary key, else a unique index

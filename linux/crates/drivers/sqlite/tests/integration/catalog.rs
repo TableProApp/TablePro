@@ -217,9 +217,10 @@ async fn a_key_to_a_missing_table_leaves_the_tables_other_keys_readable() {
 }
 
 /// SQLite matches a key under the parent column's affinity and
-/// collation, which `=` on a child column declared otherwise does not.
+/// collation, which `=` on a column declared otherwise does not, and a
+/// filter reads its value under the column's declared type.
 #[tokio::test]
-async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
+async fn a_key_says_whether_its_columns_compare_as_it_does() {
     let file = TestFile::new().await;
     let connection = file.open().await;
     apply(
@@ -230,6 +231,9 @@ async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
             "CREATE TABLE notes (id INTEGER PRIMARY KEY, author TEXT COLLATE \"NoCase\" REFERENCES users (email))",
             "CREATE TABLE logs (id INTEGER PRIMARY KEY, user_id TEXT REFERENCES users (id))",
             "CREATE TABLE visits (id INTEGER PRIMARY KEY, user_id INT REFERENCES users (id))",
+            "CREATE TABLE scores (id INTEGER PRIMARY KEY, user_id REAL REFERENCES users (id))",
+            "CREATE TABLE tags (id INTEGER PRIMARY KEY, user_id REFERENCES users (id))",
+            "CREATE TABLE ghosts (id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES gone (id))",
         ],
     )
     .await
@@ -239,6 +243,14 @@ async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
         .fetch_inbound_foreign_keys(&TableRef::unqualified("users"), call())
         .await
         .unwrap();
+    let mut outbound = Vec::new();
+    for child in ["posts", "notes", "logs", "visits", "scores", "tags", "ghosts"] {
+        let keys = connection
+            .fetch_outbound_foreign_keys(&TableRef::unqualified(child), call())
+            .await
+            .unwrap();
+        outbound.push((child, keys[0].parent_compares_alike));
+    }
 
     let alike: Vec<(&str, bool)> = inbound
         .iter()
@@ -246,7 +258,26 @@ async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
         .collect();
     assert_eq!(
         alike,
-        [("logs", false), ("notes", true), ("posts", false), ("visits", true)]
+        [
+            ("logs", false),
+            ("notes", true),
+            ("posts", false),
+            ("scores", false),
+            ("tags", false),
+            ("visits", true)
+        ]
+    );
+    assert_eq!(
+        outbound,
+        [
+            ("posts", false),
+            ("notes", true),
+            ("logs", false),
+            ("visits", true),
+            ("scores", false),
+            ("tags", false),
+            ("ghosts", true)
+        ]
     );
     connection.close().await.unwrap();
 }

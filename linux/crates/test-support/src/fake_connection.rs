@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use tablepro_core::meta::{ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
@@ -254,6 +254,24 @@ impl Connection for FakeConnection {
             "fetch_foreign_keys",
             counter,
             |s| &mut s.fetch_foreign_keys,
+            name,
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
+        let counter = &self.counters.fetch_outbound_foreign_keys;
+        let name = Some(table.name.as_str());
+        self.answer(
+            "fetch_outbound_foreign_keys",
+            counter,
+            |s| &mut s.fetch_outbound_foreign_keys,
             name,
             &options,
             TimeoutPhase::Statement,

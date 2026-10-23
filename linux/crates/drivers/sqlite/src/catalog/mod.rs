@@ -125,12 +125,13 @@ pub(crate) fn declared_column_type(declared: &str, strict: bool) -> ColumnType {
     }
 }
 
-/// How SQLite compares a column's values: by its affinity, numeric ones
-/// alike, and by its collation, named in lower case.
+/// How SQLite compares a column's values, by its affinity and collation,
+/// and the kind the app reads a filter value for it as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Comparison {
-    numeric: bool,
     affinity: Affinity,
+    kind: std::mem::Discriminant<ColumnKind>,
+    typed: bool,
     collation: String,
 }
 
@@ -138,23 +139,21 @@ impl Comparison {
     /// `declared` and `collation` as a CREATE TABLE spells them; a
     /// column with no COLLATE compares as BINARY.
     pub(crate) fn of(declared: &str, collation: Option<&str>) -> Self {
-        let affinity = affinity(declared);
+        let declared_type = declared.trim();
         Self {
-            numeric: matches!(affinity, Affinity::Integer | Affinity::Real | Affinity::Numeric),
-            affinity,
+            affinity: affinity(declared),
+            kind: std::mem::discriminant(&declared_kind(declared)),
+            typed: !declared_type.is_empty() && !declared_type.eq_ignore_ascii_case("ANY"),
             collation: collation.unwrap_or("binary").to_ascii_lowercase(),
         }
     }
 
-    /// Whether `=` on a column compared like `self` finds what a key
-    /// compared like `key` matches. Numeric affinities compare numbers
-    /// alike.
-    pub(crate) fn finds_as(&self, key: &Self) -> bool {
-        let affinity = match self.numeric {
-            true => key.numeric,
-            false => self.affinity == key.affinity,
-        };
-        affinity && self.collation == key.collation
+    /// Whether a value of one column, as text read under the other's
+    /// kind, finds what a key between them matches. A key compares under
+    /// the parent's affinity and collation, so the two have to agree. A
+    /// column with no type keeps each value's own type, which text loses.
+    pub(crate) fn alike(&self, other: &Self) -> bool {
+        self.typed && self == other
     }
 }
 

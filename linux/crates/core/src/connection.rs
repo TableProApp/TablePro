@@ -6,7 +6,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::{InboundForeignKey, TableDefinition};
+use crate::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
@@ -66,6 +66,14 @@ pub trait Connection: Send + Sync {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError>;
+
+    /// The table's own foreign keys as `fetch_foreign_keys` lists them,
+    /// each with whether its two sides compare alike.
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError>;
 
     /// The foreign keys of other tables that point at this one, as
     /// `fetch_table_definition` lists them, without the rest of the
