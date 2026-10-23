@@ -2,7 +2,7 @@
 
 Reviewed base: `7d82881323af083dc6e045971f31d505fdf03164`, branch `linux`, tracking `cozyGarage/TablePro:linux`. Review date: 2026-09-07; verification ledger finalized 2026-09-08. Stabilization candidate `751a458293eca384e8747d7661db1fe9f713401b` is committed and pushed to `origin/linux`. Local evidence below matches its implementation source hashes. Hosted candidate validation is pending.
 
-At the time of this review, [PLAN.md](../../PLAN.md) recorded the ten-day sprint and phase order. Current sequencing is in the [active sprint](../bookie-0.2-sprint.md). [Upstream adoption](upstream-adoption.md) owns the whole-app comparison through pinned macOS 0.72. [Performance measurements](performance-2026-09.md) contain the reproducible raw samples.
+At the time of this review, [PLAN.md](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/PLAN.md) recorded the ten-day sprint and phase order. Current sequencing is in the [active sprint](../bookie-0.2-sprint.md). [Upstream adoption](upstream-adoption.md) owns the whole-app comparison through pinned macOS 0.72. [Performance measurements](performance-2026-09.md) contain the reproducible raw samples.
 
 ## What changed
 

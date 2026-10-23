@@ -18,7 +18,7 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 | [CLAUDE.md](../../CLAUDE.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [CODE_OF_CONDUCT.md](../../CODE_OF_CONDUCT.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
-| [PLAN.md](../../PLAN.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
+| [PLAN.md](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/PLAN.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [README.md](../../README.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [external-audit-2026-10-06.md](external-audit-2026-10-06.md) | archived dated review (moved from repo root 2026-10-10) | Corrected authority, source drift or evidence qualification |
 | [linux/ARCHITECTURE.md](../../ARCHITECTURE.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
@@ -26,7 +26,7 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 | [linux/CONTRIBUTING.md](../../CONTRIBUTING.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/LICENSE.md](../../LICENSE.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/README.md](../../README.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
-| [linux/ROADMAP.md](../../ROADMAP.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
+| [linux/ROADMAP.md](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/ROADMAP.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/accessibility.md](../platforms.md#accessibility) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/adding-drivers.md](../adding-drivers.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/b3-review-2026-10-01.md](b3-review-2026-10-01.md) | dated evidence/planning record | Screened; retain recorded revision and limits |

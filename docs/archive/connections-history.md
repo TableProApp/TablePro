@@ -12,7 +12,7 @@ Historical connection audit: 2026-09-07. The original audit and its coverage tab
 TablePro is a connection engine before it is a grid. This document records what
 the connection layer did at that checkpoint, what is proven, what is known to be
 wrong, and what has never been exercised. Every claim below was read out of the
-source at the audit date. Status terms match [ROADMAP.md](../../ROADMAP.md):
+source at the audit date. Status terms match [ROADMAP.md](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/ROADMAP.md):
 **implemented** means the code and unit tests exist, **integrated** means every
 production entry point uses it, **release-verified** means a deterministic
 real-service test proves it.

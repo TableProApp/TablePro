@@ -5,8 +5,8 @@ Archived 2026-10-10 from the repository root into `linux/docs/archive/`
 deferred improvement plan for BookiE's Linux application and Rust backend.
 Start implementation after finishing 0.2.0. The
 [active sprint](../bookie-0.2-sprint.md) retains current delivery and
-acceptance authority. [PLAN](../../PLAN.md) and
-[ROADMAP](../../ROADMAP.md) link here for later review. No workspace move,
+acceptance authority. [PLAN](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/PLAN.md) and
+[ROADMAP](https://github.com/cozyGarage/BookiE/blob/f7a985ef2fe9c65e4ac5307d52e0d0185978631d/ROADMAP.md) link here for later review. No workspace move,
 workflow rollout or driver addition was implemented in this audit.
 
 The objective is a clear root workspace, independently testable Rust services,
