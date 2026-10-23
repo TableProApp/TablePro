@@ -9,4 +9,6 @@ pub(crate) enum TabIdentity {
     Table(TableRef),
     Structure(StructureTarget),
     Editor(EditorLabel),
+    /// The ER diagram of a schema.
+    Diagram(Option<String>),
 }

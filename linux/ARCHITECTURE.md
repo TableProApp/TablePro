@@ -274,10 +274,11 @@ pub enum WorkspaceTab {
     Editor(EditorTabSlot),       // SQL editor, free-form query
     Structure(StructureTabSlot), // a new table's draft, or an existing table's definition
     Table(TableTabSlot),         // one (schema, table) in the browse grid
+    Diagram(DiagramTabSlot),     // one schema's ER diagram
 }
 ```
 
-A table's structure opens in a Structure tab of its own. Saving a new table closes its Structure tab and opens a Table tab on it.
+A table's structure opens in a Structure tab of its own. Saving a new table closes its Structure tab and opens a Table tab on it. A schema's ER diagram opens in a Diagram tab, one per schema: it reads each table's columns, foreign keys and indexes on one connection lease, two tables at a time, and draws the cards and lines on a canvas of its own (`crates/app/src/ui/diagram/`), with a focusable `DiagramNode` where each card is so the keyboard and a screen reader reach the tables. Its record keeps the schema and where the user moved tables, so a restore reads the tables again, lays them out and puts the moved ones back.
 
 Each tab is a gtk-rs widget with a composite template, which the `AdwTabView` adopts. The workspace keeps a `HashMap<Uuid, WorkspaceTab>` keyed by the tab's UUID; the canonical display order comes from `tab_view.pages()` (drag-reorderable). A `TabIndex` maps each `AdwTabPage` to its tab's UUID, so close and right-click actions can recover it. `TabFactory` builds every tab from a `TabSpec`, whether the sidebar, the overview's new-tab button, a restore or a reopen asks for it. Every tab's title comes from its `TabIdentity` through `resolve_tab_title`, and the window's from the tab in front through `resolve_window_title`. A tab that closing would lose something in shows `document-modified-symbolic` as its page icon, as GNOME Text Editor does; its title never changes for it.
 

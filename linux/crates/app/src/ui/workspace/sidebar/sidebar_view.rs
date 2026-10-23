@@ -16,7 +16,7 @@ use super::sidebar_header_factory::header_factory;
 use super::sidebar_index::SidebarIndex;
 use super::sidebar_menu::{
     CONTEXT_MENU, DROP_TABLE, EDIT_STRUCTURE, GROUP, IMPORT_CSV, NEW_TABLE, OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE,
-    object_menu, offers,
+    SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, object_menu, offers,
 };
 use super::sidebar_model::{RowsAsked, RowsWorkedOut, SidebarModel};
 use super::sidebar_row_factory::row_factory;
@@ -381,6 +381,7 @@ impl SidebarInner {
             SHOW_CREATE_TABLE => SidebarEvent::ShowCreateTable(table),
             IMPORT_CSV => SidebarEvent::ImportCsv(table),
             DROP_TABLE => SidebarEvent::DropTable(table),
+            SHOW_DIAGRAM => SidebarEvent::ShowDiagram(table.schema),
             _ => return,
         };
         (self.events)(event);
@@ -395,6 +396,14 @@ impl SidebarInner {
             return;
         }
         (self.events)(SidebarEvent::NewTable(schema.filter(|schema| !schema.is_empty())));
+    }
+
+    fn show_schema_diagram(&self, target: Option<&glib::Variant>) {
+        let Some(schema) = target.and_then(|target| target.get::<Option<String>>()) else {
+            tracing::warn!("a diagram was asked for without a schema");
+            return;
+        };
+        (self.events)(SidebarEvent::ShowDiagram(schema.filter(|schema| !schema.is_empty())));
     }
 
     fn show_rows(&self, worked_out: RowsWorkedOut) {
@@ -474,6 +483,7 @@ fn work_out_rows(inner: &Rc<SidebarInner>, asked: RowsAsked) {
 fn install_actions(inner: &Rc<SidebarInner>) {
     for name in [
         OPEN_IN_NEW_TAB,
+        SHOW_DIAGRAM,
         EDIT_STRUCTURE,
         SHOW_CREATE_TABLE,
         IMPORT_CSV,
@@ -496,6 +506,14 @@ fn install_actions(inner: &Rc<SidebarInner>) {
         }
     });
     inner.actions.add_action(&new_table);
+    let diagram = gio::SimpleAction::new(SHOW_SCHEMA_DIAGRAM, Some(&Option::<String>::static_variant_type()));
+    let view = Rc::downgrade(inner);
+    diagram.connect_activate(move |_, target| {
+        if let Some(view) = view.upgrade() {
+            view.show_schema_diagram(target);
+        }
+    });
+    inner.actions.add_action(&diagram);
     let menu = gio::SimpleAction::new(CONTEXT_MENU, None);
     let view = Rc::downgrade(inner);
     menu.connect_activate(move |_, _| {

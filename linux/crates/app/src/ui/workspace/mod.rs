@@ -3,6 +3,7 @@
 //! disconnect drops it and the window shows the connection picker.
 
 mod close_flow;
+mod diagram;
 mod editor_label;
 mod finished_work;
 mod health_banner;
@@ -217,6 +218,16 @@ fn draft_failure_watch(
     )
 }
 
+/// What the tab view's parts are built from.
+struct TabsInit<'a> {
+    key: &'a SessionKey,
+    session: &'a Arc<Session>,
+    services: &'a AppServices,
+    context: &'a Rc<SessionContext>,
+    drafts: &'a Rc<crate::workspace::DraftWriter>,
+    exports: &'a Rc<ExportLedger>,
+}
+
 struct WorkspaceTabParts {
     tab_view: adw::TabView,
     index: Rc<tab_index::TabIndex>,
@@ -249,6 +260,10 @@ pub enum ClosedTabDescriptor {
         schema: Option<String>,
         table: String,
     },
+    Diagram {
+        schema: Option<String>,
+        places: Vec<crate::workspace::DiagramPlace>,
+    },
 }
 
 pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
@@ -279,6 +294,13 @@ pub struct StructureTabSlot {
     pub mode: crate::ui::structure_tab::StructureMode,
 }
 
+/// A tab showing a schema's ER diagram.
+pub struct DiagramTabSlot {
+    pub page: adw::TabPage,
+    pub schema: Option<String>,
+    pub diagram: crate::ui::diagram::DiagramTab,
+}
+
 /// A tab showing one table's rows. The table's structure opens in a
 /// tab of its own: one TabPage per surface, as GNOME Files and Builder
 /// do.
@@ -298,10 +320,12 @@ pub struct TableTabSlot {
 ///   table.
 /// - **Structure**: the DDL editor, for a new table's draft or an
 ///   existing table.
+/// - **Diagram**: a schema's ER diagram.
 pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
     Table(TableTabSlot),
+    Diagram(DiagramTabSlot),
 }
 
 impl WorkspaceTab {
@@ -328,7 +352,7 @@ impl WorkspaceTab {
         match self {
             WorkspaceTab::Structure(s) => Some((s.schema.as_deref(), &s.table)),
             WorkspaceTab::Table(s) => Some((s.schema.as_deref(), &s.table)),
-            WorkspaceTab::Editor(_) => None,
+            WorkspaceTab::Editor(_) | WorkspaceTab::Diagram(_) => None,
         }
     }
 
@@ -337,6 +361,7 @@ impl WorkspaceTab {
             WorkspaceTab::Editor(slot) => &slot.page,
             WorkspaceTab::Structure(slot) => &slot.page,
             WorkspaceTab::Table(slot) => &slot.page,
+            WorkspaceTab::Diagram(slot) => &slot.page,
         }
     }
 
@@ -353,6 +378,7 @@ impl WorkspaceTab {
                 slot.schema.clone(),
                 slot.table.clone(),
             )),
+            WorkspaceTab::Diagram(slot) => TabIdentity::Diagram(slot.schema.clone()),
         }
     }
 }
@@ -505,6 +531,10 @@ pub(crate) enum WorkspaceInput {
     NewTableTab {
         schema: Option<String>,
     },
+    /// The schema's ER diagram: its tab, or a new one.
+    ShowDiagram {
+        schema: Option<String>,
+    },
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -579,18 +609,19 @@ impl Workspace {
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
         let sidebar = sidebar::build(&workspace, &input, &session, &tasks);
-        let WorkspaceTabParts {
-            tab_view,
-            index,
-            workspace_tabs,
-            change_trackers,
-            structure_trackers,
-            naming,
-            factory,
-            workspace_handle,
-        } = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
+        let tabs = workspace.build_tabs(
+            TabsInit {
+                key: &key,
+                session: &session,
+                services: &services,
+                context: &context,
+                drafts: &drafts,
+                exports: &exports,
+            },
+            &input,
+        );
         let mut actions = workspace_actions::install(&window, &input);
-        let shell = shell::install(&workspace, &window, &factory);
+        let shell = shell::install(&workspace, &window, &tabs.factory);
         actions.push(shell::SHOW_SIDEBAR);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
@@ -629,14 +660,14 @@ impl Workspace {
             ssh: services.ssh(),
             file_revealer: services.file_revealer.clone(),
             reviewing_host_key: false,
-            tab_view,
-            index,
-            factory,
-            naming,
-            workspace_tabs,
-            change_trackers,
-            structure_trackers,
-            workspace_handle,
+            tab_view: tabs.tab_view,
+            index: tabs.index,
+            factory: tabs.factory,
+            naming: tabs.naming,
+            workspace_tabs: tabs.workspace_tabs,
+            change_trackers: tabs.change_trackers,
+            structure_trackers: tabs.structure_trackers,
+            workspace_handle: tabs.workspace_handle,
             close_guards,
             exports: exports.clone(),
             imports: imports.clone(),
@@ -691,15 +722,15 @@ impl Workspace {
 
     /// The tab view's registries, the factory that builds every tab into
     /// them, and the handle that saves and settles their changes.
-    fn build_tabs(
-        &self,
-        key: &SessionKey,
-        session: &Arc<Session>,
-        services: &AppServices,
-        context: &Rc<SessionContext>,
-        drafts: &Rc<crate::workspace::DraftWriter>,
-        input: &WorkspaceSender,
-    ) -> WorkspaceTabParts {
+    fn build_tabs(&self, init: TabsInit<'_>, input: &WorkspaceSender) -> WorkspaceTabParts {
+        let TabsInit {
+            key,
+            session,
+            services,
+            context,
+            drafts,
+            exports,
+        } = init;
         let change_trackers = Rc::new(ChangeTrackerRegistry::default());
         let structure_trackers = Rc::new(StructureTrackerRegistry::default());
         let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
@@ -742,6 +773,7 @@ impl Workspace {
             draft_scope: crate::workspace::WorkspaceFileName::for_key(key).draft_scope(),
             change_trackers: change_trackers.clone(),
             structure_trackers: structure_trackers.clone(),
+            exports: exports.clone(),
             read_only: session.read_only(),
             naming: naming.clone(),
         });
@@ -1026,6 +1058,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowToast(msg) => self.show_toast(&msg),
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
+            WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),

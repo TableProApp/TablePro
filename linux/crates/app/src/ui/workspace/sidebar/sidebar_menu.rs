@@ -10,6 +10,10 @@ pub(super) const SHOW_CREATE_TABLE: &str = "show-create-table";
 pub(super) const IMPORT_CSV: &str = "import-csv";
 pub(super) const DROP_TABLE: &str = "drop-table";
 pub(super) const NEW_TABLE: &str = "new-table";
+pub(super) const SHOW_DIAGRAM: &str = "show-diagram";
+/// The section header's button, whose target is the schema, as New
+/// Table's is.
+pub(super) const SHOW_SCHEMA_DIAGRAM: &str = "show-schema-diagram";
 pub(super) const CONTEXT_MENU: &str = "context-menu";
 pub(super) const GROUP: &str = "sidebar";
 
@@ -22,6 +26,7 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     let menu = gio::Menu::new();
     let open = gio::Menu::new();
     open.append_item(&item(&crate::i18n::gettext("Open in New Tab"), OPEN_IN_NEW_TAB, key));
+    open.append_item(&item(&crate::i18n::gettext("Show ER Diagram"), SHOW_DIAGRAM, key));
     menu.append_section(None, &open);
     let table = kind.is_structure_editable();
     let structure = gio::Menu::new();
@@ -51,7 +56,7 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
 pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAffordances) -> bool {
     let table = kind.is_structure_editable();
     match action {
-        OPEN_IN_NEW_TAB | SHOW_CREATE_TABLE => true,
+        OPEN_IN_NEW_TAB | SHOW_CREATE_TABLE | SHOW_DIAGRAM => true,
         EDIT_STRUCTURE => table && affordances.can_edit_structure,
         IMPORT_CSV | DROP_TABLE => table && !affordances.read_only,
         _ => false,
@@ -108,7 +113,7 @@ mod tests {
         let menu = object_menu(&key, ObjectKind::Table, all());
 
         let found = items(menu.upcast_ref());
-        assert_eq!(found.len(), 5);
+        assert_eq!(found.len(), 6);
         for (action, target) in found {
             let target = target.unwrap_or_else(|| panic!("{action} has no target"));
             assert_eq!(ObjectKey::from_variant(&target).as_ref(), Some(&key), "{action}");
@@ -127,6 +132,7 @@ mod tests {
             actions(&object_menu(&key, ObjectKind::Table, read_only)),
             [
                 "sidebar.open-in-new-tab",
+                "sidebar.show-diagram",
                 "sidebar.edit-structure",
                 "sidebar.show-create-table"
             ]
@@ -153,7 +159,14 @@ mod tests {
 
         let offered = actions(&object_menu(&key, ObjectKind::View, all()));
 
-        assert_eq!(offered, ["sidebar.open-in-new-tab", "sidebar.show-create-table"]);
+        assert_eq!(
+            offered,
+            [
+                "sidebar.open-in-new-tab",
+                "sidebar.show-diagram",
+                "sidebar.show-create-table"
+            ]
+        );
         for action in [EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
             assert!(!offers(action, ObjectKind::View, all()), "{action}");
             assert!(offers(action, ObjectKind::PartitionedTable, all()), "{action}");

@@ -144,6 +144,11 @@ fn job_row(item: &ExportJobItem) -> gtk::Widget {
 /// A bar that fills when the total is known, and pulses with each
 /// chunk written when it is not.
 fn show_progress(item: &ExportJobItem, progress: &gtk::ProgressBar, subtitle: &gtk::Label) {
+    if item.is_whole_file() {
+        progress.pulse();
+        subtitle.set_label(&gettext("Writing the file…"));
+        return;
+    }
     match item.fraction() {
         Some(fraction) => progress.set_fraction(fraction),
         None if item.rows() > 0 => progress.pulse(),

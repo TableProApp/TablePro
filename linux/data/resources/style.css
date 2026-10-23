@@ -128,3 +128,26 @@ columnview > listview > row > cell > tp-grid-cell > text.tp-cell-text:focus-with
     box-shadow: inset 0 0 0 1px var(--window-fg-color);
   }
 }
+
+/* The ER diagram draws its cards and lines itself, in the theme's
+   colours: each hidden probe's colour is one of libadwaita's variables,
+   which the canvas reads. */
+tp-diagram-canvas > .tp-diagram-window-bg {
+  color: var(--window-bg-color);
+}
+
+tp-diagram-canvas > .tp-diagram-card-bg {
+  color: var(--card-bg-color);
+}
+
+tp-diagram-canvas > .tp-diagram-card-fg {
+  color: var(--card-fg-color);
+}
+
+tp-diagram-canvas > .tp-diagram-border {
+  color: var(--border-color);
+}
+
+tp-diagram-canvas > .tp-diagram-accent {
+  color: var(--accent-color);
+}

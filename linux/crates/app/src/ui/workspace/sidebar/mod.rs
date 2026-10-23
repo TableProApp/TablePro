@@ -86,6 +86,7 @@ fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
             table: table.name,
         },
         SidebarEvent::NewTable(schema) => WorkspaceInput::NewTableTab { schema },
+        SidebarEvent::ShowDiagram(schema) => WorkspaceInput::ShowDiagram { schema },
     }
 }
 

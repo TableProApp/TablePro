@@ -16,6 +16,8 @@ pub(crate) enum LoadFailure {
     Page(Arc<OperationError>),
     /// The table's definition, for the structure tab.
     Definition(Arc<OperationError>),
+    /// A schema's tables or one of them, for the diagram.
+    Schema(Arc<OperationError>),
 }
 
 impl LoadFailure {
@@ -23,7 +25,7 @@ impl LoadFailure {
     /// shows it must not read it as markup.
     pub(crate) fn message(&self) -> String {
         match self {
-            Self::Columns(error) | Self::Page(error) | Self::Definition(error) => {
+            Self::Columns(error) | Self::Page(error) | Self::Definition(error) | Self::Schema(error) => {
                 crate::ui::error_text::operation_error_message(error)
             }
             Self::NoColumns => crate::i18n::gettext(
@@ -39,7 +41,9 @@ impl LoadFailure {
     /// server's text.
     pub(crate) fn category(&self) -> Option<ErrorCategory> {
         match self {
-            Self::Columns(error) | Self::Page(error) | Self::Definition(error) => error.category(),
+            Self::Columns(error) | Self::Page(error) | Self::Definition(error) | Self::Schema(error) => {
+                error.category()
+            }
             Self::NoColumns | Self::ColumnsChanged => None,
         }
     }

@@ -7,10 +7,10 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, PickerRow, SidebarList, SqlEditor,
-    SqlEditorTab, StructureTab,
+    BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow, PickerRow,
+    SidebarList, SqlEditor, SqlEditorTab, StructureTab,
 };
-use ShortcutSection::{BrowseTable, DataGrid, General, TableStructure, Tabs};
+use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
 const BUBBLE: gtk::PropagationPhase = gtk::PropagationPhase::Bubble;
 /// GtkTextView binds Ctrl+/ to select-all, and a bubble controller on
@@ -312,6 +312,82 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Unlisted,
     ),
     local(PickerRow, BUBBLE, "picker-row.menu", &["Menu", "<Shift>F10"], Unlisted),
+    // The GNOME HIG's zoom keys, with Ctrl+= for a keyboard where + needs
+    // Shift.
+    local(
+        DiagramTab,
+        BUBBLE,
+        "diagram.zoom-in",
+        &["<Primary>plus", "<Primary>equal"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramTab,
+        BUBBLE,
+        "diagram.zoom-out",
+        &["<Primary>minus"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramTab,
+        BUBBLE,
+        "diagram.zoom-reset",
+        &["<Primary>0"],
+        Listed(ErDiagram),
+    ),
+    // As in Image Viewer. Nothing in the tab takes text.
+    local(DiagramTab, BUBBLE, "diagram.zoom-fit", &["f"], Listed(ErDiagram)),
+    local(
+        DiagramTab,
+        BUBBLE,
+        "diagram.refresh",
+        &["F5", "<Primary>r"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.open-table",
+        &["Return"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.context-menu",
+        &["Menu", "<Shift>F10"],
+        Unlisted,
+    ),
+    // The arrow keys alone move the focus from table to table, as they
+    // do between any widgets.
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.move-table-left",
+        &["<Alt>Left"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.move-table-right",
+        &["<Alt>Right"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.move-table-up",
+        &["<Alt>Up"],
+        Listed(ErDiagram),
+    ),
+    local(
+        DiagramCanvas,
+        BUBBLE,
+        "diagram.move-table-down",
+        &["<Alt>Down"],
+        Listed(ErDiagram),
+    ),
 ];
 
 pub fn install_application_accelerators(app: &impl IsA<gtk::Application>) {
@@ -360,6 +436,8 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         SidebarList => "tablepro-sidebar-list-shortcuts",
         HistoryRow => "tablepro-history-row-shortcuts",
         PickerRow => "tablepro-picker-row-shortcuts",
+        DiagramTab => "tablepro-diagram-tab-shortcuts",
+        DiagramCanvas => "tablepro-diagram-canvas-shortcuts",
     }
 }
 
@@ -429,6 +507,11 @@ pub(crate) fn keypad_twins(key: gdk::Key) -> &'static [gdk::Key] {
         gdk::Key::Delete => &[gdk::Key::KP_Delete],
         gdk::Key::Left => &[gdk::Key::KP_Left],
         gdk::Key::Right => &[gdk::Key::KP_Right],
+        gdk::Key::Up => &[gdk::Key::KP_Up],
+        gdk::Key::Down => &[gdk::Key::KP_Down],
+        gdk::Key::plus => &[gdk::Key::KP_Add],
+        gdk::Key::minus => &[gdk::Key::KP_Subtract],
+        gdk::Key::_0 => &[gdk::Key::KP_0],
         _ => &[],
     }
 }
@@ -676,6 +759,7 @@ mod tests {
             (ShortcutSection::DataGrid, "section-data-grid"),
             (ShortcutSection::SqlEditor, "section-sql-editor"),
             (ShortcutSection::TableStructure, "section-table-structure"),
+            (ShortcutSection::ErDiagram, "section-er-diagram"),
         ];
         let mut placed: Vec<(adw::ShortcutsItem, ShortcutSection)> = Vec::new();
         for (section, id) in sections {

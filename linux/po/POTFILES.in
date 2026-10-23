@@ -194,6 +194,25 @@ crates/app/src/ui/credential_prompt/prompt_form.rs
 crates/app/src/ui/credential_prompt/prompt_text.rs
 crates/app/src/ui/credential_prompt/prompter.rs
 crates/app/src/ui/delete_connection_dialog.rs
+crates/app/src/ui/diagram/canvas.rs
+crates/app/src/ui/diagram/canvas_imp.rs
+crates/app/src/ui/diagram/canvas_input.rs
+crates/app/src/ui/diagram/card_text.rs
+crates/app/src/ui/diagram/describe.rs
+crates/app/src/ui/diagram/draw.rs
+crates/app/src/ui/diagram/engines.rs
+crates/app/src/ui/diagram/export.rs
+crates/app/src/ui/diagram/fetch.rs
+crates/app/src/ui/diagram/layout.rs
+crates/app/src/ui/diagram/mod.rs
+crates/app/src/ui/diagram/model.rs
+crates/app/src/ui/diagram/node.rs
+crates/app/src/ui/diagram/palette.rs
+crates/app/src/ui/diagram/scene.rs
+crates/app/src/ui/diagram/tab.rs
+crates/app/src/ui/diagram/tab_imp.rs
+crates/app/src/ui/diagram/tests.rs
+crates/app/src/ui/diagram/zoom.rs
 crates/app/src/ui/discard_alert.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/catalog_change.rs
@@ -457,6 +476,7 @@ crates/app/src/ui/tab_load/stale_banner.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/finished_work.rs
 crates/app/src/ui/workspace/health_banner.rs
@@ -495,6 +515,7 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/diagram.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/references.rs
@@ -517,6 +538,7 @@ crates/app/src/workspace/close_reason.rs
 crates/app/src/workspace/close_scope.rs
 crates/app/src/workspace/close_step.rs
 crates/app/src/workspace/completed_work.rs
+crates/app/src/workspace/diagram_place.rs
 crates/app/src/workspace/dialog_response.rs
 crates/app/src/workspace/dirty_kind.rs
 crates/app/src/workspace/dirty_tab.rs
@@ -580,6 +602,7 @@ data/resources/ui/browse-tab.ui
 data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
 data/resources/ui/connecting-page.ui
+data/resources/ui/diagram-tab.ui
 data/resources/ui/export-operations-button.ui
 data/resources/ui/filter-rule-row.ui
 data/resources/ui/filter-strip.ui

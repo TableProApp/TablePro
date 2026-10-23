@@ -3,15 +3,15 @@ use std::rc::Weak;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 
-use super::sidebar_menu::{GROUP, NEW_TABLE};
+use super::sidebar_menu::{GROUP, NEW_TABLE, SHOW_SCHEMA_DIAGRAM};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::SidebarInner;
 use crate::ui::a11y::describe_icon_button;
 
-/// A schema's heading, with its New Table button where the connection
-/// creates tables. ClickHouse does not: a table there needs an engine and
-/// a sorting key the structure tab has no place for, so the button would
-/// only fail.
+/// A schema's heading, with its ER Diagram button, and its New Table
+/// button where the connection creates tables. ClickHouse does not: a
+/// table there needs an engine and a sorting key the structure tab has
+/// no place for, so the button would only fail.
 pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, object| {
@@ -30,16 +30,9 @@ pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFac
         // GtkPlacesSidebar's section header: small, bold and dim.
         title.add_css_class("caption-heading");
         title.add_css_class("dimmed");
-        let add = gtk::Button::builder()
-            .icon_name(crate::ui::icons::LIST_ADD)
-            .valign(gtk::Align::Center)
-            .build();
-        add.add_css_class("flat");
-        // The target first, or GTK warns that the action takes one.
-        add.set_action_target_value(Some(&None::<String>.to_variant()));
-        add.set_action_name(Some(&format!("{GROUP}.{NEW_TABLE}")));
         row.append(&title);
-        row.append(&add);
+        row.append(&header_button(crate::ui::icons::TABLE_RELATION, SHOW_SCHEMA_DIAGRAM));
+        row.append(&header_button(crate::ui::icons::LIST_ADD, NEW_TABLE));
         header.set_child(Some(&row));
     });
     factory.connect_bind(move |_, object| {
@@ -50,15 +43,25 @@ pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFac
             return;
         };
         let title = object.section_title();
-        if let Some(label) = row.first_child().and_downcast::<gtk::Label>() {
-            label.set_label(&title);
-        }
-        let Some(add) = row.last_child().and_downcast::<gtk::Button>() else {
+        let Some(label) = row.first_child().and_downcast::<gtk::Label>() else {
             return;
         };
+        label.set_label(&title);
+        let (Some(diagram), Some(add)) = (
+            label.next_sibling().and_downcast::<gtk::Button>(),
+            row.last_child().and_downcast::<gtk::Button>(),
+        ) else {
+            return;
+        };
+        let schema = object.schema();
+        diagram.set_action_target_value(Some(&schema.to_variant()));
+        let diagram_label = match schema {
+            Some(_) => crate::i18n::gettext_f("Show ER Diagram of {schema}", &[("schema", &title)]),
+            None => crate::i18n::gettext("Show ER Diagram"),
+        };
+        describe_icon_button(&diagram, &diagram_label, None);
         let offered = view.upgrade().is_some_and(|view| view.affordances().offers_new_table());
         add.set_visible(offered);
-        let schema = object.schema();
         add.set_action_target_value(Some(&schema.to_variant()));
         // The label says which schema the table goes in.
         let label = match schema {
@@ -68,4 +71,16 @@ pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFac
         describe_icon_button(&add, &label, None);
     });
     factory
+}
+
+fn header_button(icon: &str, action: &str) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .icon_name(icon)
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("flat");
+    // The target first, or GTK warns that the action takes one.
+    button.set_action_target_value(Some(&None::<String>.to_variant()));
+    button.set_action_name(Some(&format!("{GROUP}.{action}")));
+    button
 }

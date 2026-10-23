@@ -48,6 +48,9 @@ pub const VIEW_REFRESH: &str = "view-refresh-symbolic";
 pub const VIEW_REVEAL: &str = "view-reveal-symbolic";
 pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
+pub const ZOOM_FIT_BEST: &str = "zoom-fit-best-symbolic";
+pub const ZOOM_IN: &str = "zoom-in-symbolic";
+pub const ZOOM_OUT: &str = "zoom-out-symbolic";
 
 #[cfg_attr(
     not(test),
@@ -103,6 +106,9 @@ pub const ALL: &[&str] = &[
     VIEW_REVEAL,
     VIEW_SORT_ASCENDING,
     WINDOW_CLOSE,
+    ZOOM_FIT_BEST,
+    ZOOM_IN,
+    ZOOM_OUT,
 ];
 
 #[cfg(test)]

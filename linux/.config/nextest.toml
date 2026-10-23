@@ -50,10 +50,10 @@ filter = 'package(tablepro-session)'
 test-group = 'session'
 
 # The app's docker tests are integration targets, and the large-catalog
-# case in its library. Its other unit tests start no container, so they
-# keep running in parallel.
+# and diagram engine cases in its library. Its other unit tests start no
+# container, so they keep running in parallel.
 [[profile.default.overrides]]
-filter = 'package(tablepro) & (kind(test) | test(/::large_catalog::/))'
+filter = 'package(tablepro) & (kind(test) | test(/::large_catalog::/) | test(/::diagram::engines::/))'
 test-group = 'app'
 
 # These press real keys on the X display every test shares. A window

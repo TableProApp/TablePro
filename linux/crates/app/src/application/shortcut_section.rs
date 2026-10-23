@@ -7,4 +7,5 @@ pub enum ShortcutSection {
     DataGrid,
     SqlEditor,
     TableStructure,
+    ErDiagram,
 }

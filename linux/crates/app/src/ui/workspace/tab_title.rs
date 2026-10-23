@@ -30,6 +30,13 @@ pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> 
             label: crate::i18n::gettext("New Table"),
             tooltip: None,
         },
+        TabIdentity::Diagram(schema) => TabTitle {
+            label: match schema {
+                Some(schema) => crate::i18n::gettext_f("{schema} · ER Diagram", &[("schema", schema)]),
+                None => crate::i18n::gettext("ER Diagram"),
+            },
+            tooltip: None,
+        },
         TabIdentity::Editor(EditorLabel::Untitled(ordinal)) => TabTitle {
             label: numbered_query(*ordinal),
             tooltip: None,
@@ -116,6 +123,16 @@ mod tests {
 
         assert_eq!(title.label, "public.orders · Structure");
         assert_eq!(title.tooltip, None);
+    }
+
+    #[test]
+    fn a_diagram_is_named_for_its_schema() {
+        let public = resolve_tab_title(&TabIdentity::Diagram(Some("public".to_owned())), TableNaming::Bare);
+        let unnamed = resolve_tab_title(&TabIdentity::Diagram(None), TableNaming::SchemaQualified);
+
+        assert_eq!(public.label, "public · ER Diagram");
+        assert_eq!(unnamed.label, "ER Diagram");
+        assert_eq!(public.tooltip, None);
     }
 
     #[test]

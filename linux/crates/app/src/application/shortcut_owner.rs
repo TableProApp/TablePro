@@ -19,4 +19,8 @@ pub enum ShortcutOwner {
     HistoryRow,
     /// A saved connection's row in the picker.
     PickerRow,
+    /// The whole ER diagram tab, its bottom bar included.
+    DiagramTab,
+    /// The diagram's canvas, where a table has the keyboard focus.
+    DiagramCanvas,
 }
