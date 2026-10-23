@@ -30,6 +30,26 @@ impl Default for EditorView {
     }
 }
 
+/// Which caret a command runs at first.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Order {
+    /// An undo puts the cursor back where the first edit was.
+    PrimaryFirst,
+    /// A deletion runs first at the caret whose text no other deletion
+    /// reaches, so each caret deletes from the text as it was, unless
+    /// another's deletion took it.
+    Forward,
+    Backward,
+}
+
+/// A command under way at every caret. Turn 0 is GTK's caret and turn
+/// `i + 1` the other caret at `i`.
+pub(super) struct Replay {
+    primary: std::rc::Rc<Caret>,
+    waiting: Vec<bool>,
+    swallowed: Vec<bool>,
+}
+
 impl EditorView {
     pub(crate) fn connect_carets_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_closure(
@@ -500,43 +520,68 @@ impl EditorView {
             .collect()
     }
 
-    /// GTK's cursor stands in for each caret in turn, so `op` is GTK's own
-    /// command. An undo puts the cursor back where the first edit was, so
-    /// the primary goes first. `op` gets the caret's place in the document.
     fn at_every_caret(&self, op: impl Fn(usize)) {
+        self.at_every_caret_in(Order::PrimaryFirst, op);
+    }
+
+    /// GTK's cursor stands in for each caret in turn, so `op` is GTK's own
+    /// command. `op` gets the caret's place in the document.
+    pub(super) fn at_every_caret_in(&self, order: Order, op: impl Fn(usize)) {
         let imp = self.imp();
         let buffer = self.buffer();
         self.forget_origin();
-        let primary = Caret::at_selection(&buffer);
-        let rank = self.places(&primary);
-        let count = imp.carets.borrow().len();
+        let primary = std::rc::Rc::new(Caret::at_selection(&buffer));
+        let places = self.places(&primary);
+        let mut turns: Vec<usize> = (0..places.len()).collect();
+        match order {
+            Order::PrimaryFirst => {}
+            Order::Forward => turns.sort_by_key(|&turn| places.get(turn).copied()),
+            Order::Backward => turns.sort_by_key(|&turn| std::cmp::Reverse(places.get(turn).copied())),
+        }
         let was = imp.busy.replace(true);
-        imp.replay.replace(Some((0, vec![false; count])));
+        imp.replay.replace(Some(Replay {
+            primary: primary.clone(),
+            waiting: vec![true; places.len()],
+            swallowed: vec![false; places.len()],
+        }));
         buffer.begin_user_action();
-        op(rank.first().copied().unwrap_or_default());
-        primary.follow_selection(&buffer);
-        for index in 0..count {
-            let swallowed = imp.replay.borrow_mut().as_mut().is_some_and(|(next, swallowed)| {
-                *next = index + 1;
-                swallowed.get(index).copied().unwrap_or(true)
-            });
-            let ends = imp
-                .carets
-                .borrow()
-                .get(index)
-                .map(|caret| (caret.insert(&buffer), caret.anchor(&buffer)));
+        for turn in turns {
+            let swallowed = match imp.replay.borrow_mut().as_mut() {
+                Some(replay) => {
+                    if let Some(waiting) = replay.waiting.get_mut(turn) {
+                        *waiting = false;
+                    }
+                    replay.swallowed.get(turn).copied().unwrap_or(true)
+                }
+                None => false,
+            };
+            let ends = match turn.checked_sub(1) {
+                None => Some((primary.insert(&buffer), primary.anchor(&buffer))),
+                Some(index) => imp
+                    .carets
+                    .borrow()
+                    .get(index)
+                    .map(|caret| (caret.insert(&buffer), caret.anchor(&buffer))),
+            };
             let Some((insert, anchor)) = ends.filter(|_| !swallowed) else {
                 continue;
             };
             buffer.select_range(&insert, &anchor);
-            op(rank.get(index + 1).copied().unwrap_or_default());
-            if let Some(caret) = imp.carets.borrow().get(index) {
-                caret.follow_selection(&buffer);
+            op(places.get(turn).copied().unwrap_or_default());
+            match turn.checked_sub(1) {
+                None => primary.follow_selection(&buffer),
+                Some(index) => {
+                    if let Some(caret) = imp.carets.borrow().get(index) {
+                        caret.follow_selection(&buffer);
+                    }
+                }
             }
         }
-        let swallowed = imp.replay.take().map(|(_, swallowed)| swallowed).unwrap_or_default();
-        let dropped = swallowed.contains(&true);
-        self.drop_carets(|index| swallowed.get(index).copied().unwrap_or(false));
+        let swallowed = imp.replay.take().map(|replay| replay.swallowed).unwrap_or_default();
+        // A caret another took sits where that one is now, and settling
+        // joins the two.
+        let dropped = swallowed.iter().skip(1).any(|&swallowed| swallowed);
+        self.drop_carets(|index| swallowed.get(index + 1).copied().unwrap_or(false));
         primary.select(&buffer);
         buffer.end_user_action();
         imp.busy.set(was);
@@ -590,10 +635,17 @@ impl EditorView {
                 from <= span.start && span.end <= to
             }
         };
-        if let Some((next, swallowed)) = imp.replay.borrow_mut().as_mut() {
-            for (index, caret) in imp.carets.borrow().iter().enumerate().skip(*next) {
-                if inside(caret)
-                    && let Some(slot) = swallowed.get_mut(index)
+        if let Some(Replay {
+            primary,
+            waiting,
+            swallowed,
+        }) = imp.replay.borrow_mut().as_mut()
+        {
+            let carets = imp.carets.borrow();
+            for (turn, caret) in std::iter::once(&**primary).chain(carets.iter()).enumerate() {
+                if waiting.get(turn).copied().unwrap_or(false)
+                    && inside(caret)
+                    && let Some(slot) = swallowed.get_mut(turn)
                 {
                     *slot = true;
                 }
@@ -904,7 +956,13 @@ impl EditorView {
                 keys.forward(self);
             });
         } else {
-            self.at_every_caret(|_| {
+            // BackSpace deletes before each caret.
+            let order = if keyval == gdk::Key::BackSpace {
+                Order::Backward
+            } else {
+                Order::PrimaryFirst
+            };
+            self.at_every_caret_in(order, |_| {
                 keys.forward(self);
             });
         }

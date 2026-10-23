@@ -8,6 +8,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use sourceview5::subclass::prelude::*;
 
+use super::Order;
 use super::caret::Caret;
 use super::paint;
 use super::pending::Pending;
@@ -46,9 +47,7 @@ pub struct EditorView {
     /// not pull the next one in.
     pub(super) column_x: Cell<Option<i32>>,
     pub(super) handlers: RefCell<Option<BufferHandlers>>,
-    /// A command under way at every caret: the first caret it has not
-    /// reached, and which carets another's deletion swallowed.
-    pub(super) replay: RefCell<Option<(usize, Vec<bool>)>>,
+    pub(super) replay: RefCell<Option<super::Replay>>,
     pub(super) disposed: Cell<bool>,
     /// The column each caret, in document order, keeps over Up and Down,
     /// as GTK keeps one for its own cursor.
@@ -111,7 +110,7 @@ impl TextViewImpl for EditorView {
     fn backspace(&self) {
         let view = self.obj();
         if view.runs_per_caret() {
-            view.at_every_caret(|_| self.parent_backspace());
+            view.at_every_caret_in(Order::Backward, |_| self.parent_backspace());
         } else {
             self.parent_backspace();
         }
@@ -125,7 +124,8 @@ impl TextViewImpl for EditorView {
         if matches!(type_, gtk::DeleteType::Paragraphs | gtk::DeleteType::DisplayLines) {
             view.one_caret_per_line();
         }
-        view.at_every_caret(|_| self.parent_delete_from_cursor(type_, count));
+        let order = if count < 0 { Order::Backward } else { Order::Forward };
+        view.at_every_caret_in(order, |_| self.parent_delete_from_cursor(type_, count));
     }
 
     fn insert_at_cursor(&self, text: &str) {

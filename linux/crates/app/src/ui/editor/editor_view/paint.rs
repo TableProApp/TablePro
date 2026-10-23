@@ -62,7 +62,7 @@ pub(super) fn carets(view: &EditorView, layer: gtk::TextViewLayer, snapshot: &gt
 /// Each selected character's own box, so text that runs right to left is
 /// covered where it shows; a selected line end fills to the edge, as GTK
 /// fills its own.
-fn selection_rects(
+pub(super) fn selection_rects(
     view: &EditorView,
     start: &gtk::TextIter,
     end: &gtk::TextIter,
@@ -73,14 +73,23 @@ fn selection_rects(
     while at < *end {
         let place = view.iter_location(&at);
         let (y, height) = view.line_yrange(&at);
-        let width = if at.ends_line() {
-            right_edge - place.x()
+        // Pango gives a character that runs right to left a negative width.
+        let (left, width) = if at.ends_line() {
+            (place.x(), right_edge - place.x())
+        } else if place.width() < 0 {
+            (place.x() + place.width(), -place.width())
         } else {
-            place.width()
+            (place.x(), place.width())
         };
+        // GTK rounds each box's edge and width apart, so neighbours can be
+        // a pixel apart or over each other.
         match boxes.last_mut() {
-            Some((x, row, w, _)) if *row == y && *x + *w == place.x() => *w += width,
-            _ => boxes.push((place.x(), y, width, height)),
+            Some((x, row, w, _)) if *row == y && left <= *x + *w + 1 && *x <= left + width + 1 => {
+                let right = (*x + *w).max(left + width);
+                *x = (*x).min(left);
+                *w = right - *x;
+            }
+            _ => boxes.push((left, y, width, height)),
         }
         if !at.forward_char() {
             break;

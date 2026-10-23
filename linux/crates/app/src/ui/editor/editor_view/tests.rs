@@ -384,6 +384,34 @@ fn a_caret_inside_text_another_deletes_does_not_delete_again() {
     assert_eq!(shown.ranges(), [(6, 6)]);
 }
 
+/// Each caret deletes what it would alone, wherever GTK's cursor is.
+#[gtk4::test]
+fn word_deletions_at_carets_side_by_side_take_what_each_would_alone() {
+    for (primary, other) in [(5, 6), (6, 5)] {
+        let shown = Shown::new("aa bb cc");
+        shown.cursor_at(primary);
+        shown.view.toggle_caret_at(&shown.at(other));
+
+        shown
+            .view
+            .emit_by_name::<()>("delete-from-cursor", &[&gtk::DeleteType::WordEnds, &-1]);
+
+        assert_eq!(shown.text(), "aa cc", "back from {primary} and {other}");
+    }
+    for (primary, other) in [(2, 3), (3, 2)] {
+        let shown = Shown::new("aa bb cc");
+        shown.cursor_at(primary);
+        shown.view.toggle_caret_at(&shown.at(other));
+
+        shown
+            .view
+            .emit_by_name::<()>("delete-from-cursor", &[&gtk::DeleteType::WordEnds, &1]);
+
+        assert_eq!(shown.text(), "aa cc", "on from {primary} and {other}");
+        assert_eq!(shown.view.caret_count(), 1);
+    }
+}
+
 #[gtk4::test]
 fn a_selection_another_caret_deletes_goes_with_it() {
     let shown = Shown::new("one two three");
@@ -595,6 +623,27 @@ fn an_edit_made_once_stays_where_it_was_made() {
 
     assert_eq!(shown.text(), "a\n-- b");
     assert_eq!(shown.view.caret_count(), 2);
+}
+
+#[gtk4::test]
+fn a_selection_that_runs_right_to_left_is_painted() {
+    let shown = Shown::new("SELECT 'שלום'");
+    let (start, end) = (shown.at(8), shown.at(12));
+    let (mut left, mut right) = (i32::MAX, i32::MIN);
+    let mut at = start;
+    while at < end {
+        let place = shown.view.iter_location(&at);
+        let edges = [place.x(), place.x() + place.width()];
+        left = left.min(edges[0].min(edges[1]));
+        right = right.max(edges[0].max(edges[1]));
+        at.forward_char();
+    }
+
+    let rects = super::paint::selection_rects(&shown.view, &start, &end, 10_000);
+
+    assert!(left < right);
+    let spans: Vec<(f32, f32)> = rects.iter().map(|rect| (rect.x(), rect.width())).collect();
+    assert_eq!(spans, [(left as f32, (right - left) as f32)], "the word is one box");
 }
 
 #[gtk4::test]
