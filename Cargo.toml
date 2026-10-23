@@ -55,9 +55,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 jiff = "0.2"
 rust_decimal = { version = "1.43", default-features = false, features = ["serde", "std"] }
 futures = "0.3"
-gtk4 = { version = "0.11", features = ["gnome_46"] }
-libadwaita = { version = "0.9", features = ["v1_5"] }
-sourceview5 = { version = "0.11", features = ["v5_12"] }
+gtk4 = { version = "0.11", features = ["gnome_47"] }
+libadwaita = { version = "0.9", features = ["v1_10"] }
+sourceview5 = { version = "0.11", features = ["v5_22"] }
 glib = { version = "0.22", features = ["v2_80"] }
 glib-build-tools = "0.22"
 libsqlite3-sys = ">=0.30.1, <0.38.0"

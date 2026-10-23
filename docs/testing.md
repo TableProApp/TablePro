@@ -230,7 +230,6 @@ Sort each red job before touching code. The class decides what the fix and its r
 | Setup failure | The job fails before any test runs: a missing script or path, a wrong binary name, a package missing from an image, a port already in use | Fix the workflow or script, and add a contract test in `scripts/tests/test_ci_workflow.py` or next to the helper. A setup failure hides every later check in that job. |
 | Missed mutant | The log lists `NEW missed mutant` | Write a test that asserts the behaviour the mutant changes. Baseline only a mutant that no test can observe, with the reason in the file header. |
 | Scenario failure | The soak or an installed GTK shard names a scenario and an assertion | Read the assertion first. The runner carries on after a failure and lists every failed scenario at the end, so start with the first one in the list. |
-| Known gap | `gtk-ubuntu` is allowed to fail ([TEST-28](backlog.md)) | Do not chase it from the nightly. |
 
 Every nightly finding that is a product or test gap gets a regression test in the lowest tier that can show it, and an issue when the fix is not immediate. Check a mutation change locally with `cargo mutants -p <crate> --file <file>` and then `python3 scripts/check-mutants-baseline.py <package> <output dir> 3`, which uses the nightly's own judgement. Run a few times: a mutant caught by a timing accident shows up as an occasional miss.
 

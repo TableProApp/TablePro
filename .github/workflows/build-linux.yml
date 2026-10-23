@@ -187,7 +187,7 @@ jobs:
     timeout-minutes: 60
     runs-on: ubuntu-24.04
     needs: [pin-revision, ensure-ci-gtk-image]
-    # The GNOME 50 baseline requires GTK 4.22, GLib 2.88 and libadwaita 1.9.
+    # The toolkit floor (ADR 0021) requires GTK 4.24, GLib 2.88, libadwaita 1.10 and GtkSourceView 5.22.
     # Pre-baked debian:testing + GTK deps from ci/debian-testing-gtk.
     # The integration job stays on the host runner — driver crates depend
     # only on tablepro-core, so they don't pull in libadwaita.

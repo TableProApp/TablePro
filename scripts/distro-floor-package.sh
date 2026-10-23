@@ -4,12 +4,12 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 sha=${1:?usage: distro-floor-package.sh <commit-sha>}
 cache=${DISTRO_FLOOR_PACKAGE_CACHE:-/var/cache/ci/floor-package}
-image=bookie-floor-package-ubuntu-24.04
+image=bookie-floor-package-debian-testing
 
 mkdir -p "$cache"
 exec 9>"$cache/.lock"
 flock 9
-docker build -q -t "$image" --build-arg BASE=ubuntu:24.04 "$root/scripts/distro-floor" >/dev/null
+docker build -q -t "$image" --build-arg BASE=debian:testing "$root/scripts/distro-floor" >/dev/null
 marker=".visible-$$"
 touch "$cache/$marker"
 if ! docker run --rm -v "$cache:/probe:ro" "$image" test -e "/probe/$marker" 2>/dev/null; then

@@ -4,7 +4,7 @@ Use this page to select checks, hand off work, and review evidence. The executab
 
 ## Current desktop target
 
-The [sprint](bookie-0.2-sprint.md) records the maintainer's 2026-10-18 completion decision; use the release page linked there for current publication status. The [backlog](backlog.md) orders subsequent work; each selected issue names its acceptance layers. Debian/GNOME installed-package expansion remains later work. GNOME 50 in the layer catalog names GTK/libadwaita development-library requirements, not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
+The [sprint](bookie-0.2-sprint.md) records the maintainer's 2026-10-18 completion decision; use the release page linked there for current publication status. The [backlog](backlog.md) orders subsequent work; each selected issue names its acceptance layers. Debian/GNOME installed-package expansion remains later work. GTK 4.24 in the layer catalog names the toolkit development-library floor of [ADR 0021](decisions/0021-toolkit-floor.md), not a required desktop shell. Keep existing automated Linux checks and record unavailable environments as pending.
 
 ## Start here
 
@@ -71,7 +71,7 @@ Missing tools, nonzero exits, timeouts, cancellations and absent required test s
 | `packaging-contracts` | Candidate archive and Debian package validator behavior | Git, tar, `dpkg-deb`; no actual install or upgrade |
 | `change-contracts` | Focused regressions or package tests selected from changed core, app, MCP and driver source paths | Rust 1.98; changed driver integration tests remain in the Docker `drivers` layer |
 | `quick` | Guards, formatting, non-GTK Clippy, units and sandbox | Rust 1.98 and native libraries |
-| `full` | Default workspace checks including app logic | GNOME 50 development stack; no display automation or DuckDB |
+| `full` | Default workspace checks including app logic | GTK 4.24 development stack; no display automation or DuckDB |
 | `sandbox` | Integration tests without external servers or a display | Local sockets/processes must be allowed |
 | `drivers` | PostgreSQL, MySQL, MSSQL, ClickHouse, Redis, MongoDB, MCP BSON, policy sessions, PostgreSQL socket and SSH | Docker and OpenSSH; SQLite is in sandbox, DuckDB has its own Build job |
 | `b4-rollback` | MySQL failed-batch rollback and PostgreSQL rollback-failure handling | Docker and native TLS build dependencies |
@@ -81,14 +81,14 @@ Missing tools, nonzero exits, timeouts, cancellations and absent required test s
 | `postgres-release` | Policy, TLS/SSH, lock, cancellation, rollback and reconnect | Docker Compose, keyring/D-Bus and generated materials |
 | `security-policy` | Policy/MCP permissions, allowlists, bounds and audit behavior | Non-GTK dependencies; does not prove every server authorization mode |
 | `supply-chain` | Advisory, license and dependency-source policy | `cargo-deny`, `cargo-audit`, network; repository exceptions remain explicit |
-| `widgets` | Named GTK widget regressions in isolated processes | GNOME 50, Xvfb and private D-Bus |
-| `app-server` | App parser and grid-edit contracts against PostgreSQL, MySQL, MongoDB and SQL Server | GNOME 50 build libraries and Docker; hosted GTK fast job |
+| `widgets` | Named GTK widget regressions in isolated processes | GTK 4.24, Xvfb and private D-Bus |
+| `app-server` | App parser and grid-edit contracts against PostgreSQL, MySQL, MongoDB and SQL Server | GTK 4.24 build libraries and Docker; hosted GTK fast job |
 | `keyring` | Registered Secret Service contracts | Private D-Bus, gnome-keyring and libsecret tools |
-| `ui` | Real application actions and database postconditions via AT-SPI | GNOME 50, Xvfb, PyAT-SPI; X11 automation, not Wayland acceptance |
+| `ui` | Real application actions and database postconditions via AT-SPI | GTK 4.24, Xvfb, PyAT-SPI; X11 automation, not Wayland acceptance |
 | `mssql-kerberos` | SQL Server integrated authentication, SPN refusal and verified TLS against an isolated test domain | Docker Compose with privileged-container support; opt-in local fixture |
-| `gtk-clickhouse` | Installed GTK Enum16 grid edit against ClickHouse | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
-| `gtk-mysql-approval` | Approval and dispatch behavior against MySQL | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
-| `gtk-mongodb` | Installed GTK MongoDB cursor visibility and grid edits | GNOME 50, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
+| `gtk-clickhouse` | Installed GTK Enum16 grid edit against ClickHouse | GTK 4.24, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
+| `gtk-mysql-approval` | Approval and dispatch behavior against MySQL | GTK 4.24, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
+| `gtk-mongodb` | Installed GTK MongoDB cursor visibility and grid edits | GTK 4.24, Docker, Xvfb, Secret Service and AT-SPI; local release layer |
 
 Build/package, mutation, coverage and acceptance retain their existing entrypoints:
 

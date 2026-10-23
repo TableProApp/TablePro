@@ -86,7 +86,7 @@ The product name is BookiE. Installed commands are `bookie` and `bookie-agentd`,
 ## Build requirements
 
 ```bash
-# Ubuntu / Debian
+# Debian testing
 sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev \
   libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev libsqlite3-dev clang
 
@@ -98,6 +98,8 @@ sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel \
 sudo pacman -S --needed base-devel pkg-config gtk4 libadwaita \
   gtksourceview5 openssl libsecret krb5 sqlite clang
 ```
+
+BookiE needs GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 or newer ([ADR 0021](docs/decisions/0021-toolkit-floor.md)): Arch Linux or Debian testing. Ubuntu and Debian stable releases ship older libraries.
 
 Check the native libraries and Rust toolchain:
 

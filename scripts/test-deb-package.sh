@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Build the .deb on a supported Debian-family stack, install it with apt, and check what landed.
-# Usage: [PREVIOUS_DEB=path/to/released.deb] bash scripts/test-deb-package.sh [ubuntu:24.04|debian:13 ...]
+# Usage: [PREVIOUS_DEB=path/to/released.deb] bash scripts/test-deb-package.sh [debian:testing ...]
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source scripts/command-failure-context.sh
 bookie_enable_command_failure_context
 images=("$@")
-[ ${#images[@]} -gt 0 ] || images=(ubuntu:24.04 debian:13)
+[ ${#images[@]} -gt 0 ] || images=(debian:testing)
 previous_mount=()
 if [ -n "${PREVIOUS_DEB:-}" ]; then
   previous_mount=(-v "$(dirname "$(realpath "$PREVIOUS_DEB")"):/previous:ro" -e "PREVIOUS_DEB_NAME=$(basename "$PREVIOUS_DEB")")

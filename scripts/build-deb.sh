@@ -67,7 +67,7 @@ Priority: optional
 Architecture: ${ARCH}
 Maintainer: BookiE Contributors <noreply@tablepro.app>
 Homepage: https://github.com/cozyGarage/BookiE
-Depends: libgtk-4-1, libadwaita-1-0, libgtksourceview-5-0, libsecret-1-0, libgssapi-krb5-2, libkrb5-3, libsqlite3-0
+Depends: libgtk-4-1 (>= 4.24), libadwaita-1-0 (>= 1.10), libgtksourceview-5-0 (>= 5.22), libsecret-1-0, libgssapi-krb5-2, libkrb5-3, libsqlite3-0
 Replaces: tablepro
 Conflicts: tablepro
 Provides: tablepro

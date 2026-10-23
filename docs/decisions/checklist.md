@@ -56,7 +56,7 @@ Reviewed against the ADR index, code and living docs on 2026-10-20. Each row poi
 | Feature-flagging & rollout | Decided | No account, license or remote entitlement flags. [AGENTS](../../AGENTS.md), [PRODUCT.md](../../PRODUCT.md). |
 | Changelog & release notes | Decided | Keep a Changelog 1.1.0 in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
 | Externally-owned release gate | Undecided | Flathub submission remains backlog work (PKG-4/PKG-8); no external distribution review is adopted as a release gate. Flatpak is left out of 0.2.0 ([PRODUCT.md](../../PRODUCT.md)). |
-| Native library floors | Decided | Build/CI floor vs GNOME 50 package line. [ADR 0002](0002-rust-gtk4-libadwaita.md), [platforms](../platforms.md). |
+| Native library floors | Decided | One floor: GTK 4.24, libadwaita 1.10, GtkSourceView 5.22. [ADR 0021](0021-toolkit-floor.md), [platforms](../platforms.md). |
 
 ## Product
 

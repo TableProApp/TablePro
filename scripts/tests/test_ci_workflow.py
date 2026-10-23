@@ -470,7 +470,7 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("DISTRO_FLOOR_PACKAGE=", floor)
         self.assertIn("PREBUILT_DEB=", floor)
         builder = (ROOT / "scripts/distro-floor-package.sh").read_text()
-        self.assertIn("BASE=ubuntu:24.04", builder)
+        self.assertIn("BASE=debian:testing", builder)
         self.assertIn("scripts/build-deb.sh", builder)
         self.assertIn("flock", builder)
         self.assertIn('test -e "/probe/', builder)
@@ -490,7 +490,7 @@ class CiWorkflowTests(unittest.TestCase):
 
     def test_distro_package_builder_uses_a_distinct_image_tag(self):
         builder = (ROOT / "scripts/distro-floor-package.sh").read_text()
-        self.assertIn("image=bookie-floor-package-ubuntu-24.04", builder)
+        self.assertIn("image=bookie-floor-package-debian-testing", builder)
         self.assertIn('docker build -q -t "$image"', builder)
         self.assertIn('"$image" bash -ceu', builder)
 
@@ -513,7 +513,7 @@ class CiWorkflowTests(unittest.TestCase):
             environment["DISTRO_FLOOR_PACKAGE"] = str(package)
 
             result = subprocess.run(
-                ["bash", str(ROOT / "scripts/test-distro-floor.sh"), "ubuntu:24.04"],
+                ["bash", str(ROOT / "scripts/test-distro-floor.sh"), "debian:testing"],
                 cwd=ROOT,
                 env=environment,
                 capture_output=True,

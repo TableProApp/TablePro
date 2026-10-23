@@ -21,6 +21,7 @@
 
 ### Changed
 
+- BookiE now requires GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 or newer and exits with a message naming the missing versions on older systems; Ubuntu 26.04, Ubuntu 24.04 and Debian 13 are no longer supported.
 - The Debian and Arch packages and the AppImage install smaller program files, about a quarter smaller than before.
 - SQL execution marks follow statement boundaries, so SQL text inside comments is not marked as executed.
 - Export reviews the table-page, loaded-result or query-rerun scope before file format; all matching table rows remain unavailable until consistent snapshot export is qualified.

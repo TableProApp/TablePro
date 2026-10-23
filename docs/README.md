@@ -41,7 +41,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | B3 remaining work | Project #3 Lane B3; [B3 board pointer](type-contract-strategy.md) | Issues on the project; pointer keeps accepted refusals and the case record |
 | B4 implementation and acceptance | Project #3 Lane B4; [B4 board pointer](b4-task-board.md) | Issues on the project; acceptance checklists stay in the archived board |
 | Type and consumer proof lookup | The [value evidence index](value-contracts.md) | Link to the case; detailed logs belong in evidence or history |
-| Distros, toolchain, packages, Flathub, accessibility | [Platforms](platforms.md) | Keep the build/CI floor and GNOME 50 package line distinct ([ADR 0002](decisions/0002-rust-gtk4-libadwaita.md)) |
+| Distros, toolchain, packages, Flathub, accessibility | [Platforms](platforms.md) | One toolkit floor ([ADR 0021](decisions/0021-toolkit-floor.md)) |
 | Commands, layers, gates, handoff format | The [validation playbook](validation-playbook.md) | Reuse existing layers; say whether a result was local, Forgejo or installed |
 | Crates, request pipeline, where new code goes, DAG, rename boundary, CI gate split | [Architecture](../ARCHITECTURE.md) (Mermaid map, trait boundaries, ownership table) | Match the manifests and [AGENTS.md](../AGENTS.md); cheap vs Forgejo detail stays in the [validation playbook](validation-playbook.md#ci-tiers) |
 | A user-visible change | The [changelog](../CHANGELOG.md) | One line of user impact; no test or evidence notes |

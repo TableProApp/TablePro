@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::sync::Arc;
 
 use relm4::RelmApp;
@@ -12,8 +13,12 @@ mod ui;
 
 const MIN_ASYNC_WORKERS: usize = 2;
 const MAX_ASYNC_WORKERS: usize = 4;
+const MIN_GTK: (u32, u32, u32) = (4, 24, 0);
+const MIN_ADWAITA: (u32, u32, u32) = (1, 10, 0);
+const MIN_SOURCEVIEW: (u32, u32, u32) = (5, 22, 0);
 
 pub fn run() {
+    exit_if_toolkit_is_too_old();
     glib::set_prgname(Some(config::APP_ID));
     tablepro_transport::install_crypto_provider();
     i18n::init();
@@ -127,6 +132,42 @@ pub fn run() {
     }
 }
 
+fn exit_if_toolkit_is_too_old() {
+    let gtk = (gtk4::major_version(), gtk4::minor_version(), gtk4::micro_version());
+    let adwaita = (
+        libadwaita::major_version(),
+        libadwaita::minor_version(),
+        libadwaita::micro_version(),
+    );
+    let sourceview = (
+        sourceview5::major_version(),
+        sourceview5::minor_version(),
+        sourceview5::micro_version(),
+    );
+    if toolkit_is_supported(gtk, adwaita, sourceview) {
+        return;
+    }
+    let _ = writeln!(
+        std::io::stderr(),
+        "BookiE needs GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 or newer; this system has GTK {}.{}.{}, \
+         libadwaita {}.{}.{} and GtkSourceView {}.{}.{}",
+        gtk.0,
+        gtk.1,
+        gtk.2,
+        adwaita.0,
+        adwaita.1,
+        adwaita.2,
+        sourceview.0,
+        sourceview.1,
+        sourceview.2
+    );
+    std::process::exit(1);
+}
+
+fn toolkit_is_supported(gtk: (u32, u32, u32), adwaita: (u32, u32, u32), sourceview: (u32, u32, u32)) -> bool {
+    gtk >= MIN_GTK && adwaita >= MIN_ADWAITA && sourceview >= MIN_SOURCEVIEW
+}
+
 fn configure_async_runtime() {
     let available = std::thread::available_parallelism()
         .ok()
@@ -185,7 +226,7 @@ fn enable_system_openssh(database: Arc<services::database_service::DatabaseServi
 
 #[cfg(test)]
 mod tests {
-    use super::async_worker_threads;
+    use super::{MIN_ADWAITA, MIN_GTK, MIN_SOURCEVIEW, async_worker_threads, toolkit_is_supported};
 
     #[test]
     fn database_commands_never_share_a_single_async_worker() {
@@ -193,5 +234,20 @@ mod tests {
         assert_eq!(async_worker_threads(Some(1)), 2);
         assert_eq!(async_worker_threads(Some(3)), 3);
         assert_eq!(async_worker_threads(Some(64)), 4);
+    }
+
+    #[test]
+    fn toolkit_floor_accepts_equal_or_newer_libraries_and_rejects_older_ones() {
+        let floor = (MIN_GTK, MIN_ADWAITA, MIN_SOURCEVIEW);
+        assert!(toolkit_is_supported(floor.0, floor.1, floor.2));
+        assert!(toolkit_is_supported((4, 24, 1), (1, 10, 0), (5, 22, 0)));
+        assert!(toolkit_is_supported((4, 26, 0), (1, 11, 0), (5, 24, 0)));
+        assert!(toolkit_is_supported((5, 0, 0), (2, 0, 0), (6, 0, 0)));
+        assert!(!toolkit_is_supported((4, 22, 4), floor.1, floor.2));
+        assert!(!toolkit_is_supported((3, 99, 0), floor.1, floor.2));
+        assert!(!toolkit_is_supported(floor.0, (1, 9, 1), floor.2));
+        assert!(!toolkit_is_supported(floor.0, (0, 99, 0), floor.2));
+        assert!(!toolkit_is_supported(floor.0, floor.1, (5, 18, 0)));
+        assert!(!toolkit_is_supported(floor.0, floor.1, (4, 99, 0)));
     }
 }

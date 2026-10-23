@@ -263,7 +263,7 @@ fn populated_completion_is_presented_after_the_editor_is_rooted() {
     window.present();
     view.grab_focus();
     completion_frame();
-    for text in ["do s", "do so", "se", "do s"] {
+    for text in ["do s", "do so", "sel", "do s"] {
         view.buffer().set_text(text);
         view.completion().show();
         let popup = presented_completion(&view, text != "do so", text);

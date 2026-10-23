@@ -129,10 +129,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - base: "ubuntu:24.04"
+          - base: "debian:testing"
             mcp_port_slot: 10
-          - base: "debian:13"
-            mcp_port_slot: 11
     steps:
       - name: Check out
         env:

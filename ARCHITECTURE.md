@@ -42,7 +42,7 @@ This page is the one-page map. Accepted [ADRs](docs/decisions/README.md) constra
 | Development profile | Either binary with `TABLEPRO_PROFILE=development` | Uses `tablepro-devel` XDG paths and a separate keyring schema |
 | Validation | Scripts under `scripts/` | Cheap tier locally / on GitHub; merge tier on Forgejo ([playbook](docs/validation-playbook.md#ci-tiers)) |
 
-Native library floors (build/CI vs GNOME 50 package line) are in [ADR 0002](docs/decisions/0002-rust-gtk4-libadwaita.md) and [platforms](docs/platforms.md).
+The native library floor (GTK 4.24, libadwaita 1.10, GtkSourceView 5.22) is in [ADR 0021](docs/decisions/0021-toolkit-floor.md) and [platforms](docs/platforms.md).
 
 ## System context
 

@@ -1,6 +1,6 @@
 # 0002: Rust, GTK4, and libadwaita
 
-- **Status**: Accepted
+- **Status**: Accepted; native-library floors superseded by [0021](0021-toolkit-floor.md)
 - **Date**: 2026-04-26
 - **Updated**: 2026-10-11
 
@@ -19,14 +19,7 @@ Changing the GUI stack after product development starts would require a large re
 
 ## Decision
 
-BookiE uses Rust and the gtk-rs stack on Linux only. Two native-library floors apply; they are not interchangeable:
-
-| Floor | GTK4 | GLib | libadwaita | GtkSourceView | Where it applies |
-|---|---|---|---|---|---|
-| Cargo compile / CI floor | 4.14+ | 2.80+ | 1.5+ | 5.12+ | Ubuntu 24.04 and Debian 13 Cargo-based distro-floor tests; this floor does not configure the root Meson project ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)) |
-| GNOME 50 Meson / package line | 4.22+ | 2.88+ | 1.9+ | 5.18+ | Root Meson dependency requirements and GitHub Release `.deb`; Arch/Omarchy packages track current GNOME |
-
-Rust bindings come from the gtk-rs project. Rust 1.98 remains the language floor for both. Cargo compile and test support at the lower floor does not imply that Meson builds or the release `.deb` support those libraries.
+BookiE uses Rust and the gtk-rs stack on Linux only. Rust bindings come from the gtk-rs project, and Rust 1.98 is the language floor. The native-library floor is one line, set by [ADR 0021](0021-toolkit-floor.md): GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 ([platforms](../platforms.md), [packaging](../../apps/linux/packaging/README.md)).
 
 ## Rationale
 
@@ -44,7 +37,7 @@ Accepted:
 - GNOME behavior is the primary desktop reference.
 - KDE Plasma is supported through GTK and standard desktop services.
 - Wayland is the primary display path. X11 remains supported by GTK.
-- GTK, libadwaita, Relm4, and system GLib requirements must be upgraded together within a chosen floor; raising the package line does not silently raise the distro-floor CI target.
+- GTK, libadwaita, Relm4, and system GLib requirements are upgraded together.
 - Native development packages are required for local builds.
 
 Gained:

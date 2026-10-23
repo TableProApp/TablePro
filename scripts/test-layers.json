@@ -59,7 +59,7 @@
     },
     "full": {
       "purpose": "Default workspace formatting, Clippy, unit and sandbox regressions",
-      "prerequisites": "Rust 1.98; GNOME 50 development stack",
+      "prerequisites": "Rust 1.98; GTK 4.24 development stack",
       "hosted_gate": "Build Linux / fast",
       "steps": [
         {
@@ -228,7 +228,7 @@
     },
     "app-server": {
       "purpose": "App parser and grid edit contracts against PostgreSQL, MongoDB, MySQL, and SQL Server",
-      "prerequisites": "Rust 1.98; GNOME 50 development stack; Docker",
+      "prerequisites": "Rust 1.98; GTK 4.24 development stack; Docker",
       "hosted_gate": "Build Linux / fast",
       "steps": [
         {
@@ -240,7 +240,7 @@
     },
     "widgets": {
       "purpose": "Isolated GTK widget contracts",
-      "prerequisites": "Rust 1.98; GNOME 50 development stack; Xvfb; private D-Bus",
+      "prerequisites": "Rust 1.98; GTK 4.24 development stack; Xvfb; private D-Bus",
       "hosted_gate": "Build Linux / fast",
       "steps": [
         {
@@ -270,7 +270,7 @@
     },
     "ui": {
       "purpose": "Installed application safety flows through AT-SPI under X11",
-      "prerequisites": "GNOME 50; Rust 1.98 or TABLEPRO_GTK_BINARY; Xvfb; PyAT-SPI; private D-Bus",
+      "prerequisites": "GTK 4.24; Rust 1.98 or TABLEPRO_GTK_BINARY; Xvfb; PyAT-SPI; private D-Bus",
       "hosted_gate": "Build Linux / gtk-safety; GTK Safety Soak",
       "steps": [
         {
@@ -285,7 +285,7 @@
     },
     "gtk-clickhouse": {
       "purpose": "Installed GTK Enum16 grid edit against a native ClickHouse fixture",
-      "prerequisites": "GNOME 50; Docker with clickhouse/clickhouse-server:24.8; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
+      "prerequisites": "GTK 4.24; Docker with clickhouse/clickhouse-server:24.8; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
       "hosted_gate": "Local release gate",
       "steps": [
         {
@@ -300,7 +300,7 @@
     },
     "gtk-mysql-approval": {
       "purpose": "Human approval dialog policy and dispatch against a native MySQL fixture",
-      "prerequisites": "GNOME 50; Docker with mysql:8.0; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
+      "prerequisites": "GTK 4.24; Docker with mysql:8.0; gnome-keyring; libsecret tools; Xvfb; PyAT-SPI; private D-Bus",
       "hosted_gate": "Local release gate",
       "steps": [
         {
@@ -315,7 +315,7 @@
     },
     "gtk-mongodb": {
       "purpose": "Installed GTK MongoDB cursor observation and native grid edit",
-      "prerequisites": "GNOME 50; Docker with mongo:7; Rust 1.98; Xvfb; PyAT-SPI; private D-Bus",
+      "prerequisites": "GTK 4.24; Docker with mongo:7; Rust 1.98; Xvfb; PyAT-SPI; private D-Bus",
       "hosted_gate": "Local release gate",
       "steps": [
         {
@@ -330,7 +330,7 @@
     },
     "values": {
       "purpose": "Exact shared values across eight drivers, GTK and DuckDB",
-      "prerequisites": "Rust 1.98; GNOME 50 development stack; Docker; disk space for DuckDB",
+      "prerequisites": "Rust 1.98; GTK 4.24 development stack; Docker; disk space for DuckDB",
       "hosted_gate": "Build Linux unit/driver/DuckDB jobs; strict combined runner locally",
       "steps": [
         {

@@ -1,6 +1,5 @@
 import ctypes
 import os
-import platform
 import time
 
 import pyatspi
@@ -9,21 +8,7 @@ import pyatspi
 def window_y_offset():
     if "TABLEPRO_GTK_Y_OFFSET" in os.environ:
         return int(os.environ["TABLEPRO_GTK_Y_OFFSET"])
-    return 5 if _is_ubuntu_24_04() else 19
-
-
-def _is_ubuntu_24_04():
-    try:
-        distribution = platform.freedesktop_os_release()
-    except OSError:
-        return False
-    return distribution.get("ID") == "ubuntu" and distribution.get("VERSION_ID") == "24.04"
-
-
-def uses_old_adw():
-    if "TABLEPRO_GTK_OLD_ADW" in os.environ:
-        return os.environ["TABLEPRO_GTK_OLD_ADW"] == "1"
-    return _is_ubuntu_24_04()
+    return 19
 
 
 def uses_atspi_input():

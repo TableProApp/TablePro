@@ -4,11 +4,11 @@ One page for what runs where. The [sprint](bookie-0.2-sprint.md) owns release ap
 
 ## Supported stacks
 
-Two native-library floors are defined in [ADR 0002](decisions/0002-rust-gtk4-libadwaita.md): the **Cargo compile / CI floor** and the **GNOME 50 Meson / package line**.
+BookiE supports one native-library floor, set by [ADR 0021](decisions/0021-toolkit-floor.md): GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22, with GLib 2.88. Arch Linux and Debian testing ship this stack. The root Meson project, the Debian and Arch package dependencies and a startup check enforce it; an older stack makes the application exit with a message naming the required and found versions.
 
-The Cargo compile / CI floor is the Ubuntu 24.04 stack: GTK 4.14, GLib 2.80, libadwaita 1.5 and GtkSourceView 5.12. Debian 13 (GTK 4.18, libadwaita 1.7) and newer are above it. `scripts/test-distro-floor.sh` runs app unit and widget tests there; with `DISTRO_FLOOR_INSTALLED=1`, it also runs GTK safety against a Cargo-built binary staged under the target directory. This does not configure the root Meson project or install a distro package.
+Ubuntu 26.04 LTS (GTK 4.22), Debian 13 (GTK 4.18) and Ubuntu 24.04 (GTK 4.14) are below the floor and unsupported. Update the distribution, or use the Flatpak build on the GNOME 51 runtime once it is offered. Fixes are not backported to older toolkits.
 
-The root Meson project declares the higher GNOME 50 library line (GTK 4.22, GLib 2.88, libadwaita 1.9, GtkSourceView 5.18). The released `.deb` has that same runtime baseline. Arch and Omarchy packages track current GNOME. Installed-package acceptance is tracked under PKG-1; Debian and Ubuntu desktop acceptance is tracked under the later GNOME target PKG-2. Neither floor replaces the other.
+`scripts/test-distro-floor.sh` runs app unit and widget tests on `debian:testing`; with `DISTRO_FLOOR_INSTALLED=1`, it also runs GTK safety against a Cargo-built binary staged under the target directory. Installed-package acceptance is tracked under PKG-1; Debian GNOME desktop acceptance is tracked under PKG-2.
 
 At the 2026-10-14 review, Arch packaged Rust 1.99.0 while Debian 13 packaged Rust 1.85.1 ([Arch package](https://archlinux.org/packages/extra/x86_64/rust/), [Debian package](https://packages.debian.org/trixie/rust/rustc)). Arch's `rust` package ignores `rust-toolchain.toml`, and Debian 13 is below the workspace MSRV. Use rustup to select the repository's pinned toolchain consistently.
 
@@ -19,7 +19,7 @@ The package artifacts recorded below are from [`linux-v0.1.5`](https://github.co
 | Target | Architecture | Artifact | Package / launch command |
 |---|---|---|---|
 | Arch Linux / Omarchy | x86_64 | `bookie-0.1.5-1-x86_64.pkg.tar.zst` | `bookie` |
-| Debian / Ubuntu with GNOME 50 libraries | amd64 | `tablepro_0.1.5-1_amd64.deb` | `tablepro` package, `bookie` command |
+| Debian / Ubuntu with GNOME 50 libraries (before the ADR 0021 floor) | amd64 | `tablepro_0.1.5-1_amd64.deb` | `tablepro` package, `bookie` command |
 
 The v0.1.5 release did not publish Fedora, AUR, Flathub, 32-bit or ARM packages.
 

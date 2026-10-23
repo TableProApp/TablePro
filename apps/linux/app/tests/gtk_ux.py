@@ -120,8 +120,6 @@ def scenarios(ui):
         ui.invoke(ui.wait_for_node(name=action))
 
     def wait_for_adw_dialog(name, present=True):
-        if gtk_input.uses_old_adw():
-            return None
         roles = (pyatspi.ROLE_DIALOG, pyatspi.ROLE_LABEL)
         wait_until(
             lambda: any(ui.find_node(name=name, role=role) is not None for role in roles) == present,

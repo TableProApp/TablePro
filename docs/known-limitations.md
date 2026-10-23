@@ -77,10 +77,10 @@ Documented application limits, behavior differences and known defects. Entries l
 ## Platforms and packaging
 
 - The 0.2.0 desktop target is Arch Linux / Omarchy under Hyprland as a native Wayland client. Installed package acceptance, including install, upgrade and rollback, is tracked under PKG-1 / [#574](https://github.com/cozyGarage/BookiE/issues/574); Xvfb results do not count.
-- Native Debian and Ubuntu GNOME desktop acceptance is tracked under the later PKG-2 phase, although the packages build and the installed test suite passes in containers.
+- BookiE needs GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 or newer ([ADR 0021](decisions/0021-toolkit-floor.md)). Ubuntu 26.04 LTS, Ubuntu 24.04 and Debian 13 ship older libraries and are not supported.
+- Native Debian GNOME desktop acceptance is tracked under the later PKG-2 phase, although the package builds and the installed test suite passes in a Debian testing container.
 - Flatpak is not offered. Flathub submission and screenshots are tracked under PKG-4 and PKG-8; the earlier manual install and launch checks are recorded in the [platform guide](platforms.md#flathub).
 - Windows and macOS are not supported; the application is built for Linux with GTK 4 and libadwaita.
-- **A single SQL completion proposal is not shown on GTK 4.18 under X11** ([#1445](https://github.com/cozyGarage/BookiE/issues/1445)). GTK 4.18 gives the popup a surface 3 px shorter than its natural height and pops down any popup that cannot shrink, which is the case for a one-row completion list. Two or more proposals are shown normally. GTK 4.14 and 4.24 are not affected; Wayland is unverified.
 
 ## Known bugs and unresolved outcomes
 
@@ -90,5 +90,4 @@ Documented application limits, behavior differences and known defects. Entries l
 
 ## Test and CI limits
 
-- The installed GTK suite does not pass reliably on a native Ubuntu 24.04 runner (TEST-28); it passes in the Debian 13 and Ubuntu 24.04 containers.
 - Mutation results are tied to their source SHA; use the latest [TEST-2 / #559](https://github.com/cozyGarage/BookiE/issues/559) report for survivor and timeout status. Expected-value provenance is tracked separately by [TEST-32](oracle-review.md).

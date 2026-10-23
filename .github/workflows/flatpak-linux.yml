@@ -32,7 +32,7 @@ jobs:
       matrix:
         profile: ${{ fromJSON(github.event_name == 'pull_request' && '["default"]' || '["default","development"]') }}
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
