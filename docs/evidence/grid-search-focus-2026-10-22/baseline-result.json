@@ -1,0 +1,8 @@
+{
+  "source_commit": "1a8ec3247fa4898bf396a0d4b79f259161257bd2",
+  "build_script_fix_included": true,
+  "binary_sha256": "a222dafc41b24dd0a47c99010b9ca4f74aa0ea21f632c90c8e170d3a8ad370a9",
+  "scenario": "grid_search_dialogs_return_keyboard_navigation_to_large_results",
+  "result": "failed",
+  "failure": "keyboard navigation did not focus and reveal keyboard-row-0001; focused=[('', 'grouping')]"
+}

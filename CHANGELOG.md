@@ -30,6 +30,7 @@
 - Export reviews the table-page, loaded-result or query-rerun scope before file format; all matching table rows remain unavailable until consistent snapshot export is qualified.
 - Grid headers preserve exact engine type case and keep comments, key and nullability metadata in a native column-details menu.
 - Oversized text and JSON cells use shorter visible previews to reduce text-layout work; full values remain available through View Value and Copy Value.
+- Column and loaded-row search return keyboard focus to the result grid after selection or dismissal.
 - Editing rows with large values uses less temporary memory when verifying the row identity.
 - Statements spend less time on sensitive-column checks, and desktop sessions that never mask results skip them.
 - Background database work runs on up to four threads, so one slow operation no longer holds up others such as loading the sidebar or another tab.

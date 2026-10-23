@@ -911,6 +911,21 @@
       "tablepro-app",
       "--lib",
       "tests::startup_reaches_the_application_loop_with_supported_toolkits"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::dialog_focus::tests::closing_a_search_restores_navigation_only_to_a_mapped_grid"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::dialog_focus::tests::a_search_dialog_does_not_keep_the_grid_alive"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::dialog_focus::tests::virtualized_rows_keep_the_focused_cells_identity_when_revealed"
     ]
   ],
   "keyring": [

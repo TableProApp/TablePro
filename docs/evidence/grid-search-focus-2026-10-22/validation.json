@@ -1,0 +1,62 @@
+{
+  "source_commit": "0ad984fb89a27f7d24f80a20275eabe697a9e9b7",
+  "linux_head_merged": "662ed2f76f88ffd8cf9577d046b02226ca9b33ab",
+  "binary_sha256": "aee9b831b7c70cda6bb7880eaa8d564b5447da1bc416f064c15a10a0e1135938",
+  "binary_path_for_local_run": "/home/trung/Projects/bookie/target/keyboard-acceptance/tablepro-app-grid-merged-candidate",
+  "source_sha256": {
+    "apps/linux/app/src/ui/grid/column.rs": "b39155b57eaf451a07b327f5eced89188efc04c4a66ff0c5cab6a72bb9a11e5c",
+    "apps/linux/app/src/ui/grid/column_jump.rs": "d54a238fed61491519552532d6e291e53d5c7689864a297a8fa72f341880337f",
+    "apps/linux/app/src/ui/grid/dialog_focus.rs": "2a19ab739c6ce3e699aab73906da55b5cc44a52cabf00dae00cdb2e827ba15b7",
+    "apps/linux/app/src/ui/grid/editing.rs": "36ed8139044a7fbed2f18dfdb962f699b3973b582cbf7d846bde4596fecfda5e",
+    "apps/linux/app/src/ui/grid/mod.rs": "19ee70227a42305350eedbddbcfbaec24b438a780957d6880c61a509c06bb067",
+    "apps/linux/app/src/ui/grid/row_find.rs": "7c41a271887c6fcc1ea568750fcf62bdbe66029cd9775c9fdfd87fc23cd4faa6",
+    "apps/linux/app/tests/gtk_ux.py": "1b2c7498ccdf5c5ca85a6937f8418f82200b58044e3f947fe5cc98364366de3f"
+  },
+  "scenarios": [
+    {
+      "case": "final-columns-light",
+      "scenario": "wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells",
+      "colour": "prefer-light",
+      "exit": 0
+    },
+    {
+      "case": "final-rows-light",
+      "scenario": "grid_search_dialogs_return_keyboard_navigation_to_large_results",
+      "colour": "prefer-light",
+      "exit": 0
+    },
+    {
+      "case": "final-columns-dark",
+      "scenario": "wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells",
+      "colour": "prefer-dark",
+      "exit": 0
+    },
+    {
+      "case": "final-rows-dark",
+      "scenario": "grid_search_dialogs_return_keyboard_navigation_to_large_results",
+      "colour": "prefer-dark",
+      "exit": 0
+    }
+  ],
+  "local_checks": {
+    "preflight": "passed: 386 harness, 2070 unit, 2082 sandbox, 1 Redis integration",
+    "strict_app_clippy_all_targets": "passed",
+    "gtk_widget_tier": "passed: 147 tests",
+    "app_library_tests": "passed: 775; 185 ignored for external prerequisites",
+    "source_build": "passed: cargo build --locked -p tablepro-app --bin tablepro-app"
+  },
+  "screenshots_sha256": {
+    "screenshots/columns-light-c150.png": "a7648a164bb2ab13461bd86bbf090f89eec3db3854fe4c6aa01eeea5a57e5755",
+    "screenshots/columns-light-c300.png": "32b1d053cabf47c07311fcdbcb6efc144043400639505def0eabc22ff8224637",
+    "screenshots/columns-light-c1.png": "554f41c1f0326b68f0956967abe81ce45138248587792017f62aa112c0835f24",
+    "screenshots/rows-light-r1.png": "70317b24f2714cdd1fecb18d9c017139e5d73da635865653ecb7a38c8c42a035",
+    "screenshots/rows-light-r2500.png": "c087bd634a8db5f75e0a90f9250bfc5ea405840d74c720882c49b9c5eafea4a1",
+    "screenshots/rows-light-r5000.png": "88f91f79c5d7357b0b2fee0bee74def717213698ee84bec3b3d44322c2bb4bfd",
+    "screenshots/columns-dark-c150.png": "6a6683fbea0e711b49953fc633ef4e8ed78f38b4f91abb611e831c6f066a67c0",
+    "screenshots/columns-dark-c300.png": "b56a9a936024278ca5e83d2cda2eae0fe96e3c38ce31589534f3e6d916ef6fae",
+    "screenshots/columns-dark-c1.png": "2f6c1664bd612563fc579c369b03597f80eb9b162e7a39a90483e2945727a0ab",
+    "screenshots/rows-dark-r1.png": "c5c4cbfc59473330c458c7a41a02197549f0197d786bacb327d57cfd201cd3ff",
+    "screenshots/rows-dark-r2500.png": "5a371c18b6ca93df8bceea9452e8d9d70bc128266ad0a332beb1d8831e92e5de",
+    "screenshots/rows-dark-r5000.png": "307db273310e947fce6e40f213b30d32b87102aa7cbad36362aff7d3619fba32"
+  }
+}

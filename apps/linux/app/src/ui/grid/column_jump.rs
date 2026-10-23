@@ -154,6 +154,19 @@ fn present(
         }
     });
     search.add_controller(keys);
+    let selected_column: Rc<std::cell::RefCell<Option<glib::WeakRef<gtk::ColumnViewColumn>>>> = Rc::default();
+    super::dialog_focus::restore_on_close(&dialog, view, {
+        let selected_column = selected_column.clone();
+        let database = database.clone();
+        move |view| {
+            if connection.and_then(|id| database.get(id)).is_none() {
+                return;
+            }
+            if let Some(column) = selected_column.borrow().as_ref().and_then(glib::WeakRef::upgrade) {
+                reveal(view, &column);
+            }
+        }
+    });
     list.connect_row_activated({
         let view = view.downgrade();
         let dialog = dialog.downgrade();
@@ -161,14 +174,14 @@ fn present(
             let Some(dialog) = dialog.upgrade() else {
                 return;
             };
-            if let Some(view) = view.upgrade().filter(|view| view.is_mapped()) {
+            if view.upgrade().is_some_and(|view| view.is_mapped()) {
                 let live = connection.and_then(|id| database.get(id)).is_some();
                 let column = usize::try_from(row.index())
                     .ok()
                     .and_then(|index| columns.get(index))
                     .and_then(glib::WeakRef::upgrade);
                 if live && let Some(column) = column {
-                    reveal(&view, &column);
+                    selected_column.replace(Some(column.downgrade()));
                 }
             }
             dialog.close();
@@ -224,7 +237,6 @@ fn reveal(view: &gtk::ColumnView, column: &gtk::ColumnViewColumn) -> bool {
         }
         adjustment.set_value(f64::from(x).min((adjustment.upper() - adjustment.page_size()).max(0.0)));
     }
-    view.grab_focus();
     true
 }
 

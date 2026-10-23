@@ -1,0 +1,26 @@
+[
+  {
+    "case": "final-columns-light",
+    "scenario": "wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells",
+    "colour": "prefer-light",
+    "exit": 0
+  },
+  {
+    "case": "final-rows-light",
+    "scenario": "grid_search_dialogs_return_keyboard_navigation_to_large_results",
+    "colour": "prefer-light",
+    "exit": 0
+  },
+  {
+    "case": "final-columns-dark",
+    "scenario": "wide_result_jumps_by_keyboard_and_keeps_headers_over_their_cells",
+    "colour": "prefer-dark",
+    "exit": 0
+  },
+  {
+    "case": "final-rows-dark",
+    "scenario": "grid_search_dialogs_return_keyboard_navigation_to_large_results",
+    "colour": "prefer-dark",
+    "exit": 0
+  }
+]

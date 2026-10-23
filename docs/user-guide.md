@@ -36,6 +36,8 @@ Use First, Previous, Next and Last to move through table pages. Unsorted tables 
 
 ## Run SQL
 
+In a focused result grid, **Ctrl+Shift+J** opens **Jump to Column** and **Ctrl+Alt+F** opens **Find in Loaded Rows**. Selecting a match or dismissing either dialog returns focus to row navigation. **Ctrl+Home** and **Ctrl+End** move to the first and last loaded row; they do not fetch additional rows.
+
 Ctrl+E opens a SQL editor tab for the current connection.
 
 Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows within a shared 64 MiB estimated row budget, always keeping the newest page; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).

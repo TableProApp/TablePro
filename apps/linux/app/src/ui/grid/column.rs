@@ -4,8 +4,8 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::context_menu::GridMenus;
 use super::display::{
-    CellView, FULL_EDIT_KIND_SLOT, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POPOVER_SLOT, POSITION_SLOT, ROW_KEY_SLOT,
-    SNAPSHOT_SLOT, SUPPRESS_SLOT, cell_view, value_to_full_edit_text,
+    COLUMN_SLOT, CellView, FULL_EDIT_KIND_SLOT, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POPOVER_SLOT, POSITION_SLOT,
+    ROW_KEY_SLOT, SNAPSHOT_SLOT, SUPPRESS_SLOT, cell_view, value_to_full_edit_text,
 };
 use super::editing::{setup_bool_cell, setup_editable_cell, setup_readonly_cell};
 pub(super) use super::presentation::column_is_editable as is_cell_editable;
@@ -291,6 +291,7 @@ pub(super) fn build_column(
             apply_pending_description(label.upcast_ref(), &pending_classes);
             set_label_strikethrough(&label, is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
+            super::editing::sync_readonly_cell_focus(&label);
         }
     });
 
@@ -326,6 +327,13 @@ pub(super) fn build_column(
             label.reset_property(gtk4::AccessibleProperty::Description);
             set_label_strikethrough(&label, false);
             POSITION_SLOT.take(&label);
+            if let Some(cell) = label
+                .parent()
+                .filter(|cell| cell.accessible_role() == gtk4::AccessibleRole::GridCell)
+            {
+                POSITION_SLOT.take(&cell);
+                COLUMN_SLOT.take(&cell);
+            }
         }
     });
 

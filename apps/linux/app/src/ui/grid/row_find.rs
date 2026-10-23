@@ -271,14 +271,20 @@ fn present(view: &gtk::ColumnView, names: Rc<Vec<String>>) {
         }
     });
     let close = close_on(&dialog);
-    let view_for_select = view.downgrade();
+    let selected_position = Rc::new(std::cell::Cell::new(None));
+    super::dialog_focus::restore_on_close(&dialog, view, {
+        let selected_position = selected_position.clone();
+        move |view| {
+            if let Some(position) = selected_position.get() {
+                select_and_scroll(view, position);
+            }
+        }
+    });
     widgets.list.connect_row_activated(move |_, row| {
         let position = usize::try_from(row.index())
             .ok()
             .and_then(|index| positions.borrow().get(index).copied());
-        if let (Some(view), Some(position)) = (view_for_select.upgrade(), position) {
-            select_and_scroll(&view, position);
-        }
+        selected_position.set(position);
         close();
     });
     dialog.set_child(Some(&widgets.content));
@@ -297,7 +303,6 @@ fn select_and_scroll(view: &gtk::ColumnView, position: u32) {
         gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
         None,
     );
-    view.grab_focus();
 }
 
 #[cfg(test)]

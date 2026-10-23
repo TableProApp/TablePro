@@ -9,6 +9,7 @@ mod column_visibility;
 #[cfg(test)]
 mod column_width_tests;
 mod context_menu;
+mod dialog_focus;
 mod display;
 mod editing;
 mod export;

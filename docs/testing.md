@@ -157,6 +157,8 @@ After its configured retry a failed scenario is recorded and the runner carries 
 
 When `TABLEPRO_GTK_ARTIFACT_DIR` is set, every scenario writes a JSON result and application stderr, including successful scenarios. Failures additionally retain the accessibility tree and a screenshot when available. Successful runs therefore have uploadable evidence; a missing artifact still fails CI. Python regressions exercise both result paths without needing a display.
 
+The grid-search keyboard scenario checks focused, visible rows across a 5,000-row result after accepting and dismissing both search dialogs. It complements the 300-column alignment scenario. On X11, these scenarios also capture successful scroll positions when an artifact directory and either `scrot` or ImageMagick `import` are available. Screenshots supplement the focus and bounds assertions; they do not establish native desktop or package acceptance.
+
 Representative end-to-end scenarios in the suite are listed below; the current registry, including scenarios from the GTK workbook, parameter, XML and UX modules, is in [`gtk_safety.py`](../apps/linux/app/tests/gtk_safety.py).
 
 1. Dismissing approval for a fixture connection marked production leaves its SQLite database unchanged.
