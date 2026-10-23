@@ -3,6 +3,7 @@ use thiserror::Error;
 use crate::dialect::BindError;
 use crate::edit::EditParseError;
 use crate::sql_syntax::ExpressionSyntaxError;
+use crate::sql_syntax::mongo::ShellSyntaxError;
 
 use super::FilterOp;
 
@@ -31,4 +32,10 @@ pub enum BuildFilterError {
     OperatorNotAllowed { column: String, op: FilterOp },
     #[error("the SQL filter is not a single expression: {0}")]
     RawPredicate(#[source] ExpressionSyntaxError),
+    #[error("the filter does not read as a document: {0}")]
+    RawDocument(#[source] ShellSyntaxError),
+    #[error("the filter is not a document")]
+    RawNotDocument,
+    #[error("field {0} has a dot in its name or starts with $, so a filter cannot name it")]
+    UnaddressableField(String),
 }

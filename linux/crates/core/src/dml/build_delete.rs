@@ -14,6 +14,9 @@ pub fn build_delete(
     identity: &RowIdentity,
     key: &[Value],
 ) -> Result<Statement, BuildSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::delete(table, columns, identity, key);
+    }
     let components = key_components(identity, columns)?;
     let mut builder = StatementBuilder::new();
     let predicate = key_predicate(&mut builder, dialect, &components, key)?;

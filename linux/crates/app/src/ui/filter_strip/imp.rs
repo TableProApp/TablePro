@@ -30,6 +30,8 @@ pub struct FilterStrip {
     #[template_child]
     pub close_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub raw_label: TemplateChild<gtk::Label>,
+    #[template_child]
     pub raw_entry: TemplateChild<gtk::Entry>,
     #[template_child]
     pub rules_expander: TemplateChild<gtk::Expander>,

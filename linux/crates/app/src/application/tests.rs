@@ -886,6 +886,7 @@ mod mcp {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         };
         test.services()
             .storage

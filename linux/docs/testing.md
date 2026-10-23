@@ -112,7 +112,7 @@ Every TLS fixture has two principals:
 - `password_credentials()`: user `tablepro`, which the server forces onto TLS (`ALTER USER ... REQUIRE SSL`, `hostssl ... scram-sha-256`, `require_secure_transport=ON`).
 - `certificate_credentials()`: user `tablepro_client`, which authenticates with the client certificate (`REQUIRE X509`, pg_hba `cert`, ClickHouse `ssl_certificates`).
 
-SQL Server has only the `sa` principal, because its TLS contract carries no client identity. Redis maps no certificate to a user, so `RedisFixture::start_tls` runs two servers in one container: the TLS-only one on 6379, where the ACL user `tablepro` logs in with its password, and one on 6380 with `tls-auth-clients yes`, which takes only a client with the CA's certificate, as its `default` user. `RedisFixture::start` is the plain server, with the same password on `default` and on `tablepro`.
+SQL Server has only the `sa` principal, because its TLS contract carries no client identity. Redis maps no certificate to a user, so `RedisFixture::start_tls` runs two servers in one container: the TLS-only one on 6379, where the ACL user `tablepro` logs in with its password, and one on 6380 with `tls-auth-clients yes`, which takes only a client with the CA's certificate, as its `default` user. `RedisFixture::start` is the plain server, with the same password on `default` and on `tablepro`. `MongoFixture::start` is a one-member replica set, `rs0`, with access control on and the root user `tablepro` in `admin`; its start script initiates the set and makes the user before the fixture is ready, so starting one runs no `docker exec`, whose result a `Send` future cannot await. `MongoFixture::start_tls` requires TLS on that member, with a client certificate optional, and runs a standalone server on 27018 with no login that takes only a client with the CA's certificate.
 
 `HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `UserCertificateAuthority` (only certificates that key signed log in), `KeyboardInteractive` or `HostCertificate`. `OpenSshFixture::start_with` also takes `OpenSshOptions`, which picks the release and sets sshd's `KexAlgorithms`, `MaxAuthTries` and `PubkeyAcceptedAlgorithms`. `SshKeyPair::generate_with` makes an Ed25519, RSA or ECDSA P-256 key, with a passphrase when given one, and `SshAgent` runs a private `ssh-agent` and loads a key with its passphrase. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
@@ -244,6 +244,18 @@ tablepro_test_support::keyspace_conformance_suite! {
 
 The cases: keys are listed with their types; a pattern is matched on the server; a listing stops at its limit and says so; every type reads in windows to its end with every entry; a missing key reads as none; a stopped command ends as cancelled within the cancel grace, the server lets it go, and the session runs again; a dropped run stops the command on the server; a statement timeout ends a waiting command as one the server stopped; a read-only connection refuses a write in the editor and in `stream_read` before it reaches the server; `stream_read` streams every row; a probe answers while a command waits; `close` is idempotent; and a dropped route reports `ConnectionLost` within the deadline plus the cancel grace. `keyspace_suite_matches_driver_capabilities` is never ignored and fails when the driver's `data_model` is not `KeyValue`. The engine also runs the TLS suite.
 
+### Document conformance
+
+A document engine runs `document_conformance_suite!` in place of the SQL suites, through `DocumentEngine`: how to start the server and connect, a route the case can drop, the engine's statements that fill a collection, never end, and read while writing, and how many operations the server is running under a marker. MongoDB's adapter is `crates/drivers/mongodb/tests/integration/conformance_engine.rs`:
+
+```rust
+tablepro_test_support::document_conformance_suite! {
+    engine: MongoEngine,
+}
+```
+
+The cases: collections are listed in their database; fields become columns with the key first; pages read every document in order; a filter and a sort are read on the server; a field edit saves and reads back; a save on a document that is gone changes nothing; an insert and a delete land; a read-only connection refuses a save, an editor write, a read that writes and an export that writes before sending; a stopped statement ends and the session runs again; a dropped run stops the statement; a timed-out statement is stopped by the server; an editor result keeps the row limit; `stream_read` streams every document; a probe answers while a statement runs; `close` is idempotent; and a dropped route reports `ConnectionLost`. `document_suite_matches_driver_capabilities` is never ignored and fails when the driver's `data_model` is not `Document`. The engine also runs the TLS suite.
+
 ### TLS conformance
 
 Every network driver's `crates/drivers/<engine>/tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
@@ -255,7 +267,7 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
+The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
 
 ### Ignore reasons
 
@@ -302,11 +314,12 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
 | `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
 | `TABLEPRO_TEST_REDIS` | 7.4, 8.10 | 8.10 |
+| `TABLEPRO_TEST_MONGO` | 7.0, 8.0 | 8.0 |
 | `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `RedisVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Redis 7.4, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `RedisFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 
@@ -332,6 +345,8 @@ Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java
 `curl --unix-socket "${DOCKER_HOST#unix://}" http://localhost/_ping` should print `OK` before you run the suite. `--unix-socket` takes a filesystem path, so the `unix://` prefix has to come off.
 
 A test that panics hard can still leave a container behind. `podman container prune` clears them.
+
+Tests run inside a container reach the fixtures through the bridge gateway, such as `172.17.0.1`, which the test certificate does not name. A Verify full case on a direct route where the driver takes no server name override there (MySQL, MongoDB, and the system trust tests) then fails with `NameMismatch`. CI runs the suites on the runner itself, where the fixtures answer on `localhost`.
 
 ### Regression names
 
@@ -434,7 +449,7 @@ Policy:
 
 `crates/core/tests/script_corpus.rs` holds the planner's fixtures, by grammar:
 
-- A named case for each rule an engine's client follows: dollar quotes and `BEGIN ATOMIC` bodies, a procedure with `DELIMITER` and one without, trigger bodies, `GO` with a count, heredocs, `#` and `//` comments, backslash escapes with the setting on and off, and text left open, which keeps the statements before it.
+- A named case for each rule an engine's client follows: dollar quotes and `BEGIN ATOMIC` bodies, a procedure with `DELIMITER` and one without, trigger bodies, `GO` with a count, heredocs, `#` and `//` comments, backslash escapes with the setting on and off, mongosh statements that end at a line break unless the next line goes on with `.`, and text left open, which keeps the statements before it.
 - `lexer_matches_sqlparser_where_engines_agree` checks the semicolons the lexer finds in `AGREED_CASES` against sqlparser's tokenizer, on cases where sqlparser reads the text as the engine does.
 - A proptest runs every grammar over random text with multibyte characters: the tokens cover the text with no gap, every range ends on a character boundary, and batches never overlap.
 

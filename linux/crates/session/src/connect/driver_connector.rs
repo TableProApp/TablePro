@@ -81,6 +81,7 @@ async fn establish(
             credentials,
             database,
             tls,
+            options,
         } => {
             let (transport, ssh_session): (Arc<dyn Transport>, _) = match ssh {
                 Some(config) => {
@@ -104,6 +105,7 @@ async fn establish(
                 credentials: credentials.clone(),
                 database: database.clone(),
                 tls: tls.clone(),
+                options: options.clone(),
             };
             (ConnectTarget::Network(target), ssh_session)
         }
@@ -170,6 +172,7 @@ fn validate(request: &ConnectRequest) -> Result<(), ConnectError> {
             credentials,
             database,
             tls,
+            options,
             ..
         } => {
             if !capabilities.supports(credentials.mode()) {
@@ -179,6 +182,9 @@ fn validate(request: &ConnectRequest) -> Result<(), ConnectError> {
                 (Some(caps), Some(route)) => tls.validate(caps, route).map_err(DriverError::from)?,
                 _ if tls.mode != TlsMode::Disable => return refuse(ConfigError::UnsupportedTlsMode.into()),
                 _ => {}
+            }
+            if let Some(route) = request.target.transport_class() {
+                options.validate(capabilities, route).map_err(DriverError::from)?;
             }
             let missing_database = database.as_deref().is_none_or(|name| name.trim().is_empty());
             if capabilities.database_required && missing_database {
@@ -295,6 +301,7 @@ mod tests {
             credentials,
             database: database.map(str::to_owned),
             tls,
+            options: Default::default(),
         }
     }
 

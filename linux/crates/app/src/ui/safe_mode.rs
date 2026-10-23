@@ -9,14 +9,22 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 }
 
 /// What the level does on this engine. Read-Only's guarantee differs by
-/// engine, so the row says which one the user is getting, and an engine
-/// of keys is told about in commands rather than statements.
+/// engine, so the row says which one the user is getting, an engine of
+/// keys is told about in commands rather than statements, and one of
+/// documents in its own words for what drops or empties a collection.
 pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities) -> String {
     let keys = capabilities.data_model == DataModel::KeyValue;
+    let documents = capabilities.data_model == DataModel::Document;
     match (level, capabilities.read_only) {
         (SafeModeLevel::Off, _) if keys => {
             crate::i18n::gettext("Asks only before commands that empty a database or stop the server, such as FLUSHDB.")
         }
+        (SafeModeLevel::Off, _) if documents => crate::i18n::gettext(
+            "Asks only before dropping a collection or database, and before deleting or updating every document.",
+        ),
+        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::ClientGuard) if documents => crate::i18n::gettext(
+            "TablePro refuses every statement that writes before it is sent; the server has no read-only mode. Use a user with only read roles for a guarantee.",
+        ),
         (SafeModeLevel::Off, _) => {
             crate::i18n::gettext("Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE.")
         }
@@ -109,6 +117,21 @@ mod tests {
                 SafeModeLevel::ConfirmWrites,
                 &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges)
             ),
+        );
+    }
+
+    #[test]
+    fn an_engine_of_documents_is_told_about_in_its_own_words() {
+        let documents = capabilities(DataModel::Document, ReadOnlyEnforcement::ClientGuard);
+        let keys = capabilities(DataModel::KeyValue, ReadOnlyEnforcement::ClientGuard);
+
+        assert!(subtitle(SafeModeLevel::Off, &documents).contains("collection"));
+        assert!(!subtitle(SafeModeLevel::Off, &documents).contains("WHERE"));
+        let read_only = subtitle(SafeModeLevel::ReadOnly, &documents);
+        assert_ne!(read_only, subtitle(SafeModeLevel::ReadOnly, &keys));
+        assert!(
+            read_only.contains("before it is sent") && !read_only.contains("ACL"),
+            "{read_only}"
         );
     }
 

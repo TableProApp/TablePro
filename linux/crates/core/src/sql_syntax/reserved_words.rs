@@ -7,6 +7,7 @@
 //! wherever they stand.
 
 use crate::sql_syntax::SqlGrammar;
+use crate::sql_syntax::mongo;
 
 const POSTGRESQL: &str = "
     ALL ANALYSE ANALYZE AND ANY ARRAY AS ASC ASYMMETRIC AUTHORIZATION BINARY BOTH CASE CAST CHECK COLLATE
@@ -95,6 +96,12 @@ impl SqlGrammar {
             // A Redis argument is bare until a blank or a quote.
             return !name.is_empty() && !name.contains([' ', '\t', '\n', '\r', '"', '\'', '\\']);
         }
+        if self == Self::Mongo {
+            // A shell object key needs no quotes when it is a JavaScript
+            // name.
+            let mut chars = name.chars();
+            return chars.next().is_some_and(mongo::is_name_start) && chars.all(mongo::is_name_part);
+        }
         let mut chars = name.chars();
         let Some(first) = chars.next() else {
             return false;
@@ -128,7 +135,7 @@ impl SqlGrammar {
             Self::Sqlite => SQLITE,
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
-            Self::Redis => "",
+            Self::Redis | Self::Mongo => "",
         }
     }
 }

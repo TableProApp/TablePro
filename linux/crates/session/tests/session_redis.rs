@@ -125,6 +125,7 @@ async fn keys_list_and_commands_run_through_openssh() {
             },
             database: Some("2".to_owned()),
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         },
         workspace_settings: WorkspaceSettings::workspace(false),
         safe_mode: tablepro_core::SafeModeLevel::Off,

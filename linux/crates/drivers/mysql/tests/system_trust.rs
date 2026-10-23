@@ -94,6 +94,7 @@ fn verified_without_ca_file(fixture: &MysqlFixture) -> ConnectOptions {
                 client_identity: None,
                 server_name: Some(TestPki::SERVER_NAMES[1].to_owned()),
             },
+            options: Default::default(),
         }),
         workspace_settings: WorkspaceSettings::workspace(false),
         liveness,

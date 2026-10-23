@@ -206,12 +206,14 @@ fn draft_writer(
     )
 }
 
-/// Whether the session's engine holds keys rather than tables.
-fn holds_keys(context: &SessionContext, session: &Session) -> bool {
+/// What the session's engine holds: tables, keys or collections.
+fn data_model(context: &SessionContext, session: &Session) -> tablepro_core::DataModel {
     context
         .drivers
         .get(&session.metadata().driver_id)
-        .is_some_and(|driver| driver.capabilities().is_key_value())
+        .map_or(tablepro_core::DataModel::Relational, |driver| {
+            driver.capabilities().data_model
+        })
 }
 
 /// The driver's name, or its id when this build has no such driver.
@@ -617,8 +619,9 @@ impl Workspace {
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let keys = holds_keys(&context, &session);
-        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, keys);
+        let model = data_model(&context, &session);
+        let keys = model == tablepro_core::DataModel::KeyValue;
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, model);
         let WorkspaceTabParts {
             tab_view,
             index,

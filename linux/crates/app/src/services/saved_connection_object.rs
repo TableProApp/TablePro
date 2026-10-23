@@ -72,6 +72,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 

@@ -50,6 +50,7 @@ fn every_affordance() -> SidebarAffordances {
         read_only: false,
         can_create_table: true,
         can_edit_structure: true,
+        shows_create_table: true,
     }
 }
 

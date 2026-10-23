@@ -59,6 +59,7 @@ async fn mysql_emits_no_sqlx_query_events() {
             },
             database: Some(fixture.database().to_owned()),
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         }),
         workspace_settings: WorkspaceSettings::workspace(false),
         liveness,

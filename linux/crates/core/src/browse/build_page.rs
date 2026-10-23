@@ -19,6 +19,9 @@ use super::{BrowseSqlError, PageLayout, PageRequest, PageSpec, PagingMode, RowKe
 /// past a key, inside a block window, or at an offset, under the one
 /// mode `paging_mode` picks for the table and sort.
 pub fn build_page(dialect: &dyn SqlDialect, request: &PageRequest<'_>) -> Result<PageSpec, BrowseSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::page(request);
+    }
     let mode = paging_mode(request.identity, request.sort);
     let components = identity_components(request.identity, request.columns)?;
     let (row_key, hidden) = row_key_layout(dialect, request.identity, request.columns, &components)?;

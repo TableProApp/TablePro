@@ -5,7 +5,7 @@ use tablepro_core::TlsConfig;
 use crate::tls::TlsSetupError;
 use crate::tls::pem_check::{read_certificates, read_identity};
 
-pub fn mysql_ca_bundle_pem(tls: &TlsConfig) -> Result<Vec<u8>, TlsSetupError> {
+pub fn ca_bundle_pem(tls: &TlsConfig) -> Result<Vec<u8>, TlsSetupError> {
     let native = rustls_native_certs::load_native_certs();
     if !native.errors.is_empty() {
         tracing::warn!(

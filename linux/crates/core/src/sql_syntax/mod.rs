@@ -5,6 +5,7 @@ mod grammar;
 mod history_recording;
 mod keywords;
 mod literal_token;
+pub mod mongo;
 mod parse_expression;
 mod parse_type;
 pub mod redis;

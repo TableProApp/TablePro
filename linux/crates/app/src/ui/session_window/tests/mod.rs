@@ -339,6 +339,7 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 
@@ -362,6 +363,7 @@ fn network_connection() -> SavedConnection {
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

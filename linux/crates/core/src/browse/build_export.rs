@@ -17,6 +17,9 @@ use super::{BrowseSqlError, ExportRequest};
 /// behind the user's sort: on its own it would sort the whole table
 /// before the first row could be written.
 pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::export(request);
+    }
     let projection = projection_list(dialect, request.columns)?;
     let components = identity_components(request.identity, request.columns)?;
     let user = user_order(dialect, request.table, request.columns, request.sort)?;

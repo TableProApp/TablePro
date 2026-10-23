@@ -1,7 +1,8 @@
 use tablepro_core::dialect::LiteralError;
+use tablepro_core::sql_syntax::mongo::ShellSyntaxError;
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, TypeSyntaxError};
 
-use crate::i18n::{gettext, ngettext_f};
+use crate::i18n::{gettext, gettext_f, ngettext_f};
 
 /// Why the Type field's text is refused, beside the field.
 pub fn type_syntax_message(error: &TypeSyntaxError) -> String {
@@ -22,6 +23,37 @@ pub fn expression_syntax_message(error: &ExpressionSyntaxError) -> String {
         ExpressionSyntaxError::Comment => gettext("Remove the comment. It would hide the rest of the statement."),
         ExpressionSyntaxError::Invalid => gettext("This database does not read this as one expression."),
         ExpressionSyntaxError::SessionDependentBackslash => backslash(),
+    }
+}
+
+/// Why MongoDB shell text is refused before anything is sent.
+pub fn shell_syntax_message(error: &ShellSyntaxError) -> String {
+    match error {
+        ShellSyntaxError::Empty => gettext("Enter a document, such as { qty: { $gt: 1 } }."),
+        ShellSyntaxError::Incomplete => {
+            gettext("The text ends before it is complete. Check for a missing bracket or quote.")
+        }
+        ShellSyntaxError::Unexpected { found, .. } => {
+            gettext_f("“{found}” is not expected there.", &[("found", found)])
+        }
+        ShellSyntaxError::UnknownRoot { .. } => gettext("Start with db, rs, show or use."),
+        ShellSyntaxError::UnknownShow { .. } => gettext("Show dbs, collections, users or roles."),
+        ShellSyntaxError::MissingDatabase { .. } => gettext("Name the database to use."),
+        ShellSyntaxError::NoMethod { .. } => gettext("Call a method, such as find()."),
+        ShellSyntaxError::UnknownHelper { name, .. } => {
+            gettext_f("{name}() is not a value MongoDB stores.", &[("name", name)])
+        }
+        ShellSyntaxError::HelperArguments { helper, .. } => {
+            gettext_f("{helper}() is given values it does not take.", &[("helper", helper)])
+        }
+        ShellSyntaxError::UnknownName { name, .. } => {
+            gettext_f("“{name}” is not a value. Put text in quotes.", &[("name", name)])
+        }
+        ShellSyntaxError::RegexFlag { .. } => gettext("MongoDB takes only the i, m, s, u and x flags."),
+        ShellSyntaxError::BadEscape { .. } => gettext("A backslash escape in a string does not read."),
+        ShellSyntaxError::TemplateSubstitution { .. } => gettext("A template string cannot hold ${ }."),
+        ShellSyntaxError::TooDeep { .. } => gettext("The values nest too deeply."),
+        ShellSyntaxError::Parameter { .. } => gettext("$ and a number is not a value. Put text in quotes."),
     }
 }
 

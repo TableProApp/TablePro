@@ -134,6 +134,7 @@ impl FakeConnector {
                 },
                 database: None,
                 tls: TlsConfig::disabled(),
+                options: Default::default(),
             },
             driver: Arc::new(FakeDriver::connecting(
                 &FakeDriver::NETWORK_CAPABILITIES,

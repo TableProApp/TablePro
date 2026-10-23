@@ -155,13 +155,14 @@ impl BrowseTab {
                 page_size: init.page_size,
             },
         );
-        let filter_strip = layout::filter_strip(&tab, &initial_filter);
+        let dialect = init.session.current_dialect();
+        let filter_strip =
+            layout::filter_strip(&tab, &initial_filter, dialect.as_ref().map(|dialect| dialect.grammar()));
         if reveal_filter {
             filter_strip.set_revealed(true);
         }
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
         let link_generation = init.session.link_generation();
-        let dialect = init.session.current_dialect();
         let link_changes = init.session.link_changes();
         let keys = KeysHandle::new(TableRef::new(init.schema.clone(), init.table.clone()));
         let model = BrowseModel {
@@ -629,7 +630,8 @@ impl BrowseModel {
                 schema: self.schema.clone(),
                 table: self.table.clone(),
             }),
-            in_clause: true,
+            // An engine of documents has no SQL list to copy rows into.
+            in_clause: self.dialect.as_ref().is_none_or(|dialect| dialect.grammar().is_sql()),
             keys: Some(self.keys.clone()),
         }
     }

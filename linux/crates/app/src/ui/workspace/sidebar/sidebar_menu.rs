@@ -32,11 +32,13 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     if table && affordances.can_edit_structure {
         structure.append_item(&item(&crate::i18n::gettext("Edit Structure"), EDIT_STRUCTURE, key));
     }
-    structure.append_item(&item(
-        &crate::i18n::gettext("Show CREATE TABLE"),
-        SHOW_CREATE_TABLE,
-        key,
-    ));
+    if affordances.shows_create_table {
+        structure.append_item(&item(
+            &crate::i18n::gettext("Show CREATE TABLE"),
+            SHOW_CREATE_TABLE,
+            key,
+        ));
+    }
     menu.append_section(None, &structure);
     if affordances.read_only || !table {
         return menu;
@@ -44,9 +46,11 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     let data = gio::Menu::new();
     data.append_item(&item(&crate::i18n::gettext("Import CSV…"), IMPORT_CSV, key));
     menu.append_section(None, &data);
-    let danger = gio::Menu::new();
-    danger.append_item(&item(&crate::i18n::gettext("Drop Table…"), DROP_TABLE, key));
-    menu.append_section(None, &danger);
+    if affordances.can_edit_structure {
+        let danger = gio::Menu::new();
+        danger.append_item(&item(&crate::i18n::gettext("Drop Table…"), DROP_TABLE, key));
+        menu.append_section(None, &danger);
+    }
     menu
 }
 
@@ -56,9 +60,11 @@ pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAfforda
     let table = kind.is_structure_editable();
     match action {
         OPEN_IN_NEW_TAB => true,
-        SHOW_CREATE_TABLE => kind.is_browsable(),
+        SHOW_CREATE_TABLE => kind.is_browsable() && affordances.shows_create_table,
         EDIT_STRUCTURE => table && affordances.can_edit_structure,
-        IMPORT_CSV | DROP_TABLE => table && !affordances.read_only,
+        IMPORT_CSV => table && !affordances.read_only,
+        // Dropping is planned by the DDL dialect, as structure changes are.
+        DROP_TABLE => table && !affordances.read_only && affordances.can_edit_structure,
         _ => false,
     }
 }
@@ -103,6 +109,7 @@ mod tests {
             read_only: false,
             can_create_table: true,
             can_edit_structure: true,
+            shows_create_table: true,
         }
     }
 
@@ -161,6 +168,24 @@ mod tests {
         for action in [SHOW_CREATE_TABLE, EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
             assert!(!offers(action, kind, all()), "{action}");
         }
+    }
+
+    #[test]
+    fn a_collection_offers_neither_sql_nor_a_drop_the_dialect_cannot_plan() {
+        let key = ObjectKey(TableRef::new(Some("shop".to_owned()), "orders"));
+        let documents = SidebarAffordances {
+            read_only: false,
+            can_create_table: false,
+            can_edit_structure: false,
+            shows_create_table: false,
+        };
+
+        assert_eq!(
+            actions(&object_menu(&key, ObjectKind::Table, documents)),
+            ["sidebar.open-in-new-tab", "sidebar.import-csv"]
+        );
+        assert!(!offers(DROP_TABLE, ObjectKind::Table, documents));
+        assert!(!offers(SHOW_CREATE_TABLE, ObjectKind::Table, documents));
     }
 
     #[test]

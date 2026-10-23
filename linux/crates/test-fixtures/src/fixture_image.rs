@@ -79,6 +79,14 @@ impl FixtureImage {
         name: "redis",
         tag: "7.4-alpine",
     };
+    pub const MONGO: Self = Self {
+        name: "mongo",
+        tag: "8.0",
+    };
+    pub const MONGO_7_0: Self = Self {
+        name: "mongo",
+        tag: "7.0",
+    };
     pub const PGBOUNCER: Self = Self {
         name: "edoburu/pgbouncer",
         tag: "v1.25.2-p0",

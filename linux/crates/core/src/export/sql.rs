@@ -38,10 +38,13 @@ pub fn render_sql_insert(
 }
 
 /// What every row's statement shares: `INSERT INTO table (columns)
-/// VALUES `, and which of the result's columns it writes.
+/// VALUES `, and which of the result's columns it writes. An engine of
+/// documents writes `insertOne(` instead, and each value under its
+/// field's name.
 pub(super) struct InsertShape {
     start: String,
     written: Vec<bool>,
+    fields: Option<Vec<String>>,
 }
 
 /// The shape of every row's statement, or `None` for a result with no
@@ -62,9 +65,23 @@ pub(super) fn insert_shape(
     if names.is_empty() {
         return None;
     }
+    if crate::document::speaks_shell(dialect) {
+        let fields = columns
+            .iter()
+            .zip(&written)
+            .filter(|(_, written)| **written)
+            .map(|(column, _)| column.name.clone())
+            .collect();
+        return Some(InsertShape {
+            start: crate::document::insert_start(table),
+            written,
+            fields: Some(fields),
+        });
+    }
     Some(InsertShape {
         start: format!("INSERT INTO {} ({}) VALUES ", dialect.qualify(table), names.join(", ")),
         written,
+        fields: None,
     })
 }
 
@@ -90,9 +107,18 @@ pub(super) fn insert_row<'a>(
         })
         .collect();
     out.push_str(&shape.start);
-    out.push('(');
-    out.push_str(&values.join(", "));
-    out.push_str(");\n");
+    match &shape.fields {
+        Some(fields) => {
+            let pairs: Vec<(String, String)> = fields.iter().cloned().zip(values).collect();
+            out.push_str(&crate::document::insert_document(&pairs));
+            out.push_str(");\n");
+        }
+        None => {
+            out.push('(');
+            out.push_str(&values.join(", "));
+            out.push_str(");\n");
+        }
+    }
 }
 
 /// One row as an `INSERT` the user can paste and run.
@@ -123,6 +149,14 @@ pub fn render_insert(
         names.push(dialect.quote_identifier(&column.name));
         values.push(value);
     }
+    if crate::document::speaks_shell(dialect) {
+        let pairs = document_fields(columns, cells, dialect)?;
+        return Ok(format!(
+            "{}{});",
+            crate::document::insert_start(table),
+            crate::document::insert_document(&pairs)
+        ));
+    }
     if names.is_empty() {
         let sql = dialect
             .insert_default_row(&table_sql)
@@ -134,6 +168,24 @@ pub fn render_insert(
         names.join(", "),
         values.join(", ")
     ))
+}
+
+/// A document's fields for Copy As INSERT: each cell set, under its
+/// field's name, a field left to the server left out.
+fn document_fields(
+    columns: &[ColumnInfo],
+    cells: &[CellInput],
+    dialect: &dyn SqlDialect,
+) -> Result<Vec<(String, String)>, RenderInsertError> {
+    let mut fields = Vec::with_capacity(columns.len());
+    for (index, column) in columns.iter().enumerate() {
+        let value = match cells.get(index) {
+            Some(CellInput::Default) | None => continue,
+            Some(CellInput::Value(value)) => dialect.literal(value, &column.column_type)?,
+        };
+        fields.push((column.name.clone(), value));
+    }
+    Ok(fields)
 }
 
 /// One cell as a literal, or a marked `NULL` where the engine has no

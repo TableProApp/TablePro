@@ -97,6 +97,12 @@ pub fn config_message(error: &ConfigError) -> String {
         ConfigError::DatabaseNumber => {
             crate::i18n::gettext("Enter the database's number, such as 0, or leave it empty.")
         }
+        ConfigError::SeedListOverSsh => crate::i18n::gettext(
+            "A DNS seed list names servers an SSH tunnel cannot reach. Turn it off and enter one server's host.",
+        ),
+        ConfigError::NetworkOptionUnsupported => {
+            crate::i18n::gettext("This database does not take one of this connection's options.")
+        }
     }
 }
 
@@ -184,6 +190,7 @@ fn server_code_text(code: &ServerCode) -> String {
         ServerCode::Sqlite { .. } => crate::i18n::gettext_f("SQLite error {code}", &[("code", &number)]),
         // Redis names its errors by a word, such as WRONGTYPE.
         ServerCode::Redis { .. } => number,
+        ServerCode::Mongo { .. } => crate::i18n::gettext_f("MongoDB error {code}", &[("code", &number)]),
     }
 }
 

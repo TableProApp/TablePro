@@ -25,6 +25,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+tablepro-driver-mongodb.workspace = true
 tablepro-driver-postgres.workspace = true
 tablepro-driver-redis.workspace = true
 tablepro-test-fixtures.workspace = true

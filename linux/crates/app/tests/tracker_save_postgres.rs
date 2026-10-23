@@ -54,6 +54,7 @@ async fn connect(fixture: &PostgresFixture) -> Arc<dyn Connection> {
             },
             database: Some(fixture.database().to_owned()),
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         }),
         workspace_settings: WorkspaceSettings::workspace(false),
         liveness,

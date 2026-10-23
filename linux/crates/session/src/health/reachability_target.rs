@@ -107,6 +107,7 @@ mod tests {
             },
             database: None,
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         }
     }
 

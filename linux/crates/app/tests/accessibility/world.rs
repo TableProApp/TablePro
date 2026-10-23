@@ -143,6 +143,7 @@ fn saved_connection(database: &Path) -> SavedConnection {
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

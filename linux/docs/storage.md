@@ -253,6 +253,12 @@ script lexer:
   `MIGRATE ... AUTH`, `ACL SETUSER`, `CONFIG SET` of a password parameter,
   `SENTINEL SET` and a script that names one of them
   ([redis.md](drivers/redis.md#the-editor)).
+- MongoDB statements are read the same way, from their tokens:
+  `createUser`, `updateUser`, `changeUserPassword`, `auth`, `connect`,
+  `Mongo`, by name or in brackets, a `pwd`, `password` or
+  `passwordDigestor` key, and a string
+  holding a connection string with a password
+  ([mongodb.md](drivers/mongodb.md#the-editor)).
 
 An entry is kept whole or not at all, never rewritten to cut a secret out.
 Turning the setting off keeps what is already there; Clear removes it.

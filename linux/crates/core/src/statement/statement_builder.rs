@@ -58,6 +58,13 @@ impl StatementBuilder {
 
     /// Take the SQL written so far and keep its parameters, so a
     /// fragment built here can be placed inside a dialect template.
+    /// Keep a parameter the caller bound itself, for a language that
+    /// marks a parameter by its ordinal. Returns that ordinal, from 1.
+    pub fn push_bound(&mut self, param: BoundParam) -> usize {
+        self.params.push(param);
+        self.params.len()
+    }
+
     pub fn take_fragment(&mut self) -> String {
         std::mem::take(&mut self.sql)
     }

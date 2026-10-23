@@ -54,6 +54,7 @@ fn connection(name: &str) -> SavedConnection {
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

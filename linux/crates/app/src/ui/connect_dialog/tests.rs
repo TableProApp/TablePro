@@ -50,9 +50,11 @@ impl Default for Options {
 fn registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
     registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    registry.register(Arc::new(tablepro_driver_mongodb::MongoDriver));
     registry.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     registry.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     registry.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    registry.register(Arc::new(tablepro_driver_redis::RedisDriver));
     registry.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     Arc::new(registry)
 }
@@ -386,6 +388,27 @@ fn sqlite_shows_file_row_and_hides_security_and_ssh() {
     assert!(!imp.file_row.is_visible());
     assert!(imp.tls_section.is_visible());
     assert!(imp.ssh_section.is_visible());
+}
+
+#[gtk4::test]
+fn mongodb_offers_a_seed_list_that_hides_the_port_and_a_login_database() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    select(&harness.dialog, "postgres");
+    assert!(!imp.seed_list_row.is_visible());
+    assert!(!imp.auth_database_row.is_visible());
+
+    select(&harness.dialog, "mongodb");
+    assert!(imp.seed_list_row.is_visible());
+    assert!(imp.auth_database_row.is_visible());
+    assert!(imp.port_row.is_visible());
+    imp.seed_list_row.set_active(true);
+    assert!(!imp.port_row.is_visible(), "the SRV records give the ports");
+
+    select(&harness.dialog, "postgres");
+    assert!(imp.port_row.is_visible());
+    assert!(!imp.seed_list_row.is_visible());
 }
 
 #[gtk4::test]

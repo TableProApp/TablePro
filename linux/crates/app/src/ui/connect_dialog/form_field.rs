@@ -17,6 +17,8 @@ pub enum FormField {
     SshUser,
     SshJumpHosts,
     SshKeyPath,
+    DnsSeedList,
+    AuthDatabase,
 }
 
 impl FormField {

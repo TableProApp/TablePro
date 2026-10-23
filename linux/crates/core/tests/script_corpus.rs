@@ -447,7 +447,7 @@ proptest! {
         text in "[ -~\n\té😀]{0,160}",
         backslash_escapes in any::<bool>(),
     ) {
-        for grammar in SqlGrammar::SQL.into_iter().chain([SqlGrammar::Redis]) {
+        for grammar in SqlGrammar::SQL.into_iter().chain([SqlGrammar::Redis, SqlGrammar::Mongo]) {
             let plan = ScriptPlan::build(&text, grammar, LexicalSettings { backslash_escapes });
             let mut cursor = 0;
             for token in plan.tokens(0..text.len()) {
@@ -520,6 +520,66 @@ fn redis_each_command_is_its_own_batch_and_a_failure_stops_the_script() {
     assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
 }
 
+#[test]
+fn mongo_a_semicolon_or_a_line_break_ends_a_statement() {
+    assert_eq!(
+        statements(
+            SqlGrammar::Mongo,
+            "use shop\ndb.a.find(); db.b.find()\n\nshow collections"
+        ),
+        ["use shop", "db.a.find()", "db.b.find()", "show collections"]
+    );
+}
+
+#[test]
+fn mongo_a_statement_goes_on_inside_brackets_and_before_a_method() {
+    assert_eq!(
+        statements(
+            SqlGrammar::Mongo,
+            "db.orders.find({\n  qty: 1;\n})\n  .sort({at: -1})\n  .limit(5)\ndb.x.countDocuments()"
+        ),
+        [
+            "db.orders.find({\n  qty: 1;\n})\n  .sort({at: -1})\n  .limit(5)",
+            "db.x.countDocuments()"
+        ]
+    );
+}
+
+#[test]
+fn mongo_strings_regular_expressions_and_comments_hide_their_semicolons() {
+    assert_eq!(
+        statements(
+            SqlGrammar::Mongo,
+            "db.a.find({n: 'x;y', r: /a;b/}) /* ; */ // ;\ndb.b.find()"
+        ),
+        ["db.a.find({n: 'x;y', r: /a;b/})", "db.b.find()"]
+    );
+}
+
+#[test]
+fn mongo_an_open_string_runs_to_the_end_and_is_reported() {
+    let text = "db.a.find({n: 'open\ndb.b.find()";
+    let plan = plan(SqlGrammar::Mongo, text);
+
+    assert_eq!(statements(SqlGrammar::Mongo, text), [text]);
+    assert_eq!(
+        plan.diagnostics(),
+        [ScriptDiagnostic::Unterminated {
+            construct: OpenConstruct::StringLiteral,
+            start: 14,
+        }]
+    );
+}
+
+#[test]
+fn mongo_each_statement_is_its_own_batch_and_a_failure_stops_the_script() {
+    let text = "db.a.find()\ndb.b.find()";
+    let plan = plan(SqlGrammar::Mongo, text);
+
+    assert_eq!(batch_texts(&plan, text), ["db.a.find()", "db.b.find()"]);
+    assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
+}
+
 const AGREED_CASES: &[(SqlGrammar, &str)] = &[
     (
         SqlGrammar::PostgreSql,
@@ -575,9 +635,9 @@ fn sqlparser_semicolons(grammar: SqlGrammar, text: &str) -> Result<Vec<usize>, T
         SqlGrammar::Sqlite => &SQLiteDialect {},
         SqlGrammar::MsSql => &MsSqlDialect {},
         SqlGrammar::ClickHouse => &ClickHouseDialect {},
-        // Commands have no SQL tokenizer to agree with, and no agreed case
-        // is a Redis one.
-        SqlGrammar::Redis => return Ok(Vec::new()),
+        // Commands and the shell have no SQL tokenizer to agree with, and
+        // no agreed case is a Redis or a MongoDB one.
+        SqlGrammar::Redis | SqlGrammar::Mongo => return Ok(Vec::new()),
     };
     let tokens = Tokenizer::new(dialect, text)
         .with_unescape(false)

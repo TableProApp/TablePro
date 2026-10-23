@@ -19,6 +19,10 @@ pub enum BuildSqlError {
     LengthMismatch { expected: usize, found: usize },
     #[error("part of this row's key could not be read from the server, so the row cannot be changed")]
     UndecodableKey,
+    /// A document field whose name has a dot or starts with `$`, which a
+    /// sort or an update would read as a path or an operator.
+    #[error("field {name} has a name an update or a sort cannot write")]
+    UnaddressableField { name: String },
     #[error(transparent)]
     Bind(#[from] BindError),
 }

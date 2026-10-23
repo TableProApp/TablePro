@@ -4,7 +4,8 @@
 //! invokes `connection_conformance_suite!`, `ddl_conformance_suite!`,
 //! `value_corpus_suite!`, `round_trip_suite!` and `tls_conformance_suite!`
 //! with flags for what the engine supports. A key-value engine runs
-//! `keyspace_conformance_suite!` and the TLS suite instead of the SQL ones. A
+//! `keyspace_conformance_suite!` and the TLS suite instead of the SQL ones,
+//! and a document engine `document_conformance_suite!` and the TLS suite. A
 //! flag that is off emits no test. The flags with a capability behind them (`endpoint`,
 //! `editor_transactions` and the TLS `client_identity`) are checked
 //! against the driver's capability table, so those cases cannot be
@@ -23,6 +24,8 @@ mod connection_suite_macro;
 mod corpus_column;
 mod ddl_conformance_engine;
 mod ddl_suite_macro;
+mod document_engine;
+mod document_suite_macro;
 mod editor_transaction_engine;
 #[cfg(test)]
 mod fake_engine;
@@ -52,6 +55,7 @@ pub use conformance_failure::ConformanceFailure;
 pub use connection_suite_flags::ConnectionSuiteFlags;
 pub use corpus_column::{CorpusColumn, CorpusValue};
 pub use ddl_conformance_engine::ConformanceDdlEngine;
+pub use document_engine::DocumentEngine;
 pub use editor_transaction_engine::EditorTransactionEngine;
 pub use keyspace_engine::KeyspaceEngine;
 pub use large_table_engine::LargeTableEngine;

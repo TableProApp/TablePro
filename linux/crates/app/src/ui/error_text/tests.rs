@@ -153,6 +153,13 @@ fn diagnostics_codes_rendered_per_engine() {
             },
             "WRONGTYPE",
         ),
+        (
+            ServerCode::Mongo {
+                code: 11000,
+                name: Some("DuplicateKey".to_owned()),
+            },
+            "MongoDB error 11000 DuplicateKey",
+        ),
     ];
     for (code, expected) in cases {
         let message = driver_message(&DriverError::reported(ServerDiagnostics::new(Some(code), "refused")));

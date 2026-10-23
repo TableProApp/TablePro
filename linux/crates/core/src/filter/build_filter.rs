@@ -25,6 +25,14 @@ pub fn build_filter(
     if filter.is_empty() {
         return Ok(false);
     }
+    if crate::document::speaks_shell(dialect) {
+        let mut params = crate::document::ShellParams::new();
+        let Some(document) = crate::document::filter_document(columns, filter, &mut params)? else {
+            return Ok(false);
+        };
+        params.into_builder(builder, &document);
+        return Ok(true);
+    }
     let raw = filter.raw_predicate();
     if let Some(raw) = raw {
         validate_raw_predicate(dialect, raw).map_err(BuildFilterError::RawPredicate)?;

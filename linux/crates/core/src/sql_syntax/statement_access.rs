@@ -157,8 +157,10 @@ const CLAUSE_WORDS: [&str; 15] = [
 /// on the server's version. Each piece a `DELIMITER` line cuts it into is
 /// read on its own too, since a client sends them apart.
 pub fn statement_access(sql: &str, grammar: SqlGrammar) -> StatementAccess {
-    if grammar == SqlGrammar::Redis {
-        return crate::sql_syntax::redis::script_access(sql);
+    match grammar {
+        SqlGrammar::Redis => return crate::sql_syntax::redis::script_access(sql),
+        SqlGrammar::Mongo => return crate::sql_syntax::mongo::script_access(sql),
+        _ => {}
     }
     access_as_sent(sql, grammar, CLIENT_SPLITS)
 }

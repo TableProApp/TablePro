@@ -30,11 +30,14 @@ const MAX_BODY_DEPTH: u8 = 4;
 /// at all, so History can neither show nor run a statement with a secret
 /// cut out of it.
 ///
-/// Redis commands carry a secret in their arguments, so they are read by
-/// the command rules in `sql_syntax::redis` and `rules` is not consulted.
+/// Redis commands and MongoDB statements carry a secret in their
+/// arguments, so they are read by the rules in `sql_syntax::redis` and
+/// `sql_syntax::mongo`, and `rules` is not consulted.
 pub fn classify_for_history(grammar: SqlGrammar, rules: &CredentialRules, sql: &str) -> HistoryRecording {
-    if grammar == SqlGrammar::Redis {
-        return crate::sql_syntax::redis::history_recording(sql);
+    match grammar {
+        SqlGrammar::Redis => return crate::sql_syntax::redis::history_recording(sql),
+        SqlGrammar::Mongo => return crate::sql_syntax::mongo::history_recording(sql),
+        _ => {}
     }
     classify_as_sent(grammar, rules, sql, CLIENT_SPLITS)
 }

@@ -140,7 +140,7 @@ const CLICKHOUSE: &[&str] = &[
 
 impl SqlGrammar {
     /// The keywords the editor completes for this grammar, in upper case.
-    /// Redis has none: its command names are not SQL keywords.
+    /// Redis and MongoDB have none: their words are not SQL keywords.
     pub fn keywords(self) -> impl Iterator<Item = &'static str> {
         let (common, own): (&[&str], &[&str]) = match self {
             Self::PostgreSql => (COMMON, POSTGRESQL),
@@ -148,7 +148,7 @@ impl SqlGrammar {
             Self::Sqlite => (COMMON, SQLITE),
             Self::MsSql => (COMMON, MSSQL),
             Self::ClickHouse => (COMMON, CLICKHOUSE),
-            Self::Redis => (&[], &[]),
+            Self::Redis | Self::Mongo => (&[], &[]),
         };
         common.iter().chain(own).copied()
     }

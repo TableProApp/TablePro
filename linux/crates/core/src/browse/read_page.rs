@@ -165,6 +165,10 @@ where
         .query_bound(&spec.statement, row_limit, options.clone())
         .await?;
     check_shape(&result, &spec.layout)?;
+    let result = match crate::document::speaks_shell(&*dialect) {
+        true => crate::document::json_cells(result, request.columns),
+        false => result,
+    };
     Ok((with_declared_precision(result, request.columns), spec))
 }
 

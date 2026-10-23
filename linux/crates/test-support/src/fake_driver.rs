@@ -46,6 +46,7 @@ impl FakeDriver {
         row_count_estimate: EstimateQuality::Statistics,
         object_kinds: &[ObjectKind::Table, ObjectKind::View],
         database_required: false,
+        network_options: &[],
     };
 
     /// An engine of keys that only the app's own check holds read-only,
