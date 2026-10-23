@@ -1429,6 +1429,25 @@ fn vim_write_to_a_name_leaves_another_file_alone() {
 }
 
 #[gtk4::test]
+fn vim_write_to_a_new_name_that_fails_leaves_no_file_behind() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let context = vim(&harness);
+    harness.editor.imp().saving.set(true);
+
+    assert!(vim_command(&context, ":w weekly.sql"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the failed write to say so");
+    let claimed = root.path().join("weekly.sql");
+
+    wait_until(WAIT, || !claimed.exists()).expect("the claimed name removed again");
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
 fn vim_force_write_to_a_name_replaces_another_file() {
     let root = tempfile::tempdir().expect("tempdir");
     let path = root.path().join("daily.sql");

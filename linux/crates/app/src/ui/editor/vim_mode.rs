@@ -226,17 +226,33 @@ impl SqlEditor {
         let editor = self.clone();
         glib::spawn_future_local(async move {
             let own = editor.file().is_some_and(|tab| tab.equal(&file));
-            if !replace && !own && exists(&file).await {
-                editor.emit_by_name::<()>(
-                    "toast",
-                    &[&crate::i18n::gettext_f(
-                        "“{name}” already exists. Use :w! to replace it.",
-                        &[("name", &super::file_name(&file))],
-                    )],
-                );
+            if replace || own {
+                editor.write_reporting(&file).await;
                 return;
             }
-            editor.write_reporting(&file).await;
+            // Claimed in one step, so a second tab's write to the same
+            // new name cannot land between the check and the write.
+            let claimed = match claim_new_file(&file).await {
+                Ok(()) => true,
+                Err(error) if error.matches(gio::IOErrorEnum::Exists) => {
+                    editor.emit_by_name::<()>(
+                        "toast",
+                        &[&crate::i18n::gettext_f(
+                            "“{name}” already exists. Use :w! to replace it.",
+                            &[("name", &super::file_name(&file))],
+                        )],
+                    );
+                    return;
+                }
+                // The write meets the same error and says it.
+                Err(_) => false,
+            };
+            if !editor.write_reporting(&file).await
+                && claimed
+                && let Err(error) = file.delete_future(glib::Priority::DEFAULT).await
+            {
+                tracing::warn!(%error, "could not remove the empty file a failed :w left");
+            }
         });
     }
 
@@ -298,14 +314,13 @@ fn typed_file(typed: &str, tab_file: Option<&gio::File>) -> gio::File {
         .resolve_relative_path(path)
 }
 
-async fn exists(file: &gio::File) -> bool {
-    file.query_info_future(
-        gio::FILE_ATTRIBUTE_STANDARD_TYPE,
-        gio::FileQueryInfoFlags::NONE,
-        glib::Priority::DEFAULT,
-    )
-    .await
-    .is_ok()
+/// An empty file, created only when no file has the name yet. PRIVATE
+/// as `file_write::replace_file` makes a new file, which keeps the mode.
+async fn claim_new_file(file: &gio::File) -> Result<(), glib::Error> {
+    let stream = file
+        .create_future(gio::FileCreateFlags::PRIVATE, glib::Priority::DEFAULT)
+        .await?;
+    stream.close_future(glib::Priority::DEFAULT).await
 }
 
 #[cfg(test)]
