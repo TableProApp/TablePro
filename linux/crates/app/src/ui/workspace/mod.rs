@@ -673,7 +673,6 @@ impl Workspace {
         );
         let mut actions = workspace_actions::install(&window, &input);
         let shell = shell::install(&workspace, &window, &tabs.factory, &services, &input);
-        let assistant = assistant::install(&workspace, &window, &tabs, &input);
         actions.extend([shell::SHOW_SIDEBAR, assistant::SHOW_ASSISTANT]);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
@@ -683,6 +682,8 @@ impl Workspace {
         let driver_id = session.metadata().driver_id.clone();
         let driver_name = driver_display_name(&context, &driver_id);
         let model = WorkspaceModel {
+            // Before `input` and the tabs' parts move into the model.
+            assistant: assistant::install(&workspace, &window, &tabs, &input),
             context,
             key,
             input,
@@ -698,7 +699,6 @@ impl Workspace {
             shell,
             history_gate,
             actions,
-            assistant,
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,

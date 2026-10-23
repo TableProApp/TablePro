@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -31,7 +33,11 @@ const ANTHROPIC_VERSION: HeaderName = HeaderName::from_static("anthropic-version
 pub struct AiClient {
     http: Client<HttpsConnector<HttpConnector>, Full<Bytes>>,
     user_agent: HeaderValue,
+    output_limits: Arc<Mutex<OutputLimits>>,
 }
+
+/// Each model's output limit once read, by base URL and model.
+type OutputLimits = HashMap<(String, String), Option<u32>>;
 
 impl AiClient {
     pub fn new(version: &str) -> Result<Self, AiError> {
@@ -51,7 +57,21 @@ impl AiClient {
         Ok(Self {
             http: Client::builder(TokioExecutor::new()).build(https),
             user_agent,
+            output_limits: Arc::default(),
         })
+    }
+
+    pub(crate) fn known_output_limit(&self, endpoint: &Endpoint) -> Option<Option<u32>> {
+        let limits = self.output_limits.lock().ok()?;
+        limits
+            .get(&(endpoint.base_url().to_owned(), endpoint.model().to_owned()))
+            .copied()
+    }
+
+    pub(crate) fn remember_output_limit(&self, endpoint: &Endpoint, limit: Option<u32>) {
+        if let Ok(mut limits) = self.output_limits.lock() {
+            limits.insert((endpoint.base_url().to_owned(), endpoint.model().to_owned()), limit);
+        }
     }
 
     /// Send a request and hand back a successful response; any other

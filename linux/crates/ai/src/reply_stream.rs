@@ -71,10 +71,16 @@ async fn read_reply(
     }
     let protocol = Protocol::of(endpoint.kind());
     let (path, body) = match protocol {
-        Protocol::AnthropicMessages => (
-            "/messages",
-            serde_json::to_vec(&anthropic::request_body(endpoint.model(), request, true)),
-        ),
+        Protocol::AnthropicMessages => {
+            // A model that writes less than asked for refuses the request.
+            let max_tokens = crate::model_list::output_limit(client, endpoint)
+                .await
+                .map_or(request.max_tokens, |limit| limit.min(request.max_tokens));
+            (
+                "/messages",
+                serde_json::to_vec(&anthropic::request_body(endpoint.model(), request, max_tokens, true)),
+            )
+        }
         Protocol::ChatCompletions => (
             "/chat/completions",
             serde_json::to_vec(&openai::request_body(endpoint.kind(), endpoint.model(), request, true)),

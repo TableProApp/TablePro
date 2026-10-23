@@ -57,7 +57,17 @@ struct Server {
 }
 
 impl Server {
+    /// A server that knows no model by name, as a compatible one.
     async fn start(answer: Answer) -> Self {
+        Self::serve(answer, None).await
+    }
+
+    /// A server whose Models API describes the model as `info`.
+    async fn with_model_info(answer: Answer, info: &str) -> Self {
+        Self::serve(answer, Some(info.to_owned())).await
+    }
+
+    async fn serve(answer: Answer, model_info: Option<String>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("the test server");
         let address = listener.local_addr().expect("the test server");
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -68,12 +78,14 @@ impl Server {
                     return;
                 };
                 let answer = answer.clone();
+                let model_info = model_info.clone();
                 let recorded = recorded.clone();
                 tokio::spawn(async move {
                     let service = service_fn(move |request: Request<Incoming>| {
                         let answer = answer.clone();
+                        let model_info = model_info.clone();
                         let recorded = recorded.clone();
-                        async move { Ok::<_, Infallible>(respond(request, answer, recorded).await) }
+                        async move { Ok::<_, Infallible>(respond(request, answer, model_info, recorded).await) }
                     });
                     let _ = http1::Builder::new()
                         .serve_connection(TokioIo::new(stream), service)
@@ -93,15 +105,29 @@ impl Server {
     }
 }
 
-async fn respond(request: Request<Incoming>, answer: Answer, recorded: Arc<Mutex<Vec<Seen>>>) -> Response<BoxedBody> {
+async fn respond(
+    request: Request<Incoming>,
+    answer: Answer,
+    model_info: Option<String>,
+    recorded: Arc<Mutex<Vec<Seen>>>,
+) -> Response<BoxedBody> {
     let (parts, body) = request.into_parts();
     let bytes = body.collect().await.map(|body| body.to_bytes()).unwrap_or_default();
+    let describes_a_model = parts.method == http::Method::GET && parts.uri.path().starts_with("/v1/models/");
     recorded.lock().expect("the test server").push(Seen {
         method: parts.method.to_string(),
         path: parts.uri.path_and_query().map(ToString::to_string).unwrap_or_default(),
         headers: parts.headers,
         body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
     });
+    let answer = match (describes_a_model, model_info) {
+        (true, Some(info)) => Answer::Json(info),
+        (true, None) => Answer::Status(
+            StatusCode::NOT_FOUND,
+            r#"{"type":"error","error":{"type":"not_found_error","message":"model: m"}}"#.to_owned(),
+        ),
+        (false, _) => answer,
+    };
     match answer {
         Answer::Events { content_type, body } => Response::builder()
             .header("content-type", content_type)
@@ -230,15 +256,52 @@ async fn an_anthropic_reply_streams_its_text_and_ends_with_the_usage() {
         ]
     );
     let seen = server.seen();
-    let request = &seen[0];
+    assert_eq!(seen[0].path, "/v1/models/claude-opus-5-5");
+    let request = &seen[1];
     assert_eq!(request.method, "POST");
     assert_eq!(request.path, "/v1/messages");
     assert_eq!(request.headers["x-api-key"], "sk-ant-test");
     assert_eq!(request.headers["anthropic-version"], "2026-10-21");
     assert!(request.headers.get("authorization").is_none());
     assert_eq!(request.body["model"], "claude-opus-5-5");
+    assert_eq!(request.body["max_tokens"], ChatRequest::CHAT_MAX_TOKENS);
     assert_eq!(request.body["system"], "You help with SQL.");
     assert_eq!(request.body["messages"][0]["content"], "Count the rows");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_anthropic_request_asks_for_no_more_than_the_model_writes() {
+    let server = Server::with_model_info(
+        Answer::Events {
+            content_type: "text/event-stream",
+            body: anthropic_reply(),
+        },
+        r#"{"type":"model","id":"claude-opus-4-0","max_input_tokens":200000,"max_tokens":32000}"#,
+    )
+    .await;
+    let endpoint = Endpoint::new(
+        AiProvider::Anthropic,
+        &server.base(),
+        "claude-opus-4-0",
+        Some(SecretString::from("k")),
+    )
+    .unwrap();
+    let client = client();
+
+    for _ in 0..2 {
+        let (text, _) = collect_reply(&client, &endpoint, &request()).await.unwrap();
+        assert_eq!(text, "SELECT 1;");
+    }
+
+    let seen = server.seen();
+    let lookups = seen.iter().filter(|seen| seen.method == "GET").count();
+    let asked: Vec<_> = seen
+        .iter()
+        .filter(|seen| seen.method == "POST")
+        .map(|seen| seen.body["max_tokens"].clone())
+        .collect();
+    assert_eq!(lookups, 1, "the limit is read once per model");
+    assert_eq!(asked, [32000, 32000]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

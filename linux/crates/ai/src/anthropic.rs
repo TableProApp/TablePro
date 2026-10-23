@@ -24,12 +24,17 @@ pub(crate) struct WireMessage<'a> {
     content: &'a str,
 }
 
-pub(crate) fn request_body<'a>(model: &'a str, request: &'a ChatRequest, stream: bool) -> RequestBody<'a> {
+pub(crate) fn request_body<'a>(
+    model: &'a str,
+    request: &'a ChatRequest,
+    max_tokens: u32,
+    stream: bool,
+) -> RequestBody<'a> {
     // Text only: a thinking block from an earlier turn is never sent
     // back, so no history check can refuse an edited conversation.
     RequestBody {
         model,
-        max_tokens: request.max_tokens,
+        max_tokens,
         system: &request.system,
         messages: request
             .messages
@@ -172,7 +177,7 @@ mod tests {
             max_tokens: 1000,
         };
 
-        let body = serde_json::to_value(request_body("claude-opus-5-5", &request, true)).unwrap();
+        let body = serde_json::to_value(request_body("claude-opus-5-5", &request, request.max_tokens, true)).unwrap();
 
         assert_eq!(body["model"], "claude-opus-5-5");
         assert_eq!(body["system"], "be brief");

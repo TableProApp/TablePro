@@ -11,6 +11,11 @@ pub(crate) fn announce(widget: &impl IsA<gtk::Widget>, message: &str, priority: 
     let widget = widget.as_ref();
     #[cfg(test)]
     said::record(widget, message, priority);
+    // With no accessibility bus GTK falls back to its test context,
+    // which has no announce of its own: calling it crashes the app.
+    if widget.at_context().type_().name() == "GtkTestATContext" {
+        return;
+    }
     widget.announce(message, priority);
 }
 

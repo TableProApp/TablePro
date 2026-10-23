@@ -35,14 +35,13 @@ pub(crate) struct SuggestionState {
     /// Where the suggestion waited for, asked for or shown goes in. The
     /// cursor leaving it drops the suggestion.
     at: Option<i32>,
-    ghost: Option<Ghost>,
-}
-
-struct Ghost {
-    /// The rest of the cursor's line, and the lines after it, which start
-    /// where the cursor's line starts.
-    labels: Vec<gtk::Label>,
-    text: String,
+    /// The suggestion shown.
+    ghost: Option<String>,
+    /// Where it shows: the rest of the cursor's line, and the lines after
+    /// it, which start where the cursor's line starts. Laid over the view
+    /// once and hidden in between, since a text view has no call that
+    /// takes an overlay away again.
+    labels: Option<[gtk::Label; 2]>,
 }
 
 impl SqlEditor {
@@ -137,10 +136,9 @@ impl SqlEditor {
         if let Some(work) = state.work.take() {
             work.abort();
         }
-        if let Some(ghost) = state.ghost.take() {
-            for label in &ghost.labels {
-                self.imp().source_view.remove(label);
-            }
+        state.ghost = None;
+        for label in state.labels.iter().flatten() {
+            label.set_visible(false);
         }
     }
 
@@ -159,12 +157,7 @@ impl SqlEditor {
     }
 
     pub(crate) fn suggestion_text(&self) -> Option<String> {
-        self.imp()
-            .suggestion
-            .borrow()
-            .ghost
-            .as_ref()
-            .map(|ghost| ghost.text.clone())
+        self.imp().suggestion.borrow().ghost.clone()
     }
 
     fn schedule_suggestion(&self) {
@@ -274,21 +267,27 @@ impl SqlEditor {
         line_start.set_line_offset(0);
         let origin = view.iter_location(&line_start);
         let (first, rest) = text.split_once('\n').unwrap_or((text.as_str(), ""));
-        let mut labels = Vec::new();
-        if !first.is_empty() {
-            labels.push(ghost_label(&view, first, place.x(), place.y()));
-        }
-        if !rest.is_empty() {
-            labels.push(ghost_label(&view, rest, origin.x(), place.y() + place.height()));
-        }
+        let [line, below] = self.ghost_labels();
+        show_ghost(&view, &line, first, place.x(), place.y());
+        show_ghost(&view, &below, rest, origin.x(), place.y() + place.height());
         crate::ui::a11y::announce(
             &view,
             &crate::i18n::gettext_f("Suggestion: {text}. Tab accepts it.", &[("text", &text)]),
             gtk::AccessibleAnnouncementPriority::Low,
         );
         let mut state = self.imp().suggestion.borrow_mut();
-        state.ghost = Some(Ghost { labels, text });
+        state.ghost = Some(text);
         state.at = Some(offset);
+    }
+
+    fn ghost_labels(&self) -> [gtk::Label; 2] {
+        if let Some(labels) = self.imp().suggestion.borrow().labels.clone() {
+            return labels;
+        }
+        let view = self.imp().source_view.get();
+        let labels = [ghost_label(&view), ghost_label(&view)];
+        self.imp().suggestion.borrow_mut().labels = Some(labels.clone());
+        labels
     }
 
     /// Whether keys typed now insert text: not in Vim's normal mode, and
@@ -323,19 +322,26 @@ fn shows_popup(view: &sourceview5::View) -> bool {
     false
 }
 
-/// Dimmed text laid over the view at buffer position `x`, `y`, in the
-/// editor's font, which the label takes from the view.
-fn ghost_label(view: &sourceview5::View, text: &str, x: i32, y: i32) -> gtk::Label {
+/// Dimmed text laid over the view, in the editor's font, which the
+/// label takes from the view. Hidden until a suggestion shows in it.
+fn ghost_label(view: &sourceview5::View) -> gtk::Label {
     let label = gtk::Label::builder()
-        .label(text)
         .xalign(0.0)
         .can_target(false)
         .can_focus(false)
+        .visible(false)
         .accessible_role(gtk::AccessibleRole::Presentation)
         .build();
     label.add_css_class("dim-label");
-    view.add_overlay(&label, x, y);
+    view.add_overlay(&label, 0, 0);
     label
+}
+
+/// Show `text` in `label` at buffer position `x`, `y`; an empty one hides it.
+fn show_ghost(view: &sourceview5::View, label: &gtk::Label, text: &str, x: i32, y: i32) {
+    label.set_label(text);
+    view.move_overlay(label, x, y);
+    label.set_visible(!text.is_empty());
 }
 
 /// The assistant's completion at the cursor, or `None` when there is
@@ -421,6 +427,31 @@ mod suggestion_tests {
         harness.policy.set(AiPolicy::Never);
         editor.show_suggestion(" orders;".to_owned(), offset, false);
         assert_eq!(editor.suggestion_text(), None, "shown under Never");
+    }
+
+    #[gtk4::test]
+    fn a_dropped_suggestion_leaves_no_text_over_the_editor() {
+        let harness = editor_with_assistant("SELECT * FROM", AiPolicy::Allow);
+        harness.settings.get().set_ai_inline_suggestions(true).expect("on");
+        let editor = &harness.editor;
+        let shown = || {
+            crate::test_support::descendants(&editor.imp().source_view.get())
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                .filter(|label| label.is_visible() && label.has_css_class("dim-label"))
+                .map(|label| label.label().to_string())
+                .collect::<Vec<_>>()
+        };
+
+        let offset = at_end(editor);
+        editor.show_suggestion(" orders\nWHERE id = 1;".to_owned(), offset, false);
+        assert_eq!(shown(), [" orders", "WHERE id = 1;"]);
+        editor.buffer().place_cursor(&editor.buffer().start_iter());
+        assert!(shown().is_empty(), "{:?}", shown());
+
+        let offset = at_end(editor);
+        editor.show_suggestion(" orders;".to_owned(), offset, false);
+        assert_eq!(shown(), [" orders;"]);
     }
 
     #[gtk4::test]
