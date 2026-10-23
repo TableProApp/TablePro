@@ -107,7 +107,7 @@ jobs:
       - name: Check the Production CloudKit schema
         env:
           CLOUDKIT_MANAGEMENT_TOKEN: ${{ secrets.CLOUDKIT_MANAGEMENT_TOKEN }}
-        run: scripts/export-cloudkit-schema.sh --check
+        run: scripts/export-cloudkit-schema.sh --check-deployed
 
       - name: Write Secrets.xcconfig
         env:
