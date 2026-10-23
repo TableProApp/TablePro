@@ -387,25 +387,27 @@ pub fn component_matches(action: &str, keyval: gdk::Key, state: gdk::ModifierTyp
 }
 
 /// The SQL editor's own Ctrl keys, which Vim mode leaves to the editor in
-/// every mode. Escape and the other plain keys are Vim's.
-pub fn editor_keeps(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
-    let modifiers = state & gtk::accelerator_get_default_mod_mask();
-    let keyval = keyval.to_lower();
-    ACCELERATORS
+/// every mode. A trigger, so an event matches it as the editor's shortcut
+/// controllers match it, layout and consumed Shift included. Escape and
+/// the other plain keys are Vim's.
+pub fn editor_kept_keys() -> Option<gtk::ShortcutTrigger> {
+    let accels: Vec<&str> = ACCELERATORS
         .iter()
-        .filter(|entry| {
-            matches!(
-                entry.scope,
-                Local {
-                    owner: SqlEditor | SqlEditorTab,
-                    ..
-                }
-            )
-        })
-        .flat_map(|entry| entry.triggers.iter())
-        .filter_map(|accel| parse(accel))
-        .filter(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK))
-        .any(|(key, mods)| mods == modifiers && (key == keyval || keypad_twins(key).contains(&keyval)))
+        .filter(|entry| is_editors(entry))
+        .flat_map(|entry| entry.triggers.iter().copied())
+        .filter(|accel| parse(accel).is_some_and(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK)))
+        .collect();
+    shortcut_trigger(&accels)
+}
+
+fn is_editors(entry: &Accelerator) -> bool {
+    matches!(
+        entry.scope,
+        Local {
+            owner: SqlEditor | SqlEditorTab,
+            ..
+        }
+    )
 }
 
 /// GtkPopoverMenu shows an application accelerator by itself; a Local or
@@ -687,66 +689,45 @@ mod tests {
 
     #[gtk4::test]
     fn the_editor_keeps_its_ctrl_keys_from_vim() {
-        let ctrl = gdk::ModifierType::CONTROL_MASK;
-        let ctrl_shift = ctrl | gdk::ModifierType::SHIFT_MASK;
-        let none = gdk::ModifierType::empty();
+        let kept: HashSet<Keystroke> = trigger_keys(&editor_kept_keys().expect("the editor has Ctrl keys"))
+            .into_iter()
+            .collect();
 
-        for (key, state) in [
-            (gdk::Key::Return, ctrl),
-            (gdk::Key::KP_Enter, ctrl),
-            (gdk::Key::Return, ctrl_shift),
-            (gdk::Key::F, ctrl_shift),
-            (gdk::Key::slash, ctrl),
-            (gdk::Key::f, ctrl),
-            (gdk::Key::f, ctrl | gdk::ModifierType::LOCK_MASK),
-            (gdk::Key::h, ctrl),
-            (gdk::Key::g, ctrl),
-            (gdk::Key::G, ctrl_shift),
-            (gdk::Key::o, ctrl),
-            (gdk::Key::s, ctrl),
-            (gdk::Key::S, ctrl_shift),
+        for accel in [
+            "<Primary>Return",
+            "<Primary>KP_Enter",
+            "<Primary><Shift>Return",
+            "<Primary><Shift>f",
+            "<Primary>slash",
+            "<Primary>f",
+            "<Primary>h",
+            "<Primary>g",
+            "<Primary><Shift>g",
+            "<Primary>o",
+            "<Primary>s",
+            "<Primary><Shift>s",
         ] {
-            assert!(editor_keeps(key, state), "{key:?} with {state:?}");
+            assert!(kept.contains(&keystroke(accel)), "{accel}");
         }
-        for (key, state) in [
-            (gdk::Key::Escape, none),
-            (gdk::Key::f, none),
-            (gdk::Key::Return, none),
-            (gdk::Key::r, ctrl),
-            (gdk::Key::d, ctrl),
-            (gdk::Key::v, ctrl),
-            (gdk::Key::f, gdk::ModifierType::ALT_MASK),
-            (gdk::Key::F6, none),
-        ] {
-            assert!(!editor_keeps(key, state), "{key:?} with {state:?}");
+        for accel in ["Escape", "<Primary>r", "<Primary>d", "<Primary>v", "<Primary>w", "f"] {
+            assert!(!kept.contains(&keystroke(accel)), "{accel}");
         }
     }
 
     #[gtk4::test]
     fn every_ctrl_key_of_the_editor_is_kept_from_vim() {
-        let mut checked = 0;
-        for entry in ACCELERATORS {
-            if !matches!(
-                entry.scope,
-                Local {
-                    owner: SqlEditor | SqlEditorTab,
-                    ..
-                }
-            ) {
-                continue;
-            }
-            for accel in entry.triggers {
-                let (key, mods) = gtk::accelerator_parse(*accel).expect("the table parses");
-                assert_eq!(
-                    editor_keeps(key, mods),
-                    mods.contains(gdk::ModifierType::CONTROL_MASK),
-                    "{accel} of {}",
-                    entry.action
-                );
-                checked += 1;
-            }
-        }
-        assert_eq!(checked, 12);
+        let kept: HashSet<Keystroke> = trigger_keys(&editor_kept_keys().expect("the editor has Ctrl keys"))
+            .into_iter()
+            .collect();
+        let owned: HashSet<Keystroke> = ACCELERATORS
+            .iter()
+            .filter(|entry| is_editors(entry))
+            .flat_map(|entry| entry.triggers.iter())
+            .flat_map(|accel| keystrokes_with_twins(accel))
+            .filter(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK))
+            .collect();
+
+        assert_eq!(kept, owned);
     }
 
     #[gtk4::test]

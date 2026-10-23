@@ -40,7 +40,7 @@ pub use accelerator_scope::AcceleratorScope;
 #[cfg(test)]
 pub(crate) use accelerators::keypad_twins;
 pub use accelerators::{
-    ACCELERATORS, component_matches, component_trigger, controller_name, editor_keeps,
+    ACCELERATORS, component_matches, component_trigger, controller_name, editor_kept_keys,
     install_application_accelerators, local_shortcut_controller, menu_item, triggers_for,
 };
 pub use app_actions::install_app_actions;

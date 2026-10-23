@@ -107,13 +107,17 @@ impl SqlEditor {
         keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
         let filter = context.clone();
         let popups = view.downgrade();
+        let kept = crate::application::editor_kept_keys();
         keys.connect_key_pressed(move |keys, keyval, _, state| {
-            if crate::application::editor_keeps(keyval, state) {
-                return glib::Propagation::Proceed;
-            }
             let Some(event) = keys.current_event() else {
                 return glib::Propagation::Proceed;
             };
+            if kept
+                .as_ref()
+                .is_some_and(|kept| kept.trigger(&event, false) != gdk::KeyMatch::None)
+            {
+                return glib::Propagation::Proceed;
+            }
             if !filter.filter_keypress(&event) {
                 return glib::Propagation::Proceed;
             }
