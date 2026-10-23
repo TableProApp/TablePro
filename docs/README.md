@@ -176,3 +176,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Build-script manifest ownership, October 23](evidence/build-manifest-2026-10-23/README.md): cross-checkout resource ownership and deleted-checkout regressions.
 
 - [Optimized PostgreSQL fixture profile, October 23](evidence/postgres-optimized-fixture-2026-10-23/README.md): optimized many-column RSS and timing observations with explicit artifact provenance.
+
+- [Export snapshot allocation probe, October 23](evidence/export-snapshot-sharing-2026-10-23/allocation-probe/README.md): matched synthetic allocation measurements for the merged snapshot-sharing repair.
+- [Grid factory realization, October 23](evidence/grid-factory-realization-2026-10-23/README.md): initial layout, teardown, vertical bounds and scroll-rebinding counters.
+- [Editor scrolling resources, October 23](evidence/editor-scroll-resources-2026-10-23/README.md): actual visible row traversal and process RSS, with exact artifact identity.
+- Historical October 22 probes: [large result scrolling](evidence/large-result-profile-2026-10-22/README.md) and [post-decode byte-budget overshoot](evidence/query-result-byte-budget-2026-10-22/README.md). These preserve older source observations; they do not supersede later repairs or measurements.
