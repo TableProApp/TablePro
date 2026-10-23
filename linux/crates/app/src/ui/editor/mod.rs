@@ -864,16 +864,13 @@ impl SqlEditor {
 
     /// Loading replaces what is in the tab, which is where the user's
     /// unrun work lives, so `replace` runs once the user agrees, or
-    /// straight away when the tab holds nothing.
+    /// straight away when the tab holds nothing. A file emptied and not
+    /// saved still holds a change.
     fn replace_after_asking(&self, replace: impl Fn(&SqlEditor) + 'static) {
-        if buffer_text(&self.buffer()).trim().is_empty() {
+        if buffer_text(&self.buffer()).trim().is_empty() && !self.has_unsaved_file_changes() {
             replace(self);
-        } else {
-            self.ask_to_replace(replace);
+            return;
         }
-    }
-
-    fn ask_to_replace(&self, replace: impl Fn(&SqlEditor) + 'static) {
         let dialog = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Replace the Editor Contents?")),
             Some(&crate::i18n::gettext(

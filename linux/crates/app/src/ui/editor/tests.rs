@@ -1506,6 +1506,27 @@ fn vim_edit_asks_before_it_drops_changes_to_the_file() {
 }
 
 #[gtk4::test]
+fn vim_edit_a_name_asks_before_it_drops_an_emptied_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    let other = root.path().join("weekly.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    std::fs::write(&other, "SELECT 7;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.delete(&mut buffer.start_iter(), &mut buffer.end_iter());
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e weekly.sql"));
+
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert_eq!(buffer_text(&buffer), "");
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
 fn vim_edit_asks_before_it_undoes_emptying_the_file() {
     let root = tempfile::tempdir().expect("tempdir");
     let path = root.path().join("daily.sql");

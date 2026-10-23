@@ -280,8 +280,7 @@ impl SqlEditor {
         if force || !self.has_unsaved_file_changes() {
             self.load_file(file);
         } else {
-            // Even when the text is now empty: emptying it was the change.
-            self.ask_to_replace(move |editor| editor.load_file(file.clone()));
+            self.replace_after_asking(move |editor| editor.load_file(file.clone()));
         }
     }
 
