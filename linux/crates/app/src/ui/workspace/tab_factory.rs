@@ -52,6 +52,7 @@ pub(super) struct TabFactoryParts {
     pub read_only: bool,
     /// Whether a tab's title names the table's schema.
     pub naming: Rc<Cell<TableNaming>>,
+    pub snippets: Rc<crate::services::snippet_library::SnippetLibrary>,
 }
 
 /// The one place a tab is built: its widget, its page, its slot and its
@@ -149,6 +150,7 @@ impl TabFactory {
             session: parts.context.active.clone(),
             hold: parts.context.hold.clone(),
             close_timeout: parts.context.close_timeout(),
+            snippets: parts.snippets.clone(),
         });
         connect_editor(&editor, id, &parts.input, &parts.toasts);
         // After the signals are connected, so the workspace marks a tab
@@ -476,6 +478,7 @@ mod tests {
             session: crate::services::active_session::ActiveSession::new(),
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             close_timeout: std::time::Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&editor));

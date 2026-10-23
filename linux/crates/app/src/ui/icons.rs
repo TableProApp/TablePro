@@ -31,6 +31,9 @@ pub const PREFERENCES_SYSTEM: &str = "preferences-system-symbolic";
 pub const PROCESS_STOP: &str = "process-stop-symbolic";
 pub const STATEMENT_PENDING: &str = "statement-pending-symbolic";
 pub const SIDEBAR_SHOW: &str = "sidebar-show-symbolic";
+/// Not in Adwaita; GtkSourceView installs it, for its own snippet
+/// completion.
+pub const SNIPPET: &str = "completion-snippet-symbolic";
 pub const SUCCESS: &str = "object-select-symbolic";
 pub const SYSTEM_RUN: &str = "system-run-symbolic";
 pub const SYSTEM_SEARCH: &str = "system-search-symbolic";
@@ -85,6 +88,7 @@ pub const ALL: &[&str] = &[
     PREFERENCES_SYSTEM,
     PROCESS_STOP,
     SIDEBAR_SHOW,
+    SNIPPET,
     STATEMENT_PENDING,
     SUCCESS,
     SYSTEM_RUN,

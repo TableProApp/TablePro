@@ -783,6 +783,7 @@ impl Workspace {
             structure_trackers: structure_trackers.clone(),
             read_only: session.read_only(),
             naming: naming.clone(),
+            snippets: services.snippets.clone(),
         });
         workspace_tabs::connect_tab_view(&tab_view, &index, input);
         WorkspaceTabParts {

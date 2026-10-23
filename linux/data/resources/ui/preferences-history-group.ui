@@ -45,6 +45,8 @@
     <child>
       <object class="AdwActionRow" id="storage_row">
         <property name="title" translatable="yes">Storage location</property>
+        <!-- The subtitle is a path, which may hold & or <. -->
+        <property name="use-markup">false</property>
         <child type="suffix">
           <object class="GtkButton" id="storage_button">
             <property name="label" translatable="yes">Show in Files</property>

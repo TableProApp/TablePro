@@ -44,11 +44,25 @@ impl PreferencesDialog {
         let dialog: Self = glib::Object::new();
         let imp = dialog.imp();
         imp.settings.replace(Some(settings.clone()));
-        imp.general_page.bind(settings, storage, history, tasks, revealer);
-        imp.editor_page.bind(settings);
+        imp.general_page
+            .bind(settings, storage, history, tasks, revealer.clone());
+        imp.editor_page.bind(
+            settings,
+            editor_page::SnippetsFolder {
+                folder: storage.paths().snippets_dir(),
+                tasks: tasks.clone(),
+                opener: revealer,
+            },
+        );
         imp.mcp_page.bind(settings, mcp);
         let shown_in = dialog.downgrade();
         imp.general_page.history_group().connect_toast(move |_, toast| {
+            if let Some(dialog) = shown_in.upgrade() {
+                dialog.add_toast(toast.clone());
+            }
+        });
+        let shown_in = dialog.downgrade();
+        imp.editor_page.connect_toast(move |_, toast| {
             if let Some(dialog) = shown_in.upgrade() {
                 dialog.add_toast(toast.clone());
             }

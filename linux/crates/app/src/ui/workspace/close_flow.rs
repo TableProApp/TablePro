@@ -222,6 +222,7 @@ mod tests {
             session: active.clone(),
             hold: hold.clone(),
             close_timeout: Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         editor.run();
         wait_until(WAIT, || !editor.is_running()).expect("the run to end");

@@ -294,6 +294,23 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn the_storage_row_shows_its_path_as_written() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let group = bound_group(
+            &settings,
+            &storage,
+            &root,
+            &runtime.tasks(),
+            Rc::new(RecordingRevealer::succeeding()),
+        );
+
+        assert!(!group.imp().storage_row.uses_markup(), "a path with & reads as markup");
+    }
+
+    #[gtk4::test]
     fn the_storage_row_names_the_history_database() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
