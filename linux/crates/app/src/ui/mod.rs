@@ -7,6 +7,7 @@ mod connection_appearance;
 mod connection_list_banner;
 pub(crate) mod credential_prompt;
 mod delete_connection_dialog;
+mod diagram;
 mod discard_alert;
 mod editor;
 mod editor_font_provider;

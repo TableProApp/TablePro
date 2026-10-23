@@ -56,6 +56,28 @@
     </child>
     <child>
       <object class="AdwPreferencesGroup">
+        <property name="title" translatable="yes">Snippets</property>
+        <property name="description" translatable="yes">Statements you write often, offered in completion beside the built-in ones. A file added to the folder or changed is read right away.</property>
+        <child>
+          <object class="AdwActionRow" id="snippets_row">
+            <property name="title" translatable="yes">Snippets folder</property>
+            <!-- The subtitle is a path, which may hold & or <. -->
+            <property name="use-markup">false</property>
+            <child type="suffix">
+              <object class="GtkButton" id="snippets_button">
+                <property name="label" translatable="yes">Open Folder</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup">
         <property name="title" translatable="yes">Running Queries</property>
         <child>
           <object class="AdwSpinRow" id="timeout_row">

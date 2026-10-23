@@ -21,6 +21,9 @@ mod imp {
         pub rows: Cell<u64>,
         pub expected: Cell<Option<ExpectedRows>>,
         pub cancel: OnceCell<CancellationToken>,
+        /// The file is made whole before it is written, so it has no rows
+        /// to count.
+        pub whole: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -44,6 +47,17 @@ impl ExportJobItem {
         item.imp().expected.set(expected);
         let _ = item.imp().cancel.set(cancel);
         item
+    }
+
+    /// A job that writes a file made whole first, such as an image.
+    pub(crate) fn whole_file(title: &str, cancel: CancellationToken) -> Self {
+        let item = Self::new(title, None, cancel);
+        item.imp().whole.set(true);
+        item
+    }
+
+    pub(crate) fn is_whole_file(&self) -> bool {
+        self.imp().whole.get()
     }
 
     pub(crate) fn expected(&self) -> Option<ExpectedRows> {

@@ -1,3 +1,4 @@
+mod builtin_snippet;
 mod catalog_change;
 mod credential_rules;
 mod errors;
@@ -14,6 +15,7 @@ pub mod script;
 mod statement_access;
 mod statement_tokens;
 
+pub use builtin_snippet::{BuiltinSnippet, builtin_snippets};
 pub use catalog_change::changes_catalog;
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};

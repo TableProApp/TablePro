@@ -2,9 +2,10 @@
 /// implements `ConformanceDdlEngine`. `docker: true` marks every case
 /// `#[ignore = "requires docker"]`.
 ///
-/// Each case plans through the connection's own `DdlDialect` and runs
-/// the plan with `write_batch`, so what it checks is the SQL the
-/// structure tab would send.
+/// Each case but the last plans through the connection's own
+/// `DdlDialect` and runs the plan with `write_batch`, so what it checks
+/// is the SQL the structure tab would send. The last runs the SQL
+/// editor's built-in snippets through an editor session.
 #[macro_export]
 macro_rules! ddl_conformance_suite {
     (engine: $engine:ty, docker: $docker:tt $(,)?) => {
@@ -31,6 +32,12 @@ macro_rules! ddl_conformance_suite {
             $engine as ConformanceEngine,
             structure_changes_keep_rows_and_indexes,
             $crate::conformance::cases::ddl::structure_changes_keep_rows_and_indexes::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            builtin_snippets_run_as_written,
+            $crate::conformance::cases::snippets::builtin_snippets_run_as_written::<$engine>
         }
     };
 }

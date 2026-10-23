@@ -21,6 +21,7 @@ mod column_recheck;
 mod columns_fetch;
 mod command_handlers;
 mod confirming_delete;
+mod confirming_paste;
 mod count_failure_text;
 mod count_policy;
 mod data_handlers;
@@ -36,6 +37,9 @@ mod page_state;
 mod pager_bar;
 mod paging_handlers;
 mod paging_input;
+mod paste_at;
+mod paste_handlers;
+mod paste_read;
 mod pending_changes_bar;
 mod row_count;
 mod row_deletion;
@@ -77,6 +81,7 @@ use self::browse_tab_widgets::BrowseTabWidgets;
 pub(crate) use self::clipboard_input::ClipboardInput;
 use self::column_recheck::ColumnRecheck;
 use self::confirming_delete::ConfirmingDelete;
+use self::confirming_paste::ConfirmingPaste;
 pub(crate) use self::data_input::DataInput;
 pub(crate) use self::edit_input::EditInput;
 pub(crate) use self::page_reply::PageReply;
@@ -84,6 +89,7 @@ use self::page_state::PageState;
 #[cfg(test)]
 pub(super) use self::pager_bar::PagerBar;
 pub(crate) use self::paging_input::PagingInput;
+use self::paste_read::{PasteOutcome, PasteRead, PasteRequest, PasteSource, read_pasted};
 #[cfg(test)]
 pub(super) use self::pending_changes_bar::PendingChangesBar;
 pub(crate) use self::row_total::RowTotal;
@@ -211,6 +217,8 @@ impl BrowseTab {
             suppress_combo_emit: Cell::new(true),
             confirming_delete: None,
             next_confirmation: 0,
+            next_paste: 0,
+            confirming_paste: None,
             widgets,
         };
         imp.model.replace(Some(model));
@@ -441,7 +449,41 @@ impl BrowseTab {
             BrowseTabOutput::FollowReference(reference) => {
                 self.emit_by_name::<()>("follow-reference", &[&glib::BoxedAnyObject::new(reference)]);
             }
+            BrowseTabOutput::ReadClipboard(request) => self.read_paste(request),
         }
+    }
+
+    /// Read the clipboard and turn what it holds into rows off the GTK
+    /// thread, then hand the tab what it came to.
+    fn read_paste(&self, request: PasteRequest) {
+        let Some(tasks) = self.read(|model| model.tasks.clone()) else {
+            return;
+        };
+        let clipboard = self.clipboard();
+        let tab = self.downgrade();
+        glib::spawn_future_local(async move {
+            let outcome = match read_clipboard(&clipboard).await {
+                Ok(source) => {
+                    let columns = request.columns.clone();
+                    let in_order = request.in_order.clone();
+                    let at_cell = request.at.is_some();
+                    match tasks
+                        .spawn_blocking_task(move || read_pasted(&source, &columns, &in_order, at_cell))
+                        .await
+                    {
+                        Ok(outcome) => outcome,
+                        Err(failure) => {
+                            tracing::warn!(%failure, "pasted text could not be read");
+                            PasteOutcome::Failed
+                        }
+                    }
+                }
+                Err(outcome) => outcome,
+            };
+            if let Some(tab) = tab.upgrade() {
+                tab.send(ClipboardInput::PasteRead(Box::new(PasteRead { request, outcome })));
+            }
+        });
     }
 
     /// Render a copy off the GTK thread, and toast how it went.
@@ -573,6 +615,9 @@ pub(crate) struct BrowseModel {
     suppress_combo_emit: Cell<bool>,
     confirming_delete: Option<ConfirmingDelete>,
     next_confirmation: u64,
+    /// The ticket of the latest paste, the only one that may land.
+    next_paste: u64,
+    confirming_paste: Option<ConfirmingPaste>,
     widgets: BrowseTabWidgets,
 }
 
@@ -598,6 +643,8 @@ pub(crate) enum BrowseTabOutput {
     RefreshRequested,
     /// The grid asked to open the rows a foreign key leads to.
     FollowReference(RowReference),
+    /// A paste the tab can take, for the tab to read the clipboard for.
+    ReadClipboard(PasteRequest),
 }
 
 impl BrowseModel {
@@ -675,6 +722,44 @@ impl BrowseModel {
     }
 }
 
+/// What the clipboard holds: the cells a grid copy offers, which keep
+/// each value and NULL as they were, or else its text. Either is read
+/// only up to the import's limit, since another program's clipboard can
+/// hold anything.
+async fn read_clipboard(clipboard: &gtk::gdk::Clipboard) -> Result<PasteSource, PasteOutcome> {
+    use crate::ui::clipboard::CELLS_MIME_TYPE;
+    use crate::ui::file_read::{FileReadError, read_capped};
+
+    let cells = clipboard.formats().contain_mime_type(CELLS_MIME_TYPE);
+    let wanted: &[&str] = match cells {
+        true => &[CELLS_MIME_TYPE],
+        false => &["text/plain;charset=utf-8", "text/plain"],
+    };
+    let stream = match clipboard.read_future(wanted, glib::Priority::DEFAULT).await {
+        Ok((stream, _)) => stream,
+        Err(error) => {
+            tracing::debug!(%error, "the clipboard holds nothing to paste");
+            return Err(PasteOutcome::Nothing);
+        }
+    };
+    let bytes = match read_capped(&stream, tablepro_core::import::MAX_CSV_FILE_BYTES).await {
+        Ok(bytes) => bytes,
+        Err(FileReadError::TooLarge) => return Err(PasteOutcome::TooLarge),
+        Err(error) => {
+            tracing::warn!(?error, "the clipboard could not be read");
+            return Err(PasteOutcome::Failed);
+        }
+    };
+    match cells {
+        true => Ok(PasteSource::Cells(bytes)),
+        false => String::from_utf8(bytes).map(PasteSource::Text).map_err(|error| {
+            PasteOutcome::Unreadable(tablepro_core::import::ImportError::NotUtf8 {
+                offset: error.utf8_error().valid_up_to(),
+            })
+        }),
+    }
+}
+
 /// A status page reads its description as markup, and a table's name
 /// can hold an `&` or a `<`.
 fn loading_description(table: &str) -> glib::GString {
@@ -691,18 +776,50 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
     }
 }
 
-/// The one place the store gains or loses draft rows.
+/// The one place the store gains or loses draft rows. A paste can add
+/// or an undo remove thousands at once, so each run of rows is one
+/// change to the store rather than one per row.
 fn apply_draft_changes(store: &gtk::gio::ListStore, index: &mut GridRowIndex, delta: &TrackerDelta) {
-    for draft_id in &delta.removed_drafts {
-        let key = RowKey::Draft(*draft_id);
-        if let Some(position) = index.position_in(store, &key) {
-            store.remove(position);
+    if !delta.removed_drafts.is_empty() {
+        remove_drafts(store, &delta.removed_drafts);
+        for draft_id in &delta.removed_drafts {
+            index.remove(&RowKey::Draft(*draft_id));
         }
-        index.remove(&key);
     }
-    for draft_id in &delta.inserted_drafts {
-        let row = RowObject::draft(*draft_id);
-        store.insert(0, &row);
-        index.insert(&row);
+    if !delta.inserted_drafts.is_empty() {
+        // The tracker lists drafts bottom up: the last one goes on top.
+        let rows: Vec<RowObject> = delta
+            .inserted_drafts
+            .iter()
+            .rev()
+            .map(|draft_id| RowObject::draft(*draft_id))
+            .collect();
+        for row in &rows {
+            index.insert(row);
+        }
+        store.splice(0, 0, &rows);
+    }
+}
+
+fn remove_drafts(store: &gtk::gio::ListStore, removed: &[u64]) {
+    let removed: std::collections::HashSet<u64> = removed.iter().copied().collect();
+    let is_removed = |position: u32| {
+        store
+            .item(position)
+            .and_downcast::<RowObject>()
+            .and_then(|row| row.draft_id())
+            .is_some_and(|draft_id| removed.contains(&draft_id))
+    };
+    let mut position = store.n_items();
+    while position > 0 {
+        position -= 1;
+        if !is_removed(position) {
+            continue;
+        }
+        let end = position + 1;
+        while position > 0 && is_removed(position - 1) {
+            position -= 1;
+        }
+        store.splice(position, end - position, &[] as &[RowObject]);
     }
 }

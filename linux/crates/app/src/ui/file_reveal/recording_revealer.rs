@@ -8,9 +8,11 @@ use gtk4::{gio, glib};
 
 use super::FileRevealer;
 
-/// Remembers each file it was asked to show and answers with `outcome`.
+/// Remembers each file it was asked to show, and each folder to open,
+/// and answers with `outcome`.
 pub(crate) struct RecordingRevealer {
     revealed: RefCell<Vec<PathBuf>>,
+    opened: RefCell<Vec<PathBuf>>,
     outcome: Result<(), glib::Error>,
 }
 
@@ -18,6 +20,7 @@ impl RecordingRevealer {
     pub(crate) fn succeeding() -> Self {
         Self {
             revealed: RefCell::default(),
+            opened: RefCell::default(),
             outcome: Ok(()),
         }
     }
@@ -25,12 +28,17 @@ impl RecordingRevealer {
     pub(crate) fn failing() -> Self {
         Self {
             revealed: RefCell::default(),
+            opened: RefCell::default(),
             outcome: Err(glib::Error::new(gio::IOErrorEnum::NotSupported, "no file manager")),
         }
     }
 
     pub(crate) fn revealed(&self) -> Vec<PathBuf> {
         self.revealed.borrow().clone()
+    }
+
+    pub(crate) fn opened(&self) -> Vec<PathBuf> {
+        self.opened.borrow().clone()
     }
 }
 
@@ -42,6 +50,18 @@ impl FileRevealer for RecordingRevealer {
     ) -> LocalBoxFuture<'static, Result<(), glib::Error>> {
         if let Some(path) = file.path() {
             self.revealed.borrow_mut().push(path);
+        }
+        let outcome = self.outcome.clone();
+        Box::pin(async move { outcome })
+    }
+
+    fn open_folder(
+        &self,
+        folder: gio::File,
+        _parent: Option<gtk::Window>,
+    ) -> LocalBoxFuture<'static, Result<(), glib::Error>> {
+        if let Some(path) = folder.path() {
+            self.opened.borrow_mut().push(path);
         }
         let outcome = self.outcome.clone();
         Box::pin(async move { outcome })

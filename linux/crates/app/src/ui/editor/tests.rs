@@ -72,6 +72,7 @@ fn build_editor_on(
         session: active.clone(),
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
         close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
     });
     Harness {
         editor,
@@ -892,6 +893,7 @@ fn unconnected_editor(settings: &MemorySettings, tasks: Tasks) -> SqlEditor {
         session: ActiveSession::new(),
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
         close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
     })
 }
 
@@ -2165,6 +2167,39 @@ mod real_keys {
         assert!(!completion_list_shown(&view), "the list opened in normal mode");
     }
 
+    /// Vim's insert mode leaves Tab to GtkSourceView, which moves
+    /// between the stops of an accepted snippet.
+    #[gtk4::test]
+    fn a_snippet_accepted_in_insert_mode_takes_tab_between_its_stops() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "");
+        let (_window, keys) = in_vim(&harness);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        let mode = harness.editor.imp().vim_command_bar.get();
+        let selected = |buffer: &gtk4::TextBuffer| {
+            buffer
+                .selection_bounds()
+                .map(|(start, end)| buffer.text(&start, &end, false).to_string())
+        };
+
+        press(&keys, Key::i);
+        wait_until(KEY_WAIT, || !mode.label().is_empty()).expect("i to enter insert mode");
+        for key in [Key::i, Key::n, Key::s] {
+            press(&keys, key);
+        }
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "ins").expect("insert mode to type");
+        super::super::completion::accept_builtin_snippet(&view, "ins");
+        wait_until(KEY_WAIT, || {
+            buffer_text(&buffer) == "INSERT INTO table_name (columns)\nVALUES (values);"
+        })
+        .unwrap_or_else(|_| panic!("the INSERT was not written: {:?}", buffer_text(&buffer)));
+
+        press(&keys, Key::Tab);
+        wait_until(KEY_WAIT, || selected(&buffer).as_deref() == Some("columns"))
+            .unwrap_or_else(|_| panic!("Tab selected {:?}", selected(&buffer)));
+    }
+
     #[gtk4::test]
     fn completion_comes_back_when_vim_is_turned_off() {
         let harness = editor_with(answering(), "SE");
@@ -2200,6 +2235,7 @@ fn command_editor() -> (SqlEditor, crate::runtime::AppRuntime, MemorySettings) {
         session: active,
         hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
         close_timeout: Duration::from_secs(5),
+        snippets: crate::test_support::builtin_snippets_only(),
     });
     (editor, runtime, settings)
 }
@@ -2220,5 +2256,8 @@ fn a_command_editor_has_none_of_the_sql_tools() {
     }
     assert!(group.is_action_enabled("run"));
     let providers = editor.imp().completion_providers.borrow().len();
-    assert_eq!(providers, 1, "only the document's words complete");
+    assert_eq!(
+        providers, 2,
+        "the document's words and the engine's own snippets complete"
+    );
 }

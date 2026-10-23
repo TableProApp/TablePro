@@ -16,6 +16,7 @@ pub mod read_only;
 pub mod round_trip;
 pub mod row_guards;
 pub mod row_limit;
+pub mod snippets;
 pub mod statement_timeout;
 pub mod streaming;
 pub mod suite_flags;

@@ -6,7 +6,7 @@ use crate::ui::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
 use crate::ui::grid::{GridRowId, RowObject, RowSnapshot, export_snapshot};
 
 impl BrowseModel {
-    pub(super) fn on_clipboard(&self, input: ClipboardInput, fx: &mut Effects) {
+    pub(super) fn on_clipboard(&mut self, input: ClipboardInput, fx: &mut Effects) {
         match input {
             ClipboardInput::Export(page) => self.offer_export(page, fx),
             ClipboardInput::GridCopy(request) => fx.output(BrowseTabOutput::Copy(request)),
@@ -22,11 +22,9 @@ impl BrowseModel {
                 ))),
             },
             ClipboardInput::CopySelectedRowsAsTsv => self.copy_selected_rows(fx),
-            ClipboardInput::PasteNotSupported => {
-                fx.output(BrowseTabOutput::ShowToast(crate::i18n::gettext(
-                    "Pasting rows isn't supported yet",
-                )));
-            }
+            ClipboardInput::Paste(at) => self.paste(at, fx),
+            ClipboardInput::PasteRead(read) => self.paste_read(*read, fx),
+            ClipboardInput::PasteAnswered { ticket, confirmed } => self.paste_answered(ticket, confirmed, fx),
             ClipboardInput::GridShowRowJson(request) => fx.output(BrowseTabOutput::ShowRowJson(request)),
             ClipboardInput::GridShowToast(message) => fx.output(BrowseTabOutput::ShowToast(message)),
             ClipboardInput::GridFollowReference(reference) => fx.output(BrowseTabOutput::FollowReference(reference)),

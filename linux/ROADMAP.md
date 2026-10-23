@@ -48,13 +48,14 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Filters | Per-column operators, a raw WHERE fragment checked as one expression, match any or all; binary columns compare to `0x` hex. Kept per table, and per tab across a restart or a reopen |
 | Sorting | A header click sorts tables on the server and query results in the grid, one column at a time |
 | Cell editing | Editors by column kind: inline text, a multi-line editor, a calendar for dates, a toggle for booleans, JSON checked before saving; values are edited from their exact text, never from what the cell displays. Table tabs only, on tables with a primary key; key, generated and auto-increment columns, and binary, spatial, array and composite values, are read-only |
-| Rows | Insert, duplicate and delete; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save. On ClickHouse a save is not atomic, and Stop takes effect between statements |
+| Rows | Insert, duplicate and delete; Paste (Ctrl+V) adds tab-separated rows from the clipboard, filling the columns from the focused one or by a header's names, or edits the focused cell with one value, and asks first above 1,000 rows, up to 100,000; Set NULL and Empty, and DEFAULT on a new row; undo and redo; save or discard pending changes, and stop a save. On ClickHouse a save is not atomic, and Stop takes effect between statements |
 | Bulk delete | Deleting 10 rows or more asks first, unless Confirm Before Deleting Rows is off in Preferences |
 | Copy | Copy; Copy As rows, with headers, JSON, CSV with or without headers, Markdown or IN clause, and INSERT in an editable table tab; Copy Column Name; Show Row as JSON |
 | Foreign keys | Open Referenced Row (Ctrl+J) on a key cell opens the table it points at in a new tab, filtered on every column of the key; Show Referencing Rows on a saved row opens a table whose key points at it. A tab already showing those rows comes to the front |
 | Column widths | Kept per table; Widen Column and Narrow Column in the cell menu (Shift+Alt+Right and Shift+Alt+Left) change them from the keyboard |
 | CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
 | Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
+| ER diagram | Show ER Diagram in a table's menu or on a schema's heading opens the schema's tables as cards and their foreign keys as lines in crow's foot notation, read two tables at a time with Stop. Pan, zoom, Best Fit, drag tables, Reset Layout, and PNG and SVG export. Each table is a list item the keyboard and a screen reader reach: Tab and the arrow keys move between tables, Enter opens one, Alt+arrows move it, and its description names its columns and the tables it joins |
 
 ### Structure
 
@@ -87,6 +88,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 |---|---|
 | Editing | GtkSourceView with SQL highlighting, a scheme that follows the light or dark style, and toggle comment |
 | Completion | Tables, views, columns, schemas, functions and keywords, with aliases resolved |
+| Snippets | SELECT, INSERT, UPDATE, DELETE, a join, CREATE TABLE and CREATE INDEX per engine, and the user's own in GtkSourceView's format from a folder read again when it changes, a snippet scoped to one engine or to all; offered in completion, with Tab between stops ([README](README.md#snippets)) |
 | Formatter | Format SQL, leaving a statement as typed when formatting would change its tokens |
 | Scripts | Split per dialect (`DELIMITER`, `GO` and `GO n`, routine and trigger bodies) and sent a statement at a time, or a batch at a time on SQL Server; each result set, row count, notice or error is its own entry, and a failure stops the script except on SQL Server. Run Selection, and run the statement at the cursor |
 | Find and replace | Ctrl+F and Ctrl+H, with case, whole word and regular expressions |
@@ -142,7 +144,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
-| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip, on every SQL engine, keyspace and TLS conformance on Redis, and document and TLS conformance on MongoDB; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Redis, MongoDB, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip and a copy and paste round trip, on every SQL engine, keyspace and TLS conformance on Redis, and document and TLS conformance on MongoDB; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Redis, MongoDB, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -155,7 +157,6 @@ Not built yet, in no order.
 
 ### Browse, edit and structure
 
-- Paste rows from the clipboard. Ctrl+V in the grid says it is not supported yet.
 - Set a cell to `NOW()` or `CURRENT_TIMESTAMP`, which needs SQL expressions as cell values.
 - Edit binary columns from and to a file. They are read-only today, as are array, spatial, composite and variant columns.
 - Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
@@ -163,12 +164,10 @@ Not built yet, in no order.
 - Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
 - The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite (with the triggers on SQLite).
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
-- An ER diagram.
 
 ### SQL editor
 
 - Multi-cursor editing.
-- Snippets.
 
 ### Release and project
 
@@ -213,7 +212,7 @@ What has to hold before the first release, for a user on GNOME 50 with Ubuntu 26
 | 5 | Edits data in place, and the changes commit correctly even when the connection or the app misbehaves | Write, row guard and commit resolution conformance on every engine, with the fault fakes and the grid save Docker test. `kill_during_save` kills TablePro halfway through a SQLite save: the file keeps none of it, and the next launch restores the session with its history, settings and saved tabs. A save into a SQLite file another program holds locked fails as `Busy(FileLocked)`, which says another program or an editor tab holds the file's lock, and leaves the file as it was whether the lock shows at `BEGIN IMMEDIATE` or at the `COMMIT` | Nothing |
 | 6 | Trusts the app with credentials: TLS, SSH tunnels, no password in plain text | Verify full by default, the TLS conformance suite, the Secret Service, and statement logging silenced | An outside security review |
 | 7 | Recovers when the network drops or the database restarts | Health monitoring, backoff and replay rules with their tests, a stopped container in the liveness tests, and a session test that restarts PostgreSQL: the read in flight runs again, the save in flight does not and leaves no row | Nothing |
-| 8 | Works with a screen reader, the keyboard alone and larger text | Label audits of the picker, the connect pages, the workspace, the connect dialog and preferences, labelled cells and real-key tests. Sorting from the cell menu, named filter fields and cell editors, focus handed on when a control hides, and announced query results and errors. Columns resize from the keyboard, and a column sized by a key or a header drag draws at that width, also when it comes back | The manual pass in the backlog |
+| 8 | Works with a screen reader, the keyboard alone and larger text | Label audits of the picker, the connect pages, the workspace, the connect dialog and preferences, labelled cells and real-key tests. Sorting from the cell menu, named filter fields and cell editors, focus handed on when a control hides, and announced query results and errors. Columns resize from the keyboard, and a column sized by a key or a header drag draws at that width, also when it comes back. The ER diagram's tables are focusable list items that name their columns and joins | The manual pass in the backlog |
 | 9 | Sees no message that cannot be translated, even while only English ships | Every string the app writes is in the template. Core errors carry values the app words itself: CSV import, cell and JSON parsing, type and default syntax, the keyring, certificate files, unsupported features, the SSH host, username and jump host checks, a failed write of the saved connections, the SSH runtime directory checks, ssh's exit status, and an ssh that would not start. A panic, an export encoder failure, an SSH failure with no sentence of its own and a TLS failure the app does not classify show the app's words and log the detail | Nothing |
 | 10 | Uses the app daily for a week without an unrecoverable failure | Nothing yet | A dated week of daily use |
 | 11 | Works with a database of many schemas or tables, such as one schema per tenant, without the sidebar or completion freezing | The large-catalog case on PostgreSQL with 100 schemas of 500 tables and MySQL with one database of 50,000: the sidebar's first listing, its search a key at a time, and completion after `FROM `, a key typed into it and after a schema's dot each have a time bound, none may stall the main loop past 100 ms, and the catalog has a bound on resident peak growth ([testing.md](docs/testing.md#large-catalog-case)) | Nothing |

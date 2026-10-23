@@ -80,6 +80,7 @@ thiserror.workspace = true
 gio.workspace = true
 gio-unix.workspace = true
 gtk4.workspace = true
+cairo-rs.workspace = true
 libadwaita.workspace = true
 sourceview5.workspace = true
 glib.workspace = true

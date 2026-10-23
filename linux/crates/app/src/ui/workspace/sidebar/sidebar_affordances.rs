@@ -3,14 +3,15 @@ use tablepro_session::Session;
 
 /// What the sidebar offers for the connection: the structure tab's
 /// actions follow its DDL dialect, the way the structure tab does, a
-/// table's CREATE statement is shown only where the engine speaks SQL,
-/// and a read-only connection is offered nothing that writes.
+/// table's CREATE statement and an ER diagram of its keys are shown only
+/// where the engine speaks SQL, and a read-only connection is offered
+/// nothing that writes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct SidebarAffordances {
     pub read_only: bool,
     pub can_create_table: bool,
     pub can_edit_structure: bool,
-    pub shows_create_table: bool,
+    pub speaks_sql: bool,
 }
 
 impl SidebarAffordances {
@@ -20,7 +21,7 @@ impl SidebarAffordances {
             read_only,
             can_create_table: ddl.is_some_and(|ddl| ddl.capabilities().create_table),
             can_edit_structure: ddl.is_some(),
-            shows_create_table: dialect.is_some_and(|dialect| dialect.grammar().is_sql()),
+            speaks_sql: dialect.is_some_and(|dialect| dialect.grammar().is_sql()),
         }
     }
 
@@ -55,10 +56,10 @@ mod tests {
         let gone = SidebarAffordances::of(false, None);
 
         assert!(!none.can_edit_structure && !none.offers_new_table());
-        assert!(creates.shows_create_table);
+        assert!(creates.speaks_sql);
         let mongo = SidebarAffordances::of(false, Some(&tablepro_driver_mongodb::MongoDialect));
         assert!(
-            !mongo.can_edit_structure && !mongo.shows_create_table,
+            !mongo.can_edit_structure && !mongo.speaks_sql,
             "a collection has no SQL to show"
         );
         assert!(creates.can_edit_structure && creates.offers_new_table());

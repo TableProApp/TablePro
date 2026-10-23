@@ -10,6 +10,10 @@ pub(super) const SHOW_CREATE_TABLE: &str = "show-create-table";
 pub(super) const IMPORT_CSV: &str = "import-csv";
 pub(super) const DROP_TABLE: &str = "drop-table";
 pub(super) const NEW_TABLE: &str = "new-table";
+pub(super) const SHOW_DIAGRAM: &str = "show-diagram";
+/// The section header's button, whose target is the schema, as New
+/// Table's is.
+pub(super) const SHOW_SCHEMA_DIAGRAM: &str = "show-schema-diagram";
 pub(super) const CONTEXT_MENU: &str = "context-menu";
 pub(super) const GROUP: &str = "sidebar";
 
@@ -22,17 +26,21 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     let menu = gio::Menu::new();
     let open = gio::Menu::new();
     open.append_item(&item(&crate::i18n::gettext("Open in New Tab"), OPEN_IN_NEW_TAB, key));
-    menu.append_section(None, &open);
-    // A key has no SQL to show and no structure to change.
+    // A key has no SQL to show, no structure to change and no diagram.
     if !kind.is_browsable() {
+        menu.append_section(None, &open);
         return menu;
     }
+    if affordances.speaks_sql {
+        open.append_item(&item(&crate::i18n::gettext("Show ER Diagram"), SHOW_DIAGRAM, key));
+    }
+    menu.append_section(None, &open);
     let table = kind.is_structure_editable();
     let structure = gio::Menu::new();
     if table && affordances.can_edit_structure {
         structure.append_item(&item(&crate::i18n::gettext("Edit Structure"), EDIT_STRUCTURE, key));
     }
-    if affordances.shows_create_table {
+    if affordances.speaks_sql {
         structure.append_item(&item(
             &crate::i18n::gettext("Show CREATE TABLE"),
             SHOW_CREATE_TABLE,
@@ -60,7 +68,7 @@ pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAfforda
     let table = kind.is_structure_editable();
     match action {
         OPEN_IN_NEW_TAB => true,
-        SHOW_CREATE_TABLE => kind.is_browsable() && affordances.shows_create_table,
+        SHOW_CREATE_TABLE | SHOW_DIAGRAM => kind.is_browsable() && affordances.speaks_sql,
         EDIT_STRUCTURE => table && affordances.can_edit_structure,
         IMPORT_CSV => table && !affordances.read_only,
         // Dropping is planned by the DDL dialect, as structure changes are.
@@ -109,7 +117,7 @@ mod tests {
             read_only: false,
             can_create_table: true,
             can_edit_structure: true,
-            shows_create_table: true,
+            speaks_sql: true,
         }
     }
 
@@ -120,7 +128,7 @@ mod tests {
         let menu = object_menu(&key, ObjectKind::Table, all());
 
         let found = items(menu.upcast_ref());
-        assert_eq!(found.len(), 5);
+        assert_eq!(found.len(), 6);
         for (action, target) in found {
             let target = target.unwrap_or_else(|| panic!("{action} has no target"));
             assert_eq!(ObjectKey::from_variant(&target).as_ref(), Some(&key), "{action}");
@@ -139,6 +147,7 @@ mod tests {
             actions(&object_menu(&key, ObjectKind::Table, read_only)),
             [
                 "sidebar.open-in-new-tab",
+                "sidebar.show-diagram",
                 "sidebar.edit-structure",
                 "sidebar.show-create-table"
             ]
@@ -165,7 +174,7 @@ mod tests {
         let kind = ObjectKind::Key(tablepro_core::meta::KeyKind::Hash);
 
         assert_eq!(actions(&object_menu(&key, kind, all())), ["sidebar.open-in-new-tab"]);
-        for action in [SHOW_CREATE_TABLE, EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
+        for action in [SHOW_CREATE_TABLE, SHOW_DIAGRAM, EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
             assert!(!offers(action, kind, all()), "{action}");
         }
     }
@@ -177,7 +186,7 @@ mod tests {
             read_only: false,
             can_create_table: false,
             can_edit_structure: false,
-            shows_create_table: false,
+            speaks_sql: false,
         };
 
         assert_eq!(
@@ -194,7 +203,14 @@ mod tests {
 
         let offered = actions(&object_menu(&key, ObjectKind::View, all()));
 
-        assert_eq!(offered, ["sidebar.open-in-new-tab", "sidebar.show-create-table"]);
+        assert_eq!(
+            offered,
+            [
+                "sidebar.open-in-new-tab",
+                "sidebar.show-diagram",
+                "sidebar.show-create-table"
+            ]
+        );
         for action in [EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
             assert!(!offers(action, ObjectKind::View, all()), "{action}");
             assert!(offers(action, ObjectKind::PartitionedTable, all()), "{action}");

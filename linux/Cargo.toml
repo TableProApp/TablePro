@@ -110,6 +110,9 @@ http = "1"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"] }
 rustls-pki-types = { version = "1", features = ["std"] }
 gtk4 = { version = "0.11", features = ["gnome_50"] }
+# The PNG and SVG surfaces the ER diagram exports through; the crate is
+# already in the tree through gtk4.
+cairo-rs = { version = "0.22", features = ["png", "svg"] }
 libadwaita = { version = "0.9", features = ["v1_9"] }
 sourceview5 = { version = "0.11", features = ["v5_18"] }
 gio = { version = "0.22", features = ["v2_88"] }

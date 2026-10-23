@@ -4969,6 +4969,7 @@ name = "tablepro"
 version = "0.0.0"
 dependencies = [
  "async-trait",
+ "cairo-rs",
  "chrono",
  "futures",
  "gettext-rs",

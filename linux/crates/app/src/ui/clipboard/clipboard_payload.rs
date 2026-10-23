@@ -9,6 +9,9 @@ pub(crate) struct ClipboardPayload {
     pub rows: usize,
     /// Values an IN list had to leave out.
     pub skipped: usize,
+    /// The copied cells as `CellsEncoder` writes them, offered beside the
+    /// text so a paste reads them back exactly.
+    pub cells: Option<String>,
 }
 
 impl ClipboardPayload {
@@ -18,6 +21,7 @@ impl ClipboardPayload {
             format: ClipboardFormat::PlainText,
             rows: 1,
             skipped: 0,
+            cells: None,
         }
     }
 }

@@ -1,10 +1,12 @@
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use sourceview5::CompletionColumn;
+use sourceview5::prelude::*;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::ObjectInfo;
 use tablepro_core::sql_syntax::SqlGrammar;
@@ -20,10 +22,11 @@ use super::proposal_list::{Candidate, ProposalList, Ranking};
 use super::sql_completion_provider_imp as imp;
 use super::sql_proposal::SqlProposal;
 use crate::services::active_session::ActiveSession;
+use crate::services::snippet_library::SnippetLibrary;
 
 glib::wrapper! {
-    /// Completes keywords, and the tables, views and columns of the
-    /// session's catalog, for what the statement at the cursor asks.
+    /// Completes keywords, snippets, and the tables, views and columns of
+    /// the session's catalog, for what the statement at the cursor asks.
     pub struct SqlCompletionProvider(ObjectSubclass<imp::SqlCompletionProvider>)
         @implements sourceview5::CompletionProvider;
 }
@@ -37,12 +40,17 @@ pub const CONTEXT_AFTER: i32 = 32 * 1024;
 pub struct ProviderDeps {
     session: ActiveSession,
     tasks: Tasks,
+    pub(super) snippets: Rc<SnippetLibrary>,
 }
 
 impl SqlCompletionProvider {
-    pub fn new(session: ActiveSession, tasks: Tasks) -> Self {
+    pub fn new(session: ActiveSession, tasks: Tasks, snippets: Rc<SnippetLibrary>) -> Self {
         let provider: Self = glib::Object::new();
-        let _ = provider.imp().deps.set(ProviderDeps { session, tasks });
+        let _ = provider.imp().deps.set(ProviderDeps {
+            session,
+            tasks,
+            snippets,
+        });
         provider
     }
 
@@ -57,7 +65,7 @@ impl SqlCompletionProvider {
             return ProposalList::new(Ranking::new(Arc::from([]), &needle), tasks).upcast();
         };
         let ranking = match (request.session.clone(), tasks.clone()) {
-            (Some(session), Some(tasks)) => {
+            (Some(session), Some(tasks)) if request.grammar.is_sql() => {
                 let fallback = request.clone();
                 let ranked_for = needle.clone();
                 let blocking = tasks.clone();
@@ -105,11 +113,26 @@ impl SqlCompletionProvider {
         let cursor = usize::try_from(word_start - start.offset()).unwrap_or_default();
         let cursor = text_offsets::char_to_byte(&text, cursor);
         let scope = completion_scope::analyze(&text, cursor, grammar, LexicalSettings::default_for(grammar))?;
+        // Where a keyword can go, so can a statement. A command engine
+        // has no catalog or keywords to complete, only its snippets.
+        let offers_snippets = !grammar.is_sql() || matches!(scope, CompletionScope::General { .. });
+        let snippets = match self.imp().deps.get() {
+            Some(deps) if offers_snippets => {
+                let driver = session.as_ref().map(|session| session.metadata().driver_id.as_str());
+                deps.snippets
+                    .offered(driver, grammar)
+                    .into_iter()
+                    .map(Candidate::snippet)
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
         Some(Request {
             scope,
             grammar,
             session,
             dialect,
+            snippets,
         })
     }
 }
@@ -121,6 +144,8 @@ struct Request {
     grammar: SqlGrammar,
     session: Option<Arc<Session>>,
     dialect: Option<Arc<dyn SqlDialect>>,
+    /// Read on the GTK thread, where the snippet library lives.
+    snippets: Vec<Candidate>,
 }
 
 impl Request {
@@ -157,6 +182,7 @@ impl Request {
                 proposals.push(proposal);
             }
         }
+        proposals.extend(self.snippets.iter().cloned());
         if general {
             proposals.extend(self.grammar.keywords().map(Candidate::keyword));
         }
@@ -206,6 +232,10 @@ pub fn column_text(proposal: &SqlProposal, column: CompletionColumn) -> Option<S
             Some(schema) => format!("{schema}.{}", table.name),
             None => table.name.clone(),
         }),
+        // The row shows what the trigger writes; the list's footer shows
+        // the longer description for the selected one.
+        (ProposalKind::Snippet(snippet), CompletionColumn::After) => snippet.name.clone(),
+        (ProposalKind::Snippet(snippet), CompletionColumn::Comment) => snippet.description.clone(),
         _ => None,
     }
 }
@@ -213,13 +243,34 @@ pub fn column_text(proposal: &SqlProposal, column: CompletionColumn) -> Option<S
 /// Replace the word between `begin` and `end` with `text`, as one step
 /// Ctrl+Z takes back. A cursor inside a word replaces all of it.
 pub fn replace_word(buffer: &gtk4::TextBuffer, mut begin: gtk4::TextIter, mut end: gtk4::TextIter, text: &str) {
+    extend_over_word(&mut end);
+    buffer.begin_user_action();
+    buffer.delete(&mut begin, &mut end);
+    buffer.insert(&mut begin, text);
+    buffer.end_user_action();
+}
+
+/// Replace the word between `begin` and `end` with `snippet`, whose
+/// first stop the view then selects, as GtkSourceView's own snippet
+/// completion does.
+pub fn replace_word_with_snippet(
+    view: &sourceview5::View,
+    snippet: &sourceview5::Snippet,
+    mut begin: gtk4::TextIter,
+    mut end: gtk4::TextIter,
+) {
+    let buffer = view.buffer();
+    extend_over_word(&mut end);
+    buffer.begin_user_action();
+    buffer.delete(&mut begin, &mut end);
+    view.push_snippet(snippet, Some(&mut begin));
+    buffer.end_user_action();
+}
+
+fn extend_over_word(end: &mut gtk4::TextIter) {
     while end.char().is_alphanumeric() || end.char() == '_' {
         if !end.forward_char() {
             break;
         }
     }
-    buffer.begin_user_action();
-    buffer.delete(&mut begin, &mut end);
-    buffer.insert(&mut begin, text);
-    buffer.end_user_action();
 }

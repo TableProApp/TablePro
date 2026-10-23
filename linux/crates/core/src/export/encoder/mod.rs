@@ -1,3 +1,4 @@
+mod cells_encoder;
 mod csv_encoder;
 mod encode_error;
 mod html_encoder;
@@ -14,6 +15,7 @@ use std::io;
 use crate::column::ResultColumn;
 use crate::value::Value;
 
+pub use cells_encoder::CellsEncoder;
 pub use csv_encoder::CsvEncoder;
 pub use encode_error::EncodeError;
 pub use html_encoder::HtmlEncoder;
