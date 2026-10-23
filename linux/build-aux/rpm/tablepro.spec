@@ -151,7 +151,7 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %endif
 
 %files -f %{name}.lang
-%license LICENSE data/licenses/THIRD-PARTY-NOTICE.md
+%license LICENSE data/licenses/THIRD-PARTY-NOTICE.md data/licenses/NOTICE
 %license LICENSE.dependencies cargo-vendor.txt
 %doc CHANGELOG.md
 %{_bindir}/tablepro

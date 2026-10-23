@@ -88,6 +88,7 @@ install_man('tablepro.1')
 if get_option('flatpak')
   install_data(
     'licenses' / 'THIRD-PARTY-NOTICE.md',
+    'licenses' / 'NOTICE',
     install_dir: get_option('datadir') / 'licenses' / application_id,
   )
 endif

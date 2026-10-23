@@ -27,6 +27,16 @@ APACHE_POINTER = [
     "On Debian systems, the complete text of the Apache License, Version 2.0",
     'can be found in "/usr/share/common-licenses/Apache-2.0".',
 ]
+# The same holds for the GPL 2 terms, whose FSF address lintian also
+# reports as out of date. The cut runs to the end of its appendix, which
+# carries the address too.
+GPL2_TITLE = re.compile(r"^\s*GNU GENERAL PUBLIC LICENSE\s*$")
+GPL2_VERSION = re.compile(r"^\s*Version 2, June 1991\s*$")
+GPL2_LAST = "Public License instead of this License."
+GPL2_POINTER = [
+    "On Debian systems, the complete text of the GNU General Public License",
+    'version 2 can be found in "/usr/share/common-licenses/GPL-2".',
+]
 COMMON_LICENSES = {"CC0-1.0": "CC0 1.0 Universal license"}
 
 NOTICE = re.compile(r"^(?:copyright\b|©|\(c\)\s*\d)", re.IGNORECASE)
@@ -214,15 +224,33 @@ def crate_texts(licenses, crates):
 
 
 def debian_text(text):
-    lines = text.split("\n")
-    if APACHE_TERMS not in text:
+    return without_gpl2(without_apache(text.split("\n")))
+
+
+def without_apache(lines):
+    terms = next((i for i, line in enumerate(lines) if APACHE_TERMS in line), None)
+    if terms is None:
         return lines
-    terms = next(i for i, line in enumerate(lines) if APACHE_TERMS in line)
     titles = [i for i in range(terms) if APACHE_TITLE.match(lines[i])]
     ends = [i for i in range(terms, len(lines)) if APACHE_END in lines[i]]
     if not titles or not ends:
         raise MetadataError("an Apache 2.0 text has no title or end line to cut at")
     return lines[: titles[-1]] + APACHE_POINTER + lines[ends[0] + 1 :]
+
+
+def without_gpl2(lines):
+    # The LGPL's title differs, so its text stays.
+    content = [i for i, line in enumerate(lines) if line.strip()]
+    start = next(
+        (i for i, n in zip(content, content[1:]) if GPL2_TITLE.match(lines[i]) and GPL2_VERSION.match(lines[n])),
+        None,
+    )
+    if start is None:
+        return lines
+    end = next((i for i in range(start, len(lines)) if GPL2_LAST in lines[i]), None)
+    if end is None:
+        raise MetadataError("a GPL 2 text has no last line to cut at")
+    return lines[:start] + GPL2_POINTER + lines[end + 1 :]
 
 
 def notices(texts):
@@ -318,7 +346,8 @@ def render_copyright(licenses, crates, upstream_text, metadata_license):
         group = sorted(group)
         paragraphs.append(
             field("Files", [f"vendor/{name}-{version}/*" for name, version in group])
-            + field("Copyright", notices(texts) or unnamed_holders(group))
+            # The cut license texts hold the FSF's notice, not a holder's.
+            + field("Copyright", notices(["\n".join(debian_text(text)) for text in texts]) or unnamed_holders(group))
             + field("License", [synopsis] + text_block(texts))
         )
 

@@ -74,7 +74,7 @@ RUST_LOG=debug meson devenv -C _build ./crates/app/tablepro
 
 ### Dependencies
 
-`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`. The packages ship the notices as their license files: `%license` in the RPM, `debian/copyright` in the .deb, and `share/licenses` in the Flatpak. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
+`data/licenses` holds the license notices of every crate the app ships, written from `Cargo.lock` by cargo-about. The About dialog embeds `third-party.json`. The packages ship the notices as their license files: `%license` in the RPM, `debian/copyright` in the .deb, and `share/licenses` in the Flatpak. `NOTICE` gathers the crates' NOTICE files, which the Apache License 2.0 asks to ship; the .deb installs it as a doc. After a change to `Cargo.lock`, regenerate them and commit the result; the Supply chain CI job fails until they match:
 
 ```bash
 cargo install --locked cargo-about@0.9.2 --features cli

@@ -1,0 +1,21 @@
+The NOTICE files of the crates linked into TablePro, as the Apache License
+2.0 asks. build-aux/update-third-party-licenses.sh writes this file.
+
+Used by: arrow 58.4.0, arrow-arith 58.4.0, arrow-array 58.4.0,
+arrow-buffer 58.4.0, arrow-cast 58.4.0, arrow-data 58.4.0, arrow-ord
+58.4.0, arrow-row 58.4.0, arrow-schema 58.4.0, arrow-select 58.4.0,
+arrow-string 58.4.0
+
+Apache Arrow
+Copyright 2016-2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+This product includes software from the chronoutil crate (MIT)
+ * Copyright (c) 2020-2022 Oliver Margetts
+ * https://github.com/olliemath/chronoutil
+
+This product includes software from the compact-thrift project (Apache 2.0)
+ * Copyright Jörn Horstmann
+ * https://github.com/jhorstmann/compact-thrift
