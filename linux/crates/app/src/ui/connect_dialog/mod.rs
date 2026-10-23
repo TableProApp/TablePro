@@ -472,9 +472,15 @@ impl ConnectDialog {
     fn show_safe_mode_subtitle(&self) {
         let entry = self.current_entry();
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
-        self.imp()
-            .safe_mode_row
-            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps.read_only));
+        let engine = entry.as_ref().map_or_else(
+            || crate::i18n::gettext("this database"),
+            |entry| entry.display_name.clone(),
+        );
+        self.imp().safe_mode_row.set_subtitle(&crate::ui::safe_mode::subtitle(
+            self.form().safe_mode,
+            caps.read_only,
+            &engine,
+        ));
     }
 
     fn show_auth_rows(&self) {
@@ -875,6 +881,7 @@ static NO_DRIVER: DriverCapabilities = DriverCapabilities {
     row_count_estimate: tablepro_core::EstimateQuality::Unavailable,
     object_kinds: &[],
     database_required: false,
+    statement_stop: tablepro_core::StatementStop::Server,
 };
 
 fn auth_mode_label(mode: AuthMode) -> String {

@@ -31,6 +31,9 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     drop_foreign_key: true,
     column_comments: true,
     drop_table_cascade: true,
+    column_defaults: true,
+    required_columns: true,
+    declared_column_order: true,
 };
 
 const TYPE_SUGGESTIONS: &[&str] = &[
@@ -631,6 +634,7 @@ mod tests {
                 primary_key,
                 is_auto_increment: false,
                 is_generated: false,
+                partition_scoped: false,
                 default: ColumnDefault::None,
                 comment: None,
             },

@@ -1,4 +1,4 @@
-use tablepro_core::{EndpointKind, WriteAtomicity};
+use tablepro_core::{EndpointKind, StatementStop, WriteAtomicity};
 
 use crate::conformance::support::expect;
 use crate::conformance::{ConformanceEngine, ConformanceFailure, ConnectionSuiteFlags, SuiteEndpoint};
@@ -26,6 +26,13 @@ pub fn suite_flags_match_driver_capabilities<E: ConformanceEngine>(
         format!(
             "the suite says editor_transactions {}, the driver's row writes are {:?}",
             flags.editor_transactions, capabilities.dml_writes
+        )
+    })?;
+    let stops = capabilities.statement_stop == StatementStop::Server;
+    expect(CASE, flags.server_stop == stops, || {
+        format!(
+            "the suite says server_stop {}, the driver's stop is {:?}",
+            flags.server_stop, capabilities.statement_stop
         )
     })
 }
@@ -55,6 +62,7 @@ mod tests {
         let flags = ConnectionSuiteFlags {
             endpoint: SuiteEndpoint::Network,
             editor_transactions: true,
+            server_stop: true,
         };
 
         let outcome = suite_flags_match_driver_capabilities::<FakeEngine<FileDriver>>(flags);
@@ -70,8 +78,25 @@ mod tests {
         let flags = ConnectionSuiteFlags {
             endpoint: SuiteEndpoint::File,
             editor_transactions: true,
+            server_stop: true,
         };
 
         suite_flags_match_driver_capabilities::<FakeEngine<FileDriver>>(flags).unwrap();
+    }
+
+    #[test]
+    fn suite_flags_test_fails_when_the_suite_skips_the_server_stop() {
+        let flags = ConnectionSuiteFlags {
+            endpoint: SuiteEndpoint::File,
+            editor_transactions: true,
+            server_stop: false,
+        };
+
+        let outcome = suite_flags_match_driver_capabilities::<FakeEngine<FileDriver>>(flags);
+
+        assert!(
+            matches!(&outcome, Err(ConformanceFailure::Expectation { case: CASE, detail }) if detail.contains("server_stop")),
+            "{outcome:?}"
+        );
     }
 }

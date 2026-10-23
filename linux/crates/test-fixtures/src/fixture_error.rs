@@ -28,6 +28,12 @@ pub enum FixtureError {
         before: u16,
         after: u16,
     },
+    #[error("{service}'s cqlsh refused {statements:?}: {output}")]
+    Cql {
+        service: &'static str,
+        statements: String,
+        output: String,
+    },
     #[error("{service} was not ready: {reason}; last reply: {last_reply}; container {state}\n{logs}")]
     ContainerNotReady {
         service: &'static str,

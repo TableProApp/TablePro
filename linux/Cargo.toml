@@ -9,6 +9,7 @@ members = [
     "crates/storage",
     "crates/test-fixtures",
     "crates/test-support",
+    "crates/drivers/cassandra",
     "crates/drivers/clickhouse",
     "crates/drivers/mssql",
     "crates/drivers/mysql",
@@ -24,6 +25,7 @@ publish = false
 
 [workspace.dependencies]
 tablepro-core = { path = "crates/core" }
+tablepro-driver-cassandra = { path = "crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "crates/drivers/clickhouse" }
 tablepro-driver-mssql = { path = "crates/drivers/mssql" }
 tablepro-driver-mysql = { path = "crates/drivers/mysql" }
@@ -49,6 +51,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # own TLS features would only add a second, unused TLS stack.
 clickhouse = { version = "0.15", default-features = false }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "uuid", "json"] }
+# TLS goes through the ClientConfig the driver builds, on aws-lc-rs.
+# Values are read as CqlValue, so no chrono, num-bigint or bigdecimal
+# feature is needed.
+scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 # The driver reads and writes DECIMAL through tiberius's own Numeric.
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

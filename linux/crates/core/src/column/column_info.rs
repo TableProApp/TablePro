@@ -16,6 +16,10 @@ pub struct ColumnInfo {
     pub is_auto_increment: bool,
     /// `GENERATED ALWAYS AS`. Read-only, and never written.
     pub is_generated: bool,
+    /// The column holds one value per partition, as a CQL partition key
+    /// or static column does. An update that sets only such columns names
+    /// the partition, not the row.
+    pub partition_scoped: bool,
     pub default: ColumnDefault,
     /// What the schema says the column is for, where the engine stores
     /// such a thing. `None` on an engine that has no column comments,
@@ -66,6 +70,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

@@ -73,10 +73,14 @@ pub async fn stream_read_streams_every_row_in_bounded_batches<E: ConformanceEngi
         format!("a read the sink stopped ended {stopped:?}")
     })?;
     let after = connection
-        .query_bound(&statement("SELECT 1"), RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE))
+        .query_bound(
+            &statement(&engine.trivial_read_sql()),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL_DEADLINE),
+        )
         .await;
     expect(CASE, after.is_ok(), || {
-        format!("SELECT 1 after the stopped read gave {after:?}")
+        format!("a trivial read after the stopped read gave {after:?}")
     })?;
 
     connection.close().await?;

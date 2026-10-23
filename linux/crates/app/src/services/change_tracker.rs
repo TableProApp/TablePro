@@ -1066,6 +1066,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: tablepro_core::column::ColumnDefault::None,
             comment: None,
         }
@@ -1083,6 +1084,7 @@ mod tests {
             is_auto_increment: true,
             default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
+            partition_scoped: false,
             comment: None,
         }
     }
@@ -1096,6 +1098,7 @@ mod tests {
             is_auto_increment: false,
             default: tablepro_core::column::ColumnDefault::None,
             is_generated: false,
+            partition_scoped: false,
             comment: None,
         }
     }

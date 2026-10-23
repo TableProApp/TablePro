@@ -280,6 +280,9 @@ fn key_rows(
     if hold {
         hold_not_null(nullable_row, draft.primary_key);
     }
+    // Where only a key column refuses NULL, as in CQL, the switch the
+    // user cannot touch follows the key.
+    let nullable_follows_key = !context.capabilities().required_columns && draft.original.is_none();
     let edits_for_pk = edits.clone();
     // The row owns both switches, so this holds them weakly.
     let nullable_for_pk = nullable_row.downgrade();
@@ -299,6 +302,8 @@ fn key_rows(
                 nullable.set_active(nullable_before_key.get());
             }
             hold_not_null(&nullable, key);
+        } else if nullable_follows_key && let Some(nullable) = nullable_for_pk.upgrade() {
+            nullable.set_active(!key);
         }
         if !key
             && follows_key

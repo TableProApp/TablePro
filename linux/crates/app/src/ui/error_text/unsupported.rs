@@ -40,6 +40,7 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
             "This database has no dates outside the years {first} to {last}.",
             &[("first", &first.to_string()), ("last", &last.to_string())],
         ),
+        UnsupportedFeature::ServerPaging => gettext("This database does not page tables on the server."),
     }
 }
 
@@ -68,6 +69,7 @@ mod tests {
             UnsupportedFeature::NumberWiderThan { digits: 38 },
             UnsupportedFeature::DecimalOutOfRange { digits: 38 },
             UnsupportedFeature::DateOutsideYears { first: 1, last: 9999 },
+            UnsupportedFeature::ServerPaging,
         ];
 
         let messages: Vec<String> = features.iter().map(|feature| unsupported_message(*feature)).collect();

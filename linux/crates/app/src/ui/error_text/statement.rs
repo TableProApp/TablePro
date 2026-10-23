@@ -48,6 +48,9 @@ pub(super) fn filter_message(error: &BuildFilterError) -> String {
             "column {column} does not allow one of its operators",
             &[("column", column)],
         )),
+        BuildFilterError::CombinatorNotAllowed(_) => {
+            refused(gettext("this database can only require every rule to match"))
+        }
         BuildFilterError::RawPredicate(syntax) => gettext_f(
             "This SQL filter cannot be applied. {reason}",
             &[("reason", &expression_syntax_message(syntax))],
@@ -62,6 +65,10 @@ pub(super) fn browse_reason(error: &BrowseSqlError) -> String {
         BrowseSqlError::NoColumns => gettext("the table has no columns to select"),
         BrowseSqlError::UnknownSortColumn(_) => gettext("the sort names a column the table does not have"),
         BrowseSqlError::UnsupportedPosition { .. } => gettext("this position cannot be reached by this way of paging"),
+        BrowseSqlError::SortUnsupported => gettext("this database reads a table only in its own order"),
+        BrowseSqlError::StalePagingState => {
+            gettext("the way to this page belongs to another query; go back to the first page")
+        }
         BrowseSqlError::NullAnchor => gettext("the row to page from has an empty key"),
         BrowseSqlError::UnreadableAnchor => gettext("the row to page from has no address that can be read"),
         BrowseSqlError::ShapeMismatch { .. } => gettext("the page came back with other columns than were asked for"),
@@ -154,6 +161,7 @@ mod tests {
                 op: FilterOp::Like,
             },
             BuildFilterError::RawPredicate(ExpressionSyntaxError::Comment),
+            BuildFilterError::CombinatorNotAllowed(tablepro_core::Combinator::Or),
         ];
 
         let messages: std::collections::HashSet<String> = errors.iter().map(filter_message).collect();

@@ -138,6 +138,36 @@ const CLICKHOUSE: &[&str] = &[
     "SAMPLE", "SETTINGS", "SHOW",
 ];
 
+const CQL: &[&str] = &[
+    "ALLOW",
+    "APPLY",
+    "BATCH",
+    "CLUSTERING",
+    "CONTAINS",
+    "COUNTER",
+    "DESCRIBE",
+    "FILTERING",
+    "FROZEN",
+    "KEYSPACE",
+    "KEYSPACES",
+    "LIMIT",
+    "LIST",
+    "MAP",
+    "MATERIALIZED",
+    "PARTITION",
+    "PER",
+    "ROLE",
+    "STATIC",
+    "TIMESTAMP",
+    "TOKEN",
+    "TTL",
+    "TUPLE",
+    "TYPE",
+    "UNLOGGED",
+    "USE",
+    "WRITETIME",
+];
+
 impl SqlGrammar {
     /// The keywords the editor completes for this grammar, in upper case.
     pub fn keywords(self) -> impl Iterator<Item = &'static str> {
@@ -147,6 +177,7 @@ impl SqlGrammar {
             Self::Sqlite => SQLITE,
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
+            Self::Cql => CQL,
         };
         COMMON.iter().chain(own).copied()
     }

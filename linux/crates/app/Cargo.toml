@@ -59,6 +59,7 @@ kerberos = ["tablepro-driver-mssql/kerberos"]
 
 [dependencies]
 tablepro-core.workspace = true
+tablepro-driver-cassandra.workspace = true
 tablepro-driver-clickhouse.workspace = true
 tablepro-driver-mssql.workspace = true
 tablepro-driver-mysql.workspace = true

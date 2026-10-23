@@ -4,7 +4,7 @@ use crate::dialect::BindError;
 use crate::edit::EditParseError;
 use crate::sql_syntax::ExpressionSyntaxError;
 
-use super::FilterOp;
+use super::{Combinator, FilterOp};
 
 /// Why a filter could not be written as SQL.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -29,6 +29,8 @@ pub enum BuildFilterError {
     Bind(#[from] BindError),
     #[error("operator {op:?} does not apply to column {column}")]
     OperatorNotAllowed { column: String, op: FilterOp },
+    #[error("this engine cannot join filter rules with {0:?}")]
+    CombinatorNotAllowed(Combinator),
     #[error("the SQL filter is not a single expression: {0}")]
     RawPredicate(#[source] ExpressionSyntaxError),
 }

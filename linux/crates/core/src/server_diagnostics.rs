@@ -9,10 +9,27 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ServerCode {
     SqlState(String),
-    MySql { number: u16, sqlstate: Option<String> },
-    Tds { number: u32, state: u8, class: u8 },
-    ClickHouse { code: i32 },
-    Sqlite { primary: i32, extended: i32 },
+    MySql {
+        number: u16,
+        sqlstate: Option<String>,
+    },
+    Tds {
+        number: u32,
+        state: u8,
+        class: u8,
+    },
+    ClickHouse {
+        code: i32,
+    },
+    Sqlite {
+        primary: i32,
+        extended: i32,
+    },
+    /// The error code of a CQL ERROR frame, which the native protocol
+    /// spec writes in hex: `0x2200` is Invalid.
+    Cql {
+        code: i32,
+    },
 }
 
 impl ServerCode {
@@ -34,6 +51,7 @@ impl fmt::Display for ServerCode {
             Self::Tds { number, .. } => write!(f, "{number}"),
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
+            Self::Cql { code } => write!(f, "{code:#06x}"),
         }
     }
 }
@@ -99,6 +117,8 @@ mod tests {
     #[test]
     fn a_code_without_a_sqlstate_reports_none() {
         assert_eq!(ServerCode::ClickHouse { code: 192 }.sqlstate(), None);
+        assert_eq!(ServerCode::Cql { code: 0x2200 }.sqlstate(), None);
+        assert_eq!(ServerCode::Cql { code: 0x2200 }.to_string(), "0x2200");
         assert_eq!(
             ServerCode::Sqlite {
                 primary: 1,

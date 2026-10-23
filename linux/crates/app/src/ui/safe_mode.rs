@@ -9,8 +9,9 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 }
 
 /// What the level does on this engine. Read-Only's guarantee differs by
-/// engine, so the row says which one the user is getting.
-pub(crate) fn subtitle(level: SafeModeLevel, enforcement: ReadOnlyEnforcement) -> String {
+/// engine, so the row says which one the user is getting, naming an
+/// engine that cannot hold a connection to reads.
+pub(crate) fn subtitle(level: SafeModeLevel, enforcement: ReadOnlyEnforcement, engine: &str) -> String {
     match (level, enforcement) {
         (SafeModeLevel::Off, _) => {
             crate::i18n::gettext("Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE.")
@@ -24,8 +25,9 @@ pub(crate) fn subtitle(level: SafeModeLevel, enforcement: ReadOnlyEnforcement) -
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::SessionDefault) => crate::i18n::gettext(
             "TablePro refuses statements that write, and the server opens each transaction read-only. Use a read-only login for a guarantee.",
         ),
-        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::LoginPrivileges) => crate::i18n::gettext(
-            "TablePro refuses statements that write, but SQL Server cannot enforce this. Use a login granted only SELECT.",
+        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::LoginPrivileges) => crate::i18n::gettext_f(
+            "TablePro refuses statements that write, but {engine} cannot enforce this. Use a login granted only SELECT.",
+            &[("engine", engine)],
         ),
     }
 }
@@ -71,13 +73,36 @@ mod tests {
         ];
         let texts: HashSet<String> = enforcements
             .into_iter()
-            .map(|enforcement| subtitle(SafeModeLevel::ReadOnly, enforcement))
+            .map(|enforcement| subtitle(SafeModeLevel::ReadOnly, enforcement, "SQL Server"))
             .collect();
 
         assert_eq!(texts.len(), enforcements.len());
         assert_eq!(
-            subtitle(SafeModeLevel::ConfirmWrites, ReadOnlyEnforcement::EngineEnforced),
-            subtitle(SafeModeLevel::ConfirmWrites, ReadOnlyEnforcement::LoginPrivileges),
+            subtitle(
+                SafeModeLevel::ConfirmWrites,
+                ReadOnlyEnforcement::EngineEnforced,
+                "SQLite"
+            ),
+            subtitle(
+                SafeModeLevel::ConfirmWrites,
+                ReadOnlyEnforcement::LoginPrivileges,
+                "SQL Server"
+            ),
         );
+    }
+
+    #[test]
+    fn a_login_the_engine_cannot_hold_to_reads_names_that_engine() {
+        let cassandra = subtitle(
+            SafeModeLevel::ReadOnly,
+            ReadOnlyEnforcement::LoginPrivileges,
+            "Cassandra / ScyllaDB",
+        );
+
+        assert!(
+            cassandra.contains("Cassandra / ScyllaDB cannot enforce this"),
+            "{cassandra}"
+        );
+        assert!(!cassandra.contains("SQL Server"), "{cassandra}");
     }
 }

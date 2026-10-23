@@ -47,6 +47,7 @@ impl Default for Options {
 
 fn registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
+    registry.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     registry.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     registry.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
@@ -304,7 +305,7 @@ fn a_bad_host_is_marked_for_sight_and_for_screen_readers() {
 #[gtk4::test]
 fn encryption_combo_lists_only_capability_modes() {
     let harness = dialog();
-    for driver_id in ["postgres", "mysql", "mssql", "clickhouse"] {
+    for driver_id in ["postgres", "mysql", "mssql", "clickhouse", "cassandra"] {
         select(&harness.dialog, driver_id);
         let section = harness.dialog.imp().tls_section.get();
         let tls = caps_of(driver_id).tls.expect("a network driver with TLS");
@@ -412,15 +413,23 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
     let harness = dialog();
     let imp = harness.dialog.imp();
     let shown = || imp.safe_mode_row.subtitle().map(|text| text.to_string());
-    for driver_id in ["postgres", "mysql", "mssql", "clickhouse", "sqlite"] {
+    for driver_id in ["postgres", "mysql", "mssql", "clickhouse", "sqlite", "cassandra"] {
         select(&harness.dialog, driver_id);
+        let engine = registry()
+            .get(driver_id)
+            .map(|driver| driver.display_name().to_owned())
+            .unwrap_or_default();
         for (index, level) in SafeModeLevel::ALL.into_iter().enumerate() {
             imp.safe_mode_row.set_selected(index as u32);
 
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
             assert_eq!(
                 shown(),
-                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id).read_only)),
+                Some(crate::ui::safe_mode::subtitle(
+                    level,
+                    caps_of(driver_id).read_only,
+                    &engine
+                )),
                 "{driver_id} {level:?}"
             );
         }

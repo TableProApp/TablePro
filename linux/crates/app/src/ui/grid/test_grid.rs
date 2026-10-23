@@ -43,6 +43,7 @@ pub(super) fn col(data_type: &str, primary_key: bool) -> ColumnInfo {
         primary_key,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: tablepro_core::column::ColumnDefault::None,
         comment: None,
     }

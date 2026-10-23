@@ -34,6 +34,9 @@ pub(crate) enum GridSorting {
     Server { initial: Option<(usize, bool)> },
     /// The grid sorts the rows it holds, each column by its own sorter.
     Client,
+    /// The engine reads a table in its own order, which no ORDER BY
+    /// changes, so no header sorts and the cell menu offers no sort.
+    EngineOrder,
 }
 
 pub(crate) fn build_column_view(
@@ -64,7 +67,7 @@ pub(crate) fn build_column_view(
         .build();
     let selection = match sorting {
         GridSorting::Client => sorted_selection(store, column_view.sorter()),
-        GridSorting::Server { .. } => gtk::MultiSelection::new(Some(store)),
+        GridSorting::Server { .. } | GridSorting::EngineOrder => gtk::MultiSelection::new(Some(store)),
     };
     column_view.set_model(Some(&selection));
     // GTK's own denser rows for a grid of data.
@@ -76,6 +79,7 @@ pub(crate) fn build_column_view(
         sink: sink.clone(),
         columns: result_columns.clone(),
         tab_ctx: tab_ctx.clone(),
+        sorts: !matches!(sorting, GridSorting::EngineOrder),
     });
     GridKeyboard::install(&column_view, grid_menus.clone(), sink.clone());
 
@@ -94,8 +98,9 @@ pub(crate) fn build_column_view(
         let sorter = match sorting {
             // The server orders the rows, so the column's own sorter
             // only marks the header and must leave them where they are.
-            GridSorting::Server { .. } => gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal).upcast(),
-            GridSorting::Client => column_sorter(i, column),
+            GridSorting::Server { .. } => Some(gtk::CustomSorter::new(|_, _| gtk::Ordering::Equal).upcast()),
+            GridSorting::Client => Some(column_sorter(i, column)),
+            GridSorting::EngineOrder => None,
         };
         let (col, width_saver) = build_column(ColumnInit {
             info: column,
@@ -207,7 +212,8 @@ struct ColumnInit<'a> {
     /// `None` for a column the grid knows only from the result set.
     catalog: Option<ColumnInfo>,
     sink: GridSink,
-    sorter: gtk::Sorter,
+    /// `None` where no header sorts.
+    sorter: Option<gtk::Sorter>,
     tab_ctx: TabGridContext,
     default_min_width: Option<i32>,
     column_view: glib::WeakRef<gtk::ColumnView>,
@@ -284,7 +290,7 @@ fn build_column(init: ColumnInit<'_>) -> (gtk::ColumnViewColumn, glib::SignalHan
         .resizable(true)
         .expand(true)
         .build();
-    column.set_sorter(Some(&sorter));
+    column.set_sorter(sorter.as_ref());
     // A number column is as wide as its widest number already.
     let default_min_width = default_min_width.filter(|_| !drawing.figures.numbers());
     let width_saver = size_column(&column, &info.name, &tab_ctx, default_min_width);
@@ -417,6 +423,27 @@ mod tests {
         text, tracked, two_text_rows, type_into,
     };
     use crate::ui::grid::{CellPreset, ColumnWidthBinding, GridCell, GridMsg, RowObject, TabGridContext, begin_edit};
+
+    #[gtk4::test]
+    fn no_header_sorts_a_table_in_the_engines_order() {
+        let columns = vec![named("id", "int", true), named("name", "text", false)];
+        let rows = vec![vec![Value::Int(1), Value::Text("A".into())]];
+        let (sink, _messages) = recorder();
+        let tracker = TabTrackerHandle::default();
+        let (view, _selection) = build_column_view(
+            content(&columns, persisted(&rows)),
+            &columns,
+            sink,
+            GridSorting::EngineOrder,
+            tracked(&tracker),
+        );
+
+        let sorters: Vec<bool> = crate::ui::grid::data_columns(&view)
+            .iter()
+            .map(|column| column.sorter().is_some())
+            .collect();
+        assert_eq!(sorters, [false, false]);
+    }
 
     #[gtk4::test]
     fn f004_edit_after_draft_insert_targets_edited_row() {

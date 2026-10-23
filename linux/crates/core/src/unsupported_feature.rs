@@ -37,6 +37,8 @@ pub enum UnsupportedFeature {
         first: i32,
         last: i32,
     },
+    /// Pages the server keeps itself, by a paging state.
+    ServerPaging,
 }
 
 impl fmt::Display for UnsupportedFeature {
@@ -58,6 +60,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::NumberWiderThan { digits } => write!(f, "a number wider than {digits} digits"),
             Self::DecimalOutOfRange { digits } => write!(f, "a decimal NaN, infinity or wider than {digits} digits"),
             Self::DateOutsideYears { first, last } => write!(f, "a date outside years {first} to {last}"),
+            Self::ServerPaging => f.write_str("server-side paging"),
         }
     }
 }

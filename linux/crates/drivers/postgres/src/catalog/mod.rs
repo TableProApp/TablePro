@@ -70,6 +70,7 @@ pub(crate) fn column_info(row: &PgColumnRow) -> ColumnInfo {
         primary_key: row.primary_key,
         is_auto_increment: identity != IdentityStyle::None,
         is_generated: generated,
+        partition_scoped: false,
         default,
         comment: row.comment.clone(),
     }

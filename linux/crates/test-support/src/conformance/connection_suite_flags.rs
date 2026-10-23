@@ -8,4 +8,5 @@ use crate::conformance::SuiteEndpoint;
 pub struct ConnectionSuiteFlags {
     pub endpoint: SuiteEndpoint,
     pub editor_transactions: bool,
+    pub server_stop: bool,
 }

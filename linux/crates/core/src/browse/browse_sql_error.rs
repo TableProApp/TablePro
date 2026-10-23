@@ -15,6 +15,14 @@ pub enum BrowseSqlError {
     UnknownSortColumn(usize),
     #[error("this page position cannot be read when paging by {mode:?}")]
     UnsupportedPosition { mode: PagingMode },
+    /// The engine pages on the server, in its own order, which no
+    /// ORDER BY can change.
+    #[error("this engine reads a table only in its own order")]
+    SortUnsupported,
+    /// The paging state came from another statement than the page's,
+    /// so resuming from it would read rows from the wrong place.
+    #[error("the paging state belongs to another statement")]
+    StalePagingState,
     #[error("the row to page from has a NULL key, which no row compares past")]
     NullAnchor,
     #[error("the row to page from has no row address that can be read")]

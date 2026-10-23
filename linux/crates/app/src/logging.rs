@@ -14,16 +14,18 @@ use crate::config::Profile;
 /// what a user's database was sent or answered: tokio-postgres the text
 /// of every statement at debug, sqlx every statement and a slow one as
 /// a warning, tiberius rows at trace and server messages as errors, the
-/// clickhouse crate exceptions that quote the query, deadpool the errors
-/// of the connections it recycles, and sqlparser at debug the text it
-/// parses and the tokens and literals it reads. The drivers map and log
-/// what they need from these libraries themselves.
+/// clickhouse crate exceptions that quote the query, scylla the server's
+/// error messages, which quote the statement, deadpool the errors of the
+/// connections it recycles, and sqlparser at debug the text it parses
+/// and the tokens and literals it reads. The drivers map and log what
+/// they need from these libraries themselves.
 const SILENCED_LIBRARIES: &[&str] = &[
     "tokio_postgres",
     "deadpool",
     "tiberius",
     "sqlx",
     "clickhouse",
+    "scylla",
     "sqlparser",
 ];
 
@@ -183,6 +185,8 @@ mod tests {
                     tracing::trace!(target: "sqlx::explain", "{SECRET}");
                     tracing::error!(target: "tiberius::tds::stream::token", message = SECRET);
                     tracing::debug!(target: "clickhouse::error", "{SECRET}");
+                    tracing::warn!(target: "scylla::network::connection", "{SECRET}");
+                    tracing::trace!(target: "scylla_cql::frame", "{SECRET}");
                     tracing::warn!(target: "deadpool.postgres", "Connection error: {SECRET}");
                     tracing::debug!(target: "tablepro::ui::editor", "the run ended");
                 },

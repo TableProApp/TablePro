@@ -14,15 +14,18 @@ mod rule_value_editor;
 mod tests;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
+use tablepro_core::dialect::SqlDialect;
+use tablepro_core::{ColumnInfo, Combinator, FilterRule, FilterSet, FilterValue};
 
 use self::filter_rule_object::FilterRuleObject;
+use self::rule_operators::{FilterVocabulary, operators_for};
 pub(super) use self::rule_row::FilterRuleRow;
 
 glib::wrapper! {
@@ -79,12 +82,33 @@ impl FilterStrip {
     }
 
     /// Rebuild the rows against new columns: each row's column and
-    /// operator choices come from them.
+    /// operator choices come from them. A column the engine filters with
+    /// no operator, such as a CQL collection, is not offered.
     pub fn set_columns(&self, columns: Vec<ColumnInfo>) {
-        self.imp().columns.replace(Rc::from(columns));
+        let imp = self.imp();
+        imp.all_columns.replace(columns);
+        let vocabulary = imp.vocabulary.borrow().clone();
+        let filterable: Vec<ColumnInfo> = imp
+            .all_columns
+            .borrow()
+            .iter()
+            .filter(|column| !vocabulary.operators(column).is_empty())
+            .cloned()
+            .collect();
+        imp.columns.replace(Rc::from(filterable));
         let rules = self.rules();
         let items: Vec<FilterRuleObject> = rules.iter::<FilterRuleObject>().filter_map(Result::ok).collect();
         rules.splice(0, rules.n_items(), &items);
+        self.reflect_clauses();
+    }
+
+    /// Offer what the connection's engine evaluates: its operators, and
+    /// a choice between all and any only where it can match any.
+    pub fn set_dialect(&self, dialect: Option<Arc<dyn SqlDialect>>) {
+        let imp = self.imp();
+        imp.vocabulary.replace(FilterVocabulary::of(dialect));
+        let columns = imp.all_columns.borrow().clone();
+        self.set_columns(columns);
     }
 
     /// Show the filter in effect, which may have been applied from
@@ -105,9 +129,10 @@ impl FilterStrip {
     pub fn filter(&self) -> FilterSet {
         let imp = self.imp();
         let text = imp.raw_entry.text();
+        let any = imp.vocabulary.borrow().matches_any();
         FilterSet {
             combinator: match imp.combinator_dropdown.selected() {
-                1 => Combinator::Or,
+                1 if any => Combinator::Or,
                 _ => Combinator::And,
             },
             rules: self
@@ -153,18 +178,20 @@ impl FilterStrip {
         self.close();
     }
 
+    /// A rule on the first column, by its first operator.
     fn add_rule(&self) {
-        let column = self
-            .imp()
-            .columns
-            .borrow()
-            .first()
-            .map(|column| column.name.clone())
-            .unwrap_or_default();
+        let imp = self.imp();
+        let first = imp.columns.borrow().first().cloned();
+        let entry = first
+            .as_ref()
+            .and_then(|column| operators_for(column, &imp.vocabulary.borrow()).into_iter().next());
         self.rules().append(&FilterRuleObject::new(FilterRule {
-            column,
-            op: FilterOp::Eq,
-            value: Some(FilterValue::Single(String::new())),
+            column: first.map(|column| column.name).unwrap_or_default(),
+            op: entry.as_ref().map_or(tablepro_core::FilterOp::Eq, |entry| entry.op),
+            value: entry.map_or_else(
+                || Some(FilterValue::Single(String::new())),
+                |entry| entry.shape.empty_value(),
+            ),
         }));
     }
 
@@ -209,7 +236,8 @@ impl FilterStrip {
     }
 
     fn row_for(&self, rule: &FilterRuleObject) -> FilterRuleRow {
-        let row = FilterRuleRow::new(rule, self.imp().columns.borrow().clone());
+        let imp = self.imp();
+        let row = FilterRuleRow::new(rule, imp.columns.borrow().clone(), imp.vocabulary.borrow().clone());
         let strip = self.downgrade();
         row.connect_remove(move |row| {
             if let (Some(strip), Some(rule)) = (strip.upgrade(), row.rule()) {
@@ -226,7 +254,9 @@ impl FilterStrip {
         let imp = self.imp();
         let rules = self.rules().n_items();
         let sql = !imp.raw_entry.text().trim().is_empty();
-        imp.match_revealer.set_reveal_child(rules >= 2 || (rules >= 1 && sql));
+        let any = imp.vocabulary.borrow().matches_any();
+        imp.match_revealer
+            .set_reveal_child(any && (rules >= 2 || (rules >= 1 && sql)));
         imp.rule_list.set_visible(rules > 0);
     }
 }

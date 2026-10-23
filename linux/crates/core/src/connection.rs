@@ -18,8 +18,10 @@ use crate::read_statement::ReadStatement;
 use crate::result_sink::ResultSink;
 use crate::row_limit::RowLimit;
 use crate::server_info::ServerInfo;
+use crate::server_page::{ServerPage, ServerPageRequest};
 use crate::statement::Statement;
 use crate::stream_summary::StreamSummary;
+use crate::unsupported_feature::UnsupportedFeature;
 use crate::write_batch::WriteBatch;
 use crate::write_report::WriteReport;
 
@@ -94,6 +96,19 @@ pub trait Connection: Send + Sync {
         limit: RowLimit,
         options: CallOptions,
     ) -> Result<QueryResult, DriverError>;
+
+    /// Read one page of a generated read the server pages itself, on an
+    /// engine whose dialect says it does (`TablePaging::ServerState`).
+    async fn query_server_page(
+        &self,
+        _statement: &Statement,
+        _request: ServerPageRequest,
+        _options: CallOptions,
+    ) -> Result<ServerPage, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::ServerPaging,
+        })
+    }
 
     async fn count_rows(&self, statement: &Statement, options: CallOptions) -> Result<u64, DriverError>;
 

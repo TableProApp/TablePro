@@ -262,6 +262,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: generated,
+            partition_scoped: false,
             default: crate::column::ColumnDefault::None,
             comment: None,
         }

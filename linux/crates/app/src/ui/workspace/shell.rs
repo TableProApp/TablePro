@@ -389,6 +389,7 @@ pub(super) mod tests {
             primary_key,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         };

@@ -275,7 +275,8 @@ fn opens_as_read(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
     match first.kind {
         Kind::Open => true,
         Kind::Word if is(first.text, &["PRAGMA"]) => grammar == SqlGrammar::Sqlite && reporting_pragma(part),
-        Kind::Word => is(first.text, &READ_VERBS),
+        // CQL's LIST ROLES, LIST USERS and LIST PERMISSIONS report.
+        Kind::Word => is(first.text, &READ_VERBS) || (grammar == SqlGrammar::Cql && is(first.text, &["LIST"])),
         _ => false,
     }
 }
@@ -519,6 +520,13 @@ mod tests {
                 "SELECT * FROM events FORMAT JSONEachRow SETTINGS max_threads = 1",
             ),
             (SqlGrammar::ClickHouse, "DESC events"),
+            (SqlGrammar::Cql, "LIST ROLES"),
+            (SqlGrammar::Cql, "DESCRIBE KEYSPACES"),
+            (SqlGrammar::Cql, "SELECT $$DELETE FROM t$$ AS note FROM t"),
+            (
+                SqlGrammar::Cql,
+                "SELECT * FROM t WHERE a = 1 ALLOW FILTERING // DROP TABLE t",
+            ),
         ] {
             assert_eq!(access(sql, grammar), StatementAccess::Read, "{grammar:?}: {sql}");
         }
@@ -572,6 +580,12 @@ mod tests {
             (SqlGrammar::MsSql, "SELECT 1\nENABLE TRIGGER ALL ON dbo.orders"),
             (SqlGrammar::ClickHouse, "OPTIMIZE TABLE events FINAL"),
             (SqlGrammar::ClickHouse, "SELECT 1 INTO OUTFILE 'x.csv'"),
+            (
+                SqlGrammar::Cql,
+                "BEGIN BATCH INSERT INTO t (a) VALUES (1); UPDATE t SET b = 2 WHERE a = 1; APPLY BATCH",
+            ),
+            (SqlGrammar::Cql, "USE shop"),
+            (SqlGrammar::Cql, "LIST ROLES; DROP ROLE r"),
         ] {
             assert!(access(sql, grammar) >= StatementAccess::Write, "{grammar:?}: {sql}");
         }

@@ -33,6 +33,9 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     drop_foreign_key: true,
     column_comments: true,
     drop_table_cascade: false,
+    column_defaults: true,
+    required_columns: true,
+    declared_column_order: true,
 };
 
 fn alter_table(dialect: &MssqlDialect, table: &TableRef, action: &str) -> String {
@@ -532,6 +535,7 @@ mod tests {
                 primary_key: false,
                 is_auto_increment: false,
                 is_generated: false,
+                partition_scoped: false,
                 default,
                 comment: None,
             },

@@ -1,7 +1,8 @@
 use super::{
-    BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlDialect, DdlOperation, DraftColumn, Permission,
-    PrimaryKeyChange, RefusalReason, TableDefinition, order_renames, primary_key_permission,
+    BuildDdlError, ColumnAlteration, ColumnDefinition, ColumnRename, DdlCapabilities, DdlDialect, DdlOperation,
+    DraftColumn, Permission, PrimaryKeyChange, RefusalReason, TableDefinition, order_renames, primary_key_permission,
 };
+use crate::column::ColumnDefault;
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, IndexKey, TableRef};
 
@@ -144,6 +145,7 @@ impl TableChanges {
             if column.comment_text().is_some() {
                 require(capabilities.column_comments, DdlOperation::SetColumnComment)?;
             }
+            check_new_column(capabilities, column)?;
         }
         if let Some(change) = &self.primary_key {
             let column = change
@@ -163,6 +165,18 @@ impl TableChanges {
         }
         check_actions(ddl, &self.added_foreign_keys)
     }
+}
+
+/// A new column asks only for what the engine has: a default, and NOT
+/// NULL outside the primary key.
+pub(super) fn check_new_column(capabilities: &DdlCapabilities, column: &DraftColumn) -> Result<(), BuildDdlError> {
+    if column.default != ColumnDefault::None {
+        require(capabilities.column_defaults, DdlOperation::ColumnDefault)?;
+    }
+    if !column.nullable && !column.primary_key {
+        require(capabilities.required_columns, DdlOperation::RequiredColumn)?;
+    }
+    Ok(())
 }
 
 pub(super) fn require(allowed: bool, operation: DdlOperation) -> Result<(), BuildDdlError> {

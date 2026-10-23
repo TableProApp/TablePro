@@ -12,9 +12,7 @@ use super::selection_handlers::{selected_rows, show_delete_availability, update_
 use super::{BrowseModel, BrowseTabOutput, DataInput, Effects, PageReply, PageState, PageView, loading_description};
 use crate::services::change_tracker::pk_identity;
 use crate::services::save_batch::SaveTarget;
-use crate::ui::grid::{
-    GridContent, GridRowIndex, GridSorting, RowKeyBuilder, RowObject, build_column_view, data_columns,
-};
+use crate::ui::grid::{GridContent, GridRowIndex, RowKeyBuilder, RowObject, build_column_view, data_columns};
 use crate::ui::tab_load::{ContentPage, LoadFailure, LoadPresentation};
 
 impl BrowseModel {
@@ -50,6 +48,10 @@ impl BrowseModel {
         }
         self.link_generation = generation;
         self.dialect = self.session.current_dialect();
+        self.filter_strip.set_dialect(self.dialect.clone());
+        if !self.sorts_rows() {
+            self.current_sort = None;
+        }
         self.retry_failed(fx);
     }
 
@@ -137,6 +139,7 @@ impl BrowseModel {
             self.page = None;
             self.shown_view = None;
             self.drop_grid(fx);
+            self.pager.forget_paging_states();
         }
         self.current_columns = columns.clone();
         self.rebase_confirming_delete(fx);
@@ -242,9 +245,7 @@ impl BrowseModel {
             content,
             &self.current_columns,
             self.grid_sink.clone(),
-            GridSorting::Server {
-                initial: self.current_sort,
-            },
+            self.grid_sorting(),
             self.grid_context(),
         );
         // A screen reader names the grid as the tab does.

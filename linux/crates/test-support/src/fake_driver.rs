@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
     AuthMode, CommitResolutionSupport, ConnectOptions, Connection, DatabaseDriver, DriverCapabilities, DriverError,
-    EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, TimeoutPhase,
-    TlsCapabilities, TlsMode, WriteAtomicity,
+    EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, StatementStop,
+    TimeoutPhase, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -44,6 +44,7 @@ impl FakeDriver {
         row_count_estimate: EstimateQuality::Statistics,
         object_kinds: &[ObjectKind::Table, ObjectKind::View],
         database_required: false,
+        statement_stop: StatementStop::Server,
     };
 
     pub const FILE_CAPABILITIES: DriverCapabilities = DriverCapabilities {

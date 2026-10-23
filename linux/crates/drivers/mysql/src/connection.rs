@@ -128,7 +128,8 @@ impl MysqlConnection {
             Ok(value) => return Ok(value),
             Err(error) => self.endpoint.explain(error).await,
         };
-        if !suspects_link(&error) {
+        // A save reports its outcome around what stopped it.
+        if !suspects_link(error.cause()) {
             return Err(error);
         }
         let lost = match stop.progress() {

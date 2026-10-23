@@ -22,8 +22,12 @@ pub fn build_count(
     if build_filter(&mut builder, dialect, columns, filter)? {
         conditions.push(builder.take_fragment());
     }
+    let suffix = match conditions.is_empty() {
+        true => "",
+        false => dialect.filtered_read_suffix(),
+    };
     builder.push_sql(&format!(
-        "SELECT {} FROM {}{}",
+        "SELECT {} FROM {}{}{suffix}",
         dialect.count_all(),
         dialect.qualify(table),
         where_clause(&conditions)
