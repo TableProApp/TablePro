@@ -1,0 +1,713 @@
+reading file "target/stream-realization/heap-five/interpreted.zst" - please wait, this might take some time...
+Debuggee command was: /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+finished reading file, now analyzing data:
+
+MEMORY LEAKS
+25.20M leaked over 19405 calls from
+0x7fa38e1ec277
+  in ??
+525.06K leaked over 16 calls from:
+    0x7fa39cdd0ae2
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39cdd0bf4
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce36b45
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39cedbbd8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce8e0f7
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce8e480
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8c645b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8d05da
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d152630
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d04a3ae
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d05d944
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8b62b1
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d171e5b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c96130e
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c8bd8c8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    driCreateContextAttribs
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa3ac50f82f
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3ac501bec
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3b43666ac
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4366a4d
+      in /usr/lib/libgtk-4.so.1
+    gdk_gl_context_realize
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_prepare_gl
+      in /usr/lib/libgtk-4.so.1
+    gdk_x11_display_open
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_manager_open_display
+      in /usr/lib/libgtk-4.so.1
+    gtk_init_check
+      in /usr/lib/libgtk-4.so.1
+    _RNvNtCsidnKJ2lfOir_4gtk42rt4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+525.06K leaked over 16 calls from:
+    0x7fa39cdd0ae2
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39cdd0bf4
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce36b45
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39cedbbd8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce8e0f7
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39ce8e480
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8c645b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8d05da
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d152630
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d04a3ae
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d05d944
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d8b64bb
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39d171e5b
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c96130e
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c8bd8c8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    driCreateContextAttribs
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa3ac50f82f
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3ac501bec
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3b43666ac
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4366a4d
+      in /usr/lib/libgtk-4.so.1
+    gdk_gl_context_realize
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_prepare_gl
+      in /usr/lib/libgtk-4.so.1
+    gdk_x11_display_open
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_manager_open_display
+      in /usr/lib/libgtk-4.so.1
+    gtk_init_check
+      in /usr/lib/libgtk-4.so.1
+    _RNvNtCsidnKJ2lfOir_4gtk42rt4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+  and 24.15M from 7485 other places
+
+8.04M leaked over 82711086 calls from
+g_malloc
+  in /usr/lib/libglib-2.0.so.0
+47.04K leaked over 245 calls from:
+    0x7fa3b3ea9e7e
+      in /usr/lib/libgtk-4.so.1
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b41a30f0
+      in /usr/lib/libgtk-4.so.1
+    gtk_at_context_create
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b409d679
+      in /usr/lib/libgtk-4.so.1
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    gtk_label_new
+      in /usr/lib/libgtk-4.so.1
+    _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    0x7fa3b3b1975d
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b22c4f
+      in /usr/lib/libglib-2.0.so.0
+    g_main_context_iteration
+      in /usr/lib/libglib-2.0.so.0
+    g_application_run
+      in /usr/lib/libgio-2.0.so.0
+    _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+39.20K leaked over 245 calls from:
+    0x7fa3b3ea9e06
+      in /usr/lib/libgtk-4.so.1
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b41a30f0
+      in /usr/lib/libgtk-4.so.1
+    gtk_at_context_create
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b409d679
+      in /usr/lib/libgtk-4.so.1
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    gtk_label_new
+      in /usr/lib/libgtk-4.so.1
+    _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    0x7fa3b3b1975d
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b22c4f
+      in /usr/lib/libglib-2.0.so.0
+    g_main_context_iteration
+      in /usr/lib/libglib-2.0.so.0
+    g_application_run
+      in /usr/lib/libgio-2.0.so.0
+    _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+  and 7.95M from 114682 other places
+
+6.13M leaked over 32887538 calls from
+g_malloc0
+  in /usr/lib/libglib-2.0.so.0
+141.62K leaked over 77 calls from:
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b42aa933
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3b1f26a
+      in /usr/lib/libglib-2.0.so.0
+    g_markup_parse_context_parse
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b42b625c
+      in /usr/lib/libgtk-4.so.1
+    gtk_svg_load_from_bytes
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b40d7fe8
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b40d858e
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3f6ba6f
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3f6be40
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3cd07f1
+      in /usr/lib/libgio-2.0.so.0
+    0x7fa3b3b57dba
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b54b53
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3298041
+      in /usr/lib/libc.so.6
+    0x7fa3b332072b
+      in /usr/lib/libc.so.6
+123.48K leaked over 245 calls from:
+    g_type_create_instance
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bc1d64
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_with_properties
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    gtk_label_new
+      in /usr/lib/libgtk-4.so.1
+    _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    0x7fa3b3b1975d
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b22c4f
+      in /usr/lib/libglib-2.0.so.0
+    g_main_context_iteration
+      in /usr/lib/libglib-2.0.so.0
+    g_application_run
+      in /usr/lib/libgio-2.0.so.0
+    _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+  and 5.86M from 60572 other places
+
+4.48M leaked over 25469 calls from
+0x7fa39d128947
+  in /usr/lib/libgallium-26.2.5-arch1.1.so
+843.47K leaked over 1 calls from:
+    0x7fa39c961372
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c8bd8c8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    driCreateContextAttribs
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa3ac50f82f
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3ac501bec
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3b43666ac
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4366a4d
+      in /usr/lib/libgtk-4.so.1
+    gdk_gl_context_realize
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_prepare_gl
+      in /usr/lib/libgtk-4.so.1
+    gdk_x11_display_open
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_manager_open_display
+      in /usr/lib/libgtk-4.so.1
+    gtk_init_check
+      in /usr/lib/libgtk-4.so.1
+    _RNvNtCsidnKJ2lfOir_4gtk42rt4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+302.86K leaked over 1 calls from:
+    0x7fa39c96130e
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa39c8bd8c8
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    driCreateContextAttribs
+      in /usr/lib/libgallium-26.2.5-arch1.1.so
+    0x7fa3ac50f82f
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3ac501bec
+      in /usr/lib/libEGL_mesa.so.0
+    0x7fa3b43666ac
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4366a4d
+      in /usr/lib/libgtk-4.so.1
+    gdk_gl_context_realize
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_prepare_gl
+      in /usr/lib/libgtk-4.so.1
+    gdk_x11_display_open
+      in /usr/lib/libgtk-4.so.1
+    gdk_display_manager_open_display
+      in /usr/lib/libgtk-4.so.1
+    gtk_init_check
+      in /usr/lib/libgtk-4.so.1
+    _RNvNtCsidnKJ2lfOir_4gtk42rt4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+  and 3.33M from 1062 other places
+
+3.21M leaked over 27912479 calls from
+g_realloc
+  in /usr/lib/libglib-2.0.so.0
+394.74K leaked over 1 calls from:
+    0x7fa3b4123583
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3f0306e
+      in /usr/lib/libgtk-4.so.1
+    gtk_css_provider_load_from_file
+      in /usr/lib/libgtk-4.so.1
+    gtk_css_provider_load_from_resource
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4bc1ef9
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b37cff7a
+      in /usr/lib/libadwaita-1.so.0
+    0x7fa3b37d008a
+      in /usr/lib/libadwaita-1.so.0
+    adw_init
+      in /usr/lib/libadwaita-1.so.0
+    _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs4X6TIaiW0uL_5relm44init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+262.14K leaked over 13 calls from:
+    0x7fa3b3adc840
+      in /usr/lib/libglib-2.0.so.0
+    g_array_set_size
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3f0120f
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3f02d98
+      in /usr/lib/libgtk-4.so.1
+    gtk_css_provider_load_from_file
+      in /usr/lib/libgtk-4.so.1
+    gtk_css_provider_load_from_resource
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4bc1ef9
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_object_new
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b37cff7a
+      in /usr/lib/libadwaita-1.so.0
+    0x7fa3b37d008a
+      in /usr/lib/libadwaita-1.so.0
+    adw_init
+      in /usr/lib/libadwaita-1.so.0
+    _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs4X6TIaiW0uL_5relm44init
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+  and 2.55M from 39867 other places
+
+2.24M leaked over 106025 calls from
+0x7fa3b2d5e0d3
+  in /usr/lib/libcairo.so.2
+393.22K leaked over 2 calls from:
+    0x7fa3b2d8170f
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d764c8
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2cec7ad
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d36d31
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d37668
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2cdc3e7
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d30679
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2cdf463
+      in /usr/lib/libcairo.so.2
+    cairo_paint
+      in /usr/lib/libcairo.so.2
+    0x7fa3b4328354
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b435a78d
+      in /usr/lib/libgtk-4.so.1
+    gsk_renderer_render
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3ff79fe
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b42d76b1
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4bd1019
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b43857b7
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4bd1019
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b435a599
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3b21053
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b1975d
+      in /usr/lib/libglib-2.0.so.0
+    0x7fa3b3b22c4f
+      in /usr/lib/libglib-2.0.so.0
+    g_main_context_iteration
+      in /usr/lib/libglib-2.0.so.0
+    g_application_run
+      in /usr/lib/libgio-2.0.so.0
+    _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvCs2uZsNF3uPgU_12tablepro_app3run
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+    main
+      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+120.96K leaked over 280 calls from:
+    0x7fa3b2ceb094
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d62bd4
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d6447b
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d69401
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d16530
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2cea3ba
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d3599d
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d35f89
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2cdcaa4
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2ce9bd9
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2d34b64
+      in /usr/lib/libcairo.so.2
+    0x7fa3b2ce4a78
+      in /usr/lib/libcairo.so.2
+    cairo_show_glyphs
+      in /usr/lib/libcairo.so.2
+    0x7fa3b3196022
+      in /usr/lib/libpangocairo-1.0.so.0
+    0x7fa3b3196069
+      in /usr/lib/libpangocairo-1.0.so.0
+    pango_renderer_draw_glyphs
+      in /usr/lib/libpango-1.0.so.0
+    pango_cairo_show_glyph_string
+      in /usr/lib/libpangocairo-1.0.so.0
+    0x7fa3b43ec8c1
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43b98e8
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43a26cc
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43ac137
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43fdcfb
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43caff4
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43cb4ef
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b43a9a7b
+      in /usr/lib/libgtk-4.so.1
+    gsk_renderer_render
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b3ff79fe
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b42d76b1
+      in /usr/lib/libgtk-4.so.1
+    0x7fa3b4bd1019
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b43857b7
+      in /usr/lib/libgtk-4.so.1
+    g_closure_invoke
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bcecfa
+      in /usr/lib/libgobject-2.0.so.0
+    0x7fa3b4bd0ed3
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit_valist
+      in /usr/lib/libgobject-2.0.so.0
+    g_signal_emit
+      in /usr/lib/libgobject-2.0.so.0
+  and 1.73M from 3856 other places
+
+
+total runtime: 180.83s.
+calls to allocation functions: 171239582 (946959/s)
+temporary memory allocations: 18312330 (101267/s)
+peak heap memory consumption: 83.90M
+peak RSS (including heaptrack overhead): 331.56M
+total memory leaked: 54.52M
+suppressed leaks: 1.19K

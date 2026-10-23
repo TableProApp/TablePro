@@ -1,0 +1,34 @@
+{
+  "cycles": 10,
+  "total_rows": 20000000,
+  "query_seconds_min": 4.260669053008314,
+  "query_seconds_max": 4.378691580001032,
+  "query_seconds_mean": 4.309015247700154,
+  "cpu_seconds_mean": 3.139,
+  "idle_cpu_seconds": 0.020000000000000018,
+  "idle_observation_seconds": 15,
+  "rss_after_close_kib": [
+    219516,
+    224504,
+    248724,
+    256452,
+    256496,
+    257224,
+    257240,
+    257240,
+    257032,
+    262784
+  ],
+  "private_dirty_after_close_kib": [
+    86032,
+    91020,
+    115240,
+    122968,
+    123012,
+    123740,
+    123756,
+    123756,
+    123548,
+    129300
+  ]
+}

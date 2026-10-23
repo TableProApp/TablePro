@@ -1,0 +1,226 @@
+{
+  "rows_requested": 50000,
+  "columns": 6,
+  "payload_bytes": 8192,
+  "idle": {},
+  "cycles": [
+    {
+      "cycle": 1,
+      "terminal_seconds": 1.0939720300084446,
+      "cpu_seconds": 0.55,
+      "terminal_status": "complete",
+      "retention_notice": "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 1.02,
+        "memory_kib": {
+          "Rss": 190160,
+          "Pss": 143267,
+          "Private_Clean": 71756,
+          "Private_Dirty": 57100,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 1.78,
+        "memory_kib": {
+          "Rss": 380396,
+          "Pss": 333454,
+          "Private_Clean": 76748,
+          "Private_Dirty": 242280,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 1.86,
+        "memory_kib": {
+          "Rss": 384596,
+          "Pss": 337544,
+          "Private_Clean": 76684,
+          "Private_Dirty": 246480,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4361837300239131,
+          "cpu_seconds": 1.14,
+          "memory_kib": {
+            "Rss": 195396,
+            "Pss": 148454,
+            "Private_Clean": 76748,
+            "Private_Dirty": 57280,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.638434838008834,
+          "cpu_seconds": 1.27,
+          "memory_kib": {
+            "Rss": 320336,
+            "Pss": 273394,
+            "Private_Clean": 76748,
+            "Private_Dirty": 182220,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8419026200135704,
+          "cpu_seconds": 1.39,
+          "memory_kib": {
+            "Rss": 361956,
+            "Pss": 315014,
+            "Private_Clean": 76748,
+            "Private_Dirty": 223840,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "terminal_seconds": 1.0718393550196197,
+      "cpu_seconds": 0.52,
+      "terminal_status": "complete",
+      "retention_notice": "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 2.04,
+        "memory_kib": {
+          "Rss": 385992,
+          "Pss": 338907,
+          "Private_Clean": 76676,
+          "Private_Dirty": 247876,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 2.77,
+        "memory_kib": {
+          "Rss": 386700,
+          "Pss": 339614,
+          "Private_Clean": 76676,
+          "Private_Dirty": 248584,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 2.86,
+        "memory_kib": {
+          "Rss": 387152,
+          "Pss": 340066,
+          "Private_Clean": 76676,
+          "Private_Dirty": 249036,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42828265999560244,
+          "cpu_seconds": 2.16,
+          "memory_kib": {
+            "Rss": 386020,
+            "Pss": 338935,
+            "Private_Clean": 76676,
+            "Private_Dirty": 247904,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6321043350035325,
+          "cpu_seconds": 2.28,
+          "memory_kib": {
+            "Rss": 386444,
+            "Pss": 339359,
+            "Private_Clean": 76676,
+            "Private_Dirty": 248328,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8379366029985249,
+          "cpu_seconds": 2.39,
+          "memory_kib": {
+            "Rss": 386512,
+            "Pss": 339427,
+            "Private_Clean": 76676,
+            "Private_Dirty": 248396,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "terminal_seconds": 1.066370961983921,
+      "cpu_seconds": 0.5,
+      "terminal_status": "complete",
+      "retention_notice": "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 3.05,
+        "memory_kib": {
+          "Rss": 384180,
+          "Pss": 337094,
+          "Private_Clean": 76676,
+          "Private_Dirty": 246064,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 3.76,
+        "memory_kib": {
+          "Rss": 384300,
+          "Pss": 337247,
+          "Private_Clean": 76684,
+          "Private_Dirty": 246184,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 3.85,
+        "memory_kib": {
+          "Rss": 385512,
+          "Pss": 338459,
+          "Private_Clean": 76684,
+          "Private_Dirty": 247396,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4219867879874073,
+          "cpu_seconds": 3.15,
+          "memory_kib": {
+            "Rss": 384180,
+            "Pss": 337127,
+            "Private_Clean": 76684,
+            "Private_Dirty": 246064,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.625953593000304,
+          "cpu_seconds": 3.27,
+          "memory_kib": {
+            "Rss": 384180,
+            "Pss": 337127,
+            "Private_Clean": 76684,
+            "Private_Dirty": 246064,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8299201729823835,
+          "cpu_seconds": 3.38,
+          "memory_kib": {
+            "Rss": 384244,
+            "Pss": 337191,
+            "Private_Clean": 76684,
+            "Private_Dirty": 246128,
+            "Swap": 0
+          }
+        }
+      ]
+    }
+  ],
+  "application_pid": 1977361,
+  "application_start_ticks": 25771346
+}

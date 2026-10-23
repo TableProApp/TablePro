@@ -1,0 +1,18 @@
+{
+  "test": "ui::editor::stream_view::tests::a_new_stream_page_is_appended_without_rebuilding_the_pages_already_shown",
+  "before": {
+    "exit_code": 101,
+    "result": "failed: retired result labels remain alive"
+  },
+  "after": {
+    "exit_code": 0,
+    "passed": 1,
+    "backend": "GTK_A11Y=test",
+    "real_atspi": {
+      "exit_code": 0,
+      "passed": 1
+    }
+  },
+  "production_change": "stream page storage uses GtkStack and string titles instead of hidden GtkNotebook tab-label widgets",
+  "broader_validation": "preflight, app all-target Clippy, 791 app tests, all 153 isolated GTK tests and optimized interaction probes passed"
+}

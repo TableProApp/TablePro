@@ -1,0 +1,32 @@
+[
+  {
+    "cycle": 1,
+    "cancellation_seconds": 0.44175249501131475,
+    "active_cancelled_queries": 0,
+    "next_query_value": 700,
+    "memory_kib": [
+      196312,
+      196312
+    ]
+  },
+  {
+    "cycle": 2,
+    "cancellation_seconds": 0.4322998080169782,
+    "active_cancelled_queries": 0,
+    "next_query_value": 701,
+    "memory_kib": [
+      205052,
+      205052
+    ]
+  },
+  {
+    "cycle": 3,
+    "cancellation_seconds": 0.4454537319834344,
+    "active_cancelled_queries": 0,
+    "next_query_value": 702,
+    "memory_kib": [
+      205096,
+      205096
+    ]
+  }
+]

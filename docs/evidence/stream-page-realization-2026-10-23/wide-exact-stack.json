@@ -1,0 +1,19 @@
+{
+  "rows": 50000,
+  "retention_notice": "Received 50000 rows \u00b7 10 pages\nRetained rows 45001-50000. Earlier rows are no longer available.",
+  "preview_characters": 533,
+  "preview_height_pixels": 1827,
+  "clipboard": "not verified: menu activation unresolved for the oversized multiline row",
+  "csv_bytes": 615077803,
+  "csv_sha256": "f1edd591b2ade36e72fe091790fdfbbd5570a999b2043b95a3f2955cc11fe27a",
+  "memory_before_export_rss_hwm_kib": [
+    388952,
+    450964
+  ],
+  "memory_after_export_rss_hwm_kib": [
+    391188,
+    453100
+  ],
+  "application_pid": 1983069,
+  "application_start_ticks": 25831482
+}

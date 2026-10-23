@@ -1,0 +1,16 @@
+{
+  "profile": "release",
+  "binary": "target/stream-stack/usr/bin/tablepro",
+  "binary_sha256": "74b0c6d2bc5f4b51ac320d1983dee3cc55e6babfe18768cec395dd16205c3886",
+  "source_sha256": {
+    "apps/linux/app/src/ui/editor/outcomes.rs": "68bf467665b3bdfcf78f0a912ce41da6ac37c1b59a82a8a14b6dfdc3cd9aa910",
+    "apps/linux/app/src/ui/editor/stream_view.rs": "d95879789dbe3cbe34f9ecf01d74c46eed0db714857f737633c4e7f4c762fb6d",
+    "apps/linux/app/src/ui/editor/stream_view/pager.rs": "2c37ea3f1f163c6e8d84122ab8742b554fc20d1e88c2f63c80645afa9ab3ea56"
+  },
+  "source_base": "6b063111f",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ]
+}

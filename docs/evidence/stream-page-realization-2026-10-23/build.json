@@ -1,0 +1,13 @@
+{
+  "candidate_base": "60e3cdde12157835d64df2de795c25ec7eef4c77",
+  "candidate_binary_sha256": "3c95a4e8154e660073fb5474a46cee6fb9766ee255c3f96789ab96f8f8cdc37b",
+  "candidate_outcomes_sha256": "9e8be34d85432410a362cc4aa07bbb213ab8a2084c1b9cbf6d94e2a06a48a3d9",
+  "baseline_source": "32580207537c1d1b8e726e52d8e94b57a27ea706",
+  "baseline_binary_sha256": "69c4ef139676e50b44c5223e7b43de284da896cf78710ad285e99c6c9d96fd16",
+  "profile": "release",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ]
+}

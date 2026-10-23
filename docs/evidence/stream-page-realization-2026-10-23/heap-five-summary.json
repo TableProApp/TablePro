@@ -1,0 +1,33 @@
+{
+  "snapshots": 17872,
+  "final_seconds": 180.831,
+  "final_live_heap_bytes": 54525683,
+  "peak_live_heap_bytes": 83872992,
+  "low_water_windows": [
+    {
+      "start_seconds": 35,
+      "end_seconds": 40,
+      "minimum_live_heap_bytes": 47608001
+    },
+    {
+      "start_seconds": 70,
+      "end_seconds": 75,
+      "minimum_live_heap_bytes": 49301648
+    },
+    {
+      "start_seconds": 105,
+      "end_seconds": 110,
+      "minimum_live_heap_bytes": 50992101
+    },
+    {
+      "start_seconds": 140,
+      "end_seconds": 145,
+      "minimum_live_heap_bytes": 52835195
+    },
+    {
+      "start_seconds": 175,
+      "end_seconds": 180,
+      "minimum_live_heap_bytes": 54525683
+    }
+  ]
+}

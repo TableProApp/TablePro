@@ -1,0 +1,4992 @@
+{
+  "rows_requested": 2000000,
+  "columns": 6,
+  "payload_bytes": 0,
+  "idle": {},
+  "cycles": [
+    {
+      "cycle": 1,
+      "terminal_seconds": 4.2872001549985725,
+      "cpu_seconds": 3.1999999999999993,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 1.07,
+        "memory_kib": {
+          "Rss": 179560,
+          "Pss": 133206,
+          "Private_Clean": 69736,
+          "Private_Dirty": 49688,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 4.45,
+        "memory_kib": {
+          "Rss": 219844,
+          "Pss": 173441,
+          "Private_Clean": 72696,
+          "Private_Dirty": 86948,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 4.54,
+        "memory_kib": {
+          "Rss": 225332,
+          "Pss": 178807,
+          "Private_Clean": 72616,
+          "Private_Dirty": 92436,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.414065537013812,
+          "cpu_seconds": 1.18,
+          "memory_kib": {
+            "Rss": 182672,
+            "Pss": 136269,
+            "Private_Clean": 72696,
+            "Private_Dirty": 49776,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6164188990078401,
+          "cpu_seconds": 1.29,
+          "memory_kib": {
+            "Rss": 191776,
+            "Pss": 145373,
+            "Private_Clean": 72696,
+            "Private_Dirty": 58880,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8188301589980256,
+          "cpu_seconds": 1.45,
+          "memory_kib": {
+            "Rss": 201612,
+            "Pss": 155209,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68716,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.022601377015235,
+          "cpu_seconds": 1.62,
+          "memory_kib": {
+            "Rss": 201612,
+            "Pss": 155209,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68716,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2250124780111946,
+          "cpu_seconds": 1.79,
+          "memory_kib": {
+            "Rss": 201612,
+            "Pss": 155209,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68716,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4275126419961452,
+          "cpu_seconds": 1.95,
+          "memory_kib": {
+            "Rss": 201612,
+            "Pss": 155209,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68716,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6308837599935941,
+          "cpu_seconds": 2.13,
+          "memory_kib": {
+            "Rss": 201664,
+            "Pss": 155261,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68768,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8334251990017947,
+          "cpu_seconds": 2.29,
+          "memory_kib": {
+            "Rss": 201664,
+            "Pss": 155261,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68768,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0357993640063796,
+          "cpu_seconds": 2.46,
+          "memory_kib": {
+            "Rss": 201664,
+            "Pss": 155261,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68768,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2393101479974575,
+          "cpu_seconds": 2.62,
+          "memory_kib": {
+            "Rss": 201664,
+            "Pss": 155261,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68768,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4417720590136014,
+          "cpu_seconds": 2.78,
+          "memory_kib": {
+            "Rss": 201664,
+            "Pss": 155261,
+            "Private_Clean": 72696,
+            "Private_Dirty": 68768,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6442416130157653,
+          "cpu_seconds": 2.95,
+          "memory_kib": {
+            "Rss": 201980,
+            "Pss": 155577,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69084,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8467259960016236,
+          "cpu_seconds": 3.11,
+          "memory_kib": {
+            "Rss": 201980,
+            "Pss": 155577,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69084,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0491644339927007,
+          "cpu_seconds": 3.28,
+          "memory_kib": {
+            "Rss": 202108,
+            "Pss": 155705,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69212,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.251723829016555,
+          "cpu_seconds": 3.44,
+          "memory_kib": {
+            "Rss": 202108,
+            "Pss": 155703,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69212,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4560129570018034,
+          "cpu_seconds": 3.61,
+          "memory_kib": {
+            "Rss": 202120,
+            "Pss": 155717,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69224,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6585306170163676,
+          "cpu_seconds": 3.77,
+          "memory_kib": {
+            "Rss": 202228,
+            "Pss": 155825,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.860993109003175,
+          "cpu_seconds": 3.95,
+          "memory_kib": {
+            "Rss": 202432,
+            "Pss": 156029,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69536,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.064450524019776,
+          "cpu_seconds": 4.11,
+          "memory_kib": {
+            "Rss": 202484,
+            "Pss": 156081,
+            "Private_Clean": 72696,
+            "Private_Dirty": 69588,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 2,
+      "terminal_seconds": 4.353827736020321,
+      "cpu_seconds": 3.2799999999999994,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 4.73,
+        "memory_kib": {
+          "Rss": 222300,
+          "Pss": 175774,
+          "Private_Clean": 72616,
+          "Private_Dirty": 89404,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 8.18,
+        "memory_kib": {
+          "Rss": 231996,
+          "Pss": 185470,
+          "Private_Clean": 72616,
+          "Private_Dirty": 99100,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 8.27,
+        "memory_kib": {
+          "Rss": 234968,
+          "Pss": 188442,
+          "Private_Clean": 72616,
+          "Private_Dirty": 102072,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.43043806101195514,
+          "cpu_seconds": 4.85,
+          "memory_kib": {
+            "Rss": 222268,
+            "Pss": 175742,
+            "Private_Clean": 72616,
+            "Private_Dirty": 89372,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6336101200140547,
+          "cpu_seconds": 4.96,
+          "memory_kib": {
+            "Rss": 231788,
+            "Pss": 185262,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98892,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8364660130173434,
+          "cpu_seconds": 5.13,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.039702087000478,
+          "cpu_seconds": 5.29,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2431255459960084,
+          "cpu_seconds": 5.46,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.445840461004991,
+          "cpu_seconds": 5.61,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.648697438009549,
+          "cpu_seconds": 5.78,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.851354036014527,
+          "cpu_seconds": 5.95,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0547116070229094,
+          "cpu_seconds": 6.12,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2590337959991302,
+          "cpu_seconds": 6.29,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.463045153999701,
+          "cpu_seconds": 6.46,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6656312170089222,
+          "cpu_seconds": 6.62,
+          "memory_kib": {
+            "Rss": 231792,
+            "Pss": 185266,
+            "Private_Clean": 72616,
+            "Private_Dirty": 98896,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8696865560195874,
+          "cpu_seconds": 6.8,
+          "memory_kib": {
+            "Rss": 232028,
+            "Pss": 185502,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.072697469004197,
+          "cpu_seconds": 6.96,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.275265775999287,
+          "cpu_seconds": 7.13,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.478184781008167,
+          "cpu_seconds": 7.3,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.682104261009954,
+          "cpu_seconds": 7.48,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.885424183012219,
+          "cpu_seconds": 7.64,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.0881089880131185,
+          "cpu_seconds": 7.81,
+          "memory_kib": {
+            "Rss": 232012,
+            "Pss": 185486,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99116,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 3,
+      "terminal_seconds": 4.292602669011103,
+      "cpu_seconds": 3.1799999999999997,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 8.46,
+        "memory_kib": {
+          "Rss": 231996,
+          "Pss": 185470,
+          "Private_Clean": 72616,
+          "Private_Dirty": 99100,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 11.79,
+        "memory_kib": {
+          "Rss": 232588,
+          "Pss": 186062,
+          "Private_Clean": 72616,
+          "Private_Dirty": 99692,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 11.87,
+        "memory_kib": {
+          "Rss": 235560,
+          "Pss": 189034,
+          "Private_Clean": 72616,
+          "Private_Dirty": 102664,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42353506898507476,
+          "cpu_seconds": 8.58,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6270828759879805,
+          "cpu_seconds": 8.69,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.829848861991195,
+          "cpu_seconds": 8.84,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0327397020009812,
+          "cpu_seconds": 9.01,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.235563894995721,
+          "cpu_seconds": 9.17,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4384875319956336,
+          "cpu_seconds": 9.34,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.642433130997233,
+          "cpu_seconds": 9.51,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8456197149935178,
+          "cpu_seconds": 9.67,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.048602264985675,
+          "cpu_seconds": 9.84,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2522640980023425,
+          "cpu_seconds": 10.0,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.454939857008867,
+          "cpu_seconds": 10.18,
+          "memory_kib": {
+            "Rss": 232020,
+            "Pss": 185494,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99124,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.657599085010588,
+          "cpu_seconds": 10.33,
+          "memory_kib": {
+            "Rss": 232040,
+            "Pss": 185514,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99144,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8603015689877793,
+          "cpu_seconds": 10.5,
+          "memory_kib": {
+            "Rss": 232040,
+            "Pss": 185514,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99144,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.063125146989478,
+          "cpu_seconds": 10.67,
+          "memory_kib": {
+            "Rss": 232040,
+            "Pss": 185514,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99144,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2665832260099705,
+          "cpu_seconds": 10.83,
+          "memory_kib": {
+            "Rss": 232072,
+            "Pss": 185546,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99176,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.470603007997852,
+          "cpu_seconds": 10.99,
+          "memory_kib": {
+            "Rss": 232072,
+            "Pss": 185546,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99176,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.67331797699444,
+          "cpu_seconds": 11.15,
+          "memory_kib": {
+            "Rss": 232076,
+            "Pss": 185550,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99180,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8766985649999697,
+          "cpu_seconds": 11.33,
+          "memory_kib": {
+            "Rss": 232076,
+            "Pss": 185550,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99180,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.079575206007576,
+          "cpu_seconds": 11.48,
+          "memory_kib": {
+            "Rss": 232076,
+            "Pss": 185550,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99180,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 4,
+      "terminal_seconds": 4.309774663997814,
+      "cpu_seconds": 3.2300000000000004,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 12.07,
+        "memory_kib": {
+          "Rss": 232592,
+          "Pss": 186066,
+          "Private_Clean": 72616,
+          "Private_Dirty": 99696,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 15.48,
+        "memory_kib": {
+          "Rss": 232592,
+          "Pss": 186066,
+          "Private_Clean": 72616,
+          "Private_Dirty": 99696,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 15.55,
+        "memory_kib": {
+          "Rss": 235920,
+          "Pss": 189394,
+          "Private_Clean": 72616,
+          "Private_Dirty": 103024,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4224810910236556,
+          "cpu_seconds": 12.19,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.626157790014986,
+          "cpu_seconds": 12.29,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8291596720227972,
+          "cpu_seconds": 12.46,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0320792950224131,
+          "cpu_seconds": 12.63,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2356549740070477,
+          "cpu_seconds": 12.79,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.438446667016251,
+          "cpu_seconds": 12.96,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6412530640081968,
+          "cpu_seconds": 13.12,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.844200560997706,
+          "cpu_seconds": 13.29,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.047741117014084,
+          "cpu_seconds": 13.45,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2503868650237564,
+          "cpu_seconds": 13.62,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4535425010253675,
+          "cpu_seconds": 13.78,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6563221359974705,
+          "cpu_seconds": 13.96,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.859111555997515,
+          "cpu_seconds": 14.12,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0618167260254268,
+          "cpu_seconds": 14.28,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.264507979998598,
+          "cpu_seconds": 14.46,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.467233492003288,
+          "cpu_seconds": 14.62,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6713290070183575,
+          "cpu_seconds": 14.79,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8745971410244238,
+          "cpu_seconds": 14.96,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.0780468770244624,
+          "cpu_seconds": 15.12,
+          "memory_kib": {
+            "Rss": 232592,
+            "Pss": 186066,
+            "Private_Clean": 72616,
+            "Private_Dirty": 99696,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 5,
+      "terminal_seconds": 4.286609203001717,
+      "cpu_seconds": 3.209999999999999,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 15.74,
+        "memory_kib": {
+          "Rss": 232952,
+          "Pss": 186426,
+          "Private_Clean": 72616,
+          "Private_Dirty": 100056,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 19.24,
+        "memory_kib": {
+          "Rss": 234040,
+          "Pss": 187514,
+          "Private_Clean": 72616,
+          "Private_Dirty": 101144,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 19.33,
+        "memory_kib": {
+          "Rss": 239532,
+          "Pss": 193006,
+          "Private_Clean": 72616,
+          "Private_Dirty": 106636,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4291017980140168,
+          "cpu_seconds": 15.85,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6316817819897551,
+          "cpu_seconds": 15.97,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8342246589891147,
+          "cpu_seconds": 16.13,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0376279990014154,
+          "cpu_seconds": 16.29,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2404737549950369,
+          "cpu_seconds": 16.46,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4430724320118316,
+          "cpu_seconds": 16.63,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6462553860037588,
+          "cpu_seconds": 16.8,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8490779650164768,
+          "cpu_seconds": 16.95,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0518673280021176,
+          "cpu_seconds": 17.12,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.254848987009609,
+          "cpu_seconds": 17.29,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4578972950112075,
+          "cpu_seconds": 17.45,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6606066930107772,
+          "cpu_seconds": 17.62,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8633630080148578,
+          "cpu_seconds": 17.8,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0670512249926105,
+          "cpu_seconds": 17.96,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2710268800146878,
+          "cpu_seconds": 18.13,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.473853359988425,
+          "cpu_seconds": 18.3,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.676492655999027,
+          "cpu_seconds": 18.46,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.880391985992901,
+          "cpu_seconds": 18.63,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.083777577005094,
+          "cpu_seconds": 18.81,
+          "memory_kib": {
+            "Rss": 232952,
+            "Pss": 186426,
+            "Private_Clean": 72616,
+            "Private_Dirty": 100056,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 6,
+      "terminal_seconds": 4.387884171010228,
+      "cpu_seconds": 3.3099999999999987,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 19.53,
+        "memory_kib": {
+          "Rss": 236560,
+          "Pss": 190034,
+          "Private_Clean": 72616,
+          "Private_Dirty": 103664,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 23.02,
+        "memory_kib": {
+          "Rss": 237456,
+          "Pss": 190930,
+          "Private_Clean": 72616,
+          "Private_Dirty": 104560,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 23.11,
+        "memory_kib": {
+          "Rss": 242944,
+          "Pss": 196418,
+          "Private_Clean": 72616,
+          "Private_Dirty": 110048,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4272614300134592,
+          "cpu_seconds": 19.64,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6299990490078926,
+          "cpu_seconds": 19.76,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.832724589999998,
+          "cpu_seconds": 19.92,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.037386873998912,
+          "cpu_seconds": 20.09,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2403573560004588,
+          "cpu_seconds": 20.26,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4430126330116764,
+          "cpu_seconds": 20.43,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6456888059910852,
+          "cpu_seconds": 20.6,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8484237840166315,
+          "cpu_seconds": 20.77,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.052919779991498,
+          "cpu_seconds": 20.93,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.255621381016681,
+          "cpu_seconds": 21.11,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4583329469896853,
+          "cpu_seconds": 21.27,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6613180180138443,
+          "cpu_seconds": 21.44,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8644088270084467,
+          "cpu_seconds": 21.61,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0672123540134635,
+          "cpu_seconds": 21.77,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2706375909911003,
+          "cpu_seconds": 21.95,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4736177189915907,
+          "cpu_seconds": 22.1,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.676707319013076,
+          "cpu_seconds": 22.27,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8795106670004316,
+          "cpu_seconds": 22.44,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.082521400996484,
+          "cpu_seconds": 22.6,
+          "memory_kib": {
+            "Rss": 236564,
+            "Pss": 190038,
+            "Private_Clean": 72616,
+            "Private_Dirty": 103668,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 7,
+      "terminal_seconds": 4.350854608986992,
+      "cpu_seconds": 3.2799999999999976,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 23.3,
+        "memory_kib": {
+          "Rss": 239976,
+          "Pss": 193450,
+          "Private_Clean": 72616,
+          "Private_Dirty": 107080,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 26.76,
+        "memory_kib": {
+          "Rss": 240364,
+          "Pss": 193838,
+          "Private_Clean": 72272,
+          "Private_Dirty": 107812,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 26.86,
+        "memory_kib": {
+          "Rss": 245852,
+          "Pss": 199326,
+          "Private_Clean": 72272,
+          "Private_Dirty": 113300,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42580350299249403,
+          "cpu_seconds": 23.42,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6285415260063019,
+          "cpu_seconds": 23.53,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8325871939887293,
+          "cpu_seconds": 23.69,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.035328527999809,
+          "cpu_seconds": 23.86,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2381079210026655,
+          "cpu_seconds": 24.02,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4409095589944627,
+          "cpu_seconds": 24.19,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.643705154012423,
+          "cpu_seconds": 24.35,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8469128159922548,
+          "cpu_seconds": 24.52,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.049902189988643,
+          "cpu_seconds": 24.69,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.25284172501415,
+          "cpu_seconds": 24.86,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4556775689998176,
+          "cpu_seconds": 25.02,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.658490306988824,
+          "cpu_seconds": 25.19,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8633022640133277,
+          "cpu_seconds": 25.36,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.066140526003437,
+          "cpu_seconds": 25.53,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2691300539881922,
+          "cpu_seconds": 25.7,
+          "memory_kib": {
+            "Rss": 239996,
+            "Pss": 193470,
+            "Private_Clean": 72616,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4731392730027437,
+          "cpu_seconds": 25.87,
+          "memory_kib": {
+            "Rss": 239484,
+            "Pss": 192958,
+            "Private_Clean": 72104,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.676015587989241,
+          "cpu_seconds": 26.05,
+          "memory_kib": {
+            "Rss": 239484,
+            "Pss": 192958,
+            "Private_Clean": 72104,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8786915020027664,
+          "cpu_seconds": 26.2,
+          "memory_kib": {
+            "Rss": 239484,
+            "Pss": 192958,
+            "Private_Clean": 72104,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.081524637003895,
+          "cpu_seconds": 26.38,
+          "memory_kib": {
+            "Rss": 239484,
+            "Pss": 192958,
+            "Private_Clean": 72104,
+            "Private_Dirty": 107100,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 8,
+      "terminal_seconds": 4.36469717300497,
+      "cpu_seconds": 3.2699999999999996,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 27.05,
+        "memory_kib": {
+          "Rss": 242948,
+          "Pss": 196422,
+          "Private_Clean": 72336,
+          "Private_Dirty": 110332,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 30.51,
+        "memory_kib": {
+          "Rss": 243268,
+          "Pss": 196742,
+          "Private_Clean": 72144,
+          "Private_Dirty": 110844,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 30.59,
+        "memory_kib": {
+          "Rss": 246240,
+          "Pss": 199714,
+          "Private_Clean": 72144,
+          "Private_Dirty": 113816,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4152936199971009,
+          "cpu_seconds": 27.17,
+          "memory_kib": {
+            "Rss": 242948,
+            "Pss": 196422,
+            "Private_Clean": 72336,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6180861909815576,
+          "cpu_seconds": 27.28,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8208231510070618,
+          "cpu_seconds": 27.45,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.023538681998616,
+          "cpu_seconds": 27.61,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2284070570021868,
+          "cpu_seconds": 27.78,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4312227809859905,
+          "cpu_seconds": 27.95,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.634078025992494,
+          "cpu_seconds": 28.11,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8373715839989018,
+          "cpu_seconds": 28.28,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0405303910083603,
+          "cpu_seconds": 28.45,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2433535660093185,
+          "cpu_seconds": 28.61,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4476098559971433,
+          "cpu_seconds": 28.78,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.650627186987549,
+          "cpu_seconds": 28.94,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8536744859884493,
+          "cpu_seconds": 29.11,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.05646813599742,
+          "cpu_seconds": 29.28,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.259285884007113,
+          "cpu_seconds": 29.44,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4621495039900765,
+          "cpu_seconds": 29.61,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6650383480009623,
+          "cpu_seconds": 29.77,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8679853759822436,
+          "cpu_seconds": 29.94,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.0710321980004665,
+          "cpu_seconds": 30.1,
+          "memory_kib": {
+            "Rss": 242692,
+            "Pss": 196166,
+            "Private_Clean": 72080,
+            "Private_Dirty": 110332,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 9,
+      "terminal_seconds": 4.3013559480023105,
+      "cpu_seconds": 3.210000000000001,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 30.78,
+        "memory_kib": {
+          "Rss": 243272,
+          "Pss": 196746,
+          "Private_Clean": 72144,
+          "Private_Dirty": 110848,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 34.27,
+        "memory_kib": {
+          "Rss": 243276,
+          "Pss": 196750,
+          "Private_Clean": 72144,
+          "Private_Dirty": 110852,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 34.36,
+        "memory_kib": {
+          "Rss": 246832,
+          "Pss": 200306,
+          "Private_Clean": 72144,
+          "Private_Dirty": 114408,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.436997954006074,
+          "cpu_seconds": 30.9,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6396968250046484,
+          "cpu_seconds": 31.01,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8424497630039696,
+          "cpu_seconds": 31.18,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0452903250115924,
+          "cpu_seconds": 31.35,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2479520060005598,
+          "cpu_seconds": 31.51,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4508176060044207,
+          "cpu_seconds": 31.68,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6535644620016683,
+          "cpu_seconds": 31.85,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8576799590082373,
+          "cpu_seconds": 32.01,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0603915310057346,
+          "cpu_seconds": 32.18,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2642163150012493,
+          "cpu_seconds": 32.35,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.468306572001893,
+          "cpu_seconds": 32.52,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6732340570015367,
+          "cpu_seconds": 32.69,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.876069918012945,
+          "cpu_seconds": 32.85,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.079420555004617,
+          "cpu_seconds": 33.02,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2843594470177777,
+          "cpu_seconds": 33.19,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.487667119014077,
+          "cpu_seconds": 33.36,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6910969490127172,
+          "cpu_seconds": 33.52,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.894553377002012,
+          "cpu_seconds": 33.69,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.097916086000623,
+          "cpu_seconds": 33.86,
+          "memory_kib": {
+            "Rss": 243276,
+            "Pss": 196750,
+            "Private_Clean": 72144,
+            "Private_Dirty": 110852,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 10,
+      "terminal_seconds": 4.385620248998748,
+      "cpu_seconds": 3.3100000000000023,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 34.55,
+        "memory_kib": {
+          "Rss": 243860,
+          "Pss": 197334,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111436,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 38.04,
+        "memory_kib": {
+          "Rss": 243860,
+          "Pss": 197334,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111436,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 38.13,
+        "memory_kib": {
+          "Rss": 246832,
+          "Pss": 200306,
+          "Private_Clean": 72144,
+          "Private_Dirty": 114408,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42766652698628604,
+          "cpu_seconds": 34.67,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6311925429909024,
+          "cpu_seconds": 34.77,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8351859730028082,
+          "cpu_seconds": 34.94,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0380083360068966,
+          "cpu_seconds": 35.11,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2408079220040236,
+          "cpu_seconds": 35.28,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.443861576000927,
+          "cpu_seconds": 35.45,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6467592600092757,
+          "cpu_seconds": 35.61,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8498191949911416,
+          "cpu_seconds": 35.78,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.052720092004165,
+          "cpu_seconds": 35.95,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2562631299952045,
+          "cpu_seconds": 36.12,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4593448959931266,
+          "cpu_seconds": 36.28,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.662084463983774,
+          "cpu_seconds": 36.46,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8650757469877135,
+          "cpu_seconds": 36.62,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0679417880019173,
+          "cpu_seconds": 36.79,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2709526770049706,
+          "cpu_seconds": 36.96,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4737980850040913,
+          "cpu_seconds": 37.13,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6766949929879047,
+          "cpu_seconds": 37.29,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.879380250000395,
+          "cpu_seconds": 37.47,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.0822285400063265,
+          "cpu_seconds": 37.64,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 11,
+      "terminal_seconds": 4.314706222998211,
+      "cpu_seconds": 3.219999999999999,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 38.32,
+        "memory_kib": {
+          "Rss": 243860,
+          "Pss": 197334,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111436,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 41.69,
+        "memory_kib": {
+          "Rss": 243884,
+          "Pss": 197358,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111460,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 41.78,
+        "memory_kib": {
+          "Rss": 246856,
+          "Pss": 200330,
+          "Private_Clean": 72144,
+          "Private_Dirty": 114432,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.45014914000057615,
+          "cpu_seconds": 38.45,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6539123780094087,
+          "cpu_seconds": 38.56,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8572407019964885,
+          "cpu_seconds": 38.73,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0599604870076291,
+          "cpu_seconds": 38.89,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2631512749940157,
+          "cpu_seconds": 39.06,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4660292849875987,
+          "cpu_seconds": 39.22,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6699909190065227,
+          "cpu_seconds": 39.39,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8728901149879675,
+          "cpu_seconds": 39.56,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.075856345007196,
+          "cpu_seconds": 39.72,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2785903729964048,
+          "cpu_seconds": 39.88,
+          "memory_kib": {
+            "Rss": 243860,
+            "Pss": 197334,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111436,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.483605577988783,
+          "cpu_seconds": 40.05,
+          "memory_kib": {
+            "Rss": 243876,
+            "Pss": 197350,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111452,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6876726869959384,
+          "cpu_seconds": 40.23,
+          "memory_kib": {
+            "Rss": 243876,
+            "Pss": 197350,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111452,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8905279239988886,
+          "cpu_seconds": 40.39,
+          "memory_kib": {
+            "Rss": 243876,
+            "Pss": 197350,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111452,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.094321092008613,
+          "cpu_seconds": 40.55,
+          "memory_kib": {
+            "Rss": 243876,
+            "Pss": 197350,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111452,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2971766970003955,
+          "cpu_seconds": 40.73,
+          "memory_kib": {
+            "Rss": 243884,
+            "Pss": 197358,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111460,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.5000000669970177,
+          "cpu_seconds": 40.89,
+          "memory_kib": {
+            "Rss": 243884,
+            "Pss": 197358,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111460,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.703358022001339,
+          "cpu_seconds": 41.06,
+          "memory_kib": {
+            "Rss": 243884,
+            "Pss": 197358,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111460,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.9072789039928466,
+          "cpu_seconds": 41.22,
+          "memory_kib": {
+            "Rss": 243884,
+            "Pss": 197358,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111460,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.111819690006087,
+          "cpu_seconds": 41.39,
+          "memory_kib": {
+            "Rss": 243884,
+            "Pss": 197358,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111460,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 12,
+      "terminal_seconds": 4.286750708997715,
+      "cpu_seconds": 3.1400000000000006,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 41.97,
+        "memory_kib": {
+          "Rss": 243884,
+          "Pss": 197358,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111460,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 45.27,
+        "memory_kib": {
+          "Rss": 243892,
+          "Pss": 197366,
+          "Private_Clean": 72144,
+          "Private_Dirty": 111468,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 45.35,
+        "memory_kib": {
+          "Rss": 246608,
+          "Pss": 200082,
+          "Private_Clean": 71888,
+          "Private_Dirty": 114440,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4301529939984903,
+          "cpu_seconds": 42.08,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6329307020059787,
+          "cpu_seconds": 42.18,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8372270269901492,
+          "cpu_seconds": 42.35,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0399820960010402,
+          "cpu_seconds": 42.51,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2428722409822512,
+          "cpu_seconds": 42.68,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4464380590070505,
+          "cpu_seconds": 42.85,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6492033549875487,
+          "cpu_seconds": 43.0,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8520033429958858,
+          "cpu_seconds": 43.16,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0550879419897683,
+          "cpu_seconds": 43.33,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2577493200078607,
+          "cpu_seconds": 43.49,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4605015319830272,
+          "cpu_seconds": 43.66,
+          "memory_kib": {
+            "Rss": 243888,
+            "Pss": 197362,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111464,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.663233359984588,
+          "cpu_seconds": 43.82,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.865970576996915,
+          "cpu_seconds": 43.99,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0690050929842982,
+          "cpu_seconds": 44.15,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.272259227989707,
+          "cpu_seconds": 44.31,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4751947309996467,
+          "cpu_seconds": 44.48,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.677991625998402,
+          "cpu_seconds": 44.65,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.880799131002277,
+          "cpu_seconds": 44.8,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.08376736700302,
+          "cpu_seconds": 44.97,
+          "memory_kib": {
+            "Rss": 243892,
+            "Pss": 197366,
+            "Private_Clean": 72144,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 13,
+      "terminal_seconds": 4.291563162987586,
+      "cpu_seconds": 3.1799999999999997,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 45.54,
+        "memory_kib": {
+          "Rss": 243828,
+          "Pss": 197302,
+          "Private_Clean": 72080,
+          "Private_Dirty": 111468,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 48.88,
+        "memory_kib": {
+          "Rss": 243836,
+          "Pss": 197310,
+          "Private_Clean": 72080,
+          "Private_Dirty": 111476,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 48.95,
+        "memory_kib": {
+          "Rss": 246808,
+          "Pss": 200257,
+          "Private_Clean": 72080,
+          "Private_Dirty": 114448,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42444923997391015,
+          "cpu_seconds": 45.65,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6272865859791636,
+          "cpu_seconds": 45.77,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8301300769962836,
+          "cpu_seconds": 45.92,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0329240529972594,
+          "cpu_seconds": 46.09,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2357065309770405,
+          "cpu_seconds": 46.25,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4387413329968695,
+          "cpu_seconds": 46.41,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6415858999826014,
+          "cpu_seconds": 46.58,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8452013219939545,
+          "cpu_seconds": 46.75,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0481451389787253,
+          "cpu_seconds": 46.91,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2520932759798598,
+          "cpu_seconds": 47.08,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.454907461971743,
+          "cpu_seconds": 47.24,
+          "memory_kib": {
+            "Rss": 243828,
+            "Pss": 197302,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111468,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6581178749911487,
+          "cpu_seconds": 47.41,
+          "memory_kib": {
+            "Rss": 243832,
+            "Pss": 197306,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111472,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8614371109870262,
+          "cpu_seconds": 47.57,
+          "memory_kib": {
+            "Rss": 243832,
+            "Pss": 197306,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111472,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.064172656973824,
+          "cpu_seconds": 47.74,
+          "memory_kib": {
+            "Rss": 243832,
+            "Pss": 197306,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111472,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.267067524982849,
+          "cpu_seconds": 47.91,
+          "memory_kib": {
+            "Rss": 243832,
+            "Pss": 197306,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111472,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4701223999727517,
+          "cpu_seconds": 48.07,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197310,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.674924609978916,
+          "cpu_seconds": 48.24,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197310,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8776882819947787,
+          "cpu_seconds": 48.39,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197310,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.0806191799929366,
+          "cpu_seconds": 48.56,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197310,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 14,
+      "terminal_seconds": 4.296575753978686,
+      "cpu_seconds": 3.190000000000005,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 49.16,
+        "memory_kib": {
+          "Rss": 243836,
+          "Pss": 197285,
+          "Private_Clean": 72080,
+          "Private_Dirty": 111476,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 52.55,
+        "memory_kib": {
+          "Rss": 246928,
+          "Pss": 200402,
+          "Private_Clean": 72080,
+          "Private_Dirty": 114568,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 52.64,
+        "memory_kib": {
+          "Rss": 252416,
+          "Pss": 205890,
+          "Private_Clean": 72080,
+          "Private_Dirty": 120056,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.426959761971375,
+          "cpu_seconds": 49.27,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6300037369946949,
+          "cpu_seconds": 49.39,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.832829970982857,
+          "cpu_seconds": 49.54,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0366982409905177,
+          "cpu_seconds": 49.7,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2405924759805202,
+          "cpu_seconds": 49.88,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4439860939746723,
+          "cpu_seconds": 50.05,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.646687717991881,
+          "cpu_seconds": 50.21,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8493630519951694,
+          "cpu_seconds": 50.38,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.052736991987331,
+          "cpu_seconds": 50.55,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2555380379781127,
+          "cpu_seconds": 50.71,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4601229469990358,
+          "cpu_seconds": 50.88,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6629492309875786,
+          "cpu_seconds": 51.04,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.866839328984497,
+          "cpu_seconds": 51.21,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.069576491980115,
+          "cpu_seconds": 51.38,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.272280827979557,
+          "cpu_seconds": 51.53,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.475238448998425,
+          "cpu_seconds": 51.7,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6779258139722515,
+          "cpu_seconds": 51.86,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.880645219993312,
+          "cpu_seconds": 52.03,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.083597740973346,
+          "cpu_seconds": 52.2,
+          "memory_kib": {
+            "Rss": 243836,
+            "Pss": 197285,
+            "Private_Clean": 72080,
+            "Private_Dirty": 111476,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 15,
+      "terminal_seconds": 4.610372508002911,
+      "cpu_seconds": 3.529999999999994,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 52.84,
+        "memory_kib": {
+          "Rss": 249448,
+          "Pss": 202921,
+          "Private_Clean": 72080,
+          "Private_Dirty": 117088,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 56.56,
+        "memory_kib": {
+          "Rss": 250336,
+          "Pss": 203398,
+          "Private_Clean": 71924,
+          "Private_Dirty": 117976,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 56.65,
+        "memory_kib": {
+          "Rss": 255824,
+          "Pss": 208886,
+          "Private_Clean": 71924,
+          "Private_Dirty": 123464,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.43598488898715004,
+          "cpu_seconds": 52.96,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202921,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6387726129905786,
+          "cpu_seconds": 53.07,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202921,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8418845899868757,
+          "cpu_seconds": 53.24,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202921,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0446546970051713,
+          "cpu_seconds": 53.4,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202914,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2475449159974232,
+          "cpu_seconds": 53.56,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202921,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4525530929968227,
+          "cpu_seconds": 53.74,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202907,
+            "Private_Clean": 72080,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6554985950060654,
+          "cpu_seconds": 53.92,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202383,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8593161689932458,
+          "cpu_seconds": 54.1,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202416,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0643689979915507,
+          "cpu_seconds": 54.27,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202429,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2679722069879062,
+          "cpu_seconds": 54.44,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202493,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4718251820013393,
+          "cpu_seconds": 54.62,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202493,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.677421398984734,
+          "cpu_seconds": 54.8,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202493,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8804307199898176,
+          "cpu_seconds": 54.97,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0833624390070327,
+          "cpu_seconds": 55.14,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2864726269908715,
+          "cpu_seconds": 55.3,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4905786819872446,
+          "cpu_seconds": 55.47,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.6933957299916074,
+          "cpu_seconds": 55.63,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8963352479913738,
+          "cpu_seconds": 55.8,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.099120122002205,
+          "cpu_seconds": 55.97,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.302001567004481,
+          "cpu_seconds": 56.14,
+          "memory_kib": {
+            "Rss": 249448,
+            "Pss": 202510,
+            "Private_Clean": 71924,
+            "Private_Dirty": 117088,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 16,
+      "terminal_seconds": 4.495686864014715,
+      "cpu_seconds": 3.4099999999999966,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 56.85,
+        "memory_kib": {
+          "Rss": 252852,
+          "Pss": 205915,
+          "Private_Clean": 71924,
+          "Private_Dirty": 120492,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 60.44,
+        "memory_kib": {
+          "Rss": 252856,
+          "Pss": 205901,
+          "Private_Clean": 71924,
+          "Private_Dirty": 120496,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 60.52,
+        "memory_kib": {
+          "Rss": 255828,
+          "Pss": 208914,
+          "Private_Clean": 71928,
+          "Private_Dirty": 123468,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4215282590012066,
+          "cpu_seconds": 56.96,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6248237420222722,
+          "cpu_seconds": 57.08,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8285200720129069,
+          "cpu_seconds": 57.24,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.031371848017443,
+          "cpu_seconds": 57.42,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2343704939994495,
+          "cpu_seconds": 57.57,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4383757030009292,
+          "cpu_seconds": 57.75,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6414736139995512,
+          "cpu_seconds": 57.91,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8455417150107678,
+          "cpu_seconds": 58.09,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.048644898022758,
+          "cpu_seconds": 58.25,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2516482089995407,
+          "cpu_seconds": 58.42,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.454700700007379,
+          "cpu_seconds": 58.59,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6576179260155186,
+          "cpu_seconds": 58.75,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8605721940111835,
+          "cpu_seconds": 58.92,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0634050000226125,
+          "cpu_seconds": 59.09,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2663620300008915,
+          "cpu_seconds": 59.25,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.471222950000083,
+          "cpu_seconds": 59.43,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.674415283021517,
+          "cpu_seconds": 59.59,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205919,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8773683379986323,
+          "cpu_seconds": 59.76,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205914,
+            "Private_Clean": 71920,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.080399194004713,
+          "cpu_seconds": 59.93,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205901,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.283318064000923,
+          "cpu_seconds": 60.1,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205901,
+            "Private_Clean": 71924,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 17,
+      "terminal_seconds": 4.386920656019356,
+      "cpu_seconds": 3.2900000000000063,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 60.72,
+        "memory_kib": {
+          "Rss": 252856,
+          "Pss": 205942,
+          "Private_Clean": 71928,
+          "Private_Dirty": 120496,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 64.21,
+        "memory_kib": {
+          "Rss": 254976,
+          "Pss": 208140,
+          "Private_Clean": 71928,
+          "Private_Dirty": 122616,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 64.29,
+        "memory_kib": {
+          "Rss": 260460,
+          "Pss": 213374,
+          "Private_Clean": 71884,
+          "Private_Dirty": 128100,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4320916330034379,
+          "cpu_seconds": 60.83,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6355206739972346,
+          "cpu_seconds": 60.95,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8392134990135673,
+          "cpu_seconds": 61.11,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0419734099996276,
+          "cpu_seconds": 61.28,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2465359040070325,
+          "cpu_seconds": 61.45,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.449454528017668,
+          "cpu_seconds": 61.61,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6523289890028536,
+          "cpu_seconds": 61.78,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8553562390152365,
+          "cpu_seconds": 61.94,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.0598768120107707,
+          "cpu_seconds": 62.11,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2627260599983856,
+          "cpu_seconds": 62.27,
+          "memory_kib": {
+            "Rss": 252856,
+            "Pss": 205942,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120496,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4657870910014026,
+          "cpu_seconds": 62.44,
+          "memory_kib": {
+            "Rss": 252876,
+            "Pss": 205962,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120516,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6687849879963323,
+          "cpu_seconds": 62.61,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205970,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8717145890113898,
+          "cpu_seconds": 62.78,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205970,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.074553726997692,
+          "cpu_seconds": 62.95,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2774098580121063,
+          "cpu_seconds": 63.12,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.480562478012871,
+          "cpu_seconds": 63.29,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.683515487005934,
+          "cpu_seconds": 63.45,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.887859000999015,
+          "cpu_seconds": 63.62,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.090692350000609,
+          "cpu_seconds": 63.79,
+          "memory_kib": {
+            "Rss": 252884,
+            "Pss": 205971,
+            "Private_Clean": 71928,
+            "Private_Dirty": 120524,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 18,
+      "terminal_seconds": 4.302649929013569,
+      "cpu_seconds": 3.230000000000004,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 64.49,
+        "memory_kib": {
+          "Rss": 257492,
+          "Pss": 210406,
+          "Private_Clean": 71884,
+          "Private_Dirty": 125132,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 68.01,
+        "memory_kib": {
+          "Rss": 257492,
+          "Pss": 210424,
+          "Private_Clean": 71884,
+          "Private_Dirty": 125132,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 68.1,
+        "memory_kib": {
+          "Rss": 260460,
+          "Pss": 213392,
+          "Private_Clean": 71884,
+          "Private_Dirty": 128100,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.4379841540066991,
+          "cpu_seconds": 64.62,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6417004520189948,
+          "cpu_seconds": 64.72,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8450376580003649,
+          "cpu_seconds": 64.89,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0482375550200231,
+          "cpu_seconds": 65.06,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.2512405260058586,
+          "cpu_seconds": 65.22,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4541321530123241,
+          "cpu_seconds": 65.39,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6569940220215358,
+          "cpu_seconds": 65.55,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8604284260072745,
+          "cpu_seconds": 65.72,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.065265661018202,
+          "cpu_seconds": 65.89,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2689024959981907,
+          "cpu_seconds": 66.05,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4730332299950533,
+          "cpu_seconds": 66.23,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6759829520015046,
+          "cpu_seconds": 66.4,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.8787456930149347,
+          "cpu_seconds": 66.56,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0822698950069025,
+          "cpu_seconds": 66.73,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.285167749010725,
+          "cpu_seconds": 66.9,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.48979352999595,
+          "cpu_seconds": 67.07,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.692640107998159,
+          "cpu_seconds": 67.23,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8962991590087768,
+          "cpu_seconds": 67.41,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.099491781002143,
+          "cpu_seconds": 67.57,
+          "memory_kib": {
+            "Rss": 257492,
+            "Pss": 210423,
+            "Private_Clean": 71884,
+            "Private_Dirty": 125132,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 19,
+      "terminal_seconds": 4.301118503004545,
+      "cpu_seconds": 3.210000000000008,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 68.3,
+        "memory_kib": {
+          "Rss": 257492,
+          "Pss": 210656,
+          "Private_Clean": 71928,
+          "Private_Dirty": 125132,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 71.66,
+        "memory_kib": {
+          "Rss": 257508,
+          "Pss": 210672,
+          "Private_Clean": 71928,
+          "Private_Dirty": 125148,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 71.75,
+        "memory_kib": {
+          "Rss": 260476,
+          "Pss": 213792,
+          "Private_Clean": 72032,
+          "Private_Dirty": 128116,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42215406100149266,
+          "cpu_seconds": 68.42,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6251582049881108,
+          "cpu_seconds": 68.53,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8280331109999679,
+          "cpu_seconds": 68.69,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.0309554029954597,
+          "cpu_seconds": 68.86,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.233953880990157,
+          "cpu_seconds": 69.03,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4377084779844154,
+          "cpu_seconds": 69.2,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6414318979950622,
+          "cpu_seconds": 69.36,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.845529621001333,
+          "cpu_seconds": 69.53,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.048361278983066,
+          "cpu_seconds": 69.69,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.251246050989721,
+          "cpu_seconds": 69.86,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4550239029922523,
+          "cpu_seconds": 70.02,
+          "memory_kib": {
+            "Rss": 257496,
+            "Pss": 210660,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125136,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6578448149957694,
+          "cpu_seconds": 70.19,
+          "memory_kib": {
+            "Rss": 257500,
+            "Pss": 210664,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125140,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.860694420989603,
+          "cpu_seconds": 70.35,
+          "memory_kib": {
+            "Rss": 257500,
+            "Pss": 210664,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125140,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0637254460016266,
+          "cpu_seconds": 70.51,
+          "memory_kib": {
+            "Rss": 257500,
+            "Pss": 210664,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125140,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.2666288100008387,
+          "cpu_seconds": 70.68,
+          "memory_kib": {
+            "Rss": 257500,
+            "Pss": 210664,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125140,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.4705054209916852,
+          "cpu_seconds": 70.84,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210672,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.675426369998604,
+          "cpu_seconds": 71.01,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210672,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8783809719898272,
+          "cpu_seconds": 71.18,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210672,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.081508628994925,
+          "cpu_seconds": 71.35,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210672,
+            "Private_Clean": 71928,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        }
+      ]
+    },
+    {
+      "cycle": 20,
+      "terminal_seconds": 4.394947844004491,
+      "cpu_seconds": 3.2900000000000063,
+      "terminal_status": "complete",
+      "retention_notice": "Received 2000000 rows \u00b7 400 pages\nRetained rows 1980001-2000000. Earlier rows are no longer available.",
+      "before": {
+        "cpu_seconds": 71.96,
+        "memory_kib": {
+          "Rss": 257508,
+          "Pss": 210824,
+          "Private_Clean": 72032,
+          "Private_Dirty": 125148,
+          "Swap": 0
+        }
+      },
+      "complete_settled": {
+        "cpu_seconds": 75.43,
+        "memory_kib": {
+          "Rss": 257508,
+          "Pss": 210824,
+          "Private_Clean": 72032,
+          "Private_Dirty": 125148,
+          "Swap": 0
+        }
+      },
+      "after_close_settled": {
+        "cpu_seconds": 75.5,
+        "memory_kib": {
+          "Rss": 260172,
+          "Pss": 213488,
+          "Private_Clean": 72032,
+          "Private_Dirty": 127812,
+          "Swap": 0
+        }
+      },
+      "samples": [
+        {
+          "seconds": 0.42849540698807687,
+          "cpu_seconds": 72.08,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.6314765769930091,
+          "cpu_seconds": 72.18,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 0.8344257099961396,
+          "cpu_seconds": 72.35,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.038126088998979,
+          "cpu_seconds": 72.52,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.241239944996778,
+          "cpu_seconds": 72.68,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.4440741410071496,
+          "cpu_seconds": 72.84,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.6469522420084104,
+          "cpu_seconds": 73.01,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 1.8499693929916248,
+          "cpu_seconds": 73.18,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.052878321002936,
+          "cpu_seconds": 73.34,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.2564832989883143,
+          "cpu_seconds": 73.51,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.4595654220029246,
+          "cpu_seconds": 73.68,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.6649293710070197,
+          "cpu_seconds": 73.85,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 2.867827059002593,
+          "cpu_seconds": 74.01,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.0715590179897845,
+          "cpu_seconds": 74.18,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.274650309991557,
+          "cpu_seconds": 74.35,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.477483001013752,
+          "cpu_seconds": 74.52,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.680404668994015,
+          "cpu_seconds": 74.68,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 3.8834482289967127,
+          "cpu_seconds": 74.85,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        },
+        {
+          "seconds": 4.086319919995731,
+          "cpu_seconds": 75.01,
+          "memory_kib": {
+            "Rss": 257508,
+            "Pss": 210824,
+            "Private_Clean": 72032,
+            "Private_Dirty": 125148,
+            "Swap": 0
+          }
+        }
+      ]
+    }
+  ],
+  "application_pid": 1899181,
+  "application_start_ticks": 25545706
+}

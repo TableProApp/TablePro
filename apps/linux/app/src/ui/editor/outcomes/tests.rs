@@ -611,13 +611,13 @@ fn stream_export_button(widget: &gtk::Widget) -> Option<gtk::Button> {
     None
 }
 
-fn streamed_result_notebook(
+fn streamed_result_pages(
     pages: Vec<std::sync::Arc<tablepro_core::QueryResult>>,
     first_page: u64,
     total_pages: u64,
     total_rows: usize,
     terminal: StreamTerminal,
-) -> gtk::Notebook {
+) -> gtk::Stack {
     let page_indices = (first_page..first_page.saturating_add(pages.len() as u64)).collect();
     let streamed = StreamedResult {
         pages,
@@ -646,16 +646,16 @@ fn streamed_result_notebook(
     widget.last_child().unwrap().downcast().unwrap()
 }
 
-fn streamed_page_tab_label(notebook: &gtk::Notebook, index: u32) -> String {
-    let page = notebook.nth_page(Some(index)).unwrap();
-    notebook.tab_label_text(&page).unwrap().to_string()
+fn streamed_page_title(pages: &gtk::Stack, index: u32) -> String {
+    let page = pages.pages().item(index).unwrap().downcast::<gtk::StackPage>().unwrap();
+    page.title().unwrap().to_string()
 }
 
 #[test]
 #[ignore = "requires an isolated GTK display"]
 fn streamed_result_widgets_keep_pages_visible_during_loading_and_terminal_states() {
     relm4::adw::init().unwrap();
-    let loading = streamed_result_notebook(
+    let loading = streamed_result_pages(
         vec![
             std::sync::Arc::new(cursor_page(&[1, 2], true).result),
             std::sync::Arc::new(cursor_page(&[3], false).result),
@@ -665,47 +665,47 @@ fn streamed_result_widgets_keep_pages_visible_during_loading_and_terminal_states
         3,
         StreamTerminal::Loading,
     );
-    assert_eq!((loading.shows_tabs(), loading.n_pages()), (false, 2));
-    assert_eq!(loading.current_page(), Some(1));
-    assert_eq!(streamed_page_tab_label(&loading, 0), "Rows 1-2");
-    assert_eq!(streamed_page_tab_label(&loading, 1), "Rows 3-3");
+    assert_eq!(loading.pages().n_items(), 2);
+    assert_eq!(loading.visible_child(), loading.last_child());
+    assert_eq!(streamed_page_title(&loading, 0), "Rows 1-2");
+    assert_eq!(streamed_page_title(&loading, 1), "Rows 3-3");
 
-    let empty = streamed_result_notebook(
+    let empty = streamed_result_pages(
         vec![std::sync::Arc::new(cursor_page(&[], false).result)],
         0,
         1,
         0,
         StreamTerminal::Complete,
     );
-    assert_eq!(empty.n_pages(), 1);
-    assert_eq!(streamed_page_tab_label(&empty, 0), "Rows 0");
+    assert_eq!(empty.pages().n_items(), 1);
+    assert_eq!(streamed_page_title(&empty, 0), "Rows 0");
 
-    let failed = streamed_result_notebook(
+    let failed = streamed_result_pages(
         vec![std::sync::Arc::new(cursor_page(&[4], true).result)],
         0,
         1,
         1,
         StreamTerminal::Failed("later page failed".into()),
     );
-    assert_eq!(failed.n_pages(), 2);
-    assert_eq!(failed.current_page(), Some(1));
-    assert_eq!(streamed_page_tab_label(&failed, 0), "Rows 1-1");
-    assert_eq!(streamed_page_tab_label(&failed, 1), "Status");
-    let status = failed.nth_page(Some(1)).unwrap();
+    assert_eq!(failed.pages().n_items(), 2);
+    assert_eq!(failed.visible_child(), failed.last_child());
+    assert_eq!(streamed_page_title(&failed, 0), "Rows 1-1");
+    assert_eq!(streamed_page_title(&failed, 1), "Status");
+    let status = failed.visible_child().unwrap();
     assert!(contains_label(&status, "later page failed"));
 
-    let cancelled = streamed_result_notebook(
+    let cancelled = streamed_result_pages(
         vec![std::sync::Arc::new(cursor_page(&[5], true).result)],
         0,
         1,
         1,
         StreamTerminal::Cancelled,
     );
-    assert_eq!(cancelled.n_pages(), 2);
-    assert_eq!(cancelled.current_page(), Some(1));
-    assert_eq!(streamed_page_tab_label(&cancelled, 0), "Rows 1-1");
+    assert_eq!(cancelled.pages().n_items(), 2);
+    assert_eq!(cancelled.visible_child(), cancelled.last_child());
+    assert_eq!(streamed_page_title(&cancelled, 0), "Rows 1-1");
     let status = cancelled
-        .nth_page(Some(1))
+        .visible_child()
         .unwrap()
         .downcast::<relm4::adw::StatusPage>()
         .unwrap();

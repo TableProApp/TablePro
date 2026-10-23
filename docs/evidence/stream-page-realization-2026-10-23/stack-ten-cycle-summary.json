@@ -1,0 +1,34 @@
+{
+  "cycles": 10,
+  "rows_total": 20000000,
+  "seconds_mean": 4.097573573698173,
+  "seconds_min": 4.069668745010858,
+  "seconds_max": 4.162151371012442,
+  "cpu_seconds_mean": 3.006,
+  "post_close_rss_kib": [
+    233220,
+    233152,
+    234252,
+    242560,
+    240736,
+    240740,
+    240712,
+    242096,
+    242100,
+    242100
+  ],
+  "rss_growth_kib": 8880,
+  "post_close_private_dirty_kib": [
+    95028,
+    94960,
+    96060,
+    104368,
+    102544,
+    102548,
+    102520,
+    103904,
+    103908,
+    103908
+  ],
+  "conclusion": "less growth than earlier notebook runs; ten cycles do not establish absence of leaks"
+}

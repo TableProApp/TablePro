@@ -1,0 +1,39 @@
+{
+  "cycles": [
+    {
+      "cycle": 1,
+      "labels_alive": 50,
+      "contexts_alive": 50,
+      "children_alive": 0
+    },
+    {
+      "cycle": 2,
+      "labels_alive": 100,
+      "contexts_alive": 100,
+      "children_alive": 0
+    },
+    {
+      "cycle": 3,
+      "labels_alive": 150,
+      "contexts_alive": 150,
+      "children_alive": 0
+    },
+    {
+      "cycle": 4,
+      "labels_alive": 200,
+      "contexts_alive": 200,
+      "children_alive": 0
+    },
+    {
+      "cycle": 5,
+      "labels_alive": 250,
+      "contexts_alive": 250,
+      "children_alive": 0
+    }
+  ],
+  "after_window_destroy": {
+    "labels_alive": 250,
+    "contexts_alive": 250,
+    "children_alive": 0
+  }
+}

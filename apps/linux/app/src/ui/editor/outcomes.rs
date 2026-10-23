@@ -624,7 +624,7 @@ fn build_streamed_result_widget(
     settings_store: LocalResultSettingsStore,
 ) -> gtk::Widget {
     let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    let page_switcher = gtk::Notebook::new();
+    let page_switcher = gtk::Stack::builder().vexpand(true).hexpand(true).build();
     for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
         let widget = build_stream_page_widget(
             page,
@@ -635,15 +635,17 @@ fn build_streamed_result_widget(
             result_view_key(outcome.identity, page_index as usize),
         );
         widget.set_widget_name(&super::stream_view::page_widget_name(page_index));
-        let label = gtk::Label::new(Some(&stream_page_label(result, position)));
-        page_switcher.append_page(&widget, Some(&label));
+        page_switcher.add_titled(
+            &widget,
+            Some(widget.widget_name().as_str()),
+            &stream_page_label(result, position),
+        );
     }
     if let Some(page) = stream_terminal_page(result, outcome.identity.statement_index) {
-        let label = gtk::Label::new(Some(&crate::tr!("Status")));
-        page_switcher.append_page(&page, Some(&label));
-        page_switcher.set_current_page(Some(page_switcher.n_pages() - 1));
-    } else if page_switcher.n_pages() > 0 {
-        page_switcher.set_current_page(Some(page_switcher.n_pages() - 1));
+        page_switcher.add_titled(&page, Some("status"), &crate::tr!("Status"));
+    }
+    if let Some(last) = page_switcher.last_child() {
+        page_switcher.set_visible_child(&last);
     }
     let progress = gtk::Label::new(Some(&stream_progress_text(result)));
     progress.set_wrap(true);
@@ -858,14 +860,18 @@ pub(super) fn build_stream_page_widget(
         if build.borrow().is_none() || scheduled.replace(true) {
             return;
         }
-        let build = build.clone();
+        let build = std::rc::Rc::downgrade(&build);
         let scheduled = scheduled.clone();
-        holder.add_tick_callback(move |holder, _| {
+        let holder = holder.downgrade();
+        gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(50), move || {
             scheduled.set(false);
+            let Some(holder) = holder.upgrade().filter(|holder| holder.is_mapped()) else {
+                return;
+            };
+            let Some(build) = build.upgrade() else { return };
             if let Some(build) = build.borrow_mut().take() {
                 holder.append(&build());
             }
-            gtk::glib::ControlFlow::Break
         });
     });
     holder.upcast()

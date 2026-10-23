@@ -1,9 +1,7 @@
 use relm4::gtk;
 use relm4::gtk::prelude::*;
 
-pub(in crate::ui::editor) fn build(pages: &gtk::Notebook) -> gtk::Box {
-    pages.set_show_tabs(false);
-    pages.set_show_border(false);
+pub(in crate::ui::editor) fn build(pages: &gtk::Stack) -> gtk::Box {
     let controls = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     controls.set_halign(gtk::Align::Center);
     let previous = gtk::Button::with_label(&crate::tr!("Previous page"));
@@ -12,21 +10,25 @@ pub(in crate::ui::editor) fn build(pages: &gtk::Notebook) -> gtk::Box {
     previous.connect_clicked({
         let pages = pages.downgrade();
         move |_| {
-            if let Some(pages) = pages.upgrade() {
-                pages.prev_page();
+            if let Some(pages) = pages.upgrade()
+                && let Some(child) = pages.visible_child().and_then(|child| child.prev_sibling())
+            {
+                pages.set_visible_child(&child);
             }
         }
     });
     next.connect_clicked({
         let pages = pages.downgrade();
         move |_| {
-            if let Some(pages) = pages.upgrade() {
-                pages.next_page();
+            if let Some(pages) = pages.upgrade()
+                && let Some(child) = pages.visible_child().and_then(|child| child.next_sibling())
+            {
+                pages.set_visible_child(&child);
             }
         }
     });
     update(pages, &previous, &range, &next);
-    pages.connect_page_notify({
+    pages.connect_visible_child_notify({
         let (previous, range, next) = (previous.clone(), range.clone(), next.clone());
         move |pages| update(pages, &previous, &range, &next)
     });
@@ -36,13 +38,11 @@ pub(in crate::ui::editor) fn build(pages: &gtk::Notebook) -> gtk::Box {
     controls
 }
 
-fn update(pages: &gtk::Notebook, previous: &gtk::Button, range: &gtk::Label, next: &gtk::Button) {
-    let current = pages.current_page();
-    previous.set_sensitive(current.is_some_and(|index| index > 0));
-    next.set_sensitive(current.is_some_and(|index| index.saturating_add(1) < pages.n_pages()));
-    let text = current
-        .and_then(|index| pages.nth_page(Some(index)))
-        .and_then(|page| pages.tab_label_text(&page));
+fn update(pages: &gtk::Stack, previous: &gtk::Button, range: &gtk::Label, next: &gtk::Button) {
+    let current = pages.visible_child();
+    previous.set_sensitive(current.as_ref().and_then(|child| child.prev_sibling()).is_some());
+    next.set_sensitive(current.as_ref().and_then(|child| child.next_sibling()).is_some());
+    let text = current.map(|child| pages.page(&child)).and_then(|page| page.title());
     range.set_text(text.as_deref().unwrap_or_default());
 }
 

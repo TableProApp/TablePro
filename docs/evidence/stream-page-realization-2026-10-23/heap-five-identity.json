@@ -1,0 +1,11 @@
+{
+  "trace_sha256": "27f721096c6234258de81f3c80c60ced352c4a0fc40a098cbf51ea02dfe580a6",
+  "trace_bytes": 31462848,
+  "local_trace": "target/stream-realization/heap-five/interpreted.zst",
+  "rows_per_cycle": 250000,
+  "cycles": 5,
+  "instrumentation": "LD_PRELOAD libheaptrack_preload.so; heaptrack_interpret; zstd; heaptrack_print",
+  "termination": "fixture sends SIGTERM; outstanding-at-exit allocations are not confirmed leaks",
+  "accessibility": "real AT-SPI; ordinary widget tests use GTK_A11Y=test",
+  "behavior_limit": "instrumentation slows streams and can increase grids realized after the 50 ms delay"
+}

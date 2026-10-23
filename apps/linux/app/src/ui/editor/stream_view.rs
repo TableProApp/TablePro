@@ -50,7 +50,7 @@ pub(super) fn update_live_stream(
 ) -> bool {
     let root = holder.clone().upcast::<gtk::Widget>();
     let (Some(pages), Some(progress)) = (
-        named::<gtk::Notebook>(&root, LIVE_PAGES),
+        named::<gtk::Stack>(&root, LIVE_PAGES),
         named::<gtk::Label>(&root, LIVE_PROGRESS),
     ) else {
         return false;
@@ -61,20 +61,15 @@ pub(super) fn update_live_stream(
             .strip_prefix(PAGE_PREFIX)
             .and_then(|index| index.parse::<u64>().ok())
     };
-    for position in (0..pages.n_pages()).rev() {
-        let Some(page) = pages.nth_page(Some(position)) else {
-            continue;
-        };
+    let mut child = pages.first_child();
+    while let Some(page) = child {
+        child = page.next_sibling();
         if shown_index(&page).is_some_and(|index| !result.page_indices.contains(&index)) {
-            pages.remove_page(Some(position));
+            pages.remove(&page);
         }
     }
-    let shown: Vec<u64> = (0..pages.n_pages())
-        .filter_map(|position| pages.nth_page(Some(position)))
-        .filter_map(|page| shown_index(&page))
-        .collect();
     for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
-        if shown.contains(&page_index) {
+        if pages.child_by_name(&page_widget_name(page_index)).is_some() {
             continue;
         }
         let widget = build_stream_page_widget(
@@ -86,12 +81,13 @@ pub(super) fn update_live_stream(
             result_view_key(outcome.identity, page_index as usize),
         );
         widget.set_widget_name(&page_widget_name(page_index));
-        pages.append_page(
+        pages.add_titled(
             &widget,
-            Some(&gtk::Label::new(Some(&stream_page_label(result, position)))),
+            Some(widget.widget_name().as_str()),
+            &stream_page_label(result, position),
         );
     }
-    pages.notify("page");
+    pages.notify("visible-child");
     progress.set_text(&stream_progress_text(result));
     true
 }
@@ -117,6 +113,22 @@ mod tests {
             gtk::glib::MainContext::default().iteration(false);
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
+    }
+
+    fn label_references(root: &gtk::Widget) -> Vec<gtk::glib::WeakRef<gtk::Widget>> {
+        let mut pending = vec![root.clone()];
+        let mut labels = Vec::new();
+        while let Some(widget) = pending.pop() {
+            if widget.is::<gtk::Label>() {
+                labels.push(widget.downgrade());
+            }
+            let mut child = widget.first_child();
+            while let Some(next) = child {
+                child = next.next_sibling();
+                pending.push(next);
+            }
+        }
+        labels
     }
 
     fn page(values: &[i64]) -> Arc<QueryResult> {
@@ -185,19 +197,21 @@ mod tests {
             LocalResultSettingsStore::default(),
         );
         let root = holder.clone().upcast::<gtk::Widget>();
-        let pages = named::<gtk::Notebook>(&root, LIVE_PAGES).expect("a live stream notebook");
-        let first_grid = pages.nth_page(Some(0)).unwrap();
-        pages.set_current_page(Some(0));
+        let pages = named::<gtk::Stack>(&root, LIVE_PAGES).expect("live stream pages");
+        let labels = label_references(&root);
+        assert!(!labels.is_empty());
+        let first_grid = pages.first_child().unwrap();
+        pages.set_visible_child(&pages.first_child().unwrap());
 
         let (second, result) = streamed(&[0, 1], vec![page(&[1, 2]), page(&[3])], 3);
         assert!(update_live_stream(&holder, &second, &result, &target));
 
-        assert_eq!(named::<gtk::Notebook>(&root, LIVE_PAGES).as_ref(), Some(&pages));
-        assert_eq!(pages.n_pages(), 2);
-        assert_eq!(pages.nth_page(Some(0)).as_ref(), Some(&first_grid));
+        assert_eq!(named::<gtk::Stack>(&root, LIVE_PAGES).as_ref(), Some(&pages));
+        assert_eq!(pages.pages().n_items(), 2);
+        assert_eq!(pages.first_child().as_ref(), Some(&first_grid));
         assert_eq!(
-            pages.current_page(),
-            Some(0),
+            pages.visible_child().as_ref(),
+            Some(&first_grid),
             "the page the user is reading stays selected"
         );
         let progress = named::<gtk::Label>(&root, LIVE_PROGRESS).unwrap();
@@ -205,8 +219,14 @@ mod tests {
 
         let (third, evicted) = streamed(&[1, 2], vec![page(&[3]), page(&[4])], 4);
         assert!(update_live_stream(&holder, &third, &evicted, &target));
-        assert_eq!(pages.n_pages(), 2);
-        assert!((0..pages.n_pages()).all(|position| pages.nth_page(Some(position)).as_ref() != Some(&first_grid)));
+        assert_eq!(pages.pages().n_items(), 2);
+        assert!(pages.child_by_name(&first_grid.widget_name()).is_none());
+        drop((holder, root, pages, first_grid, progress));
+        while gtk::glib::MainContext::default().iteration(false) {}
+        assert!(
+            labels.iter().all(|label| label.upgrade().is_none()),
+            "retired result labels remain alive"
+        );
     }
     #[test]
     fn short_retained_pages_use_received_row_positions_after_eviction() {
@@ -248,6 +268,12 @@ mod tests {
         drop(widget);
         drop(holder);
         assert!(retired.upgrade().is_none());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+        while std::time::Instant::now() < deadline {
+            context.iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(retired.upgrade().is_none());
         window.destroy();
     }
 
@@ -267,8 +293,8 @@ mod tests {
             LocalResultSettingsStore::default(),
         );
         let root = holder.clone().upcast::<gtk::Widget>();
-        let pages = named::<gtk::Notebook>(&root, LIVE_PAGES).unwrap();
-        let first = pages.nth_page(Some(0)).unwrap();
+        let pages = named::<gtk::Stack>(&root, LIVE_PAGES).unwrap();
+        let first = pages.first_child().unwrap();
         assert!(named::<gtk::ColumnView>(&first, "GtkColumnView").is_none());
         let window = gtk::Window::builder()
             .default_width(900)
@@ -279,11 +305,11 @@ mod tests {
         let context = gtk::glib::MainContext::default();
         while context.iteration(false) {}
         assert!(named::<gtk::ColumnView>(&first, "GtkColumnView").is_none());
-        pages.set_current_page(Some(0));
+        pages.set_visible_child(&pages.first_child().unwrap());
         while context.iteration(false) {}
         let grid = wait_for_grid(&first);
-        pages.set_current_page(Some(1));
-        pages.set_current_page(Some(0));
+        pages.set_visible_child(&pages.last_child().unwrap());
+        pages.set_visible_child(&pages.first_child().unwrap());
         while context.iteration(false) {}
         assert_eq!(named::<gtk::ColumnView>(&first, "GtkColumnView"), Some(grid));
         window.destroy();
@@ -306,8 +332,8 @@ mod tests {
             LocalResultSettingsStore::default(),
         );
         let root = holder.clone().upcast::<gtk::Widget>();
-        let pages = named::<gtk::Notebook>(&root, "GtkNotebook").unwrap();
-        let data = pages.nth_page(Some(0)).unwrap();
+        let pages = named::<gtk::Stack>(&root, "GtkStack").unwrap();
+        let data = pages.first_child().unwrap();
         let window = gtk::Window::builder()
             .default_width(900)
             .default_height(600)
@@ -316,9 +342,9 @@ mod tests {
         window.present();
         let context = gtk::glib::MainContext::default();
         while context.iteration(false) {}
-        assert_eq!(pages.current_page(), Some(1));
+        assert_eq!(pages.visible_child(), pages.last_child());
         assert!(named::<gtk::ColumnView>(&data, "GtkColumnView").is_none());
-        pages.set_current_page(Some(0));
+        pages.set_visible_child(&pages.first_child().unwrap());
         while context.iteration(false) {}
         let grid = wait_for_grid(&data);
         assert_eq!(named::<gtk::ColumnView>(&data, "GtkColumnView"), Some(grid));

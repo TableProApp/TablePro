@@ -1,0 +1,103 @@
+{
+  "source_base": "60e3cdde12157835d64df2de795c25ec7eef4c77",
+  "preflight": {
+    "passed": true,
+    "unit": 2073,
+    "sandbox": 2086,
+    "additional_redis_cancellation": 1
+  },
+  "app_all_target_clippy": "passed",
+  "app_unit": {
+    "passed": 791,
+    "failed": 0,
+    "ignored": 191
+  },
+  "gtk_widgets": 153,
+  "postgres_interactions": [
+    {
+      "scenario": "postgres_session_commit_distinguishes_aborted_rollback_from_recovered_commit",
+      "seconds": 15.8
+    },
+    {
+      "scenario": "postgres_saved_connection_browses_rows_and_values",
+      "seconds": 7.333
+    },
+    {
+      "scenario": "postgres_hidden_projection_refresh_and_edit_preserve_hidden_value",
+      "seconds": 16.765
+    },
+    {
+      "scenario": "postgres_grid_edit_and_delete_commit_to_the_server",
+      "seconds": 9.14
+    },
+    {
+      "scenario": "postgres_enum_grid_edit_preserves_native_label_and_siblings",
+      "seconds": 6.649
+    },
+    {
+      "scenario": "postgres_database_switcher_reconnects_to_the_chosen_database",
+      "seconds": 2.714
+    }
+  ],
+  "completion_acceptance": {
+    "baseline": "rejected: timeout",
+    "candidate": "three complete two-million-row cycles with pager checks"
+  },
+  "doc_checks": "passed",
+  "forgejo": "not run",
+  "publication": "local validation; Forgejo pending",
+  "cancellation": {
+    "cycles_per_executable": 5,
+    "baseline": "three unknown and two confirmed outcomes; all server inactivity and follow-up query checks passed",
+    "candidate": "five confirmed outcomes; all server inactivity and follow-up query checks passed",
+    "candidate_ui_recovery_seconds": [
+      0.377,
+      0.389
+    ]
+  },
+  "wide_stream": {
+    "cycles": 3,
+    "rows_per_cycle": 50000,
+    "text_prefix_bytes": 8192,
+    "retained_range": [
+      45001,
+      50000
+    ],
+    "passed": true
+  },
+  "retention_soak": {
+    "cycles": 20,
+    "rows_total": 40000000,
+    "all_complete": true,
+    "rss_growth_kib": 34840,
+    "conclusion": "stepwise growth remains; leak versus allocator retention unresolved"
+  },
+  "allocator_diagnostic": {
+    "cycles": 10,
+    "environment": {
+      "MALLOC_ARENA_MAX": "1",
+      "MALLOC_TRIM_THRESHOLD_": "0"
+    },
+    "all_complete": true,
+    "post_close_rss_growth_kib": 13688,
+    "production_change": false
+  },
+  "stack_candidate": {
+    "build_identity": "stack-build.json",
+    "preflight": "passed: 2073 unit, 2086 sandbox and Redis cancellation",
+    "all_target_clippy": "passed",
+    "app_unit_passed": 791,
+    "gtk_widgets_passed": 153,
+    "label_lifetime_regression": "fails on notebook; passes on stack under test and real AT-SPI backends",
+    "optimized_queries": {
+      "cycles": 10,
+      "rows_per_cycle": 2000000,
+      "all_complete": true
+    },
+    "pager_verified_cycles": 3,
+    "cancel_verified_cycles": 5,
+    "wide_verified_cycles": 3,
+    "forgejo": "not run",
+    "native_wayland": "not verified"
+  }
+}
