@@ -26,5 +26,17 @@ class GtkClickOffsetTests(unittest.TestCase):
         self.assertEqual(self.offset("7"), 7)
 
 
+
+class GtkKeyboardWindowTests(unittest.TestCase):
+    def test_a_tooltip_above_the_app_window_does_not_take_the_keys(self):
+        self.assertEqual(gtk_input.keyboard_window([(5, 2, 0), (91, 2, 1)]), 5)
+
+    def test_the_topmost_viewable_toplevel_is_chosen(self):
+        self.assertEqual(gtk_input.keyboard_window([(5, 2, 0), (7, 2, 0), (9, 0, 0)]), 7)
+
+    def test_no_viewable_toplevel_gives_none(self):
+        self.assertIsNone(gtk_input.keyboard_window([(91, 2, 1), (9, 0, 0)]))
+
+
 if __name__ == "__main__":
     unittest.main()

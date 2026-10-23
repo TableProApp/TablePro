@@ -11,6 +11,14 @@ def window_y_offset():
     return 19
 
 
+def keyboard_window(windows):
+    """Topmost viewable window that is not override-redirect; windows are (id, map_state, override) bottom to top."""
+    for window, map_state, override_redirect in reversed(windows):
+        if map_state == 2 and not override_redirect:
+            return window
+    return None
+
+
 def uses_atspi_input():
     return os.environ.get("GDK_BACKEND") == "wayland" or not os.environ.get("DISPLAY")
 

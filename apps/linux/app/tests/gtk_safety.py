@@ -445,16 +445,12 @@ def press_x11_key(name, modifiers=(), presses=1):
         if status == 0 or child_count.value == 0:
             raise AssertionError("X11 application window is unavailable")
         try:
-            focus_window = None
-            for index in range(child_count.value - 1, -1, -1):
+            windows = []
+            for index in range(child_count.value):
                 attributes = XWindowAttributes()
-                if (
-                    x11.XGetWindowAttributes(display, children[index], ctypes.byref(attributes))
-                    and attributes.map_state == 2
-                    and not attributes.override_redirect
-                ):
-                    focus_window = children[index]
-                    break
+                if x11.XGetWindowAttributes(display, children[index], ctypes.byref(attributes)):
+                    windows.append((children[index], attributes.map_state, attributes.override_redirect))
+            focus_window = gtk_input.keyboard_window(windows)
             if focus_window is None:
                 raise AssertionError("viewable X11 application window is unavailable")
             x11.XSetInputFocus(display, focus_window, 2, 0)
