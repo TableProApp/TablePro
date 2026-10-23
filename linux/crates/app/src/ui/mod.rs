@@ -11,6 +11,7 @@ mod editor;
 mod editor_font_provider;
 pub(crate) mod error_text;
 mod export;
+pub(crate) mod external_access;
 mod file_read;
 pub(crate) mod file_reveal;
 mod file_write;

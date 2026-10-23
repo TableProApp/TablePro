@@ -3,7 +3,6 @@
 //! gets a line in the results list.
 
 mod buffer_edit;
-mod catalog_change;
 mod completion;
 mod editor_actions;
 mod editor_file;
@@ -468,7 +467,7 @@ impl SqlEditor {
         imp.changes_catalog.set(
             batches
                 .iter()
-                .any(|batch| catalog_change::changes_catalog(&batch.text, grammar)),
+                .any(|batch| tablepro_core::sql_syntax::changes_catalog(&batch.text, grammar)),
         );
         let statements = batches.iter().map(|batch| UserSql::new(batch.text.as_str())).collect();
         let run = ScriptRun {

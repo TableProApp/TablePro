@@ -65,6 +65,7 @@ tablepro-driver-mysql.workspace = true
 tablepro-driver-postgres.workspace = true
 tablepro-driver-redis.workspace = true
 tablepro-driver-sqlite.workspace = true
+tablepro-mcp.workspace = true
 tablepro-net.workspace = true
 tablepro-session.workspace = true
 tablepro-ssh.workspace = true

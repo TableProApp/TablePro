@@ -61,6 +61,10 @@ pub struct ConnectDialog {
     pub safe_mode_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub safe_mode_names: TemplateChild<gtk4::StringList>,
+    #[template_child]
+    pub external_access_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub external_access_names: TemplateChild<gtk4::StringList>,
 
     pub(super) services: OnceCell<DialogServices>,
     pub(super) drivers: RefCell<Vec<DriverEntry>>,

@@ -84,3 +84,23 @@ async fn two_schemas_do_not_see_each_other() -> TestResult {
     assert!(!from_devel.is_stored(), "a development build read an installed secret");
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires a Secret Service"]
+async fn the_mcp_token_is_replaced_and_outlives_a_connection_delete() -> TestResult {
+    let store = store();
+    let id = Uuid::new_v4();
+    store
+        .store(id, SecretKind::DatabasePassword, &SecretString::from("pw"), "l")
+        .await?;
+
+    let before = store.load_mcp_token().await?;
+    store.store_mcp_token(&SecretString::from("tp_first"), "token").await?;
+    store.store_mcp_token(&SecretString::from("tp_second"), "token").await?;
+    store.delete_connection(id).await?;
+    let after = store.load_mcp_token().await?;
+
+    assert!(before.is_none());
+    assert_eq!(after.as_ref().map(|token| token.expose_secret()), Some("tp_second"));
+    Ok(())
+}

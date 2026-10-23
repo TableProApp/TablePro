@@ -1,5 +1,5 @@
-use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{ScriptPlan, ScriptTokenKind};
+use super::SqlGrammar;
+use super::script::{ScriptPlan, ScriptTokenKind};
 
 /// Words that add, rename or remove what the sidebar lists. They count
 /// anywhere in a statement: a SQL Server batch needs no `;` between its
@@ -18,9 +18,9 @@ const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 /// On an engine of keys every write can add or remove one, so the keys
 /// are listed again after any command that writes, or that commits a
 /// transaction.
-pub(super) fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
+pub fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
     if !grammar.is_sql() {
-        return tablepro_core::sql_syntax::redis::may_change_keys(text);
+        return super::redis::may_change_keys(text);
     }
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }

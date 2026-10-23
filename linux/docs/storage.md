@@ -23,6 +23,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - A file that cannot be read, or that another version wrote, leaves the store `Unavailable`, and it refuses every write until the user picks Reset (`reset_unreadable_blocking`), which moves the file aside.
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
 - `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard. Version 1 of the file had a `read_only` switch instead, which reads as `read_only` when on and `off` when off.
+- `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A file written before it existed reads as `read_only`, the level a new connection starts at.
 - `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
@@ -45,6 +46,7 @@ Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/
 Notes:
 
 - Schema name: the application id plus `.Password`, so `app.tablepro.TablePro.Password` for an installed build and `app.tablepro.TablePro.Devel.Password` for a development one. Neither reads the other's secrets. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
+- The MCP server's access token is one item of its own, with `xdg:schema` and `kind` `mcp_token` and no `connection-id`, so deleting a connection never matches it. It is made on the server's first start and replaced from Preferences.
 - Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
@@ -265,6 +267,8 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `default-page-size` | `u` | `1000` | 100 to 100000 |
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
+| `mcp-server-enabled` | `b` | `false` | |
+| `mcp-server-port` | `u` | `23508` | 1024 to 65535 |
 | `connect-dialog-driver` | `s` | `postgres` | |
 | `save-query-history` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |

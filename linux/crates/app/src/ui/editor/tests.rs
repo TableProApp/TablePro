@@ -1602,9 +1602,3 @@ fn a_command_editor_has_none_of_the_sql_tools() {
     let providers = editor.imp().completion_providers.borrow().len();
     assert_eq!(providers, 1, "only the document's words complete");
 }
-
-#[test]
-fn every_write_command_lists_the_keys_again() {
-    assert!(super::catalog_change::changes_catalog("HSET h f v", SqlGrammar::Redis));
-    assert!(!super::catalog_change::changes_catalog("HGETALL h", SqlGrammar::Redis));
-}

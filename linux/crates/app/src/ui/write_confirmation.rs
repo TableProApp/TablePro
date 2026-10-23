@@ -2,6 +2,7 @@
 //! connection it runs on, and Cancel as the answer Enter gives.
 
 use gtk4 as gtk;
+use gtk4::glib;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::Value;
@@ -44,6 +45,26 @@ impl WriteConfirmation {
             heading: crate::i18n::ngettext_f("Run This Statement?", "Run These {n} Statements?", count, &args),
             body,
             sql: statements.join("\n\n"),
+            proceed: crate::i18n::gettext("_Run"),
+            destructive,
+        }
+    }
+
+    /// A statement an MCP client sent, asked about whatever the Safe Mode
+    /// level: a client asking is not the user asking.
+    pub(crate) fn external(connection: &str, sql: &str, destructive: bool) -> Self {
+        let args = [("connection", connection)];
+        let body = match destructive {
+            true => crate::i18n::gettext_f(
+                "An MCP client asks to drop or empty a table, or change every row of one, on “{connection}”.",
+                &args,
+            ),
+            false => crate::i18n::gettext_f("An MCP client asks to change the database on “{connection}”.", &args),
+        };
+        Self {
+            heading: crate::i18n::gettext("Run Statement from MCP Client?"),
+            body,
+            sql: with_hidden_characters_shown(sql),
             proceed: crate::i18n::gettext("_Run"),
             destructive,
         }
@@ -112,6 +133,45 @@ impl WriteConfirmation {
     }
 }
 
+/// A client's statement as the user should read it. A character that
+/// draws nothing, or reorders the text around it, shows as its code
+/// point, so the dialog cannot be made to read unlike what runs.
+fn with_hidden_characters_shown(sql: &str) -> String {
+    let mut shown = String::with_capacity(sql.len());
+    for character in sql.chars() {
+        match hides(character) {
+            true => shown.push_str(&format!("\\u{{{:04X}}}", u32::from(character))),
+            false => shown.push(character),
+        }
+    }
+    shown
+}
+
+/// Unicode's Default_Ignorable_Code_Point set, which holds the bidi
+/// controls, and the control characters other than line breaks and tabs.
+fn hides(character: char) -> bool {
+    matches!(
+        character,
+        '\u{00AD}'
+            | '\u{034F}'
+            | '\u{061C}'
+            | '\u{115F}'..='\u{1160}'
+            | '\u{17B4}'..='\u{17B5}'
+            | '\u{180B}'..='\u{180F}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{3164}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{FFA0}'
+            | '\u{FFF0}'..='\u{FFF8}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0000}'..='\u{E0FFF}'
+    ) || (character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
+}
+
 /// The sentence that names the connection and why it asks.
 pub(crate) fn asks_before_writes(connection: &str) -> String {
     crate::i18n::gettext_f(
@@ -151,6 +211,25 @@ fn terminated(statements: &[String]) -> String {
 pub(crate) async fn confirm(parent: &gtk::Widget, confirmation: &WriteConfirmation) -> bool {
     let dialog = build(confirmation);
     crate::workspace::respond(&dialog, parent).await == PROCEED
+}
+
+/// As `confirm`, and taken down unanswered once `cancel` fires, for a
+/// question whose asker can go away.
+pub(crate) async fn confirm_until(
+    parent: &gtk::Widget,
+    confirmation: &WriteConfirmation,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> bool {
+    let dialog = build(confirmation);
+    let shown = dialog.clone();
+    let cancelled = cancel.clone();
+    let watching = glib::spawn_future_local(async move {
+        cancelled.cancelled().await;
+        shown.force_close();
+    });
+    let answer = crate::workspace::respond(&dialog, parent).await;
+    watching.abort();
+    answer == PROCEED && !cancel.is_cancelled()
 }
 
 pub(crate) fn build(confirmation: &WriteConfirmation) -> adw::AlertDialog {
@@ -226,6 +305,65 @@ mod tests {
             dialog.response_appearance(PROCEED),
             adw::ResponseAppearance::Destructive
         );
+    }
+
+    #[gtk4::test]
+    fn a_client_statement_names_the_client_and_cancel_is_the_default() {
+        adw::init().expect("libadwaita initialises under the test backend");
+
+        let dialog = build(&WriteConfirmation::external("Prod", "DROP TABLE lines", true));
+
+        assert_eq!(dialog.heading().as_deref(), Some("Run Statement from MCP Client?"));
+        assert_eq!(
+            dialog.body(),
+            "An MCP client asks to drop or empty a table, or change every row of one, on “Prod”."
+        );
+        assert_eq!(shown_sql(&dialog), "DROP TABLE lines");
+        assert_eq!(dialog.default_response().as_deref(), Some(CANCEL));
+        assert_eq!(
+            dialog.response_appearance(PROCEED),
+            adw::ResponseAppearance::Destructive
+        );
+    }
+
+    #[test]
+    fn a_client_statement_shows_the_characters_that_hide_or_reorder_text() {
+        let sql = "UPDATE t SET a = 1 /*\u{202E} } \u{2066}WHERE id = 7\u{2069} \u{2066}*/\u{200B}\nWHERE b = 'é'\t";
+
+        let shown = WriteConfirmation::external("Prod", sql, false).sql;
+
+        assert_eq!(
+            shown,
+            "UPDATE t SET a = 1 /*\\u{202E} } \\u{2066}WHERE id = 7\\u{2069} \\u{2066}*/\\u{200B}\nWHERE b = 'é'\t"
+        );
+    }
+
+    #[gtk4::test]
+    fn a_question_whose_client_went_away_closes_unanswered() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = crate::test_support::OwnedWindow::presented(adw::Window::new());
+        let parent: gtk::Widget = (*window).clone().upcast();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let answer = std::rc::Rc::new(std::cell::Cell::new(None));
+        let (sink, asked) = (answer.clone(), cancel.clone());
+        glib::spawn_future_local(async move {
+            let confirmation = WriteConfirmation::external("Prod", "UPDATE t SET a = 1 WHERE id = 1", false);
+            sink.set(Some(confirm_until(&parent, &confirmation, &asked).await));
+        });
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || {
+            crate::workspace::visible_alert(&*window).is_some()
+        })
+        .expect("the question");
+
+        cancel.cancel();
+
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || answer.get().is_some())
+            .expect("an answer");
+        assert_eq!(answer.get(), Some(false));
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || {
+            crate::workspace::visible_alert(&*window).is_none()
+        })
+        .expect("the question to close");
     }
 
     #[test]

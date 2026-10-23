@@ -850,6 +850,7 @@ Files: vendor/async-lock-3.4.2/*
  vendor/clickhouse-macros-0.3.0/*
  vendor/clickhouse-types-0.1.3/*
  vendor/displaydoc-0.2.7/*
+ vendor/dyn-clone-1.0.20/*
  vendor/event-listener-5.4.2/*
  vendor/event-listener-strategy-0.5.4/*
  vendor/fastrand-2.5.0/*
@@ -857,10 +858,13 @@ Files: vendor/async-lock-3.4.2/*
  vendor/once_cell-1.21.4/*
  vendor/ordered-stream-0.2.0/*
  vendor/parking-2.2.1/*
+ vendor/pastey-0.2.3/*
  vendor/pin-project-lite-0.2.17/*
  vendor/proc-macro-crate-3.5.0/*
  vendor/proc-macro2-1.0.107/*
  vendor/quote-1.0.47/*
+ vendor/ref-cast-1.0.27/*
+ vendor/ref-cast-impl-1.0.27/*
  vendor/relm4-0.11.0/*
  vendor/relm4-macros-0.11.0/*
  vendor/rustversion-1.0.23/*
@@ -869,6 +873,7 @@ Files: vendor/async-lock-3.4.2/*
  vendor/serde_core-1.0.229/*
  vendor/serde_derive-1.0.229/*
  vendor/serde_derive_internals-0.29.1/*
+ vendor/serde_derive_internals-0.30.0/*
  vendor/serde_json-1.0.151/*
  vendor/serde_repr-0.1.21/*
  vendor/sqlformat-0.5.0/*
@@ -878,10 +883,11 @@ Files: vendor/async-lock-3.4.2/*
  vendor/thiserror-impl-2.0.20/*
  vendor/typed-path-0.12.3/*
 Copyright: the authors of async-lock, async-trait, clickhouse, clickhouse-macros,
- clickhouse-types, displaydoc, event-listener, event-listener-strategy,
- fastrand, itoa, once_cell, ordered-stream, parking, pin-project-lite,
- proc-macro-crate, proc-macro2, quote, relm4, relm4-macros, rustversion,
- serde, serde_bytes, serde_core, serde_derive, serde_derive_internals,
+ clickhouse-types, displaydoc, dyn-clone, event-listener,
+ event-listener-strategy, fastrand, itoa, once_cell, ordered-stream,
+ parking, pastey, pin-project-lite, proc-macro-crate, proc-macro2, quote,
+ ref-cast, ref-cast-impl, relm4, relm4-macros, rustversion, serde,
+ serde_bytes, serde_core, serde_derive, serde_derive_internals,
  serde_json, serde_repr, sqlformat, syn, thiserror, thiserror-impl,
  typed-path
 License: Apache-2.0 or Expat
@@ -1392,6 +1398,31 @@ License: Apache-2.0 or Expat
  The MIT License (MIT)
  .
  Copyright (c) 2015 Alice Maz
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+Files: vendor/base64-0.23.1/*
+Copyright: 2025 Alice Maz, Marshall Pierce
+License: Apache-2.0 or Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2025 Alice Maz, Marshall Pierce
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -3096,6 +3127,37 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+Files: vendor/getrandom-0.3.4/*
+Copyright: 2018-2025 The rust-random Project Developers
+ 2014 The Rust Project Developers
+License: Apache-2.0 or Expat
+ Copyright (c) 2018-2025 The rust-random Project Developers
+ Copyright (c) 2014 The Rust Project Developers
+ .
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
 Files: vendor/getrandom-0.4.3/*
 Copyright: 2018-2026 The rust-random Project Developers
  2014 The Rust Project Developers
@@ -3387,6 +3449,29 @@ Files: vendor/httparse-1.10.1/*
 Copyright: 2015-2025 Sean McArthur
 License: Apache-2.0 or Expat
  Copyright (c) 2015-2025 Sean McArthur
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+
+Files: vendor/httpdate-1.0.3/*
+Copyright: 2016 Pyfisch
+License: Apache-2.0 or Expat
+ Copyright (c) 2016 Pyfisch
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -4398,6 +4483,32 @@ License: BSD-3-Clause
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+Files: vendor/rmcp-3.6.0/*
+Copyright: 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
+License: Apache-2.0 and Expat
+ On Debian systems, the complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+ .
+ Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/rust_xlsxwriter-0.99.1/*
 Copyright: 2022-2026 John McNamara <jmcnamara@cpan.org>
 License: Apache-2.0 or Expat
@@ -4505,6 +4616,111 @@ Copyright: the authors of ryu
 License: Apache-2.0 or BSL-1.0
  On Debian systems, the complete text of the Apache License, Version 2.0
  can be found in "/usr/share/common-licenses/Apache-2.0".
+
+Files: vendor/schemars-1.2.2/*
+Copyright: 2019 Graham Esau
+License: MIT
+ #![allow(clippy::all)]
+ use crate::_alloc_prelude::*;
+ // Copied from regex_syntax crate to avoid pulling in the whole crate just for a utility function
+ // https://github.com/rust-lang/regex/blob/431c4e4867e1eb33eb39b23ed47c9934b2672f8f/regex-syntax/src/lib.rs
+ //
+ // Copyright (c) 2014 The Rust Project Developers
+ //
+ // Permission is hereby granted, free of charge, to any
+ // person obtaining a copy of this software and associated
+ // documentation files (the "Software"), to deal in the
+ // Software without restriction, including without
+ // limitation the rights to use, copy, modify, merge,
+ // publish, distribute, sublicense, and/or sell copies of
+ // the Software, and to permit persons to whom the Software
+ // is furnished to do so, subject to the following
+ // conditions:
+ //
+ // The above copyright notice and this permission notice
+ // shall be included in all copies or substantial portions
+ // of the Software.
+ //
+ // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ // ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ // TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ // PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ // SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ // CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ // DEALINGS IN THE SOFTWARE.
+ .
+ pub fn escape(text: &str) -> String {
+     let mut quoted = String::new();
+     escape_into(text, &mut quoted);
+     quoted
+ }
+ .
+ fn escape_into(text: &str, buf: &mut String) {
+     buf.reserve(text.len());
+     for c in text.chars() {
+         if is_meta_character(c) {
+             buf.push('\\');
+         }
+         buf.push(c);
+     }
+ }
+ .
+ fn is_meta_character(c: char) -> bool {
+     match c {
+         '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
+         | '#' | '&' | '-' | '~' => true,
+         _ => false,
+     }
+ }
+ .
+ MIT License
+ .
+ Copyright (c) 2019 Graham Esau
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/schemars_derive-1.2.2/*
+Copyright: 2019 Graham Esau
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2019 Graham Esau
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
 
 Files: vendor/scopeguard-1.2.0/*
 Copyright: 2016-2019 Ulrik Sverdrup "bluss" and scopeguard developers
@@ -4887,6 +5103,31 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
+
+Files: vendor/sse-stream-0.2.6/*
+Copyright: 2024 4t145
+License: Apache-2.0 or Expat
+ MIT License
+ .
+ Copyright (c) 2024 4t145
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
 
 Files: vendor/stable_deref_trait-1.2.1/*
 Copyright: 2017 Robert Grosse

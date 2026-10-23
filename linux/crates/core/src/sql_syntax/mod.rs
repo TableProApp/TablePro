@@ -1,3 +1,4 @@
+mod catalog_change;
 mod credential_rules;
 mod errors;
 mod grammar;
@@ -12,6 +13,7 @@ pub mod script;
 mod statement_access;
 mod statement_tokens;
 
+pub use catalog_change::changes_catalog;
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;

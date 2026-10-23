@@ -64,6 +64,7 @@ mod tests {
             username: username.into(),
             tls: tablepro_core::TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
             auth_mode,
             ssh: None,
             last_opened_at: None,

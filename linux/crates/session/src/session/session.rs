@@ -340,6 +340,13 @@ impl Session {
     pub fn is_shut_down(&self) -> bool {
         self.link.is_taken()
     }
+
+    /// Fires once the session begins to shut down, for work outside its
+    /// runner, such as an editor session of its own, that has to stop
+    /// with it.
+    pub fn shutdown_signal(&self) -> CancellationToken {
+        self.cancel.child_token()
+    }
 }
 
 impl std::fmt::Debug for Session {

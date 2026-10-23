@@ -32,6 +32,39 @@ impl SecretStore {
         &self.schema
     }
 
+    /// The token MCP clients present, or `None` before one was made.
+    pub async fn load_mcp_token(&self) -> Result<Option<SecretString>, SecretError> {
+        let attributes = secret_attributes::for_mcp_token(&self.schema);
+        let secret = self
+            .with_keyring(async |keyring| {
+                let items = keyring.search_items(&attributes).await?;
+                let Some(item) = items.into_iter().next() else {
+                    return Ok(None);
+                };
+                if item.is_locked().await? {
+                    item.unlock().await?;
+                }
+                item.secret().await.map(Some)
+            })
+            .await?;
+        let Some(secret) = secret else {
+            return Ok(None);
+        };
+        let text = std::str::from_utf8(secret.as_bytes()).map_err(|_| SecretError::InvalidEncoding)?;
+        Ok(Some(SecretString::from(text.to_owned())))
+    }
+
+    /// Store `token` in place of the one before it.
+    pub async fn store_mcp_token(&self, token: &SecretString, label: &str) -> Result<(), SecretError> {
+        let attributes = secret_attributes::for_mcp_token(&self.schema);
+        self.with_keyring(async |keyring| {
+            keyring
+                .create_item(label, &attributes, oo7::Secret::text(token.expose_secret()), true)
+                .await
+        })
+        .await
+    }
+
     /// Run one operation against an unlocked keyring, reopening the
     /// handle if a previous call broke it.
     async fn with_keyring<T, F>(&self, operation: F) -> Result<T, SecretError>
