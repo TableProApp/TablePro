@@ -11,8 +11,10 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Saved connections | Create and edit (the name included), duplicate with the secrets carried to the copy, delete with or without the connection's history |
-| Groups and colour tags | From the connection row's menu; each group is a section of the connection list |
-| Import and export | A JSON file with no secrets in it. On import, an entry with the same id and the same settings updates its name, colour and group; any other is added as a new connection |
+| Groups and colours | From the connection row's menu; each group is a section of the connection list |
+| Tags and icons | Several named tags per connection, each with a colour, from the row's menu or the connect dialog, shown after the name and read with the row's description; Manage Tags renames, recolours and deletes them. An icon from a fixed set shows in the row and beside the window title |
+| Search | The connection list's search (Ctrl+F, or start typing) matches the name, host, database, user, driver, group and tag names |
+| Import and export | A JSON file with no secrets in it, tags and icons included. On import, an entry with the same id and the same settings updates its name, colour, group, tags and icon; any other is added as a new connection. Tags are matched by id, then by name, so a second import adds none |
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |
 | Safe Mode | A level per connection, set in the connect dialog or the main menu while connected and saved back to the connection. Off asks before DROP, TRUNCATE, and DELETE or UPDATE without WHERE. Confirm Writes also asks before every other write from the editor, a grid save, a structure save, a CSV import or Drop Table, showing the SQL and the connection, with Cancel the default. Read-Only refuses every editor statement that does not read, and opens the connection read-only: SQLite and ClickHouse refuse writes at the engine, PostgreSQL and MySQL run in read-only transactions, SQL Server relies on the login, with the app's own reads in a rolled-back transaction, and Cassandra and ScyllaDB rely on the login. A statement is a read only when its engine's grammar shows it reads, each statement of a script on its own. Moving to or from Read-Only reconnects the window |

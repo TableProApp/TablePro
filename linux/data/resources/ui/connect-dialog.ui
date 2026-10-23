@@ -140,6 +140,24 @@
                     </child>
                   </object>
                 </child>
+                <child>
+                  <!-- How the connection list shows the connection. -->
+                  <object class="AdwPreferencesGroup">
+                    <property name="title" translatable="yes">Appearance</property>
+                    <child>
+                      <object class="AdwComboRow" id="icon_row">
+                        <property name="title" translatable="yes">Icon</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwExpanderRow" id="tags_row">
+                        <property name="title" translatable="yes">Tags</property>
+                        <!-- The subtitle lists tag names, which are the user's text. -->
+                        <property name="use-markup">false</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </property>
           </object>

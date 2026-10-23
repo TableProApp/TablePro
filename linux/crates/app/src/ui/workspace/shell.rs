@@ -1,6 +1,7 @@
 //! The workspace's two header bars, the sidebar's and the content's,
 //! and what they need beyond the template: the main menu, the button
-//! labels, the sidebar toggle and the overview's new tab.
+//! labels, the sidebar toggle, the overview's new tab and the saved
+//! connection's icon beside the title.
 
 use std::rc::Rc;
 
@@ -9,9 +10,13 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use tablepro_session::SessionKey;
 
-use super::Workspace;
 use super::tab_factory::TabFactory;
+use super::{Workspace, WorkspaceInput, WorkspaceSender};
+use crate::application::AppServices;
+use crate::runtime::DeliverInput;
+use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::a11y::describe_icon_button;
 use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
 
@@ -24,10 +29,27 @@ pub(super) struct ShellHandles {
     overview: glib::WeakRef<adw::TabOverview>,
     create_tab: Option<glib::SignalHandlerId>,
     sidebar_toggle: Option<gtk::ExpressionWatch>,
+    saved_connections: Rc<SavedConnectionList>,
+    /// Shows an icon picked while the window is open.
+    saved_connections_watch: Option<glib::SignalHandlerId>,
+    connection_icon: gtk::Image,
 }
 
 impl ShellHandles {
+    /// The icon the saved connection has now. A file opened without a
+    /// saved connection has none.
+    pub(super) fn show_connection_icon(&self, key: &SessionKey) {
+        let icon = match key {
+            SessionKey::Saved(id) => self.saved_connections.get(*id).and_then(|saved| saved.icon),
+            SessionKey::File(_) => None,
+        };
+        crate::ui::connection_appearance::show_icon(&self.connection_icon, icon);
+    }
+
     pub(super) fn release(&mut self) {
+        if let Some(watch) = self.saved_connections_watch.take() {
+            self.saved_connections.model().disconnect(watch);
+        }
         if let Some(watch) = self.sidebar_toggle.take() {
             watch.unwatch();
         }
@@ -70,6 +92,8 @@ pub(super) fn install(
     workspace: &Workspace,
     window: &adw::ApplicationWindow,
     factory: &Rc<TabFactory>,
+    services: &AppServices,
+    input: &WorkspaceSender,
 ) -> ShellHandles {
     let imp = workspace.imp();
     let app = window.application();
@@ -99,10 +123,18 @@ pub(super) fn install(
     // The overview selects the page it gets back.
     let factory = factory.clone();
     let create_tab = overview.connect_create_tab(move |_| factory.create_editor());
+    let saved_connections = services.saved_connections.clone();
+    let changed = input.clone();
+    let saved_connections_watch = saved_connections
+        .model()
+        .connect_items_changed(move |_, _, _, _| changed.deliver(WorkspaceInput::SavedConnectionsChanged));
     ShellHandles {
         overview: overview.downgrade(),
         create_tab: Some(create_tab),
         sidebar_toggle: Some(sidebar_toggle),
+        saved_connections,
+        saved_connections_watch: Some(saved_connections_watch),
+        connection_icon: imp.connection_icon.get(),
     }
 }
 

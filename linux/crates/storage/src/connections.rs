@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +12,7 @@ use uuid::Uuid;
 
 use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
+use crate::{ConnectionTag, ConnectionTagName};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -54,6 +57,12 @@ pub struct SavedConnection {
         deserialize_with = "crate::connection_group_name::deserialize_stored"
     )]
     pub group: Option<crate::ConnectionGroupName>,
+    /// Ids from the list's tags. Every picker shows them in the list's
+    /// order, by name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<crate::ConnectionIcon>,
 }
 
 impl SavedConnection {
@@ -97,6 +106,8 @@ impl SavedConnection {
             last_opened_at: None,
             color: None,
             group: None,
+            tags: Vec::new(),
+            icon: None,
             ..saved.clone()
         };
         shown_alike(self) == shown_alike(other)
@@ -166,9 +177,54 @@ pub enum SavedSshAuth {
 }
 
 /// The saved-connection list as it sits on disk.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct ConnectionsDocument {
     connections: Vec<SavedConnection>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<ConnectionTag>,
+}
+
+impl ConnectionsDocument {
+    /// A tag named twice keeps its first entry and a connection names a
+    /// tag at most once, whatever a hand-edited or crafted file says. A
+    /// tag whose name another one holds becomes that one, so a connection
+    /// keeps the label it showed.
+    fn tidy(&mut self) {
+        let mut kept: Vec<ConnectionTag> = Vec::with_capacity(self.tags.len());
+        let mut same: HashMap<Uuid, Uuid> = HashMap::with_capacity(self.tags.len());
+        let mut named: HashMap<String, Uuid> = HashMap::with_capacity(self.tags.len());
+        for tag in std::mem::take(&mut self.tags) {
+            if same.contains_key(&tag.id) {
+                continue;
+            }
+            match named.entry(tag.name.key()) {
+                Entry::Occupied(held) => {
+                    same.insert(tag.id, *held.get());
+                }
+                Entry::Vacant(free) => {
+                    free.insert(tag.id);
+                    same.insert(tag.id, tag.id);
+                    kept.push(tag);
+                }
+            }
+        }
+        self.tags = kept;
+        for connection in &mut self.connections {
+            let mut seen = HashSet::with_capacity(connection.tags.len());
+            connection.tags = std::mem::take(&mut connection.tags)
+                .iter()
+                .filter_map(|id| same.get(id).copied())
+                .filter(|id| seen.insert(*id))
+                .collect();
+        }
+    }
+
+    fn list(&self) -> ConnectionList {
+        ConnectionList {
+            connections: Arc::from(self.connections.as_slice()),
+            tags: Arc::from(self.tags.as_slice()),
+        }
+    }
 }
 
 impl crate::document::VersionedDocument for ConnectionsDocument {
@@ -214,12 +270,28 @@ struct SafeModeLevelled {
     rest: serde_json::Value,
 }
 
+/// The connections and the tags they can carry, as one write left them.
+#[derive(Debug, Clone, Default)]
+pub struct ConnectionList {
+    pub connections: Arc<[SavedConnection]>,
+    pub tags: Arc<[ConnectionTag]>,
+}
+
+impl ConnectionList {
+    pub fn new(connections: impl Into<Arc<[SavedConnection]>>, tags: impl Into<Arc<[ConnectionTag]>>) -> Self {
+        Self {
+            connections: connections.into(),
+            tags: tags.into(),
+        }
+    }
+}
+
 /// What the store knows about the list right now.
 #[derive(Debug, Clone)]
 pub enum ConnectionListState {
     /// Nothing read yet.
     Loading,
-    Ready(Arc<[SavedConnection]>),
+    Ready(ConnectionList),
     /// The file exists but cannot be used. The store refuses every write
     /// while in this state, because a write would destroy whatever the
     /// user could still recover by hand.
@@ -241,7 +313,7 @@ pub struct ImportReport {
     /// taken by a different connection and was given its own.
     pub added: usize,
     /// Connections already in the list that the file only renamed,
-    /// recoloured or regrouped.
+    /// recoloured, regrouped, retagged or gave another icon.
     pub updated: usize,
 }
 
@@ -260,7 +332,7 @@ pub enum RemoveOutcome {
 #[derive(Debug)]
 enum StoreState {
     Unloaded,
-    Ready(Vec<SavedConnection>),
+    Ready(ConnectionsDocument),
     Unavailable(DocumentProblem),
 }
 
@@ -310,27 +382,84 @@ impl ConnectionStore {
 
     pub fn load_blocking(&self) -> Result<Arc<[SavedConnection]>, StorageError> {
         let mut state = self.lock();
-        let list = self.ensure_loaded(&mut state)?;
-        Ok(list)
+        Ok(Arc::from(self.ensure_loaded(&mut state)?.connections))
+    }
+
+    pub fn tags_blocking(&self) -> Result<Arc<[ConnectionTag]>, StorageError> {
+        let mut state = self.lock();
+        Ok(Arc::from(self.ensure_loaded(&mut state)?.tags))
     }
 
     pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
         let mut state = self.lock();
-        let mut list = self.ensure_loaded(&mut state)?.to_vec();
-        list.retain(|saved| saved.id != connection.id);
-        list.push(connection);
-        self.commit(&mut state, list)
+        let mut document = self.ensure_loaded(&mut state)?;
+        document.connections.retain(|saved| saved.id != connection.id);
+        document.connections.push(connection);
+        self.commit(&mut state, document)
     }
 
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
         let mut state = self.lock();
-        let mut list = self.ensure_loaded(&mut state)?.to_vec();
-        let before = list.len();
-        list.retain(|saved| saved.id != id);
-        if list.len() == before {
+        let mut document = self.ensure_loaded(&mut state)?;
+        let before = document.connections.len();
+        document.connections.retain(|saved| saved.id != id);
+        if document.connections.len() == before {
             return Ok(RemoveOutcome::NotPresent);
         }
-        self.commit(&mut state, list)?;
+        self.commit(&mut state, document)?;
+        Ok(RemoveOutcome::Removed)
+    }
+
+    /// A new tag, which no connection carries yet. A name another tag
+    /// holds in any case is refused, since the two would read as one.
+    pub fn create_tag_blocking(
+        &self,
+        name: ConnectionTagName,
+        color: crate::ConnectionColor,
+    ) -> Result<ConnectionTag, StorageError> {
+        let mut state = self.lock();
+        let mut document = self.ensure_loaded(&mut state)?;
+        if document.tags.iter().any(|tag| tag.name.same_name(name.as_str())) {
+            return Err(StorageError::TagNameTaken);
+        }
+        let tag = ConnectionTag::new(name, color);
+        document.tags.push(tag.clone());
+        self.commit(&mut state, document)?;
+        Ok(tag)
+    }
+
+    /// Rename or recolour the tag with `changed`'s id, on every
+    /// connection that carries it.
+    pub fn update_tag_blocking(&self, changed: ConnectionTag) -> Result<(), StorageError> {
+        let mut state = self.lock();
+        let mut document = self.ensure_loaded(&mut state)?;
+        if document
+            .tags
+            .iter()
+            .any(|tag| tag.id != changed.id && tag.name.same_name(changed.name.as_str()))
+        {
+            return Err(StorageError::TagNameTaken);
+        }
+        let Some(tag) = document.tags.iter_mut().find(|tag| tag.id == changed.id) else {
+            return Err(StorageError::NotFound);
+        };
+        if *tag == changed {
+            return Ok(());
+        }
+        *tag = changed;
+        self.commit(&mut state, document)
+    }
+
+    /// Delete a tag and take it off every connection, in one write.
+    pub fn delete_tag_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
+        let mut state = self.lock();
+        let mut document = self.ensure_loaded(&mut state)?;
+        let before = document.tags.len();
+        document.tags.retain(|tag| tag.id != id);
+        if document.tags.len() == before {
+            return Ok(RemoveOutcome::NotPresent);
+        }
+        self.commit(&mut state, document)?;
         Ok(RemoveOutcome::Removed)
     }
 
@@ -344,17 +473,18 @@ impl ConnectionStore {
         change: impl FnOnce(&mut SavedConnection),
     ) -> Result<Option<SavedConnection>, StorageError> {
         let mut state = self.lock();
-        let mut list = self.ensure_loaded(&mut state)?.to_vec();
-        let Some(entry) = list.iter_mut().find(|saved| saved.id == id) else {
+        let mut document = self.ensure_loaded(&mut state)?;
+        let Some(index) = document.connections.iter().position(|saved| saved.id == id) else {
             return Ok(None);
         };
-        let before = entry.clone();
-        change(entry);
+        let before = document.connections[index].clone();
+        change(&mut document.connections[index]);
         // The keyring files the entry's secrets under its id.
-        entry.id = id;
-        let updated = entry.clone();
+        document.connections[index].id = id;
+        document.tidy();
+        let updated = document.connections[index].clone();
         if updated != before {
-            self.commit(&mut state, list)?;
+            self.commit(&mut state, document)?;
         }
         Ok(Some(updated))
     }
@@ -364,12 +494,12 @@ impl ConnectionStore {
     /// a connection opened without saving has nothing to update.
     pub fn touch_last_opened_blocking(&self, id: Uuid) -> Result<(), StorageError> {
         let mut state = self.lock();
-        let mut list = self.ensure_loaded(&mut state)?.to_vec();
-        let Some(connection) = list.iter_mut().find(|saved| saved.id == id) else {
+        let mut document = self.ensure_loaded(&mut state)?;
+        let Some(connection) = document.connections.iter_mut().find(|saved| saved.id == id) else {
             return Ok(());
         };
         connection.last_opened_at = Some(Utc::now());
-        self.commit(&mut state, list)
+        self.commit(&mut state, document)
     }
 
     /// The saved connections as a document to hand to the user.
@@ -380,10 +510,7 @@ impl ConnectionStore {
     /// setting, which is why the UI says so before writing it.
     pub fn export_blocking(&self) -> Result<Vec<u8>, StorageError> {
         let mut state = self.lock();
-        let list = self.ensure_loaded(&mut state)?;
-        let document = ConnectionsDocument {
-            connections: list.to_vec(),
-        };
+        let document = self.ensure_loaded(&mut state)?;
         Ok(crate::document::encode_document(&document)?)
     }
 
@@ -405,30 +532,39 @@ impl ConnectionStore {
     /// added one never takes the file's last-opened time, so a file
     /// cannot pass one host off as another saved connection or sort it
     /// above one.
+    ///
+    /// Tags are matched by id first and then by name, so importing a
+    /// file twice, or a file from a machine whose `production` tag has
+    /// another id, leaves one tag of each name.
     pub fn import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportReport, StorageError> {
-        let incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
-            .map_err(StorageError::DocumentUnavailable)?
-            .connections;
+        let mut incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
+            .map_err(StorageError::DocumentUnavailable)?;
+        incoming.tidy();
         let mut state = self.lock();
-        let mut list = self.ensure_loaded(&mut state)?.to_vec();
+        let mut document = self.ensure_loaded(&mut state)?;
         let mut report = ImportReport::default();
-        for mut connection in incoming {
+        let same = merge_tags(&mut document.tags, incoming.tags);
+        for mut connection in incoming.connections {
+            connection.tags = connection.tags.iter().filter_map(|id| same.get(id).copied()).collect();
+            let list = &mut document.connections;
             match list.iter().position(|saved| saved.id == connection.id) {
                 Some(index) if list[index].connects_like(&connection) => {
-                    let name = unclaimed_name(&list, &connection.name, Some(connection.id));
+                    let name = unclaimed_name(list, &connection.name, Some(connection.id));
                     let existing = &mut list[index];
                     existing.name = name;
                     existing.color = connection.color;
                     existing.group = connection.group;
+                    existing.tags = connection.tags;
+                    existing.icon = connection.icon;
                     report.updated += 1;
                 }
                 Some(_) => {
                     connection.id = Uuid::new_v4();
-                    add_imported(&mut list, connection);
+                    add_imported(list, connection);
                     report.added += 1;
                 }
                 None => {
-                    add_imported(&mut list, connection);
+                    add_imported(list, connection);
                     report.added += 1;
                 }
             }
@@ -438,7 +574,7 @@ impl ConnectionStore {
         if report.total() == 0 {
             return Ok(report);
         }
-        self.commit(&mut state, list)?;
+        self.commit(&mut state, document)?;
         Ok(report)
     }
 
@@ -453,7 +589,7 @@ impl ConnectionStore {
             ));
         }
         let moved = crate::fs::move_aside_blocking(&self.inner.path, now)?;
-        *state = StoreState::Ready(Vec::new());
+        *state = StoreState::Ready(ConnectionsDocument::default());
         self.publish(&state);
         Ok(moved)
     }
@@ -471,16 +607,17 @@ impl ConnectionStore {
         }
     }
 
-    fn ensure_loaded(&self, state: &mut StoreState) -> Result<Arc<[SavedConnection]>, StorageError> {
+    /// A copy of the list to change, read from disk the first time.
+    fn ensure_loaded(&self, state: &mut StoreState) -> Result<ConnectionsDocument, StorageError> {
         if let StoreState::Unloaded = state {
             *state = match read_document(&self.inner.path) {
-                Ok(list) => StoreState::Ready(list),
+                Ok(document) => StoreState::Ready(document),
                 Err(problem) => StoreState::Unavailable(problem),
             };
             self.publish(state);
         }
         match state {
-            StoreState::Ready(list) => Ok(Arc::from(list.as_slice())),
+            StoreState::Ready(document) => Ok(document.clone()),
             StoreState::Unavailable(problem) => Err(StorageError::DocumentUnavailable(problem.clone())),
             StoreState::Unloaded => unreachable!("just loaded"),
         }
@@ -488,13 +625,12 @@ impl ConnectionStore {
 
     /// Write first, then adopt. A failed write leaves both the file and
     /// the cached list exactly as they were.
-    fn commit(&self, state: &mut StoreState, list: Vec<SavedConnection>) -> Result<(), StorageError> {
-        let document = ConnectionsDocument {
-            connections: list.clone(),
-        };
+    fn commit(&self, state: &mut StoreState, mut document: ConnectionsDocument) -> Result<(), StorageError> {
+        // A connection saved with a tag deleted meanwhile drops it here.
+        document.tidy();
         let bytes = crate::document::encode_document(&document)?;
         crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
-        *state = StoreState::Ready(list);
+        *state = StoreState::Ready(document);
         self.publish(state);
         Ok(())
     }
@@ -502,7 +638,7 @@ impl ConnectionStore {
     fn publish(&self, state: &StoreState) {
         let next = match state {
             StoreState::Unloaded => ConnectionListState::Loading,
-            StoreState::Ready(list) => ConnectionListState::Ready(Arc::from(list.as_slice())),
+            StoreState::Ready(document) => ConnectionListState::Ready(document.list()),
             StoreState::Unavailable(problem) => ConnectionListState::Unavailable(Arc::new(problem.clone())),
         };
         let revision = self.inner.snapshot.borrow().revision + 1;
@@ -522,11 +658,11 @@ impl std::fmt::Debug for ConnectionStore {
     }
 }
 
-fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
+fn read_document(path: &Path) -> Result<ConnectionsDocument, DocumentProblem> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         // No file is an empty list, not a problem: a first run has none.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(ConnectionsDocument::default()),
         Err(error) => {
             return Err(DocumentProblem::new(
                 path,
@@ -537,9 +673,48 @@ fn read_document(path: &Path) -> Result<Vec<SavedConnection>, DocumentProblem> {
         }
     };
     if bytes.iter().all(u8::is_ascii_whitespace) {
-        return Ok(Vec::new());
+        return Ok(ConnectionsDocument::default());
     }
-    crate::document::decode_document::<ConnectionsDocument>(path, &bytes).map(|document| document.connections)
+    let mut document = crate::document::decode_document::<ConnectionsDocument>(path, &bytes)?;
+    document.tidy();
+    Ok(document)
+}
+
+/// Bring the file's tags into `local` and say which local tag each of
+/// the file's ids now stands for. A tag the list has by id takes the
+/// file's colour, and its name unless another tag holds that name; one
+/// the list has by name only is that tag; any other is added.
+fn merge_tags(local: &mut Vec<ConnectionTag>, incoming: Vec<ConnectionTag>) -> HashMap<Uuid, Uuid> {
+    // Maps rather than scans: a crafted file of many tags must not make
+    // an import hold the store for minutes.
+    let mut at: HashMap<Uuid, usize> = local.iter().enumerate().map(|(index, tag)| (tag.id, index)).collect();
+    let mut named: HashMap<String, Uuid> = local.iter().map(|tag| (tag.name.key(), tag.id)).collect();
+    let mut same = HashMap::with_capacity(incoming.len());
+    // Renames first, so a name one of them frees or takes decides the
+    // rest whatever order the file lists them in.
+    let (known, unknown): (Vec<ConnectionTag>, Vec<ConnectionTag>) =
+        incoming.into_iter().partition(|tag| at.contains_key(&tag.id));
+    for tag in known.into_iter().chain(unknown) {
+        let key = tag.name.key();
+        if let Some(&index) = at.get(&tag.id) {
+            let held = &mut local[index];
+            if named.get(&key).is_none_or(|owner| *owner == tag.id) {
+                named.remove(&held.name.key());
+                named.insert(key, tag.id);
+                held.name = tag.name;
+            }
+            held.color = tag.color;
+            same.insert(tag.id, tag.id);
+        } else if let Some(&owner) = named.get(&key) {
+            same.insert(tag.id, owner);
+        } else {
+            at.insert(tag.id, local.len());
+            named.insert(key, tag.id);
+            same.insert(tag.id, tag.id);
+            local.push(tag);
+        }
+    }
+    same
 }
 
 /// Add an entry the import brought. Two rows of one name, one of them
@@ -600,6 +775,8 @@ mod tests {
             last_opened_at: Some(Utc::now()),
             color: None,
             group: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -624,6 +801,8 @@ mod tests {
             last_opened_at: None,
             color: None,
             group: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -991,7 +1170,7 @@ mod tests {
         let ConnectionListState::Ready(list) = snapshot.state else {
             panic!("expected Ready");
         };
-        assert_eq!(list.len(), 1);
+        assert_eq!(list.connections.len(), 1);
     }
 
     #[test]
@@ -1146,6 +1325,7 @@ mod tests {
         connection.name = "production (renamed)".to_owned();
         let document = ConnectionsDocument {
             connections: vec![connection],
+            ..ConnectionsDocument::default()
         };
         let bytes = crate::document::encode_document(&document).expect("encode");
 
@@ -1175,6 +1355,7 @@ mod tests {
             store.upsert_blocking(mine.clone()).expect("upsert");
             let bytes = crate::document::encode_document(&ConnectionsDocument {
                 connections: vec![crafted.clone()],
+                ..ConnectionsDocument::default()
             })
             .expect("encode");
 
@@ -1214,6 +1395,7 @@ mod tests {
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
             connections: vec![theirs],
+            ..ConnectionsDocument::default()
         })
         .expect("encode");
 
@@ -1242,6 +1424,7 @@ mod tests {
         };
         let bytes = crate::document::encode_document(&ConnectionsDocument {
             connections: vec![lookalike.clone(), lookalike.clone()],
+            ..ConnectionsDocument::default()
         })
         .expect("encode");
 
@@ -1290,6 +1473,7 @@ mod tests {
         store.upsert_blocking(saved("mine")).expect("upsert");
         let bytes = crate::document::encode_document(&ConnectionsDocument {
             connections: Vec::new(),
+            ..ConnectionsDocument::default()
         })
         .expect("encode");
 
@@ -1438,5 +1622,390 @@ mod tests {
         );
         assert_eq!(store.update_blocking(Uuid::new_v4(), |_| {}).expect("update"), None);
         assert_eq!(store.snapshot().revision, revision);
+    }
+
+    fn tag_name(name: &str) -> ConnectionTagName {
+        ConnectionTagName::new(name).expect("a tag name")
+    }
+
+    fn tag(name: &str, color: crate::ConnectionColor) -> ConnectionTag {
+        ConnectionTag::new(tag_name(name), color)
+    }
+
+    fn tagged(name: &str, tags: &[&ConnectionTag]) -> SavedConnection {
+        SavedConnection {
+            tags: tags.iter().map(|tag| tag.id).collect(),
+            ..saved(name)
+        }
+    }
+
+    fn document(connections: Vec<SavedConnection>, tags: Vec<ConnectionTag>) -> Vec<u8> {
+        crate::document::encode_document(&ConnectionsDocument { connections, tags }).expect("encode")
+    }
+
+    fn tag_names(store: &ConnectionStore, connection: &SavedConnection) -> Vec<String> {
+        let tags = store.tags_blocking().expect("the tags");
+        let list = store.load_blocking().expect("the list");
+        let held = list
+            .iter()
+            .find(|saved| saved.name == connection.name)
+            .expect("the entry");
+        held.tags
+            .iter()
+            .filter_map(|id| tags.iter().find(|tag| tag.id == *id))
+            .map(|tag| tag.name.as_str().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn tags_are_created_renamed_recoloured_and_deleted() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let connection = tagged("acme-prod", &[&production]);
+        store.upsert_blocking(connection.clone()).expect("upsert");
+
+        assert!(matches!(
+            store.create_tag_blocking(tag_name(" Production "), crate::ConnectionColor::Blue),
+            Err(StorageError::TagNameTaken)
+        ));
+        let renamed = ConnectionTag {
+            name: tag_name("prod"),
+            color: crate::ConnectionColor::Orange,
+            ..production.clone()
+        };
+        store.update_tag_blocking(renamed.clone()).expect("the rename");
+        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![renamed]);
+        assert_eq!(tag_names(&store, &connection), ["prod"]);
+
+        assert_eq!(
+            store.delete_tag_blocking(production.id).expect("delete"),
+            RemoveOutcome::Removed
+        );
+        assert!(store.tags_blocking().expect("tags").is_empty());
+        assert!(store.load_blocking().expect("list")[0].tags.is_empty());
+        assert_eq!(
+            store.delete_tag_blocking(production.id).expect("delete again"),
+            RemoveOutcome::NotPresent
+        );
+        assert!(matches!(
+            store.update_tag_blocking(production),
+            Err(StorageError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn a_rename_onto_another_tags_name_is_refused_and_a_no_op_writes_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        store
+            .create_tag_blocking(tag_name("acme"), crate::ConnectionColor::Blue)
+            .expect("the tag");
+        let revision = store.snapshot().revision;
+
+        let onto = ConnectionTag {
+            name: tag_name("ACME"),
+            ..production.clone()
+        };
+        assert!(matches!(
+            store.update_tag_blocking(onto),
+            Err(StorageError::TagNameTaken)
+        ));
+        store.update_tag_blocking(production.clone()).expect("unchanged");
+        assert_eq!(store.snapshot().revision, revision);
+        let recased = ConnectionTag {
+            name: tag_name("Production"),
+            ..production
+        };
+        store
+            .update_tag_blocking(recased)
+            .expect("its own name in another case");
+    }
+
+    #[test]
+    fn a_connection_keeps_only_tags_the_list_has_once_each() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let connection = SavedConnection {
+            tags: vec![production.id, Uuid::new_v4(), production.id],
+            ..saved("acme-prod")
+        };
+
+        store.upsert_blocking(connection.clone()).expect("upsert");
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [production.id]);
+
+        let updated = store
+            .update_blocking(connection.id, |entry| entry.tags.push(Uuid::new_v4()))
+            .expect("update")
+            .expect("the entry");
+        assert_eq!(updated.tags, [production.id]);
+    }
+
+    #[test]
+    fn a_hand_edited_file_with_doubled_tags_reads_as_one_tag_each() {
+        let root = TempDir::new().expect("tempdir");
+        let first = tag("production", crate::ConnectionColor::Red);
+        let twin = tag("Production", crate::ConnectionColor::Blue);
+        let connection = tagged("acme-prod", &[&twin]);
+        seed(
+            &root,
+            &String::from_utf8(document(
+                vec![connection.clone()],
+                vec![first.clone(), twin, first.clone()],
+            ))
+            .expect("utf-8"),
+        );
+        let store = store(&root);
+
+        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![first.clone()]);
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [first.id]);
+    }
+
+    #[test]
+    fn a_tag_with_a_blank_name_makes_the_file_unreadable_rather_than_dropped() {
+        let root = TempDir::new().expect("tempdir");
+        seed(
+            &root,
+            r#"{"version": 2, "connections": [], "tags": [{"id":"550e8400-e29b-41d4-a716-446655440000","name":"  ","color":"red"}]}"#,
+        );
+
+        assert!(matches!(
+            store(&root).load_blocking(),
+            Err(StorageError::DocumentUnavailable(_))
+        ));
+    }
+
+    #[test]
+    fn a_file_without_tags_or_icons_reads_and_writes_none() {
+        let root = TempDir::new().expect("tempdir");
+        seed(&root, &connections_json(None));
+        let store = store(&root);
+
+        let list = store.load_blocking().expect("load");
+        assert!(list[0].tags.is_empty());
+        assert_eq!(list[0].icon, None);
+        store.upsert_blocking(list[0].clone()).expect("rewrite");
+        let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(store.path()).expect("read")).expect("json");
+        assert!(raw.get("tags").is_none(), "{raw}");
+        assert!(raw["connections"][0].get("tags").is_none(), "{raw}");
+        assert!(raw["connections"][0].get("icon").is_none(), "{raw}");
+    }
+
+    #[test]
+    fn the_snapshot_carries_the_tags() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+
+        let production = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+
+        let ConnectionListState::Ready(list) = store.snapshot().state else {
+            panic!("expected Ready");
+        };
+        assert_eq!(list.tags.to_vec(), vec![production]);
+    }
+
+    /// The issue's "Done means": two tags on a connection survive an
+    /// export and an import, and a second import duplicates nothing.
+    #[test]
+    fn tags_and_the_icon_survive_an_export_and_an_import_twice() {
+        let source_root = TempDir::new().expect("tempdir");
+        let source = store(&source_root);
+        let production = source
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let acme = source
+            .create_tag_blocking(tag_name("acme"), crate::ConnectionColor::Blue)
+            .expect("the tag");
+        let acme_prod = SavedConnection {
+            icon: Some(crate::ConnectionIcon::Shield),
+            ..tagged("acme-prod", &[&production, &acme])
+        };
+        let globex_prod = tagged("globex-prod", &[&production]);
+        source.upsert_blocking(acme_prod.clone()).expect("upsert");
+        source.upsert_blocking(globex_prod.clone()).expect("upsert");
+        let bytes = source.export_blocking().expect("export");
+
+        let target_root = TempDir::new().expect("tempdir");
+        let target = store(&target_root);
+        let first = target
+            .import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("import");
+        let second = target
+            .import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("import");
+
+        assert_eq!(first, ImportReport { added: 2, updated: 0 });
+        assert_eq!(second, ImportReport { added: 0, updated: 2 });
+        let tags = target.tags_blocking().expect("tags");
+        assert_eq!(tags.to_vec(), vec![production.clone(), acme.clone()]);
+        assert_eq!(tag_names(&target, &acme_prod), ["production", "acme"]);
+        assert_eq!(tag_names(&target, &globex_prod), ["production"]);
+        let list = target.load_blocking().expect("list");
+        assert_eq!(list.len(), 2);
+        let held = list.iter().find(|saved| saved.id == acme_prod.id).expect("acme-prod");
+        assert_eq!(held.icon, Some(crate::ConnectionIcon::Shield));
+    }
+
+    #[test]
+    fn an_imported_tag_with_a_name_the_list_has_becomes_that_tag() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let theirs = tag("PRODUCTION", crate::ConnectionColor::Green);
+        let fresh = tag("globex", crate::ConnectionColor::Purple);
+        let connection = tagged("globex-prod", &[&theirs, &fresh]);
+
+        store
+            .import_blocking(
+                Path::new("/tmp/c.json"),
+                &document(vec![connection.clone()], vec![theirs, fresh.clone()]),
+            )
+            .expect("import");
+
+        assert_eq!(
+            store.tags_blocking().expect("tags").to_vec(),
+            vec![mine.clone(), fresh.clone()]
+        );
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [mine.id, fresh.id]);
+    }
+
+    #[test]
+    fn an_imported_tag_with_a_known_id_takes_the_files_name_unless_another_tag_has_it() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let staging = store
+            .create_tag_blocking(tag_name("staging"), crate::ConnectionColor::Yellow)
+            .expect("the tag");
+        let connection = tagged("acme", &[&production]);
+        let renamed = ConnectionTag {
+            name: tag_name("prod"),
+            color: crate::ConnectionColor::Orange,
+            ..production.clone()
+        };
+        // Read first, while "production" is still that tag's name.
+        let clash = ConnectionTag {
+            name: tag_name("PRODUCTION"),
+            color: crate::ConnectionColor::Green,
+            ..staging.clone()
+        };
+
+        store
+            .import_blocking(
+                Path::new("/tmp/c.json"),
+                &document(vec![connection], vec![clash, renamed.clone()]),
+            )
+            .expect("import");
+
+        let tags = store.tags_blocking().expect("tags");
+        assert_eq!(tags.iter().find(|tag| tag.id == production.id), Some(&renamed));
+        let kept = tags.iter().find(|tag| tag.id == staging.id).expect("staging");
+        assert_eq!(kept.name.as_str(), "staging");
+        assert_eq!(kept.color, crate::ConnectionColor::Green);
+    }
+
+    #[test]
+    fn an_import_updates_the_tags_and_icon_of_an_entry_it_matches() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let acme = tag("acme", crate::ConnectionColor::Blue);
+        let retagged = SavedConnection {
+            tags: vec![acme.id, Uuid::new_v4()],
+            icon: Some(crate::ConnectionIcon::Cloud),
+            ..mine.clone()
+        };
+
+        let report = store
+            .import_blocking(Path::new("/tmp/c.json"), &document(vec![retagged], vec![acme.clone()]))
+            .expect("import");
+
+        assert_eq!(report, ImportReport { added: 0, updated: 1 });
+        let list = store.load_blocking().expect("list");
+        assert_eq!(list[0].tags, [acme.id], "a tag the file does not list was kept");
+        assert_eq!(list[0].icon, Some(crate::ConnectionIcon::Cloud));
+    }
+
+    #[test]
+    fn a_renamed_tag_and_a_new_one_taking_its_old_name_both_survive_in_any_order() {
+        for new_first in [true, false] {
+            let root = TempDir::new().expect("tempdir");
+            let store = store(&root);
+            let mine = store
+                .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+                .expect("the tag");
+            let renamed = ConnectionTag {
+                name: tag_name("staging"),
+                ..mine.clone()
+            };
+            let theirs = tag("production", crate::ConnectionColor::Green);
+            let connection = tagged("acme", &[&theirs, &renamed]);
+            let tags = if new_first {
+                vec![theirs.clone(), renamed.clone()]
+            } else {
+                vec![renamed.clone(), theirs.clone()]
+            };
+
+            store
+                .import_blocking(Path::new("/tmp/c.json"), &document(vec![connection.clone()], tags))
+                .expect("import");
+
+            assert_eq!(
+                tag_names(&store, &connection),
+                ["production", "staging"],
+                "new tag listed first: {new_first}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_of_many_doubled_tags_imports_one_of_each() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let tags: Vec<ConnectionTag> = (0..20_000)
+            .map(|n| tag(&format!("tag {}", n % 1_000), crate::ConnectionColor::Blue))
+            .collect();
+        let connection = SavedConnection {
+            tags: tags.iter().map(|tag| tag.id).collect(),
+            ..saved("everything")
+        };
+
+        store
+            .import_blocking(Path::new("/tmp/c.json"), &document(vec![connection], tags))
+            .expect("import");
+
+        assert_eq!(store.tags_blocking().expect("tags").len(), 1_000);
+        assert_eq!(store.load_blocking().expect("list")[0].tags.len(), 1_000);
+    }
+
+    #[test]
+    fn a_file_of_tags_alone_imports_nothing() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+
+        let report = store
+            .import_blocking(
+                Path::new("/tmp/c.json"),
+                &document(Vec::new(), vec![tag("acme", crate::ConnectionColor::Blue)]),
+            )
+            .expect("import");
+
+        assert_eq!(report, ImportReport::default());
+        assert!(store.tags_blocking().expect("tags").is_empty());
     }
 }

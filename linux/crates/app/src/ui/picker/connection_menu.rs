@@ -1,8 +1,9 @@
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::{ConnectionColor, ConnectionGroupName};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag};
 use uuid::Uuid;
 
+use crate::ui::connection_appearance::color_name;
 use crate::ui::menu_label;
 
 pub(super) const PICKER: &str = "picker";
@@ -13,6 +14,10 @@ pub(super) const DUPLICATE: &str = "duplicate";
 pub(super) const NEW_GROUP: &str = "new-group";
 pub(super) const SET_COLOR: &str = "set-color";
 pub(super) const MOVE_TO_GROUP: &str = "move-to-group";
+pub(super) const NEW_TAG: &str = "new-tag";
+pub(super) const SET_TAG: &str = "set-tag";
+/// The window's, since the picker's primary menu offers it too.
+pub(crate) const MANAGE_TAGS: &str = "win.manage-tags";
 
 /// The row's own actions: its menu, and the colour and group radios,
 /// whose state is that row's connection.
@@ -26,11 +31,16 @@ pub(super) const ROW_GROUP: &str = "group";
 /// type is a string and a radio group needs every entry to carry one.
 pub(super) const NONE: &str = "";
 
+/// The row's check action for one tag.
+pub(super) fn tag_action(tag: Uuid) -> String {
+    format!("tag-{tag}")
+}
+
 /// One connection's menu. Every item names the connection by id, so the
 /// menu acts on the row it opened on whatever the list does meanwhile.
 /// Delete sits in its own section so a destructive action is never the
 /// neighbour of an ordinary one.
-pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName]) -> gio::Menu {
+pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[ConnectionTag]) -> gio::Menu {
     let target = id.to_string().to_variant();
     let menu = gio::Menu::new();
     let open = gio::Menu::new();
@@ -42,6 +52,7 @@ pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName]) -> gio::
     menu.append_section(None, &change);
     let file = gio::Menu::new();
     file.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
+    file.append_submenu(Some(&crate::i18n::gettext("Tags")), &tag_menu(&target, tags));
     file.append_submenu(
         Some(&crate::i18n::gettext("Move to Group")),
         &group_menu(&target, groups),
@@ -106,18 +117,28 @@ fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Me
     menu
 }
 
-pub(super) fn color_name(color: ConnectionColor) -> String {
-    match color {
-        ConnectionColor::Blue => crate::i18n::gettext("Blue"),
-        ConnectionColor::Teal => crate::i18n::gettext("Teal"),
-        ConnectionColor::Green => crate::i18n::gettext("Green"),
-        ConnectionColor::Yellow => crate::i18n::gettext("Yellow"),
-        ConnectionColor::Orange => crate::i18n::gettext("Orange"),
-        ConnectionColor::Red => crate::i18n::gettext("Red"),
-        ConnectionColor::Pink => crate::i18n::gettext("Pink"),
-        ConnectionColor::Purple => crate::i18n::gettext("Purple"),
-        ConnectionColor::Slate => crate::i18n::gettext("Slate"),
+/// Every tag as a check item ticked at the ones the connection has,
+/// then a way to make one and to change them all.
+fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
+    let menu = gio::Menu::new();
+    if !tags.is_empty() {
+        let existing = gio::Menu::new();
+        for tag in tags {
+            existing.append_item(&gio::MenuItem::new(
+                Some(&menu_label(tag.name.as_str())),
+                Some(&format!("{ROW}.{}", tag_action(tag.id))),
+            ));
+        }
+        menu.append_section(None, &existing);
     }
+    let change = gio::Menu::new();
+    change.append_item(&item(&crate::i18n::gettext("New Tag…"), PICKER, NEW_TAG, target));
+    change.append_item(&gio::MenuItem::new(
+        Some(&crate::i18n::gettext("Manage Tags…")),
+        Some(MANAGE_TAGS),
+    ));
+    menu.append_section(None, &change);
+    menu
 }
 
 #[cfg(test)]
@@ -155,7 +176,7 @@ mod tests {
     fn connect_leads_and_delete_closes_the_menu() {
         let id = Uuid::new_v4();
 
-        let found = items(connection_menu(id, &[]).upcast_ref());
+        let found = items(connection_menu(id, &[], &[]).upcast_ref());
 
         let first = found.first().expect("an item");
         assert_eq!(first.0, "Connect");
@@ -179,8 +200,8 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_reads_connect_edit_duplicate_colour_group_delete() {
-        let labels = labels(&connection_menu(Uuid::new_v4(), &[]));
+    fn the_menu_reads_connect_edit_duplicate_colour_tags_group_delete() {
+        let labels = labels(&connection_menu(Uuid::new_v4(), &[], &[]));
         let shown = |label: &str| {
             labels
                 .iter()
@@ -193,6 +214,7 @@ mod tests {
             shown("Edit…"),
             shown("Duplicate"),
             shown("Colour"),
+            shown("Tags"),
             shown("Move to Group"),
             shown("Delete…"),
         ];
@@ -202,7 +224,11 @@ mod tests {
 
     #[test]
     fn the_group_menu_offers_every_group_the_list_already_has() {
-        let labels = labels(&connection_menu(Uuid::new_v4(), &[group("Archive"), group("Work")]));
+        let labels = labels(&connection_menu(
+            Uuid::new_v4(),
+            &[group("Archive"), group("Work")],
+            &[],
+        ));
 
         assert!(labels.contains(&"Archive".to_owned()), "{labels:?}");
         assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
@@ -212,7 +238,7 @@ mod tests {
 
     #[test]
     fn a_group_name_keeps_its_underscores_in_the_menu() {
-        let found = items(connection_menu(Uuid::new_v4(), &[group("dev_db")]).upcast_ref());
+        let found = items(connection_menu(Uuid::new_v4(), &[group("dev_db")], &[]).upcast_ref());
 
         let group = found
             .iter()
@@ -221,6 +247,31 @@ mod tests {
             })
             .expect("the group's item");
         assert_eq!(group.0, "dev__db");
+    }
+
+    #[test]
+    fn the_tags_menu_offers_each_tag_then_new_and_manage() {
+        let id = Uuid::new_v4();
+        let tag = ConnectionTag::new(
+            tablepro_storage::ConnectionTagName::new("dev_prod").expect("a tag name"),
+            ConnectionColor::Red,
+        );
+
+        let found = items(connection_menu(id, &[], std::slice::from_ref(&tag)).upcast_ref());
+
+        let check = found
+            .iter()
+            .find(|(label, ..)| label == "dev__prod")
+            .expect("the tag's item");
+        assert_eq!(check.1.as_deref(), Some(format!("picker-row.tag-{}", tag.id).as_str()));
+        assert_eq!(check.2, None, "a check item carries no target");
+        let new = found.iter().find(|(label, ..)| label == "New Tag…").expect("New Tag…");
+        assert_eq!(new.1.as_deref(), Some("picker.new-tag"));
+        let manage = found
+            .iter()
+            .find(|(label, ..)| label == "Manage Tags…")
+            .expect("Manage Tags…");
+        assert_eq!(manage.1.as_deref(), Some(MANAGE_TAGS));
     }
 
     #[test]

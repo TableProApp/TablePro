@@ -56,7 +56,10 @@ mod tests {
     #[test]
     fn banner_content_per_state() {
         assert_eq!(banner_content(&ConnectionListState::Loading), None);
-        assert_eq!(banner_content(&ConnectionListState::Ready(Arc::from(Vec::new()))), None);
+        assert_eq!(
+            banner_content(&ConnectionListState::Ready(tablepro_storage::ConnectionList::default())),
+            None
+        );
 
         let corrupt = banner_content(&problem(DocumentProblemKind::Corrupt {
             detail: "x".to_owned(),

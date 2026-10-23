@@ -7,7 +7,7 @@ use tablepro_core::{
     NetworkEndpoint, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
-use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
 use uuid::Uuid;
 
 use super::form_errors::FormErrors;
@@ -131,6 +131,9 @@ pub struct ConnectForm {
     pub external_access: ExternalAccess,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
+    /// The ids of the tags ticked in the Appearance group.
+    pub tags: Vec<Uuid>,
+    pub icon: Option<ConnectionIcon>,
 }
 
 /// A form that passed every check, ready to connect and to save.
@@ -158,6 +161,8 @@ impl ConnectForm {
             external_access: ExternalAccess::default(),
             ssh: None,
             file: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -169,6 +174,8 @@ impl ConnectForm {
         let mut form = Self::new(&saved.driver_id, caps);
         form.safe_mode = saved.safe_mode;
         form.external_access = saved.external_access;
+        form.tags.clone_from(&saved.tags);
+        form.icon = saved.icon;
         if caps.is_file_based() {
             form.file = FileEndpoint::open_existing(PathBuf::from(&saved.database)).ok();
         } else {
@@ -340,7 +347,7 @@ impl ConnectForm {
 
     /// The entry a successful connect writes. Colour, group and the
     /// last-opened time come from the entry it replaces, because this
-    /// form does not show them.
+    /// form does not show them; its tags and icon are the form's.
     pub fn saved_connection(
         &self,
         caps: &DriverCapabilities,
@@ -391,6 +398,8 @@ impl ConnectForm {
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
             color: existing.and_then(|saved| saved.color),
             group: existing.and_then(|saved| saved.group.clone()),
+            tags: self.tags.clone(),
+            icon: self.icon,
         }
     }
 
@@ -1008,6 +1017,30 @@ mod tests {
         assert_eq!(saved_from(&form, postgres()).name, "app@db2.example.com");
         form.name = "  Shop ".to_owned();
         assert_eq!(saved_from(&form, postgres()).name, "Shop");
+    }
+
+    #[test]
+    fn the_tags_and_icon_go_through_the_form_and_back() {
+        let tag = Uuid::new_v4();
+        let saved = SavedConnection {
+            tags: vec![tag],
+            icon: Some(ConnectionIcon::Shield),
+            ..saved_from(&filled("postgres", postgres()), postgres())
+        };
+
+        let form = ConnectForm::from_saved(&saved, postgres());
+        assert_eq!(form.tags, [tag]);
+        assert_eq!(form.icon, Some(ConnectionIcon::Shield));
+
+        let untagged = ConnectForm {
+            tags: Vec::new(),
+            icon: None,
+            ..form
+        };
+        let valid = untagged.validate(postgres()).expect("valid");
+        let written = untagged.saved_connection(postgres(), &valid, saved.id, Some(&saved));
+        assert!(written.tags.is_empty(), "the entry's tags came back over the form's");
+        assert_eq!(written.icon, None);
     }
 
     #[test]

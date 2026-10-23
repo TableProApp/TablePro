@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::group_name_error::GroupNameError;
+use crate::name_rules::{self, NameFault};
 
 /// The group a saved connection is filed under, as the user typed it
 /// without the spaces around it.
@@ -17,27 +18,17 @@ impl ConnectionGroupName {
     pub const MAX_CHARS: usize = 64;
 
     pub fn new(value: &str) -> Result<Self, GroupNameError> {
-        let name = value.trim();
-        if name.is_empty() {
-            return Err(GroupNameError::Empty);
+        match name_rules::checked(value, Self::MAX_CHARS) {
+            Ok(name) => Ok(Self(name.to_owned())),
+            Err(NameFault::Empty) => Err(GroupNameError::Empty),
+            Err(NameFault::TooLong) => Err(GroupNameError::TooLong { max: Self::MAX_CHARS }),
+            Err(NameFault::ControlCharacter) => Err(GroupNameError::ControlCharacter),
         }
-        if name.chars().count() > Self::MAX_CHARS {
-            return Err(GroupNameError::TooLong { max: Self::MAX_CHARS });
-        }
-        if name.chars().any(char::is_control) {
-            return Err(GroupNameError::ControlCharacter);
-        }
-        Ok(Self(name.to_owned()))
     }
 
-    /// A name read back from a file. Builds before the limits stored any
-    /// name the user typed, so control characters become spaces and the
-    /// name is cut to the limit rather than making the file unreadable.
-    /// A blank name means no group.
+    /// A name read back from a file. A blank one means no group.
     pub(crate) fn from_stored(value: &str) -> Option<Self> {
-        let shown: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-        let cut: String = shown.trim().chars().take(Self::MAX_CHARS).collect();
-        Self::new(&cut).ok()
+        Self::new(&name_rules::cleaned(value, Self::MAX_CHARS)).ok()
     }
 
     pub fn as_str(&self) -> &str {
