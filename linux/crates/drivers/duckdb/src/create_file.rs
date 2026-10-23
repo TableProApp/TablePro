@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use rustix::fs::FlockOperation;
@@ -103,17 +103,17 @@ fn place(temporary: &Path, path: &Path, parent: &Path, name: &OsStr) -> Result<(
 /// open holds that lock, and would go on writing a log beside the new
 /// file under the same name.
 fn lock_replaced(path: &Path) -> Result<Option<File>, DriverError> {
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) if metadata.is_file() => metadata,
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => {}
         // Nothing there to lock, or something the rename itself refuses.
         Ok(_) => return Ok(None),
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(file_error(error.kind(), path)),
-    };
+    }
     // A POSIX lock belongs to the process, and closing any descriptor on
     // the file drops all of them, so a file this process holds open is
     // not opened again here.
-    if held_by_this_process(&metadata) {
+    if tablepro_core::held_by_this_process(path) {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }
     let (file, lock) = match OpenOptions::new().read(true).write(true).open(path) {
@@ -133,16 +133,6 @@ fn lock_replaced(path: &Path) -> Result<Option<File>, DriverError> {
         // either.
         Err(_) => Ok(Some(file)),
     }
-}
-
-/// Whether a descriptor this process has open names the file.
-fn held_by_this_process(file: &std::fs::Metadata) -> bool {
-    let Ok(descriptors) = std::fs::read_dir("/proc/self/fd") else {
-        return false;
-    };
-    descriptors.flatten().any(|descriptor| {
-        std::fs::metadata(descriptor.path()).is_ok_and(|held| held.dev() == file.dev() && held.ino() == file.ino())
-    })
 }
 
 fn wal_of(path: &Path) -> PathBuf {

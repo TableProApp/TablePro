@@ -196,3 +196,62 @@ async fn the_server_info_names_the_library() {
     assert!(info.at_least(3, 37, 0), "{info:?}");
     connection.close().await.unwrap();
 }
+
+/// SQLite would close a DuckDB file again on finding no database in it,
+/// which drops the locks DuckDB holds on it, so neither a connect nor a
+/// tab's ATTACH opens a file DuckDB has open.
+#[tokio::test]
+async fn a_file_duckdb_has_open_is_not_opened() {
+    let file = TestFile::new().await;
+    let held = file.directory().join("held.duckdb");
+    std::fs::write(&held, b"a DuckDB database").unwrap();
+    let _claim = tablepro_core::claim_file(&held, "duckdb").unwrap();
+    let connection = file.open().await;
+    let editor = connection
+        .open_editor_session(tablepro_core::EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+
+    let opened = connect(FileEndpoint::open_existing(held.clone()).unwrap(), writable()).await;
+    let (attached, _) = crate::support::run(editor.as_ref(), &format!("ATTACH '{}' AS held", held.display())).await;
+    let (attached_uri, _) = crate::support::run(
+        editor.as_ref(),
+        &format!("ATTACH 'file:{}?mode=ro' AS held", held.display()),
+    )
+    .await;
+    let (attached_computed, _) =
+        crate::support::run(editor.as_ref(), &format!("ATTACH ('{}' || '') AS held", held.display())).await;
+
+    assert_eq!(
+        opened.err(),
+        Some(DriverError::Busy(tablepro_core::BusyReason::FileLocked))
+    );
+    for end in [attached.end, attached_uri.end, attached_computed.end] {
+        assert!(matches!(end, tablepro_core::RunEnd::Failed(_)), "{end:?}");
+    }
+    let other_path = file.directory().join("other.sqlite3");
+    create_database(&other_path).await.unwrap();
+    let (other, _) = crate::support::run(editor.as_ref(), &format!("ATTACH '{}' AS other", other_path.display())).await;
+    assert_eq!(other.end, tablepro_core::RunEnd::Completed);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
+
+/// A new database over a file this process has open would pull it out
+/// from under the window using it.
+#[tokio::test]
+async fn create_new_refuses_a_file_this_process_holds() {
+    let file = TestFile::new().await;
+    let open = file.open().await;
+    apply(open.as_ref(), &["CREATE TABLE kept (a)"]).await.unwrap();
+
+    let created = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;
+
+    assert_eq!(
+        created.err(),
+        Some(DriverError::Busy(tablepro_core::BusyReason::FileLocked))
+    );
+    let tables = query(open.as_ref(), "SELECT count(*) FROM sqlite_schema").await;
+    assert_eq!(tables.rows[0][0], Value::Int(1));
+    open.close().await.unwrap();
+}

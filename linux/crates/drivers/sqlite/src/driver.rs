@@ -15,6 +15,10 @@ use crate::connection::SqliteConnection;
 /// attached database stay visible from one call to the next.
 pub const WORKSPACE_POOL_MAX_SIZE: usize = 1;
 
+/// The driver id, which also names the engine in the process's file
+/// claims (`tablepro_core::claim_file`).
+pub(crate) const ENGINE: &str = "sqlite";
+
 /// The SQLite engine.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SqliteDriver;
@@ -22,7 +26,7 @@ pub struct SqliteDriver;
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
     fn id(&self) -> &'static str {
-        "sqlite"
+        ENGINE
     }
 
     fn display_name(&self) -> &'static str {

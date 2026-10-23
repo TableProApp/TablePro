@@ -226,6 +226,12 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
         &format!("ATTACH IF NOT EXISTS '{}' AS s", spare.path.display()),
     )
     .await;
+    let unrelated = TestFile::new();
+    let (no_op, _) = run(
+        editor.as_ref(),
+        &format!("ATTACH IF NOT EXISTS '{}' AS s", unrelated.path.display()),
+    )
+    .await;
     let spare_link = spare.path.with_file_name("spare-link.duckdb");
     std::fs::hard_link(&spare.path, &spare_link).unwrap();
     let own_link = file.path.with_file_name("own-link.duckdb");
@@ -251,6 +257,12 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
         RunEnd::Completed,
         "the tab's own database has the file, which DuckDB finds itself"
     );
+    assert_eq!(no_op.end, RunEnd::Completed);
+    assert!(
+        !tablepro_core::claimed_by_another(&unrelated.path, "sqlite"),
+        "an ATTACH under a taken alias opened nothing to claim"
+    );
+    assert!(tablepro_core::claimed_by_another(&spare.path, "sqlite"));
     assert_eq!(
         through_links,
         [

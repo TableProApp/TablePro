@@ -94,6 +94,17 @@ pub(crate) async fn run_script(
             outcome.halted = true;
             break;
         }
+        // An ATTACH opens a file, so it takes its turn with DuckDB's opens,
+        // and its check in `attach_guard` holds until it is done.
+        let _opening = match first_word(statement).is_some_and(|word| word.eq_ignore_ascii_case("ATTACH")) {
+            true => Some(tablepro_core::opening_file().await),
+            false => None,
+        };
+        // A stop that came while the ATTACH waited its turn.
+        if halt() {
+            outcome.halted = true;
+            break;
+        }
         run_statement(connection, statement, &[], limit, sink, &mut outcome).await?;
         if outcome.consumer_gone {
             break;
@@ -165,21 +176,24 @@ pub(crate) fn split_statements(sql: &str) -> Vec<&str> {
 /// only INSERT, UPDATE and DELETE, and after anything else still holds
 /// the count of the last one of those.
 pub(crate) fn reports_changes(sql: &str) -> bool {
+    first_word(sql).is_some_and(|word| {
+        ["INSERT", "UPDATE", "DELETE", "REPLACE", "WITH"]
+            .iter()
+            .any(|keyword| word.eq_ignore_ascii_case(keyword))
+    })
+}
+
+/// The statement's first word, past comments.
+fn first_word(sql: &str) -> Option<&str> {
     let plan = ScriptPlan::build(
         sql,
         SqlGrammar::Sqlite,
         LexicalSettings::default_for(SqlGrammar::Sqlite),
     );
-    let first = plan
-        .tokens(0..sql.len())
+    plan.tokens(0..sql.len())
         .find(|token| !token.kind.is_trivia())
         .filter(|token| token.kind == ScriptTokenKind::Word)
-        .and_then(|token| sql.get(token.range));
-    first.is_some_and(|word| {
-        ["INSERT", "UPDATE", "DELETE", "REPLACE", "WITH"]
-            .iter()
-            .any(|keyword| word.eq_ignore_ascii_case(keyword))
-    })
+        .and_then(|token| sql.get(token.range))
 }
 
 async fn run_statement(

@@ -47,11 +47,12 @@ impl DuckDbConnection {
         endpoint: &FileEndpoint,
         settings: WorkspaceSettings,
         liveness: LivenessPolicy,
+        given_up: CancellationToken,
     ) -> Result<Self, DriverError> {
         let opening = endpoint.clone();
         let read_only = settings.read_only;
         let (instance, version) = blocking(move || {
-            let instance = Instance::open(&opening, read_only)?;
+            let instance = Instance::open(&opening, read_only, &given_up)?;
             let version = instance
                 .link()?
                 .connection
@@ -124,16 +125,35 @@ impl DuckDbConnection {
                 (call, result)
             })
             .await;
-        self.watch(read)
+        self.watch(read).await
     }
 
-    /// A database that hit a fatal error refuses everything after it,
-    /// so the link is gone for good.
-    fn watch<T>(&self, result: Result<T, DriverError>) -> Result<T, DriverError> {
-        if matches!(result, Err(DriverError::ConnectionLost { .. })) && !self.closed.load(Ordering::SeqCst) {
+    /// A database that hit a fatal error refuses everything after it, so
+    /// the link is gone for good. A call that lost its connection says so
+    /// only when a connection of its own confirms it: one given up after a
+    /// stop that did not settle leaves the database as it was.
+    async fn watch<T>(&self, result: Result<T, DriverError>) -> Result<T, DriverError> {
+        if matches!(result, Err(DriverError::ConnectionLost { .. }))
+            && !self.closed.load(Ordering::SeqCst)
+            && self.database_failed().await
+        {
             self.link.mark_lost();
         }
         result
+    }
+
+    /// Whether the database refuses a new connection's `SELECT 1`, as it
+    /// does after a fatal error. A check that gets no answer within the
+    /// probe timeout proves nothing, and the caller is not held past it.
+    async fn database_failed(&self) -> bool {
+        let Ok(instance) = self.instance() else {
+            return false;
+        };
+        let checking = blocking(move || batch(&instance.link()?, "SELECT 1"));
+        matches!(
+            tokio::time::timeout(self.liveness.probe_timeout, checking).await,
+            Ok(Err(DriverError::ConnectionLost { .. }))
+        )
     }
 
     /// A connection of the call's own, for a probe that found every slot
@@ -237,7 +257,7 @@ impl Connection for DuckDbConnection {
             }),
             other => other,
         };
-        self.watch(probed)
+        self.watch(probed).await
     }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
@@ -377,7 +397,7 @@ impl Connection for DuckDbConnection {
                 (call, result)
             })
             .await;
-        let streamed = self.watch(streamed)?;
+        let streamed = self.watch(streamed).await?;
         // The sink stopped reading, so the read did not run to its end.
         if streamed.consumer_gone {
             return Err(DriverError::Cancelled);
@@ -438,7 +458,7 @@ impl Connection for DuckDbConnection {
                 },
             )
             .await;
-        self.watch(written)
+        self.watch(written).await
     }
 
     /// DuckDB commits on the local file, so a COMMIT never goes out over
@@ -482,6 +502,31 @@ impl Connection for DuckDbConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A call given up after a stop that did not settle synthesizes a
+    /// lost connection, which leaves a healthy database's link live.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lost_call_on_a_healthy_database_keeps_the_link() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = FileEndpoint::create_new(directory.path().join("live.duckdb")).unwrap();
+        let liveness = tablepro_test_support::conformance::test_liveness();
+        let connection = DuckDbConnection::open(
+            &endpoint,
+            WorkspaceSettings::workspace(false),
+            liveness,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+
+        let lost: Result<(), DriverError> = Err(DriverError::ConnectionLost {
+            during: LossPhase::Statement,
+        });
+        let _ = connection.watch(lost).await;
+
+        assert_eq!(connection.link_state(), LinkState::Live);
+        connection.close().await.unwrap();
+    }
 
     #[test]
     fn the_version_reads_as_its_parts() {

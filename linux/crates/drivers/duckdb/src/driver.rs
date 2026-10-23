@@ -10,6 +10,10 @@ use tokio_util::sync::CancellationToken;
 use crate::capabilities::CAPABILITIES;
 use crate::connection::DuckDbConnection;
 
+/// The driver id, which also names the engine in the process's file
+/// claims (`tablepro_core::claim_file`).
+pub(crate) const ENGINE: &str = "duckdb";
+
 /// The DuckDB engine, compiled into the app from the sources the duckdb
 /// crate ships.
 #[derive(Debug, Clone, Copy, Default)]
@@ -18,7 +22,7 @@ pub struct DuckDbDriver;
 #[async_trait]
 impl DatabaseDriver for DuckDbDriver {
     fn id(&self) -> &'static str {
-        "duckdb"
+        ENGINE
     }
 
     fn display_name(&self) -> &'static str {
@@ -39,7 +43,11 @@ impl DatabaseDriver for DuckDbDriver {
                 feature: UnsupportedFeature::NetworkConnection,
             });
         };
-        let opening = DuckDbConnection::open(endpoint, options.workspace_settings, options.liveness);
+        // The open runs on a blocking thread that outlives this call, so
+        // it learns of a cancel or a timeout from this token.
+        let given_up = CancellationToken::new();
+        let _given_up_on_return = given_up.clone().drop_guard();
+        let opening = DuckDbConnection::open(endpoint, options.workspace_settings, options.liveness, given_up);
         tokio::select! {
             biased;
             () = cancel.cancelled() => Err(DriverError::Cancelled),

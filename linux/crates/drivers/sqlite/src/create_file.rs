@@ -3,7 +3,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-use tablepro_core::DriverError;
+use tablepro_core::{BusyReason, DriverError};
 
 /// The journal and WAL files SQLite keeps beside a database. One left
 /// from the database being replaced would be replayed into the new one.
@@ -29,6 +29,11 @@ pub(crate) fn create_or_replace(path: &Path) -> Result<(), DriverError> {
             path: path.to_path_buf(),
         });
     };
+    // A file another window or the other engine has open would be pulled
+    // out from under it, and its writes would go to a file no name finds.
+    if tablepro_core::held_by_this_process(path) {
+        return Err(DriverError::Busy(BusyReason::FileLocked));
+    }
     let temporary = parent.join(format!(
         ".{}.{}.tmp",
         name.to_string_lossy(),

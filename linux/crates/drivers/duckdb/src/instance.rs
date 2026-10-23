@@ -19,9 +19,11 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 use duckdb::{AccessMode, Config, InterruptHandle};
-use tablepro_core::{BusyReason, DriverError, FileEndpoint, FileOpenMode, LossPhase};
+use tablepro_core::{BusyReason, DriverError, FileClaim, FileEndpoint, FileOpenMode, LossPhase};
+use tokio_util::sync::CancellationToken;
 
 use crate::create_file::create_or_replace;
+use crate::driver::ENGINE;
 use crate::errors::{map_error, map_open_error};
 
 /// The files this process has open. An entry whose instance is gone is
@@ -71,6 +73,9 @@ pub(crate) struct Instance {
     /// The catalogue name DuckDB gave the file, which the catalogue
     /// reads filter on: attached databases are in the same lists.
     catalog: String,
+    /// The file and every file a tab attached, kept from SQLite until the
+    /// database closes. Dropped after `root`, once DuckDB has let go.
+    claims: Mutex<Vec<FileClaim>>,
 }
 
 impl std::fmt::Debug for Instance {
@@ -166,7 +171,14 @@ impl Instance {
     /// Open the file the endpoint names, or join the instance this
     /// process already has on it. Blocks: DuckDB reads the file and
     /// replays its log here, and a file still closing is waited for.
-    pub(crate) fn open(endpoint: &FileEndpoint, read_only: bool) -> Result<Arc<Self>, DriverError> {
+    /// `given_up` is the connect's own stop: the blocking open outlives a
+    /// caller that went while it waited, and must not then replace the
+    /// file.
+    pub(crate) fn open(
+        endpoint: &FileEndpoint,
+        read_only: bool,
+        given_up: &CancellationToken,
+    ) -> Result<Arc<Self>, DriverError> {
         let path = endpoint.path();
         let _opening = tablepro_core::opening_file_blocking();
         loop {
@@ -188,6 +200,9 @@ impl Instance {
                 (None, FileOpenMode::CreateNew) => {
                     if FileId::of(path).is_some_and(|id| attached(&open, id, None)) {
                         return Err(DriverError::Busy(BusyReason::FileLocked));
+                    }
+                    if given_up.is_cancelled() {
+                        return Err(DriverError::Cancelled);
                     }
                     create_or_replace(path)?;
                 }
@@ -215,6 +230,13 @@ impl Instance {
             if attached(&open, id, None) {
                 return Err(DriverError::Busy(BusyReason::FileLocked));
             }
+            // No DuckDB database here has the file, so a descriptor this
+            // process holds on it is SQLite's, whose locks DuckDB would
+            // drop by closing the file on finding no database of its own.
+            if tablepro_core::held_by_this_process(&canonical) {
+                return Err(DriverError::Busy(BusyReason::FileLocked));
+            }
+            let claim = tablepro_core::claim_file(&canonical, ENGINE)?;
             let root = duckdb::Connection::open_with_flags(&canonical, config(read_only)?)
                 .map_err(|error| map_open_error(error, path))?;
             let catalog = root
@@ -227,6 +249,7 @@ impl Instance {
                 path: canonical,
                 read_only,
                 catalog,
+                claims: Mutex::new(claim.into_iter().collect()),
             });
             open.insert(
                 id,
@@ -331,14 +354,36 @@ pub(crate) fn attach_unless_open<T>(
             let spelled = target.to_string_lossy();
             return !held_here.any(|path| *path == spelled);
         }
-        open.contains_key(&id) || attached(&open, id, Some(own))
+        // A file no DuckDB database has that this process holds is
+        // SQLite's.
+        open.contains_key(&id) || attached(&open, id, Some(own)) || tablepro_core::held_by_this_process(target)
     });
     if in_use {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }
-    let result = attach();
+    let result = attach()?;
+    // `ATTACH IF NOT EXISTS` under an alias already taken opens nothing,
+    // so only a file the database now lists is claimed.
+    let listed: Vec<FileId> = open
+        .get(&own)
+        .map(database_paths)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|path| FileId::of(Path::new(path)))
+        .collect();
+    let mut claims = Vec::with_capacity(targets.len());
+    for target in targets {
+        if FileId::of(target).is_some_and(|id| listed.contains(&id)) {
+            claims.extend(tablepro_core::claim_file(target, ENGINE)?);
+        }
+    }
+    link.instance
+        .claims
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .extend(claims);
     drop(open);
-    result
+    Ok(result)
 }
 
 /// Every connection opens the same way. Extensions are never fetched:
@@ -394,7 +439,11 @@ mod tests {
         let missing = directory.path().join("moved.duckdb");
 
         for read_only in [false, true] {
-            let opened = Instance::open(&FileEndpoint::open_existing(missing.clone()).unwrap(), read_only);
+            let opened = Instance::open(
+                &FileEndpoint::open_existing(missing.clone()).unwrap(),
+                read_only,
+                &CancellationToken::new(),
+            );
 
             assert_eq!(opened.unwrap_err(), DriverError::FileNotFound { path: missing.clone() });
             assert!(!missing.exists(), "opening created the file with read_only={read_only}");
@@ -404,14 +453,19 @@ mod tests {
     #[test]
     fn one_file_has_one_instance_in_the_process() {
         let directory = tempfile::tempdir().unwrap();
-        let first = Instance::open(&created(directory.path(), "one.duckdb"), false).unwrap();
+        let first = Instance::open(
+            &created(directory.path(), "one.duckdb"),
+            false,
+            &CancellationToken::new(),
+        )
+        .unwrap();
         let again = FileEndpoint::open_existing(directory.path().join("one.duckdb")).unwrap();
 
-        let second = Instance::open(&again, false).unwrap();
+        let second = Instance::open(&again, false, &CancellationToken::new()).unwrap();
 
         assert!(Arc::ptr_eq(&first, &second));
         assert_eq!(
-            Instance::open(&again, true).unwrap_err(),
+            Instance::open(&again, true, &CancellationToken::new()).unwrap_err(),
             DriverError::Busy(BusyReason::FileLocked),
             "a read-only window joined a writable instance"
         );
@@ -422,7 +476,12 @@ mod tests {
     #[test]
     fn a_connection_keeps_its_instance_open() {
         let directory = tempfile::tempdir().unwrap();
-        let first = Instance::open(&created(directory.path(), "kept.duckdb"), false).unwrap();
+        let first = Instance::open(
+            &created(directory.path(), "kept.duckdb"),
+            false,
+            &CancellationToken::new(),
+        )
+        .unwrap();
         let link = first.link().unwrap();
         let weak = Arc::downgrade(&first);
         drop(first);
@@ -430,6 +489,7 @@ mod tests {
         let again = Instance::open(
             &FileEndpoint::open_existing(directory.path().join("kept.duckdb")).unwrap(),
             false,
+            &CancellationToken::new(),
         )
         .unwrap();
 
@@ -437,19 +497,58 @@ mod tests {
         drop((link, again));
         assert!(weak.upgrade().is_none());
         assert!(
-            Instance::open(&created(directory.path(), "kept.duckdb"), false).is_ok(),
+            Instance::open(
+                &created(directory.path(), "kept.duckdb"),
+                false,
+                &CancellationToken::new()
+            )
+            .is_ok(),
             "the file was still held once every connection was gone"
         );
+    }
+
+    /// A connect given up while its open waited does not go on to
+    /// replace the file.
+    #[test]
+    fn a_given_up_create_leaves_the_file_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("kept.duckdb");
+        std::fs::write(&path, b"what the user had").unwrap();
+        let given_up = CancellationToken::new();
+        given_up.cancel();
+
+        let opened = Instance::open(&FileEndpoint::create_new(path.clone()).unwrap(), false, &given_up);
+
+        assert_eq!(opened.unwrap_err(), DriverError::Cancelled);
+        assert_eq!(std::fs::read(&path).unwrap(), b"what the user had");
+    }
+
+    /// SQLite holding the file in this process would lose its locks when
+    /// DuckDB closed the file again.
+    #[test]
+    fn a_file_another_engine_holds_is_not_opened() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = created(directory.path(), "held.duckdb");
+        drop(Instance::open(&endpoint, false, &CancellationToken::new()).unwrap());
+        let reopen = FileEndpoint::open_existing(directory.path().join("held.duckdb")).unwrap();
+        let held = std::fs::File::open(directory.path().join("held.duckdb")).unwrap();
+
+        let opened = Instance::open(&reopen, false, &CancellationToken::new());
+
+        assert_eq!(opened.unwrap_err(), DriverError::Busy(BusyReason::FileLocked));
+        drop(held);
+        let instance = Instance::open(&reopen, false, &CancellationToken::new()).unwrap();
+        assert!(tablepro_core::claimed_by_another(&instance.path, "sqlite"));
     }
 
     #[test]
     fn a_file_is_not_replaced_while_this_process_has_it_open() {
         let directory = tempfile::tempdir().unwrap();
         let endpoint = created(directory.path(), "busy.duckdb");
-        let _open = Instance::open(&endpoint, false).unwrap();
+        let _open = Instance::open(&endpoint, false, &CancellationToken::new()).unwrap();
 
         assert_eq!(
-            Instance::open(&endpoint, false).unwrap_err(),
+            Instance::open(&endpoint, false, &CancellationToken::new()).unwrap_err(),
             DriverError::Busy(BusyReason::FileLocked)
         );
     }
@@ -458,7 +557,12 @@ mod tests {
     fn the_catalogue_is_named_after_the_file() {
         let directory = tempfile::tempdir().unwrap();
 
-        let instance = Instance::open(&created(directory.path(), "sales.duckdb"), false).unwrap();
+        let instance = Instance::open(
+            &created(directory.path(), "sales.duckdb"),
+            false,
+            &CancellationToken::new(),
+        )
+        .unwrap();
 
         assert_eq!(instance.catalog(), "sales");
         assert!(!instance.read_only);
@@ -470,7 +574,11 @@ mod tests {
         let path = directory.path().join("notes.duckdb");
         std::fs::write(&path, b"plain text, longer than any header DuckDB reads first").unwrap();
 
-        let opened = Instance::open(&FileEndpoint::open_existing(path.clone()).unwrap(), true);
+        let opened = Instance::open(
+            &FileEndpoint::open_existing(path.clone()).unwrap(),
+            true,
+            &CancellationToken::new(),
+        );
 
         assert_eq!(opened.unwrap_err(), DriverError::NotADatabase { path });
     }

@@ -2,7 +2,6 @@
 //! opens. Resolving reads the disk, so it runs on the blocking pool.
 
 use std::io::Read;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use tablepro_core::{BusyReason, DriverError, DriverRegistry};
@@ -109,7 +108,7 @@ pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverEr
             path: path.to_path_buf(),
         });
     }
-    if held_by_this_process(&metadata) {
+    if tablepro_core::held_by_this_process(path) {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }
     let mut header = Vec::with_capacity(len);
@@ -117,16 +116,6 @@ pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverEr
         .and_then(|file| file.take(len as u64).read_to_end(&mut header))
         .map_err(failed)?;
     Ok(header)
-}
-
-/// Whether a descriptor this process has open names the file.
-fn held_by_this_process(file: &std::fs::Metadata) -> bool {
-    let Ok(descriptors) = std::fs::read_dir("/proc/self/fd") else {
-        return false;
-    };
-    descriptors.flatten().any(|descriptor| {
-        std::fs::metadata(descriptor.path()).is_ok_and(|held| held.dev() == file.dev() && held.ino() == file.ino())
-    })
 }
 
 #[cfg(test)]

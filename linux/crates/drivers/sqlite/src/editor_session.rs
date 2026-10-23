@@ -64,12 +64,18 @@ impl SqliteEditorSession {
         lock_timeout: Duration,
         cancel: CancellationToken,
     ) -> Result<Self, DriverError> {
-        let connecting = SqlxConnection::connect_with(options);
+        let connecting = async {
+            let mut connection = SqlxConnection::connect_with(options)
+                .await
+                .map_err(|error| map_open_error(error, path))?;
+            crate::attach_guard::install(&mut connection).await?;
+            Ok::<_, DriverError>(connection)
+        };
         let connection = tokio::select! {
             biased;
             () = cancel.cancelled() => return Err(DriverError::Cancelled),
             opened = tokio::time::timeout(liveness.connect_timeout, connecting) => match opened {
-                Ok(opened) => opened.map_err(|error| map_open_error(error, path))?,
+                Ok(opened) => opened?,
                 Err(_) => {
                     return Err(DriverError::Timeout {
                         phase: TimeoutPhase::Connect,

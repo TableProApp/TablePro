@@ -1,6 +1,7 @@
 //! The SQLite driver: one database file, one workspace connection, and
 //! an editor session per tab on a connection of its own.
 
+mod attach_guard;
 mod autocommit;
 mod capabilities;
 mod catalog;
