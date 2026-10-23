@@ -274,8 +274,8 @@ selects its first stop; Tab moves to the next stop and Shift+Tab back.
 | `ins` | `INSERT INTO … VALUES` |
 | `upd` | `UPDATE … SET … WHERE`, and `ALTER TABLE … UPDATE … WHERE` on ClickHouse |
 | `del` | `DELETE FROM … WHERE` |
-| `selj` | `SELECT … JOIN … ON` |
-| `ctab` | `CREATE TABLE` with an `id` key column, as the engine spells one |
+| `selj` | `SELECT … JOIN … ON`, except on Cassandra and ScyllaDB, which have no joins |
+| `ctab` | `CREATE TABLE` with an `id` key column, as the engine spells one: a `uuid` on Cassandra and ScyllaDB |
 | `cidx` | `CREATE INDEX` |
 
 Your own snippets live in the folder **Preferences → Editor → Snippets
@@ -303,7 +303,8 @@ added, changed or removed takes effect without a restart:
   parameters out of snippets.
 - `languages` says where a snippet shows: `sql` on every SQL connection
   and in a tab with no connection, or one engine: `postgres`, `mysql`
-  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse` or `redis`, whose
+  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse`, `cassandra`
+  (Cassandra and ScyllaDB) or `redis`, whose
   editor offers its own snippets and no SQL ones. Separate several with
   `;`.
 - A snippet for the engine replaces a `sql` one with the same trigger,
