@@ -158,15 +158,16 @@ impl CassandraFixture {
         password: String,
     ) -> Result<Self, FixtureError> {
         let (release, server_version) = flavour.selected()?;
-        let image = release
-            .generic()
-            .with_entrypoint(&format!("{DIR}/start.sh"))
-            .with_exposed_port(Self::CONTAINER_PORT.tcp());
+        let image = release.generic().with_entrypoint(&format!("{DIR}/start.sh"));
         let mut command = Self::command(flavour);
         if let (CassandraFlavour::Scylla, Some(seed)) = (flavour, &seed) {
             command.extend(["--seeds".to_owned(), seed.clone()]);
         }
-        let mut request: ContainerRequest<GenericImage> = image.with_cmd(command);
+        // ScyllaDB's image exposes "9042" with no protocol, so publishing every
+        // exposed port gives Docker 28 two 9042/tcp bindings on one host port.
+        // Host port 0 lets Docker pick one.
+        let mut request: ContainerRequest<GenericImage> =
+            image.with_cmd(command).with_mapped_port(0, Self::CONTAINER_PORT.tcp());
         if flavour == CassandraFlavour::Cassandra {
             // A joining node waits out the ring delay to learn who owns
             // which tokens, so only the first node skips it.
