@@ -1329,6 +1329,27 @@ fn vim_write_saves_the_tabs_file_as_ctrl_s_does() {
 }
 
 #[gtk4::test]
+fn vim_write_with_a_trailing_space_saves_the_tabs_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":write "));
+    wait_until(WAIT, || !harness.editor.has_unsaved_file_changes()).expect("the save to land");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read back"),
+        "SELECT 1;\nSELECT 2;"
+    );
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
 fn vim_write_quit_closes_once_the_file_is_written() {
     let root = tempfile::tempdir().expect("tempdir");
     let path = root.path().join("daily.sql");

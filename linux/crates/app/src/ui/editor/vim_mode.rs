@@ -175,10 +175,12 @@ impl SqlEditor {
             editor.run_tab_command(command);
             true
         });
+        // Command completion leaves a space after the name, so `:w ` and
+        // `:e ` arrive with an empty path.
         let editor = self.downgrade();
         context.connect_write(move |_, _, path| {
             if let Some(editor) = editor.upgrade() {
-                match path {
+                match named(path) {
                     Some(path) => editor.write_named(path, false),
                     None => editor.save(),
                 }
@@ -187,7 +189,7 @@ impl SqlEditor {
         let editor = self.downgrade();
         context.connect_edit(move |_, _, path| {
             if let Some(editor) = editor.upgrade() {
-                match path {
+                match named(path) {
                     Some(path) => editor.edit_named(path, false),
                     None => editor.reload_file(false),
                 }
@@ -285,6 +287,10 @@ impl SqlEditor {
         let editor = self.clone();
         glib::spawn_future_local(async move { editor.insert_file(file, true).await });
     }
+}
+
+fn named(path: Option<&str>) -> Option<&str> {
+    path.map(str::trim).filter(|path| !path.is_empty())
 }
 
 fn leaves_insert(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
@@ -416,6 +422,14 @@ mod tests {
             typed_file("~/q.sql", Some(&gio::File::for_path("/tmp/a.sql"))).path(),
             Some(home.join("q.sql"))
         );
+    }
+
+    #[test]
+    fn an_empty_path_names_no_file() {
+        assert_eq!(named(None), None);
+        assert_eq!(named(Some("")), None);
+        assert_eq!(named(Some("  ")), None);
+        assert_eq!(named(Some(" a.sql ")), Some("a.sql"));
     }
 
     #[test]
