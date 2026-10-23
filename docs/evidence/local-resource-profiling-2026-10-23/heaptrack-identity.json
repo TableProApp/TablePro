@@ -1,0 +1,8 @@
+{
+  "trace_sha256": "da483d71031bb1884c5b20e3e2cd05587ae48e5011e8542b8ae7e9909d2c51f1",
+  "trace_bytes": 8587125,
+  "local_trace": "target/local-profile/heap-files-complete/files-1.zst",
+  "termination": "fixture sends SIGTERM after final responsiveness query; outstanding allocations are not proof of leaks",
+  "input_method": "default",
+  "instrumentation": "LD_PRELOAD libheaptrack_preload.so; interpreted with installed heaptrack_interpret"
+}

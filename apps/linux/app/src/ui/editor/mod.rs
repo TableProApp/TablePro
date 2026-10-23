@@ -653,6 +653,10 @@ impl SimpleComponent for SqlEditor {
 
     fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
         self.diagnostics.stop();
+        if let Ok(buffer) = self.source_view.buffer().downcast::<sourceview5::Buffer>() {
+            buffer.set_highlight_syntax(false);
+            buffer.set_language(None);
+        }
         if let Some(session) = self.session.take() {
             session_mode::close_detached(session.shared);
         }

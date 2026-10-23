@@ -55,6 +55,8 @@
 
 ### Fixed
 
+- Closing a SQL editor releases its syntax analysis engine so background highlighting does not keep growing memory for a closed large script.
+
 - Save-conflict messages keep the recovery advice without a redundant failure prefix or unrelated session warning, and save errors no longer double sentence-ending periods.
 - Restoring older workspaces skips empty table-structure tabs while keeping the active editor aligned and the empty workspace usable.
 

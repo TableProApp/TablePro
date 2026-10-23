@@ -1,0 +1,6 @@
+{
+  "test": "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer",
+  "baseline": "failed: closed editor still highlights its buffer",
+  "candidate": "passed: 1 passed, 0 failed",
+  "command": "CARGO_TARGET_DIR=/home/trung/Projects/bookie/target GDK_BACKEND=x11 GSK_RENDERER=cairo GTK_A11Y=test GIO_USE_VFS=local dbus-run-session -- xvfb-run -a cargo test --locked -p tablepro-app --lib ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer -- --ignored --exact --test-threads=1"
+}

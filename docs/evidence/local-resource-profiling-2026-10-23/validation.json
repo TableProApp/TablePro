@@ -1,0 +1,22 @@
+{
+  "source_base": "32580207537c1d1b8e726e52d8e94b57a27ea706",
+  "preflight": {
+    "status": "passed",
+    "unit_tests": 2073,
+    "sandbox_tests": 2086
+  },
+  "app_clippy_all_targets": "passed",
+  "app_unit": {
+    "passed": 788,
+    "failed": 0,
+    "ignored": 191
+  },
+  "gtk_widgets": {
+    "status": "passed",
+    "scenarios": 153
+  },
+  "doc_links": "passed",
+  "known_issue_index": "passed",
+  "ignored_test_inventory": "passed",
+  "merge_acceptance": "not run; local validation only"
+}

@@ -1,0 +1,24 @@
+{
+  "source": "32580207537c1d1b8e726e52d8e94b57a27ea706",
+  "profile": "release",
+  "binary_sha256": "69c4ef139676e50b44c5223e7b43de284da896cf78710ad285e99c6c9d96fd16",
+  "toolkit_versions": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "shutdown_candidate": {
+    "base": "32580207537c1d1b8e726e52d8e94b57a27ea706",
+    "binary_sha256": "bcb63c95f0225753e1b55f72764c864000e6d7f256a97d2cc96fb152421ad312",
+    "production_change": "disable syntax highlighting during component shutdown",
+    "source_files": [
+      "apps/linux/app/src/ui/editor/mod.rs",
+      "apps/linux/app/src/ui/editor/dispatch_tests.rs"
+    ]
+  },
+  "language_engine_candidate": {
+    "base": "32580207537c1d1b8e726e52d8e94b57a27ea706",
+    "binary_sha256": "51e31e2f5b64db8f941730dade1de58c995d4d3c005f89bca2a95fb010ebc24b",
+    "production_change": "disable syntax highlighting and clear language during component shutdown"
+  }
+}

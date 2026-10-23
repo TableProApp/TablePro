@@ -1,0 +1,26 @@
+[
+  {
+    "bytes": 8388600,
+    "startup_and_load_seconds": 5.13643012297689,
+    "loaded": {
+      "cpu_seconds": 4.66,
+      "memory_kib": {
+        "Rss": 288316,
+        "Pss": 241736,
+        "Private_Clean": 42780,
+        "Private_Dirty": 184772,
+        "Swap": 0
+      }
+    },
+    "closed_after_ten_seconds": {
+      "cpu_seconds": 10.05,
+      "memory_kib": {
+        "Rss": 288920,
+        "Pss": 242144,
+        "Private_Clean": 42684,
+        "Private_Dirty": 185268,
+        "Swap": 0
+      }
+    }
+  }
+]

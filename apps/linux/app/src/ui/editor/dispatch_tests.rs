@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use relm4::adw::prelude::*;
 use relm4::{Component, ComponentController, Controller};
 use relm4::{adw, gtk};
+use sourceview5::prelude::*;
 use tablepro_core::{
     ColumnInfo, ConnectOptions, Connection, DriverError, Environment, ExecResult, OperationControl, QueryResult,
     QueryResultBatch, TableInfo, Value,
@@ -826,6 +827,14 @@ fn dropping_an_editor_releases_its_source_view_and_buffer() {
     let root = fixture.controller.widget().downgrade();
     let view = fixture.controller.model().source_view.downgrade();
     let buffer = fixture.controller.model().source_view.buffer().downgrade();
+    let retired_buffer = fixture
+        .controller
+        .model()
+        .source_view
+        .buffer()
+        .downcast::<sourceview5::Buffer>()
+        .unwrap();
+    assert!(retired_buffer.is_highlight_syntax());
     drop(fixture);
     let deadline = Instant::now() + Duration::from_secs(1);
     let context = gtk::glib::MainContext::default();
@@ -833,6 +842,15 @@ fn dropping_an_editor_releases_its_source_view_and_buffer() {
         context.iteration(false);
         std::thread::sleep(Duration::from_millis(1));
     }
+    assert!(
+        !retired_buffer.is_highlight_syntax(),
+        "closed editor still highlights its buffer"
+    );
+    assert!(
+        retired_buffer.language().is_none(),
+        "closed editor keeps its language engine"
+    );
+    drop(retired_buffer);
     assert!(root.upgrade().is_none(), "editor root remains alive");
     assert!(view.upgrade().is_none(), "editor view remains alive");
     assert!(buffer.upgrade().is_none(), "editor buffer remains alive");
