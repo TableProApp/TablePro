@@ -263,7 +263,6 @@ fn populated_completion_is_presented_after_the_editor_is_rooted() {
     window.present();
     view.grab_focus();
     completion_frame();
-    // GTK 4.18 on X11 pops down a one-row completion list (#1445), so every shown step offers two or more proposals.
     for text in ["do s", "do so", "se", "do s"] {
         view.buffer().set_text(text);
         view.completion().show();
