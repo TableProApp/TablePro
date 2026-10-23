@@ -143,23 +143,38 @@ impl SqlEditor {
         }
     }
 
+    async fn write_to(&self, file: &gio::File) -> Result<(), String> {
+        self.write_with(file, false)
+            .await
+            .map_err(|failure| failure.message(file))
+    }
+
+    /// As Save As to a name no file has yet; one that appears meanwhile
+    /// is left alone and fails with `Exists`.
+    pub(super) async fn write_new(&self, file: &gio::File) -> Result<(), WriteFailure> {
+        self.write_with(file, true).await
+    }
+
     /// Text typed while the write runs is not in the file, so the tab
     /// stays changed.
-    async fn write_to(&self, file: &gio::File) -> Result<(), String> {
+    async fn write_with(&self, file: &gio::File, create: bool) -> Result<(), WriteFailure> {
         let imp = self.imp();
         if imp.saving.replace(true) {
-            return Err(crate::i18n::gettext("This tab is already being saved."));
+            return Err(WriteFailure::Busy);
         }
         let buffer = self.buffer();
         let edits = imp.edits.get();
-        let written = crate::ui::file_write::replace_file(file, buffer_text(&buffer).into_bytes()).await;
+        let contents = buffer_text(&buffer).into_bytes();
+        let written = match create {
+            true => crate::ui::file_write::create_file(file, contents).await,
+            false => crate::ui::file_write::replace_file(file, contents).await,
+        };
         imp.saving.set(false);
         if let Err(error) = written {
-            tracing::warn!(%error, "could not save an editor tab to its file");
-            return Err(crate::i18n::gettext_f(
-                "“{name}” could not be saved: {error}",
-                &[("name", &file_name(file)), ("error", error.message())],
-            ));
+            if !error.matches(gio::IOErrorEnum::Exists) {
+                tracing::warn!(%error, "could not save an editor tab to its file");
+            }
+            return Err(WriteFailure::Io(error));
         }
         imp.file.replace(Some(file.clone()));
         if imp.edits.get() == edits {
@@ -169,12 +184,29 @@ impl SqlEditor {
         Ok(())
     }
 
-    fn alert_save_failed(&self, message: &str) {
+    pub(super) fn alert_save_failed(&self, message: &str) {
         let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Could Not Save File")), Some(message));
         dialog.add_response("close", &crate::i18n::gettext("_Close"));
         dialog.set_default_response(Some("close"));
         dialog.set_close_response("close");
         dialog.present(Some(self));
+    }
+}
+
+pub(super) enum WriteFailure {
+    Busy,
+    Io(glib::Error),
+}
+
+impl WriteFailure {
+    pub(super) fn message(&self, file: &gio::File) -> String {
+        match self {
+            Self::Busy => crate::i18n::gettext("This tab is already being saved."),
+            Self::Io(error) => crate::i18n::gettext_f(
+                "“{name}” could not be saved: {error}",
+                &[("name", &file_name(file)), ("error", error.message())],
+            ),
+        }
     }
 }
 

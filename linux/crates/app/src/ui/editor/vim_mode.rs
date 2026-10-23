@@ -10,6 +10,7 @@ use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
 
 use super::SqlEditor;
+use super::editor_file::WriteFailure;
 use crate::ui::handler_guard::HandlerGuard;
 
 pub(crate) struct VimMode {
@@ -247,11 +248,9 @@ impl SqlEditor {
                 editor.write_reporting(&file).await;
                 return;
             }
-            // Claimed in one step, so a second tab's write to the same
-            // new name cannot land between the check and the write.
-            let claimed = match claim_new_file(&file).await {
-                Ok(()) => true,
-                Err(error) if error.matches(gio::IOErrorEnum::Exists) => {
+            match editor.write_new(&file).await {
+                Ok(()) => {}
+                Err(WriteFailure::Io(error)) if error.matches(gio::IOErrorEnum::Exists) => {
                     editor.emit_by_name::<()>(
                         "toast",
                         &[&crate::i18n::gettext_f(
@@ -259,16 +258,8 @@ impl SqlEditor {
                             &[("name", &super::file_name(&file))],
                         )],
                     );
-                    return;
                 }
-                // The write meets the same error and says it.
-                Err(_) => false,
-            };
-            if !editor.write_reporting(&file).await
-                && claimed
-                && let Err(error) = file.delete_future(glib::Priority::DEFAULT).await
-            {
-                tracing::warn!(%error, "could not remove the empty file a failed :w left");
+                Err(failure) => editor.alert_save_failed(&failure.message(&file)),
             }
         });
     }
@@ -340,15 +331,6 @@ fn typed_file(typed: &str, tab_file: Option<&gio::File>) -> gio::File {
         .and_then(|file| file.parent())
         .unwrap_or_else(|| gio::File::for_path(home))
         .resolve_relative_path(path)
-}
-
-/// An empty file, created only when no file has the name yet. PRIVATE
-/// as `file_write::replace_file` makes a new file, which keeps the mode.
-async fn claim_new_file(file: &gio::File) -> Result<(), glib::Error> {
-    let stream = file
-        .create_future(gio::FileCreateFlags::PRIVATE, glib::Priority::DEFAULT)
-        .await?;
-    stream.close_future(glib::Priority::DEFAULT).await
 }
 
 #[cfg(test)]

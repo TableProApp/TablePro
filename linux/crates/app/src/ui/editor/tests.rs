@@ -1448,7 +1448,7 @@ fn vim_write_to_a_name_leaves_another_file_alone() {
 }
 
 #[gtk4::test]
-fn vim_write_to_a_new_name_that_fails_leaves_no_file_behind() {
+fn vim_write_to_a_new_name_during_a_save_writes_nothing() {
     let root = tempfile::tempdir().expect("tempdir");
     let path = root.path().join("daily.sql");
     std::fs::write(&path, "SELECT 1;").expect("seed");
@@ -1459,10 +1459,9 @@ fn vim_write_to_a_new_name_that_fails_leaves_no_file_behind() {
     harness.editor.imp().saving.set(true);
 
     assert!(vim_command(&context, ":w weekly.sql"));
-    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the failed write to say so");
-    let claimed = root.path().join("weekly.sql");
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the refusal to say so");
 
-    wait_until(WAIT, || !claimed.exists()).expect("the claimed name removed again");
+    assert!(!root.path().join("weekly.sql").exists(), "a file was made");
     assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
 }
 
@@ -2174,11 +2173,7 @@ mod real_keys {
         let buffer = harness.editor.buffer();
         buffer.place_cursor(&buffer.end_iter());
 
-        harness
-            .settings
-            .get()
-            .set_vim_keybindings(false)
-            .expect("turn Vim off");
+        harness.settings.get().set_vim_keybindings(false).expect("turn Vim off");
         view.completion().show();
 
         wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the list without Vim");
