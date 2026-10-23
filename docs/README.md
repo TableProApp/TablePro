@@ -202,3 +202,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [X11 popup targeting, October 23](evidence/x11-popup-target-2026-10-23/README.md): pointer and resize boundary regressions and a disposable Xvfb window experiment for GTK harness reliability.
 - [Original PostgreSQL streaming workload, October 23](evidence/postgres-original-stream-2026-10-23/README.md): current-release qualification of the reported two-million-row, ten-column dataset, retained-page navigation and server-confirmed cancellation.
 - [Combined resource validation, October 23](evidence/performance-integration-2026-10-23/README.md): editor shutdown and streamed-result fixes tested together with a byte-bounded UTF-8 script and million-row workloads.
+
+- [Floor image APT network bounds, October 23](evidence/floor-apt-network-bounds-2026-10-23/README.md): download retry and HTTP/HTTPS timeout configuration with image-contract coverage.

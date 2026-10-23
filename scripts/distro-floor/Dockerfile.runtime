@@ -1,6 +1,7 @@
 ARG BASE
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
+RUN printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/80-network-bounds
 RUN apt-get update && apt-get install -y --no-install-recommends \
     at-spi2-core ca-certificates curl dbus dbus-user-session dbus-x11 fuse3 \
     gir1.2-gtk-4.0 gnome-keyring libglib2.0-bin libsecret-tools openssh-client \

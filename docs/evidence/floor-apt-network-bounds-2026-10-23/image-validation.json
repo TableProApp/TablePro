@@ -1,0 +1,12 @@
+{
+  "base": "debian:testing",
+  "image_id": "sha256:de74c4903c1d008b0cd20f436c49d07fc84d9177c453c446883f20863fa6d89b",
+  "runtime_image_build": "passed",
+  "apt_config_dump": [
+    "Acquire::Retries \"3\";",
+    "Acquire::http::Timeout \"30\";",
+    "Acquire::https::Timeout \"30\";"
+  ],
+  "configuration_readback": "passed",
+  "outage_reproduction": "not performed"
+}

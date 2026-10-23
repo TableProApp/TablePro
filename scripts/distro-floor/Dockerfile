@@ -1,6 +1,7 @@
 ARG BASE
 FROM ${BASE}
 ENV DEBIAN_FRONTEND=noninteractive
+RUN printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' > /etc/apt/apt.conf.d/80-network-bounds
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential ca-certificates curl pkg-config clang gettext git \
     libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libglib2.0-dev-bin \

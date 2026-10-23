@@ -1,0 +1,11 @@
+{
+  "preflight": "passed",
+  "test_summaries": [
+    "Summary [  17.688s] 2073 tests run: 2073 passed, 16 skipped",
+    "Summary [  15.487s] 2086 tests run: 2086 passed, 65 skipped",
+    "Summary [   0.208s] 1 test run: 1 passed, 0 skipped"
+  ],
+  "debian_package_validation": "skipped: dpkg-deb unavailable",
+  "image_build": "passed",
+  "forgejo": "pending"
+}
