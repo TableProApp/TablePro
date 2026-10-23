@@ -276,6 +276,7 @@ fn tabs_name_the_schema_once_the_session_has_two() {
             model.open_tab(TabSpec::Table {
                 table: TableRef::new(Some("public".to_owned()), "orders"),
                 page: super::super::tab_spec::TablePage::first(100),
+                filter: crate::ui::browse_tab::TableFilter::Remembered,
             })
         })
         .flatten()

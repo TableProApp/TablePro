@@ -6,7 +6,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::TableDefinition;
+use crate::ddl::{InboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
@@ -66,6 +66,15 @@ pub trait Connection: Send + Sync {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError>;
+
+    /// The foreign keys of other tables that point at this one, as
+    /// `fetch_table_definition` lists them, without the rest of the
+    /// definition.
+    async fn fetch_inbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<InboundForeignKey>, DriverError>;
 
     /// The table as structure changes plan against it, read in one call
     /// so its columns, keys and dependents come from the same moment.

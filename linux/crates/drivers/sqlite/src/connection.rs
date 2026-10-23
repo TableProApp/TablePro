@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use futures::future::BoxFuture;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection as SqlxConnection, SqlitePool, SqlitePoolOptions};
 use sqlx::{Connection as _, Executor as _};
-use tablepro_core::ddl::TableDefinition;
+use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -311,6 +311,18 @@ impl Connection for SqliteConnection {
         let table = table.clone();
         self.read(options, move |connection| {
             Box::pin(async move { metadata::fetch_foreign_keys(connection, &table).await })
+        })
+        .await
+    }
+
+    async fn fetch_inbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<InboundForeignKey>, DriverError> {
+        let table = table.clone();
+        self.read(options, move |connection| {
+            Box::pin(async move { metadata::fetch_inbound_foreign_keys(connection, &table).await })
         })
         .await
     }

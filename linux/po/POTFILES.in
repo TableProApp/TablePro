@@ -147,6 +147,8 @@ crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/layout.rs
 crates/app/src/ui/browse_tab/mod.rs
+crates/app/src/ui/browse_tab/mod.rs
+crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_label.rs
 crates/app/src/ui/browse_tab/page_reply.rs
 crates/app/src/ui/browse_tab/page_state.rs
@@ -162,8 +164,10 @@ crates/app/src/ui/browse_tab/save_input.rs
 crates/app/src/ui/browse_tab/selection_handlers.rs
 crates/app/src/ui/browse_tab/selection_input.rs
 crates/app/src/ui/browse_tab/selection_snapshot.rs
+crates/app/src/ui/browse_tab/table_filter.rs
 crates/app/src/ui/browse_tab/tests/load.rs
 crates/app/src/ui/browse_tab/tests/mod.rs
+crates/app/src/ui/browse_tab/tests/references.rs
 crates/app/src/ui/browse_tab/tests/total.rs
 crates/app/src/ui/clipboard/clipboard_copy.rs
 crates/app/src/ui/clipboard/clipboard_format.rs
@@ -236,6 +240,7 @@ crates/app/src/ui/error_text/edit.rs
 crates/app/src/ui/error_text/files.rs
 crates/app/src/ui/error_text/mod.rs
 crates/app/src/ui/error_text/operation.rs
+crates/app/src/ui/error_text/reference.rs
 crates/app/src/ui/error_text/saved_connection.rs
 crates/app/src/ui/error_text/script.rs
 crates/app/src/ui/error_text/secret.rs
@@ -316,6 +321,7 @@ crates/app/src/ui/grid/inline_editor.rs
 crates/app/src/ui/grid/menu_rows.rs
 crates/app/src/ui/grid/mod.rs
 crates/app/src/ui/grid/multiline_editor.rs
+crates/app/src/ui/grid/reference_menu.rs
 crates/app/src/ui/grid/result_grid.rs
 crates/app/src/ui/grid/result_sorters.rs
 crates/app/src/ui/grid/row_factory.rs
@@ -328,6 +334,11 @@ crates/app/src/ui/grid/row_state_icon.rs
 crates/app/src/ui/grid/row_watches.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
+crates/app/src/ui/grid/tab_grid_context.rs
+crates/app/src/ui/grid/tab_grid_context.rs
+crates/app/src/ui/grid/table_keys.rs
+crates/app/src/ui/grid/test_grid.rs
+crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/toggle_cell.rs
 crates/app/src/ui/grid/value_order.rs
@@ -352,6 +363,9 @@ crates/app/src/ui/import_dialog.rs
 crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
 crates/app/src/ui/key_tab/tests.rs
+crates/app/src/ui/menu_label.rs
+crates/app/src/ui/mod.rs
+crates/app/src/ui/mod.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
 crates/app/src/ui/picker/connection_menu.rs
@@ -461,6 +475,7 @@ crates/app/src/ui/workspace/imp.rs
 crates/app/src/ui/workspace/import.rs
 crates/app/src/ui/workspace/import_ledger.rs
 crates/app/src/ui/workspace/mod.rs
+crates/app/src/ui/workspace/references.rs
 crates/app/src/ui/workspace/row_ops.rs
 crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
@@ -495,6 +510,7 @@ crates/app/src/ui/workspace/tests/close_tab.rs
 crates/app/src/ui/workspace/tests/keys.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
+crates/app/src/ui/workspace/tests/references.rs
 crates/app/src/ui/workspace/tests/tab_title.rs
 crates/app/src/ui/workspace/transaction_banner.rs
 crates/app/src/ui/workspace/unsaved_icon.rs

@@ -46,6 +46,7 @@ pub fn edit_parse_message(error: &EditParseError) -> String {
         EditParseError::OffsetRequired => gettext("Add a time zone offset, such as +02:00"),
         EditParseError::InvalidInterval => gettext("Enter an interval, such as 1 day 02:00:00"),
         EditParseError::InvalidBits => gettext("Enter bits as 0 and 1"),
+        EditParseError::InvalidBytes => gettext("Enter bytes as 0x and hex digits, such as 0x1f2e"),
         EditParseError::BitLengthMismatch { expected } => ngettext_f(
             "Enter exactly {n} bit",
             "Enter exactly {n} bits",
@@ -118,6 +119,7 @@ mod tests {
             EditParseError::OffsetRequired,
             EditParseError::InvalidInterval,
             EditParseError::InvalidBits,
+            EditParseError::InvalidBytes,
             EditParseError::BitLengthMismatch { expected: 8 },
             EditParseError::UnknownEnumLabel,
             EditParseError::NotEditable(ReadOnlyReason::Bytes),

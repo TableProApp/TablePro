@@ -77,15 +77,6 @@ fn shape_for(op: FilterOp) -> ValueShape {
     }
 }
 
-/// A column the user can filter on at all.
-///
-/// A blob is left out of the dropdown: nothing they could type would
-/// compare against one, so offering it would only lead to a filter
-/// that never matches.
-pub(super) fn is_filterable(column: &ColumnInfo) -> bool {
-    !matches!(column.column_type.kind, tablepro_core::column::ColumnKind::Bytes { .. })
-}
-
 /// A column the strip can fall back on when the schema has not
 /// loaded, so a saved rule still renders with its own name.
 pub(super) fn placeholder_column(name: &str) -> ColumnInfo {
@@ -117,17 +108,6 @@ mod tests {
             Some(FilterValue::Pair(String::new(), String::new()))
         );
         assert_eq!(ValueShape::List.empty_value(), Some(FilterValue::List(Vec::new())));
-    }
-
-    #[test]
-    fn a_blob_is_not_filterable() {
-        let mut blob = placeholder_column("payload");
-        blob.column_type.kind = tablepro_core::column::ColumnKind::Bytes {
-            length: tablepro_core::column::TextLength::Unbounded,
-        };
-
-        assert!(!is_filterable(&blob));
-        assert!(is_filterable(&placeholder_column("name")));
     }
 
     #[test]

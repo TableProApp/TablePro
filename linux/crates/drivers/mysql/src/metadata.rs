@@ -260,6 +260,24 @@ pub(crate) async fn fetch_foreign_keys(
     Ok(keys)
 }
 
+/// The keys of every database the account can see that point at the
+/// table, since a key can cross databases.
+pub(crate) async fn fetch_inbound_foreign_keys(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    table: &TableRef,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    let rows = catalog_rows(
+        connection,
+        flavour,
+        INBOUND_FOREIGN_KEYS_SQL,
+        "KEY_COLUMN_USAGE",
+        &table_binds(table),
+    )
+    .await?;
+    inbound_foreign_keys(&rows)
+}
+
 fn referential_action(rule: &str) -> Option<ReferentialAction> {
     ReferentialAction::ALL
         .into_iter()
@@ -394,15 +412,7 @@ pub(crate) async fn fetch_table_definition(
             columns: index.key_columns(),
         });
     let foreign_keys = fetch_foreign_keys(connection, flavour, table).await?;
-    let inbound = catalog_rows(
-        connection,
-        flavour,
-        INBOUND_FOREIGN_KEYS_SQL,
-        "KEY_COLUMN_USAGE",
-        &table_binds(table),
-    )
-    .await?;
-    let inbound_foreign_keys: Vec<InboundForeignKey> = inbound_foreign_keys(&inbound)?;
+    let inbound_foreign_keys = fetch_inbound_foreign_keys(connection, flavour, table).await?;
     Ok(TableDefinition {
         table: table.clone(),
         columns,

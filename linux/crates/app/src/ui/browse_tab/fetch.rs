@@ -11,6 +11,7 @@ use super::columns_fetch::{ColumnFreshness, load_columns};
 use super::{BrowseCommand, BrowseModel, BrowseRequestKind, ColumnsReply, DataInput, Effects, PageReply};
 use crate::runtime::{RequestTicket, Stamped};
 use crate::ui::export::TableExport;
+use crate::ui::grid::TableKeys;
 use crate::ui::tab_load::LoadFailure;
 
 /// What a page or a count reads, copied off the tab so the work owns
@@ -43,7 +44,34 @@ impl BrowseModel {
             BrowseRequestKind::Page => self.fetch_page(fx),
             BrowseRequestKind::Estimate => self.fetch_estimate(),
             BrowseRequestKind::Count => self.start_count(self.total.estimate(), fx),
+            BrowseRequestKind::Keys => self.fetch_keys(),
         }
+    }
+
+    /// Read the table's keys both ways in one operation, so a reconnect
+    /// between them cannot pair keys of two connections.
+    fn fetch_keys(&mut self) {
+        let ticket = self.issue(BrowseRequestKind::Keys);
+        let session = self.session.clone();
+        let table = self.table_ref();
+        let cancel = ticket.cancel.clone();
+        let work = async move {
+            session
+                .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
+                    let table = table.clone();
+                    async move {
+                        let outbound = lease.fetch_foreign_keys(&table, options.clone()).await?;
+                        let inbound = lease.fetch_inbound_foreign_keys(&table, options).await?;
+                        Ok(TableKeys {
+                            table,
+                            outbound,
+                            inbound,
+                        })
+                    }
+                })
+                .await
+        };
+        self.deliver(ticket, work, BrowseCommand::Keys, OperationError::from);
     }
 
     /// Read the columns, then the page built from them and the table's

@@ -436,6 +436,7 @@ pub(super) mod tests {
                 model.open_tab(super::super::tab_spec::TabSpec::Table {
                     table: tablepro_core::meta::TableRef::new(Some("public".to_owned()), "customers"),
                     page: super::super::tab_spec::TablePage::first(1_000),
+                    filter: crate::ui::browse_tab::TableFilter::Remembered,
                 })
             })
             .flatten()

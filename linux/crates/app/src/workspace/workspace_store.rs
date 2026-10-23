@@ -463,6 +463,7 @@ mod tests {
                     table: format!("t{index}"),
                     offset: 0,
                     page_size: 1_000,
+                    filter: None,
                     sort: None,
                 })
                 .collect(),

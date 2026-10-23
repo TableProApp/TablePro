@@ -12,6 +12,7 @@ use super::cell_preset::cell_presets;
 use super::column_resize::{ColumnResize, resize_column};
 use super::context_menu::{CellContext, MenuTarget};
 use super::grid_columns::ShownColumn;
+use super::reference_menu::{OPEN_CHOICE, OPEN_ONE, REFERENCING, ReferenceMenu, chosen, follow};
 use super::row_json_dialog::RowJsonRequest;
 use super::selection::export_snapshot;
 use super::{
@@ -83,6 +84,10 @@ pub(super) struct GridMenus {
     pub(super) editable_popover: gtk::PopoverMenu,
     pub(super) readonly_popover: gtk::PopoverMenu,
     pub(super) actions: CellActions,
+    pub(super) references: ReferenceMenu,
+    /// The keys a column is in, when it is in more than one, for the
+    /// keyboard to choose from.
+    pub(super) reference_chooser: gtk::PopoverMenu,
 }
 
 #[derive(Clone, Copy)]
@@ -110,7 +115,7 @@ impl MenuShape {
     };
 }
 
-fn build_cell_menu(shape: MenuShape) -> gio::Menu {
+fn build_cell_menu(shape: MenuShape, references: &gio::Menu) -> gio::Menu {
     let menu = gio::Menu::new();
     let edit_section = gio::Menu::new();
     let hidden_while_disabled = |label: String, action: &str| {
@@ -171,6 +176,7 @@ fn build_cell_menu(shape: MenuShape) -> gio::Menu {
         Some("cell.show-row-json"),
     );
     menu.append_section(None, &json_section);
+    menu.append_section(None, references);
 
     // A header's click and drag, which no key reaches.
     let column_section = gio::Menu::new();
@@ -223,12 +229,14 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         tab_ctx,
     } = init;
     let editable = tab_ctx.editable;
+    let tab = Rc::new(tab_ctx);
     let kit = CellActionKit {
         context: Rc::new(CellContext::default()),
         view: column_view.downgrade(),
         sink,
+        references: ReferenceMenu::new(tab.clone(), columns.clone()),
         columns,
-        tab: Rc::new(tab_ctx),
+        tab,
     };
 
     let group = gio::SimpleActionGroup::new();
@@ -251,8 +259,9 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         clear_sort: simple_action(&group, "clear-sort"),
     };
 
-    let (editable_popover, readonly_popover) = cell_popovers(column_view, editable);
-    let mut popovers_for_destroy = vec![editable_popover.clone()];
+    let (editable_popover, readonly_popover) = cell_popovers(column_view, editable, kit.references.section());
+    let reference_chooser = eager_popover(column_view, kit.references.choices());
+    let mut popovers_for_destroy = vec![editable_popover.clone(), reference_chooser.clone()];
     if readonly_popover != editable_popover {
         popovers_for_destroy.push(readonly_popover.clone());
     }
@@ -270,6 +279,8 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         editable_popover,
         readonly_popover,
         actions,
+        references: kit.references,
+        reference_chooser,
     }
 }
 
@@ -285,6 +296,7 @@ struct CellActionKit {
     sink: GridSink,
     columns: Arc<[ResultColumn]>,
     tab: Rc<TabGridContext>,
+    references: ReferenceMenu,
 }
 
 impl CellActionKit {
@@ -319,6 +331,23 @@ impl CellActionKit {
         })
     }
 
+    /// An action on the row the menu opened on that names one of the
+    /// items it offered.
+    fn on_choice(&self, name: &str, act: impl Fn(RowObject, usize) + 'static) -> CellEntry {
+        let ctx = self.context.clone();
+        let view = self.view.clone();
+        gio::ActionEntry::builder(name)
+            .parameter_type(Some(&u32::static_variant_type()))
+            .activate(move |_, _, parameter| {
+                let Some(cv) = view.upgrade() else { return };
+                let (Some(MenuTarget { row, .. }), Some(index)) = (ctx.target(&cv), chosen(parameter)) else {
+                    return;
+                };
+                act(row, index);
+            })
+            .build()
+    }
+
     fn send(&self, name: &str, msg: impl Fn(&GridCell, RowObject, Vec<RowObject>) -> GridMsg + 'static) -> CellEntry {
         let s = self.sink.clone();
         self.on_target(name, move |cell, row, rows| s(msg(cell, row, rows)))
@@ -328,8 +357,39 @@ impl CellActionKit {
     fn reading_entries(&self) -> Vec<CellEntry> {
         let mut entries = self.copy_entries();
         entries.extend([self.copy_column_name(), self.show_row_json(), self.export()]);
+        entries.extend(self.reference_entries());
         entries.extend(self.column_entries());
         entries
+    }
+
+    /// Follow a foreign key from the row, either way. Reading another
+    /// table changes nothing, so a read-only grid offers them too.
+    fn reference_entries(&self) -> Vec<CellEntry> {
+        let open_one = {
+            let (menu, sink) = (self.references.clone(), self.sink.clone());
+            self.on_target(OPEN_ONE, move |_cell, row, _rows| {
+                if let Some(reference) = menu.only_choice().and_then(|index| menu.referenced(index, &row)) {
+                    follow(&sink, reference);
+                }
+            })
+        };
+        let open_choice = {
+            let (menu, sink) = (self.references.clone(), self.sink.clone());
+            self.on_choice(OPEN_CHOICE, move |row, index| {
+                if let Some(reference) = menu.referenced(index, &row) {
+                    follow(&sink, reference);
+                }
+            })
+        };
+        let referencing = {
+            let (menu, sink) = (self.references.clone(), self.sink.clone());
+            self.on_choice(REFERENCING, move |row, index| {
+                if let Some(reference) = menu.referencing(index, &row) {
+                    follow(&sink, reference);
+                }
+            })
+        };
+        vec![open_one, open_choice, referencing]
     }
 
     /// Sort by the cell's column, as a header click does, or change the
@@ -502,23 +562,28 @@ impl CellActionKit {
 /// The menus a right click on a cell opens: one for a row that can be
 /// edited and one for a row that can't. A read-only grid has a single
 /// shape and both name it.
-fn cell_popovers(column_view: &gtk::ColumnView, editable: bool) -> (gtk::PopoverMenu, gtk::PopoverMenu) {
-    // Popovers are parented eagerly so each PopoverMenu's action muxer
-    // snapshots the ColumnView's `cell` group at set_parent() time.
-    // Lazy parenting in the gesture handler drops every activation
-    // silently.
-    let make_popover = |shape: MenuShape| {
-        let popover = gtk::PopoverMenu::from_model_full(&build_cell_menu(shape), gtk::PopoverMenuFlags::NESTED);
-        popover.set_has_arrow(true);
-        popover.set_parent(column_view);
-        popover
-    };
+fn cell_popovers(
+    column_view: &gtk::ColumnView,
+    editable: bool,
+    references: &gio::Menu,
+) -> (gtk::PopoverMenu, gtk::PopoverMenu) {
+    let make_popover = |shape: MenuShape| eager_popover(column_view, &build_cell_menu(shape, references));
     if editable {
         (make_popover(MenuShape::FULL), make_popover(MenuShape::ROW_OPS))
     } else {
         let readonly = make_popover(MenuShape::READ_ONLY);
         (readonly.clone(), readonly)
     }
+}
+
+/// Popovers are parented eagerly so each PopoverMenu's action muxer
+/// snapshots the ColumnView's `cell` group at set_parent() time. Lazy
+/// parenting in the gesture handler drops every activation silently.
+fn eager_popover(column_view: &gtk::ColumnView, model: &gio::Menu) -> gtk::PopoverMenu {
+    let popover = gtk::PopoverMenu::from_model_full(model, gtk::PopoverMenuFlags::NESTED);
+    popover.set_has_arrow(true);
+    popover.set_parent(column_view);
+    popover
 }
 
 /// Insert Row on a right click below the last row.
@@ -596,7 +661,7 @@ mod tests {
 
     #[gtk4::test]
     fn the_cell_menu_shows_the_cell_keys() {
-        let menu = build_cell_menu(MenuShape::FULL).upcast::<gio::MenuModel>();
+        let menu = build_cell_menu(MenuShape::FULL, &gio::Menu::new()).upcast::<gio::MenuModel>();
 
         assert_eq!(
             accel_of(&menu, "cell.set-null"),

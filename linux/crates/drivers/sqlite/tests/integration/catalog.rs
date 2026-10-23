@@ -132,6 +132,149 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
     connection.close().await.unwrap();
 }
 
+/// The pragma repeats a REFERENCES clause as written; every other read,
+/// and a filter on the parent's columns, names them as declared.
+#[tokio::test]
+async fn foreign_keys_name_the_parent_and_its_columns_as_declared() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (Id INTEGER, Region TEXT, PRIMARY KEY (Id, Region))",
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER, region TEXT, \
+             FOREIGN KEY (CUSTOMER_ID, region) REFERENCES Customers (ID, REGION))",
+            "CREATE TABLE invoices (id INTEGER PRIMARY KEY, customer_id INTEGER, region TEXT, \
+             FOREIGN KEY (customer_id, region) REFERENCES CUSTOMERS)",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let outbound = connection
+        .fetch_foreign_keys(&TableRef::unqualified("orders"), call())
+        .await
+        .unwrap();
+    let implicit = connection
+        .fetch_foreign_keys(&TableRef::unqualified("invoices"), call())
+        .await
+        .unwrap();
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&TableRef::unqualified("customers"), call())
+        .await
+        .unwrap();
+
+    let declared = vec!["Id".to_owned(), "Region".to_owned()];
+    assert_eq!(outbound[0].ref_table, "customers");
+    assert_eq!(outbound[0].ref_columns, declared);
+    assert_eq!(outbound[0].columns, ["customer_id", "region"]);
+    assert_eq!(implicit[0].ref_table, "customers");
+    assert_eq!(implicit[0].ref_columns, declared);
+    let pointing: Vec<(&str, &[String])> = inbound
+        .iter()
+        .map(|key| (key.table.name.as_str(), key.referenced_columns.as_slice()))
+        .collect();
+    assert_eq!(pointing, [("invoices", &declared[..]), ("orders", &declared[..])]);
+    connection.close().await.unwrap();
+}
+
+/// SQLite accepts a key to a table that is not there, and keeps one
+/// whose table was dropped while foreign keys were off.
+#[tokio::test]
+async fn a_key_to_a_missing_table_leaves_the_tables_other_keys_readable() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE owners (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, owner INTEGER REFERENCES owners, \
+             ghost_id INTEGER REFERENCES ghost, spook_id INTEGER REFERENCES Spook (Id))",
+        ],
+    )
+    .await
+    .unwrap();
+    let notes = TableRef::unqualified("notes");
+
+    let keys = connection.fetch_foreign_keys(&notes, call()).await.unwrap();
+    let definition = connection.fetch_table_definition(&notes, call()).await.unwrap();
+
+    let mut read: Vec<(&str, &[String])> = keys
+        .iter()
+        .map(|key| (key.ref_table.as_str(), key.ref_columns.as_slice()))
+        .collect();
+    read.sort_unstable();
+    assert_eq!(
+        read,
+        [
+            ("Spook", &["Id".to_owned()][..]),
+            ("ghost", &[][..]),
+            ("owners", &["id".to_owned()][..]),
+        ]
+    );
+    assert_eq!(definition.foreign_keys, keys);
+    connection.close().await.unwrap();
+}
+
+/// SQLite matches a key under the parent column's affinity and
+/// collation, which `=` on a child column declared otherwise does not.
+#[tokio::test]
+async fn an_inbound_key_says_whether_its_columns_compare_as_it_does() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE users (email TEXT PRIMARY KEY COLLATE NOCASE, id INTEGER UNIQUE)",
+            "CREATE TABLE posts (id INTEGER PRIMARY KEY, author TEXT REFERENCES users (email))",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, author TEXT COLLATE \"NoCase\" REFERENCES users (email))",
+            "CREATE TABLE logs (id INTEGER PRIMARY KEY, user_id TEXT REFERENCES users (id))",
+            "CREATE TABLE visits (id INTEGER PRIMARY KEY, user_id INT REFERENCES users (id))",
+        ],
+    )
+    .await
+    .unwrap();
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&TableRef::unqualified("users"), call())
+        .await
+        .unwrap();
+
+    let alike: Vec<(&str, bool)> = inbound
+        .iter()
+        .map(|key| (key.table.name.as_str(), key.child_compares_alike))
+        .collect();
+    assert_eq!(
+        alike,
+        [("logs", false), ("notes", true), ("posts", false), ("visits", true)]
+    );
+    connection.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn inbound_keys_read_alone_are_the_definitions() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, code TEXT UNIQUE)",
+            "CREATE TABLE lines (id INTEGER PRIMARY KEY, order_id INTEGER REFERENCES orders)",
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, order_code TEXT REFERENCES \"ORDERS\" (CODE))",
+        ],
+    )
+    .await
+    .unwrap();
+    let orders = TableRef::unqualified("orders");
+
+    let inbound = connection.fetch_inbound_foreign_keys(&orders, call()).await.unwrap();
+    let definition = connection.fetch_table_definition(&orders, call()).await.unwrap();
+
+    assert_eq!(inbound, definition.inbound_foreign_keys);
+    assert_eq!(inbound[1].referenced_columns, ["code"]);
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn dependents_and_source_are_read() {
     let file = TestFile::new().await;

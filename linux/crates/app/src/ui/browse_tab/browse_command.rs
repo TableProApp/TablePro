@@ -6,6 +6,7 @@ use tablepro_session::OperationError;
 
 use super::page_reply::PageReply;
 use crate::runtime::Stamped;
+use crate::ui::grid::TableKeys;
 use crate::ui::tab_load::LoadFailure;
 
 /// The table's columns from the session's catalog, and how its rows are
@@ -24,4 +25,5 @@ pub(crate) enum BrowseCommand {
     Page(Stamped<Result<PageReply, OperationError>>),
     Estimate(Stamped<Result<TableEstimate, OperationError>>),
     Count(Stamped<Result<u64, OperationError>>),
+    Keys(Stamped<Result<TableKeys, OperationError>>),
 }

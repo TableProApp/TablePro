@@ -9,6 +9,7 @@ mod health_banner;
 mod imp;
 mod import;
 mod import_ledger;
+mod references;
 mod row_ops;
 mod saves;
 mod session_watches;
@@ -264,6 +265,7 @@ pub enum ClosedTabDescriptor {
         offset: u64,
         page_size: u64,
         sort: Option<(usize, bool)>,
+        filter: tablepro_core::FilterSet,
     },
     Structure {
         schema: Option<String>,
@@ -566,6 +568,18 @@ pub(crate) enum WorkspaceInput {
     },
     /// The table is gone, so its tabs close without asking.
     DropTableSucceeded(tablepro_core::TableRef),
+    /// A table tab's grid asked to open the rows a foreign key leads to.
+    FollowReference {
+        tab: uuid::Uuid,
+        reference: Box<tablepro_core::browse::RowReference>,
+    },
+    /// Whether the table a key names is in its schema, read before a
+    /// tab opens on it. `None` when the list could not be read.
+    ReferenceChecked {
+        tab: uuid::Uuid,
+        reference: Box<tablepro_core::browse::RowReference>,
+        found: Option<bool>,
+    },
     SchemaChanged {
         schema: Option<String>,
         table: Option<String>,
@@ -1061,6 +1075,10 @@ impl WorkspaceModel {
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
             WorkspaceInput::DropTableSucceeded(table) => self.on_drop_table_succeeded(table),
+            WorkspaceInput::FollowReference { tab, reference } => self.on_follow_reference(tab, *reference),
+            WorkspaceInput::ReferenceChecked { tab, reference, found } => {
+                self.on_reference_checked(tab, *reference, found);
+            }
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             WorkspaceInput::NewEditorTab => self.open_editor_tab(None),
             WorkspaceInput::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),

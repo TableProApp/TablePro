@@ -12,7 +12,7 @@ use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
-use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput};
+use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput, TableFilter};
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
     EditorFileRecord, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
@@ -108,6 +108,7 @@ impl WorkspaceModel {
                 offset,
                 page_size,
                 sort,
+                filter,
             } => TabSpec::Table {
                 table: TableRef::new(schema, table),
                 page: TablePage {
@@ -115,6 +116,7 @@ impl WorkspaceModel {
                     page_size,
                     sort: sort.map(|sort| (sort.column, sort.ascending)),
                 },
+                filter: filter.map_or(TableFilter::Remembered, TableFilter::Kept),
             },
             TabRecord::Structure { schema, table } => TabSpec::Structure {
                 target: StructureTarget::Existing(TableRef::new(schema, table)),
@@ -337,6 +339,7 @@ impl WorkspaceModel {
         self.open_tab(TabSpec::Table {
             table: TableRef::new(schema, name),
             page: TablePage::first(page_size),
+            filter: TableFilter::Remembered,
         });
     }
 
@@ -616,6 +619,7 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
             offset: s.browse.current_offset(),
             page_size: s.browse.page_size(),
             sort: s.browse.current_sort(),
+            filter: s.browse.applied_filter(),
         }),
         WorkspaceTab::Structure(s) => match s.mode {
             // A draft names no table to reopen.
@@ -665,6 +669,7 @@ impl WorkspaceModel {
                 offset,
                 page_size,
                 sort,
+                filter,
             } => {
                 self.open_tab(TabSpec::Table {
                     table: TableRef::new(schema, table),
@@ -673,6 +678,7 @@ impl WorkspaceModel {
                         page_size,
                         sort,
                     },
+                    filter: TableFilter::Kept(filter),
                 });
             }
             ClosedTabDescriptor::Structure { schema, table } => {
@@ -827,6 +833,7 @@ mod tests {
             table: name.to_owned(),
             offset: 0,
             page_size: 100,
+            filter: None,
             sort: None,
         };
         store

@@ -141,12 +141,6 @@ pub(super) fn mark_invalid(widget: &impl IsA<gtk::Widget>, problem: Option<&str>
     crate::ui::a11y::show_invalid(widget, problem);
 }
 
-/// A GtkPopoverMenu reads an underscore in a label as a mnemonic, so a
-/// column name keeps its underscores by doubling them.
-pub(super) fn menu_label(text: &str) -> String {
-    text.replace('_', "__")
-}
-
 #[cfg(test)]
 pub(super) mod tests {
     use std::time::Duration;
@@ -171,11 +165,6 @@ pub(super) mod tests {
     pub(crate) fn window() -> OwnedWindow<adw::Window> {
         adw::init().expect("libadwaita initialises under the test backend");
         OwnedWindow::presented(adw::Window::new())
-    }
-
-    #[test]
-    fn a_column_name_keeps_its_underscores_in_a_menu() {
-        assert_eq!(menu_label("account_id"), "account__id");
     }
 
     /// A form handed to its dialog as the add dialogs hand theirs: the

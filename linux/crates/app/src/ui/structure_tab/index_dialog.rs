@@ -11,8 +11,9 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::IndexInfo;
 
-use super::form_dialog::{FormDialog, give_state, mark_invalid, menu_label};
+use super::form_dialog::{FormDialog, give_state, mark_invalid};
 use super::index_draft::{DraftKey, IndexDraft, IndexDraftError};
+use crate::ui::menu_label;
 
 /// The dialog, which owns the form's state (`give_state`).
 pub(super) struct IndexDialog {

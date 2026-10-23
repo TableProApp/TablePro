@@ -1,4 +1,5 @@
 mod load;
+mod references;
 mod total;
 
 use std::sync::Arc;
@@ -18,7 +19,7 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeConnection, Fake
 use super::row_deletion::RowDeletion;
 use super::{
     BrowseTab, BrowseTabInit, ClipboardInput, DataInput, EditInput, Effects, PagingInput, RowTotal, SaveInput,
-    apply_draft_changes,
+    TableFilter, apply_draft_changes,
 };
 use crate::services::change_tracker::{RowKey, StatementSource};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -138,6 +139,8 @@ pub(super) fn serving_table() -> ConnectionScript {
         .table_estimate
         .always(FakeReply::ok(estimate(RowCountEstimate::Approximate(2))));
     script.probe.always(FakeReply::ok(()));
+    script.fetch_foreign_keys.always(FakeReply::ok(Vec::new()));
+    script.fetch_inbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script
 }
 
@@ -170,17 +173,24 @@ impl Harness {
         reconnects: impl IntoIterator<Item = FakeEstablish>,
         saved: FilterSet,
     ) -> Self {
-        Self::open_with(script, reconnects, saved, false)
+        Self::open_with(script, reconnects, saved, TableFilter::Remembered, false)
+    }
+
+    /// The tab opens under `filter`, the table having been left with
+    /// `saved`.
+    pub(super) fn open_on(script: ConnectionScript, saved: FilterSet, filter: TableFilter) -> Self {
+        Self::open_with(script, [], saved, filter, false)
     }
 
     fn open_read_only(script: ConnectionScript) -> Self {
-        Self::open_with(script, [], FilterSet::default(), true)
+        Self::open_with(script, [], FilterSet::default(), TableFilter::Remembered, true)
     }
 
     fn open_with(
         script: ConnectionScript,
         reconnects: impl IntoIterator<Item = FakeEstablish>,
         saved: FilterSet,
+        filter: TableFilter,
         read_only: bool,
     ) -> Self {
         libadwaita::init().expect("libadwaita initialises under the test backend");
@@ -189,7 +199,18 @@ impl Harness {
         let fake = FakeSession::start(script, reconnects, runtime.tasks());
         let stores = TabStores::new();
         let tracker = TabTrackerHandle::default();
-        let tab = filtered_users_tab(&fake.session, &runtime, &stores, saved, tracker.clone(), read_only);
+        let tab = table_tab(
+            &fake.session,
+            &runtime,
+            &stores,
+            Opening {
+                saved,
+                filter,
+                tracker: tracker.clone(),
+                read_only,
+                ..Opening::users()
+            },
+        );
         Self {
             tab: Some(tab),
             tracker,
@@ -317,36 +338,44 @@ impl TabStores {
 }
 
 pub(super) fn users_tab(session: &Arc<Session>, runtime: &crate::runtime::AppRuntime, stores: &TabStores) -> BrowseTab {
-    filtered_users_tab(
-        session,
-        runtime,
-        stores,
-        FilterSet::default(),
-        TabTrackerHandle::default(),
-        false,
-    )
+    table_tab(session, runtime, stores, Opening::users())
 }
 
-pub(super) fn filtered_users_tab(
-    session: &Arc<Session>,
-    runtime: &crate::runtime::AppRuntime,
-    stores: &TabStores,
-    saved: FilterSet,
-    tracker: TabTrackerHandle,
-    read_only: bool,
-) -> BrowseTab {
-    table_tab(session, runtime, stores, "users", saved, tracker, read_only)
+/// What a test tab opens on.
+pub(super) struct Opening {
+    pub(super) table: &'static str,
+    /// The filter the table was left with.
+    pub(super) saved: FilterSet,
+    pub(super) filter: TableFilter,
+    pub(super) tracker: TabTrackerHandle,
+    pub(super) read_only: bool,
+}
+
+impl Opening {
+    pub(super) fn users() -> Self {
+        Self {
+            table: "users",
+            saved: FilterSet::default(),
+            filter: TableFilter::Remembered,
+            tracker: TabTrackerHandle::default(),
+            read_only: false,
+        }
+    }
 }
 
 pub(super) fn table_tab(
     session: &Arc<Session>,
     runtime: &crate::runtime::AppRuntime,
     stores: &TabStores,
-    table: &str,
-    saved: FilterSet,
-    tracker: TabTrackerHandle,
-    read_only: bool,
+    opening: Opening,
 ) -> BrowseTab {
+    let Opening {
+        table,
+        saved,
+        filter,
+        tracker,
+        read_only,
+    } = opening;
     let tasks = runtime.tasks();
     let connection_id = uuid::Uuid::new_v4();
     let root = stores.root.path();
@@ -361,6 +390,7 @@ pub(super) fn table_tab(
         page_size: 100,
         initial_offset: 0,
         initial_sort: None,
+        filter,
         column_widths: crate::persistence::ColumnWidthStore::load(root.join("column-widths.json"), &tasks),
         filter_settings,
         session: session.clone(),

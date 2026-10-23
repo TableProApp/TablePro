@@ -48,6 +48,7 @@ pub(crate) fn inbound_foreign_keys(
             .unwrap_or_else(|| foreign_key_name(&row.child, row.id));
         let position = *positions.entry((row.child.clone(), row.id)).or_insert_with(|| {
             keys.push(InboundForeignKey {
+                child_compares_alike: true,
                 name,
                 table: TableRef::new(schema.map(str::to_owned), row.child.clone()),
                 columns: Vec::new(),

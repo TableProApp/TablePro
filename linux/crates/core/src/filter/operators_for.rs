@@ -43,15 +43,12 @@ const EQUALITY: &[FilterOp] = &[
 /// lists them.
 ///
 /// Driven by the column's kind rather than its type name, so a new
-/// engine spelling never needs a new branch here. A binary column gets
-/// only the null tests: there is no text form of a blob to compare.
+/// engine spelling never needs a new branch here. A binary column
+/// compares for equality on its `0x` hex form, which is how a key such
+/// as a `BINARY(16)` id is followed.
 pub fn operators_for(kind: &ColumnKind) -> &'static [FilterOp] {
     match kind {
-        ColumnKind::Bytes { .. }
-        | ColumnKind::Spatial
-        | ColumnKind::Array { .. }
-        | ColumnKind::Variant
-        | ColumnKind::Composite => NULL_ONLY,
+        ColumnKind::Spatial | ColumnKind::Array { .. } | ColumnKind::Variant | ColumnKind::Composite => NULL_ONLY,
         ColumnKind::Text { .. }
         | ColumnKind::Json { .. }
         | ColumnKind::Enum { .. }
@@ -67,7 +64,11 @@ pub fn operators_for(kind: &ColumnKind) -> &'static [FilterOp] {
         | ColumnKind::Time { .. }
         | ColumnKind::Timestamp { .. }
         | ColumnKind::Interval => COMPARISON,
-        ColumnKind::Bool(_) | ColumnKind::Uuid | ColumnKind::BitString { .. } | ColumnKind::Network(_) => EQUALITY,
+        ColumnKind::Bool(_)
+        | ColumnKind::Uuid
+        | ColumnKind::BitString { .. }
+        | ColumnKind::Network(_)
+        | ColumnKind::Bytes { .. } => EQUALITY,
     }
 }
 
@@ -85,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn a_kind_with_no_comparable_text_gets_only_the_null_tests() {
+    fn a_kind_with_no_comparable_text_gets_only_the_null_tests_and_a_blob_compares_equal() {
         let array = ColumnKind::Array {
             element: Box::new(ColumnKind::Uuid),
         };
@@ -96,6 +97,11 @@ mod tests {
                 "{kind:?}"
             );
         }
+        let blob = operators_for(&ColumnKind::Bytes {
+            length: crate::column::TextLength::Unbounded,
+        });
+        assert!(blob.contains(&FilterOp::Eq), "{blob:?}");
+        assert!(!blob.contains(&FilterOp::Contains), "{blob:?}");
         assert!(operators_for(&ColumnKind::Money { scale: Some(2) }).contains(&FilterOp::Between));
         assert!(operators_for(&ColumnKind::Xml).contains(&FilterOp::Contains));
     }

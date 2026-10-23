@@ -23,7 +23,6 @@ use libadwaita as adw;
 use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
 
 use self::filter_rule_object::FilterRuleObject;
-use self::rule_operators::is_filterable;
 pub(super) use self::rule_row::FilterRuleRow;
 
 glib::wrapper! {
@@ -82,8 +81,7 @@ impl FilterStrip {
     /// Rebuild the rows against new columns: each row's column and
     /// operator choices come from them.
     pub fn set_columns(&self, columns: Vec<ColumnInfo>) {
-        let filterable: Rc<[ColumnInfo]> = columns.into_iter().filter(is_filterable).collect();
-        self.imp().columns.replace(filterable);
+        self.imp().columns.replace(Rc::from(columns));
         let rules = self.rules();
         let items: Vec<FilterRuleObject> = rules.iter::<FilterRuleObject>().filter_map(Result::ok).collect();
         rules.splice(0, rules.n_items(), &items);

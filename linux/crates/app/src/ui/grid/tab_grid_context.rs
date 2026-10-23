@@ -5,13 +5,13 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::meta::RowIdentity;
 
 use super::row_state_icon::RowPendingState;
-use super::{ColumnWidthBinding, GridRowId, RowObject, RowSnapshot};
+use super::{ColumnWidthBinding, GridRowId, KeysHandle, RowObject, RowSnapshot};
 use crate::services::cell_overlay::CellMarks;
 use crate::services::change_tracker::{CellState, RowKey};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 
-/// `tracker` and `column_widths` are `None` for a grid nothing tracks,
-/// such as editor results.
+/// `tracker`, `column_widths` and `keys` are `None` for a grid nothing
+/// tracks, such as editor results.
 #[derive(Debug, Clone)]
 pub struct TabGridContext {
     pub tracker: Option<TabTrackerHandle>,
@@ -25,6 +25,9 @@ pub struct TabGridContext {
     /// Whether the menu offers to copy rows as an SQL `IN` list, which an
     /// engine without SQL has no spelling for.
     pub in_clause: bool,
+    /// The foreign keys of the table the rows come from, which the cell
+    /// menu follows.
+    pub keys: Option<KeysHandle>,
 }
 
 impl Default for TabGridContext {
@@ -35,6 +38,7 @@ impl Default for TabGridContext {
             identity: RowIdentity::Unordered,
             column_widths: None,
             in_clause: true,
+            keys: None,
         }
     }
 }

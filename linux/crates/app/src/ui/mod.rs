@@ -24,6 +24,7 @@ mod host_key_review;
 pub(crate) mod icons;
 mod import_dialog;
 mod key_tab;
+mod menu_label;
 mod name_entry;
 mod picker;
 mod plain_toast;
@@ -44,6 +45,7 @@ mod window_geometry;
 mod workspace;
 pub(crate) mod write_confirmation;
 
+pub(crate) use menu_label::menu_label;
 pub(crate) use plain_toast::plain_toast;
 pub(crate) use preferences_dialog::PreferencesDialog;
 pub(crate) use session_window::{SessionWindow, SessionWindowInit, SessionWindowInput};

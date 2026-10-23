@@ -60,6 +60,7 @@ mod tests {
             table: name.to_owned(),
             offset: 0,
             page_size: 1_000,
+            filter: None,
             sort: None,
         }
     }
@@ -74,6 +75,7 @@ mod tests {
                     table: "orders".to_owned(),
                     offset: 5_000,
                     page_size: 5_000,
+                    filter: None,
                     sort: Some(SortRecord {
                         column: 2,
                         ascending: false,
@@ -119,6 +121,7 @@ mod tests {
                         table: "orders".to_owned(),
                         offset: 5_000,
                         page_size: 5_000,
+                        filter: None,
                         sort: Some(SortRecord {
                             column: 2,
                             ascending: false,
@@ -129,6 +132,7 @@ mod tests {
                         table: "events".to_owned(),
                         offset: 0,
                         page_size: 1_000,
+                        filter: None,
                         sort: None,
                     },
                     TabRecord::Editor {

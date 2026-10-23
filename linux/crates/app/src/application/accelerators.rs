@@ -159,6 +159,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
     component(GridCell, "cell.toggle", &["space"], Listed(DataGrid)),
     component(GridCell, "cell.menu", &["Menu", "<Shift>F10"], Listed(DataGrid)),
     component(GridCell, "cell.set-null", &["<Primary>BackSpace"], Listed(DataGrid)),
+    component(GridCell, "cell.open-referenced-row", &["<Primary>j"], Listed(DataGrid)),
     // GtkTreeView's keys for its focused header. A column view's header
     // takes no focus, so they act on the focused cell's column.
     component(GridCell, "cell.widen-column", &["<Shift><Alt>Right"], Listed(DataGrid)),
