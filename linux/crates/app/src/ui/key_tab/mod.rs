@@ -78,6 +78,9 @@ struct State {
     load: ContentLoad,
     /// Counts the reads asked for, so only the last one lands.
     read: u64,
+    /// A read from the first window is running. A window added under the
+    /// old rows meanwhile would land on rows the read replaces.
+    replacing: bool,
     tab_loading: bool,
     /// What the grid on screen holds.
     shown: Option<Shown>,
@@ -277,7 +280,12 @@ fn reload(this: &Weak<Inner>) {
     let Some(inner) = this.upgrade() else {
         return;
     };
-    let presentation = inner.state.borrow_mut().load.begin();
+    let presentation = {
+        let mut state = inner.state.borrow_mut();
+        state.replacing = true;
+        state.load.begin()
+    };
+    inner.more.set_sensitive(false);
     inner.present(presentation);
     inner.read(KeyWindow::first(), ReadMode::Replace);
 }
@@ -288,6 +296,9 @@ fn load_more(this: &Weak<Inner>) {
     };
     let next = {
         let mut state = inner.state.borrow_mut();
+        if state.replacing {
+            return;
+        }
         let Some(shown) = state.shown.as_mut().filter(|shown| !shown.appending) else {
             return;
         };
@@ -335,6 +346,9 @@ impl Inner {
     fn landed(self: &Rc<Self>, read: u64, mode: ReadMode, outcome: Result<Option<KeyPage>, OperationError>) {
         if self.shut_down.get() || read != self.state.borrow().read {
             return;
+        }
+        if mode == ReadMode::Replace {
+            self.state.borrow_mut().replacing = false;
         }
         let presentation = match outcome {
             Ok(Some(page)) => {
@@ -493,7 +507,7 @@ impl Inner {
         };
         self.footer.set_label(&text);
         self.more.set_visible(shown.next.is_some());
-        self.more.set_sensitive(!shown.appending);
+        self.more.set_sensitive(!shown.appending && !state.replacing);
     }
 
     /// The grid's copies, its row as JSON and its export.

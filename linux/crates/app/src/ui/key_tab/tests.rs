@@ -4,6 +4,7 @@ use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyTtl};
 use tablepro_core::meta::KeyKind;
 use tablepro_core::{QueryResult, Value};
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
+use tokio_util::sync::CancellationToken;
 
 use super::*;
 use crate::test_support::{FakeSession, test_runtime, wait_until};
@@ -136,6 +137,33 @@ fn a_refresh_reads_the_key_from_its_start() {
 
     wait_until(WAIT, || tab.rows() == 3).expect("the key read again");
     assert_eq!(tab.footer_text(), "3 shown");
+}
+
+#[gtk4::test]
+fn load_more_waits_for_a_refresh_still_running() {
+    let release = CancellationToken::new();
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    script.read_key.once(FakeReply::UntilReleased {
+        release: release.clone(),
+        outcome: Ok(Some(list_page(0, 3, None))),
+    });
+    script.read_key.always(FakeReply::ok(Some(list_page(2, 3, None))));
+    let (tab, fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    tab.refresh();
+    assert!(!tab.offers_more(), "Load More while the key is read again");
+    tab.load_more();
+    release.cancel();
+
+    wait_until(WAIT, || tab.rows() == 3 && !tab.is_loading()).expect("the key read again");
+    assert_eq!(tab.footer_text(), "3 shown");
+    assert_eq!(
+        CallCounters::get(&fake.connection.counters().read_key),
+        2,
+        "a window was read under rows the refresh replaced"
+    );
 }
 
 #[gtk4::test]

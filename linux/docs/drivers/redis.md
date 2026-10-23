@@ -62,7 +62,7 @@ A call that times out or loses its link checks the route with a `PING` on a link
 
 ## Read-only
 
-Redis has no read-only session, so a read-only connection rests on the app's own check (`ReadOnlyEnforcement::ClientGuard`): each command is read before it is sent, and one that is not a read is refused with `ReadOnlyRefusal::ClientGuard`, in the editor and in an export. A command is a read only when `sql_syntax::redis` lists it, or its container's subcommand, as one; a command it does not know counts as a write, so a new one is refused until it is listed. `SORT` and `GEORADIUS` with `STORE` are writes. For a guarantee, connect as an ACL user that may only read (`+@read`). A replica's own refusal, `READONLY`, is the server's.
+Redis has no read-only session, so a read-only connection rests on the app's own check (`ReadOnlyEnforcement::ClientGuard`): each command is read before it is sent, and one that is not a read is refused with `ReadOnlyRefusal::ClientGuard`, in the editor and in an export. A command is a read only when `sql_syntax::redis` lists it, or its container's subcommand, as one; a command it does not know counts as a write, so a new one is refused until it is listed. `SORT` and `GEORADIUS` with a `STORE` option are writes; their options are read in the positions the server reads them, so a key named `store` stays a read. For a guarantee, connect as an ACL user that may only read (`+@read`). A replica's own refusal, `READONLY`, is the server's.
 
 Safe Mode reads commands the same way: Confirm Writes asks before every command that is not a read, and Off asks before `FLUSHALL`, `FLUSHDB`, `SWAPDB`, `SHUTDOWN`, `DEBUG` and `FUNCTION FLUSH`.
 

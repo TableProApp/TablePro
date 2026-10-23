@@ -247,9 +247,10 @@ pub fn command_access(arguments: &[Vec<u8>]) -> StatementAccess {
         return StatementAccess::Destructive;
     }
     let reads = match name.as_str() {
-        "SORT" => !mentions(arguments, &["STORE"]),
-        "GEORADIUS" | "GEORADIUSBYMEMBER" => !mentions(arguments, &["STORE", "STOREDIST"]),
-        "ACL" if sub == "LOG" => !mentions(arguments, &["RESET"]),
+        "SORT" => !stores_result(arguments, 2, sort_operands),
+        "GEORADIUS" => !stores_result(arguments, 6, georadius_operands),
+        "GEORADIUSBYMEMBER" => !stores_result(arguments, 5, georadius_operands),
+        "ACL" if sub == "LOG" => !arguments.get(2).is_some_and(|word| word.eq_ignore_ascii_case(b"RESET")),
         _ => {
             READS.contains(&name.as_str())
                 || READ_SUBCOMMANDS
@@ -289,11 +290,40 @@ pub fn editor_use(arguments: &[Vec<u8>]) -> EditorUse {
     }
 }
 
-fn mentions(arguments: &[Vec<u8>], words: &[&str]) -> bool {
-    arguments
-        .iter()
-        .skip(1)
-        .any(|argument| words.iter().any(|word| argument.eq_ignore_ascii_case(word.as_bytes())))
+/// Whether the options from `first` on store the result, read option by
+/// option as the server reads them, so a key or an operand spelt `store`
+/// is not taken for the option. An option the server does not know makes
+/// it refuse the command, and is taken as a write all the same.
+fn stores_result(arguments: &[Vec<u8>], first: usize, operands: fn(&str) -> Option<usize>) -> bool {
+    let mut index = first;
+    while let Some(option) = arguments.get(index) {
+        let option = upper(option);
+        if matches!(option.as_str(), "STORE" | "STOREDIST") {
+            return true;
+        }
+        let Some(count) = operands(&option) else {
+            return true;
+        };
+        index += 1 + count;
+    }
+    false
+}
+
+fn sort_operands(option: &str) -> Option<usize> {
+    match option {
+        "ASC" | "DESC" | "ALPHA" => Some(0),
+        "BY" | "GET" => Some(1),
+        "LIMIT" => Some(2),
+        _ => None,
+    }
+}
+
+fn georadius_operands(option: &str) -> Option<usize> {
+    match option {
+        "WITHCOORD" | "WITHDIST" | "WITHHASH" | "ANY" | "ASC" | "DESC" => Some(0),
+        "COUNT" => Some(1),
+        _ => None,
+    }
 }
 
 fn upper(bytes: &[u8]) -> String {
@@ -355,7 +385,30 @@ mod tests {
     fn a_store_option_makes_a_read_command_write() {
         assert_eq!(access("SORT list"), StatementAccess::Read);
         assert_eq!(access("SORT list STORE out"), StatementAccess::Write);
+        assert_eq!(
+            access("sort list by w_* limit 0 10 get # alpha store out"),
+            StatementAccess::Write
+        );
         assert_eq!(access("GEORADIUS g 0 0 1 km STOREDIST out"), StatementAccess::Write);
+        assert_eq!(
+            access("GEORADIUSBYMEMBER g m 1 km COUNT 5 STORE out"),
+            StatementAccess::Write
+        );
+        assert_eq!(access("SORT list NOSUCHOPTION"), StatementAccess::Write);
+    }
+
+    #[test]
+    fn store_as_a_key_or_an_operand_is_not_the_option() {
+        for command in [
+            "SORT store",
+            "SORT list BY store",
+            "SORT list GET store LIMIT 0 10 DESC",
+            "GEORADIUS store 0 0 1 km",
+            "GEORADIUSBYMEMBER g storedist 1 km WITHDIST COUNT 3 ASC",
+            "ACL LOG 10",
+        ] {
+            assert_eq!(access(command), StatementAccess::Read, "{command}");
+        }
     }
 
     #[test]
