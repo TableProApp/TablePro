@@ -247,3 +247,12 @@ fn a_retired_grid_does_not_retain_its_inspector_through_selection_callback() {
     assert!(weak_inspector.upgrade().is_none(), "retired inspector remains alive");
     assert!(weak_result.upgrade().is_none(), "retired result page remains alive");
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn alternating_editable_and_readonly_grids_release_every_retired_page() {
+    gtk4::init().unwrap();
+    for editable in [false, true].into_iter().cycle().take(12) {
+        retire_grid(true, editable, true).assert_released();
+    }
+}

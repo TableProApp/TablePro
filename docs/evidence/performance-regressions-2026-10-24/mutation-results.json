@@ -1,0 +1,20 @@
+[
+  {
+    "mutation": "stream",
+    "exit_code": 101,
+    "failed_regressions": [
+      "snapshots_share_payloads_and_release_them_after_the_last_owner",
+      "sustained_streams_keep_four_pages_and_release_every_eviction",
+      "terminal_snapshots_keep_only_the_retained_window_and_release_on_drop"
+    ],
+    "source_restored": true
+  },
+  {
+    "mutation": "catalog",
+    "exit_code": 101,
+    "failed_regressions": [
+      "catalog_membership_lookup_work_does_not_grow_with_catalog_size"
+    ],
+    "source_restored": true
+  }
+]

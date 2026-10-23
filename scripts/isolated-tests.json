@@ -981,6 +981,21 @@
       "tablepro-app",
       "--lib",
       "ui::connect_dialog::controls::tests::dropping_a_choice_row_releases_its_popup"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::large_completion_models_release_cached_proposals_when_discarded"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::completion_provider::tests::discarding_metadata_refresh_cancels_work_and_releases_its_callback"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::lifetime_tests::alternating_editable_and_readonly_grids_release_every_retired_page"
     ]
   ],
   "keyring": [

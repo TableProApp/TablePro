@@ -118,7 +118,7 @@ mod tests {
     use super::*;
     use tablepro_core::Value;
 
-    fn page(columns: &[&str], values: &[i64]) -> Arc<QueryResult> {
+    pub(super) fn page(columns: &[&str], values: &[i64]) -> Arc<QueryResult> {
         Arc::new(QueryResult {
             columns: columns
                 .iter()
@@ -278,3 +278,7 @@ mod tests {
         assert_eq!(cache.snapshot(StreamTerminal::Complete, None).total_pages, 2);
     }
 }
+
+#[cfg(test)]
+#[path = "stream_pages/performance_tests.rs"]
+mod performance_tests;

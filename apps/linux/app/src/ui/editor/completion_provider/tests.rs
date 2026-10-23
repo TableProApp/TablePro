@@ -304,3 +304,62 @@ fn column_refresh_coalesces_a_burst_of_editor_changes() {
     }
     assert_eq!(calls.get(), 1);
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn large_completion_models_release_cached_proposals_when_discarded() {
+    gtk::init().unwrap();
+    for count in [1_000, 10_000, 50_000] {
+        let index = Rc::new(RefCell::new(SchemaIndex::default()));
+        index
+            .borrow_mut()
+            .set_tables((0..count).map(|i| format!("table_{i:05}")).collect());
+        let sql = "SELECT * FROM table_";
+        let (_view, provider, context) = fixture(sql, sql.len(), index);
+        let model = glib::MainContext::default()
+            .block_on(provider.populate_future(&context))
+            .unwrap();
+        assert_eq!(model.n_items(), count);
+        let weak_model = model.downgrade();
+        let proposals: Vec<_> = [0, count / 2, count - 1]
+            .into_iter()
+            .map(|position| model.item(position).unwrap().downgrade())
+            .collect();
+        let held = model.item(0).unwrap();
+        drop(model);
+        assert!(weak_model.upgrade().is_none());
+        assert!(proposals[0].upgrade().is_some());
+        assert!(proposals[1..].iter().all(|proposal| proposal.upgrade().is_none()));
+        drop(held);
+        assert!(proposals.iter().all(|proposal| proposal.upgrade().is_none()));
+    }
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn discarding_metadata_refresh_cancels_work_and_releases_its_callback() {
+    gtk::init().unwrap();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let observed = calls.clone();
+    let token = Rc::new(std::cell::Cell::new(0));
+    let weak = Rc::downgrade(&token);
+    let refresh = super::debounce_refresh(Rc::new(move || {
+        token.set(token.get() + 1);
+        observed.set(observed.get() + 1);
+    }));
+    for _ in 0..128 {
+        refresh();
+    }
+    drop(refresh);
+    let context = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while weak.upgrade().is_some() && std::time::Instant::now() < deadline {
+        context.iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(
+        weak.upgrade().is_none(),
+        "discarded metadata callback retained its captured state"
+    );
+    assert_eq!(calls.get(), 0);
+}

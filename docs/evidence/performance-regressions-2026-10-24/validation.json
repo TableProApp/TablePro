@@ -1,0 +1,21 @@
+{
+  "new_test_functions": 12,
+  "preview_matrix_cases": 32,
+  "sustained_stream_pages": 20000,
+  "empty_pages": 1000,
+  "catalog_names": 10000,
+  "catalog_normalization_bound_for_four_lookups": 16,
+  "injected_full_scan_normalizations": 40008,
+  "controlled_mutation_trials": 2,
+  "injected_fault_types": 3,
+  "preflight": "passed",
+  "unit": 2077,
+  "sandbox": 2090,
+  "redis_cancellation": 1,
+  "new_stream_tests": 6,
+  "preview_matrix": "passed",
+  "app_clippy": "passed",
+  "gtk_isolated": 161,
+  "forgejo": "pending",
+  "native_wayland": "not tested"
+}

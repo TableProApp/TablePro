@@ -334,6 +334,33 @@ Lower a baseline in the same change when an oversized file shrinks.
 
 When inline unit tests push a production module over the soft limit, move them to a sibling `tests.rs` and declare it with `#[cfg(test)] mod tests;`. Import the parent with `use super::*;` so private behavior stays directly testable without carrying the test bodies in the production file.
 
+## Performance regression contracts
+
+Resource regressions belong in the existing unit and gtk-widgets tiers. Prefer retained-byte/page limits, ownership release, shared payloads, lazy materialization and operation counts over fixed millisecond or process-RSS assertions. Resource budgets are contracts: increasing a constant must not silently relax its test.
+
+| Risk | Regression coverage |
+| --- | --- |
+| A stream accumulates every received page | A 20,000-page sequence keeps at most four pages and releases each eviction; 1,000 empty pages do not accumulate payloads. |
+| The retained-byte budget drifts | The exact 64 MiB boundary retains two half-budget pages; one additional row evicts an old page. Existing coverage keeps an oversized newest page explicitly. |
+| Snapshots duplicate payloads or retain retired data | Snapshot payload identity, external-owner release, terminal-state ownership and rejected-page release tests. |
+| Catalog checks return to a full scan | Four lookups against 10,000 names perform at most 16 identifier normalizations, counted only in test builds. Prefix eligibility and cached columns remain covered. |
+| Completion caches retain objects after closing | A discarded model releases cached proposals across 1,000, 10,000 and 50,000 candidates; a held proposal lives only until its final owner drops. |
+| Closed editors continue delayed metadata work | A discarded refresh cancels its callback and releases captured state after a 128-trigger burst. The existing debounce test requires one callback for a typing burst. |
+| Replacing grids accumulates cells, menus or selections | Repeated alternation between editable and read-only rendered grids requires every retired widget and result to be released. |
+| Wide cells restore expensive GTK layout | A 32-case text/JSON matrix pins the 512-character visible limit across ASCII, UTF-8, emoji and NUL boundaries while preserving the stored sample. Existing rendered-height tests cover multiline cells. |
+
+The [2026-10-24 evidence](evidence/performance-regressions-2026-10-24/README.md) records source tests and controlled regression injection. These tests pin existing behavior; they do not introduce new product limits.
+
+Run the non-display application checks locally with:
+
+    cargo test --locked -p tablepro-app --lib stream_pages::performance_tests -- --test-threads=1
+    cargo test --locked -p tablepro-app --lib preview_matrix
+    cargo test --locked -p tablepro-app-services --lib completion
+
+Run display-dependent contracts with bash scripts/test-gtk-widgets.sh. Fast preflight excludes application library tests; a preflight pass alone is not evidence that these application contracts passed. Forgejo's existing unit job includes application library tests, and widgets runs registered display tests. No new CI job or nightly-only dependency is needed.
+
+These structural guards do not bound total process RSS, allocator caches, driver buffers, GPU resources or arbitrarily long sessions. Measure those separately on the changed workload and display backend. A watchdog around an asynchronous lifecycle test is not a throughput target.
+
 ## Browse performance
 
 See [the September measurements](archive/performance-2026-09.md) and the `browse_benchmark` example in the release-test crate. One warm-up plus five measured samples cover first, filtered, deep, wide and capped result sets. Run each case in a separate process against a disposable fixture, with builds complete before measuring. Report memory improvements and latency regressions separately.

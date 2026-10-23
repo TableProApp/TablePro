@@ -10,6 +10,7 @@ The standing principles. An explicit edit to this file is the only way to change
 - **Decisions before construction.** Accepted ADRs bind work in their scope. Supersede a record; do not edit it into a different decision.
 - **Persist credentials safely.** Database and SSH credentials use Secret Service. GUI-issued MCP token plaintext is returned once and keyring storage is attempted; headless `bookie-agentd` token issuance emits plaintext once to stdout or an explicitly selected owner-only file. Do not put secrets in connection JSON, command-line arguments, traces, errors or audit fields.
 - **Fix the cause.** Reproduce or trace a defect before changing code. Every testable behaviour change needs a regression test in the lowest tier that can show it.
+- **Protect resource bounds.** Performance fixes preserve tested limits on retention, ownership and work. Use reproducible measurements for latency and process memory; passing functional tests does not establish either.
 - **Small, reviewable changes.** One concern per change. Do not mix unrelated cleanup into a fix.
 - **Forgejo is the merge gate.** GitHub jobs may advise. Do not silence a Forgejo merge tier to land other work.
 

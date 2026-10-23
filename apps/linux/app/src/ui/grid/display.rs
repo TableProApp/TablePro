@@ -630,6 +630,29 @@ mod tests {
     }
 
     #[test]
+    fn preview_matrix_bounds_layout_at_unicode_and_length_boundaries() {
+        for unit in ["x", "é", "😀", "\0"] {
+            for count in [511, 512, 513, 8_192] {
+                let text = unit.repeat(count);
+                for value in [Value::Text(text.clone()), Value::JsonText(text.clone())] {
+                    let preview = crate::ui::row_object::CellPreview {
+                        value: value.clone(),
+                        byte_count: 1_000_000,
+                    };
+                    let view = CellView::from_preview(&preview);
+                    let sample: String = text.chars().take(512).collect();
+                    assert_eq!(
+                        view.text_for_bind(false),
+                        format!("{}… (1000000 bytes total)", sample.replace('\0', "␀"))
+                    );
+                    assert_eq!(preview.value, value);
+                    assert!(!view.inline_editable);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn oversized_text_previews_bound_layout_without_shortening_the_stored_sample() {
         for value in [Value::Text("x".repeat(8192)), Value::JsonText("x".repeat(8192))] {
             let preview = crate::ui::row_object::CellPreview {

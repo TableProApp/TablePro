@@ -65,7 +65,19 @@ fn quoted_name(raw: &str, grammar: Option<SqlGrammar>) -> Option<String> {
     Some(name)
 }
 
+#[cfg(test)]
+std::thread_local! {
+    static TABLE_KEY_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn table_key_calls() -> usize {
+    TABLE_KEY_CALLS.get()
+}
+
 pub fn table_key(text: &str, grammar: Option<SqlGrammar>) -> Option<String> {
+    #[cfg(test)]
+    TABLE_KEY_CALLS.set(TABLE_KEY_CALLS.get() + 1);
     let grammar = Some(grammar.unwrap_or(SqlGrammar::PostgreSql));
     let (mut schema, mut table) = split_table_reference(text, grammar)?;
     if grammar != Some(SqlGrammar::PostgreSql) {

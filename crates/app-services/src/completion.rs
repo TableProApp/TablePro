@@ -502,6 +502,44 @@ mod tests {
         assert!(index.needs_columns("next"));
     }
 
+    #[test]
+    fn catalog_membership_lookup_work_does_not_grow_with_catalog_size() {
+        let mut index = SchemaIndex::default();
+        index.set_tables(
+            (0..10_000)
+                .map(|i| format!("tenant_{:03}.table_{i:05}", i / 500))
+                .collect(),
+        );
+        let before = crate::completion_identifiers::table_key_calls();
+        for (name, expected) in [
+            ("missing", false),
+            ("tenant_000.missing", false),
+            ("table_09999", true),
+            ("tenant_019.table_09999", true),
+        ] {
+            assert_eq!(index.needs_columns(name), expected);
+        }
+        let normalizations = crate::completion_identifiers::table_key_calls() - before;
+        assert!(
+            normalizations <= 16,
+            "four lookups normalized {normalizations} identifiers"
+        );
+    }
+
+    #[test]
+    fn typing_prefixes_admit_only_catalogued_names_and_skip_cached_columns() {
+        let mut index = SchemaIndex::default();
+        index.set_tables(vec!["public.customers".into()]);
+        let requests: Vec<_> = (1..="customers".len())
+            .map(|end| &"customers"[..end])
+            .filter(|name| index.needs_columns(name))
+            .collect();
+        assert_eq!(requests, vec!["customers"]);
+        index.set_columns("customers", vec!["id".into()]);
+        assert!(!index.needs_columns("customers"));
+        assert!(!index.needs_columns("public.missing"));
+    }
+
     fn index() -> SchemaIndex {
         let mut index = SchemaIndex::default();
         index.set_tables(vec!["public.users".into(), "public.orders".into()]);
