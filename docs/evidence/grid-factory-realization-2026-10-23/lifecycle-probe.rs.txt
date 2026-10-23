@@ -1,0 +1,90 @@
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use gtk4::prelude::*;
+use tablepro_core::{ColumnInfo, QueryResult, Value};
+
+thread_local! {
+    static COUNTS: RefCell<BTreeMap<usize, (usize, usize, usize, usize)>> = RefCell::default();
+}
+
+pub(super) fn record(column: usize, event: usize) {
+    COUNTS.with(|counts| {
+        let mut counts = counts.borrow_mut();
+        let count = counts.entry(column).or_default();
+        match event { 0 => count.0 += 1, 1 => count.1 += 1, 2 => count.2 += 1, _ => count.3 += 1 }
+    });
+}
+
+fn column(index: usize) -> ColumnInfo {
+    ColumnInfo {
+        name: format!("c{index}"), data_type: "TEXT".into(), nullable: true,
+        primary_key: false, is_auto_increment: false, default_value: None,
+        is_generated: false, comment: None, collation: None, enum_type: None, domain_type: None,
+    }
+}
+
+fn measure(columns: usize, width: i32, height: i32) {
+    COUNTS.with(|counts| counts.borrow_mut().clear());
+    let columns: Vec<_> = (0..columns).map(column).collect();
+    let result = Arc::new(QueryResult {
+        rows: vec![vec![Value::Text("value".into()); columns.len()]; 100],
+        columns: columns.clone(), truncated: false,
+    });
+    let (sender, _receiver) = relm4::channel();
+    let (view, _) = super::build_column_view(
+        &result, &columns, "probe", None, Some(sender), None, None, None,
+        super::TabGridContext::default(), None,
+        Arc::new(crate::services::database_service::DatabaseService::new()),
+    );
+    let scroll = gtk4::ScrolledWindow::builder().child(&view).build();
+    let window = gtk4::Window::builder().default_width(width).default_height(height).child(&scroll).build();
+    window.present();
+    let context = gtk4::glib::MainContext::default();
+    let until = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < until {
+        while context.iteration(false) {}
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let counts = COUNTS.with(|counts| counts.borrow().clone());
+    assert_eq!(counts.len(), columns.len());
+    let setups: usize = counts.values().map(|c| c.0).sum();
+    let binds: usize = counts.values().map(|c| c.1).sum();
+    assert!(setups > 0 && binds > 0);
+    println!("FACTORY_PROBE {}", serde_json::json!({
+        "columns":columns.len(), "rows":100, "window_width":window.width(),
+        "window_height":window.height(), "viewport_width":scroll.width(),
+        "viewport_height":scroll.height(), "setup_count":setups,"bind_count":binds, "unbind_count":counts.values().map(|c| c.2).sum::<usize>(), "teardown_count":counts.values().map(|c| c.3).sum::<usize>(),
+        "columns_with_binds":counts.values().filter(|c| c.1 > 0).count(),
+        "min_setups_per_column":counts.values().map(|c| c.0).min(),
+        "max_setups_per_column":counts.values().map(|c| c.0).max(),
+    }));
+    window.close();
+    window.set_child(None::<&gtk4::Widget>);
+    view.set_model(None::<&gtk4::SelectionModel>);
+    while context.iteration(false) {}
+    drop(view);
+    drop(scroll);
+    drop(window);
+    while context.iteration(false) {}
+    COUNTS.with(|counts| {
+        let counts = counts.borrow();
+        println!("FACTORY_TEARDOWN {}", serde_json::json!({
+            "columns": columns.len(), "width": width, "height": height,
+            "setups": counts.values().map(|c| c.0).sum::<usize>(),
+            "binds": counts.values().map(|c| c.1).sum::<usize>(),
+            "unbinds": counts.values().map(|c| c.2).sum::<usize>(),
+            "teardowns": counts.values().map(|c| c.3).sum::<usize>(),
+        }));
+    });
+}
+
+#[test]
+#[ignore = "experimental factory measurement under isolated GTK"]
+fn profile_factory_realization() {
+    relm4::adw::init().unwrap();
+    for (width, height) in [(800, 600), (1600, 1000)] {
+        for columns in [16, 64, 256] { measure(columns, width, height); }
+    }
+}

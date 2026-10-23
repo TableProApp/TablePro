@@ -1,0 +1,35 @@
+diff --git i/apps/linux/app/src/ui/grid/column.rs w/apps/linux/app/src/ui/grid/column.rs
+index c1d5a8145..85f21aeae 100644
+--- i/apps/linux/app/src/ui/grid/column.rs
++++ w/apps/linux/app/src/ui/grid/column.rs
+@@ -100,6 +100,8 @@ pub(super) fn build_column(
+     let column_view_for_setup = column_view.downgrade();
+     let grid_menus_for_setup = grid_menus.clone();
+     factory.connect_setup(move |_, item| {
++        #[cfg(test)]
++        super::factory_probe::record(idx, true);
+         let Some(column_view_for_setup) = column_view_for_setup.upgrade() else {
+             return;
+         };
+@@ -146,6 +148,8 @@ pub(super) fn build_column(
+     let column_info = info.clone();
+     let tab_ctx_for_bind = tab_ctx.clone();
+     factory.connect_bind(move |_, item| {
++        #[cfg(test)]
++        super::factory_probe::record(idx, false);
+         let Some(item) = item.downcast_ref::<gtk4::ListItem>() else {
+             return;
+         };
+diff --git i/apps/linux/app/src/ui/grid/mod.rs w/apps/linux/app/src/ui/grid/mod.rs
+index 307216d55..ccd19d08b 100644
+--- i/apps/linux/app/src/ui/grid/mod.rs
++++ w/apps/linux/app/src/ui/grid/mod.rs
+@@ -3,6 +3,8 @@
+ mod close_edits;
+ pub(crate) use close_edits::finish_active_edits;
+ mod column;
++#[cfg(test)]
++mod factory_probe;
+ mod column_jump;
+ mod column_order;
+ mod column_visibility;
