@@ -116,7 +116,7 @@ final class ConnectionCoordinator {
 
     // MARK: - Connection Lifecycle
 
-    /// The attempt allowed to write `session` and `phase`. Cancelling mints a new one.
+    // The attempt allowed to write `session` and `phase`. Cancelling mints a new one.
     private var attemptToken = UUID()
     private var connectTask: Task<Void, Never>? {
         didSet { resumeFollowIfPending() }
@@ -124,11 +124,11 @@ final class ConnectionCoordinator {
 
     private var joiners = AttemptJoiners()
 
-    /// Questions this attempt has to ask, shown by the screen that owns the attempt.
     let prompts = ConnectionPromptQueue()
 
-    /// Returning early without touching `phase` is what left the connecting screen up for good.
+    // Returning early without touching `phase` is what left the connecting screen up for good.
     func connect() async {
+        prompts.expectScreen()
         if let inFlight = connectTask {
             await join(inFlight)
             return
@@ -147,8 +147,7 @@ final class ConnectionCoordinator {
         if connectTask == task { connectTask = nil }
     }
 
-    /// A caller that goes away mid-connect (its screen was dismissed) abandons the attempt rather
-    /// than leaving it running for the next screen to join and wait on forever.
+    // The last caller to go away abandons the attempt, so the next screen never joins it and waits forever.
     private func join(_ task: Task<Void, Never>) async {
         let joiner = joiners.join()
         await withTaskCancellationHandler {
@@ -180,10 +179,8 @@ final class ConnectionCoordinator {
         session = nil
     }
 
-    /// Never waits on the driver: `Task.cancel()` is cooperative and these drivers ignore it.
-    ///
-    /// The questions go first and unconditionally: a reconnect or a database switch asks them
-    /// without owning `connectTask`, and leaving one suspended holds its tunnel open for good.
+    // Never waits on the driver, which ignores `Task.cancel()`. The questions go first: a reconnect or a
+    // database switch asks without owning `connectTask`, and a suspended one holds its tunnel open.
     func cancelConnect() {
         prompts.cancelAll()
         guard connectTask != nil else { return }

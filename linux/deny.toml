@@ -33,6 +33,7 @@ allow = [
     "CDLA-Permissive-2.0",
     "LGPL-2.1-or-later",
     "0BSD",
+    "BSL-1.0",
 ]
 
 [licenses.private]
@@ -43,8 +44,8 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 deny = [
-    { crate = "ring", wrappers = ["rustls", "rustls-webpki"], reason = "aws-lc-rs is the only crypto provider; ring comes only through ureq's default features, below (ADR 0021)" },
-    { crate = "ureq", wrappers = ["bollard-buildkit-proto", "libduckdb-sys"], reason = "libduckdb-sys builds with ureq's default features, which turn on rustls's ring in its build script, for a download the bundled build never runs (ADR 0021)" },
+    { crate = "ring", wrappers = ["rustls", "rustls-webpki"], reason = "aws-lc-rs is the only crypto provider; ring comes only through ureq's default features, below (ADR 0023)" },
+    { crate = "ureq", wrappers = ["bollard-buildkit-proto", "libduckdb-sys"], reason = "libduckdb-sys builds with ureq's default features, which turn on rustls's ring in its build script, for a download the bundled build never runs (ADR 0023)" },
     { crate = "openssl-sys", reason = "TLS goes through rustls with aws-lc-rs" },
     { crate = "native-tls", reason = "TLS goes through rustls with aws-lc-rs" },
     { crate = "rustls:<0.23", reason = "rustls before 0.23 has no pluggable provider and carries fixed advisories" },
@@ -54,7 +55,7 @@ deny = [
     { crate = "backoff", reason = "unmaintained" },
     { crate = "instant", reason = "unmaintained" },
     { crate = "rsa", wrappers = ["sqlx-mysql"], reason = "RUSTSEC-2023-0071 is accepted only for sqlx-mysql's public-key encryption; any other user of rsa needs a new decision in ADR 0009" },
-    { crate = "tablepro-test-fixtures", wrappers = ["tablepro", "tablepro-driver-clickhouse", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres", "tablepro-session", "tablepro-ssh"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
+    { crate = "tablepro-test-fixtures", wrappers = ["tablepro", "tablepro-driver-clickhouse", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres", "tablepro-driver-redis", "tablepro-session", "tablepro-ssh"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
     { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
 ]
 

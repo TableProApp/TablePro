@@ -53,4 +53,8 @@ pub enum ConfigError {
 
     #[error("a database name is required")]
     DatabaseRequired,
+
+    /// A key-value engine numbers its databases.
+    #[error("the database must be a number from 0")]
+    DatabaseNumber,
 }

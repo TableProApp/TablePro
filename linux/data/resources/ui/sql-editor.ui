@@ -110,27 +110,66 @@
             <property name="hexpand">true</property>
             <property name="shrink-end-child">false</property>
             <property name="start-child">
-              <object class="GtkScrolledWindow">
-                <property name="min-content-height">200</property>
-                <property name="child">
-                  <object class="GtkSourceView" id="source_view">
-                    <property name="show-line-numbers">true</property>
-                    <property name="monospace">true</property>
-                    <property name="auto-indent">true</property>
-                    <property name="highlight-current-line">true</property>
-                    <property name="tab-width">4</property>
-                    <property name="top-margin">8</property>
-                    <property name="bottom-margin">8</property>
-                    <property name="left-margin">8</property>
-                    <property name="right-margin">8</property>
-                    <style>
-                      <class name="sql-editor"/>
-                    </style>
-                    <accessibility>
-                      <property name="label" translatable="yes">SQL editor</property>
-                    </accessibility>
+              <object class="AdwToolbarView" id="text_pane">
+                <property name="reveal-bottom-bars">false</property>
+                <property name="content">
+                  <object class="GtkScrolledWindow">
+                    <property name="min-content-height">200</property>
+                    <property name="child">
+                      <object class="GtkSourceView" id="source_view">
+                        <property name="show-line-numbers">true</property>
+                        <property name="monospace">true</property>
+                        <property name="auto-indent">true</property>
+                        <property name="highlight-current-line">true</property>
+                        <property name="tab-width">4</property>
+                        <property name="top-margin">8</property>
+                        <property name="bottom-margin">8</property>
+                        <property name="left-margin">8</property>
+                        <property name="right-margin">8</property>
+                        <style>
+                          <class name="sql-editor"/>
+                        </style>
+                        <accessibility>
+                          <property name="label" translatable="yes">SQL editor</property>
+                        </accessibility>
+                      </object>
+                    </property>
                   </object>
                 </property>
+                <child type="bottom">
+                  <object class="GtkBox" id="vim_bar">
+                    <property name="accessible-role">status</property>
+                    <property name="spacing">12</property>
+                    <property name="margin-top">4</property>
+                    <property name="margin-bottom">4</property>
+                    <property name="margin-start">12</property>
+                    <property name="margin-end">12</property>
+                    <accessibility>
+                      <property name="label" translatable="yes">Vim mode</property>
+                    </accessibility>
+                    <child>
+                      <object class="GtkLabel" id="vim_command_bar">
+                        <property name="hexpand">true</property>
+                        <property name="xalign">0</property>
+                        <property name="ellipsize">end</property>
+                        <style>
+                          <class name="monospace"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="vim_command">
+                        <property name="xalign">1</property>
+                        <property name="width-chars">8</property>
+                        <property name="ellipsize">start</property>
+                        <style>
+                          <class name="dim-label"/>
+                          <class name="monospace"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </property>
             <property name="end-child">

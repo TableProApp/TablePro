@@ -2,7 +2,7 @@
 
 **Status, 2026-10-19**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
-The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to six engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [SQLite](docs/drivers/sqlite.md) and [DuckDB](docs/drivers/duckdb.md).
+The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to seven engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md) and [Redis](docs/drivers/redis.md).
 
 ## Implemented
 
@@ -63,6 +63,14 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
 | SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table in one transaction, keeping its rows, indexes, triggers, the views and triggers that name it and its AUTOINCREMENT counter, with foreign keys checked before commit. SQLite itself checks the views and triggers made again; a trigger that lists a dropped column or inserts by position is refused before Save |
 
+### Keys
+
+| Capability | Detail |
+|---|---|
+| Key list | A Redis connection lists the keys of its numbered database with their types, read with `SCAN`; the search goes to the server, plain text matching anywhere in a key and text with `*`, `?` or `[` as a glob. A banner says when the list stops at its 5,000-key limit |
+| Key tab | A key opens by type: a string's value, a hash's fields, a list by index, a set's members, a sorted set with scores and a stream's entries, 500 at a time with Load More, under its length and expiry |
+| Commands | The editor takes Redis commands, one per line, and shows each reply as redis-cli lays it out; `MULTI` is tracked as a transaction. A waiting command stops with `CLIENT UNBLOCK`. Read-Only refuses every command that is not a read before it is sent ([redis.md](docs/drivers/redis.md)) |
+
 ### SQL editor
 
 | Capability | Detail |
@@ -75,6 +83,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Files | Open a .sql file into the editor (Ctrl+O) or drop one on it, and save to it (Ctrl+S, or Save As with Ctrl+Shift+S) |
 | Results | Several result sets per run, a limit of 10,000 rows per result and 100,000 per run with a banner and Export All, and Go to Error |
 | Drafts | Each editor tab's text is kept, and a connection's tabs (table tabs with page and sort, structure and editor tabs) reopen when it opens |
+| Vim mode | GtkSourceView's Vim emulation, off by default, with the mode and pending command under the text; `:w`, `:e`, `:q`, `:wq` and `:x` act on the tab, and the editor's Ctrl shortcuts work in every mode ([README](README.md#vim-keybindings)) |
 
 ### History and saved queries
 
@@ -103,7 +112,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
 | Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
-| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, query timeout, the MCP server |
+| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the MCP server |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
 
 ### MCP server
@@ -123,7 +132,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
-| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip, on every engine; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip, on every SQL engine, and keyspace and TLS conformance on Redis; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Redis, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -149,7 +158,6 @@ Not built yet, in no order.
 ### SQL editor
 
 - Multi-cursor editing.
-- Vim mode.
 - Snippets.
 
 ### Release and project
@@ -172,7 +180,6 @@ Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-driv
 
 | Engine | Client | Condition |
 |---|---|---|
-| Redis | redis 1.x (redis-rs) | None. fred, named here before, has had no release since 2025-02-27 |
 | MongoDB | mongodb 3.x, default features off, `rustls-tls-aws-lc` | It must use the system trust store first: it fills its roots from webpki-roots unless `ca_file_path` is set, so it needs native roots upstream or `ca_file_path` set to the platform bundle |
 | Cassandra and ScyllaDB | scylla 1.x with `rustls-023` | None |
 | Oracle | none | Blocked. The oracle crate has one maintainer, no release since 2025-01-02, and needs the proprietary Oracle client |

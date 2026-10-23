@@ -2,6 +2,7 @@
 //! in one recycling list, a section per schema, with one shared menu.
 
 mod catalog_watch;
+mod key_listing;
 mod object_key;
 mod sidebar_affordances;
 mod sidebar_event;
@@ -29,6 +30,7 @@ use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
+pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
@@ -39,8 +41,15 @@ use crate::runtime::DeliverInput;
 use sidebar_event::SidebarEvent;
 
 /// Build the sidebar into the workspace's template, sending what the
-/// user asks of it to `input`.
-pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, session: &Session, tasks: &Tasks) -> SidebarView {
+/// user asks of it to `input`. A sidebar of `keys` searches on the
+/// server, so its search asks the workspace for a new listing.
+pub(super) fn build(
+    workspace: &Workspace,
+    input: &WorkspaceSender,
+    session: &Session,
+    tasks: &Tasks,
+    keys: bool,
+) -> SidebarView {
     let imp = workspace.imp();
     let events = input.clone();
     let view = SidebarView::new(
@@ -49,7 +58,15 @@ pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, session: &Se
         Some(tasks.clone()),
     );
     imp.sidebar_slot.set_child(Some(view.widget()));
-    view.follow_search(&imp.table_search);
+    if keys {
+        view.hold_keys();
+        let listing = input.clone();
+        view.follow_key_search(&imp.table_search, move || listing.deliver(WorkspaceInput::ListKeys));
+        describe_key_search(workspace);
+        describe_key_empty_page(workspace);
+    } else {
+        view.follow_search(&imp.table_search);
+    }
     imp.table_search_bar.connect_entry(&*imp.table_search);
     imp.table_search_bar.set_key_capture_widget(Some(&*imp.sidebar_root));
     imp.table_search_toggle
@@ -58,6 +75,36 @@ pub(super) fn build(workspace: &Workspace, input: &WorkspaceSender, session: &Se
         .sync_create()
         .build();
     view
+}
+
+/// The search and its buttons name keys, not tables.
+fn describe_key_search(workspace: &Workspace) {
+    let imp = workspace.imp();
+    let filter = crate::i18n::gettext("Filter keys");
+    imp.table_search
+        .set_placeholder_text(Some(&crate::i18n::gettext("Filter keys…")));
+    imp.table_search
+        .update_property(&[gtk4::accessible::Property::Label(&filter)]);
+    crate::ui::a11y::describe_icon_button(
+        &imp.table_search_toggle.get(),
+        &crate::i18n::gettext("Search Keys"),
+        None,
+    );
+    crate::ui::a11y::describe_icon_button(
+        &imp.refresh_tables_button.get(),
+        &crate::i18n::gettext("Refresh Keys"),
+        Some("win.refresh-tables"),
+    );
+}
+
+/// The page with no tab open speaks of keys and an editor of commands.
+fn describe_key_empty_page(workspace: &Workspace) {
+    let imp = workspace.imp();
+    imp.empty_page.set_title(&crate::i18n::gettext("Select a Key"));
+    imp.empty_page.set_description(Some(&crate::i18n::gettext(
+        "Choose a key in the sidebar or open the editor.",
+    )));
+    imp.empty_editor_button.set_label(&crate::i18n::gettext("Open Editor"));
 }
 
 fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
@@ -154,6 +201,10 @@ impl WorkspaceModel {
     /// is shown until the first list is indexed, which takes a large
     /// catalog longer than a frame.
     pub(super) fn open_sidebar(&mut self) {
+        if self.keys.is_some() {
+            self.list_keys();
+            return;
+        }
         let Some(session) = self.context.active.get() else {
             return;
         };
@@ -225,6 +276,10 @@ impl WorkspaceModel {
     /// Every schema's list landed: a reconnect, a schema change or the
     /// first read.
     pub(super) fn on_catalog_changed(&mut self, snapshot: ObjectListSnapshot) {
+        // A key-value engine's catalog is empty; its keys are listed apart.
+        if self.keys.is_some() {
+            return;
+        }
         self.all_schemas_listed = true;
         self.catalog_banner.set_revealed(false);
         self.read_sidebar(snapshot.objects);
@@ -243,7 +298,11 @@ impl WorkspaceModel {
     /// Read the session's tables again, and every table's columns on
     /// their next ask: what changed the schema did not say which tables
     /// it touched.
-    pub(super) fn refresh_catalog(&self) {
+    pub(super) fn refresh_catalog(&mut self) {
+        if self.keys.is_some() {
+            self.list_keys();
+            return;
+        }
         let Some(session) = self.context.active.get() else {
             return;
         };
@@ -253,7 +312,7 @@ impl WorkspaceModel {
 
     /// A run that sent DDL, or a commit that may publish it, changes what
     /// the sidebar and the completion list.
-    pub(super) fn on_editor_run_finished(&self, id: uuid::Uuid) {
+    pub(super) fn on_editor_run_finished(&mut self, id: uuid::Uuid) {
         let changed = matches!(
             self.workspace_tabs.borrow().get(&id),
             Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog()
@@ -270,6 +329,11 @@ impl WorkspaceModel {
     /// Until every schema's list first lands, the default schema's is
     /// what the sidebar shows.
     pub(super) fn on_default_list_committed(&mut self, snapshot: ObjectListSnapshot) {
+        // A reconnect of a key-value engine lists its keys again.
+        if self.keys.is_some() {
+            self.list_keys();
+            return;
+        }
         let objects = match (self.all_schemas_listed, self.context.active.get()) {
             (true, Some(session)) => session
                 .catalog()
@@ -294,9 +358,9 @@ impl WorkspaceModel {
     /// With no table tab in front, no row stays selected: one would say
     /// the editor shows that table.
     pub(super) fn sync_sidebar_selection(&self) {
-        let table = self
-            .selected_browse_slot_table()
-            .map(|(schema, name)| TableRef::new(schema, name));
-        self.sidebar.sync_selection(table.as_ref());
+        let shown = self
+            .selected_workspace_tab_id()
+            .and_then(|id| self.workspace_tabs.borrow().get(&id)?.sidebar_object());
+        self.sidebar.sync_selection(shown.as_ref());
     }
 }

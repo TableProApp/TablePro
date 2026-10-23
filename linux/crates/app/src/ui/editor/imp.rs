@@ -15,6 +15,7 @@ use super::find_bar::FindBar;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
 use super::transaction_dirty::OpenTransaction;
+use super::vim_mode::VimMode;
 use crate::ui::grid::GridSink;
 use crate::ui::handler_guard::HandlerGuard;
 
@@ -40,6 +41,12 @@ pub struct SqlEditor {
     pub find_bar: TemplateChild<FindBar>,
     #[template_child]
     pub source_view: TemplateChild<sourceview5::View>,
+    #[template_child]
+    pub text_pane: TemplateChild<adw::ToolbarView>,
+    #[template_child]
+    pub vim_command_bar: TemplateChild<gtk4::Label>,
+    #[template_child]
+    pub vim_command: TemplateChild<gtk4::Label>,
     #[template_child]
     pub results: TemplateChild<ResultsPane>,
 
@@ -69,6 +76,9 @@ pub struct SqlEditor {
     /// settings, which would otherwise outlive the tab.
     pub(super) app_handlers: RefCell<Vec<HandlerGuard>>,
     pub(super) completion_providers: RefCell<Vec<sourceview5::CompletionProvider>>,
+    /// The tab's `editor` group, kept to read what it offers.
+    pub(super) actions: OnceCell<gtk4::gio::SimpleActionGroup>,
+    pub(super) vim: RefCell<Option<VimMode>>,
 }
 
 #[glib::object_subclass]
@@ -114,6 +124,8 @@ impl ObjectImpl for SqlEditor {
                     .param_types([bool::static_type()])
                     .build(),
                 Signal::builder("file-changed").build(),
+                // Vim's :q, which closes the tab through its close prompts.
+                Signal::builder("close-requested").build(),
             ]
         })
     }
@@ -121,6 +133,7 @@ impl ObjectImpl for SqlEditor {
     fn dispose(&self) {
         self.obj().shutdown();
         self.app_handlers.take();
+        self.obj().detach_vim();
         self.obj().release_view();
     }
 }

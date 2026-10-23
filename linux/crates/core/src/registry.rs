@@ -102,7 +102,7 @@ mod tests {
 
     use super::*;
     use crate::capabilities::{
-        CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
+        CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
         ScriptExecution,
     };
     use crate::connect_options::ConnectOptions;
@@ -113,8 +113,10 @@ mod tests {
 
     const fn capabilities(endpoint: EndpointKind) -> DriverCapabilities {
         DriverCapabilities {
+            data_model: DataModel::Relational,
             endpoint,
             auth_modes: &[],
+            username_required: false,
             tls: None,
             read_only: ReadOnlyEnforcement::EngineEnforced,
             dml_writes: WriteAtomicity::Transactional,

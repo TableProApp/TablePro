@@ -33,11 +33,14 @@ pub fn parse_expression(
     if text.chars().count() > max_len {
         return Err(ExpressionSyntaxError::TooLong { max: max_len });
     }
+    let Some(dialect) = grammar.parser_dialect() else {
+        return Err(ExpressionSyntaxError::Invalid);
+    };
     if contains_comment(grammar, text) {
         return Err(ExpressionSyntaxError::Comment);
     }
 
-    let mut parser = Parser::new(grammar.parser_dialect())
+    let mut parser = Parser::new(dialect)
         .with_recursion_limit(RECURSION_LIMIT)
         .try_with_sql(text)
         .map_err(|_| ExpressionSyntaxError::Invalid)?;

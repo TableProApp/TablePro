@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
-    AuthMode, CommitResolutionSupport, ConnectOptions, Connection, DatabaseDriver, DriverCapabilities, DriverError,
-    EndpointKind, EstimateQuality, FileFormat, FileSignature, ReadOnlyEnforcement, ScriptExecution, ServerNameOverride,
-    TimeoutPhase, TlsCapabilities, TlsMode, WriteAtomicity,
+    AuthMode, CommitResolutionSupport, ConnectOptions, Connection, DataModel, DatabaseDriver, DriverCapabilities,
+    DriverError, EndpointKind, EstimateQuality, FileFormat, FileSignature, ReadOnlyEnforcement, ScriptExecution,
+    ServerNameOverride, TimeoutPhase, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -29,8 +29,10 @@ pub struct FakeDriver {
 
 impl FakeDriver {
     pub const NETWORK_CAPABILITIES: DriverCapabilities = DriverCapabilities {
+        data_model: DataModel::Relational,
         endpoint: EndpointKind::Network { default_port: 1 },
         auth_modes: &[AuthMode::Password],
+        username_required: true,
         tls: Some(TlsCapabilities {
             modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
             ca_file: true,
@@ -45,6 +47,15 @@ impl FakeDriver {
         row_count_estimate: EstimateQuality::Statistics,
         object_kinds: &[ObjectKind::Table, ObjectKind::View],
         database_required: false,
+    };
+
+    /// An engine of keys that only the app's own check holds read-only,
+    /// as Redis is.
+    pub const KEY_VALUE_CAPABILITIES: DriverCapabilities = DriverCapabilities {
+        data_model: DataModel::KeyValue,
+        username_required: false,
+        read_only: ReadOnlyEnforcement::ClientGuard,
+        ..Self::NETWORK_CAPABILITIES
     };
 
     /// Files named as SQLite's are, with an empty file read as an empty

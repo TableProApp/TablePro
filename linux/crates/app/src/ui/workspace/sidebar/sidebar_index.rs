@@ -47,11 +47,26 @@ impl SidebarIndex {
     /// sort by the locale's collation ignoring case, ties in the order the
     /// server listed them.
     pub(crate) fn build(objects: &[ObjectInfo], schemas: &[SchemaInfo]) -> Self {
-        let placement = Placement::new(schemas);
+        Self::build_titled(objects, schemas, crate::i18n::gettext("Tables"))
+    }
+
+    /// A key-value engine's keys, under the one heading of the database
+    /// they are in.
+    pub(crate) fn keys(keys: &[ObjectInfo], heading: String) -> Self {
+        Self::build_titled(keys, &[], heading)
+    }
+
+    /// `untitled` heads the objects with no schema when no schema is the
+    /// default one.
+    fn build_titled(objects: &[ObjectInfo], schemas: &[SchemaInfo], untitled: String) -> Self {
+        let placement = Placement::new(schemas, untitled);
         let mut sections: Vec<Section> = Vec::new();
         let mut section_ids: HashMap<(u32, &str), u32> = HashMap::new();
         let mut keyed: Vec<(u32, glib::CollationKey, String, IndexEntry)> = Vec::new();
-        for object in objects.iter().filter(|object| object.kind.is_browsable()) {
+        for object in objects
+            .iter()
+            .filter(|object| object.kind.is_browsable() || object.kind.is_key())
+        {
             let (title, rank) = placement.section_of(object.schema.as_deref());
             let section = *section_ids.entry((rank, title)).or_insert_with(|| {
                 sections.push(Section {
@@ -140,7 +155,7 @@ struct Placement<'a> {
 }
 
 impl<'a> Placement<'a> {
-    fn new(schemas: &'a [SchemaInfo]) -> Self {
+    fn new(schemas: &'a [SchemaInfo], untitled: String) -> Self {
         let mut ranks = HashMap::new();
         for schema in schemas {
             let rank = if schema.is_default {
@@ -155,7 +170,7 @@ impl<'a> Placement<'a> {
         let default_title = schemas
             .iter()
             .find(|schema| schema.is_default)
-            .map_or_else(|| crate::i18n::gettext("Tables"), |schema| schema.name.clone());
+            .map_or(untitled, |schema| schema.name.clone());
         Self { ranks, default_title }
     }
 
@@ -328,6 +343,27 @@ mod tests {
             Some(ObjectKind::View)
         );
         assert_eq!(index.find(&TableRef::new(Some("public".to_owned()), "refresh")), None);
+    }
+
+    #[test]
+    fn keys_are_listed_under_their_database() {
+        let key = |name: &str, kind| object(None, name, ObjectKind::Key(kind));
+
+        let index = SidebarIndex::keys(
+            &[
+                key("user:2", tablepro_core::meta::KeyKind::Hash),
+                key("User:1", tablepro_core::meta::KeyKind::String),
+            ],
+            "Database 3".to_owned(),
+        );
+
+        assert_eq!(
+            listed(&index),
+            [
+                ("Database 3".to_owned(), "User:1".to_owned()),
+                ("Database 3".to_owned(), "user:2".to_owned())
+            ]
+        );
     }
 
     #[test]

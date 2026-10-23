@@ -13,14 +13,28 @@ pub enum EndpointKind {
 
 /// How a read-only connection is held to it.
 ///
-/// The three differ in what the user can do about a refused write: a
-/// setting on this connection, a session default the server can
-/// override, or a login that simply cannot write.
+/// They differ in what the user can do about a refused write: a setting
+/// on this connection, a session default the server can override, a
+/// login that simply cannot write, or nothing but the app's own check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReadOnlyEnforcement {
     EngineEnforced,
     SessionDefault,
     LoginPrivileges,
+    /// The engine has no read-only session, so only the app's own check
+    /// of each command stands between the user and a write.
+    ClientGuard,
+}
+
+/// What an engine holds, which decides what the sidebar lists, what an
+/// object opens in and the language the editor takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DataModel {
+    /// Schemas of tables, read and written in SQL.
+    Relational,
+    /// Numbered databases of keys, each holding a typed value, read and
+    /// written with commands.
+    KeyValue,
 }
 
 /// Whether the engine runs a script as one unit.
@@ -59,8 +73,12 @@ pub enum EstimateQuality {
 /// statements, whether a row count can be shown as exact.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DriverCapabilities {
+    pub data_model: DataModel,
     pub endpoint: EndpointKind,
     pub auth_modes: &'static [AuthMode],
+    /// Whether a password login needs a username. Redis takes a password
+    /// alone, for its default user.
+    pub username_required: bool,
     pub tls: Option<TlsCapabilities>,
     pub read_only: ReadOnlyEnforcement,
     pub dml_writes: WriteAtomicity,
@@ -96,6 +114,10 @@ impl DriverCapabilities {
     pub fn supports(&self, mode: AuthMode) -> bool {
         self.auth_modes.contains(&mode)
     }
+
+    pub fn is_key_value(&self) -> bool {
+        self.data_model == DataModel::KeyValue
+    }
 }
 
 #[cfg(test)]
@@ -104,8 +126,10 @@ mod tests {
     use crate::file_format::FileSignature;
 
     const NETWORK: DriverCapabilities = DriverCapabilities {
+        data_model: DataModel::Relational,
         endpoint: EndpointKind::Network { default_port: 5432 },
         auth_modes: &[AuthMode::Password],
+        username_required: true,
         tls: None,
         read_only: ReadOnlyEnforcement::SessionDefault,
         dml_writes: WriteAtomicity::Transactional,

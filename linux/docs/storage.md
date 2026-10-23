@@ -244,6 +244,11 @@ script lexer:
   would.
 - A string, quoted name or comment that never closes withholds it too, since
   what is inside a literal is then a guess.
+- Redis commands carry a password in their arguments, so their rules read the
+  command and its options rather than its words: `AUTH`, `HELLO ... AUTH`,
+  `MIGRATE ... AUTH`, `ACL SETUSER`, `CONFIG SET` of a password parameter,
+  `SENTINEL SET` and a script that names one of them
+  ([redis.md](drivers/redis.md#the-editor)).
 
 An entry is kept whole or not at all, never rewritten to cut a secret out.
 Turning the setting off keeps what is already there; Clear removes it.
@@ -271,6 +276,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `use-system-font` | `b` | `true` | |
 | `custom-font` | `s` | `Monospace 12` | |
 | `style-scheme` | `s` | `Adwaita` | |
+| `vim-keybindings` | `b` | `false` | |
 | `csv-null-to-empty` | `b` | `true` | |
 | `csv-line-break-to-space` | `b` | `false` | |
 | `csv-header-row` | `b` | `true` | |

@@ -191,6 +191,66 @@ struct ConnectionPromptQueueTests {
         #expect(await answer == false)
     }
 
+    @Test("A question asked after its screen closed is answered no at once")
+    func questionAfterScreenClosedIsRefused() async {
+        let queue = ConnectionPromptQueue()
+        queue.screenAppeared()
+        queue.screenDisappeared()
+
+        #expect(await queue.ask(makePrompt()) == false)
+        #expect(await queue.answer(challenge()) == nil)
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test("Closing the screen answers the question it was showing")
+    func closingTheScreenAnswersItsQuestion() async {
+        let queue = ConnectionPromptQueue()
+        queue.screenAppeared()
+
+        async let answer = queue.ask(makePrompt())
+        await waitUntil({ queue.current != nil }, "the question should be on screen")
+        queue.screenDisappeared()
+
+        #expect(await answer == false)
+        #expect(queue.pending.isEmpty)
+    }
+
+    @Test("A question keeps waiting while another screen still shows the queue")
+    func secondScreenKeepsTheQuestion() async {
+        let queue = ConnectionPromptQueue()
+        let prompt = makePrompt()
+        queue.screenAppeared()
+        queue.screenAppeared()
+
+        async let answer = queue.ask(prompt)
+        await waitUntil({ queue.current != nil }, "the question should be on screen")
+        queue.screenDisappeared()
+        #expect(queue.current?.id == prompt.id)
+        queue.answer(prompt.id, accepted: true)
+
+        #expect(await answer == true)
+    }
+
+    @Test("A screen that shows the queue again, or an attempt it starts, can ask again")
+    func reopenedScreenAsksAgain() async {
+        let queue = ConnectionPromptQueue()
+        queue.screenAppeared()
+        queue.screenDisappeared()
+        queue.screenAppeared()
+
+        async let shown = queue.ask(makePrompt())
+        await waitUntil({ queue.current != nil }, "the question should be on screen")
+        queue.answer(queue.current?.id ?? UUID(), accepted: true)
+        #expect(await shown == true)
+
+        queue.screenDisappeared()
+        queue.expectScreen()
+        async let expected = queue.ask(makePrompt())
+        await waitUntil({ queue.current != nil }, "the question should wait for the screen")
+        queue.answer(queue.current?.id ?? UUID(), accepted: true)
+        #expect(await expected == true)
+    }
+
     @Test("A notice can never answer a question, because it has no no")
     func noticeIsRefusedAsAQuestion() async {
         let queue = ConnectionPromptQueue()

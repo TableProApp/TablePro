@@ -204,8 +204,6 @@ struct ConnectionFormView: View {
             .navigationDestination(item: $pushedJumpHostId) { hopId in
                 JumpHostEditorView(viewModel: viewModel, hopId: hopId)
             }
-            .connectionPrompts(viewModel.prompts)
-            .onDisappear { viewModel.prompts.cancelAll() }
             .sheet(item: $pasteTarget) { role in
                 CertificatePasteSheet(viewModel: viewModel, role: role)
             }
@@ -259,6 +257,8 @@ struct ConnectionFormView: View {
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
         }
+        // On the stack, not the form: pushing the jump host editor would count as the form leaving.
+        .connectionPrompts(viewModel.prompts)
     }
 
     // MARK: - Connection Section

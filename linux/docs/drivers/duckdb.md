@@ -1,6 +1,6 @@
 # DuckDB
 
-Driver id `duckdb`, crate `crates/drivers/duckdb`. It runs on the duckdb crate 1.10506 with `bundled`, so DuckDB 1.5.6 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0021](../decisions/0021-bundled-duckdb.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `duckdb`, crate `crates/drivers/duckdb`. It runs on the duckdb crate 1.10506 with `bundled`, so DuckDB 1.5.6 is compiled from the crate's sources into the app, with the `json` and `parquet` extensions linked in ([ADR 0023](../decisions/0023-bundled-duckdb.md)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`. A file is a DuckDB database when it holds `DUCK` at byte 8, which is how a file opened from Files or the command line finds this driver; `.duckdb` and `.ddb` are its suffixes for the file chooser and an empty file. shared-mime-info has no DuckDB type, so the desktop entry does not list one.
 

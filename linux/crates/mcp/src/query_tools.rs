@@ -136,7 +136,10 @@ fn single_batch(query: &str, grammar: SqlGrammar) -> Result<String, ToolError> {
         .batches()
         .iter()
         .filter_map(|batch| {
-            let text = query.get(batch.range.clone())?.trim();
+            let text = query.get(batch.range.clone())?;
+            // A Redis command's range is exact, and a blank Rust trims but
+            // Redis does not, such as U+00A0, is part of an argument.
+            let text = if grammar.is_sql() { text.trim() } else { text };
             (!text.is_empty()).then_some((text, batch.repeat.get()))
         })
         .collect();
@@ -434,6 +437,15 @@ mod tests {
         assert!(single_batch("SELECT 1; SELECT 2", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("", SqlGrammar::PostgreSql).is_err());
         assert!(single_batch("SELECT 'open", SqlGrammar::PostgreSql).is_err());
+    }
+
+    #[test]
+    fn a_redis_command_keeps_the_blanks_its_arguments_hold() {
+        assert_eq!(
+            single_batch("  SET k v\u{a0}\n", SqlGrammar::Redis).ok().as_deref(),
+            Some("SET k v\u{a0}")
+        );
+        assert!(single_batch("GET a\nGET b", SqlGrammar::Redis).is_err());
     }
 
     #[test]

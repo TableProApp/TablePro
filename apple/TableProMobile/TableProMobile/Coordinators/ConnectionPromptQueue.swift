@@ -4,7 +4,6 @@ import os
 import TableProDatabase
 import TableProSSHTransport
 
-/// What the user is being asked, as the screen shows it.
 struct ConnectionPrompt: Identifiable, Equatable {
     enum Style: Equatable {
         case standard
@@ -27,11 +26,7 @@ struct ConnectionPrompt: Identifiable, Equatable {
     var fields: [Field] = []
 }
 
-/// The questions one connect attempt has to ask, shown by the screen that owns the attempt.
-///
-/// The queue belongs to the attempt rather than to the app, and it answers every waiter: an attempt
-/// that is cancelled, or whose screen goes away, resolves its question instead of leaving the tunnel
-/// suspended on a prompt nobody can see.
+// Every waiter gets an answer: a question nobody can see would leave its tunnel suspended for good.
 @MainActor
 @Observable
 final class ConnectionPromptQueue: ConnectionPrompter {
@@ -39,16 +34,37 @@ final class ConnectionPromptQueue: ConnectionPrompter {
 
     private(set) var pending: [ConnectionPrompt] = []
 
-    /// Bumped whenever the attempt is abandoned, so work already in flight cannot post a notice onto
-    /// the queue the next attempt will use.
+    // Bumped when the attempt is abandoned, so work in flight cannot post a notice onto the next attempt's queue.
     private(set) var generation = 0
 
     private var waiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
     private var typedValues: [UUID: [String]] = [:]
 
+    // A queue waits for its first screen, which its owner shows right after making it.
+    @ObservationIgnored private var screens = 0
+    @ObservationIgnored private(set) var hasNoScreen = false
+
     var current: ConnectionPrompt? { pending.first }
 
     nonisolated init() {}
+
+    func screenAppeared() {
+        screens += 1
+        hasNoScreen = false
+    }
+
+    func screenDisappeared() {
+        guard screens > 0 else { return }
+        screens -= 1
+        guard screens == 0 else { return }
+        hasNoScreen = true
+        cancelAll()
+    }
+
+    // The screen that starts an attempt shows this queue an update after the attempt starts.
+    func expectScreen() {
+        hasNoScreen = false
+    }
 
     func confirm(_ question: ConnectionQuestion) async -> Bool {
         await ask(Self.prompt(for: question))
@@ -65,6 +81,10 @@ final class ConnectionPromptQueue: ConnectionPrompter {
     func ask(_ prompt: ConnectionPrompt) async -> Bool {
         guard prompt.style != .notice else {
             Self.logger.error("A notice cannot be asked as a question")
+            return false
+        }
+        guard !hasNoScreen else {
+            Self.logger.info("No screen shows the connection's questions, so this one is answered no")
             return false
         }
         guard !Task.isCancelled else { return false }
@@ -85,8 +105,7 @@ final class ConnectionPromptQueue: ConnectionPrompter {
         }
     }
 
-    /// A statement rather than a question: nothing waits on it, and it is dropped when the attempt
-    /// that produced it has already been abandoned.
+    // Nothing waits on a notice, so one from an abandoned attempt is dropped.
     func notify(_ prompt: ConnectionPrompt, generation: Int) {
         guard generation == self.generation else {
             Self.logger.info("Dropped a notice from an attempt that was abandoned")

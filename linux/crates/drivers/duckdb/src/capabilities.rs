@@ -21,8 +21,10 @@ pub(crate) const FILE_FORMAT: FileFormat = FileFormat {
 /// when the connection is. Saves and schema changes are one transaction
 /// each, and a COMMIT never crosses a network.
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: EndpointKind::File(FILE_FORMAT),
     auth_modes: &[],
+    username_required: false,
     tls: None,
     read_only: ReadOnlyEnforcement::EngineEnforced,
     dml_writes: WriteAtomicity::Transactional,

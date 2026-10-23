@@ -505,7 +505,12 @@ mod tests {
         let columns = [named("id", "integer", false), named("name", "text", false)];
         let rows = vec![RowObject::result(vec![Value::Null, Value::Text("NULL".into())].into())];
         let (sink, _messages) = recorder();
-        let (view, _selection) = build_result_grid(columns.iter().map(ColumnInfo::result_column).collect(), rows, sink);
+        let (view, _selection) = build_result_grid(
+            columns.iter().map(ColumnInfo::result_column).collect(),
+            rows,
+            sink,
+            true,
+        );
         let window = gtk::Window::new();
         window.set_child(Some(&view));
         window.present();

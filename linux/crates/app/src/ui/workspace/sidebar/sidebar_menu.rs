@@ -23,6 +23,10 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     let open = gio::Menu::new();
     open.append_item(&item(&crate::i18n::gettext("Open in New Tab"), OPEN_IN_NEW_TAB, key));
     menu.append_section(None, &open);
+    // A key has no SQL to show and no structure to change.
+    if !kind.is_browsable() {
+        return menu;
+    }
     let table = kind.is_structure_editable();
     let structure = gio::Menu::new();
     if table && affordances.can_edit_structure {
@@ -51,7 +55,8 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
 pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAffordances) -> bool {
     let table = kind.is_structure_editable();
     match action {
-        OPEN_IN_NEW_TAB | SHOW_CREATE_TABLE => true,
+        OPEN_IN_NEW_TAB => true,
+        SHOW_CREATE_TABLE => kind.is_browsable(),
         EDIT_STRUCTURE => table && affordances.can_edit_structure,
         IMPORT_CSV | DROP_TABLE => table && !affordances.read_only,
         _ => false,
@@ -145,6 +150,17 @@ mod tests {
             !actions(&object_menu(&key, ObjectKind::Table, without)).contains(&"sidebar.edit-structure".to_owned())
         );
         assert!(actions(&object_menu(&key, ObjectKind::Table, all())).contains(&"sidebar.drop-table".to_owned()));
+    }
+
+    #[test]
+    fn a_key_offers_only_to_open_it() {
+        let key = ObjectKey(TableRef::unqualified("user:1"));
+        let kind = ObjectKind::Key(tablepro_core::meta::KeyKind::Hash);
+
+        assert_eq!(actions(&object_menu(&key, kind, all())), ["sidebar.open-in-new-tab"]);
+        for action in [SHOW_CREATE_TABLE, EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
+            assert!(!offers(action, kind, all()), "{action}");
+        }
     }
 
     #[test]

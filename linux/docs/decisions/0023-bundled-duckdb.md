@@ -1,4 +1,4 @@
-# 0021: DuckDB built from the duckdb crate's bundled sources
+# 0023: DuckDB built from the duckdb crate's bundled sources
 
 - **Status**: Accepted
 - **Date**: 2026-10-23

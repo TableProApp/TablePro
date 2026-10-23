@@ -54,6 +54,8 @@ pub(crate) struct Script {
     pub tunnel: Option<tablepro_storage::SavedSshConfig>,
     /// The connection list on disk cannot be read, so it holds nothing.
     pub unreadable_list: bool,
+    /// The saved connection's engine holds keys, not tables.
+    pub keys: bool,
     /// The size the window opens at, as the settings remember it.
     pub window_size: Option<(i32, i32)>,
     /// Stands in for the file manager.
@@ -101,13 +103,14 @@ impl TestWindow {
             network,
             tunnel,
             unreadable_list,
+            keys,
             window_size,
             revealer,
         } = script;
         if let Some(size) = window_size {
             remember_window_size(&settings, size);
         }
-        let network = network || tunnel.is_some();
+        let network = network || keys || tunnel.is_some();
         let saved = scripted_connection(network, tunnel, dir.path());
         if unreadable_list {
             write_unreadable_list(&list_file);
@@ -125,10 +128,10 @@ impl TestWindow {
             connection.list_objects.always(FakeReply::ok(Vec::new()));
         }
         let mut drivers = DriverRegistry::new();
-        let capabilities = if network {
-            &FakeDriver::NETWORK_CAPABILITIES
-        } else {
-            &FakeDriver::FILE_CAPABILITIES
+        let capabilities = match (keys, network) {
+            (true, _) => &FakeDriver::KEY_VALUE_CAPABILITIES,
+            (false, true) => &FakeDriver::NETWORK_CAPABILITIES,
+            (false, false) => &FakeDriver::FILE_CAPABILITIES,
         };
         drivers.register(Arc::new(FakeDriver::connecting(capabilities, connection.clone())));
         // A second file engine, as the app ships two, whose files a

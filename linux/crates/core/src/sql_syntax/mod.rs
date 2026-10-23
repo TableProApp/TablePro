@@ -7,6 +7,7 @@ mod keywords;
 mod literal_token;
 mod parse_expression;
 mod parse_type;
+pub mod redis;
 mod reserved_words;
 pub mod script;
 mod statement_access;

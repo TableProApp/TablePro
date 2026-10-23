@@ -42,9 +42,11 @@ pub(crate) fn subtitle_for(saved: &SavedConnection, file_based: bool, host_path:
         let shown = file_location::display_path(Path::new(&saved.database), host_path);
         return format!("{} · {shown}", saved.driver_id);
     }
-    match saved.auth_mode {
-        AuthMode::Kerberos => format!("{} · {}:{}", saved.driver_id, saved.host, saved.port),
-        AuthMode::Password => format!("{} · {}@{}:{}", saved.driver_id, saved.username, saved.host, saved.port),
+    match (saved.auth_mode, saved.username.as_str()) {
+        (AuthMode::Kerberos, _) | (AuthMode::Password, "") => {
+            format!("{} · {}:{}", saved.driver_id, saved.host, saved.port)
+        }
+        (AuthMode::Password, username) => format!("{} · {username}@{}:{}", saved.driver_id, saved.host, saved.port),
     }
 }
 
@@ -76,11 +78,15 @@ mod tests {
     }
 
     #[test]
-    fn a_kerberos_row_has_no_username_separator_to_dangle() {
+    fn a_row_without_a_username_has_no_separator_to_dangle() {
         assert_eq!(
             subtitle_for(&saved("", AuthMode::Kerberos), false, None),
             "mssql · sql.corp.example:1433"
         );
+        let mut redis = saved("", AuthMode::Password);
+        redis.driver_id = "redis".into();
+        redis.port = 6379;
+        assert_eq!(subtitle_for(&redis, false, None), "redis · sql.corp.example:6379");
         assert_eq!(
             subtitle_for(&saved("sa", AuthMode::Password), false, None),
             "mssql · sa@sql.corp.example:1433"

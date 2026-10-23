@@ -64,6 +64,7 @@ tablepro-driver-duckdb.workspace = true
 tablepro-driver-mssql.workspace = true
 tablepro-driver-mysql.workspace = true
 tablepro-driver-postgres.workspace = true
+tablepro-driver-redis.workspace = true
 tablepro-driver-sqlite.workspace = true
 tablepro-mcp.workspace = true
 tablepro-net.workspace = true

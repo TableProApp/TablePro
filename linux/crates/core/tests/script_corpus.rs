@@ -473,7 +473,7 @@ proptest! {
         text in "[ -~\n\té😀]{0,160}",
         backslash_escapes in any::<bool>(),
     ) {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL.into_iter().chain([SqlGrammar::Redis]) {
             let plan = ScriptPlan::build(&text, grammar, LexicalSettings { backslash_escapes });
             let mut cursor = 0;
             for token in plan.tokens(0..text.len()) {
@@ -499,6 +499,51 @@ proptest! {
             }
         }
     }
+}
+
+#[test]
+fn redis_each_line_is_a_command() {
+    assert_eq!(
+        statements(SqlGrammar::Redis, "SET a 1\n\n  GET a  \r\nDEL a"),
+        ["SET a 1", "GET a", "DEL a"]
+    );
+}
+
+#[test]
+fn redis_a_semicolon_does_not_end_a_command() {
+    assert_eq!(statements(SqlGrammar::Redis, "SET k a;b; GET k"), ["SET k a;b; GET k"]);
+}
+
+#[test]
+fn redis_a_quoted_line_break_stays_in_its_command() {
+    assert_eq!(
+        statements(SqlGrammar::Redis, "SET k \"one\ntwo\"\nGET 'k\n'\nPING"),
+        ["SET k \"one\ntwo\"", "GET 'k\n'", "PING"]
+    );
+}
+
+#[test]
+fn redis_an_open_quote_runs_to_the_end_and_is_reported() {
+    let text = "GET a\nSET k \"open\nGET b";
+    let plan = plan(SqlGrammar::Redis, text);
+
+    assert_eq!(statements(SqlGrammar::Redis, text), ["GET a", "SET k \"open\nGET b"]);
+    assert_eq!(
+        plan.diagnostics(),
+        [ScriptDiagnostic::Unterminated {
+            construct: OpenConstruct::StringLiteral,
+            start: 12,
+        }]
+    );
+}
+
+#[test]
+fn redis_each_command_is_its_own_batch_and_a_failure_stops_the_script() {
+    let text = "PING\nPING";
+    let plan = plan(SqlGrammar::Redis, text);
+
+    assert_eq!(batch_texts(&plan, text), ["PING", "PING"]);
+    assert_eq!(plan.batch_error_policy(), BatchErrorPolicy::StopScript);
 }
 
 const AGREED_CASES: &[(SqlGrammar, &str)] = &[
@@ -558,6 +603,9 @@ fn sqlparser_semicolons(grammar: SqlGrammar, text: &str) -> Result<Vec<usize>, T
         SqlGrammar::MsSql => &MsSqlDialect {},
         SqlGrammar::ClickHouse => &ClickHouseDialect {},
         SqlGrammar::DuckDb => &DuckDbDialect {},
+        // Commands have no SQL tokenizer to agree with, and no agreed case
+        // is a Redis one.
+        SqlGrammar::Redis => return Ok(Vec::new()),
     };
     let tokens = Tokenizer::new(dialect, text)
         .with_unescape(false)

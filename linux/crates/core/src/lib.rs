@@ -34,6 +34,7 @@ pub mod foreign_key_info;
 mod foreign_key_mode;
 pub mod hex;
 pub mod import;
+pub mod keyspace;
 mod link_watch;
 mod liveness_policy;
 mod loss_phase;
@@ -87,7 +88,8 @@ pub use auth_mode::AuthMode;
 pub use busy_reason::BusyReason;
 pub use call_options::CallOptions;
 pub use capabilities::{
-    CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution,
+    CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
+    ScriptExecution,
 };
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;
