@@ -63,6 +63,7 @@ pub(super) fn build(
         let listing = input.clone();
         view.follow_key_search(&imp.table_search, move || listing.deliver(WorkspaceInput::ListKeys));
         describe_key_search(workspace);
+        describe_key_empty_page(workspace);
     } else {
         view.follow_search(&imp.table_search);
     }
@@ -94,6 +95,16 @@ fn describe_key_search(workspace: &Workspace) {
         &crate::i18n::gettext("Refresh Keys"),
         Some("win.refresh-tables"),
     );
+}
+
+/// The page with no tab open speaks of keys and an editor of commands.
+fn describe_key_empty_page(workspace: &Workspace) {
+    let imp = workspace.imp();
+    imp.empty_page.set_title(&crate::i18n::gettext("Select a Key"));
+    imp.empty_page.set_description(Some(&crate::i18n::gettext(
+        "Choose a key in the sidebar or open the editor.",
+    )));
+    imp.empty_editor_button.set_label(&crate::i18n::gettext("Open Editor"));
 }
 
 fn workspace_input(event: SidebarEvent) -> WorkspaceInput {

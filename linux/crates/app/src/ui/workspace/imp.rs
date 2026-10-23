@@ -72,6 +72,10 @@ pub struct Workspace {
     #[template_child]
     pub tab_stack: TemplateChild<gtk::Stack>,
     #[template_child]
+    pub empty_page: TemplateChild<adw::StatusPage>,
+    #[template_child]
+    pub empty_editor_button: TemplateChild<gtk::Button>,
+    #[template_child]
     pub tab_view: TemplateChild<adw::TabView>,
 
     pub(super) model: RefCell<Option<WorkspaceModel>>,

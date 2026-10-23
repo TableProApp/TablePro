@@ -172,12 +172,12 @@
                               <object class="GtkStackPage">
                                 <property name="name">empty</property>
                                 <property name="child">
-                                  <object class="AdwStatusPage">
+                                  <object class="AdwStatusPage" id="empty_page">
                                     <property name="icon-name">view-grid-symbolic</property>
                                     <property name="title" translatable="yes">Select a Table</property>
                                     <property name="description" translatable="yes">Choose a table in the sidebar or open the SQL editor.</property>
                                     <property name="child">
-                                      <object class="GtkButton">
+                                      <object class="GtkButton" id="empty_editor_button">
                                         <property name="label" translatable="yes">Open SQL Editor</property>
                                         <property name="action-name">win.new-editor-tab</property>
                                         <property name="halign">center</property>

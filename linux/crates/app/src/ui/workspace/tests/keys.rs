@@ -134,6 +134,8 @@ fn a_key_value_session_lists_its_keys_with_their_types() {
     let imp = workspace.imp();
     assert_eq!(imp.table_search.placeholder_text().as_deref(), Some("Filter keys…"));
     assert!(!imp.key_limit_banner.is_revealed());
+    assert_eq!(imp.empty_page.title(), "Select a Key");
+    assert_eq!(imp.empty_editor_button.label().as_deref(), Some("Open Editor"));
     assert_eq!(
         test.connection().observed_sql("scan_keys").first().cloned().flatten(),
         None,
