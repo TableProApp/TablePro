@@ -50,6 +50,33 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.1/TablePro-0.83.0-beta.1.tar.xz" length="41904440" type="application/octet-stream" sparkle:edSignature="O08KmO2gJpaVFUhup90tbt6oaqR55xiaFYli2Ms9CwbS9T2hvkxjYyS1A5bdoFLnqFoT1Ka8nrEmBj1JPNCdCw=="/>
         </item>
         <item>
+            <title>0.82.2</title>
+            <pubDate>Fri, 23 Oct 2026 02:17:24 +0000</pubDate>
+            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
+            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
+            <sparkle:criticalUpdate sparkle:version="820299"/>
+            <sparkle:version>820299</sparkle:version>
+            <sparkle:shortVersionString>0.82.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.82.2
+
+### Changed
+
+- The grid no longer edits or deletes ClickHouse, Snowflake, Trino or keyless Dameng rows; use a SQL statement instead. ([#3794](https://github.com/TableProApp/TablePro/pull/3794))
+
+### Fixed
+
+- A grid edit or delete on ClickHouse, Snowflake, Trino or a keyless Dameng table could change other rows too. ([#3794](https://github.com/TableProApp/TablePro/pull/3794))
+
+### Security
+
+- SAP HANA connections accepting a server certificate issued through a compromised intermediate CA (GO-2026-6809). ([#3796](https://github.com/TableProApp/TablePro/pull/3796))
+
+[View full changelog](https://docs.tablepro.app/changelog)
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.82.2/TablePro-0.82.2.tar.xz" length="41760112" type="application/octet-stream" sparkle:edSignature="tB2pJuXoOC0QoL0IVSSwvjq1iCdvtSJXFPyjiZsT+21DgqMsncx47S+zTaFPykZbJPBPL4ivW+Z4qDxmrNarDQ=="/>
+        </item>
+        <item>
             <title>0.82.0</title>
             <pubDate>Mon, 19 Oct 2026 08:15:16 +0000</pubDate>
             <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
@@ -225,54 +252,9 @@ Plugins signed by other developers stop loading, and HTML and XML export are rem
 ]]></description>
             <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.81.0/TablePro-0.81.0-x86_64.tar.xz" length="24299872" type="application/octet-stream" sparkle:edSignature="+AtQqogGVMWwCKR9DDLpKmUC4JMcp8Un6FiBuIefOMUtfNgNOlkNAzmyorLgQOhW6VXAF7QP/FL3FHNncfhRDg=="/>
         </item>
-        <item>
-            <title>0.80.0</title>
-            <pubDate>Sun, 11 Oct 2026 11:49:40 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>139</sparkle:version>
-            <sparkle:shortVersionString>0.80.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.80.0
-
-Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with no Cloud SQL Auth Proxy.
-
-MySQL and MariaDB connect through a local Unix socket.
-
-A geometry value opens on a map in the row inspector, and the status bar shows Sum, Average and Count of the selected cells.
-
-Connections and groups take custom icons. Connection exports carry saved queries and open only in 0.80.0 or later.
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-arm64.zip" length="33851296" type="application/octet-stream" sparkle:edSignature="c46QoJ5wnQ3F9OIuG567KCsfKEH3U1uNzVIRuh3bUsWwUnnNFbFKMwJSmRtFv4YNnRHVg7DlmeZVCmvitu1kCQ=="/>
-        </item>
-        <item>
-            <title>0.80.0</title>
-            <pubDate>Sun, 11 Oct 2026 11:49:41 +0000</pubDate>
-            <sparkle:fullReleaseNotesLink>https://docs.tablepro.app/changelog</sparkle:fullReleaseNotesLink>
-            <sparkle:phasedRolloutInterval>21600</sparkle:phasedRolloutInterval>
-            <sparkle:version>139</sparkle:version>
-            <sparkle:shortVersionString>0.80.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[# What's New in TablePro 0.80.0
-
-Google Cloud IAM sign-in for MySQL and PostgreSQL on Cloud SQL, with no Cloud SQL Auth Proxy.
-
-MySQL and MariaDB connect through a local Unix socket.
-
-A geometry value opens on a map in the row inspector, and the status bar shows Sum, Average and Count of the selected cells.
-
-Connections and groups take custom icons. Connection exports carry saved queries and open only in 0.80.0 or later.
-
-[View full changelog](https://docs.tablepro.app/changelog)
-]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.80.0/TablePro-0.80.0-x86_64.zip" length="36407868" type="application/octet-stream" sparkle:edSignature="9gpk/iKr1RpbdqCgnHGFFqbgBSAmvD5LpHbp4u/OODQfdAmeNlDE0zALXwuCdVd70Te+drgyhlOUC5mX9hdTDQ=="/>
-        </item>
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: 6gHy0Y8MPaeBg1XPDrwpYmzt6pXZlMFo+KMfiIgotJ1gMWGCxyuO8i8cXhAyQsJnznk75dpLJOEtXW9BvpH/Aw==
-length: 25096
+edSignature: vBt1hJzho67MDm/Uy8hdKB/IKpYlZqRrW/8GBUAs8zm4SCVI5eZupo44SpT0hgjRUSRa1GQTtEcqkeWRFVTmAA==
+length: 23886
 -->
