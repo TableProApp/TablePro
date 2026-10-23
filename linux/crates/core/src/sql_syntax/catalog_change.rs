@@ -14,7 +14,14 @@ const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 /// every way the server may read it. A commit counts as the statement's
 /// first word, and `SELECT … INTO` counts too, since PostgreSQL and SQL
 /// Server create its target table.
+///
+/// On an engine of keys every write can add or remove one, so the keys
+/// are listed again after any command that writes, or that commits a
+/// transaction.
 pub fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
+    if !grammar.is_sql() {
+        return super::redis::may_change_keys(text);
+    }
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }
 
@@ -41,7 +48,7 @@ mod tests {
 
     #[test]
     fn ddl_changes_the_catalog_in_every_grammar() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "CREATE TABLE orders (id int)",
                 "create view v as select 1",
@@ -56,8 +63,18 @@ mod tests {
     }
 
     #[test]
+    fn every_write_changes_the_keys() {
+        for text in ["SET k 1", "DEL k", "RENAME a b", "GET k\nFLUSHDB", "EXEC"] {
+            assert!(changes_catalog(text, SqlGrammar::Redis), "{text}");
+        }
+        for text in ["GET k", "SCAN 0", "HGETALL h"] {
+            assert!(!changes_catalog(text, SqlGrammar::Redis), "{text}");
+        }
+    }
+
+    #[test]
     fn reads_and_row_writes_leave_it_alone() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "SELECT * FROM orders",
                 "INSERT INTO orders VALUES (1)",

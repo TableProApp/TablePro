@@ -480,10 +480,16 @@ impl ConnectDialog {
         imp.host_row.set_visible(!file_based);
         imp.port_row.set_visible(!file_based);
         imp.database_row.set_visible(!file_based);
-        imp.database_row.set_title(&if caps.database_required {
-            crate::i18n::gettext("Database")
+        imp.database_row
+            .set_title(&match (caps.is_key_value(), caps.database_required) {
+                (true, _) => crate::i18n::gettext("Database Number (optional)"),
+                (false, true) => crate::i18n::gettext("Database"),
+                (false, false) => crate::i18n::gettext("Database (optional)"),
+            });
+        imp.username_row.set_title(&if caps.username_required {
+            crate::i18n::gettext("Username")
         } else {
-            crate::i18n::gettext("Database (optional)")
+            crate::i18n::gettext("Username (optional)")
         });
         imp.file_row.set_visible(file_based);
         imp.auth_group.set_visible(!file_based && !caps.auth_modes.is_empty());
@@ -505,7 +511,7 @@ impl ConnectDialog {
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
         self.imp()
             .safe_mode_row
-            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps.read_only));
+            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps));
     }
 
     fn show_external_access_subtitle(&self) {
@@ -907,8 +913,10 @@ pub fn remedy_field(remedy: TlsRemedy) -> FormField {
 /// Capabilities for a registry with no drivers at all, so the form
 /// still has something to read.
 static NO_DRIVER: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: tablepro_core::EndpointKind::File,
     auth_modes: &[],
+    username_required: true,
     tls: None,
     read_only: tablepro_core::ReadOnlyEnforcement::LoginPrivileges,
     dml_writes: tablepro_core::WriteAtomicity::Transactional,

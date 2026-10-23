@@ -45,7 +45,7 @@ impl TabDirectory for WindowTabs {
                 let id = self.index.id_of(&page)?;
                 let editor = match tabs.get(&id)? {
                     WorkspaceTab::Editor(slot) => Some(&slot.editor),
-                    WorkspaceTab::Structure(_) | WorkspaceTab::Table(_) => None,
+                    WorkspaceTab::Structure(_) | WorkspaceTab::Table(_) | WorkspaceTab::Key(_) => None,
                 };
                 Some(TabEntry {
                     id,

@@ -9,8 +9,10 @@ use tablepro_core::{
 /// changes are one transaction each. A COMMIT never crosses a network,
 /// so there is nothing to resolve afterwards.
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: EndpointKind::File,
     auth_modes: &[],
+    username_required: false,
     tls: None,
     read_only: ReadOnlyEnforcement::EngineEnforced,
     dml_writes: WriteAtomicity::Transactional,

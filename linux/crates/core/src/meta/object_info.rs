@@ -22,6 +22,23 @@ pub enum ObjectKind {
     Function,
     Procedure,
     Dictionary,
+    /// A key of a key-value engine, with the type of value it holds. It
+    /// opens in a key tab, not the grid's paging.
+    Key(KeyKind),
+}
+
+/// The type of value a key holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyKind {
+    String,
+    Hash,
+    List,
+    Set,
+    SortedSet,
+    Stream,
+    /// A module's type, such as a JSON document, which the key tab names
+    /// but does not read.
+    Other,
 }
 
 impl ObjectKind {
@@ -31,6 +48,10 @@ impl ObjectKind {
             self,
             Self::Table | Self::PartitionedTable | Self::View | Self::MaterializedView | Self::ForeignTable
         )
+    }
+
+    pub fn is_key(self) -> bool {
+        matches!(self, Self::Key(_))
     }
 
     /// Whether the structure tab can change its columns. A view's
@@ -56,6 +77,16 @@ mod tests {
             assert!(!kind.is_browsable(), "{kind:?}");
             assert!(!kind.is_structure_editable(), "{kind:?}");
         }
+    }
+
+    #[test]
+    fn a_key_is_neither_browsable_nor_editable() {
+        let key = ObjectKind::Key(KeyKind::Hash);
+
+        assert!(key.is_key());
+        assert!(!key.is_browsable());
+        assert!(!key.is_structure_editable());
+        assert!(!ObjectKind::Table.is_key());
     }
 
     #[test]

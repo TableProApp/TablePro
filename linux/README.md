@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to six engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, SQLite and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -18,6 +18,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.

@@ -259,7 +259,7 @@ impl ConnectForm {
         let username = self.username.trim();
         let credentials = match self.auth {
             AuthMode::Password => {
-                if username.is_empty() {
+                if username.is_empty() && caps.username_required {
                     errors.push(
                         FormField::Username,
                         crate::i18n::gettext("Enter the username to log in with."),
@@ -275,13 +275,7 @@ impl ConnectForm {
         };
 
         let database = self.database.trim();
-        if caps.database_required && database.is_empty() {
-            errors.push(
-                FormField::Database,
-                config_message(&ConfigError::DatabaseRequired),
-                true,
-            );
-        }
+        check_database(caps, database, &mut errors);
 
         let ssh = match self.ssh.as_ref().map(SshFormState::inputs).transpose() {
             Ok(ssh) => ssh,
@@ -345,9 +339,9 @@ impl ConnectForm {
                 .unwrap_or_default();
         }
         let host = self.host.trim();
-        match self.auth {
-            AuthMode::Kerberos => host.to_owned(),
-            AuthMode::Password => format!("{}@{host}", self.username.trim()),
+        match (self.auth, self.username.trim()) {
+            (AuthMode::Kerberos, _) | (AuthMode::Password, "") => host.to_owned(),
+            (AuthMode::Password, username) => format!("{username}@{host}"),
         }
     }
 
@@ -619,6 +613,23 @@ pub fn tls_field(error: &ConfigError, config: &TlsConfig) -> FormField {
     }
 }
 
+/// A database a connection needs and lacks, or a key-value engine's
+/// database that is not a number.
+fn check_database(caps: &DriverCapabilities, database: &str, errors: &mut FormErrors) {
+    if caps.database_required && database.is_empty() {
+        errors.push(
+            FormField::Database,
+            config_message(&ConfigError::DatabaseRequired),
+            true,
+        );
+    }
+    if caps.is_key_value()
+        && let Err(error) = tablepro_core::keyspace::database_number(Some(database))
+    {
+        errors.push(FormField::Database, config_message(&error), false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use secrecy::ExposeSecret;
@@ -646,6 +657,10 @@ mod tests {
 
     fn sqlite() -> &'static DriverCapabilities {
         caps(&tablepro_driver_sqlite::SqliteDriver)
+    }
+
+    fn redis() -> &'static DriverCapabilities {
+        caps(&tablepro_driver_redis::RedisDriver)
     }
 
     fn filled(driver_id: &str, caps: &DriverCapabilities) -> ConnectForm {
@@ -698,6 +713,39 @@ mod tests {
         };
         let valid = kerberos.validate(mssql()).expect("SQL Server takes Kerberos");
         assert!(matches!(network(&valid.target).1, Credentials::Integrated));
+    }
+
+    #[test]
+    fn redis_logs_in_with_a_password_alone_on_a_numbered_database() {
+        let form = ConnectForm {
+            username: String::new(),
+            database: " 3 ".to_owned(),
+            ..filled("redis", redis())
+        };
+
+        let valid = form.validate(redis()).expect("a password alone and a number");
+
+        assert_eq!(network(&valid.target).2, Some("3"));
+        assert_eq!(
+            form.label(redis()),
+            "db.example.com",
+            "an empty username named the entry"
+        );
+        let named = ConnectForm {
+            database: "sales".to_owned(),
+            ..form.clone()
+        };
+        let errors = named.validate(redis()).err().expect("a name is not a database number");
+        assert!(errors.has(FormField::Database), "{errors:?}");
+        let anonymous = ConnectForm {
+            username: String::new(),
+            ..filled("postgres", postgres())
+        };
+        let errors = anonymous
+            .validate(postgres())
+            .err()
+            .expect("PostgreSQL needs a username");
+        assert!(errors.has(FormField::Username), "{errors:?}");
     }
 
     #[test]

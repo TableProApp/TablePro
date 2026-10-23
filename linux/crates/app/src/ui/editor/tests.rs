@@ -2179,3 +2179,46 @@ mod real_keys {
         wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the list without Vim");
     }
 }
+
+/// An editor on a Redis session, opened empty as a new tab is.
+fn command_editor() -> (SqlEditor, crate::runtime::AppRuntime, MemorySettings) {
+    crate::register_test_resources();
+    let runtime = crate::test_support::test_runtime();
+    let settings = MemorySettings::new();
+    let fake = Arc::new(FakeEditorSession::new(Replies::default()));
+    let script = ConnectionScript {
+        dialect: Arc::new(tablepro_driver_redis::RedisDialect),
+        ..ConnectionScript::default()
+    };
+    let active = ActiveSession::new();
+    active.replace(session_on(fake, runtime.tasks(), script));
+    let editor = SqlEditor::new(SqlEditorInit {
+        initial_query: None,
+        settings: settings.get().clone(),
+        history: None,
+        tasks: runtime.tasks(),
+        session: active,
+        hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
+        close_timeout: Duration::from_secs(5),
+    });
+    (editor, runtime, settings)
+}
+
+#[gtk4::test]
+fn a_command_editor_has_none_of_the_sql_tools() {
+    let (editor, _runtime, _settings) = command_editor();
+
+    let buffer = editor
+        .buffer()
+        .downcast::<sourceview5::Buffer>()
+        .expect("a source buffer");
+    assert!(buffer.language().is_none(), "commands coloured as SQL");
+    assert_eq!(buffer_text(&editor.buffer()), "PING");
+    let group = editor.imp().actions.get().expect("the editor's actions");
+    for action in ["format", "toggle-comment"] {
+        assert!(!group.is_action_enabled(action), "{action} is on");
+    }
+    assert!(group.is_action_enabled("run"));
+    let providers = editor.imp().completion_providers.borrow().len();
+    assert_eq!(providers, 1, "only the document's words complete");
+}

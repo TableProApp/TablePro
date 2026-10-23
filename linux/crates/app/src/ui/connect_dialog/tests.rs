@@ -435,7 +435,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
             assert_eq!(
                 shown(),
-                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id).read_only)),
+                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id))),
                 "{driver_id} {level:?}"
             );
         }

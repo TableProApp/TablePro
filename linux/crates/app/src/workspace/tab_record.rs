@@ -36,6 +36,10 @@ pub enum TabRecord {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file: Option<EditorFileRecord>,
     },
+    /// A key-value engine's key, by the name the sidebar lists it as.
+    Key {
+        key: String,
+    },
 }
 
 impl TabRecord {
@@ -70,6 +74,8 @@ impl TabRecord {
             }
             Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
             Self::Editor { draft, file } => Some(Self::Editor { draft, file }),
+            // A key's name can be empty, as Redis lets one be.
+            Self::Key { key } => Some(Self::Key { key }),
         }
     }
 }
@@ -107,6 +113,19 @@ mod tests {
             table: String::new(),
         };
         assert_eq!(structure.clamped(), None);
+    }
+
+    #[test]
+    fn a_key_reads_back_as_it_was_written() {
+        let record = TabRecord::Key {
+            key: "\"\\xff\"".to_owned(),
+        };
+
+        let json = serde_json::to_string(&record).unwrap();
+
+        assert_eq!(json, r#"{"kind":"key","key":"\"\\xff\""}"#);
+        assert_eq!(serde_json::from_str::<TabRecord>(&json).unwrap(), record);
+        assert_eq!(record.clone().clamped(), Some(record));
     }
 
     #[test]

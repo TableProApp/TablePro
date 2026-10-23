@@ -22,6 +22,9 @@ pub struct TabGridContext {
     /// row cannot change.
     pub identity: RowIdentity,
     pub column_widths: Option<ColumnWidthBinding>,
+    /// Whether the menu offers to copy rows as an SQL `IN` list, which an
+    /// engine without SQL has no spelling for.
+    pub in_clause: bool,
     /// The foreign keys of the table the rows come from, which the cell
     /// menu follows.
     pub keys: Option<KeysHandle>,
@@ -34,6 +37,7 @@ impl Default for TabGridContext {
             editable: false,
             identity: RowIdentity::Unordered,
             column_widths: None,
+            in_clause: true,
             keys: None,
         }
     }

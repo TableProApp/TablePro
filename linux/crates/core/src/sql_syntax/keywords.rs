@@ -140,15 +140,17 @@ const CLICKHOUSE: &[&str] = &[
 
 impl SqlGrammar {
     /// The keywords the editor completes for this grammar, in upper case.
+    /// Redis has none: its command names are not SQL keywords.
     pub fn keywords(self) -> impl Iterator<Item = &'static str> {
-        let own = match self {
-            Self::PostgreSql => POSTGRESQL,
-            Self::MySql => MYSQL,
-            Self::Sqlite => SQLITE,
-            Self::MsSql => MSSQL,
-            Self::ClickHouse => CLICKHOUSE,
+        let (common, own): (&[&str], &[&str]) = match self {
+            Self::PostgreSql => (COMMON, POSTGRESQL),
+            Self::MySql => (COMMON, MYSQL),
+            Self::Sqlite => (COMMON, SQLITE),
+            Self::MsSql => (COMMON, MSSQL),
+            Self::ClickHouse => (COMMON, CLICKHOUSE),
+            Self::Redis => (&[], &[]),
         };
-        COMMON.iter().chain(own).copied()
+        common.iter().chain(own).copied()
     }
 }
 
@@ -162,7 +164,7 @@ mod tests {
 
     #[test]
     fn every_grammar_has_the_common_words_and_its_own() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             assert!(has(grammar, "SELECT"), "{grammar:?}");
         }
         assert!(has(SqlGrammar::PostgreSql, "RETURNING"));
@@ -173,7 +175,7 @@ mod tests {
 
     #[test]
     fn keywords_are_upper_case_and_listed_once() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             let mut seen = std::collections::HashSet::new();
             for keyword in grammar.keywords() {
                 assert_eq!(keyword, keyword.to_ascii_uppercase());

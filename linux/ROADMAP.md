@@ -2,7 +2,7 @@
 
 **Status, 2026-10-19**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
-The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to five engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md) and [SQLite](docs/drivers/sqlite.md).
+The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to six engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [SQLite](docs/drivers/sqlite.md) and [Redis](docs/drivers/redis.md).
 
 ## Implemented
 
@@ -65,6 +65,14 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
 | SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table in one transaction, keeping its rows, indexes, triggers, the views and triggers that name it and its AUTOINCREMENT counter, with foreign keys checked before commit. SQLite itself checks the views and triggers made again; a trigger that lists a dropped column or inserts by position is refused before Save |
 
+### Keys
+
+| Capability | Detail |
+|---|---|
+| Key list | A Redis connection lists the keys of its numbered database with their types, read with `SCAN`; the search goes to the server, plain text matching anywhere in a key and text with `*`, `?` or `[` as a glob. A banner says when the list stops at its 5,000-key limit |
+| Key tab | A key opens by type: a string's value, a hash's fields, a list by index, a set's members, a sorted set with scores and a stream's entries, 500 at a time with Load More, under its length and expiry |
+| Commands | The editor takes Redis commands, one per line, and shows each reply as redis-cli lays it out; `MULTI` is tracked as a transaction. A waiting command stops with `CLIENT UNBLOCK`. Read-Only refuses every command that is not a read before it is sent ([redis.md](docs/drivers/redis.md)) |
+
 ### SQL editor
 
 | Capability | Detail |
@@ -126,7 +134,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
-| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip, on every engine; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip, on every SQL engine, and keyspace and TLS conformance on Redis; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Redis, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -174,7 +182,6 @@ Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-driv
 
 | Engine | Client | Condition |
 |---|---|---|
-| Redis | redis 1.x (redis-rs) | None. fred, named here before, has had no release since 2025-02-27 |
 | MongoDB | mongodb 3.x, default features off, `rustls-tls-aws-lc` | It must use the system trust store first: it fills its roots from webpki-roots unless `ca_file_path` is set, so it needs native roots upstream or `ca_file_path` set to the platform bundle |
 | DuckDB | duckdb, from the DuckDB project | None |
 | Cassandra and ScyllaDB | scylla 1.x with `rustls-023` | None |

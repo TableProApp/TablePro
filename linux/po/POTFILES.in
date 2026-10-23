@@ -361,6 +361,9 @@ crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/key_tab/key_summary.rs
+crates/app/src/ui/key_tab/mod.rs
+crates/app/src/ui/key_tab/tests.rs
 crates/app/src/ui/menu_label.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
@@ -481,6 +484,7 @@ crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/shell.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
+crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs
 crates/app/src/ui/workspace/sidebar/sidebar_affordances.rs
@@ -506,6 +510,7 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/keys.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/references.rs

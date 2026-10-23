@@ -22,6 +22,8 @@ pub struct CallCounters {
     pub write_batch: Arc<AtomicUsize>,
     pub resolve_commit: Arc<AtomicUsize>,
     pub open_editor_session: Arc<AtomicUsize>,
+    pub scan_keys: Arc<AtomicUsize>,
+    pub read_key: Arc<AtomicUsize>,
     pub close: Arc<AtomicUsize>,
     /// Calls that ended because their cancel or deadline fired, or the
     /// connection was closed under them.

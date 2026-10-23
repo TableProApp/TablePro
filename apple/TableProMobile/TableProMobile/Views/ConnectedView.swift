@@ -18,6 +18,7 @@ struct ConnectedView: View {
     @State private var hapticError = false
     @State private var showDeletedAlert = false
     @State private var databaseSwitchAwaitingRollBack: String?
+    @State private var retries = 0
 
     private var displayTitle: String {
         connection.name.isEmpty ? connection.host : connection.name
@@ -62,7 +63,8 @@ struct ConnectedView: View {
                 presenter.dismissConnectionEditor()
             }
         }
-        .task(id: coordinatorStore.generation(for: connection.id)) {
+        // Retry runs here too, so closing the screen abandons it the way it abandons the first attempt.
+        .task(id: ConnectRequest(generation: coordinatorStore.generation(for: connection.id), retries: retries)) {
             guard let record = liveRecord else { return }
             let resolved = coordinatorStore.coordinator(for: record, appState: appState)
             coordinator = resolved
@@ -108,7 +110,7 @@ struct ConnectedView: View {
             statusScreen {
                 ErrorView(
                     error: error,
-                    onRetry: error.canRetry ? { await coordinator.connect() } : nil,
+                    onRetry: error.canRetry ? { retries += 1 } : nil,
                     onEditConnection: connection.isSample ? nil : { presenter.presentConnectionEditor(for: connection.id) }
                 )
             }
@@ -379,4 +381,9 @@ struct ConnectedView: View {
             Task { await coordinator.switchDatabase(to: database) }
         }
     }
+}
+
+nonisolated private struct ConnectRequest: Equatable {
+    let generation: Int
+    let retries: Int
 }

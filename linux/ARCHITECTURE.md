@@ -30,7 +30,8 @@ linux/
         ├── mysql/                 sqlx-mysql, MySQL and MariaDB
         ├── sqlite/                sqlx-sqlite
         ├── mssql/                 tiberius
-        └── clickhouse/            clickhouse over hyper
+        ├── clickhouse/            clickhouse over hyper
+        └── redis/                 redis-rs
 ```
 
 ## Dependency graph
@@ -39,7 +40,7 @@ linux/
 |---|---|
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
-| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse` | `core`, `net` |
+| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/redis` | `core`, `net` |
 | `drivers/sqlite` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
@@ -50,14 +51,14 @@ Rules, enforced by review:
 - `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits.
 - `net`, `ssh` and `storage` depend on `core` only.
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
-- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker test takes `tablepro-driver-postgres` as a dev-dependency.
+- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres` and `tablepro-driver-redis` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `app` depends on all of them. It is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
 
 Consequences:
 
-- Adding a driver does not touch `core`, `session`, `storage` or any other driver.
+- Adding a driver does not touch `core`, `session`, `storage` or any other driver, unless it is the first engine of its data model ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
 - Replacing the GUI framework would require rewriting only `app`.
 - Drivers are tested against `core` traits without pulling GTK.
 
@@ -147,7 +148,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Redis](docs/drivers/redis.md). An engine without SQL says so through `DriverCapabilities::data_model`, and the workspace lists its keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
 
 ### SQL scripts
 

@@ -20,14 +20,16 @@ use crate::ui::grid::{GridSink, RowObject, TabGridContext, build_result_grid, ex
 /// The page for `view`, its grid named `name` as the results list names
 /// it. Export All on its banner hands `export_all` the rows the grid
 /// shows, in the order it shows them, for the dialog's Shown Rows.
+/// `in_clause` is false where the engine has no SQL to copy rows into.
 pub(crate) fn result_set_page(
     view: &ResultSetView,
     name: &str,
     sink: GridSink,
+    in_clause: bool,
     export_all: impl Fn(ExportSource) + 'static,
 ) -> gtk::Widget {
     let rows = view.rows.iter().cloned().map(RowObject::result).collect();
-    let (column_view, _selection) = build_result_grid(view.columns.clone(), rows, sink);
+    let (column_view, _selection) = build_result_grid(view.columns.clone(), rows, sink, in_clause);
     column_view.update_property(&[gtk::accessible::Property::Label(name)]);
     let banner = ResultLimitBanner::new(&view.summary);
     let columns = view.columns.clone();

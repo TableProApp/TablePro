@@ -33,6 +33,7 @@ allow = [
     "CDLA-Permissive-2.0",
     "LGPL-2.1-or-later",
     "0BSD",
+    "BSL-1.0",
 ]
 
 [licenses.private]
@@ -53,7 +54,7 @@ deny = [
     { crate = "backoff", reason = "unmaintained" },
     { crate = "instant", reason = "unmaintained" },
     { crate = "rsa", wrappers = ["sqlx-mysql"], reason = "RUSTSEC-2023-0071 is accepted only for sqlx-mysql's public-key encryption; any other user of rsa needs a new decision in ADR 0009" },
-    { crate = "tablepro-test-fixtures", wrappers = ["tablepro", "tablepro-driver-clickhouse", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres", "tablepro-session", "tablepro-ssh"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
+    { crate = "tablepro-test-fixtures", wrappers = ["tablepro", "tablepro-driver-clickhouse", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres", "tablepro-driver-redis", "tablepro-session", "tablepro-ssh"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
     { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
 ]
 
