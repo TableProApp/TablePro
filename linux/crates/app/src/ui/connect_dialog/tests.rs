@@ -183,7 +183,7 @@ fn dialog_opens_with_remembered_driver_and_its_port() {
 #[gtk4::test]
 fn an_uninstalled_remembered_driver_falls_back_to_postgres() {
     let harness = open(Options {
-        remembered: "cassandra",
+        remembered: "retired-engine",
         ..Options::default()
     });
 
