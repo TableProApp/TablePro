@@ -518,7 +518,7 @@ where
 
 async fn finish_stream_cursor(cursor: super::session_mode::StatementCursor, close_cursor: bool) {
     if let Err(error) = cursor.finish(close_cursor).await {
-        tracing::warn!(%error, "streamed query cursor cleanup failed");
+        crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "finish");
     }
 }
 

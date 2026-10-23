@@ -11,6 +11,7 @@ pub mod connection_save_turn;
 pub mod connection_service;
 pub mod csv_import_mappings;
 pub mod database_service;
+pub(crate) mod driver_diagnostics;
 pub(crate) mod error_text;
 pub mod export_pages;
 pub mod gtk_approval;

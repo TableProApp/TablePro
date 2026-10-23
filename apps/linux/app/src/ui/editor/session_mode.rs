@@ -158,13 +158,13 @@ impl StatementTarget {
     async fn release_cursor_session(target: &StatementTarget, owned_session: bool) {
         let rollback_control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
         if let Err(error) = target.query("ROLLBACK", &[], &rollback_control).await {
-            tracing::warn!(%error, "read-only cursor setup rollback failed");
+            crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "setup_rollback");
         }
         if owned_session
             && let Self::Session { shared, .. } = target
             && let Err(error) = close_for_teardown(shared.clone()).await
         {
-            tracing::warn!(%error, "read-only cursor setup session close failed");
+            crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "setup_close");
         }
     }
 
