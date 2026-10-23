@@ -7,7 +7,9 @@ use gtk4::subclass::prelude::*;
 
 use std::sync::Arc;
 
-use tablepro_core::QueryResult;
+use tablepro_core::{QueryResult, Value};
+
+use crate::services::change_tracker::{KeyValue, RowKey};
 
 use super::row_object::RowObject;
 
@@ -410,6 +412,73 @@ impl RowStore {
         Some(position as u32)
     }
 
+    pub fn position_of_key(&self, key: &RowKey, pk_indices: &[usize]) -> Option<u32> {
+        (0..self.n_items()).find(|&position| match key {
+            RowKey::Draft(id) => self.draft_id_at(position) == Some(*id),
+            RowKey::Persisted(target) => {
+                self.draft_id_at(position).is_none()
+                    && !pk_indices.is_empty()
+                    && pk_indices
+                        .iter()
+                        .map(|&column| {
+                            let value = self.cell_at(position, column);
+                            KeyValue::from(&value.unwrap_or_else(|| Value::Undecodable("not fetched".into())))
+                        })
+                        .eq(target.iter().cloned())
+            }
+        })
+    }
+
+    pub fn row_key_at(&self, position: u32, pk_indices: &[usize]) -> Option<RowKey> {
+        if let Some(id) = self.draft_id_at(position) {
+            return Some(RowKey::Draft(id));
+        }
+        let values = pk_indices
+            .iter()
+            .map(|&column| self.cell_at(position, column))
+            .collect::<Option<Vec<_>>>()?;
+        RowKey::from_pk_values(&values)
+    }
+
+    fn draft_id_at(&self, position: u32) -> Option<u64> {
+        match self.imp().slots.borrow().get(position as usize)? {
+            Slot::Object(row) => row.draft_id(),
+            Slot::Shared(_) | Slot::Cached { .. } => None,
+        }
+    }
+
+    fn cell_at(&self, position: u32, column: usize) -> Option<Value> {
+        let source_index = match self.imp().slots.borrow().get(position as usize)? {
+            Slot::Object(row) => return row.cell_value_in_row(column),
+            Slot::Cached { source_index, object } => match object.upgrade() {
+                Some(row) => return row.cell_value_in_row(column),
+                None => *source_index,
+            },
+            Slot::Shared(index) => *index,
+        };
+        let source = self.imp().source.borrow();
+        let cells = source.as_ref()?.rows.get(source_index)?;
+        let projection = self.imp().projection.borrow();
+        let (width, source_column) = match projection.as_ref() {
+            Some((indices, width)) => (*width, indices.iter().position(|mapped| *mapped == column)),
+            None => (cells.len(), Some(column)),
+        };
+        if column >= width {
+            return None;
+        }
+        Some(
+            source_column
+                .and_then(|index| cells.get(index).cloned())
+                .unwrap_or_else(|| Value::Undecodable("not fetched".into())),
+        )
+    }
+
+    #[cfg(test)]
+    fn requested(&self) -> usize {
+        let slots = self.imp().slots.borrow();
+        slots.iter().filter(|slot| matches!(slot, Slot::Cached { .. })).count()
+    }
+
     #[cfg(test)]
     fn materialized(&self) -> usize {
         let slots = self.imp().slots.borrow();
@@ -804,6 +873,60 @@ mod tests {
             truncated: false,
         });
         assert!(RowStore::from_projected(result, vec![0], 1).is_err());
+    }
+
+    fn keyed_page(count: i64) -> Arc<QueryResult> {
+        Arc::new(QueryResult {
+            columns: vec![column("id"), column("payload")],
+            rows: (0..count)
+                .map(|n| vec![Value::Int(n), Value::Text("x".repeat(9000))])
+                .collect(),
+            truncated: false,
+        })
+    }
+
+    fn persisted(id: i64) -> RowKey {
+        RowKey::Persisted(vec![KeyValue::Int(id)])
+    }
+
+    #[test]
+    fn key_lookups_read_unbound_rows_without_building_row_objects() {
+        let store = RowStore::from_shared_with_previews(keyed_page(200), vec![0]);
+        store.insert(0, &RowObject::new_draft(7, vec![Value::Int(-1), Value::Null]));
+        let held = store.item(6).and_downcast::<RowObject>().unwrap();
+
+        assert_eq!(store.position_of_key(&persisted(150), &[0]), Some(151));
+        assert_eq!(store.position_of_key(&persisted(5), &[0]), Some(6));
+        assert_eq!(store.position_of_key(&RowKey::Draft(7), &[0]), Some(0));
+        assert_eq!(store.position_of_key(&persisted(-1), &[0]), None);
+        assert_eq!(store.position_of_key(&persisted(999), &[0]), None);
+        assert_eq!(store.position_of_key(&persisted(5), &[]), None);
+        let keys = (0..store.n_items())
+            .map(|position| store.row_key_at(position, &[0]))
+            .collect::<Vec<_>>();
+        assert_eq!(keys[0], Some(RowKey::Draft(7)));
+        assert_eq!(keys[6], Some(persisted(5)));
+        assert_eq!(keys[200], Some(persisted(199)));
+        assert_eq!(store.row_key_at(1, &[2]), None);
+
+        assert_eq!(store.requested(), 1, "only the held row has a RowObject");
+        drop(held);
+    }
+
+    #[test]
+    fn projected_key_lookups_map_columns_and_reject_unfetched_keys() {
+        let result = Arc::new(QueryResult {
+            columns: vec![column("id"), column("payload")],
+            rows: (0..20).map(|n| vec![Value::Int(n), Value::Text("x".into())]).collect(),
+            truncated: false,
+        });
+        let store = RowStore::from_projected(result, vec![0, 2], 3).unwrap();
+
+        assert_eq!(store.position_of_key(&persisted(12), &[0]), Some(12));
+        assert_eq!(store.row_key_at(3, &[0]), Some(persisted(3)));
+        assert_eq!(store.row_key_at(3, &[1]), None);
+        assert_eq!(store.row_key_at(3, &[3]), None);
+        assert_eq!(store.requested(), 0);
     }
 
     fn column(name: &str) -> tablepro_core::ColumnInfo {

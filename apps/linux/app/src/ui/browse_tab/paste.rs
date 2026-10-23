@@ -315,18 +315,16 @@ impl BrowseTab {
     }
 
     pub(super) fn capture_paste_snapshot(&self) -> PasteSnapshot {
+        let store = self.row_store();
+        let pk_indices = self.pk_indices();
         let row_keys = (0..self.row_count_loaded())
-            .map(|position| self.paste_row_key_at(position))
+            .map(|position| store.as_ref()?.row_key_at(position, &pk_indices))
             .collect();
         PasteSnapshot::new(self.page_requests.current_id(), row_keys)
     }
 
     fn paste_row_key_at(&self, position: u32) -> Option<crate::services::change_tracker::RowKey> {
-        let row = self.row_object_at(position)?;
-        if let Some(draft_id) = row.draft_id() {
-            return Some(crate::services::change_tracker::RowKey::Draft(draft_id));
-        }
-        self.row_key_at(position).map(|(key, _)| key)
+        self.row_store()?.row_key_at(position, &self.pk_indices())
     }
 
     fn row_count_loaded(&self) -> u32 {

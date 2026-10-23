@@ -123,6 +123,10 @@ impl RowObject {
             .unwrap_or_else(|| Value::Undecodable("not fetched".into()))
     }
 
+    pub fn cell_value_in_row(&self, idx: usize) -> Option<Value> {
+        (idx < self.imp().cells.borrow().len()).then(|| self.cell_value(idx))
+    }
+
     pub fn cell_is_loaded(&self, idx: usize) -> bool {
         self.with_cell_value(idx, |_| ()).is_some()
     }

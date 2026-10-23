@@ -9,41 +9,20 @@ use super::*;
 
 impl BrowseTab {
     pub(super) fn find_row_position_by_key(&self, key: &crate::services::change_tracker::RowKey) -> Option<u32> {
-        use crate::services::change_tracker::{KeyValue, RowKey};
-        let selection = self.current_selection.as_ref()?;
-        let model = selection.model()?;
-        let pk_indices: Vec<usize> = self
-            .current_columns
+        self.row_store()?.position_of_key(key, &self.pk_indices())
+    }
+
+    pub(super) fn row_store(&self) -> Option<crate::ui::row_store::RowStore> {
+        self.current_selection.as_ref()?.model()?.downcast().ok()
+    }
+
+    pub(super) fn pk_indices(&self) -> Vec<usize> {
+        self.current_columns
             .iter()
             .enumerate()
             .filter(|(_, c)| c.primary_key)
             .map(|(i, _)| i)
-            .collect();
-        let n_items = model.n_items();
-        for i in 0..n_items {
-            let Some(item) = model.item(i) else { continue };
-            let Ok(row) = item.downcast::<crate::ui::row_object::RowObject>() else {
-                continue;
-            };
-            let matched = match key {
-                RowKey::Draft(id) => row.draft_id() == Some(*id),
-                RowKey::Persisted(target_keys) => {
-                    if row.draft_id().is_some() || pk_indices.is_empty() {
-                        false
-                    } else {
-                        let row_keys: Vec<KeyValue> = pk_indices
-                            .iter()
-                            .map(|&col_idx| (&row.cell_value(col_idx)).into())
-                            .collect();
-                        row_keys == *target_keys
-                    }
-                }
-            };
-            if matched {
-                return Some(i);
-            }
-        }
-        None
+            .collect()
     }
 
     /// Locate the row that produced a failing statement and scroll-and-
@@ -120,14 +99,7 @@ impl BrowseTab {
         if row_obj.draft_id().is_some() {
             return None;
         }
-        let pk_indices: Vec<usize> = self
-            .current_columns
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.primary_key)
-            .map(|(i, _)| i)
-            .collect();
-        build_persisted_row_key(row_obj.cells_clone(), &pk_indices)
+        build_persisted_row_key(row_obj.cells_clone(), &self.pk_indices())
     }
 
     /// Returns true when the loaded columns include at least one PK.

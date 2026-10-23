@@ -21,6 +21,7 @@
 
 ### Changed
 
+- Editing a cell or pasting in a table tab no longer rebuilds every loaded row on the page, so large pages with long text values stay responsive.
 - Keyboard shortcuts use a native adaptive dialog that fits smaller windows and preserves keyboard and mouse gesture descriptions.
 
 - Running statements no longer slows down as the audit log grows. The full audit log is checked when BookiE opens and when you view it; each new record checks only what was written since the last check.
