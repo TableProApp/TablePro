@@ -237,6 +237,12 @@ impl CassandraFixture {
                 "10240",
                 "--batch-size-fail-threshold-in-kb",
                 "10240",
+                // ScyllaDB times out a COUNT(*) as one range read, and one
+                // shard on a CI runner counts a million rows in 5 to 11
+                // seconds, past the 10-second default. The suites' calls
+                // give up at 30.
+                "--range-request-timeout-in-ms",
+                "30000",
             ],
         };
         command.iter().map(|&part| part.to_owned()).collect()
@@ -595,6 +601,11 @@ mod tests {
             command
                 .windows(2)
                 .any(|pair| pair == ["--authenticator", "PasswordAuthenticator"])
+        );
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair == ["--range-request-timeout-in-ms", "30000"])
         );
 
         let tls = CassandraFixture::overrides(CassandraFlavour::Scylla, (2026, 1), CassandraTls::Required, "x");
