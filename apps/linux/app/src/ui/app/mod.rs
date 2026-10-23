@@ -495,21 +495,22 @@ impl SimpleComponent for App {
             .primary_menu_button
             .set_menu_model(Some(&shortcuts::primary_menu_model()));
 
-        let welcome_view =
-            WelcomeView::builder()
-                .launch(WelcomeViewInit)
-                .forward(sender.input_sender(), |out| match out {
-                    WelcomeViewOutput::OpenConnect => AppMsg::OpenConnect,
-                    WelcomeViewOutput::ImportUrl => AppMsg::ImportConnectionUrl,
-                    WelcomeViewOutput::OpenSaved(saved) => AppMsg::OpenSaved(saved),
-                    WelcomeViewOutput::ToggleFavorite(id) => AppMsg::ToggleConnectionFavorite(id),
-                    WelcomeViewOutput::Organize(saved) => AppMsg::OrganizeConnection(saved),
-                    WelcomeViewOutput::Edit(saved) => AppMsg::EditConnection(saved),
-                    WelcomeViewOutput::Duplicate(id) => AppMsg::DuplicateConnection(id),
-                    WelcomeViewOutput::ExportBundle => AppMsg::ExportConnections,
-                    WelcomeViewOutput::ImportBundle => AppMsg::ImportBundle,
-                    WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
-                });
+        let welcome_view = WelcomeView::builder()
+            .launch(WelcomeViewInit {
+                registry: registry.clone(),
+            })
+            .forward(sender.input_sender(), |out| match out {
+                WelcomeViewOutput::OpenConnect => AppMsg::OpenConnect,
+                WelcomeViewOutput::ImportUrl => AppMsg::ImportConnectionUrl,
+                WelcomeViewOutput::OpenSaved(saved) => AppMsg::OpenSaved(saved),
+                WelcomeViewOutput::ToggleFavorite(id) => AppMsg::ToggleConnectionFavorite(id),
+                WelcomeViewOutput::Organize(saved) => AppMsg::OrganizeConnection(saved),
+                WelcomeViewOutput::Edit(saved) => AppMsg::EditConnection(saved),
+                WelcomeViewOutput::Duplicate(id) => AppMsg::DuplicateConnection(id),
+                WelcomeViewOutput::ExportBundle => AppMsg::ExportConnections,
+                WelcomeViewOutput::ImportBundle => AppMsg::ImportBundle,
+                WelcomeViewOutput::Delete(id) => AppMsg::DeleteConnection(id),
+            });
 
         adw::StyleManager::default().set_color_scheme(crate::services::preferences::color_scheme_style(
             preferences.load().color_scheme,

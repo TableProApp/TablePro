@@ -3,12 +3,16 @@ use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use relm4::{adw, gtk};
 
+use std::sync::Arc;
+
+use tablepro_core::DriverRegistry;
 use tablepro_storage::{ConnectionOrganizationIndex, SavedConnection, arrange_connections};
 use uuid::Uuid;
 
 use super::connection_row::{ConnectionRow, ConnectionRowInit, ConnectionRowOutput};
 
 pub struct WelcomeView {
+    registry: Arc<DriverRegistry>,
     connections: Vec<SavedConnection>,
     organization: ConnectionOrganizationIndex,
     filter: String,
@@ -55,8 +59,9 @@ pub enum WelcomeViewOutput {
     ImportBundle,
 }
 
-#[derive(Debug, Default)]
-pub struct WelcomeViewInit;
+pub struct WelcomeViewInit {
+    pub registry: Arc<DriverRegistry>,
+}
 
 impl SimpleComponent for WelcomeView {
     type Init = WelcomeViewInit;
@@ -69,7 +74,7 @@ impl SimpleComponent for WelcomeView {
         gtk::Stack::builder().build()
     }
 
-    fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         // Empty page — no saved connections yet. GNOME convention is
         // state / instruction / action — title states the situation,
         // description tells the user what to do, the button restates
@@ -210,6 +215,7 @@ impl SimpleComponent for WelcomeView {
         root.set_visible_child_name("empty");
 
         let model = WelcomeView {
+            registry: init.registry,
             connections: Vec::new(),
             organization: ConnectionOrganizationIndex::default(),
             filter: String::new(),
@@ -329,10 +335,7 @@ impl WelcomeView {
         let mut guard = factory.guard();
         for saved in members {
             let organization = self.organization.get(saved.id);
-            guard.push_back(ConnectionRowInit {
-                saved: saved.clone(),
-                organization,
-            });
+            guard.push_back(ConnectionRowInit::new(saved.clone(), organization, &self.registry));
         }
         drop(guard);
 

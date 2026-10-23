@@ -265,10 +265,11 @@ impl App {
         let mut guard = self.connections_factory.guard();
         guard.clear();
         for saved in connections {
-            guard.push_back(crate::ui::connection_row::ConnectionRowInit {
-                saved: saved.clone(),
-                organization: self.connection_organization.get(saved.id),
-            });
+            guard.push_back(crate::ui::connection_row::ConnectionRowInit::new(
+                saved.clone(),
+                self.connection_organization.get(saved.id),
+                &self.registry,
+            ));
         }
         drop(guard);
         let _ = self

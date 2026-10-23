@@ -56,7 +56,7 @@
 - Closing a table browse tab releases its widgets and loaded rows.
 - PostgreSQL: a table named without its schema is found through the whole `search_path`, as PostgreSQL itself resolves it. Before, only the first schema on the path was searched, so SQL completion showed no columns (and structure lookups found nothing) for a table that lives in a later schema.
 - Removing a saved connection asks for confirmation once and preserves the database.
-- Saved connection names remain readable in narrow lists, with secondary actions available from a menu.
+- Saved connection rows show environment and engine names beside the endpoint, keep connection names readable in narrow lists, and place secondary actions in a menu.
 - SQLite refuses to drop a table in an attached database while other tables there still reference it, so their ON DELETE actions no longer empty those tables.
 - The Structure tab lists MySQL tables that have an index on an expression, and Show CREATE TABLE explains that an expression index cannot be recreated instead of writing it as a column index (MySQL, PostgreSQL, SQLite).
 - Open tabs, the active tab and sidebar group state are saved per database. Switching a saved connection to another database no longer restores the first database's tabs against the second, where a same-named table could show with the wrong page, sort or filter. Each database gets its own tabs back when you return to it; workspaces saved by earlier versions restore for the database you connect to first.

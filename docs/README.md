@@ -93,6 +93,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [Saved connection row layouts, October 23](evidence/saved-connection-row-2026-10-23/README.md): light/dark narrow/normal widget captures, allocation checks and the remaining GTK measurement warning.
+
 - [Merge baseline validation, October 23](evidence/merge-baseline-validation-2026-10-23/README.md): workspace-test compile repair, scoped local validation and the independent completion-popup timeout.
 
 - [Table-browse resource profile, October 22](evidence/table-browse-resource-2026-10-22/README.md): measured a wide SQLite page headlessly and exposed missing truncation feedback.

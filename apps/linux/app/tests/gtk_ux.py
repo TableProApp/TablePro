@@ -454,6 +454,36 @@ GLib.MainLoop().run()
         assert "Renamed B" in [connection["name"] for connection in after], after
         assert ui.CONNECTION_B_NAME not in [connection["name"] for connection in after], after
 
+    def saved_connection_row_controls_have_keyboard_focus_order(_database, _base):
+        ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
+        row = ui.wait_for_node(name=ui.CONNECTION_B_NAME, role=pyatspi.ROLE_LIST_ITEM)
+        favorite = ui.wait_within(row, name="Add to favourites", role=pyatspi.ROLE_PUSH_BUTTON)
+        actions = ui.wait_within(row, name="Connection actions", role=pyatspi.ROLE_TOGGLE_BUTTON)
+        open_connection = ui.wait_within(row, name="Open connection", role=pyatspi.ROLE_PUSH_BUTTON)
+        for control in (favorite, actions, open_connection):
+            assert any(control.queryAction().getName(index) == "click" for index in range(control.queryAction().nActions)), (
+                f"{ui.node_name(control)!r} has no accessible click action"
+            )
+        deadline = time.monotonic() + ui.WAIT_SECONDS
+        while not favorite.getState().contains(pyatspi.STATE_FOCUSED) and time.monotonic() < deadline:
+            ui.press_x11_key("Tab")
+            time.sleep(ui.POLL_SECONDS)
+        assert favorite.getState().contains(pyatspi.STATE_FOCUSED), (
+            f"favourite action is not keyboard reachable:\n{ui.accessible_snapshot()}"
+        )
+        ui.press_x11_key("Tab")
+        time.sleep(ui.POLL_SECONDS)
+        assert actions.getState().contains(pyatspi.STATE_FOCUSED), (
+            f"Tab did not move focus from favourite to actions:\n{ui.accessible_snapshot()}"
+        )
+        ui.press_x11_key("Tab")
+        time.sleep(ui.POLL_SECONDS)
+        assert open_connection.getState().contains(pyatspi.STATE_FOCUSED), (
+            f"Tab did not move focus from actions to open:\n{ui.accessible_snapshot()}"
+        )
+        ui.press_x11_key("Return")
+        ui.wait_for_frame_containing(f"{ui.CONNECTION_B_NAME} — BookiE")
+
     def open_edit_dialog_for(name):
         ui.invoke(ui.wait_for_node(name="Open saved connection", role=pyatspi.ROLE_TOGGLE_BUTTON))
         saved_connection_action(name, "Edit connection")
@@ -1919,6 +1949,7 @@ GLib.MainLoop().run()
         narrow_window_keeps_main_and_editor_toolbar_actions_reachable,
         tables_sidebar_button_hides_the_docked_sidebar_and_opens_the_overlay,
         connection_colour_chooser_has_an_accessible_button,
+        saved_connection_row_controls_have_keyboard_focus_order,
         sql_editor_clickables_all_have_a_keyboard_path,
         alt_arrows_jump_between_statements,
         row_inspector_lists_every_column_of_the_selected_row,
