@@ -831,11 +831,28 @@ impl EditorView {
         if !edits.is_empty() {
             self.repeat(&edits);
         }
-        if self.has_extra_carets() {
-            self.settle();
-        } else {
+        if !self.has_extra_carets() {
             self.carets_changed();
+        } else if !edits.is_empty() && edits.iter().all(|edit| *edit == Pending::DeleteSelection) {
+            // GTK commits text typed over a selection as two user actions,
+            // the deletion and then the text (gtk_text_view_commit_text),
+            // and carets the deletion brought together still type apart.
+            self.settle_when_idle();
+        } else {
+            self.settle();
         }
+    }
+
+    fn settle_when_idle(&self) {
+        let view = self.downgrade();
+        glib::idle_add_local_once(move || {
+            if let Some(view) = view.upgrade()
+                && !view.imp().disposed.get()
+                && view.has_extra_carets()
+            {
+                view.settle();
+            }
+        });
     }
 
     fn repeat(&self, edits: &[Pending]) {

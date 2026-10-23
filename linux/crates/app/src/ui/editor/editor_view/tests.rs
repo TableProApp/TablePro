@@ -63,10 +63,18 @@ impl Shown {
 
     /// What GtkTextView does with text an input method commits
     /// (gtk_text_view_commit_text), the path every typed character takes.
+    /// A selection longer than one character goes in a user action of its
+    /// own.
     fn commit(&self, text: &str) {
         let buffer = self.buffer();
         buffer.begin_user_action();
-        buffer.delete_selection(true, true);
+        let length = buffer
+            .selection_bounds()
+            .map_or(0, |(start, end)| end.offset() - start.offset());
+        if buffer.delete_selection(true, true) && length > 1 {
+            buffer.end_user_action();
+            buffer.begin_user_action();
+        }
         buffer.insert_interactive_at_cursor(text, true);
         buffer.end_user_action();
     }
@@ -139,6 +147,47 @@ fn selections_side_by_side_each_keep_their_own_text() {
     assert_eq!(shown.text(), "baba");
     shown.view.insert_at_carets("x");
     assert_eq!(shown.text(), "baxbax");
+}
+
+#[gtk4::test]
+fn carets_a_deletion_brings_together_join_when_nothing_follows() {
+    let shown = Shown::new("foofoo");
+    let buffer = shown.buffer();
+    buffer.select_range(&shown.at(0), &shown.at(3));
+    assert!(shown.view.add_caret_at_next_match());
+
+    buffer.begin_user_action();
+    buffer.delete_selection(true, true);
+    buffer.end_user_action();
+
+    assert_eq!(shown.text(), "");
+    wait_until(WAIT, || shown.view.caret_count() == 1).expect("the carets to join");
+}
+
+#[gtk4::test]
+fn a_solid_selection_lets_the_text_under_another_caret_show() {
+    let folder = tempfile::tempdir().expect("a scheme folder");
+    std::fs::write(
+        folder.path().join("solid.xml"),
+        r##"<?xml version="1.0" encoding="UTF-8"?>
+<style-scheme id="tablepro-test-solid" name="Solid" version="1.0">
+  <style name="text" foreground="#ffffff" background="#000000"/>
+  <style name="selection" foreground="#000000" background="#ffffff"/>
+</style-scheme>
+"##,
+    )
+    .expect("the scheme file");
+    let schemes = sourceview5::StyleSchemeManager::new();
+    schemes.append_search_path(&folder.path().to_string_lossy());
+    let scheme = schemes.scheme("tablepro-test-solid").expect("the scheme");
+    let shown = Shown::new("one one");
+    shown
+        .buffer()
+        .downcast::<sourceview5::Buffer>()
+        .expect("a source buffer")
+        .set_style_scheme(Some(&scheme));
+
+    assert!(super::paint::selection_color(&shown.view).alpha() < 1.0);
 }
 
 #[gtk4::test]

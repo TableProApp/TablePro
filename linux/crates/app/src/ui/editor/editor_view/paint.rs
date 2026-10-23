@@ -125,7 +125,7 @@ fn caret_color(view: &EditorView) -> gdk::RGBA {
 
 /// The scheme's selection, read as GtkSourceView turns it into CSS
 /// (gtksourcestylescheme.c, generate_css_style), or libadwaita's.
-fn selection_color(view: &EditorView) -> gdk::RGBA {
+pub(super) fn selection_color(view: &EditorView) -> gdk::RGBA {
     let focused = view.has_focus();
     let style = if focused {
         scheme_style(view, "selection")
@@ -135,9 +135,10 @@ fn selection_color(view: &EditorView) -> gdk::RGBA {
     if let Some(style) = style.filter(sourceview5::Style::is_background_set)
         && let Some(background) = parsed(style.background())
     {
-        // GtkSourceView's fix_broken_selection: with no text colour of its
-        // own, a solid selection would hide the text.
-        if !style.is_foreground_set() && background.alpha() >= 1.0 {
+        // The text under another caret's selection keeps its own colour,
+        // so a solid selection would hide it, as GtkSourceView's
+        // fix_broken_selection says of a selection with no text colour.
+        if background.alpha() >= 1.0 {
             return background.with_alpha(0.3);
         }
         return background;
