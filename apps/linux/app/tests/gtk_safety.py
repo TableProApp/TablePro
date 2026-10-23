@@ -448,7 +448,11 @@ def press_x11_key(name, modifiers=(), presses=1):
             focus_window = None
             for index in range(child_count.value - 1, -1, -1):
                 attributes = XWindowAttributes()
-                if x11.XGetWindowAttributes(display, children[index], ctypes.byref(attributes)) and attributes.map_state == 2:
+                if (
+                    x11.XGetWindowAttributes(display, children[index], ctypes.byref(attributes))
+                    and attributes.map_state == 2
+                    and not attributes.override_redirect
+                ):
                     focus_window = children[index]
                     break
             if focus_window is None:
