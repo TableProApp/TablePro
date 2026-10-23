@@ -147,8 +147,6 @@ crates/app/src/ui/browse_tab/fetch.rs
 crates/app/src/ui/browse_tab/imp.rs
 crates/app/src/ui/browse_tab/layout.rs
 crates/app/src/ui/browse_tab/mod.rs
-crates/app/src/ui/browse_tab/mod.rs
-crates/app/src/ui/browse_tab/mod.rs
 crates/app/src/ui/browse_tab/page_label.rs
 crates/app/src/ui/browse_tab/page_reply.rs
 crates/app/src/ui/browse_tab/page_state.rs
@@ -334,11 +332,7 @@ crates/app/src/ui/grid/row_state_icon.rs
 crates/app/src/ui/grid/row_watches.rs
 crates/app/src/ui/grid/selection.rs
 crates/app/src/ui/grid/tab_grid_context.rs
-crates/app/src/ui/grid/tab_grid_context.rs
-crates/app/src/ui/grid/tab_grid_context.rs
 crates/app/src/ui/grid/table_keys.rs
-crates/app/src/ui/grid/test_grid.rs
-crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/test_grid.rs
 crates/app/src/ui/grid/toggle_cell.rs
 crates/app/src/ui/grid/value_order.rs
@@ -364,8 +358,6 @@ crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
 crates/app/src/ui/key_tab/tests.rs
 crates/app/src/ui/menu_label.rs
-crates/app/src/ui/mod.rs
-crates/app/src/ui/mod.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
 crates/app/src/ui/picker/connection_menu.rs

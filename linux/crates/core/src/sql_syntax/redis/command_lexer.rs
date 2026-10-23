@@ -228,9 +228,11 @@ fn ends_line(byte: u8) -> bool {
     matches!(byte, b'\n' | b'\r')
 }
 
-/// `sdssplitargs` skips every `isspace` byte between arguments.
+/// `sdssplitargs` skips every `isspace` byte between arguments. A NUL,
+/// which ends redis-cli's line, is skipped too, so it can neither make
+/// an argument nor stop the lexer moving on.
 fn is_blank(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | 0x0B | 0x0C)
+    matches!(byte, b' ' | b'\t' | 0x0B | 0x0C | 0)
 }
 
 /// But only these end an argument that is not quoted.
@@ -329,6 +331,13 @@ mod tests {
     #[test]
     fn a_closing_quote_must_end_its_argument() {
         assert_eq!(values(r#"GET "a"b"#), vec![Err(CommandSyntaxError::UnbalancedQuotes)]);
+    }
+
+    #[test]
+    fn a_nul_parts_arguments_and_is_never_one() {
+        assert_eq!(values("GET k\0"), vec![args(&[b"GET", b"k"])]);
+        assert_eq!(values("\0SET a\0b"), vec![args(&[b"SET", b"a", b"b"])]);
+        assert_eq!(values("\0\0"), Vec::new());
     }
 
     #[test]

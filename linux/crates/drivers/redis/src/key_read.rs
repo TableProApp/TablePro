@@ -44,8 +44,10 @@ pub(crate) async fn read_key(
     }
     let ttl = match ttl {
         Reply::Int(-2) => return Ok(None),
+        Reply::Int(-1) => KeyTtl::Persistent,
         Reply::Int(millis) if millis >= 0 => KeyTtl::ExpiresIn(Duration::from_millis(millis.unsigned_abs())),
-        _ => KeyTtl::Persistent,
+        // An ACL that denies PTTL answers with an error in its place.
+        _ => KeyTtl::Unknown,
     };
     let kind = kind_named(&type_name);
     let Some(plan) = WindowPlan::new(kind, &key, window) else {

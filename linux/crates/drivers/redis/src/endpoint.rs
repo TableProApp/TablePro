@@ -40,20 +40,9 @@ impl RedisEndpoint {
         environment: &ConnectEnvironment,
     ) -> Result<Self, DriverError> {
         let database = tablepro_core::keyspace::database_number(target.database.as_deref())?;
-        let mut login = RedisConnectionInfo::default()
+        let login = login(&target.credentials)?
             .set_db(i64::from(database))
             .set_lib_name(APPLICATION_NAME, &environment.client_version);
-        match &target.credentials {
-            Credentials::Password { username, password } => {
-                if !username.trim().is_empty() {
-                    login = login.set_username(username.trim());
-                }
-                if !password.expose_secret().is_empty() {
-                    login = login.set_password(password.expose_secret());
-                }
-            }
-            Credentials::Integrated => return Err(ConfigError::AuthModeUnsupported.into()),
-        }
         let tls = match build_client_config(&target.tls).map_err(setup_error)? {
             Some(config) => Some(TlsSetup {
                 connector: TlsConnector::from(config),
@@ -163,6 +152,23 @@ impl RedisEndpoint {
     }
 }
 
+/// The login a link sends. redis-rs sends `AUTH` only with a password,
+/// so a named user is always sent one, empty for an ACL user with
+/// `nopass`; with neither, the link stays the `default` user's.
+fn login(credentials: &Credentials) -> Result<RedisConnectionInfo, DriverError> {
+    let Credentials::Password { username, password } = credentials else {
+        return Err(ConfigError::AuthModeUnsupported.into());
+    };
+    let (username, password) = (username.trim(), password.expose_secret());
+    Ok(match (username.is_empty(), password.is_empty()) {
+        (true, true) => RedisConnectionInfo::default(),
+        (true, false) => RedisConnectionInfo::default().set_password(password),
+        (false, _) => RedisConnectionInfo::default()
+            .set_username(username)
+            .set_password(password),
+    })
+}
+
 /// Name the link in the server's client list and read its id. A login
 /// with no password on a server that wants one is refused here, since
 /// redis-rs sends no AUTH without a password; one whose ACL denies
@@ -222,6 +228,25 @@ fn setup_error(error: TlsSetupError) -> DriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn password(username: &str, password: &str) -> Credentials {
+        Credentials::Password {
+            username: username.to_owned(),
+            password: secrecy::SecretString::from(password.to_owned()),
+        }
+    }
+
+    #[test]
+    fn a_named_user_always_sends_a_password() {
+        let nopass = login(&password("reader", "")).unwrap();
+        let default = login(&password(" ", "s3cret")).unwrap();
+        let anonymous = login(&password("", "")).unwrap();
+
+        assert_eq!((nopass.username(), nopass.password()), (Some("reader"), Some("")));
+        assert_eq!((default.username(), default.password()), (None, Some("s3cret")));
+        assert_eq!((anonymous.username(), anonymous.password()), (None, None));
+        assert!(login(&Credentials::Integrated).is_err());
+    }
 
     #[test]
     fn a_server_that_hangs_up_on_the_hello_refused_tls() {

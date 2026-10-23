@@ -1,4 +1,4 @@
-use tablepro_core::sql_syntax::{SqlGrammar, StatementAccess, statement_access};
+use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{ScriptPlan, ScriptTokenKind};
 
 /// Words that add, rename or remove what the sidebar lists. They count
@@ -16,10 +16,11 @@ const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 /// Server create its target table.
 ///
 /// On an engine of keys every write can add or remove one, so the keys
-/// are listed again after any command that writes.
+/// are listed again after any command that writes, or that commits a
+/// transaction.
 pub(super) fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
     if !grammar.is_sql() {
-        return statement_access(text, grammar) >= StatementAccess::Write;
+        return tablepro_core::sql_syntax::redis::may_change_keys(text);
     }
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }
@@ -63,7 +64,7 @@ mod tests {
 
     #[test]
     fn every_write_changes_the_keys() {
-        for text in ["SET k 1", "DEL k", "RENAME a b", "GET k\nFLUSHDB"] {
+        for text in ["SET k 1", "DEL k", "RENAME a b", "GET k\nFLUSHDB", "EXEC"] {
             assert!(changes_catalog(text, SqlGrammar::Redis), "{text}");
         }
         for text in ["GET k", "SCAN 0", "HGETALL h"] {

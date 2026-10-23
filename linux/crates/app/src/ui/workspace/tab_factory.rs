@@ -259,7 +259,7 @@ impl TabFactory {
             tasks: parts.context.tasks.clone(),
             first_load,
         });
-        let page = self.append(tab.widget(), id);
+        let page = self.append(tab.widget(), id, None);
         let follow = follow_loading(&page, tab.is_loading());
         let input = parts.input.clone();
         tab.connect_events(move |event| match event {

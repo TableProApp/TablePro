@@ -78,6 +78,49 @@ fn a_key_that_is_gone_says_so() {
 }
 
 #[gtk4::test]
+fn a_window_that_fails_can_be_asked_for_again() {
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    script
+        .read_key
+        .once(FakeReply::err(tablepro_core::DriverError::server("busy")));
+    script.read_key.once(FakeReply::ok(Some(list_page(2, 3, None))));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    tab.load_more();
+
+    wait_until(WAIT, || tab.offers_more() && !tab.is_loading()).expect("Load More back after the failure");
+    assert_eq!(tab.rows(), 2, "the failure dropped what was shown");
+    tab.load_more();
+    wait_until(WAIT, || tab.rows() == 3).expect("the window asked for again");
+}
+
+#[gtk4::test]
+fn a_key_written_over_with_another_type_is_read_again() {
+    let column = ResultColumn::new("value", tablepro_core::column::ColumnType::untyped_text("string"));
+    let string = KeyPage {
+        kind: KeyKind::String,
+        type_name: "string".to_owned(),
+        ttl: KeyTtl::Unknown,
+        length: Some(3),
+        rows: QueryResult::new(vec![column], vec![vec![Value::Text("Ada".to_owned())]]),
+        next: None,
+    };
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    script.read_key.always(FakeReply::ok(Some(string)));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the list's first window");
+
+    tab.load_more();
+
+    wait_until(WAIT, || tab.type_text() == "String").expect("the key read again as a string");
+    assert_eq!(tab.rows(), 1);
+    assert_eq!(tab.summary_text(), "3 bytes", "an expiry the server would not give was shown");
+}
+
+#[gtk4::test]
 fn a_refresh_reads_the_key_from_its_start() {
     let mut script = ConnectionScript::default();
     script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));

@@ -9,6 +9,8 @@ use crate::query_result::QueryResult;
 pub enum KeyTtl {
     Persistent,
     ExpiresIn(Duration),
+    /// The login may read the key but not ask when it expires.
+    Unknown,
 }
 
 /// One window of a key's value, with what the key is.

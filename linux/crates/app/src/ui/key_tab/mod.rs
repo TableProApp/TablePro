@@ -84,6 +84,7 @@ struct State {
 }
 
 struct Shown {
+    kind: KeyKind,
     columns: Arc<[ResultColumn]>,
     store: gio::ListStore,
     rows: u64,
@@ -337,9 +338,16 @@ impl Inner {
         }
         let presentation = match outcome {
             Ok(Some(page)) => {
-                match mode {
-                    ReadMode::Replace => self.show(page),
+                let shown = match mode {
+                    ReadMode::Replace => {
+                        self.show(page);
+                        true
+                    }
                     ReadMode::Append => self.append(page),
+                };
+                // A window that started the key again is still reading.
+                if !shown {
+                    return;
                 }
                 self.state.borrow_mut().load.succeed()
             }
@@ -349,12 +357,21 @@ impl Inner {
         self.present(presentation);
     }
 
+    /// A failed window leaves Load More there to try again; the banner
+    /// says why it failed.
     fn fail(&self, failure: LoadFailure) -> LoadPresentation {
-        let mut state = self.state.borrow_mut();
-        if let Some(shown) = state.shown.as_mut() {
-            shown.appending = false;
+        let (presentation, kind) = {
+            let mut state = self.state.borrow_mut();
+            let kind = state.shown.as_mut().map(|shown| {
+                shown.appending = false;
+                shown.kind
+            });
+            (state.load.fail(failure), kind)
+        };
+        if let Some(kind) = kind {
+            self.show_footer(kind);
         }
-        state.load.fail(failure)
+        presentation
     }
 
     /// The key's first window, in a grid of its own: another type than
@@ -364,7 +381,7 @@ impl Inner {
         self.type_label.set_label(&kind);
         let parts: Vec<String> = [
             page.length.and_then(|length| key_summary::length_text(page.kind, length)),
-            Some(key_summary::ttl_text(page.ttl)),
+            key_summary::ttl_text(page.ttl),
         ]
         .into_iter()
         .flatten()
@@ -400,6 +417,7 @@ impl Inner {
             return;
         };
         self.state.borrow_mut().shown = Some(Shown {
+            kind: page.kind,
             columns,
             store,
             rows: count,
@@ -422,12 +440,28 @@ impl Inner {
         }
     }
 
-    fn append(&self, page: KeyPage) {
+    /// The next window, under the rows already shown. A key written over
+    /// with another type since is read again from its start, and false
+    /// says so.
+    fn append(self: &Rc<Self>, page: KeyPage) -> bool {
         let kind = page.kind;
+        let changed = self
+            .state
+            .borrow()
+            .shown
+            .as_ref()
+            .is_none_or(|shown| shown.kind != kind || shown.columns != page.rows.columns);
+        if changed {
+            if let Some(shown) = self.state.borrow_mut().shown.as_mut() {
+                shown.appending = false;
+            }
+            reload(&Rc::downgrade(self));
+            return false;
+        }
         {
             let mut state = self.state.borrow_mut();
             let Some(shown) = state.shown.as_mut() else {
-                return;
+                return false;
             };
             let rows: Vec<RowObject> = page
                 .rows
@@ -442,6 +476,7 @@ impl Inner {
             shown.appending = false;
         }
         self.show_footer(kind);
+        true
     }
 
     /// How many entries the tab holds, of how many. A string is one

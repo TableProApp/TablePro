@@ -35,21 +35,24 @@ pub(super) fn length_text(kind: KeyKind, length: u64) -> Option<String> {
     })
 }
 
-/// When the key expires, in the largest whole unit that fits.
-pub(super) fn ttl_text(ttl: KeyTtl) -> String {
-    let KeyTtl::ExpiresIn(left) = ttl else {
-        return pgettext("key expiry", "No expiry");
+/// When the key expires, in the largest whole unit that fits, or
+/// nothing when the server would not say.
+pub(super) fn ttl_text(ttl: KeyTtl) -> Option<String> {
+    let left = match ttl {
+        KeyTtl::Persistent => return Some(pgettext("key expiry", "No expiry")),
+        KeyTtl::Unknown => return None,
+        KeyTtl::ExpiresIn(left) => left,
     };
     let (count, unit) = largest_unit(left);
     let n = count.to_string();
     let placeholders = [("n", n.as_str())];
     let count = plural_count(count);
-    match unit {
+    Some(match unit {
         Unit::Seconds => ngettext_f("Expires in {n} second", "Expires in {n} seconds", count, &placeholders),
         Unit::Minutes => ngettext_f("Expires in {n} minute", "Expires in {n} minutes", count, &placeholders),
         Unit::Hours => ngettext_f("Expires in {n} hour", "Expires in {n} hours", count, &placeholders),
         Unit::Days => ngettext_f("Expires in {n} day", "Expires in {n} days", count, &placeholders),
-    }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,12 +109,14 @@ mod tests {
 
     #[test]
     fn an_expiry_reads_in_the_largest_unit_that_fits() {
-        assert_eq!(ttl_text(KeyTtl::Persistent), "No expiry");
-        assert_eq!(ttl_text(KeyTtl::ExpiresIn(Duration::from_millis(300))), "Expires in 1 second");
-        assert_eq!(ttl_text(KeyTtl::ExpiresIn(Duration::from_secs(59))), "Expires in 59 seconds");
-        assert_eq!(ttl_text(KeyTtl::ExpiresIn(Duration::from_secs(150))), "Expires in 2 minutes");
-        assert_eq!(ttl_text(KeyTtl::ExpiresIn(Duration::from_secs(7_200))), "Expires in 2 hours");
-        assert_eq!(ttl_text(KeyTtl::ExpiresIn(Duration::from_secs(259_200))), "Expires in 3 days");
+        let text = |ttl| ttl_text(ttl).unwrap_or_default();
+        assert_eq!(text(KeyTtl::Persistent), "No expiry");
+        assert_eq!(text(KeyTtl::ExpiresIn(Duration::from_millis(300))), "Expires in 1 second");
+        assert_eq!(text(KeyTtl::ExpiresIn(Duration::from_secs(59))), "Expires in 59 seconds");
+        assert_eq!(text(KeyTtl::ExpiresIn(Duration::from_secs(150))), "Expires in 2 minutes");
+        assert_eq!(text(KeyTtl::ExpiresIn(Duration::from_secs(7_200))), "Expires in 2 hours");
+        assert_eq!(text(KeyTtl::ExpiresIn(Duration::from_secs(259_200))), "Expires in 3 days");
+        assert_eq!(ttl_text(KeyTtl::Unknown), None);
     }
 
     #[test]
