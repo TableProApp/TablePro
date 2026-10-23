@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn table_completion_replaces_a_qualified_reference_as_a_whole() {
         let mut index = SchemaIndex::default();
-        index.tables = vec!["\"odd.schema\".\"Users\"".into()];
+        index.set_tables(vec!["\"odd.schema\".\"Users\"".into()]);
         index.grammar = Some(SqlGrammar::PostgreSql);
         let sql = "SELECT * FROM \"odd.schema\".\"Us\" WHERE true";
         let cursor = sql.find("Us").unwrap() + 1;
@@ -198,7 +198,7 @@ mod tests {
             let mut index = SchemaIndex::default();
             index.grammar = Some(grammar);
             let reference = tablepro_core::sql_dialect::quote_ident(driver, "Users");
-            index.tables.push(reference.clone());
+            index.set_tables(vec![reference.clone()]);
             let partial = format!("{}Us", &reference[..1]);
             let sql = format!("SELECT * FROM {partial}");
             let candidates = candidates(&sql, sql.len(), &index);
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn completion_before_an_unfinished_quote_refuses_an_ambiguous_suffix() {
         let mut index = SchemaIndex::default();
-        index.tables.push("\"Users\"".into());
+        index.set_tables(vec!["\"Users\"".into()]);
         let sql = "SELECT * FROM \"Us WHERE true";
         assert!(candidates(sql, "SELECT * FROM ".len(), &index).values.is_empty());
     }

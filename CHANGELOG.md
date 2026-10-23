@@ -21,6 +21,8 @@
 
 ### Changed
 
+- SQL completion checks table names faster in large catalogs.
+
 - Large PostgreSQL query results stream faster while retained pages remain available through the result pager.
 
 - Large result grids share keyboard and pointer menu handling to reduce per-cell allocations.

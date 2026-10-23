@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::LexicalSettings;
@@ -17,7 +17,9 @@ TRUE FALSE ASC DESC RETURNING";
 
 #[derive(Default)]
 pub struct SchemaIndex {
-    pub tables: Vec<String>,
+    tables: Vec<String>,
+    table_keys: HashSet<String>,
+    table_grammar: Option<SqlGrammar>,
     pub columns: HashMap<String, Vec<String>>,
     pub grammar: Option<SqlGrammar>,
     connection: Option<crate::connection_identity::ConnectionIdentity>,
@@ -42,6 +44,18 @@ pub struct SchemaRequest {
 }
 
 impl SchemaIndex {
+    pub fn set_tables(&mut self, tables: Vec<String>) {
+        self.table_keys.clear();
+        self.table_grammar = self.grammar;
+        for table in &tables {
+            if let Some(key) = table_key(table, self.grammar) {
+                self.table_keys.insert(bare_name(&key).to_string());
+                self.table_keys.insert(key);
+            }
+        }
+        self.tables = tables;
+    }
+
     pub fn invalidate_columns(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         self.columns.clear();
@@ -50,6 +64,7 @@ impl SchemaIndex {
     pub fn clear(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         self.tables.clear();
+        self.table_keys = HashSet::new();
         self.columns.clear();
         self.grammar = None;
         self.connection = None;
@@ -63,6 +78,7 @@ impl SchemaIndex {
         self.generation = self.generation.wrapping_add(1);
         self.connection = Some(connection.clone());
         self.tables.clear();
+        self.table_keys = HashSet::new();
         self.columns.clear();
         true
     }
@@ -101,6 +117,9 @@ impl SchemaIndex {
         };
         if self.knows_columns(table) {
             return false;
+        }
+        if self.table_grammar == self.grammar {
+            return self.table_keys.contains(&key);
         }
         self.tables.iter().any(|known| {
             table_key(known, self.grammar)
@@ -437,13 +456,13 @@ mod tests {
     fn column_requests_require_a_complete_catalog_name() {
         let mut index = super::SchemaIndex {
             grammar: Some(tablepro_core::sql_syntax::SqlGrammar::PostgreSql),
-            tables: vec![
-                "public.customers".into(),
-                "archive.customers".into(),
-                "public.\"Users\"".into(),
-            ],
             ..Default::default()
         };
+        index.set_tables(vec![
+            "public.customers".into(),
+            "archive.customers".into(),
+            "public.\"Users\"".into(),
+        ]);
         for partial in ["c", "cu", "customer", "public.customer", "missing.customers", "users"] {
             assert!(
                 !index.needs_columns(partial),
@@ -464,11 +483,28 @@ mod tests {
         assert!(index.needs_columns("archive.customers"));
     }
 
+    #[test]
+    fn column_membership_tracks_catalog_grammar_and_clear_changes() {
+        let mut index = SchemaIndex::default();
+        index.set_tables(vec!["public.customers".into()]);
+        assert!(index.needs_columns("customers"));
+        index.set_tables(vec!["public.orders".into(), "public.\"Users\"".into()]);
+        assert!(!index.needs_columns("customers"));
+        assert!(index.needs_columns("orders"));
+        assert!(!index.needs_columns("users"));
+        index.grammar = Some(SqlGrammar::Sqlite);
+        assert!(index.needs_columns("users"));
+        index.set_tables(vec!["public.\"Users\"".into()]);
+        assert!(index.needs_columns("users"));
+        index.clear();
+        assert!(!index.needs_columns("users"));
+        index.set_tables(vec!["public.next".into()]);
+        assert!(index.needs_columns("next"));
+    }
+
     fn index() -> SchemaIndex {
-        let mut index = SchemaIndex {
-            tables: vec!["public.users".into(), "public.orders".into()],
-            ..SchemaIndex::default()
-        };
+        let mut index = SchemaIndex::default();
+        index.set_tables(vec!["public.users".into(), "public.orders".into()]);
         index.set_columns("public.users", vec!["id".into(), "email".into(), "created_at".into()]);
         index.set_columns("public.orders", vec!["id".into(), "user_id".into(), "total".into()]);
         index.grammar = Some(SqlGrammar::PostgreSql);
@@ -764,7 +800,7 @@ mod tests {
             grammar: Some(SqlGrammar::PostgreSql),
             ..SchemaIndex::default()
         };
-        index.tables.push("public.safety_items".into());
+        index.set_tables(vec!["public.safety_items".into()]);
         index.set_columns("public.safety_items", vec!["note".into()]);
         let request = index.request("public.safety_items".into());
         assert!(

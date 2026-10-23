@@ -51,12 +51,12 @@ fn proposals_activate_complete_quoted_references() {
         ("public", "select", "sel"),
         ("public", "東京 with space", "東"),
     ];
-    for (schema, name, _) in cases {
-        index
-            .borrow_mut()
-            .tables
-            .push(super::super::catalog_reference("postgres", Some(schema), name));
-    }
+    index.borrow_mut().set_tables(
+        cases
+            .iter()
+            .map(|(schema, name, _)| super::super::catalog_reference("postgres", Some(schema), name))
+            .collect(),
+    );
     for (schema, name, partial) in cases {
         for fragment in [partial.to_string(), format!("\"{partial}"), format!("\"{partial}\"")] {
             assert_table_activation(schema, name, &fragment, index.clone());
@@ -114,7 +114,7 @@ fn retired_proposals_do_not_edit_the_buffer() {
     gtk::init().unwrap();
     for retired_by in ["generation", "text", "cursor", "large_buffer"] {
         let index = Rc::new(RefCell::new(SchemaIndex::default()));
-        index.borrow_mut().tables.push("\"Users\"".into());
+        index.borrow_mut().set_tables(vec!["\"Users\"".into()]);
         let (_view, provider, context) = fixture("SELECT * FROM Us", 16, index.clone());
         let model = glib::MainContext::default()
             .block_on(provider.populate_future(&context))
@@ -144,7 +144,9 @@ fn retired_proposals_do_not_edit_the_buffer() {
 fn large_catalog_materializes_only_requested_completion_proposals() {
     gtk::init().unwrap();
     let index = Rc::new(RefCell::new(SchemaIndex::default()));
-    index.borrow_mut().tables = (0..50_000).map(|position| format!("table_{position:05}")).collect();
+    index
+        .borrow_mut()
+        .set_tables((0..50_000).map(|position| format!("table_{position:05}")).collect());
     let sql = "SELECT * FROM table_";
     let (_view, provider, context) = fixture(sql, sql.len(), index);
     let model = glib::MainContext::default()
@@ -171,7 +173,7 @@ fn large_catalog_materializes_only_requested_completion_proposals() {
 fn proposals_first_requested_after_catalog_retirement_do_not_edit_the_buffer() {
     gtk::init().unwrap();
     let index = Rc::new(RefCell::new(SchemaIndex::default()));
-    index.borrow_mut().tables.push("orders".into());
+    index.borrow_mut().set_tables(vec!["orders".into()]);
     let sql = "SELECT * FROM ord";
     let (_view, provider, context) = fixture(sql, sql.len(), index.clone());
     let model = glib::MainContext::default()
@@ -191,7 +193,7 @@ fn completion_resumes_after_a_large_buffer_is_replaced_with_a_small_query() {
     gtk::init().unwrap();
     let index = Rc::new(RefCell::new(SchemaIndex::default()));
     index.borrow_mut().grammar = Some(SqlGrammar::PostgreSql);
-    index.borrow_mut().tables.push("users".into());
+    index.borrow_mut().set_tables(vec!["users".into()]);
     let large = format!(
         "SELECT * FROM {}us",
         " ".repeat(super::super::sql_text::MAX_ANALYSIS_BYTES)

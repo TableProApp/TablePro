@@ -116,7 +116,7 @@ impl App {
             .and_then(crate::ui::editor::grammar_for);
         let tabs = self.workspace_tabs.borrow();
         let mut index = self.schema_index.borrow_mut();
-        index.tables = self.table_names.clone();
+        index.set_tables(self.table_names.clone());
         for tab in tabs.values() {
             if let Some(controller) = tab.browse_controller() {
                 let model = controller.model();

@@ -7,7 +7,7 @@ use tablepro_core::sql_syntax::SqlGrammar;
 #[test]
 fn quoted_table_completion_preserves_the_replacement_and_catalog_identity() {
     let mut index = SchemaIndex::default();
-    index.tables = vec![r#""odd.schema"."Users""#.into()];
+    index.set_tables(vec![r#""odd.schema"."Users""#.into()]);
     index.grammar = Some(SqlGrammar::PostgreSql);
     let sql = r#"SELECT * FROM "odd.schema"."Us" WHERE true"#;
     let cursor = sql.find("Us").unwrap() + 2;
@@ -24,7 +24,7 @@ fn quoted_table_completion_preserves_the_replacement_and_catalog_identity() {
 #[test]
 fn clearing_metadata_retires_requests_and_keeps_keyword_completion_available() {
     let mut index = SchemaIndex::default();
-    index.tables.push("public.previous_connection".into());
+    index.set_tables(vec!["public.previous_connection".into()]);
     index.set_columns("public.previous_connection", vec!["private_column".into()]);
     let request = index.request("public.previous_connection".into());
     index.clear();

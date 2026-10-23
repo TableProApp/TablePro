@@ -1,0 +1,59 @@
+{
+  "source": "d94bb24e8b3936d14f8ee15f3ebe0acc0de4acbc",
+  "release_library_sha256": "1aeb6c92ac1d1a4fda5f3e202089ff22f8f0c71dca46797bf8a7f9d9e47c0097",
+  "lookup_samples": [
+    {
+      "tables": 1000,
+      "milliseconds": [
+        0.001978,
+        0.0006799999999999999,
+        0.000612,
+        0.000513,
+        0.000551
+      ]
+    },
+    {
+      "tables": 10000,
+      "milliseconds": [
+        0.0015910000000000002,
+        0.000676,
+        0.000588,
+        0.000509,
+        0.00048699999999999997
+      ]
+    },
+    {
+      "tables": 50000,
+      "milliseconds": [
+        0.0018059999999999999,
+        0.000668,
+        0.0005780000000000001,
+        0.000579,
+        0.0005780000000000001
+      ]
+    }
+  ],
+  "construction_and_rss": [
+    {
+      "tables": 1000,
+      "construction_ms": 0.465,
+      "rss_before_kib": 2516,
+      "rss_after_kib": 2808,
+      "rss_delta_kib": 292
+    },
+    {
+      "tables": 10000,
+      "construction_ms": 4.298,
+      "rss_before_kib": 3156,
+      "rss_after_kib": 4808,
+      "rss_delta_kib": 1652
+    },
+    {
+      "tables": 50000,
+      "construction_ms": 24.494,
+      "rss_before_kib": 5960,
+      "rss_after_kib": 13140,
+      "rss_delta_kib": 7180
+    }
+  ]
+}
