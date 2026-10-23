@@ -1,0 +1,156 @@
+CREATE DATABASE
+CREATE TABLE
+INSERT 0 1
+CREATE TABLE
+INSERT 0 2
+CREATE TYPE
+CREATE TABLE
+INSERT 0 5
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.3' (uid=1000 pid=1337787 comm="gdbus call --session --dest org.a11y.Bus --object-")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=1337792 comm="/usr/lib/at-spi-bus-launcher")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[1337806]: Activating service name='org.a11y.atspi.Registry' requested by ':1.1' (uid=1000 pid=1337819 comm="python3 -u /home/trung/Projects/bookie/target/qual")
+dbus-daemon[1337806]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.12' (uid=1000 pid=1337820 comm="/home/trung/Projects/bookie/target/quality/postgre")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=1337884 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=1337884 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.675: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.675: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.13' (uid=1000 pid=1337884 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.720: Choosing gtk.portal for org.freedesktop.impl.portal.Access via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Choosing gtk.portal for org.freedesktop.impl.portal.Settings via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.728: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.729: Choosing gtk.portal for org.freedesktop.impl.portal.Print via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.729: Choosing gtk.portal for org.freedesktop.impl.portal.Notification via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.729: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.733: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.733: Choosing gtk.portal for org.freedesktop.impl.portal.Account via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.734: Choosing gtk.portal for org.freedesktop.impl.portal.Email via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.735: Choosing gnome-keyring.portal for org.freedesktop.impl.portal.Secret via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1337884): xdg-desktop-portal-WARNING **: 14:27:06.735: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher via the deprecated UseIn key
+dbus-daemon[1337102]: [session uid=1000 pid=1337102 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+FAILED: profile_postgres_large_stream (duration: 303.503s)
+AssertionError: expected an accessible name containing 'done in' to appear:
+application: xdg-desktop-portal-gtk
+application: com.tablepro.linux
+frame: [Production] Safety PostgreSQL — BookiE [0,0 1200x760] actions=['win.restore-database', 'win.recent-tab-end', 'win.new-window', 'win.refresh-page', 'win.open-file', 'win.quit', 'win.undo-change', 'win.disconnect', 'win.show-history', 'win.show-catalog', 'win.back-up-database', 'win.recent-tab', 'win.save-changes', 'default.activate', 'win.redo-change', 'win.jump-column', 'window.minimize', 'win.shortcuts', 'win.show-audit', 'win.save-favorite', 'win.open-quickly', 'win.export-all-csv', 'win.export-json', 'win.show-saved-queries', 'win.about', 'window.close', 'win.explain-query', 'win.save-file-as', 'win.export-all-json', 'win.export-csv', 'win.open-filter', 'win.close-current', 'window.toggle-maximized', 'win.show-activity', 'win.reopen-closed-tab', 'win.reveal-in-sidebar', 'win.preferences', 'win.open-editor']
+list item: Tables [0,0 248x46] actions=[]
+label: Tables [0,0 80x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: 2 [0,0 8x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: New Table in public… [0,0 36x34] actions=['click']
+button: Table from CSV in public… [0,0 36x34] actions=['click']
+list item: public.enum_grid [0,0 248x46] actions=['sidebar-row.open-in-new-tab', 'sidebar-row.show-create-table', 'sidebar-row.edit-structure', 'sidebar-row.truncate-table', 'sidebar-row.drop-table', 'sidebar-row.rename-table', 'sidebar-row.import-csv']
+toggle button: Show columns [0,0 36x34] actions=['click']
+label: enum_grid [0,0 82x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Open enum_grid [0,0 36x34] actions=['click']
+list item: public.people [0,0 248x46] actions=['sidebar-row.open-in-new-tab', 'sidebar-row.show-create-table', 'sidebar-row.edit-structure', 'sidebar-row.truncate-table', 'sidebar-row.drop-table', 'sidebar-row.rename-table', 'sidebar-row.import-csv']
+toggle button: Show columns [0,0 36x34] actions=['click']
+label: people [0,0 82x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Open people [0,0 36x34] actions=['click']
+label: Safety PostgreSQL [0,0 160x18] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Filter schemas [0,0 34x34] actions=[]
+toggle button: Filter schemas [0,0 34x34] actions=['click']
+toggle button: Search tables [0,0 34x34] actions=['click']
+page tab: SELECT n AS row_id, 'person-' … [0,0 868x34] actions=[]
+label: SELECT n AS row_id, 'person-' … [0,0 231x26] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Close Tab [0,0 24x24] actions=['click']
+button: New query (Ctrl+E) [0,0 34x34] actions=['click']
+panel: SELECT n AS row_id, 'person-' … [0,0 924x657]
+label: Received 1695000 rows · 339 pages
+Retained rows 1675001-1695000. Earlier rows are no longer available. [0,0 924x36] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Export all rows… [0,0 924x34] actions=['click']
+label: Export all rows… [0,0 890x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: The query will run again through a guarded cursor. [0,0 924x18] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Previous page [0,0 137x34] actions=['click']
+label: Previous page [0,0 103x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: Status [0,0 44x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Next page [0,0 108x34] actions=['click']
+label: Next page [0,0 74x24]
+panel: Page 2 [0,0 -1567005680x32590]
+panel: Page 3 [0,0 -1567005680x32590]
+panel: Page 4 [0,0 -1567005680x32590]
+panel: Page 5 [0,0 924x98]
+grouping: Query timed out [0,0 924x98] actions=[]
+label: Query timed out [0,0 599x33] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: Only retained rows remain available. [0,0 599x21] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: Ln 1, Col 232 [0,0 115x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: timed out [0,0 66x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+toggle button: Session [0,0 91x34] actions=['click']
+label: Session [0,0 57x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Run [0,0 62x34] actions=['click']
+label: Run [0,0 28x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Run options [0,0 34x34] actions=['editor-export.all-query-rows']
+toggle button: Run options [0,0 34x34] actions=['click']
+button: Fold block [0,0 108x34] actions=['click']
+label: Fold block [0,0 74x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Unfold all [0,0 103x34] actions=['click']
+label: Unfold all [0,0 69x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Pin results [0,0 110x34] actions=['click']
+label: Pin results [0,0 76x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Explain [0,0 87x34] actions=['click']
+label: Explain [0,0 53x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+toggle button: Split [0,0 67x34] actions=['click']
+label: Split [0,0 33x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Run again with a 240s timeout [0,0 251x34] actions=['click']
+label: Run again with a 240s timeout [0,0 217x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+toggle button: Results [0,0 88x34] actions=['click']
+label: Results [0,0 54x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Show result sets [0,0 34x34] actions=['click']
+button: Errors (1) [0,0 99x34] actions=['click']
+label: Errors (1) [0,0 65x24] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Maximize results [0,0 34x34] actions=['click']
+button: New connection [0,0 34x34] actions=['click']
+button: Open saved connection [0,0 34x34] actions=[]
+toggle button: Open saved connection [0,0 34x34] actions=['click']
+toggle button: Tables sidebar [0,0 34x34] actions=['click']
+button: Switch database [0,0 34x34] actions=[]
+toggle button: Switch database [0,0 34x34] actions=['click']
+label: BookiE [0,0 276x18] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+label: Safety PostgreSQL · Prod · PostgreSQL 17.11 [0,0 276x15] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Main menu [0,0 34x34] actions=[]
+toggle button: Main menu [0,0 34x34] actions=['click']
+label: Production [0,0 65x34] actions=['clipboard.copy', 'selection.delete', 'clipboard.paste', 'link.open', 'clipboard.cut', 'link.copy', 'menu.popup', 'selection.select-all']
+button: Minimize [0,0 34x34] actions=['click']
+button: Maximize [0,0 34x34] actions=['click']
+button: Close [0,0 34x34] actions=['click']
+application stderr:
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+2026-10-23T12:27:06.644494Z  INFO starting tablepro-app drivers=7
+2026-10-23T12:27:06.644571Z  INFO MCP HTTP server starting host=127.0.0.1 port=17432
+2026-10-23T12:27:06.644981Z  INFO system OpenSSH connections are unavailable error=ssh: the tablepro-askpass helper is not installed
+2026-10-23T12:27:06.771887Z  INFO registered win.disconnect enabled=false
+2026-10-23T12:27:06.778509Z  INFO main window activated
+2026-10-23T12:27:07.195115Z  INFO workspace ready driver=sqlite table_count=1 view_count=0
+
+(com.tablepro.linux:1337820): Gdk-WARNING **: 14:27:08.048: gdk_frame_timings_submitted() called on submitted frame.
+2026-10-23T12:27:08.473708Z  INFO workspace ready driver=postgres table_count=2 view_count=0
+
+1 GTK scenario(s) failed: profile_postgres_large_stream
+A connection to the bus can't be made

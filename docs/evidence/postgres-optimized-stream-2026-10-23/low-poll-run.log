@@ -1,0 +1,59 @@
+CREATE DATABASE
+CREATE TABLE
+INSERT 0 1
+CREATE TABLE
+INSERT 0 2
+CREATE TYPE
+CREATE TABLE
+INSERT 0 5
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.a11y.Bus' requested by ':1.3' (uid=1000 pid=1345756 comm="gdbus call --session --dest org.a11y.Bus --object-")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.4' (uid=1000 pid=1345761 comm="/usr/lib/at-spi-bus-launcher")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[1345775]: Activating service name='org.a11y.atspi.Registry' requested by ':1.1' (uid=1000 pid=1345788 comm="python3 -u /home/trung/Projects/bookie/target/qual")
+dbus-daemon[1345775]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.12' (uid=1000 pid=1345789 comm="/home/trung/Projects/bookie/target/quality/postgre")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.13' (uid=1000 pid=1345849 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.freedesktop.portal.Documents' requested by ':1.13' (uid=1000 pid=1345849 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.freedesktop.portal.Documents'
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.614: Choosing gtk.portal for org.freedesktop.impl.portal.Lockdown via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.614: The preferred method to match portal implementations to desktop environments is to use the portals.conf(5) configuration file
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Activating service name='org.freedesktop.impl.portal.desktop.gtk' requested by ':1.13' (uid=1000 pid=1345849 comm="/usr/lib/xdg-desktop-portal")
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.desktop.gtk'
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.650: Choosing gtk.portal for org.freedesktop.impl.portal.Access via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.654: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.654: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.654: Failed to load RealtimeKit property: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.654: Choosing gtk.portal for org.freedesktop.impl.portal.Settings via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.655: Choosing gtk.portal for org.freedesktop.impl.portal.FileChooser via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.655: Choosing gtk.portal for org.freedesktop.impl.portal.AppChooser via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.655: Choosing gtk.portal for org.freedesktop.impl.portal.Print via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.656: Choosing gtk.portal for org.freedesktop.impl.portal.Notification via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.656: Choosing gtk.portal for org.freedesktop.impl.portal.Inhibit via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.657: Failed to connect to PipeWire: Couldn't connect to PipeWire
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.657: Choosing gtk.portal for org.freedesktop.impl.portal.Account via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.658: Choosing gtk.portal for org.freedesktop.impl.portal.Email via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.658: Choosing gnome-keyring.portal for org.freedesktop.impl.portal.Secret via the deprecated UseIn key
+
+(/usr/lib/xdg-desktop-portal:1345849): xdg-desktop-portal-WARNING **: 14:35:04.658: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher via the deprecated UseIn key
+dbus-daemon[1345099]: [session uid=1000 pid=1345099 pidfd=5] Successfully activated service 'org.freedesktop.portal.Desktop'
+passed: profile_postgres_large_stream (duration: 68.944s)
+A connection to the bus can't be made
