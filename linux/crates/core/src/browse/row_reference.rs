@@ -124,14 +124,14 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
         },
     };
     let parsed = parse_filter_text(&text, column_type).ok()?;
-    // A column that keeps each value in the class it was given, as
-    // SQLite's do, matches a key on that class and value: 'true' in a
-    // BOOLEAN column would be bound as 1 and find another row.
+    // SQLite keeps whatever a column is given and matches a key on that,
+    // so the filter has to bind the very value: 'true' in a BOOLEAN
+    // column would be bound as 1 and find another row.
     let kept = !column_type.dynamic_storage || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
     kept.then_some(text)
 }
 
-/// A value as a column of dynamic storage keeps it.
+/// A value as SQLite binds and keeps it.
 #[derive(Debug, PartialEq)]
 enum StoredForm<'a> {
     Integer(i128),

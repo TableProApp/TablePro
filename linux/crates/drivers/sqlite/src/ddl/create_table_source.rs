@@ -323,7 +323,7 @@ pub(crate) fn declared_comparison(sql: &str, column: &str) -> Option<crate::cata
     let (_, declared) = source
         .columns()
         .find(|(_, declared)| declared.name.eq_ignore_ascii_case(column))?;
-    let type_text = declared.type_range.clone().map_or("", |range| source.text(range));
+    let type_text = kept_type_name(declared.type_range.clone().map_or("", |range| source.text(range)));
     let collation = declared
         .segments
         .iter()
@@ -334,7 +334,33 @@ pub(crate) fn declared_comparison(sql: &str, column: &str) -> Option<crate::cata
             Some(unquote(name.trim()))
         })
         .next_back();
-    Some(crate::catalog::Comparison::of(type_text, collation.as_deref()))
+    Some(crate::catalog::Comparison::of(&type_text, collation.as_deref()))
+}
+
+/// A type name as SQLite keeps it, which is what its affinity and the
+/// pragmas come from: a quoted name loses its quotes and whatever
+/// follows them, as `sqlite3Dequote` does.
+fn kept_type_name(text: &str) -> String {
+    let text = text.trim();
+    let mut characters = text.chars();
+    let close = match characters.next() {
+        Some('[') => ']',
+        Some(quote @ ('"' | '\'' | '`')) => quote,
+        _ => return text.to_owned(),
+    };
+    let mut name = String::new();
+    let mut rest = characters.peekable();
+    while let Some(character) = rest.next() {
+        if character != close {
+            name.push(character);
+        } else if rest.peek() == Some(&close) {
+            rest.next();
+            name.push(close);
+        } else {
+            break;
+        }
+    }
+    name
 }
 
 /// Whether a CREATE TABLE declares `column` `PRIMARY KEY DESC`. Text

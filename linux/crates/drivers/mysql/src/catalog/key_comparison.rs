@@ -20,6 +20,9 @@ pub(crate) struct ColumnComparison {
     data_type: String,
     parameters: String,
     collation: Option<String>,
+    /// An ENUM or SET that lists '' reads the same for that member and
+    /// for the empty value, which a key tells apart and a filter cannot.
+    one_text_per_value: bool,
 }
 
 /// Keyed by the column's name in lower case, since MySQL matches column
@@ -30,13 +33,15 @@ pub(crate) fn column_comparisons(rows: &[CatalogCells]) -> Result<TableCompariso
     rows.iter()
         .map(|row| {
             let data_type = row.required_text(1)?.to_ascii_lowercase();
-            let parameters = parameters(&data_type, &row.required_text(2)?);
+            let column_type = row.required_text(2)?;
+            let one_text_per_value = !matches!(data_type.as_str(), "enum" | "set") || !lists_empty_member(&column_type);
             Ok((
                 row.required_text(0)?.to_lowercase(),
                 ColumnComparison {
+                    parameters: parameters(&data_type, &column_type),
                     data_type,
-                    parameters,
                     collation: row.text(3)?,
+                    one_text_per_value,
                 },
             ))
         })
@@ -59,6 +64,36 @@ fn parameters(data_type: &str, column_type: &str) -> String {
     }
 }
 
+/// Whether `enum('a','')` style COLUMN_TYPE text lists an empty member.
+/// Text that does not read lists none.
+fn lists_empty_member(column_type: &str) -> bool {
+    let Some((_, list)) = column_type.split_once('(') else {
+        return false;
+    };
+    let mut characters = list.chars().peekable();
+    while characters.next() == Some('\'') {
+        let mut empty = true;
+        loop {
+            match characters.next() {
+                Some('\'') if characters.peek() == Some(&'\'') => {
+                    characters.next();
+                    empty = false;
+                }
+                Some('\'') => break,
+                Some(_) => empty = false,
+                None => return false,
+            }
+        }
+        if empty {
+            return true;
+        }
+        if characters.next() != Some(',') {
+            return false;
+        }
+    }
+    false
+}
+
 /// Whether each column of `from` compares like the column of `to` it
 /// pairs with. A column the catalogue does not list, as in a table
 /// dropped while foreign key checks were off, says nothing either way.
@@ -70,7 +105,7 @@ pub(crate) fn compares_alike(
 ) -> bool {
     from_columns.iter().zip(to_columns).all(|(from_column, to_column)| {
         match (from.get(&from_column.to_lowercase()), to.get(&to_column.to_lowercase())) {
-            (Some(from), Some(to)) => from == to,
+            (Some(from), Some(to)) => from == to && from.one_text_per_value,
             _ => true,
         }
     })
@@ -124,6 +159,22 @@ mod tests {
         assert!(alike("owner"), "a display width");
         assert!(alike("code"), "a length");
         assert!(!alike("label"), "a member in another case");
+    }
+
+    #[test]
+    fn an_enum_that_lists_an_empty_member_is_refused_even_against_itself() {
+        let side = table(&[
+            [Some("mood"), Some("enum"), Some("enum('','a')"), Some("utf8mb4_bin")],
+            [Some("quote"), Some("enum"), Some("enum('it''s','a')"), Some("utf8mb4_bin")],
+            [Some("tags"), Some("set"), Some("set('a','')"), Some("utf8mb4_bin")],
+        ]);
+        let alike = |column: &str| compares_alike(&side, &names(&[column]), &side, &names(&[column]));
+
+        assert!(!alike("mood"));
+        assert!(alike("quote"), "a doubled quote inside a member");
+        assert!(!alike("tags"));
+        assert!(!lists_empty_member("enum('a','b')"));
+        assert!(lists_empty_member("enum('a','','b')"));
     }
 
     #[test]
