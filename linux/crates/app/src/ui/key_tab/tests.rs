@@ -76,6 +76,24 @@ fn a_key_reads_a_window_at_a_time_until_its_end() {
 }
 
 #[gtk4::test]
+fn a_window_brings_the_key_s_new_length_and_expiry() {
+    let mut grown = list_page(2, 3, None);
+    grown.length = Some(4);
+    grown.ttl = KeyTtl::Persistent;
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    script.read_key.once(FakeReply::ok(Some(grown)));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+
+    tab.load_more();
+
+    wait_until(WAIT, || tab.rows() == 3).expect("the second window");
+    assert_eq!(tab.summary_text(), "4 elements · No expiry");
+    assert_eq!(tab.footer_text(), "3 of 4 shown");
+}
+
+#[gtk4::test]
 fn a_key_that_is_gone_says_so() {
     let mut script = ConnectionScript::default();
     script.read_key.always(FakeReply::ok(None));

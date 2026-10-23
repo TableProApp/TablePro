@@ -467,15 +467,7 @@ impl Inner {
     fn show(self: &Rc<Self>, page: KeyPage) {
         let kind = key_kind_name(page.kind);
         self.type_label.set_label(&kind);
-        let parts: Vec<String> = [
-            page.length
-                .and_then(|length| key_summary::length_text(page.kind, length)),
-            key_summary::ttl_text(page.ttl),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        self.summary.set_label(&parts.join(" · "));
+        self.show_summary(&page);
         if page.kind == KeyKind::Other {
             self.body.set_child(Some(&unreadable_type(&page.type_name)));
             self.footer.set_label("");
@@ -533,6 +525,7 @@ impl Inner {
             reload(&Rc::downgrade(self));
             return false;
         }
+        self.show_summary(&page);
         {
             let mut state = self.state.borrow_mut();
             let Some(shown) = state.shown.as_mut() else {
@@ -547,6 +540,19 @@ impl Inner {
         }
         self.show_footer(kind);
         true
+    }
+
+    /// The key's length and expiry as the last window read them.
+    fn show_summary(&self, page: &KeyPage) {
+        let parts: Vec<String> = [
+            page.length
+                .and_then(|length| key_summary::length_text(page.kind, length)),
+            key_summary::ttl_text(page.ttl),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        self.summary.set_label(&parts.join(" · "));
     }
 
     /// How many entries the tab holds, of how many. A string is one
