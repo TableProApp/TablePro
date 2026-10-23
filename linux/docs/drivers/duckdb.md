@@ -11,12 +11,12 @@ DuckDB keeps one database instance per open file, and every connection is a new 
 - A missing file is `FileNotFound`. DuckDB would create it, so the driver opens only a path that exists.
 - A read-only workspace opens the instance with `access_mode = READ_ONLY`. One instance is opened one way, so a window that asks the other way while another window holds the file gets `Busy(FileLocked)`.
 - Another process holding the file gets `Busy(FileLocked)`: DuckDB's lock lets one writer, or any number of readers, open a file.
-- A file is known by its device and inode, so a hard link or a second path joins the instance already open. A file an editor tab has attached counts as open, and an editor's `ATTACH` of a file open in another window is refused as `Busy(FileLocked)`: either way DuckDB would make a second database on the file. DuckDB reads the `ATTACH` path itself, then the driver expands it as DuckDB opens it, so escapes, continued strings, `~` and `file:` URLs all name the file.
+- A file is known by its device and inode, so a hard link or a second path joins the instance already open. A file an editor tab has attached counts as open, and an editor's `ATTACH` of a file open in another window is refused as `Busy(FileLocked)`: either way DuckDB would make a second database on the file. DuckDB reads the `ATTACH` path itself, then the driver expands it as DuckDB opens it, so escapes, continued strings, `~`, `file:` URLs, links and `..` all name the file. An `ATTACH ... (HIDDEN)` is refused: DuckDB lists such a database nowhere, so no window could see it is open.
 - A file SQLite has open in the app, through a connection or an `ATTACH`, is `Busy(FileLocked)`, as is an `ATTACH` of one: DuckDB would close it again on finding no database of its own, which drops SQLite's POSIX locks. DuckDB claims its own files, and every file a tab attaches, until the database closes (`tablepro_core::claim_file`), so SQLite refuses them in turn.
 - `autoinstall_known_extensions` and `autoload_known_extensions` are off ([Extensions](#extensions)).
 - A file DuckDB cannot read as a database is `NotADatabase`, a directory too; one the user may not read is `FileAccessDenied`.
 
-The connect reads `version()`, which also proves the file opened. A database DuckDB could not replay fails the connect.
+The connect reads `version()`, which also proves the file opened. The app names a table with the file's catalogue as well, `"sales"."main"."t"`: a schema may share a name with the catalogue, and DuckDB refuses `"sales"."t"` as ambiguous then. An export and a foreign key's `REFERENCES` leave the catalogue out (`portable_name`), since the file may be replayed under another name and DuckDB refuses a catalogue there; a foreign key inside a schema named like the file cannot be written at all. A database DuckDB could not replay fails the connect.
 
 ### New databases
 

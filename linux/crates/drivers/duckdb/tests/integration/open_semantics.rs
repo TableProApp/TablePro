@@ -246,12 +246,28 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
         through_links.push(summary.end);
     }
     let opening_attached = connect(spare.endpoint(), writable()).await;
+    // DuckDB follows a link before it looks for the file among its own,
+    // so a link to one it has open is refused by DuckDB itself.
+    let spare_symlink = spare.path.with_file_name("spare-symlink.duckdb");
+    std::os::unix::fs::symlink(&spare.path, &spare_symlink).unwrap();
+    let (through_symlink, _) = run(editor.as_ref(), &format!("ATTACH '{}' AS s3", spare_symlink.display())).await;
+    let hidden = TestFile::new();
+    let (attaching_hidden, _) = run(
+        editor.as_ref(),
+        &format!("ATTACH '{}' AS h (HIDDEN)", hidden.path.display()),
+    )
+    .await;
 
     assert_eq!(
         attaching_open.end,
         RunEnd::Failed(DriverError::Busy(BusyReason::FileLocked))
     );
     assert_eq!(attaching_spare.end, RunEnd::Completed);
+    assert!(
+        matches!(&through_symlink.end, RunEnd::Failed(DriverError::Server(diagnostics)) if diagnostics.message.contains("already attached")),
+        "{:?}",
+        through_symlink.end
+    );
     assert_eq!(
         attaching_again.end,
         RunEnd::Completed,
@@ -272,6 +288,14 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
         "DuckDB finds its own files by path, so a hard link would open one twice"
     );
     assert_eq!(opening_attached.err(), Some(DriverError::Busy(BusyReason::FileLocked)));
+    assert_eq!(
+        attaching_hidden.end,
+        RunEnd::Failed(DriverError::Unsupported {
+            feature: tablepro_core::UnsupportedFeature::HiddenAttach
+        }),
+        "DuckDB lists a HIDDEN database nowhere another window could see it"
+    );
+    assert!(!tablepro_core::held_by_this_process(&hidden.path));
     editor.close().await;
     opened.close().await.unwrap();
     connection.close().await.unwrap();
@@ -296,6 +320,7 @@ async fn every_spelling_of_an_open_file_is_refused() {
         format!("ATTACH 'file://{path}' AS o"),
         format!("ATTACH 'duckdb:{path}' AS o"),
         format!("ATTACH IF NOT EXISTS $p${path}$p$ -- why\n AS o"),
+        format!("ATTACH '{directory}/missing/../{name}' AS o"),
     ];
 
     for sql in &spellings {

@@ -94,6 +94,14 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         }
     }
 
+    /// The table's name as text that stands outside this connection: in
+    /// an export replayed elsewhere, and in a foreign key's REFERENCES.
+    /// DuckDB names its file's catalogue in `qualify` and leaves it out
+    /// here; the other engines name the table the same in both.
+    fn portable_name(&self, table: &TableRef) -> String {
+        self.qualify(table)
+    }
+
     /// How a column is selected. A type the driver cannot decode is
     /// asked for as text instead, which is what `read_form` says.
     fn projection(&self, column: &ColumnInfo) -> String {

@@ -3,7 +3,7 @@ use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
-use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
+use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
     CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
     TypeSyntaxError, classify_for_history, parse_expression, parse_type,
@@ -11,16 +11,28 @@ use tablepro_core::sql_syntax::{
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
 
+use crate::catalog::DEFAULT_SCHEMA;
 use crate::duck_type::{column_type_from_text, holds_union};
 use crate::encode::duck_text;
 
-/// How DuckDB spells SQL.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DuckDbDialect;
+/// How DuckDB spells SQL. The tables of the file are named with its
+/// catalogue: a schema can share a name with a catalogue, and DuckDB then
+/// refuses `"sales"."t"` as ambiguous.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DuckDbDialect {
+    catalog: Option<String>,
+}
 
 impl DuckDbDialect {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// The spelling for the file DuckDB named `catalog`.
+    pub fn for_catalog(catalog: impl Into<String>) -> Self {
+        Self {
+            catalog: Some(catalog.into()),
+        }
     }
 
     pub(crate) fn string_literal(&self, text: &str) -> String {
@@ -48,6 +60,36 @@ impl SqlDialect for DuckDbDialect {
 
     fn quote_identifier(&self, name: &str) -> String {
         format!("\"{}\"", name.replace('"', "\"\""))
+    }
+
+    fn qualify(&self, table: &TableRef) -> String {
+        let Some(catalog) = &self.catalog else {
+            return self.portable_name(table);
+        };
+        let schema = table
+            .schema
+            .as_deref()
+            .filter(|schema| !schema.is_empty())
+            .unwrap_or(DEFAULT_SCHEMA);
+        format!(
+            "{}.{}.{}",
+            self.quote_identifier(catalog),
+            self.quote_identifier(schema),
+            self.quote_identifier(&table.name)
+        )
+    }
+
+    /// Without the catalogue: an export replays in a file of another name,
+    /// and DuckDB refuses a catalogue in a foreign key's REFERENCES.
+    fn portable_name(&self, table: &TableRef) -> String {
+        match table.schema.as_deref().filter(|schema| !schema.is_empty()) {
+            Some(schema) => format!(
+                "{}.{}",
+                self.quote_identifier(schema),
+                self.quote_identifier(&table.name)
+            ),
+            None => self.quote_identifier(&table.name),
+        }
     }
 
     /// A value DuckDB has no binding for goes as text, cast to the
@@ -356,7 +398,7 @@ mod tests {
 
     #[test]
     fn a_value_with_no_binding_is_cast_to_its_column() {
-        let dialect = DuckDbDialect;
+        let dialect = DuckDbDialect::new();
         let decimal = column("DECIMAL(38,10)");
         let integer = column("INTEGER");
 
@@ -376,10 +418,10 @@ mod tests {
         let unsigned = column("UHUGEINT");
         let signed = column("HUGEINT");
 
-        let bound = DuckDbDialect
+        let bound = DuckDbDialect::new()
             .placeholder(0, Value::Int(1), BindTarget::Column(&unsigned))
             .unwrap();
-        let plain = DuckDbDialect
+        let plain = DuckDbDialect::new()
             .placeholder(0, Value::Int(1), BindTarget::Column(&signed))
             .unwrap();
 
@@ -391,7 +433,7 @@ mod tests {
     fn an_enum_label_is_cast_to_its_column() {
         let mood = column("ENUM('sad', 'ok', 'happy')");
 
-        let bound = DuckDbDialect
+        let bound = DuckDbDialect::new()
             .placeholder(0, Value::Text("sad".to_owned()), BindTarget::Column(&mood))
             .unwrap();
 
@@ -399,8 +441,18 @@ mod tests {
     }
 
     #[test]
+    fn a_table_is_named_with_the_files_catalogue_but_exported_without_it() {
+        let dialect = DuckDbDialect::for_catalog("sales");
+        let table = TableRef::new(Some("sales".to_owned()), "t");
+
+        assert_eq!(dialect.qualify(&table), "\"sales\".\"sales\".\"t\"");
+        assert_eq!(dialect.qualify(&TableRef::unqualified("t")), "\"sales\".\"main\".\"t\"");
+        assert_eq!(dialect.portable_name(&table), "\"sales\".\"t\"");
+    }
+
+    #[test]
     fn a_union_value_has_no_literal() {
-        let dialect = DuckDbDialect;
+        let dialect = DuckDbDialect::new();
         let union = column("UNION(n INTEGER, s VARCHAR)");
         let list = column("UNION(n INTEGER, s VARCHAR)[]");
         let value = |type_name: &str| {
@@ -429,7 +481,7 @@ mod tests {
 
     #[test]
     fn literals_are_spelled_as_duckdb_reads_them() {
-        let dialect = DuckDbDialect;
+        let dialect = DuckDbDialect::new();
         let text = ColumnType {
             name: "VARCHAR".to_owned(),
             kind: ColumnKind::Text {
@@ -473,12 +525,12 @@ mod tests {
     #[test]
     fn a_nested_column_reads_as_duckdb_text() {
         assert_eq!(
-            DuckDbDialect.projection(&column("INTEGER[]")),
+            DuckDbDialect::new().projection(&column("INTEGER[]")),
             "CAST(\"v\" AS VARCHAR) AS \"v\""
         );
-        assert_eq!(DuckDbDialect.projection(&column("INTEGER")), "\"v\"");
+        assert_eq!(DuckDbDialect::new().projection(&column("INTEGER")), "\"v\"");
         assert_eq!(
-            DuckDbDialect.projection(&column("UNION(n INTEGER, s VARCHAR)[]")),
+            DuckDbDialect::new().projection(&column("UNION(n INTEGER, s VARCHAR)[]")),
             "\"v\"",
             "a UNION's text names no member"
         );
@@ -499,10 +551,10 @@ mod tests {
             "PRAGMA s3_secret_access_key='v'",
             "SET http_proxy = 'http://u:p@proxy:3128'",
         ] {
-            assert_eq!(DuckDbDialect.history_recording(sql), withheld, "{sql}");
+            assert_eq!(DuckDbDialect::new().history_recording(sql), withheld, "{sql}");
         }
         assert_eq!(
-            tablepro_test_support::history_cases::unrecorded_plain_statements(&DuckDbDialect),
+            tablepro_test_support::history_cases::unrecorded_plain_statements(&DuckDbDialect::new()),
             Vec::<&str>::new()
         );
     }

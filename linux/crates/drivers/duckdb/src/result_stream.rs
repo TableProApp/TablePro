@@ -15,7 +15,7 @@ use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
-use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation};
+use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation, UnsupportedFeature};
 use tokio::sync::mpsc;
 
 use crate::decode::value_at;
@@ -181,6 +181,13 @@ pub(crate) fn run_script(
         }
         match attach_literal(statement) {
             Some(literal) => {
+                // DuckDB leaves a HIDDEN database out of what it lists, so
+                // no check could tell another window it is open.
+                if attach_hides(statement) {
+                    return Err(DriverError::Unsupported {
+                        feature: UnsupportedFeature::HiddenAttach,
+                    });
+                }
                 let targets = attach_targets(link, literal)?;
                 let ran = attach_unless_open(link, &targets, || {
                     // A stop that came while the ATTACH waited its turn:
@@ -485,8 +492,59 @@ fn attach_targets(link: &Link, literal: &str) -> Result<Vec<PathBuf>, DriverErro
     Ok(readings
         .into_iter()
         .filter(|path| !path.is_empty() && !path.starts_with(":memory:"))
-        .map(|path| expand_path(path, home.as_deref()))
+        .map(|path| resolved_like_duckdb(expand_path(path, home.as_deref())))
         .collect())
+}
+
+/// The path as DuckDB opens it: made absolute, each part that is there
+/// resolved with its links, and `..` taken by its text past one that is
+/// not, so `d/missing/../a.duckdb` is `d/a.duckdb` and `link/../a.duckdb`
+/// is beside where the link points.
+fn resolved_like_duckdb(path: PathBuf) -> PathBuf {
+    use std::path::Component;
+    let absolute = match path.is_absolute() {
+        true => path,
+        false => std::env::current_dir().map_or(path.clone(), |directory| directory.join(&path)),
+    };
+    let mut resolved = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            other => {
+                resolved.push(other);
+                if let Ok(canonical) = std::fs::canonicalize(&resolved) {
+                    resolved = canonical;
+                }
+            }
+        }
+    }
+    resolved
+}
+
+/// Whether an ATTACH asks for a HIDDEN database, which DuckDB leaves out
+/// of `duckdb_databases()`: its options are the parenthesis after the path.
+fn attach_hides(statement: &str) -> bool {
+    let grammar = SqlGrammar::DuckDb;
+    let plan = ScriptPlan::build(statement, grammar, LexicalSettings::default_for(grammar));
+    let mut depth = 0usize;
+    plan.tokens(0..statement.len())
+        .filter(|token| !token.kind.is_trivia())
+        .any(|token| {
+            match token.kind {
+                ScriptTokenKind::OpenParen => depth += 1,
+                ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
+                ScriptTokenKind::Word if depth == 1 => {
+                    return statement
+                        .get(token.range)
+                        .is_some_and(|word| word.eq_ignore_ascii_case("HIDDEN"));
+                }
+                _ => {}
+            }
+            false
+        })
 }
 
 /// A `name:` before the path, which DuckDB reads as the engine that
@@ -670,6 +728,39 @@ mod tests {
             PathBuf::from("file://host/srv/a.db")
         );
         assert_eq!(expand_path("rel/a.db", home), PathBuf::from("rel/a.db"));
+    }
+
+    /// Measured against DuckDB 1.5: a missing part is passed by its text,
+    /// a link is followed before the `..` after it.
+    #[test]
+    fn a_path_is_resolved_as_duckdb_opens_it() {
+        let root = tempfile::tempdir().unwrap();
+        let base = std::fs::canonicalize(root.path()).unwrap();
+        std::fs::create_dir_all(base.join("srv/sub")).unwrap();
+        std::fs::create_dir(base.join("links")).unwrap();
+        std::os::unix::fs::symlink(base.join("srv/sub"), base.join("links/sub")).unwrap();
+
+        assert_eq!(
+            resolved_like_duckdb(base.join("missing/../held.duckdb")),
+            base.join("held.duckdb")
+        );
+        assert_eq!(
+            resolved_like_duckdb(base.join("links/sub/../x.duckdb")),
+            base.join("srv/x.duckdb")
+        );
+        assert_eq!(
+            resolved_like_duckdb(base.join("./srv/./a.duckdb")),
+            base.join("srv/a.duckdb")
+        );
+        assert!(resolved_like_duckdb(PathBuf::from("rel.duckdb")).is_absolute());
+    }
+
+    #[test]
+    fn a_hidden_attach_is_told_by_its_options() {
+        assert!(attach_hides("ATTACH 'a.duckdb' AS a (HIDDEN)"));
+        assert!(attach_hides("ATTACH 'a.duckdb' (READ_ONLY, hidden true)"));
+        assert!(!attach_hides("ATTACH 'a.duckdb' AS hidden"));
+        assert!(!attach_hides("ATTACH 'hidden.duckdb' AS a (READ_ONLY)"));
     }
 
     #[test]

@@ -205,7 +205,9 @@ async fn a_file_duckdb_has_open_is_not_opened() {
     let file = TestFile::new().await;
     let held = file.directory().join("held.duckdb");
     std::fs::write(&held, b"a DuckDB database").unwrap();
+    // DuckDB claims a file and keeps a descriptor on it while it is open.
     let _claim = tablepro_core::claim_file(&held, "duckdb").unwrap();
+    let _descriptor = std::fs::File::open(&held).unwrap();
     let connection = file.open().await;
     let editor = connection
         .open_editor_session(tablepro_core::EditorSessionOptions::default(), CancellationToken::new())

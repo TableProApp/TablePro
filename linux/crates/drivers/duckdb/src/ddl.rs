@@ -226,14 +226,14 @@ impl DdlDialect for DuckDbDialect {
             definitions.push(format!("PRIMARY KEY ({})", column_list(self, &key)));
         }
         definitions.extend(draft.foreign_keys.iter().map(|key| foreign_key_sql(self, &table, key)));
+        let qualified = self.qualify(&table);
         let mut statements = vec![format!(
-            "CREATE TABLE {} (\n  {}\n)",
-            self.qualify(&table),
+            "CREATE TABLE {qualified} (\n  {}\n)",
             definitions.join(",\n  ")
         )];
         for column in &draft.columns {
             if let Some(comment) = column.comment_text() {
-                statements.push(self.comment_on(&table, &column.name, Some(comment)));
+                statements.push(self.comment_on(&qualified, &column.name, Some(comment)));
             }
         }
         statements.extend(
@@ -306,7 +306,7 @@ impl DdlDialect for DuckDbDialect {
                 ));
             }
             if changed.comment {
-                statements.push(self.comment_on(&table, &draft.name, draft.comment_text()));
+                statements.push(self.comment_on(&qualified, &draft.name, draft.comment_text()));
             }
         }
         let held = dependents(original);
@@ -324,7 +324,7 @@ impl DdlDialect for DuckDbDialect {
                 )));
             }
             if let Some(comment) = column.comment_text() {
-                statements.push(self.comment_on(&table, &column.name, Some(comment)));
+                statements.push(self.comment_on(&qualified, &column.name, Some(comment)));
             }
         }
         if let Some(change) = &changes.primary_key {
@@ -359,7 +359,7 @@ impl DdlDialect for DuckDbDialect {
         );
         for column in &definition.columns {
             if let Some(comment) = column.info.comment.as_deref().filter(|text| !text.is_empty()) {
-                statements.push(self.comment_on(&definition.table, column.name(), Some(comment)));
+                statements.push(self.comment_on(&self.portable_name(&definition.table), column.name(), Some(comment)));
             }
         }
         Ok(DdlPlan::from_sql(statements))
@@ -421,8 +421,10 @@ impl DuckDbDialect {
         Ok(parts.join(" "))
     }
 
-    fn comment_on(&self, table: &TableRef, column: &str, comment: Option<&str>) -> String {
-        let target = format!("{}.{}", self.qualify(table), self.quote_identifier(column));
+    /// `table` as the statement names it: qualified for a change, portable
+    /// in a script the user copies to replay elsewhere.
+    fn comment_on(&self, table: &str, column: &str, comment: Option<&str>) -> String {
+        let target = format!("{table}.{}", self.quote_identifier(column));
         let text = comment.map(|text| Value::Text(text.to_owned()));
         match text.and_then(|text| SqlDialect::literal(self, &text, &ColumnType::untyped_text("VARCHAR")).ok()) {
             Some(literal) => format!("COMMENT ON COLUMN {target} IS {literal}"),

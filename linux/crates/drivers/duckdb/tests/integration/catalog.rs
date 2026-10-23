@@ -384,3 +384,51 @@ async fn the_estimate_is_the_storage_count() {
     assert_eq!(estimate.rows, RowCountEstimate::Approximate(1234));
     connection.close().await.unwrap();
 }
+
+/// A schema can share its name with the file's catalogue, and DuckDB
+/// refuses `"test"."t"` as ambiguous then, so the app names a table with
+/// the catalogue as well, and its structure changes run.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_schema_named_like_the_file_is_read_and_changed() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE SCHEMA test",
+            "CREATE TABLE test.test.t (id INTEGER PRIMARY KEY, a INTEGER)",
+            "INSERT INTO test.test.t VALUES (1, 2)",
+        ],
+    )
+    .await
+    .unwrap();
+    let dialect = connection.dialect();
+    let table = TableRef::new(Some("test".to_owned()), "t");
+    let original = connection.fetch_table_definition(&table, call()).await.unwrap();
+    let mut changed = tablepro_core::ddl::TableDraft::from_definition(&original);
+    changed.columns.push(tablepro_core::ddl::DraftColumn::new(
+        "b",
+        tablepro_core::ddl::DraftType::Typed("INTEGER".to_owned()),
+    ));
+
+    let read = query(
+        connection.as_ref(),
+        &format!("SELECT a FROM {}", dialect.qualify(&table)),
+    )
+    .await;
+    let plan = dialect
+        .ddl()
+        .unwrap()
+        .plan_alter_table(&original, &tablepro_core::ddl::diff_table(&original, &changed))
+        .unwrap();
+    connection
+        .write_batch(&plan.into_write_batch(table.clone()), call())
+        .await
+        .unwrap();
+    let columns = connection.fetch_columns(&table, call()).await.unwrap();
+
+    assert_eq!(read.rows, vec![vec![Value::Int(2)]]);
+    assert_eq!(columns.len(), 3);
+    assert_eq!(dialect.portable_name(&table), "\"test\".\"t\"");
+    connection.close().await.unwrap();
+}

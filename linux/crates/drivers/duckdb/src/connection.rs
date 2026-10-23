@@ -62,14 +62,15 @@ impl DuckDbConnection {
         })
         .await?;
         let pool = build_pool(&instance, &liveness)?;
+        let catalog = instance.catalog().to_owned();
         Ok(Self {
-            catalog: instance.catalog().to_owned(),
+            dialect: Arc::new(DuckDbDialect::for_catalog(catalog.clone())),
+            catalog,
             instance: Mutex::new(Some(instance)),
             pool,
             settings,
             liveness,
             server_info: server_info(&version),
-            dialect: Arc::new(DuckDbDialect::new()),
             calls: OwnedCalls::new(liveness.cancel_grace),
             link: LinkWatch::new(),
             closed: AtomicBool::new(false),

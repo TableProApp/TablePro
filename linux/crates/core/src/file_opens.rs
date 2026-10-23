@@ -8,7 +8,7 @@
 //! and closes a descriptor, never runs while an engine opens a file and
 //! has no descriptor on it yet for the reader to see (`opening_file`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::PoisonError;
@@ -91,38 +91,60 @@ pub fn claim_file(path: &Path, engine: &'static str) -> Result<Option<FileClaim>
     }
 }
 
-/// Whether an engine other than `engine` has the file at `path` open.
+/// Whether an engine other than `engine` has the file at `path` open. A
+/// claim outlives a DETACH, which closes the file, so only one whose file
+/// a descriptor of this process still names counts.
 pub fn claimed_by_another(path: &Path, engine: &str) -> bool {
     let Some(key) = FileKey::of(path) else {
         return false;
     };
-    let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
-    claims
-        .as_ref()
-        .and_then(|claims| claims.get(&key))
-        .is_some_and(|(holder, _)| *holder != engine)
+    let claimed = {
+        let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
+        claims
+            .as_ref()
+            .and_then(|claims| claims.get(&key))
+            .is_some_and(|(holder, _)| *holder != engine)
+    };
+    claimed && held_keys().contains(&key)
 }
 
 /// Whether an engine other than `engine` has any file open, for a check
 /// that cannot tell which file an open will reach.
 pub fn any_claimed_by_another(engine: &str) -> bool {
-    let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
-    claims
-        .as_ref()
-        .is_some_and(|claims| claims.values().any(|(holder, _)| *holder != engine))
+    let keys: Vec<FileKey> = {
+        let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
+        claims
+            .as_ref()
+            .map(|claims| {
+                claims
+                    .iter()
+                    .filter(|(_, (holder, _))| *holder != engine)
+                    .map(|(key, _)| *key)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    if keys.is_empty() {
+        return false;
+    }
+    let held = held_keys();
+    keys.iter().any(|key| held.contains(key))
 }
 
 /// Whether a descriptor this process has open names the file at `path`.
 pub fn held_by_this_process(path: &Path) -> bool {
-    let Some(key) = FileKey::of(path) else {
-        return false;
-    };
+    FileKey::of(path).is_some_and(|key| held_keys().contains(&key))
+}
+
+/// The files the descriptors of this process name.
+fn held_keys() -> HashSet<FileKey> {
     let Ok(descriptors) = std::fs::read_dir("/proc/self/fd") else {
-        return false;
+        return HashSet::new();
     };
     descriptors
         .flatten()
-        .any(|descriptor| FileKey::of(&descriptor.path()) == Some(key))
+        .filter_map(|descriptor| FileKey::of(&descriptor.path()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -162,6 +184,7 @@ mod tests {
 
         let first = claim_file(&path, "duckdb").unwrap();
         let second = claim_file(&link, "duckdb").unwrap();
+        let open = std::fs::File::open(&path).unwrap();
 
         assert!(claimed_by_another(&link, "sqlite"));
         assert!(!claimed_by_another(&path, "duckdb"));
@@ -172,6 +195,11 @@ mod tests {
         );
         drop(first);
         assert!(claimed_by_another(&path, "sqlite"), "one claim is still held");
+        drop(open);
+        assert!(
+            !claimed_by_another(&path, "sqlite"),
+            "the engine closed the file, as a DETACH does, so the claim is idle"
+        );
         drop(second);
         assert!(!claimed_by_another(&path, "sqlite"));
         assert!(
