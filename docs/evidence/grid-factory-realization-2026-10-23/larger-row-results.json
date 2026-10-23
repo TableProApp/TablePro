@@ -1,0 +1,83 @@
+[
+  {
+    "phase": "open",
+    "columns": 64,
+    "rows": 100,
+    "window_width": 800,
+    "window_height": 600,
+    "viewport_width": 800,
+    "viewport_height": 600,
+    "setup_count": 6400,
+    "bind_count": 6400,
+    "unbind_count": 0,
+    "teardown_count": 0,
+    "columns_with_binds": 64,
+    "min_setups_per_column": 100,
+    "max_setups_per_column": 100
+  },
+  {
+    "phase": "closed",
+    "columns": 64,
+    "rows": 100,
+    "width": 800,
+    "height": 600,
+    "setups": 6400,
+    "binds": 6400,
+    "unbinds": 6400,
+    "teardowns": 6400
+  },
+  {
+    "phase": "open",
+    "columns": 64,
+    "rows": 500,
+    "window_width": 800,
+    "window_height": 600,
+    "viewport_width": 800,
+    "viewport_height": 600,
+    "setup_count": 13120,
+    "bind_count": 13120,
+    "unbind_count": 0,
+    "teardown_count": 0,
+    "columns_with_binds": 64,
+    "min_setups_per_column": 205,
+    "max_setups_per_column": 205
+  },
+  {
+    "phase": "closed",
+    "columns": 64,
+    "rows": 500,
+    "width": 800,
+    "height": 600,
+    "setups": 13120,
+    "binds": 13120,
+    "unbinds": 13120,
+    "teardowns": 13120
+  },
+  {
+    "phase": "open",
+    "columns": 64,
+    "rows": 2000,
+    "window_width": 800,
+    "window_height": 600,
+    "viewport_width": 800,
+    "viewport_height": 600,
+    "setup_count": 13120,
+    "bind_count": 13120,
+    "unbind_count": 0,
+    "teardown_count": 0,
+    "columns_with_binds": 64,
+    "min_setups_per_column": 205,
+    "max_setups_per_column": 205
+  },
+  {
+    "phase": "closed",
+    "columns": 64,
+    "rows": 2000,
+    "width": 800,
+    "height": 600,
+    "setups": 13120,
+    "binds": 13120,
+    "unbinds": 13120,
+    "teardowns": 13120
+  }
+]
