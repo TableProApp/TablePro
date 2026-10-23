@@ -12,14 +12,16 @@ use crate::session::CqlLink;
 
 /// Refuse a batch before anything is sent: a read-only connection never
 /// writes, CQL has no foreign keys to suspend, and only a lightweight
-/// transaction says whether it changed its one row.
+/// transaction says whether it changed its one row. It says so after
+/// the fact, so a guard that expects no row cannot be held: the row it
+/// finds is already written.
 pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), DriverError> {
     if read_only {
         return Err(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard));
     }
     batch.foreign_keys.require_enforced()?;
     let unprovable = batch.steps.iter().position(|step| match step.guard {
-        RowGuard::AffectedExactly(rows) => rows > 1 || !reports_applied(&step.statement),
+        RowGuard::AffectedExactly(rows) => rows != 1 || !reports_applied(&step.statement),
         RowGuard::None | RowGuard::ProbeExactly { .. } => false,
     });
     match unprovable {
@@ -158,14 +160,17 @@ mod tests {
             precheck(&batch(blind, ForeignKeyMode::Enforced), false),
             Err(DriverError::GuardUnsupported { statement_index: 0 })
         );
-        let several = vec![GuardedStatement::affecting_exactly(
-            statement("DELETE FROM t WHERE id = ? IF EXISTS"),
-            2,
-        )];
-        assert_eq!(
-            precheck(&batch(several, ForeignKeyMode::Enforced), false),
-            Err(DriverError::GuardUnsupported { statement_index: 0 })
-        );
+        for rows in [0, 2] {
+            let unprovable = vec![GuardedStatement::affecting_exactly(
+                statement("DELETE FROM t WHERE id = ? IF EXISTS"),
+                rows,
+            )];
+            assert_eq!(
+                precheck(&batch(unprovable, ForeignKeyMode::Enforced), false),
+                Err(DriverError::GuardUnsupported { statement_index: 0 }),
+                "{rows}"
+            );
+        }
     }
 
     #[test]

@@ -97,6 +97,7 @@ impl CqlConnection {
         self.ensure_open()?;
         let link = self.link.get()?;
         let bounded = bounded(options, self.settings.statement_timeout);
+        let deadline = bounded.deadline();
         let outcome = self
             .calls
             .run_read(
@@ -109,13 +110,15 @@ impl CqlConnection {
                 },
             )
             .await;
-        self.settle(outcome).await
+        self.settle(outcome, deadline).await
     }
 
     /// Decide whether a failed call means the link is gone. A request
     /// of its own answers within the cancel grace, so a dead route is
-    /// reported within the call's deadline plus that grace.
-    async fn settle<T>(&self, outcome: Result<T, DriverError>) -> Result<T, DriverError> {
+    /// reported within the call's deadline plus that grace. A call that
+    /// has already waited out the grace, as a write does for its own
+    /// answer, returns with no check, and the next call finds the link.
+    async fn settle<T>(&self, outcome: Result<T, DriverError>, deadline: Option<Instant>) -> Result<T, DriverError> {
         let error = match outcome {
             Ok(value) => return Ok(value),
             Err(error) => self.explained(error).await,
@@ -124,7 +127,14 @@ impl CqlConnection {
         if !suspects_link(error.cause()) {
             return Err(error);
         }
-        let checked = self.check(self.endpoint.liveness().cancel_grace).await;
+        let grace = self.endpoint.liveness().cancel_grace;
+        let within = deadline.map_or(grace, |deadline| {
+            (deadline + grace).saturating_duration_since(Instant::now()).min(grace)
+        });
+        if within.is_zero() {
+            return Err(error);
+        }
+        let checked = self.check(within).await;
         if !checked.is_err_and(|failure| means_link_lost(&failure)) {
             return Err(error);
         }
@@ -379,6 +389,7 @@ impl Connection for CqlConnection {
         self.ensure_open()?;
         let read = read.clone();
         let link = self.link.get()?;
+        let deadline = options.deadline();
         let outcome = self
             .calls
             .run_read(
@@ -391,7 +402,7 @@ impl Connection for CqlConnection {
                 },
             )
             .await;
-        self.settle(outcome).await
+        self.settle(outcome, deadline).await
     }
 
     async fn write_batch(&self, batch: &WriteBatch, options: CallOptions) -> Result<WriteReport, DriverError> {
@@ -401,6 +412,7 @@ impl Connection for CqlConnection {
         let batch = batch.clone();
         let link = self.link.get()?;
         let work_ledger = ledger.clone();
+        let deadline = options.deadline();
         let outcome = self
             .calls
             .run_write(
@@ -414,7 +426,7 @@ impl Connection for CqlConnection {
                 },
             )
             .await;
-        self.settle(outcome).await
+        self.settle(outcome, deadline).await
     }
 
     /// CQL keeps no record of a write: there is no commit to ask about.
