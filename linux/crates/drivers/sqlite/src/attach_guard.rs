@@ -8,7 +8,8 @@
 //! editor runs an ATTACH under `tablepro_core::opening_file`, so DuckDB
 //! cannot open the file between the check and SQLite's open.
 
-use std::ffi::{CStr, c_char, c_int, c_void};
+use std::ffi::{CStr, OsString, c_char, c_int, c_void};
+use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
 
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
@@ -54,42 +55,59 @@ unsafe extern "C" fn authorize(
     }
     // SAFETY: SQLite hands the file name as a NUL-terminated string that
     // stays valid for the call.
-    let name = unsafe { CStr::from_ptr(file) }.to_string_lossy();
-    match attached_path(&name) {
-        Some(path) if tablepro_core::claimed_by_another(&path, ENGINE) => libsqlite3_sys::SQLITE_DENY,
-        _ => libsqlite3_sys::SQLITE_OK,
+    let name = unsafe { CStr::from_ptr(file) }.to_bytes();
+    let held = attached_paths(name)
+        .iter()
+        .any(|path| tablepro_core::claimed_by_another(path, ENGINE));
+    match held {
+        true => libsqlite3_sys::SQLITE_DENY,
+        false => libsqlite3_sys::SQLITE_OK,
     }
 }
 
-/// The file an ATTACH names: a path, or a `file:` URI's path with its
-/// query left off and its escapes decoded. Relative to the working
-/// directory, as SQLite opens it.
-fn attached_path(name: &str) -> Option<PathBuf> {
-    if name.is_empty() || name == ":memory:" {
-        return None;
+/// The files an ATTACH may open: the name as a path, and for a `file:`
+/// name also the URI's path, with its query left off and its escapes
+/// decoded as SQLite decodes them, since whether SQLite reads the name as
+/// a URI depends on how the connection was opened. Relative to the
+/// working directory, as SQLite opens them.
+fn attached_paths(name: &[u8]) -> Vec<PathBuf> {
+    if name.is_empty() || name == b":memory:" {
+        return Vec::new();
     }
-    let Some(uri) = name.strip_prefix("file:") else {
-        return Some(PathBuf::from(name));
-    };
-    let path = uri.split(['?', '#']).next().unwrap_or_default();
-    let path = path
-        .strip_prefix("//localhost")
-        .or_else(|| path.strip_prefix("//"))
-        .unwrap_or(path);
-    let decoded = percent_decoded(path)?;
-    (!decoded.is_empty() && decoded != ":memory:").then(|| PathBuf::from(decoded))
+    let mut paths = vec![PathBuf::from(OsString::from_vec(name.to_vec()))];
+    if let Some(uri) = name.strip_prefix(b"file:") {
+        let end = uri
+            .iter()
+            .position(|byte| matches!(byte, b'?' | b'#'))
+            .unwrap_or(uri.len());
+        let path = uri.get(..end).unwrap_or_default();
+        let path = path
+            .strip_prefix(b"//localhost")
+            .or_else(|| path.strip_prefix(b"//"))
+            .unwrap_or(path);
+        let decoded = percent_decoded(path);
+        if !decoded.is_empty() && decoded != b":memory:" {
+            paths.push(PathBuf::from(OsString::from_vec(decoded)));
+        }
+    }
+    paths
 }
 
-/// The path with its `%XX` escapes decoded. SQLite ends the path at an
-/// escaped NUL, so this does too.
-fn percent_decoded(text: &str) -> Option<String> {
-    let bytes = text.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
+/// The path with each `%XX` escape decoded, as SQLite decodes a URI: a
+/// `%` that two hex digits do not follow stays as it is, and an escaped
+/// NUL ends the path.
+fn percent_decoded(text: &[u8]) -> Vec<u8> {
+    let hex = |byte: Option<&u8>| byte.and_then(|byte| char::from(*byte).to_digit(16));
+    let mut decoded = Vec::with_capacity(text.len());
     let mut index = 0;
-    while let Some(&byte) = bytes.get(index) {
-        let (byte, width) = match byte {
-            b'%' => (u8::from_str_radix(text.get(index + 1..index + 3)?, 16).ok()?, 3),
-            byte => (byte, 1),
+    while let Some(&byte) = text.get(index) {
+        let escaped = match byte {
+            b'%' => hex(text.get(index + 1)).zip(hex(text.get(index + 2))),
+            _ => None,
+        };
+        let (byte, width) = match escaped {
+            Some((high, low)) => (u8::try_from(high * 16 + low).unwrap_or(0), 3),
+            None => (byte, 1),
         };
         if byte == 0 {
             break;
@@ -97,7 +115,7 @@ fn percent_decoded(text: &str) -> Option<String> {
         decoded.push(byte);
         index += width;
     }
-    String::from_utf8(decoded).ok()
+    decoded
 }
 
 #[cfg(test)]
@@ -105,24 +123,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_attach_names_a_path_or_a_uris_path() {
-        assert_eq!(attached_path("/srv/a.db"), Some(PathBuf::from("/srv/a.db")));
-        assert_eq!(attached_path("rel.db"), Some(PathBuf::from("rel.db")));
+    fn an_attach_names_a_path_and_a_uris_path() {
+        let paths = |name: &str| attached_paths(name.as_bytes());
+        let path = |text: &str| PathBuf::from(text);
+
+        assert_eq!(paths("/srv/a.db"), [path("/srv/a.db")]);
+        assert_eq!(paths("rel.db"), [path("rel.db")]);
         assert_eq!(
-            attached_path("file:/srv/a%20b.db?mode=ro"),
-            Some(PathBuf::from("/srv/a b.db"))
+            paths("file:/srv/a%20b.db?mode=ro"),
+            [path("file:/srv/a%20b.db?mode=ro"), path("/srv/a b.db")]
         );
-        assert_eq!(attached_path("file:///srv/a.db"), Some(PathBuf::from("/srv/a.db")));
-        assert_eq!(
-            attached_path("file://localhost/srv/a.db"),
-            Some(PathBuf::from("/srv/a.db"))
-        );
-        assert_eq!(
-            attached_path("file:/srv/data.duckdb%00ignored?mode=ro"),
-            Some(PathBuf::from("/srv/data.duckdb"))
-        );
-        assert_eq!(attached_path(":memory:"), None);
-        assert_eq!(attached_path("file::memory:?cache=shared"), None);
-        assert_eq!(attached_path(""), None);
+        assert_eq!(paths("file:///srv/a.db")[1], path("/srv/a.db"));
+        assert_eq!(paths("file://localhost/srv/a.db")[1], path("/srv/a.db"));
+        assert_eq!(paths("file:/srv/data.duckdb%00ignored")[1], path("/srv/data.duckdb"));
+        assert_eq!(paths("file:/srv/held%GG.duckdb")[1], path("/srv/held%GG.duckdb"));
+        assert_eq!(paths("file:/srv/end%2")[1], path("/srv/end%2"));
+        assert!(paths(":memory:").is_empty());
+        assert_eq!(paths("file::memory:?cache=shared").len(), 1);
+        assert!(paths("").is_empty());
     }
 }

@@ -182,9 +182,18 @@ pub(crate) fn run_script(
         match attach_literal(statement) {
             Some(literal) => {
                 let targets = attach_targets(link, literal)?;
-                attach_unless_open(link, &targets, || {
-                    run_statement(link, statement, &[], limit, events, &mut outcome)
+                let ran = attach_unless_open(link, &targets, || {
+                    // A stop that came while the ATTACH waited its turn:
+                    // DuckDB clears an interrupt as a statement starts.
+                    if halt() {
+                        return Ok(false);
+                    }
+                    run_statement(link, statement, &[], limit, events, &mut outcome).map(|()| true)
                 })?;
+                if !ran {
+                    outcome.halted = true;
+                    break;
+                }
             }
             None => run_statement(link, statement, &[], limit, events, &mut outcome)?,
         }
