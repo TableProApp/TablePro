@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{FileExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock, Weak};
 
@@ -22,7 +22,15 @@ use crate::error::StorageError;
 const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 const LEGACY_SUFFIX: &str = "phase1";
 
-static WRITERS: OnceLock<StdMutex<HashMap<PathBuf, Weak<Mutex<()>>>>> = OnceLock::new();
+#[path = "audit_journal_cursor.rs"]
+mod cursor;
+
+use cursor::{JournalCursor, JournalState};
+
+type WriterSlot = Mutex<Option<JournalCursor>>;
+type Writer = Arc<WriterSlot>;
+
+static WRITERS: OnceLock<StdMutex<HashMap<PathBuf, Weak<WriterSlot>>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JournalRecord {
@@ -111,7 +119,7 @@ struct JournalTail {
 
 pub struct AuditJournal {
     path: PathBuf,
-    writer: Arc<Mutex<()>>,
+    writer: Writer,
     recovery: AuditJournalRecovery,
     // GUI and agentd share the journal. This lease prevents another live
     // process from treating an in-flight intent as a crash during startup.
@@ -125,9 +133,13 @@ impl AuditJournal {
 
     pub fn open_validated(path: PathBuf) -> Result<Self, StorageError> {
         let path = absolute_path(path);
-        let (recovery, active_lock_file) = initialize(&path)?;
+        let (recovery, active_lock_file, cursor) = initialize(&path)?;
+        let writer = writer_for(&path);
+        if let Ok(mut current) = writer.try_lock() {
+            *current = Some(cursor);
+        }
         Ok(Self {
-            writer: writer_for(&path),
+            writer,
             path,
             recovery,
             _active_lock_file: active_lock_file,
@@ -180,22 +192,25 @@ impl AuditJournal {
     }
 
     async fn append_record(&self, event: AuditEvent, durable: bool) -> Result<(), StorageError> {
-        let _writer = self.writer.lock().await;
+        let mut writer = self.writer.lock().await;
         let path = self.path.clone();
-        tokio::task::spawn_blocking(move || append_locked(&path, event, durable))
+        let cursor = writer.take();
+        let next = tokio::task::spawn_blocking(move || append_locked(&path, event, durable, cursor))
             .await
-            .map_err(join_error)?
+            .map_err(join_error)??;
+        *writer = Some(next);
+        Ok(())
     }
 }
 
-fn writer_for(path: &Path) -> Arc<Mutex<()>> {
+fn writer_for(path: &Path) -> Writer {
     let writers = WRITERS.get_or_init(|| StdMutex::new(HashMap::new()));
     let mut writers = writers.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     writers.retain(|_, writer| writer.strong_count() > 0);
     if let Some(writer) = writers.get(path).and_then(Weak::upgrade) {
         return writer;
     }
-    let writer = Arc::new(Mutex::new(()));
+    let writer = Arc::new(Mutex::new(None));
     writers.insert(path.to_path_buf(), Arc::downgrade(&writer));
     writer
 }
@@ -207,7 +222,7 @@ fn absolute_path(path: PathBuf) -> PathBuf {
     std::env::current_dir().map_or(path.clone(), |current| current.join(path))
 }
 
-fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File), StorageError> {
+fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File, JournalCursor), StorageError> {
     create_parent(path)?;
     let lock_file = open_initialization_lock(path)?;
     let active_lock = open_active_lock(path)?;
@@ -222,16 +237,15 @@ fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File), StorageError>
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
         let _journal_lock = FileLock::exclusive(&opened.file)?;
         let verified = verify_locked(&mut opened.file, false)?;
-        return Ok((
-            AuditJournalRecovery {
-                legacy_journal: None,
-                recovered_operation_ids: Vec::new(),
-                unresolved_operation_ids: sorted_operation_ids(&verified.unresolved_operation_connections),
-                unresolved_connection_ids: unresolved_connection_ids(&verified),
-                unresolved_global_write: has_unresolved_global_write(&verified),
-            },
-            active_lock.file,
-        ));
+        let recovery = AuditJournalRecovery {
+            legacy_journal: None,
+            recovered_operation_ids: Vec::new(),
+            unresolved_operation_ids: sorted_operation_ids(&verified.unresolved_operation_connections),
+            unresolved_connection_ids: unresolved_connection_ids(&verified),
+            unresolved_global_write: has_unresolved_global_write(&verified),
+        };
+        let cursor = JournalCursor::at_end_of(&opened.file, JournalState::from_verified(verified))?;
+        return Ok((recovery, active_lock.file, cursor));
     }
 
     let legacy_journal = rotate_legacy_journal(path)?;
@@ -243,17 +257,15 @@ fn initialize(path: &Path) -> Result<(AuditJournalRecovery, File), StorageError>
     sync_created_file_and_parent(&opened, path)?;
     acquire_shared_lock(&active_lock.file)?;
     let unresolved_operation_ids = sorted_operation_ids(&verified.unresolved_operation_connections);
-
-    Ok((
-        AuditJournalRecovery {
-            legacy_journal,
-            recovered_operation_ids: unresolved_operation_ids.clone(),
-            unresolved_operation_ids,
-            unresolved_connection_ids: unresolved_connection_ids(&verified),
-            unresolved_global_write: has_unresolved_global_write(&verified),
-        },
-        active_lock.file,
-    ))
+    let recovery = AuditJournalRecovery {
+        legacy_journal,
+        recovered_operation_ids: unresolved_operation_ids.clone(),
+        unresolved_operation_ids,
+        unresolved_connection_ids: unresolved_connection_ids(&verified),
+        unresolved_global_write: has_unresolved_global_write(&verified),
+    };
+    let cursor = JournalCursor::at_end_of(&opened.file, JournalState::from_verified(verified))?;
+    Ok((recovery, active_lock.file, cursor))
 }
 
 fn create_parent(path: &Path) -> Result<(), StorageError> {
@@ -382,17 +394,37 @@ fn first_record_line(bytes: &[u8]) -> Option<&[u8]> {
         .find(|line| !line.iter().all(u8::is_ascii_whitespace))
 }
 
-fn append_locked(path: &Path, event: AuditEvent, durable: bool) -> Result<(), StorageError> {
+fn append_locked(
+    path: &Path,
+    event: AuditEvent,
+    durable: bool,
+    cursor: Option<JournalCursor>,
+) -> Result<JournalCursor, StorageError> {
     create_parent(path)?;
     let initialization_lock = open_initialization_lock(path)?;
     let _initialization_guard = FileLock::exclusive(&initialization_lock.file)?;
     let mut opened = open_file(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     let _lock = FileLock::exclusive(&opened.file)?;
-    let verified = verify_locked(&mut opened.file, true)?;
-    reject_new_write_intent(&event, &verified)?;
-    append_to_file(&mut opened.file, verified.tail, event, durable)?;
-    sync_created_file_and_parent(&opened, path)
+    let mut state = resume_verified_state(&mut opened.file, cursor)?;
+    reject_new_write_intent(&event, &state.pending, &state.unresolved)?;
+    track_operation_state(&mut state.pending, &mut state.unresolved, &event);
+    state.tail = append_to_file(&mut opened.file, state.tail, event, durable)?;
+    sync_created_file_and_parent(&opened, path)?;
+    JournalCursor::at_end_of(&opened.file, state)
+}
+
+fn resume_verified_state(file: &mut File, cursor: Option<JournalCursor>) -> Result<JournalState, StorageError> {
+    let metadata = file.metadata()?;
+    let resumable = match &cursor {
+        Some(cursor) => cursor.still_describes(&metadata) && starts_a_line(file, cursor.offset)?,
+        None => false,
+    };
+    let (state, offset) = match cursor {
+        Some(cursor) if resumable => (cursor.state, cursor.offset),
+        _ => (JournalState::genesis(), 0),
+    };
+    scan_records(file, state, offset, true, None).map(|(state, _)| state)
 }
 
 fn append_to_file(
@@ -437,21 +469,35 @@ fn verify_locked(file: &mut File, recover_partial: bool) -> Result<VerifiedJourn
     verify_locked_with_recent(file, recover_partial, None).map(|(verified, _)| verified)
 }
 
+fn starts_a_line(file: &File, offset: u64) -> Result<bool, StorageError> {
+    let Some(previous) = offset.checked_sub(1) else {
+        return Ok(true);
+    };
+    let mut byte = [0u8; 1];
+    file.read_exact_at(&mut byte, previous)?;
+    Ok(byte[0] == b'\n')
+}
+
 fn verify_locked_with_recent(
     file: &mut File,
     recover_partial: bool,
     recent_limit: Option<usize>,
 ) -> Result<(VerifiedJournal, Vec<AuditEvent>), StorageError> {
-    file.seek(SeekFrom::Start(0))?;
+    let (state, recent) = scan_records(file, JournalState::genesis(), 0, recover_partial, recent_limit)?;
+    Ok((verified_journal(state.tail, state.pending, state.unresolved), recent))
+}
+
+fn scan_records(
+    file: &mut File,
+    mut state: JournalState,
+    start: u64,
+    recover_partial: bool,
+    recent_limit: Option<usize>,
+) -> Result<(JournalState, Vec<AuditEvent>), StorageError> {
+    file.seek(SeekFrom::Start(start))?;
     let mut reader = BufReader::new(file);
-    let mut tail = JournalTail {
-        seq: 0,
-        hash: GENESIS_HASH.to_string(),
-    };
-    let mut pending = HashMap::new();
-    let mut unresolved = HashMap::new();
     let mut recent = VecDeque::new();
-    let mut offset = 0usize;
+    let mut offset = usize::try_from(start).map_err(|_| StorageError::Schema("audit journal is too large".into()))?;
     let mut line = Vec::new();
 
     loop {
@@ -485,7 +531,7 @@ fn verify_locked_with_recent(
             }
             Err(error) => return Err(error.into()),
         };
-        tail = track_verified_record(&raw, &tail, &mut pending, &mut unresolved, &mut recent, recent_limit)?;
+        state.tail = track_verified_record(&raw, &mut state, &mut recent, recent_limit)?;
 
         if !terminated && recover_partial {
             let file = reader.get_mut();
@@ -496,10 +542,7 @@ fn verify_locked_with_recent(
         offset = next_offset;
     }
 
-    Ok((
-        verified_journal(tail, pending, unresolved),
-        recent.into_iter().collect(),
-    ))
+    Ok((state, recent.into_iter().collect()))
 }
 
 fn verified_journal(
@@ -518,15 +561,19 @@ fn verified_journal(
 
 fn track_verified_record(
     raw: &JournalRecordRaw,
-    tail: &JournalTail,
-    pending: &mut HashMap<Uuid, AuditEvent>,
-    unresolved: &mut HashMap<Uuid, Uuid>,
+    state: &mut JournalState,
     recent: &mut VecDeque<AuditEvent>,
     recent_limit: Option<usize>,
 ) -> Result<JournalTail, StorageError> {
-    validate_chain_fields(raw.seq, &raw.prev_hash, &raw.hash, tail, raw.event.get().as_bytes())?;
+    validate_chain_fields(
+        raw.seq,
+        &raw.prev_hash,
+        &raw.hash,
+        &state.tail,
+        raw.event.get().as_bytes(),
+    )?;
     let event: AuditEvent = serde_json::from_str(raw.event.get())?;
-    track_operation_state(pending, unresolved, &event);
+    track_operation_state(&mut state.pending, &mut state.unresolved, &event);
     if let Some(limit) = recent_limit.filter(|limit| *limit > 0) {
         recent.push_back(event);
         if recent.len() > limit {
@@ -559,18 +606,21 @@ fn track_operation_state(
     }
 }
 
-fn reject_new_write_intent(event: &AuditEvent, verified: &VerifiedJournal) -> Result<(), StorageError> {
+fn reject_new_write_intent(
+    event: &AuditEvent,
+    pending: &HashMap<Uuid, AuditEvent>,
+    unresolved: &HashMap<Uuid, Uuid>,
+) -> Result<(), StorageError> {
     if event.phase != AuditRecordPhase::Intent
         || !event.operation_class.is_write()
         || event.operation_class == AuditOperationClass::TransactionRollback
     {
         return Ok(());
     }
-    let blocked_by_pending_write = verified.pending_intents.iter().any(|intent| {
+    let blocked_by_pending_write = pending.values().any(|intent| {
         intent.operation_class.is_write() && write_scope_blocks(event.connection_id, intent.connection_id)
     });
-    let blocked_by_unresolved_write = verified
-        .unresolved_operation_connections
+    let blocked_by_unresolved_write = unresolved
         .values()
         .any(|connection_id| write_scope_blocks(event.connection_id, *connection_id));
     if blocked_by_unresolved_write {
@@ -909,7 +959,7 @@ mod tests {
         let path = dir.path().join("audit.jsonl");
         let event = sample_event(Principal::human_gui());
         let operation_id = event.operation_id;
-        append_locked(&path, event, false).unwrap();
+        append_locked(&path, event, false, None).unwrap();
         let mut file = open_file(&path).unwrap().file;
         file.seek(SeekFrom::End(0)).unwrap();
 
