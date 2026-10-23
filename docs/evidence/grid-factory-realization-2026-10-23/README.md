@@ -29,3 +29,9 @@ A follow-up at 64 columns and an 800 by 600 window compared 100, 500 and 2,000 s
 This shows bounded vertical realization in the measured initial layout. It contradicts an inference that the grid creates widgets for every row of an arbitrarily large result. It also shows the wide-column multiplier: the prefetched row window is constructed for every column, even at a narrow viewport. Scrolling and the actual editor layout remain unmeasured here.
 
 The supported [GTK 4.24.1 list-view source](https://github.com/GNOME/gtk/blob/4.24.1/gtk/gtklistview.c) sets a 200-item anchor maximum with extra tracked items. The [ColumnView implementation](https://github.com/GNOME/gtk/blob/4.24.1/gtk/gtkcolumnview.c) derives its internal column list view from GtkListView. This is consistent with bounded realization, but the observed 205 is a measurement of this case, not a public API guarantee.
+
+## Scroll request follow-up
+
+With 2,000 rows, 64 columns and an 800 by 600 window, the probe requested the maximum vertical and horizontal adjustment positions after initial settling, then settled for another two seconds. Setup calls totaled 13,184 (206 per column), binds 26,240 and unbinds 13,056 before closure. After closing, all 26,240 binds had matching unbinds and all 13,184 setups had matching teardowns. The test completed successfully.
+
+This shows substantial rebinding with nearly unchanged factory-item construction after a large scroll request. It strengthens the evidence for vertical recycling while retaining the wide-column multiplier. Adjustment requests were issued directly; final row visibility, selected-cell behavior and actual editor keyboard scrolling were not asserted. This is neither complete UX acceptance nor a memory benchmark. Reproduce with scroll-probe.rs.txt plus lifecycle-instrumentation.patch; results are in scroll-results.json.

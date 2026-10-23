@@ -1,0 +1,29 @@
+[
+  {
+    "phase": "after_scroll",
+    "columns": 64,
+    "rows": 2000,
+    "window_width": 800,
+    "window_height": 600,
+    "viewport_width": 800,
+    "viewport_height": 600,
+    "setup_count": 13184,
+    "bind_count": 26240,
+    "unbind_count": 13056,
+    "teardown_count": 0,
+    "columns_with_binds": 64,
+    "min_setups_per_column": 206,
+    "max_setups_per_column": 206
+  },
+  {
+    "phase": "closed",
+    "columns": 64,
+    "rows": 2000,
+    "width": 800,
+    "height": 600,
+    "setups": 13184,
+    "binds": 26240,
+    "unbinds": 26240,
+    "teardowns": 13184
+  }
+]
