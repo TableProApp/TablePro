@@ -13,6 +13,10 @@ use crate::tool_error::ToolError;
 /// otherwise fill the answer with them.
 const MAX_NOTICES: usize = 20;
 
+/// Result sets kept from one run. A SQL Server batch that selects in a
+/// loop sends one per pass, each under the row limit.
+const MAX_RESULT_SETS: usize = 20;
+
 #[derive(Debug, Default)]
 pub struct CollectedResults {
     pub sets: Vec<CollectedSet>,
@@ -21,6 +25,9 @@ pub struct CollectedResults {
     pub stopped_at_limit: bool,
     /// A value the driver could not decode, sent as null.
     pub undecodable: bool,
+    /// The run sent more result sets than are kept; every one after the
+    /// last kept is left out.
+    pub sets_left_out: bool,
 }
 
 #[derive(Debug)]
@@ -53,24 +60,38 @@ impl ResultCollector {
     fn accept_now(&self, event: ResultEvent) -> SinkFlow {
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         match event {
-            ResultEvent::ResultSetStarted { columns } => state.sets.push(CollectedSet {
-                columns,
-                rows: Vec::new(),
-                truncated: false,
-            }),
+            ResultEvent::ResultSetStarted { columns } => {
+                if state.sets.len() >= MAX_RESULT_SETS {
+                    state.sets_left_out = true;
+                    if self.stop_at_limit {
+                        state.stopped_at_limit = true;
+                        return SinkFlow::ConsumerGone;
+                    }
+                } else {
+                    state.sets.push(CollectedSet {
+                        columns,
+                        rows: Vec::new(),
+                        truncated: false,
+                    });
+                }
+            }
             ResultEvent::ColumnsResolved { set_index, columns } => {
                 if let Some(set) = state.sets.get_mut(set_index) {
                     set.columns = columns;
                 }
             }
+            ResultEvent::Rows(_) if state.sets_left_out => {}
             ResultEvent::Rows(rows) => return self.keep_rows(&mut state, rows),
             ResultEvent::RowLimitReached { .. } => {
-                if let Some(set) = state.sets.last_mut() {
+                if !state.sets_left_out
+                    && let Some(set) = state.sets.last_mut()
+                {
                     set.truncated = true;
                 }
             }
             ResultEvent::ResultSetFinished { truncation, .. } => {
                 if truncation != Truncation::Complete
+                    && !state.sets_left_out
                     && let Some(set) = state.sets.last_mut()
                 {
                     set.truncated = true;
@@ -180,6 +201,9 @@ impl CollectedResults {
         if self.undecodable {
             notes.push("Some values could not be decoded by TablePro and are shown as null.");
         }
+        if self.sets_left_out {
+            notes.push("The statement sent more than 20 result sets; only the first 20 are here.");
+        }
         if self.sets.iter().any(|set| set.truncated) {
             notes.push(
                 "A result set has more rows than the limit; ask for fewer with a WHERE clause or raise max_rows.",
@@ -243,6 +267,33 @@ mod tests {
         let state = state.lock().unwrap();
         assert!(!state.stopped_at_limit);
         assert_eq!(state.rows_affected, Some(5));
+    }
+
+    #[tokio::test]
+    async fn result_sets_past_the_cap_are_left_out_and_end_a_streamed_read() {
+        for stop_at_limit in [true, false] {
+            let state = Arc::new(Mutex::new(CollectedResults::default()));
+            let mut sink = ResultCollector::new(state.clone(), 5, stop_at_limit);
+            let mut flows = Vec::new();
+
+            for _ in 0..=MAX_RESULT_SETS {
+                flows.push(sink.accept(ResultEvent::ResultSetStarted { columns: columns() }).await);
+                sink.accept(ResultEvent::Rows(rows(1))).await;
+                sink.accept(ResultEvent::RowLimitReached { retained: 1 }).await;
+            }
+
+            let state = state.lock().unwrap();
+            assert_eq!(state.sets.len(), MAX_RESULT_SETS);
+            assert!(state.sets_left_out);
+            assert!(state.sets.iter().all(|set| set.rows.len() == 1));
+            let expected = match stop_at_limit {
+                true => SinkFlow::ConsumerGone,
+                false => SinkFlow::Continue,
+            };
+            assert_eq!(flows.last(), Some(&expected));
+            let json = state.to_json(Duration::ZERO, &[]).expect("JSON");
+            assert!(json.contains("more than 20 result sets"), "{json}");
+        }
     }
 
     #[tokio::test]

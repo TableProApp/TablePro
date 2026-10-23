@@ -186,10 +186,11 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
         .map_err(|error| ToolError::from_operation(&error))?;
     let state = Arc::new(Mutex::new(CollectedResults::default()));
     let sink = ResultCollector::new(state.clone(), limit, false);
-    let row_limit = RowLimit::new(limit as u64).unwrap_or(RowLimit::EDITOR_DEFAULT);
     let stop = cancel.child_token();
+    // The editor's limit, not the answer's: a driver that stops fetching
+    // at the limit would also stop a statement's side effects there.
     let run = RunOptions::new(stop.clone())
-        .with_row_limit(row_limit)
+        .with_row_limit(RowLimit::EDITOR_DEFAULT)
         .with_deadline(Some(timeout));
     // The window's teardown closes only its own editor sessions, so this
     // one stops when the session does, as an editor tab's run would.

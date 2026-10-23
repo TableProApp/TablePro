@@ -248,7 +248,7 @@ impl McpPage {
     }
 
     fn toast(&self, message: &str) {
-        self.emit_by_name::<()>("toast", &[&adw::Toast::new(message)]);
+        self.emit_by_name::<()>("toast", &[&crate::ui::plain_toast(message)]);
     }
 }
 
