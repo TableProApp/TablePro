@@ -906,6 +906,11 @@
       "tablepro-app",
       "--lib",
       "ui::browse_tab::tests::a_closed_browse_tab_releases_its_root_widget"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "tests::startup_reaches_the_application_loop_with_supported_toolkits"
     ]
   ],
   "keyring": [

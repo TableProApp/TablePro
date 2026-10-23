@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "base_commit": "e483fe07b2d298de9ffe5e018ece366070903b30",
+  "working_tree_fix": true,
+  "source_sha256": {
+    "apps/linux/app/src/lib.rs": "078ab0ed6f80a8bbb357a5a3d497eb1e0206712fde58cfda3a6abbc5b9620ad4",
+    "scripts/isolated-tests.json": "654da1268e97059b087550d89c02e723ffdc813f1e2e873a1e97945d6240a923"
+  },
+  "log_sha256": {
+    "before.log": "45b91755a881034a02a61602a0e3851d8a28167b139056e3b9cf6a82d7f1bed1",
+    "after.log": "8036b4272277ecf0623235181fbac74051833ef9b58dd0f8587fb9590e567abf"
+  },
+  "test": "tests::startup_reaches_the_application_loop_with_supported_toolkits",
+  "validation": {
+    "focused_test": {
+      "command": "cargo test --locked -p tablepro-app --lib tests::startup_reaches_the_application_loop_with_supported_toolkits -- --ignored --exact --nocapture",
+      "result": "1 passed; 0 failed",
+      "log": "after.log"
+    },
+    "environment": "Arch, private D-Bus and Xvfb, Cairo, isolated configuration",
+    "before": "Production startup failed before the application loop; positive fixture later strengthened to require a mapped window."
+  }
+}

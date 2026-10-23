@@ -1,0 +1,39 @@
+   Compiling tablepro-core v0.2.0 (/tmp/bookie-ux-startup-version/crates/core)
+   Compiling sqlx-postgres v0.9.0 (/tmp/bookie-ux-startup-version/vendor/sqlx-postgres)
+   Compiling sqlx-mysql v0.9.0 (/tmp/bookie-ux-startup-version/vendor/sqlx-mysql)
+   Compiling tablepro-ssh v0.2.0 (/tmp/bookie-ux-startup-version/crates/ssh)
+   Compiling redis v1.7.0 (/tmp/bookie-ux-startup-version/vendor/redis)
+   Compiling mongodb v3.9.1 (/tmp/bookie-ux-startup-version/vendor/mongodb)
+   Compiling tablepro-app v0.2.0 (/tmp/bookie-ux-startup-version/apps/linux/app)
+   Compiling tablepro-policy v0.2.0 (/tmp/bookie-ux-startup-version/crates/policy)
+   Compiling tablepro-dump v0.2.0 (/tmp/bookie-ux-startup-version/crates/dump)
+   Compiling tablepro-driver-clickhouse v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/clickhouse)
+   Compiling tablepro-driver-mssql v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/mssql)
+   Compiling sqlx v0.9.0
+   Compiling tablepro-driver-mysql v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/mysql)
+   Compiling tablepro-driver-postgres v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/postgres)
+   Compiling tablepro-driver-sqlite v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/sqlite)
+   Compiling tablepro-storage v0.2.0 (/tmp/bookie-ux-startup-version/crates/storage)
+   Compiling tablepro-driver-redis v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/redis)
+   Compiling tablepro-transport v0.2.0 (/tmp/bookie-ux-startup-version/crates/transport)
+   Compiling tablepro-mcp v0.2.0 (/tmp/bookie-ux-startup-version/crates/mcp)
+   Compiling tablepro-app-services v0.2.0 (/tmp/bookie-ux-startup-version/crates/app-services)
+   Compiling tablepro-driver-mongodb v0.2.0 (/tmp/bookie-ux-startup-version/crates/drivers/mongodb)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 17s
+     Running unittests src/lib.rs (/home/trung/Projects/bookie/target/debug/deps/tablepro_app-0697f3ed2e86ab6c)
+
+running 1 test
+
+thread 'tests::startup_reaches_the_application_loop_with_supported_toolkits' (2072415) panicked at /home/trung/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libadwaita-0.9.2/src/auto/functions.rs:147:5:
+Gtk has to be initialized before using libadwaita.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test tests::startup_reaches_the_application_loop_with_supported_toolkits ... FAILED
+
+failures:
+
+failures:
+    tests::startup_reaches_the_application_loop_with_supported_toolkits
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 956 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-app --lib`

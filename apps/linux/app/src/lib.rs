@@ -18,7 +18,7 @@ const MIN_ADWAITA: (u32, u32, u32) = (1, 10, 0);
 const MIN_SOURCEVIEW: (u32, u32, u32) = (5, 22, 0);
 
 pub fn run() {
-    exit_if_toolkit_is_too_old();
+    initialize_toolkit_or_exit();
     glib::set_prgname(Some(config::APP_ID));
     tablepro_transport::install_crypto_provider();
     i18n::init();
@@ -132,7 +132,11 @@ pub fn run() {
     }
 }
 
-fn exit_if_toolkit_is_too_old() {
+fn initialize_toolkit_or_exit() {
+    if let Err(error) = gtk4::init() {
+        let _ = writeln!(std::io::stderr(), "BookiE could not open a graphical display: {error}");
+        std::process::exit(1);
+    }
     let gtk = (gtk4::major_version(), gtk4::minor_version(), gtk4::micro_version());
     let adwaita = (
         libadwaita::major_version(),
@@ -188,6 +192,8 @@ fn initialize_ui() -> RelmApp<<ui::App as relm4::Component>::Input> {
     use gtk4::prelude::*;
 
     let app = RelmApp::new(config::APP_ID);
+    #[cfg(test)]
+    let app = app.with_args(vec!["bookie".to_owned()]);
     sourceview5::init();
     let application = relm4::main_application();
     application.set_flags(gtk4::gio::ApplicationFlags::HANDLES_OPEN);
@@ -227,6 +233,32 @@ fn enable_system_openssh(database: Arc<services::database_service::DatabaseServi
 #[cfg(test)]
 mod tests {
     use super::{MIN_ADWAITA, MIN_GTK, MIN_SOURCEVIEW, async_worker_threads, toolkit_is_supported};
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn startup_reaches_the_application_loop_with_supported_toolkits() {
+        let reached = std::rc::Rc::new(std::cell::Cell::new(false));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        glib::timeout_add_local(std::time::Duration::from_millis(25), {
+            let reached = reached.clone();
+            move || {
+                use gtk4::prelude::*;
+                let app = relm4::main_application();
+                if app.active_window().is_some_and(|window| window.is_mapped()) {
+                    reached.set(true);
+                    app.quit();
+                    return glib::ControlFlow::Break;
+                }
+                if std::time::Instant::now() >= deadline {
+                    app.quit();
+                    return glib::ControlFlow::Break;
+                }
+                glib::ControlFlow::Continue
+            }
+        });
+        super::run();
+        assert!(reached.get());
+    }
 
     #[test]
     fn database_commands_never_share_a_single_async_worker() {

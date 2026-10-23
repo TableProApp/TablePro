@@ -1,0 +1,26 @@
+test ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls ... FAILED
+
+failures:
+
+---- ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls stdout ----
+
+thread 'ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls' (2239560) panicked at apps/linux/app/src/ui/editor/dispatch_tests.rs:515:17:
+assertion failed: bar.measure(gtk::Orientation::Horizontal, -1).0 <= root.width()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 956 filtered out; finished in 0.22s
+
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running unittests src/lib.rs (/home/trung/Projects/bookie/target/debug/deps/tablepro_app-0697f3ed2e86ab6c)
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+
+(process:2239559): Adwaita-WARNING **: 02:59:20.518: AdwToolbarView 0x7f8205c6b0c0 exceeds AdwBreakpointBin width: requested 616 px, 600 px available
+error: test failed, to rerun pass `-p tablepro-app --lib`
+
+isolated test failed or did not execute exactly once: ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls
