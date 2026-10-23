@@ -440,7 +440,7 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
-    /// The saved connections changed, the window's icon perhaps with them.
+    /// The saved connections changed, the title's icon perhaps with them.
     SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
@@ -1054,8 +1054,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
-            WorkspaceInput::SavedConnectionsChanged => self.shell.show_connection_icon(&self.key),
+            WorkspaceInput::SafeModeChanged | WorkspaceInput::SavedConnectionsChanged => self.refresh_window_title(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
