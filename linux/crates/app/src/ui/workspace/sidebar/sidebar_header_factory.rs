@@ -55,7 +55,10 @@ pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFac
             return;
         };
         let schema = object.schema();
-        diagram.set_visible(view.upgrade().is_some_and(|view| view.affordances().speaks_sql));
+        diagram.set_visible(
+            view.upgrade()
+                .is_some_and(|view| view.affordances().speaks_sql && !view.holds_keys()),
+        );
         diagram.set_action_target_value(Some(&schema.to_variant()));
         let diagram_label = match schema {
             Some(_) => crate::i18n::gettext_f("Show ER Diagram of {schema}", &[("schema", &title)]),

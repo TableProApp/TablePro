@@ -279,6 +279,10 @@ impl SidebarInner {
         self.affordances.get()
     }
 
+    pub(super) fn holds_keys(&self) -> bool {
+        self.keys.get()
+    }
+
     pub(super) fn track_row(&self, item: &gtk::ListItem) {
         let mut rows = self.rows.borrow_mut();
         // A search makes two hundred rows at once, so the rows gone are
