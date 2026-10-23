@@ -79,7 +79,7 @@ The editor runs mongosh statements. A statement ends at `;` or at the end of a l
 - The database methods: `runCommand`, `adminCommand`, `aggregate`, `getCollectionNames`, `getCollectionInfos`, `createCollection`, `createView`, `dropDatabase`, `stats`, `serverStatus`, `version`, `currentOp`, `killOp`, the user and role helpers, and `rs.status()`, `rs.conf()`.
 - Values as mongosh writes them: unquoted keys, single quotes, regular expressions, `ObjectId`, `ISODate`, `Date`, `NumberInt`, `NumberLong`, `NumberDecimal`, `Timestamp`, `UUID`, `BinData`, `MinKey`, `MaxKey`. A whole number in the int32 range is an `int`, any other number a `double`, as mongosh stores them.
 
-Anything else, a JavaScript function, a variable, `forEach`, `bulkWrite`, is refused before it is sent with a `SyntaxError` at its place, or `Unsupported`. A statement's documents show one per row, a column per field: the fields a projection names, in its order, or every field the documents hold, in the order they first show it. A write shows what mongosh prints for it (`insertedId`, `matchedCount`, `modifiedCount`).
+Anything else, a JavaScript function, a variable, `forEach`, `bulkWrite`, is refused before it is sent with a `SyntaxError` at its place, or `Unsupported`. As mongosh checks, `updateOne` and `updateMany` take update operators or a pipeline and `replaceOne` a document with none, so a forgotten `$set` never replaces a document, and `dropIndex()` has to name its index. A write's `writeConcern`, `ordered`, `comment` and `let` options go with its command. A statement's documents show one per row, a column per field: the fields a projection names, in its order, or every field the documents hold, in the order they first show it. A write shows what mongosh prints for it (`insertedId`, `matchedCount`, `modifiedCount`).
 
 The run's row limit keeps 10,000 documents, all read before the first row is shown, so the columns hold every field they have: the cursor reads one more to say the result was cut, and closing it frees the rest on the server. A tab's `use` changes only its own database.
 
@@ -89,7 +89,7 @@ A history entry is withheld when a statement carries a password: `createUser`, `
 
 ## Stops and timeouts
 
-A stop is `killSessions` for the call's logical session, sent from the same client on a connection of its own (`OutOfBand(Statement)`): the server ends the operation that session runs and closes its cursors, and the call ends with `Interrupted` (11601) or `CursorKilled` (237), which reads as the stop it is. A session names one call, so a late stop cannot land on anything else.
+A stop is `killSessions` for the call's logical session, sent from the same client on a connection of its own (`OutOfBand(Statement)`): the server ends the operation that session runs and closes its cursors, and the call ends with `Interrupted` (11601) or `CursorKilled` (237), which reads as the stop it is. A session names one call, so a late stop cannot land on anything else: a session whose `killSessions` has not been answered stays out of the client's pool for a minute, so no later call takes its id while the stop could still arrive.
 
 A statement also carries `maxTimeMS` for what is left of its deadline, so the server stops it on its own; `MaxTimeMSExpired` (50) is a timeout the server stopped. `EditorSessionOptions::statement_timeout` bounds each editor statement the same way.
 
@@ -99,7 +99,7 @@ A call that times out or loses its connection checks the server with the probe c
 
 MongoDB has no read-only session, so a read-only connection rests on the app's own check (`ReadOnlyEnforcement::ClientGuard`): each statement is read before it is sent, and one that is not a read is refused with `ReadOnlyRefusal::ClientGuard`, in the editor, in a save and in an export. A statement reads only when `sql_syntax::mongo` lists its method, or its command's name, as a read, with every cursor method after it a read too; an `aggregate` with `$out` or `$merge` at any depth writes, and so does an `explain` of a write. A method it does not know counts as a write. For a guarantee, log in as a user with only the `read` role.
 
-Safe Mode reads statements the same way: Confirm Writes asks before every statement that is not a read, and Off asks before `drop`, `dropDatabase`, a `deleteMany`, `remove` or `updateMany` with an empty filter, and a `delete` or `update` command through `runCommand` that reaches every document the same way. `aggregate()` takes only its own options, so none can stand in for the pipeline that was checked, and a key written twice is read as its last value, as the shell sends it.
+Safe Mode reads statements the same way: Confirm Writes asks before every statement that is not a read, and Off asks before `drop`, `dropDatabase`, a `deleteMany`, `remove` or `updateMany` with no filter, `null` or `{}`, an `update` with `multi` and such a filter, and a `delete` or `update` command through `runCommand` that reaches every document the same way. `aggregate()` takes only its own options, so none can stand in for the pipeline that was checked, and a key written twice is read as its last value, as the shell sends it.
 
 ## Trust
 

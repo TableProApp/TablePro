@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -25,7 +26,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 
-use crate::call::{ClientCall, KillState, SessionKill, generated, remaining_millis, session};
+use crate::call::{ClientCall, KillState, SessionKill, generated, release, remaining_millis, session};
 use crate::catalog::Reader;
 use crate::dialect::MongoDialect;
 use crate::editor_session::MongoEditorSession;
@@ -33,6 +34,9 @@ use crate::endpoint::MongoEndpoint;
 use crate::execute::{Source, start};
 use crate::rows::collect;
 use crate::write_batch::{WritePlan, perform, precheck};
+
+/// A workspace call's work, which borrows the call's session.
+type Work<'s, T> = Pin<Box<dyn Future<Output = Result<T, DriverError>> + Send + 's>>;
 
 /// What a workspace call works with: the client, the endpoint that
 /// explains its failures, and the server's time limit for the call.
@@ -127,11 +131,10 @@ impl MongoConnection {
 
     /// Run one workspace read on a task that outlives the caller, in a
     /// logical session of its own that the stop ends.
-    async fn read<T, W, Fut>(&self, options: CallOptions, work: W) -> Result<T, DriverError>
+    async fn read<T, W>(&self, options: CallOptions, work: W) -> Result<T, DriverError>
     where
         T: Send + 'static,
-        W: FnOnce(CallContext, ClientSession) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<T, DriverError>> + Send + 'static,
+        W: for<'s> FnOnce(CallContext, &'s mut ClientSession) -> Work<'s, T> + Send + 'static,
     {
         self.ensure_open()?;
         let kill = SessionKill::new();
@@ -145,14 +148,15 @@ impl MongoConnection {
         let outcome = self
             .calls
             .run_read(options, ClientCall::new(), kill, move |call, request| async move {
-                let result = async {
-                    let session = session(&context.endpoint, &context.client, &armed).await?;
-                    if request.is_requested() {
-                        return Err(DriverError::Cancelled);
-                    }
-                    work(context, session).await
-                }
-                .await;
+                let mut session = match session(&context.endpoint, &context.client, &armed).await {
+                    Ok(session) => session,
+                    Err(error) => return (call, Err(error)),
+                };
+                let result = match request.is_requested() {
+                    true => Err(DriverError::Cancelled),
+                    false => work(context, &mut session).await,
+                };
+                release(session, &armed);
                 (call, result)
             })
             .await;
@@ -280,8 +284,8 @@ impl Connection for MongoConnection {
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         let default = self.database.clone();
-        self.read(options, move |context, mut session| async move {
-            reader(&context, &mut session).databases(&default).await
+        self.read(options, move |context, session| {
+            Box::pin(async move { reader(&context, session).databases(&default).await })
         })
         .await
     }
@@ -293,22 +297,24 @@ impl Connection for MongoConnection {
             ObjectScope::AllSchemas => Vec::new(),
         };
         let default = self.database.clone();
-        self.read(options, move |context, mut session| async move {
-            let mut reader = reader(&context, &mut session);
-            let databases = match databases.is_empty() {
-                true => reader
-                    .databases(&default)
-                    .await?
-                    .into_iter()
-                    .map(|schema| schema.name)
-                    .collect(),
-                false => databases,
-            };
-            let mut objects = Vec::new();
-            for database in databases {
-                objects.extend(reader.collections(&database).await?);
-            }
-            Ok(objects)
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                let mut reader = reader(&context, session);
+                let databases = match databases.is_empty() {
+                    true => reader
+                        .databases(&default)
+                        .await?
+                        .into_iter()
+                        .map(|schema| schema.name)
+                        .collect(),
+                    false => databases,
+                };
+                let mut objects = Vec::new();
+                for database in databases {
+                    objects.extend(reader.collections(&database).await?);
+                }
+                Ok(objects)
+            })
         })
         .await
     }
@@ -317,18 +323,20 @@ impl Connection for MongoConnection {
         let (database, collection) = (self.database_of(table), table.name.clone());
         let key = (database.clone(), collection.clone());
         let columns = self
-            .read(options, move |context, mut session| async move {
-                let mut reader = reader(&context, &mut session);
-                let mut columns = reader.fields(&database, &collection).await?;
-                // A view takes no writes, so nothing in it names a document a
-                // save could reach.
-                if reader.is_view(&database, &collection).await? {
-                    for column in &mut columns {
-                        column.primary_key = false;
-                        column.default = tablepro_core::column::ColumnDefault::None;
+            .read(options, move |context, session| {
+                Box::pin(async move {
+                    let mut reader = reader(&context, session);
+                    let mut columns = reader.fields(&database, &collection).await?;
+                    // A view takes no writes, so nothing in it names a document a
+                    // save could reach.
+                    if reader.is_view(&database, &collection).await? {
+                        for column in &mut columns {
+                            column.primary_key = false;
+                            column.default = tablepro_core::column::ColumnDefault::None;
+                        }
                     }
-                }
-                Ok(columns)
+                    Ok(columns)
+                })
             })
             .await?;
         self.remember_json_fields(key.0, key.1, &columns);
@@ -337,12 +345,14 @@ impl Connection for MongoConnection {
 
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
         let (database, collection) = (self.database_of(table), table.name.clone());
-        self.read(options, move |context, mut session| async move {
-            let mut reader = reader(&context, &mut session);
-            match reader.is_view(&database, &collection).await? {
-                true => Ok(Vec::new()),
-                false => reader.indexes(&database, &collection).await,
-            }
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                let mut reader = reader(&context, session);
+                match reader.is_view(&database, &collection).await? {
+                    true => Ok(Vec::new()),
+                    false => reader.indexes(&database, &collection).await,
+                }
+            })
         })
         .await
     }
@@ -381,34 +391,36 @@ impl Connection for MongoConnection {
         options: CallOptions,
     ) -> Result<TableDefinition, DriverError> {
         let (database, collection, table) = (self.database_of(table), table.name.clone(), table.clone());
-        self.read(options, move |context, mut session| async move {
-            let mut reader = reader(&context, &mut session);
-            let mut columns = reader.fields(&database, &collection).await?;
-            let view = reader.is_view(&database, &collection).await?;
-            if view {
-                for column in &mut columns {
-                    column.primary_key = false;
-                    column.default = tablepro_core::column::ColumnDefault::None;
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                let mut reader = reader(&context, session);
+                let mut columns = reader.fields(&database, &collection).await?;
+                let view = reader.is_view(&database, &collection).await?;
+                if view {
+                    for column in &mut columns {
+                        column.primary_key = false;
+                        column.default = tablepro_core::column::ColumnDefault::None;
+                    }
                 }
-            }
-            let indexes = match view {
-                true => Vec::new(),
-                false => reader.indexes(&database, &collection).await?,
-            };
-            Ok(TableDefinition {
-                table,
-                columns: columns
-                    .into_iter()
-                    .map(|info| ColumnDefinition::new(info, ColumnAttributes::default()))
-                    .collect(),
-                primary_key: (!view).then(|| PrimaryKeyConstraint {
-                    name: Some("_id_".to_owned()),
-                    columns: vec!["_id".to_owned()],
-                }),
-                indexes,
-                foreign_keys: Vec::new(),
-                inbound_foreign_keys: Vec::new(),
-                source: None,
+                let indexes = match view {
+                    true => Vec::new(),
+                    false => reader.indexes(&database, &collection).await?,
+                };
+                Ok(TableDefinition {
+                    table,
+                    columns: columns
+                        .into_iter()
+                        .map(|info| ColumnDefinition::new(info, ColumnAttributes::default()))
+                        .collect(),
+                    primary_key: (!view).then(|| PrimaryKeyConstraint {
+                        name: Some("_id_".to_owned()),
+                        columns: vec!["_id".to_owned()],
+                    }),
+                    indexes,
+                    foreign_keys: Vec::new(),
+                    inbound_foreign_keys: Vec::new(),
+                    source: None,
+                })
             })
         })
         .await
@@ -418,21 +430,23 @@ impl Connection for MongoConnection {
     /// nothing a write could reach, so its rows are read-only.
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let (database, collection) = (self.database_of(table), table.name.clone());
-        self.read(options, move |context, mut session| async move {
-            match reader(&context, &mut session).is_view(&database, &collection).await? {
-                true => Ok(RowIdentity::Unordered),
-                false => Ok(RowIdentity::UniqueKey {
-                    columns: vec!["_id".to_owned()],
-                }),
-            }
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                match reader(&context, session).is_view(&database, &collection).await? {
+                    true => Ok(RowIdentity::Unordered),
+                    false => Ok(RowIdentity::UniqueKey {
+                        columns: vec!["_id".to_owned()],
+                    }),
+                }
+            })
         })
         .await
     }
 
     async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError> {
         let (database, collection) = (self.database_of(table), table.name.clone());
-        self.read(options, move |context, mut session| async move {
-            reader(&context, &mut session).estimate(&database, &collection).await
+        self.read(options, move |context, session| {
+            Box::pin(async move { reader(&context, session).estimate(&database, &collection).await })
         })
         .await
     }
@@ -445,9 +459,11 @@ impl Connection for MongoConnection {
     ) -> Result<QueryResult, DriverError> {
         let mut planned = self.generated_read(statement)?;
         planned.limit_time(remaining_millis(options.deadline()));
-        self.read(options, move |context, mut session| async move {
-            let source = start(&context.endpoint, &context.client, &mut session, planned).await?;
-            collect(&context.endpoint, source, &mut session, limit).await
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                let source = start(&context.endpoint, &context.client, session, planned).await?;
+                collect(&context.endpoint, source, session, limit).await
+            })
         })
         .await
     }
@@ -455,11 +471,13 @@ impl Connection for MongoConnection {
     async fn count_rows(&self, statement: &Statement, options: CallOptions) -> Result<u64, DriverError> {
         let mut planned = self.generated_read(statement)?;
         planned.limit_time(remaining_millis(options.deadline()));
-        self.read(options, move |context, mut session| async move {
-            match start(&context.endpoint, &context.client, &mut session, planned).await? {
-                Source::Count(count) => Ok(count),
-                _ => Err(DriverError::Protocol("the count returned no number".to_owned())),
-            }
+        self.read(options, move |context, session| {
+            Box::pin(async move {
+                match start(&context.endpoint, &context.client, session, planned).await? {
+                    Source::Count(count) => Ok(count),
+                    _ => Err(DriverError::Protocol("the count returned no number".to_owned())),
+                }
+            })
         })
         .await
     }
@@ -529,7 +547,11 @@ impl Connection for MongoConnection {
                 ledger,
                 move |call, request| async move {
                     let result = match session(&plan.endpoint, &plan.client, &armed).await {
-                        Ok(mut session) => perform(&plan, &mut session, &request).await,
+                        Ok(mut session) => {
+                            let result = perform(&plan, &mut session, &request).await;
+                            release(session, &armed);
+                            result
+                        }
                         Err(error) => Err(plan.ledger.failed(0, error, tablepro_core::SessionFate::RolledBack)),
                     };
                     (call, result)

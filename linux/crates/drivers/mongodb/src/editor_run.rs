@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::ops::ControlFlow;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -13,7 +14,7 @@ use tablepro_core::{
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use crate::call::{SessionKill, remaining_millis, session};
+use crate::call::{SessionKill, release, remaining_millis, session};
 use crate::endpoint::MongoEndpoint;
 use crate::errors::{stopped_by_kill, syntax_error};
 use crate::execute::{Source, start};
@@ -133,49 +134,58 @@ impl EditorRun {
                 Ok(session) => session,
                 Err(error) => return Ran::Failed(error),
             };
-            let work = async {
-                match start(&self.endpoint, &self.client, &mut session, planned).await? {
-                    Source::Used(next) => {
-                        *self.database.lock().unwrap_or_else(PoisonError::into_inner) = next.clone();
-                        emit(&self.endpoint, Source::Used(next), &mut session, sink, None)
+            let ran = {
+                let work = async {
+                    match start(&self.endpoint, &self.client, &mut session, planned).await? {
+                        Source::Used(next) => {
+                            *self.database.lock().unwrap_or_else(PoisonError::into_inner) = next.clone();
+                            emit(&self.endpoint, Source::Used(next), &mut session, sink, None)
+                                .await
+                                .map(|(flow, _)| flow)
+                        }
+                        source => emit(&self.endpoint, source, &mut session, sink, Some(options.row_limit))
                             .await
-                            .map(|(flow, _)| flow)
+                            .map(|(flow, _)| flow),
                     }
-                    source => emit(&self.endpoint, source, &mut session, sink, Some(options.row_limit))
-                        .await
-                        .map(|(flow, _)| flow),
-                }
-            };
-            let mut work = std::pin::pin!(work);
-            let interrupt = tokio::select! {
-                biased;
-                outcome = &mut work => return match outcome {
-                    Ok(flow) => Ran::Done(flow),
-                    Err(error) => Ran::Failed(error),
-                },
-                () = options.cancel.cancelled() => Interrupt::Cancelled,
-                () = self.shutdown.cancelled() => Interrupt::Cancelled,
-                () = until(deadline) => Interrupt::DeadlineElapsed,
-            };
-            let grace_ends = Instant::now() + self.endpoint.cancel_grace();
-            let _ = tokio::time::timeout_at(grace_ends, kill.kill()).await;
-            let server_cancelled = match tokio::time::timeout_at(grace_ends, &mut work).await {
-                Ok(Err(error)) => {
-                    stopped_by_kill(&error)
-                        || matches!(
-                            error,
-                            DriverError::Timeout {
-                                server_cancelled: true,
-                                ..
+                };
+                let mut work = std::pin::pin!(work);
+                let interrupt = tokio::select! {
+                    biased;
+                    outcome = &mut work => ControlFlow::Break(match outcome {
+                        Ok(flow) => Ran::Done(flow),
+                        Err(error) => Ran::Failed(error),
+                    }),
+                    () = options.cancel.cancelled() => ControlFlow::Continue(Interrupt::Cancelled),
+                    () = self.shutdown.cancelled() => ControlFlow::Continue(Interrupt::Cancelled),
+                    () = until(deadline) => ControlFlow::Continue(Interrupt::DeadlineElapsed),
+                };
+                match interrupt {
+                    ControlFlow::Break(ran) => ran,
+                    ControlFlow::Continue(interrupt) => {
+                        let grace_ends = Instant::now() + self.endpoint.cancel_grace();
+                        let _ = tokio::time::timeout_at(grace_ends, kill.kill()).await;
+                        let server_cancelled = match tokio::time::timeout_at(grace_ends, &mut work).await {
+                            Ok(Err(error)) => {
+                                stopped_by_kill(&error)
+                                    || matches!(
+                                        error,
+                                        DriverError::Timeout {
+                                            server_cancelled: true,
+                                            ..
+                                        }
+                                    )
                             }
-                        )
+                            Ok(Ok(_)) | Err(_) => false,
+                        };
+                        Ran::Stopped {
+                            interrupt,
+                            server_cancelled,
+                        }
+                    }
                 }
-                Ok(Ok(_)) | Err(_) => false,
             };
-            Ran::Stopped {
-                interrupt,
-                server_cancelled,
-            }
+            release(session, &kill);
+            ran
         })
     }
 

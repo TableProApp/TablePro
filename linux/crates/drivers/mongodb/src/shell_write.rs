@@ -11,6 +11,10 @@ use crate::to_bson::{ValueError, to_bson};
 /// Options a single update or delete statement of the server takes.
 const STATEMENT_OPTIONS: [&str; 4] = ["collation", "hint", "arrayFilters", "upsert"];
 
+/// Options a whole write command takes, the write concern above all, so
+/// a write that succeeds has met the durability it asked for.
+const COMMAND_OPTIONS: [&str; 5] = ["writeConcern", "ordered", "bypassDocumentValidation", "comment", "let"];
+
 /// A method's arguments as BSON.
 struct Args<'a> {
     method: &'a ShellMethod,
@@ -94,12 +98,41 @@ fn update_call(args: &Args<'_>, name: String) -> Result<(Document, Reply), Drive
         Some(update @ (Bson::Document(_) | Bson::Array(_))) => update,
         _ => return Err(shape(args.method, 1, "an update document or pipeline")),
     };
+    check_update(args.method, &update, multi)?;
     let mut statement = doc! { "q": args.document(0)?, "u": update, "multi": multi };
     copy_options(&options, &mut statement);
-    Ok((
-        doc! { "update": name, "updates": [statement] },
-        Reply::Write(WriteKind::Update),
-    ))
+    let mut command = doc! { "update": name, "updates": [statement] };
+    copy_command_options(&options, &mut command);
+    Ok((command, Reply::Write(WriteKind::Update)))
+}
+
+/// An update takes operators or a pipeline and a replacement takes
+/// neither, as mongosh checks: the server would read an update's fields
+/// as a whole new document, and drop every field it lacks.
+fn check_update(method: &ShellMethod, update: &Bson, multi: bool) -> Result<(), DriverError> {
+    let operators = match update {
+        Bson::Array(_) => Some(true),
+        // An empty document replaces every field but `_id`.
+        Bson::Document(document) if document.is_empty() => Some(false),
+        Bson::Document(document) => match document.keys().filter(|key| key.starts_with('$')).count() {
+            0 => Some(false),
+            count if count == document.len() => Some(true),
+            _ => None,
+        },
+        _ => None,
+    };
+    let fits = match (method.name.as_str(), operators) {
+        ("replaceOne", Some(false)) => true,
+        ("replaceOne", _) => false,
+        ("update", Some(false)) => !multi,
+        (_, Some(true)) => true,
+        _ => false,
+    };
+    match fits {
+        true => Ok(()),
+        false if method.name == "replaceOne" => Err(shape(method, 1, "a replacement document with no $ operators")),
+        false => Err(shape(method, 1, "update operators such as $set, or a pipeline")),
+    }
 }
 
 fn delete_call(args: &Args<'_>, name: String) -> Result<(Document, Reply), DriverError> {
@@ -119,10 +152,9 @@ fn delete_call(args: &Args<'_>, name: String) -> Result<(Document, Reply), Drive
     };
     let mut statement = doc! { "q": args.document(0)?, "limit": i32::from(one) };
     copy_options(&options, &mut statement);
-    Ok((
-        doc! { "delete": name, "deletes": [statement] },
-        Reply::Write(WriteKind::Delete),
-    ))
+    let mut command = doc! { "delete": name, "deletes": [statement] };
+    copy_command_options(&options, &mut command);
+    Ok((command, Reply::Write(WriteKind::Delete)))
 }
 
 fn index_call(args: &Args<'_>, name: String) -> Result<(Document, Reply), DriverError> {
@@ -133,7 +165,12 @@ fn index_call(args: &Args<'_>, name: String) -> Result<(Document, Reply), Driver
             Some(Bson::Array(keys)) => create_indexes(name, keys, &args.document(1)?)?,
             _ => return Err(shape(method, 0, "an array of index keys")),
         },
-        "dropIndex" | "dropIndexes" => {
+        // Only `dropIndexes()` drops every index; `dropIndex()` names one.
+        "dropIndex" => match args.arg(0)? {
+            Some(index) => doc! { "dropIndexes": name, "index": index },
+            None => return Err(shape(method, 0, "the index's name or key")),
+        },
+        "dropIndexes" => {
             let index = args.arg(0)?.unwrap_or_else(|| Bson::String("*".to_owned()));
             doc! { "dropIndexes": name, "index": index }
         }
@@ -186,10 +223,16 @@ fn insert(collection: String, mut documents: Vec<Document>, options: &Document) 
         ids.push(id);
     }
     let mut command = doc! { "insert": collection, "documents": documents };
-    if let Ok(ordered) = options.get_bool("ordered") {
-        command.insert("ordered", ordered);
-    }
+    copy_command_options(options, &mut command);
     (command, Reply::Write(WriteKind::Insert(ids)))
+}
+
+fn copy_command_options(options: &Document, command: &mut Document) {
+    for option in COMMAND_OPTIONS {
+        if let Some(value) = options.get(option) {
+            command.insert(option, value.clone());
+        }
+    }
 }
 
 fn copy_options(options: &Document, statement: &mut Document) {
@@ -313,6 +356,47 @@ mod tests {
             panic!("not an insert");
         };
         assert_eq!(ids[1], Bson::Int32(7));
+    }
+
+    #[test]
+    fn an_update_takes_operators_and_a_replacement_takes_none() {
+        let refused = |text: &str| {
+            let Ok(ShellStatement::Call(call)) = parse_statement(text) else {
+                panic!("{text} is not a call");
+            };
+            let method = call.operation().expect("a method");
+            write(method, "shop", "users", &[]).is_err()
+        };
+
+        assert!(refused("db.users.updateOne({_id: 1}, {name: 'Ann'})"));
+        assert!(refused("db.users.updateMany({}, {$set: {a: 1}, b: 2})"));
+        assert!(refused("db.users.replaceOne({_id: 1}, {$set: {a: 1}})"));
+        assert!(refused("db.users.update({}, {name: 'Ann'}, {multi: true})"));
+        assert!(refused("db.users.dropIndex()"));
+        assert!(!refused("db.users.updateOne({_id: 1}, {$set: {name: 'Ann'}})"));
+        assert!(!refused("db.users.updateOne({_id: 1}, [{$set: {n: 1}}])"));
+        assert!(!refused("db.users.replaceOne({_id: 1}, {name: 'Ann'})"));
+        assert!(!refused("db.users.replaceOne({_id: 1}, {})"));
+        assert!(refused("db.users.updateOne({_id: 1}, {})"));
+        assert!(!refused("db.users.update({_id: 1}, {name: 'Ann'})"));
+    }
+
+    #[test]
+    fn a_write_concern_goes_with_the_command() {
+        let Plan::Command { command, .. } =
+            planned("db.users.insertOne({a: 1}, {writeConcern: {w: 'majority'}, ordered: false})")
+        else {
+            panic!("not a command");
+        };
+        assert_eq!(
+            command.get_document("writeConcern").ok(),
+            Some(&doc! { "w": "majority" })
+        );
+        assert_eq!(command.get_bool("ordered").ok(), Some(false));
+        let Plan::Command { command, .. } = planned("db.users.deleteMany({a: 1}, {writeConcern: {w: 2}})") else {
+            panic!("not a command");
+        };
+        assert_eq!(command.get_document("writeConcern").ok(), Some(&doc! { "w": 2_i32 }));
     }
 
     #[test]

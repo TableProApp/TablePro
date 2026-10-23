@@ -117,6 +117,10 @@ impl CallResource for ClientCall {
     fn discard(self) {}
 }
 
+/// How long a session whose stop went unanswered stays out of the pool:
+/// longer than a stop takes to reach the server.
+const QUARANTINE: Duration = Duration::from_secs(60);
+
 /// A logical session for one call, armed for its stop.
 pub(crate) async fn session(
     endpoint: &MongoEndpoint,
@@ -129,6 +133,22 @@ pub(crate) async fn session(
             Ok(session)
         }
         Err(error) => Err(endpoint.explain(&error, LossPhase::Statement).await),
+    }
+}
+
+/// Give a call's session back. A dropped session goes back to the
+/// client's pool for the next call, so one whose `killSessions` is still
+/// on its way is kept out of the pool until it could land, or the stop
+/// would end whichever call took the session next.
+pub(crate) fn release(session: ClientSession, stop: &SessionKill) {
+    if stop.state() != KillState::Unanswered {
+        return;
+    }
+    if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+        runtime.spawn(async move {
+            tokio::time::sleep(QUARANTINE).await;
+            drop(session);
+        });
     }
 }
 

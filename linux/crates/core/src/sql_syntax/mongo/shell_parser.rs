@@ -387,7 +387,7 @@ impl<'a> Parser<'a> {
 
 /// The value of a quoted string, its escapes read as JavaScript reads
 /// them.
-fn decode_string(quoted: &str, at: usize) -> Result<String, ShellSyntaxError> {
+pub(crate) fn decode_string(quoted: &str, at: usize) -> Result<String, ShellSyntaxError> {
     let mut chars = quoted.chars();
     let quote = chars.next().unwrap_or('"');
     let inner = chars.as_str().strip_suffix(quote).unwrap_or(chars.as_str());

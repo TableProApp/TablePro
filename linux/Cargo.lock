@@ -5075,7 +5075,6 @@ dependencies = [
  "bson",
  "chrono",
  "mongodb",
- "rustls",
  "rustls-pki-types",
  "secrecy",
  "serde_json",

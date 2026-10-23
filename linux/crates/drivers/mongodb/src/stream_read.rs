@@ -50,9 +50,24 @@ async fn stream_on(
     kill: &Arc<SessionKill>,
 ) -> Result<StreamSummary, DriverError> {
     let mut session = session(endpoint, client, kill).await?;
-    if stop.is_requested() {
-        return Err(DriverError::Cancelled);
-    }
+    let streamed = match stop.is_requested() {
+        true => Err(DriverError::Cancelled),
+        false => stream_in(endpoint, client, database, plans, sink, &mut session).await,
+    };
+    // The export's client closes with it, so no later call takes this
+    // session from its pool, and a graceful close waits for it.
+    drop(session);
+    streamed
+}
+
+async fn stream_in(
+    endpoint: &MongoEndpoint,
+    client: &Client,
+    database: &str,
+    plans: Vec<Planned>,
+    sink: &mut dyn ResultSink,
+    session: &mut ClientSession,
+) -> Result<StreamSummary, DriverError> {
     let mut rows = 0;
     let mut current = database.to_owned();
     for planned in plans {
@@ -61,17 +76,17 @@ async fn stream_on(
             Planned::Typed(statement) => plan(&statement, &current, &[])?,
         };
         if planned.discovers_columns() {
-            let fields = census(endpoint, client, &mut session, planned.clone()).await?;
+            let fields = census(endpoint, client, session, planned.clone()).await?;
             planned.name_columns(fields);
         }
-        let source = match start(endpoint, client, &mut session, planned).await? {
+        let source = match start(endpoint, client, session, planned).await? {
             Source::Used(next) => {
                 current = next;
                 continue;
             }
             source => source,
         };
-        let (flow, emitted) = emit(endpoint, source, &mut session, sink, None).await?;
+        let (flow, emitted) = emit(endpoint, source, session, sink, None).await?;
         rows += emitted;
         if flow == SinkFlow::ConsumerGone {
             return Err(DriverError::Cancelled);

@@ -174,11 +174,25 @@ fn collection_access(method: &str, args: &[ShellValue]) -> StatementAccess {
         _ if COLLECTION_READS.contains(&method) => StatementAccess::Read,
         "drop" => StatementAccess::Destructive,
         // Every document, as a DELETE or UPDATE with no WHERE.
-        "deleteMany" | "remove" | "updateMany" if args.first().is_none_or(ShellValue::is_empty_object) => {
+        "deleteMany" | "remove" | "updateMany" if args.first().is_none_or(matches_every_document) => {
+            StatementAccess::Destructive
+        }
+        "update"
+            if args.first().is_none_or(matches_every_document)
+                && matches!(
+                    args.get(2).and_then(|options| options.field("multi")),
+                    Some(ShellValue::Bool(true))
+                ) =>
+        {
             StatementAccess::Destructive
         }
         _ => StatementAccess::Write,
     }
+}
+
+/// A filter the methods read as every document: none, `null` or `{}`.
+fn matches_every_document(filter: &ShellValue) -> bool {
+    filter.is_empty_object() || matches!(filter, ShellValue::Null)
 }
 
 fn database_access(method: &str, args: &[ShellValue]) -> StatementAccess {
@@ -287,6 +301,16 @@ mod tests {
                 "db.runCommand({delete: 'users', deletes: [{q: {}, limit: 0}]})",
                 StatementAccess::Destructive,
             ),
+            ("db.users.deleteMany(null)", StatementAccess::Destructive),
+            (
+                "db.users.updateMany(null, {$set: {a: 1}})",
+                StatementAccess::Destructive,
+            ),
+            (
+                "db.users.update({}, {$set: {a: 1}}, {multi: true})",
+                StatementAccess::Destructive,
+            ),
+            ("db.users.update({}, {$set: {a: 1}})", StatementAccess::Write),
             (
                 "db.runCommand({delete: 'users', deletes: [{q: {}, limit: 1}]})",
                 StatementAccess::Write,

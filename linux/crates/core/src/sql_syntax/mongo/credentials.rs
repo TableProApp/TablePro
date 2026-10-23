@@ -1,4 +1,5 @@
 use super::shell_lexer::{ShellTokenKind, lex_shell};
+use super::shell_parser::decode_string;
 use crate::sql_syntax::{HistoryRecording, WithholdReason};
 
 /// Methods whose arguments carry a password: a user's, or the one the
@@ -36,11 +37,14 @@ pub fn history_recording(text: &str) -> HistoryRecording {
             CREDENTIAL_METHODS.contains(&word) || is_credential_key(word)
         }
         ShellTokenKind::String { .. } => {
+            // Read as the shell reads it, so an escape cannot hide a name.
             let quoted = token.text(text);
-            let inner = quoted.get(1..quoted.len().saturating_sub(1)).unwrap_or_default();
+            let inner = decode_string(quoted, token.range.start).unwrap_or_else(|_| quoted.to_owned());
             // `db['changeUserPassword'](...)` names the method in quotes.
             let member = punct(index.checked_sub(1), "[") && punct(Some(index + 1), "]");
-            (member && CREDENTIAL_METHODS.contains(&inner)) || is_credential_key(inner) || names_a_password(inner)
+            (member && CREDENTIAL_METHODS.contains(&inner.as_str()))
+                || is_credential_key(&inner)
+                || names_a_password(&inner)
         }
         _ => false,
     });
@@ -83,6 +87,9 @@ mod tests {
             "db.x.updateOne({_id: 1}, {$set: {password: 'x'}})",
             "db.createUser({user: 'ann', pwd: passwordPrompt(), roles: []",
             "db['changeUserPassword']('ann', 'new')",
+            "db['changeUserPass\\u0077ord']('ann', 'new')",
+            "db.x.updateOne({_id: 1}, {$set: {'p\\x77d': 'x'}})",
+            "db.x.insertOne({link: 'mongodb://ann:s3cret\\u0040db.example.com/shop'})",
             "db.getSiblingDB('admin')[\"createUser\"]({user: 'ann', roles: []})",
         ] {
             assert_eq!(history_recording(text), WITHHELD, "{text}");
