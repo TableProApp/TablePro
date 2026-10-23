@@ -199,7 +199,8 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
 }
 
 /// CHAR and VARCHAR may pair in a key, and the key matches them
-/// padded where `=` on the VARCHAR side does not.
+/// padded where `=` on the VARCHAR side does not. ENUM keys match by
+/// member number, whatever the members are called.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn a_key_says_whether_its_two_sides_compare_alike() {
@@ -210,10 +211,13 @@ async fn a_key_says_whether_its_two_sides_compare_alike() {
             connection.as_ref(),
             &[
                 "CREATE TABLE codes (code varchar(4) PRIMARY KEY, id int UNIQUE)",
+                "CREATE TABLE moods (mood enum('a','b') PRIMARY KEY)",
                 "CREATE TABLE tagged (id int PRIMARY KEY, padded char(4), longer varchar(8), owner int, \
+                 feeling enum('b','a'), \
                  CONSTRAINT tagged_padded FOREIGN KEY (padded) REFERENCES codes (code), \
                  CONSTRAINT tagged_longer FOREIGN KEY (longer) REFERENCES codes (code), \
-                 CONSTRAINT tagged_owner FOREIGN KEY (Owner) REFERENCES codes (ID))",
+                 CONSTRAINT tagged_owner FOREIGN KEY (Owner) REFERENCES codes (ID), \
+                 CONSTRAINT tagged_feeling FOREIGN KEY (feeling) REFERENCES moods (mood))",
             ],
         )
         .await;
@@ -240,7 +244,8 @@ async fn a_key_says_whether_its_two_sides_compare_alike() {
             ("tagged_owner", true),
             ("tagged_padded", false),
         ];
-        assert_eq!(out, expected, "{flavour:?}");
+        assert_eq!(out[0], ("tagged_feeling", false), "{flavour:?}");
+        assert_eq!(out[1..], expected, "{flavour:?}");
         assert_eq!(into, expected, "{flavour:?}");
         connection.close().await.expect("a close");
     }

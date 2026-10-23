@@ -10,13 +10,15 @@ SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, COLLATION_NAME
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = COALESCE(?, DATABASE()) AND TABLE_NAME = ?";
 
-/// A column's type, sign and collation. A key may pair CHAR with VARCHAR
-/// or BINARY with VARBINARY, which compare padded where `=` on one side
-/// does not, so the type is compared by name.
+/// A column's type and collation. A key may pair CHAR with VARCHAR or
+/// BINARY with VARBINARY, which compare padded where `=` on one side
+/// does not, so the type is compared by name. InnoDB compares a key by
+/// the stored form, so an ENUM by member number and a DECIMAL by its
+/// encoded digits: their members, precision and scale count too.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ColumnComparison {
     data_type: String,
-    unsigned: bool,
+    parameters: String,
     collation: Option<String>,
 }
 
@@ -27,17 +29,34 @@ pub(crate) type TableComparisons = HashMap<String, ColumnComparison>;
 pub(crate) fn column_comparisons(rows: &[CatalogCells]) -> Result<TableComparisons, DriverError> {
     rows.iter()
         .map(|row| {
-            let column_type = row.required_text(2)?.to_ascii_lowercase();
+            let data_type = row.required_text(1)?.to_ascii_lowercase();
+            let parameters = parameters(&data_type, &row.required_text(2)?);
             Ok((
                 row.required_text(0)?.to_lowercase(),
                 ColumnComparison {
-                    data_type: row.required_text(1)?.to_ascii_lowercase(),
-                    unsigned: column_type.contains("unsigned"),
+                    data_type,
+                    parameters,
                     collation: row.text(3)?,
                 },
             ))
         })
         .collect()
+}
+
+/// What of COLUMN_TYPE changes how a key compares: an integer's sign,
+/// not its display width; no string's length; every other type's whole
+/// spelling, members in their own case.
+fn parameters(data_type: &str, column_type: &str) -> String {
+    match data_type {
+        "tinyint" | "smallint" | "mediumint" | "int" | "bigint" => {
+            match column_type.to_ascii_lowercase().contains("unsigned") {
+                true => "unsigned".to_owned(),
+                false => String::new(),
+            }
+        }
+        "char" | "varchar" | "binary" | "varbinary" => String::new(),
+        _ => column_type.to_owned(),
+    }
 }
 
 /// Whether each column of `from` compares like the column of `to` it
@@ -80,6 +99,31 @@ mod tests {
 
     fn names(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn enum_members_and_decimal_digits_count_and_widths_and_lengths_do_not() {
+        let child = table(&[
+            [Some("mood"), Some("enum"), Some("enum('b','a')"), Some("utf8mb4_bin")],
+            [Some("price"), Some("decimal"), Some("decimal(10,2)"), None],
+            [Some("owner"), Some("int"), Some("int(11)"), None],
+            [Some("code"), Some("varchar"), Some("varchar(8)"), Some("utf8mb4_bin")],
+            [Some("label"), Some("enum"), Some("enum('a','B')"), Some("utf8mb4_bin")],
+        ]);
+        let parent = table(&[
+            [Some("mood"), Some("enum"), Some("enum('a','b')"), Some("utf8mb4_bin")],
+            [Some("price"), Some("decimal"), Some("decimal(12,2)"), None],
+            [Some("owner"), Some("int"), Some("int"), None],
+            [Some("code"), Some("varchar"), Some("varchar(4)"), Some("utf8mb4_bin")],
+            [Some("label"), Some("enum"), Some("enum('a','b')"), Some("utf8mb4_bin")],
+        ]);
+        let alike = |column: &str| compares_alike(&child, &names(&[column]), &parent, &names(&[column]));
+
+        assert!(!alike("mood"), "members in another order");
+        assert!(!alike("price"), "another precision");
+        assert!(alike("owner"), "a display width");
+        assert!(alike("code"), "a length");
+        assert!(!alike("label"), "a member in another case");
     }
 
     #[test]

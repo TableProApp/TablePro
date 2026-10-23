@@ -29,9 +29,9 @@ impl RowReference {
             parent_compares_alike,
         } = key;
         let cells = key_cells(&key.columns, columns, values)?;
-        let filter = key_filter(&key.name, cells, &key.ref_columns)?;
         let table = target(source, key.ref_schema.as_deref(), &key.ref_table)?;
         compared_alike(*parent_compares_alike, &table)?;
+        let filter = key_filter(&key.name, cells, &key.ref_columns)?;
         Ok(Self { table, filter })
     }
 
@@ -44,9 +44,9 @@ impl RowReference {
         values: &[Value],
     ) -> Result<Self, ReferenceError> {
         let cells = key_cells(&key.referenced_columns, columns, values)?;
-        let filter = key_filter(&key.name, cells, &key.columns)?;
         let table = target(source, key.table.schema.as_deref(), &key.table.name)?;
         compared_alike(key.child_compares_alike, &table)?;
+        let filter = key_filter(&key.name, cells, &key.columns)?;
         Ok(Self { table, filter })
     }
 }
@@ -110,8 +110,8 @@ fn key_filter(key: &str, cells: Vec<(&ColumnType, &Value)>, targets: &[String]) 
 /// The text the filter parses back into `value`: a blob in the `0x`
 /// form an export writes, anything else as an editor would start from.
 /// The other side reads it under a type that compares alike with this
-/// column's, so text this column's own type does not read, such as a
-/// word SQLite keeps in an INTEGER column, has no filter.
+/// column's, so text this column's own type does not read back as the
+/// same value has no filter.
 fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
     let text = match value {
         Value::Bytes(bytes) if matches!(column_type.kind, ColumnKind::Bytes { .. }) => {
@@ -123,7 +123,35 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
             EditText::ReadOnly(_) => return None,
         },
     };
-    parse_filter_text(&text, column_type).is_ok().then_some(text)
+    let parsed = parse_filter_text(&text, column_type).ok()?;
+    // A column that keeps each value in the class it was given, as
+    // SQLite's do, matches a key on that class and value: 'true' in a
+    // BOOLEAN column would be bound as 1 and find another row.
+    let kept = !column_type.dynamic_storage || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
+    kept.then_some(text)
+}
+
+/// A value as a column of dynamic storage keeps it.
+#[derive(Debug, PartialEq)]
+enum StoredForm<'a> {
+    Integer(i128),
+    Real(f64),
+    Text(String),
+    Blob(&'a [u8]),
+}
+
+fn stored_form(value: &Value) -> Option<StoredForm<'_>> {
+    Some(match value {
+        Value::Null => return None,
+        Value::Bool(flag) => StoredForm::Integer(i128::from(*flag)),
+        Value::Int(integer) => StoredForm::Integer(i128::from(*integer)),
+        Value::UInt(integer) => StoredForm::Integer(i128::from(*integer)),
+        Value::WideInt(integer) => StoredForm::Integer(integer.to_i128()?),
+        Value::Float32(real) => StoredForm::Real(f64::from(*real)),
+        Value::Float64(real) => StoredForm::Real(*real),
+        Value::Bytes(bytes) => StoredForm::Blob(bytes),
+        other => StoredForm::Text(crate::export::value_to_text(other)?),
+    })
 }
 
 fn target(source: &TableRef, schema: Option<&str>, name: &str) -> Result<TableRef, ReferenceError> {
@@ -138,7 +166,7 @@ mod tests {
     use super::*;
 
     fn text_column(name: &str) -> ResultColumn {
-        ResultColumn::new(name, ColumnType::untyped_text("text"))
+        typed(name, ColumnKind::Other)
     }
 
     fn typed(name: &str, kind: ColumnKind) -> ResultColumn {
@@ -152,6 +180,13 @@ mod tests {
                 read_form: crate::column::ReadForm::Native,
             },
         )
+    }
+
+    /// A column of a table that is not STRICT, as SQLite reads one.
+    fn dynamic(name: &str, kind: ColumnKind) -> ResultColumn {
+        let mut column = typed(name, kind);
+        column.column_type.dynamic_storage = true;
+        column
     }
 
     fn orders() -> TableRef {
@@ -276,34 +311,50 @@ mod tests {
     }
 
     #[test]
-    fn a_value_its_own_column_type_does_not_read_is_refused() {
-        let mut integer = typed(
-            "customer_id",
+    fn a_value_dynamic_storage_would_bind_as_another_is_refused() {
+        let main = TableRef::new(None, "orders".to_owned());
+        let key = key(&["customer_id"], None, &["id"]);
+        let text_of = |kind: ColumnKind, value: Value| {
+            RowReference::referenced(&main, &key, &[dynamic("customer_id", kind)], &[value])
+                .map(|reference| reference.filter.rules)
+        };
+        let integer = || {
             ColumnKind::Integer(crate::column::IntegerKind {
                 width: crate::column::IntegerWidth::W64,
                 signed: true,
-            }),
-        );
-        integer.column_type.dynamic_storage = true;
-        let key = key(&["customer_id"], None, &["id"]);
-        let main = TableRef::new(None, "orders".to_owned());
+            })
+        };
+        let boolean = || ColumnKind::Bool(crate::column::BoolStorage::Integer);
+        let refused = Err(ReferenceError::NoFilterText {
+            column: "id".to_owned(),
+        });
 
-        let error = RowReference::referenced(
-            &main,
-            &key,
-            std::slice::from_ref(&integer),
-            &[Value::Text("n/a".to_owned())],
-        )
-        .expect_err("a word SQLite kept in an INTEGER column");
-        let reference = RowReference::referenced(&main, &key, &[integer], &[Value::Int(7)]).expect("a number");
-
+        assert_eq!(text_of(integer(), Value::Int(7)), Ok(vec![eq("id", "7")]));
+        assert_eq!(text_of(integer(), Value::Text("n/a".to_owned())), refused, "a word");
         assert_eq!(
-            error,
-            ReferenceError::NoFilterText {
-                column: "id".to_owned()
-            }
+            text_of(boolean(), Value::Text("true".to_owned())),
+            refused,
+            "text that reads as 1"
         );
-        assert_eq!(reference.filter.rules, vec![eq("id", "7")]);
+        assert!(text_of(boolean(), Value::Int(1)).is_ok());
+        assert_eq!(
+            text_of(ColumnKind::Date, Value::Text(" 2026-01-01".to_owned())),
+            refused,
+            "a date the parse trims"
+        );
+        assert_eq!(
+            text_of(ColumnKind::Date, Value::Text("2026-01-01".to_owned())),
+            Ok(vec![eq("id", "2026-01-01")])
+        );
+        assert_eq!(
+            text_of(ColumnKind::Other, Value::Int(5)),
+            refused,
+            "a number bound as text"
+        );
+        assert_eq!(
+            text_of(ColumnKind::Other, Value::Text("ab-12".to_owned())),
+            Ok(vec![eq("id", "ab-12")])
+        );
     }
 
     #[test]
