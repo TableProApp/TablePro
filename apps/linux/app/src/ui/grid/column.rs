@@ -191,11 +191,6 @@ pub(super) fn build_column(
             if row.draft_id().is_some() {
                 vec!["tp-row-pending-insert"]
             } else {
-                let pk_values: Vec<Value> = tab_ctx_for_bind
-                    .pk_col_indices
-                    .iter()
-                    .map(|&i| row.cell_value(i))
-                    .collect();
                 crate::services::change_tracker::with_tab_ref(_tab_id, |t| {
                     let mut v: Vec<&'static str> = Vec::new();
                     let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) else {
@@ -245,7 +240,7 @@ pub(super) fn build_column(
             apply_pending_description(label.upcast_ref(), &pending_classes);
             label.set_strikethrough(is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
-            ROW_KEY_SLOT.set(&label, pk_values.clone());
+            ROW_KEY_SLOT.set(&label, pk_values);
             if inline_editable && let Some(value) = &value {
                 FULL_EDIT_TEXT_SLOT.set(&label, value_to_full_edit_text(value));
                 if let Some(kind) = super::full_value_editor::edit_kind(&column_info.data_type, value) {
@@ -275,7 +270,7 @@ pub(super) fn build_column(
             apply_pending_description(checkbox.upcast_ref(), &pending_classes);
             checkbox.set_opacity(if is_pending_delete { 0.5 } else { 1.0 });
             POSITION_SLOT.set(&checkbox, item.position());
-            ROW_KEY_SLOT.set(&checkbox, pk_values.clone());
+            ROW_KEY_SLOT.set(&checkbox, pk_values);
         } else if let Ok(label) = child.downcast::<gtk4::Label>() {
             label.set_text(text.as_ref());
             apply_cell_tooltip(label.upcast_ref(), text.as_ref(), is_null);
