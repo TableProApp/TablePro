@@ -35,7 +35,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Coverage tools
         run: |
@@ -68,7 +73,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         run: bash src/scripts/docker-hub-login.sh
@@ -121,7 +131,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Mutation tool
         run: |
@@ -162,7 +177,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Select isolated MCP HTTP port
         run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.run }}"
@@ -192,7 +212,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Build the Arch package in a container and upgrade from the released one
         run: |
@@ -211,7 +236,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Shared value contracts across drivers, GTK and DuckDB
         run: |

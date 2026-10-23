@@ -30,6 +30,7 @@ env:
 jobs:
   guards:
     runs-on: any-host
+    timeout-minutes: 90
     steps:
       - name: Check out
         env:
@@ -37,7 +38,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Script harness and guards
         run: |
@@ -53,6 +59,7 @@ jobs:
 
   clippy:
     runs-on: any-host
+    timeout-minutes: 90
     steps:
       - name: Check out
         env:
@@ -60,7 +67,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Clippy
         run: |
@@ -68,6 +80,7 @@ jobs:
 
   unit:
     runs-on: any-host
+    timeout-minutes: 90
     steps:
       - name: Check out
         env:
@@ -75,7 +88,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Unit tests
         env:
@@ -87,6 +105,7 @@ jobs:
 
   sandbox:
     runs-on: any-host
+    timeout-minutes: 90
     steps:
       - name: Check out
         env:
@@ -94,7 +113,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Sandbox tier
         env:
@@ -105,6 +129,7 @@ jobs:
 
   widgets:
     runs-on: any-host
+    timeout-minutes: 90
     steps:
       - name: Check out
         env:
@@ -112,7 +137,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: GTK widget tests
         run: |
@@ -138,7 +168,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -181,7 +216,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -223,7 +263,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -250,7 +295,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -286,7 +336,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -313,7 +368,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -340,7 +400,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -367,7 +432,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -391,7 +461,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -428,7 +503,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -454,7 +534,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Docker Hub login
         env:
@@ -481,7 +566,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Secret Service tier
         run: |
@@ -501,7 +591,12 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           rm -rf src
-          git clone --quiet "http://oauth2:${TOKEN}@${SERVER#http://}/${{ github.repository }}.git" src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
       - name: Supply-chain tools
         run: |

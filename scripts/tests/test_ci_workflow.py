@@ -23,6 +23,27 @@ port_spec.loader.exec_module(port_helper)
 
 
 class CiWorkflowTests(unittest.TestCase):
+    def test_forgejo_jobs_bound_runtime_and_scope_checkout_credentials(self):
+        for name in ("ci", "nightly"):
+            workflow = (ROOT / f".forgejo/workflows/{name}.yml").read_text()
+            jobs = workflow.split("\njobs:\n", 1)[1]
+            headings = list(re.finditer(r"^  ([A-Za-z0-9_-]+):\s*$", jobs, re.MULTILINE))
+            self.assertTrue(headings, name)
+            for index, heading in enumerate(headings):
+                end = headings[index + 1].start() if index + 1 < len(headings) else len(jobs)
+                block = jobs[heading.start() : end]
+                self.assertRegex(block, r"(?m)^    timeout-minutes: [1-9][0-9]*$", heading.group(1))
+
+            self.assertNotRegex(workflow, r"https?://oauth2:\$\{TOKEN\}@")
+            lines = workflow.splitlines()
+            clone_lines = [index for index, line in enumerate(lines) if "git clone --quiet" in line]
+            self.assertTrue(clone_lines, name)
+            for index in clone_lines:
+                setup = "\n".join(lines[max(0, index - 4) : index])
+                self.assertIn('GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader"', setup)
+                self.assertIn('GIT_CONFIG_VALUE_0="Authorization: Basic $auth"', setup)
+                self.assertEqual(lines[index + 1].strip(), "unset TOKEN auth")
+
     def test_cargo_about_comes_from_the_pinned_installer_and_is_never_built_in_ci(self):
         for path in (
             ".github/workflows/build-linux.yml",
