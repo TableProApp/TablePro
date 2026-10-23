@@ -11,6 +11,7 @@ use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
 use crate::foreign_key_info::ForeignKeyInfo;
+use crate::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use crate::link_watch::LinkState;
 use crate::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use crate::query_result::QueryResult;
@@ -20,6 +21,7 @@ use crate::row_limit::RowLimit;
 use crate::server_info::ServerInfo;
 use crate::statement::Statement;
 use crate::stream_summary::StreamSummary;
+use crate::unsupported_feature::UnsupportedFeature;
 use crate::write_batch::WriteBatch;
 use crate::write_report::WriteReport;
 
@@ -124,4 +126,26 @@ pub trait Connection: Send + Sync {
     /// Stop every call and release the pool. Safe to call more than
     /// once, and it never closes an editor session.
     async fn close(&self) -> Result<(), DriverError>;
+
+    /// A key-value engine's keys: those matching the scan's pattern, up to
+    /// its limit, read in steps that never hold the server for long. A
+    /// relational engine keeps this default.
+    async fn scan_keys(&self, _scan: &KeyScan, _options: CallOptions) -> Result<KeyListing, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::Keys,
+        })
+    }
+
+    /// One window of a key's value, or `None` when the key does not
+    /// exist. `key` is the name `scan_keys` listed.
+    async fn read_key(
+        &self,
+        _key: &str,
+        _window: &KeyWindow,
+        _options: CallOptions,
+    ) -> Result<Option<KeyPage>, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::Keys,
+        })
+    }
 }

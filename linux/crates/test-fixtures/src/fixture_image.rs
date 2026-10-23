@@ -71,6 +71,14 @@ impl FixtureImage {
         name: "clickhouse/clickhouse-server",
         tag: "26.3",
     };
+    pub const REDIS: Self = Self {
+        name: "redis",
+        tag: "8.10-alpine",
+    };
+    pub const REDIS_7_4: Self = Self {
+        name: "redis",
+        tag: "7.4-alpine",
+    };
     pub const PGBOUNCER: Self = Self {
         name: "edoburu/pgbouncer",
         tag: "v1.25.2-p0",

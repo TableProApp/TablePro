@@ -205,12 +205,14 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
     },
 };
 
-pub(crate) fn rules_for(grammar: SqlGrammar) -> &'static ScriptRules {
+/// `None` for Redis, whose commands have no SQL rules.
+pub(crate) fn rules_for(grammar: SqlGrammar) -> Option<&'static ScriptRules> {
     match grammar {
-        SqlGrammar::PostgreSql => &POSTGRESQL,
-        SqlGrammar::MySql => &MYSQL,
-        SqlGrammar::Sqlite => &SQLITE,
-        SqlGrammar::MsSql => &MSSQL,
-        SqlGrammar::ClickHouse => &CLICKHOUSE,
+        SqlGrammar::PostgreSql => Some(&POSTGRESQL),
+        SqlGrammar::MySql => Some(&MYSQL),
+        SqlGrammar::Sqlite => Some(&SQLITE),
+        SqlGrammar::MsSql => Some(&MSSQL),
+        SqlGrammar::ClickHouse => Some(&CLICKHOUSE),
+        SqlGrammar::Redis => None,
     }
 }

@@ -45,8 +45,17 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
             .hexpand(true)
             .ellipsize(pango::EllipsizeMode::End)
             .build();
+        // A key's type, as a dim suffix: its icon alone would leave the
+        // user to learn which picture means a sorted set.
+        let kind = gtk::Label::builder()
+            .visible(false)
+            .accessible_role(gtk::AccessibleRole::Presentation)
+            .build();
+        kind.add_css_class("dimmed");
+        kind.add_css_class("caption");
         row.append(&icon);
         row.append(&label);
+        row.append(&kind);
         row.add_controller(click_gesture(view.clone(), item));
         item.set_child(Some(&row));
         if let Some(view) = view.upgrade() {
@@ -68,8 +77,17 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
         {
             icon.set_icon_name(Some(&icon_name));
         }
-        if let Some(label) = row.last_child().and_downcast::<gtk::Label>() {
+        if let Some(label) = row
+            .first_child()
+            .and_then(|icon| icon.next_sibling())
+            .and_downcast::<gtk::Label>()
+        {
             label.set_label(&object.name());
+        }
+        if let Some(kind) = row.last_child().and_downcast::<gtk::Label>() {
+            let shown = object.type_label();
+            kind.set_visible(shown.is_some());
+            kind.set_label(shown.as_deref().unwrap_or_default());
         }
         // The getter's binding cannot read an unset description, which a
         // new row has; the property can.

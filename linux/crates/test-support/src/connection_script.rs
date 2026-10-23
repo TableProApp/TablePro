@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::ddl::TableDefinition;
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::keyspace::{KeyListing, KeyPage};
 use tablepro_core::meta::{ObjectInfo, RowIdentity, SchemaInfo, TableEstimate};
 use tablepro_core::{
     ColumnInfo, CommitResolution, EditorSession, ForeignKeyInfo, IndexInfo, QueryResult, ResultEvent, ServerInfo,
@@ -40,6 +41,10 @@ pub struct ConnectionScript {
     pub write_batch: Replies<FakeReply<WriteReport>>,
     pub resolve_commit: Replies<FakeReply<CommitResolution>>,
     pub open_editor_session: Replies<FakeReply<Arc<dyn EditorSession>>>,
+    /// Keyed by the pattern asked for, `None` for every key.
+    pub scan_keys: Replies<FakeReply<KeyListing>>,
+    /// Keyed by the key's name.
+    pub read_key: Replies<FakeReply<Option<KeyPage>>>,
 }
 
 impl Default for ConnectionScript {
@@ -65,6 +70,8 @@ impl Default for ConnectionScript {
             write_batch: Replies::default(),
             resolve_commit: Replies::default(),
             open_editor_session: Replies::default(),
+            scan_keys: Replies::default(),
+            read_key: Replies::default(),
         }
     }
 }

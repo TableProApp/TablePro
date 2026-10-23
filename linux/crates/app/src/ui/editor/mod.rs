@@ -111,8 +111,15 @@ impl SqlEditor {
             hold: init.hold,
             close_timeout: init.close_timeout,
         });
-        let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_owned());
-        let buffer = match sourceview5::LanguageManager::default().language("sql") {
+        let sql = editor.grammar().is_sql();
+        let sample = if sql { "SELECT 1;" } else { "PING" };
+        let initial_text = init.initial_query.unwrap_or_else(|| sample.to_owned());
+        // GtkSourceView has no language for an engine's commands, so they
+        // show as plain text rather than wrongly coloured as SQL.
+        let language = sql
+            .then(|| sourceview5::LanguageManager::default().language("sql"))
+            .flatten();
+        let buffer = match language {
             Some(language) => sourceview5::Buffer::with_language(&language),
             None => sourceview5::Buffer::new(None),
         };
@@ -127,7 +134,7 @@ impl SqlEditor {
             }
         });
         editor.connect_theme(&init.settings);
-        editor.connect_completion(&buffer);
+        editor.connect_completion(&buffer, sql);
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
@@ -266,6 +273,10 @@ impl SqlEditor {
             return;
         }
         let grammar = self.grammar();
+        // The formatter knows only SQL's layout.
+        if !grammar.is_sql() {
+            return;
+        }
         let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
         let formatted = format_plan::format_script(&text, grammar, settings);
         if formatted == text {
@@ -367,9 +378,9 @@ impl SqlEditor {
         self.imp().deps.get()
     }
 
-    /// The SQL grammar of the server the editor is pointed at, which
-    /// decides where statements begin and end. With no connection the
-    /// split still has to work, and PostgreSQL's is the strictest.
+    /// The grammar of the server the editor is pointed at, which decides
+    /// where statements begin and end. With no connection the split
+    /// still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
         self.deps()
             .and_then(|deps| deps.session.get())
@@ -559,6 +570,7 @@ impl SqlEditor {
             usize::try_from(index).ok()?,
             entry,
             grid_sink,
+            self.grammar().is_sql(),
             actions,
         ))
     }
@@ -676,10 +688,12 @@ impl SqlEditor {
         self.imp().app_handlers.replace(handlers);
     }
 
-    fn connect_completion(&self, buffer: &sourceview5::Buffer) {
+    /// The catalog's tables and the SQL keywords where the engine speaks
+    /// SQL, and the words in the document everywhere.
+    fn connect_completion(&self, buffer: &sourceview5::Buffer, sql: bool) {
         let completion = self.imp().source_view.completion();
         let mut providers = self.imp().completion_providers.borrow_mut();
-        if let Some(deps) = self.deps() {
+        if let Some(deps) = self.deps().filter(|_| sql) {
             let catalog = completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone());
             completion.add_provider(&catalog);
             providers.push(catalog.upcast());

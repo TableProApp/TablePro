@@ -11,17 +11,24 @@ use super::{GridContent, GridSink, GridSorting, RowObject, TabGridContext, build
 /// The rows reach the view through a `GtkSortListModel` on the view's
 /// own sorter, so every selection, copy, menu and export reads the row
 /// at its place on screen.
+///
+/// `in_clause` is false for an engine without SQL, whose rows have no
+/// `IN` list to copy as.
 pub(crate) fn build_result_grid(
     columns: Arc<[ResultColumn]>,
     rows: Vec<RowObject>,
     sink: GridSink,
+    in_clause: bool,
 ) -> (gtk::ColumnView, gtk::MultiSelection) {
     build_column_view(
         GridContent { columns, rows },
         &[],
         sink,
         GridSorting::Client,
-        TabGridContext::default(),
+        TabGridContext {
+            in_clause,
+            ..TabGridContext::default()
+        },
     )
 }
 
@@ -44,7 +51,7 @@ mod tests {
 
     fn grid(columns: &[ColumnInfo], rows: Vec<Vec<Value>>, sink: GridSink) -> (gtk::ColumnView, gtk::MultiSelection) {
         let rows = rows.into_iter().map(|cells| RowObject::result(cells.into())).collect();
-        build_result_grid(columns.iter().map(ColumnInfo::result_column).collect(), rows, sink)
+        build_result_grid(columns.iter().map(ColumnInfo::result_column).collect(), rows, sink, true)
     }
 
     fn sort(view: &gtk::ColumnView, column: u32, order: gtk::SortType) {
@@ -228,7 +235,7 @@ mod tests {
             RowObject::result(vec![text("1"), text("Coffee"), text("7"), text("23.79")].into()),
             RowObject::result(vec![text("2"), text("Tea"), Value::Null, text("10.58")].into()),
         ];
-        let (view, _selection) = build_result_grid(columns, rows, recorder().0);
+        let (view, _selection) = build_result_grid(columns, rows, recorder().0, true);
         let window = gtk::Window::new();
         window.set_child(Some(&view));
         window.present();

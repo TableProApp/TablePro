@@ -23,6 +23,10 @@ pub(crate) enum TabSpec {
     Structure {
         target: StructureTarget,
     },
+    /// A key-value engine's key, by the name the sidebar lists it as.
+    Key {
+        key: String,
+    },
 }
 
 /// Where a table tab opens in its rows.

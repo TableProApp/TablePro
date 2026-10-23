@@ -38,6 +38,9 @@ pub(crate) enum ExportOrigin {
         shown_rows: u64,
         truncated: bool,
     },
+    /// Rows read a window at a time with no query behind them that could
+    /// read them all again, such as a key's value.
+    Shown { rows: ExportSource },
 }
 
 /// Which rows a scope exports.
@@ -94,6 +97,15 @@ fn scope_choices_with(origin: &ExportOrigin, format: impl Fn(u64) -> String) -> 
                 },
             ]
         }
+        ExportOrigin::Shown { rows } => {
+            let shown = rows.row_count().unwrap_or_default() as u64;
+            vec![ScopeChoice {
+                title: gettext("Shown Rows"),
+                subtitle: rows_text(shown, &format),
+                source: ScopeSource::Shown,
+                expected: Some(ExpectedRows::Exact(shown)),
+            }]
+        }
         ExportOrigin::Editor { shown_rows, .. } => vec![
             ScopeChoice {
                 title: gettext("Shown Rows"),
@@ -119,7 +131,7 @@ impl ExportOrigin {
     pub(crate) fn preselected(&self) -> ScopeSource {
         match self {
             Self::Editor { truncated: true, .. } => ScopeSource::Query,
-            Self::Browse { .. } | Self::Editor { .. } => ScopeSource::Shown,
+            Self::Browse { .. } | Self::Editor { .. } | Self::Shown { .. } => ScopeSource::Shown,
         }
     }
 
@@ -129,6 +141,7 @@ impl ExportOrigin {
         match self {
             Self::Browse { page, .. } => page,
             Self::Editor { shown, .. } => shown,
+            Self::Shown { rows } => rows,
         }
     }
 
@@ -138,6 +151,7 @@ impl ExportOrigin {
         let (shown, query) = match self {
             Self::Browse { page, query, .. } => (page, query),
             Self::Editor { shown, query, .. } => (shown, query),
+            Self::Shown { rows } => return (source == ScopeSource::Shown).then_some(rows),
         };
         match source {
             ScopeSource::Shown => Some(shown),

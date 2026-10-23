@@ -58,6 +58,11 @@ pub(crate) struct SidebarInner {
     middle_pressed: RefCell<Option<TableRef>>,
     handlers: RefCell<Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>>,
     hover: RefCell<Option<gtk::EventControllerMotion>>,
+    /// Whether the list holds keys, which the server matched against the
+    /// search, rather than tables the list filters itself.
+    keys: Cell<bool>,
+    /// Whether the keys shown are those a search matched.
+    searched: Cell<bool>,
 }
 
 impl SidebarView {
@@ -107,6 +112,8 @@ impl SidebarView {
             middle_pressed: RefCell::new(None),
             handlers: RefCell::new(Vec::new()),
             hover: RefCell::new(None),
+            keys: Cell::new(false),
+            searched: Cell::new(false),
         });
         inner.list_view.set_factory(Some(&row_factory(Rc::downgrade(&inner))));
         let headers = header_factory(Rc::downgrade(&inner));
@@ -144,6 +151,23 @@ impl SidebarView {
         self.show(SidebarIndex::build(objects, schemas));
     }
 
+    /// List a key-value engine's keys from now on. Its search goes to the
+    /// server, so the list shows what came back as it is.
+    pub(crate) fn hold_keys(&self) {
+        self.inner.keys.set(true);
+        self.inner
+            .list_view
+            .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Keys"))]);
+        self.inner.refresh_placeholder();
+    }
+
+    /// Show the keys a listing found, `searched` when a search picked
+    /// them.
+    pub(crate) fn show_keys(&self, index: SidebarIndex, searched: bool) {
+        self.inner.searched.set(searched);
+        self.show(index);
+    }
+
     pub(crate) fn set_query(&self, query: &str) {
         if let Some(asked) = self.inner.model.set_query(query) {
             work_out_rows(&self.inner, asked);
@@ -177,6 +201,13 @@ impl SidebarView {
                 SidebarView { inner: view }.set_query(&entry.text());
             }
         });
+        self.inner.remember(entry, handler);
+    }
+
+    /// Ask for a new listing as the user types in `entry`; the server
+    /// matches the search, so the list does not filter itself.
+    pub(crate) fn follow_key_search(&self, entry: &gtk::SearchEntry, changed: impl Fn() + 'static) {
+        let handler = entry.connect_search_changed(move |_| changed());
         self.inner.remember(entry, handler);
     }
 
@@ -430,14 +461,23 @@ impl SidebarInner {
             self.root.set_visible_child_name(LIST_PAGE);
             return;
         }
-        if self.model.has_query() {
+        let keys = self.keys.get();
+        if self.model.has_query() || (keys && self.searched.get()) {
             self.empty.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
-            self.empty.set_title(&crate::i18n::gettext("No Matching Tables"));
+            self.empty.set_title(&if keys {
+                crate::i18n::gettext("No Matching Keys")
+            } else {
+                crate::i18n::gettext("No Matching Tables")
+            });
             self.empty
                 .set_description(Some(&crate::i18n::gettext("Try a different search.")));
         } else {
             self.empty.set_icon_name(Some(crate::ui::icons::VIEW_GRID));
-            self.empty.set_title(&crate::i18n::gettext("No Tables"));
+            self.empty.set_title(&if keys {
+                crate::i18n::gettext("No Keys")
+            } else {
+                crate::i18n::gettext("No Tables")
+            });
             self.empty.set_description(None);
         }
         self.root.set_visible_child_name(EMPTY_PAGE);

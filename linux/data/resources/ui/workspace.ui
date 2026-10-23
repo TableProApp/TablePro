@@ -82,6 +82,14 @@
                             <property name="action-name">win.refresh-tables</property>
                           </object>
                         </child>
+                        <child type="top">
+                          <!-- A database of keys can hold millions, and a
+                               listing stops at its limit. -->
+                          <object class="AdwBanner" id="key_limit_banner">
+                            <property name="use-markup">false</property>
+                            <property name="title" translatable="yes">Not every key is listed. Search to narrow the list.</property>
+                          </object>
+                        </child>
                         <property name="content">
                           <object class="AdwBin" id="sidebar_slot">
                             <property name="vexpand">true</property>

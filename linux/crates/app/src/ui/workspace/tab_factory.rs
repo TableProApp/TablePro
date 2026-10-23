@@ -18,7 +18,8 @@ use super::tab_title::resolve_tab_title;
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    EditorTabSlot, StructureTabSlot, TableTabSlot, WorkspaceInput, WorkspaceSender, WorkspaceTab, apply_tab_title,
+    EditorTabSlot, KeyTabSlot, StructureTabSlot, TableTabSlot, WorkspaceInput, WorkspaceSender, WorkspaceTab,
+    apply_tab_title,
 };
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -27,6 +28,7 @@ use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit};
 use crate::ui::editor::{SqlEditor, SqlEditorInit};
+use crate::ui::key_tab::{KeyTab, KeyTabEvent, KeyTabInit};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 use crate::ui::tab_load::FirstLoad;
 use crate::workspace::{DraftWriter, EditorFileRecord};
@@ -85,6 +87,7 @@ impl TabFactory {
             } => self.editor(id, initial_query, draft, file),
             TabSpec::Table { table, page } => self.table(id, table, page, first_load)?,
             TabSpec::Structure { target } => self.structure(id, target, first_load)?,
+            TabSpec::Key { key } => self.key(id, key, first_load)?,
         };
         Some(self.insert(id, slot))
     }
@@ -220,6 +223,26 @@ impl TabFactory {
             table,
             mode,
         }))
+    }
+
+    fn key(&self, id: Uuid, key: String, first_load: FirstLoad) -> Option<WorkspaceTab> {
+        let parts = &self.parts;
+        let session = parts.context.active.get()?;
+        let tab = KeyTab::new(KeyTabInit {
+            key,
+            session,
+            tasks: parts.context.tasks.clone(),
+            first_load,
+        });
+        let page = self.append(tab.widget(), id);
+        let follow = follow_loading(&page, tab.is_loading());
+        let input = parts.input.clone();
+        tab.connect_events(move |event| match event {
+            KeyTabEvent::LoadingChanged(loading) => follow(loading),
+            KeyTabEvent::Toast(text) => input.deliver(WorkspaceInput::ShowToast(text)),
+            KeyTabEvent::Export(offer) => input.deliver(WorkspaceInput::ExportResults { tab: id, offer }),
+        });
+        Some(WorkspaceTab::Key(KeyTabSlot { page, tab }))
     }
 
     /// The lowest number no open editor tab has, so two never share one.

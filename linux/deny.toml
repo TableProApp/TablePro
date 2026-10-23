@@ -33,6 +33,7 @@ allow = [
     "CDLA-Permissive-2.0",
     "LGPL-2.1-or-later",
     "0BSD",
+    "BSL-1.0",
 ]
 
 [licenses.private]

@@ -1,4 +1,4 @@
-use tablepro_core::{ReadOnlyEnforcement, SafeModeLevel};
+use tablepro_core::{DataModel, DriverCapabilities, ReadOnlyEnforcement, SafeModeLevel};
 
 pub(crate) fn label(level: SafeModeLevel) -> String {
     match level {
@@ -9,11 +9,17 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 }
 
 /// What the level does on this engine. Read-Only's guarantee differs by
-/// engine, so the row says which one the user is getting.
-pub(crate) fn subtitle(level: SafeModeLevel, enforcement: ReadOnlyEnforcement) -> String {
-    match (level, enforcement) {
+/// engine, so the row says which one the user is getting, and an engine
+/// of keys is told about in commands rather than statements.
+pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities) -> String {
+    let keys = capabilities.data_model == DataModel::KeyValue;
+    match (level, capabilities.read_only) {
+        (SafeModeLevel::Off, _) if keys => crate::i18n::gettext("Asks only before commands that empty a database or stop the server, such as FLUSHDB."),
         (SafeModeLevel::Off, _) => {
             crate::i18n::gettext("Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE.")
+        }
+        (SafeModeLevel::ConfirmWrites, _) if keys => {
+            crate::i18n::gettext("Asks before every command that changes the database.")
         }
         (SafeModeLevel::ConfirmWrites, _) => {
             crate::i18n::gettext("Asks before every statement that changes the database.")
@@ -26,6 +32,9 @@ pub(crate) fn subtitle(level: SafeModeLevel, enforcement: ReadOnlyEnforcement) -
         ),
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::LoginPrivileges) => crate::i18n::gettext(
             "TablePro refuses statements that write, but SQL Server cannot enforce this. Use a login granted only SELECT.",
+        ),
+        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::ClientGuard) => crate::i18n::gettext(
+            "TablePro refuses every command that writes before it is sent; the server has no read-only mode. Use an ACL user that may only read for a guarantee.",
         ),
     }
 }
@@ -62,22 +71,49 @@ mod tests {
         assert_eq!(from_action_target("readonly"), None);
     }
 
+    fn capabilities(data_model: DataModel, read_only: ReadOnlyEnforcement) -> DriverCapabilities {
+        DriverCapabilities {
+            data_model,
+            read_only,
+            ..tablepro_test_support::FakeDriver::NETWORK_CAPABILITIES
+        }
+    }
+
     #[test]
     fn read_only_says_what_each_engine_guarantees() {
         let enforcements = [
             ReadOnlyEnforcement::EngineEnforced,
             ReadOnlyEnforcement::SessionDefault,
             ReadOnlyEnforcement::LoginPrivileges,
+            ReadOnlyEnforcement::ClientGuard,
         ];
         let texts: HashSet<String> = enforcements
             .into_iter()
-            .map(|enforcement| subtitle(SafeModeLevel::ReadOnly, enforcement))
+            .map(|enforcement| subtitle(SafeModeLevel::ReadOnly, &capabilities(DataModel::Relational, enforcement)))
             .collect();
 
         assert_eq!(texts.len(), enforcements.len());
         assert_eq!(
-            subtitle(SafeModeLevel::ConfirmWrites, ReadOnlyEnforcement::EngineEnforced),
-            subtitle(SafeModeLevel::ConfirmWrites, ReadOnlyEnforcement::LoginPrivileges),
+            subtitle(
+                SafeModeLevel::ConfirmWrites,
+                &capabilities(DataModel::Relational, ReadOnlyEnforcement::EngineEnforced)
+            ),
+            subtitle(
+                SafeModeLevel::ConfirmWrites,
+                &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges)
+            ),
         );
+    }
+
+    #[test]
+    fn an_engine_of_keys_is_told_about_in_commands() {
+        let keys = capabilities(DataModel::KeyValue, ReadOnlyEnforcement::ClientGuard);
+        let tables = capabilities(DataModel::Relational, ReadOnlyEnforcement::ClientGuard);
+
+        for level in [SafeModeLevel::Off, SafeModeLevel::ConfirmWrites] {
+            assert_ne!(subtitle(level, &keys), subtitle(level, &tables), "{level:?}");
+            assert!(!subtitle(level, &keys).contains("statement"), "{level:?}");
+        }
+        assert!(subtitle(SafeModeLevel::ReadOnly, &keys).contains("before it is sent"));
     }
 }

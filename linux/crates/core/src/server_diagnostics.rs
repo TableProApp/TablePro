@@ -13,6 +13,8 @@ pub enum ServerCode {
     Tds { number: u32, state: u8, class: u8 },
     ClickHouse { code: i32 },
     Sqlite { primary: i32, extended: i32 },
+    /// The word a Redis error reply opens with, such as `WRONGTYPE`.
+    Redis { prefix: String },
 }
 
 impl ServerCode {
@@ -34,6 +36,7 @@ impl fmt::Display for ServerCode {
             Self::Tds { number, .. } => write!(f, "{number}"),
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
+            Self::Redis { prefix } => f.write_str(prefix),
         }
     }
 }

@@ -596,6 +596,7 @@ impl BrowseModel {
                 schema: self.schema.clone(),
                 table: self.table.clone(),
             }),
+            in_clause: true,
         }
     }
 

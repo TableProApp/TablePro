@@ -42,6 +42,8 @@ pub struct Workspace {
     #[template_child]
     pub catalog_banner: TemplateChild<adw::Banner>,
     #[template_child]
+    pub key_limit_banner: TemplateChild<adw::Banner>,
+    #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
     pub content_root: TemplateChild<adw::ToolbarView>,

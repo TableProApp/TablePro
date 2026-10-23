@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use tablepro_core::ddl::TableDefinition;
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use tablepro_core::meta::{ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
@@ -446,6 +447,38 @@ impl Connection for FakeConnection {
             self.close_finished.store(true, Ordering::SeqCst);
         }
         Ok(())
+    }
+
+    /// The pattern each scan asked for is what `observed_sql` reports.
+    async fn scan_keys(&self, scan: &KeyScan, options: CallOptions) -> Result<KeyListing, DriverError> {
+        let counter = &self.counters.scan_keys;
+        self.answer(
+            "scan_keys",
+            counter,
+            |s| &mut s.scan_keys,
+            scan.pattern.as_deref(),
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
+    async fn read_key(
+        &self,
+        key: &str,
+        _window: &KeyWindow,
+        options: CallOptions,
+    ) -> Result<Option<KeyPage>, DriverError> {
+        let counter = &self.counters.read_key;
+        self.answer(
+            "read_key",
+            counter,
+            |s| &mut s.read_key,
+            Some(key),
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
     }
 }
 

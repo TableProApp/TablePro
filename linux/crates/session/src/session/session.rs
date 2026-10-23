@@ -38,6 +38,9 @@ pub struct Session {
     /// The tunnel the connection goes through, which a changed host key
     /// is checked against before its old key is removed.
     ssh: Option<tablepro_ssh::SshConfig>,
+    /// The database the connection was asked to open, as the user named
+    /// it.
+    database: Option<String>,
     runner: OperationRunner,
     mailbox: Arc<MonitorMailbox>,
     health: watch::Receiver<SessionHealth>,
@@ -100,9 +103,9 @@ impl Session {
             trusted_host_key: trusted_host_key.clone(),
         };
         let monitor = deps.tasks.spawn_owned(run_monitor(context));
-        let ssh = match &parts.request.target {
-            RequestTarget::Network { ssh, .. } => ssh.clone(),
-            RequestTarget::File(_) => None,
+        let (ssh, database) = match &parts.request.target {
+            RequestTarget::Network { ssh, database, .. } => (ssh.clone(), database.clone()),
+            RequestTarget::File(_) => (None, None),
         };
         Arc::new(Session {
             metadata: parts.request.metadata,
@@ -112,6 +115,7 @@ impl Session {
             last_rejection,
             trusted_host_key,
             ssh,
+            database,
             runner,
             mailbox,
             health,
@@ -251,6 +255,12 @@ impl Session {
     pub fn retry_trusting_host_key(&self, reviewed: ReviewedHostKey) {
         *self.trusted_host_key.lock().unwrap_or_else(PoisonError::into_inner) = Some(reviewed);
         self.mailbox.post(MonitorSignal::RetryNow);
+    }
+
+    /// The database the connection was asked to open, as the user named
+    /// it: a name, or a key-value engine's number. `None` for a file.
+    pub fn database(&self) -> Option<&str> {
+        self.database.as_deref()
     }
 
     /// The SSH tunnel the connection was made through, if any.

@@ -161,6 +161,9 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
                 .current_sort()
                 .map(|(column, ascending)| SortRecord { column, ascending }),
         }),
+        WorkspaceTab::Key(slot) => Some(TabRecord::Key {
+            key: slot.tab.key().to_owned(),
+        }),
     }
 }
 
@@ -375,6 +378,7 @@ mod tests {
                 TabRecord::Table { table, .. } => format!("table {table}"),
                 TabRecord::Structure { table, .. } => format!("structure {table}"),
                 TabRecord::Editor { .. } => "editor".to_owned(),
+                TabRecord::Key { key } => format!("key {key}"),
             };
             let page = view.append(&gtk::Label::new(Some(&name)));
             opened.push(name);

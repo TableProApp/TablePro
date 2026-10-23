@@ -69,6 +69,8 @@ pub struct SqlEditor {
     /// settings, which would otherwise outlive the tab.
     pub(super) app_handlers: RefCell<Vec<HandlerGuard>>,
     pub(super) completion_providers: RefCell<Vec<sourceview5::CompletionProvider>>,
+    /// The tab's `editor` group, kept to read what it offers.
+    pub(super) actions: OnceCell<gtk4::gio::SimpleActionGroup>,
 }
 
 #[glib::object_subclass]

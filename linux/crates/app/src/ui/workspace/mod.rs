@@ -125,6 +125,9 @@ pub(crate) struct WorkspaceModel {
     /// Says the sidebar's list could not be read again, until a read
     /// lands.
     catalog_banner: adw::Banner,
+    /// Set when the session's engine holds keys, not tables: its sidebar
+    /// lists keys, and a key opens in a key tab.
+    keys: Option<sidebar::KeySidebar>,
     /// Says the saved tabs could not be read, until Reset moves them
     /// aside.
     layout_banner: adw::Banner,
@@ -191,6 +194,25 @@ fn window_inhibitor(window: &adw::ApplicationWindow) -> WindowInhibitor {
     WindowInhibitor::new(ApplicationInhibit::new(window))
 }
 
+/// Where the session's editor tabs write their text.
+fn draft_writer(
+    storage: &crate::storage::SharedStorage,
+    tasks: &tablepro_session::runtime::Tasks,
+) -> Rc<crate::workspace::DraftWriter> {
+    crate::workspace::DraftWriter::new(
+        tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
+        tasks.clone(),
+    )
+}
+
+/// Whether the session's engine holds keys rather than tables.
+fn holds_keys(context: &SessionContext, session: &Session) -> bool {
+    context
+        .drivers
+        .get(&session.metadata().driver_id)
+        .is_some_and(|driver| driver.capabilities().is_key_value())
+}
+
 /// The driver's name, or its id when this build has no such driver.
 fn driver_display_name(context: &SessionContext, driver_id: &str) -> String {
     context
@@ -247,6 +269,9 @@ pub enum ClosedTabDescriptor {
         schema: Option<String>,
         table: String,
     },
+    Key {
+        key: String,
+    },
 }
 
 pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
@@ -288,6 +313,12 @@ pub struct TableTabSlot {
     pub browse: BrowseTab,
 }
 
+/// A tab showing one key of a key-value engine.
+pub struct KeyTabSlot {
+    pub page: adw::TabPage,
+    pub tab: crate::ui::key_tab::KeyTab,
+}
+
 /// A tab in the unified workspace.
 ///
 /// - **Table**: one (schema, table) entity in Data (Browse grid)
@@ -300,6 +331,7 @@ pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
     Table(TableTabSlot),
+    Key(KeyTabSlot),
 }
 
 impl WorkspaceTab {
@@ -320,13 +352,12 @@ impl WorkspaceTab {
         }
     }
 
-    /// `(schema, table)` when the slot is pinned to one. Editor
-    /// returns `None`.
-    pub fn schema_table(&self) -> Option<(Option<&str>, &str)> {
+    /// The sidebar row the tab shows: its table, or its key.
+    pub(crate) fn sidebar_object(&self) -> Option<tablepro_core::meta::TableRef> {
         match self {
-            WorkspaceTab::Structure(s) => Some((s.schema.as_deref(), &s.table)),
-            WorkspaceTab::Table(s) => Some((s.schema.as_deref(), &s.table)),
-            WorkspaceTab::Editor(_) => None,
+            WorkspaceTab::Table(s) => Some(tablepro_core::meta::TableRef::new(s.schema.clone(), s.table.clone())),
+            WorkspaceTab::Key(s) => Some(tablepro_core::meta::TableRef::unqualified(s.tab.key())),
+            WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
         }
     }
 
@@ -335,6 +366,7 @@ impl WorkspaceTab {
             WorkspaceTab::Editor(slot) => &slot.page,
             WorkspaceTab::Structure(slot) => &slot.page,
             WorkspaceTab::Table(slot) => &slot.page,
+            WorkspaceTab::Key(slot) => &slot.page,
         }
     }
 
@@ -351,6 +383,7 @@ impl WorkspaceTab {
                 slot.schema.clone(),
                 slot.table.clone(),
             )),
+            WorkspaceTab::Key(slot) => TabIdentity::Key(slot.tab.key().to_owned()),
         }
     }
 }
@@ -416,6 +449,11 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
+    /// List a key-value engine's keys again, as the search now asks.
+    ListKeys,
+    /// The keys a listing found, indexed for the sidebar, or why they
+    /// could not be listed.
+    KeysListed(sidebar::KeysListed),
     /// A reconnect replaced the connection.
     LinkChanged,
     SelectTable {
@@ -557,14 +595,12 @@ impl Workspace {
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
         let history = services.history();
-        let drafts = crate::workspace::DraftWriter::new(
-            tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
-            tasks.clone(),
-        );
+        let drafts = draft_writer(&storage, &tasks);
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let sidebar = sidebar::build(&workspace, &input, &session, &tasks);
+        let keys = holds_keys(&context, &session);
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, keys);
         let WorkspaceTabParts {
             tab_view,
             index,
@@ -609,6 +645,7 @@ impl Workspace {
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
+            keys: keys.then(|| sidebar::KeySidebar::new(imp.key_limit_banner.get())),
             layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
             table_search: imp.table_search.get(),
@@ -949,6 +986,9 @@ impl WorkspaceModel {
 
     fn shutdown(mut self) {
         self.history_gate.abort();
+        if let Some(keys) = self.keys.as_mut() {
+            keys.stop_listing();
+        }
         self.sidebar.shutdown();
         self.shell.release();
         // Their entries name this session's tables and queries.
@@ -987,6 +1027,8 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
+            WorkspaceInput::ListKeys => self.list_keys(),
+            WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {
