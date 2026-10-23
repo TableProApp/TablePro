@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <menu id="more_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Reset Layout</attribute>
+        <attribute name="action">diagram.reset-layout</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Export as PNG…</attribute>
+        <attribute name="action">diagram.export</attribute>
+        <attribute name="target">png</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Export as SVG…</attribute>
+        <attribute name="action">diagram.export</attribute>
+        <attribute name="target">svg</attribute>
+      </item>
+    </section>
+  </menu>
+  <template class="TableProDiagramTab" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView">
+        <!-- The tab sits right under the tab bar, so the top bar shows only
+             with a banner. -->
+        <property name="top-bar-style">flat</property>
+        <child type="top">
+          <object class="AdwBanner" id="stale_banner">
+            <property name="title" translatable="yes">Couldn't read the tables again. Showing the diagram read before.</property>
+            <property name="use-markup">false</property>
+          </object>
+        </child>
+        <child type="top">
+          <object class="AdwBanner" id="outdated_banner">
+            <property name="title" translatable="yes">Tables changed since the diagram was read.</property>
+            <property name="use-markup">false</property>
+            <property name="button-label" translatable="yes">Refresh</property>
+            <property name="action-name">diagram.refresh</property>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkStack" id="inner_stack">
+            <property name="transition-type">crossfade</property>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">loading</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="loading_page">
+                    <property name="title" translatable="yes">Reading Tables…</property>
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">18</property>
+                        <property name="halign">center</property>
+                        <child>
+                          <object class="GtkProgressBar" id="loading_progress">
+                            <property name="width-request">240</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="loading_stop_button">
+                            <property name="label" translatable="yes">Stop</property>
+                            <property name="action-name">diagram.stop</property>
+                            <property name="halign">center</property>
+                            <style>
+                              <class name="pill"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">diagram</property>
+                <property name="child">
+                  <object class="GtkScrolledWindow" id="scroller">
+                    <property name="vexpand">true</property>
+                    <property name="hexpand">true</property>
+                    <property name="child">
+                      <object class="TableProDiagramCanvas" id="canvas"/>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">empty</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">view-grid-symbolic</property>
+                    <property name="title" translatable="yes">No Tables</property>
+                    <property name="description" translatable="yes">This schema has no tables to draw.</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">stopped</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">media-playback-stop-symbolic</property>
+                    <property name="title" translatable="yes">Reading Stopped</property>
+                    <property name="description" translatable="yes">The diagram was not drawn, since not every table was read.</property>
+                    <property name="child">
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Read Tables</property>
+                        <property name="action-name">diagram.refresh</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">error</property>
+                <property name="child">
+                  <object class="AdwStatusPage" id="error_page">
+                    <property name="icon-name">dialog-error-symbolic</property>
+                    <property name="title" translatable="yes">Couldn't Read the Tables</property>
+                    <property name="child">
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Try Again</property>
+                        <property name="action-name">diagram.refresh</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkActionBar" id="action_bar">
+            <child type="start">
+              <object class="GtkButton" id="zoom_out_button">
+                <property name="icon-name">zoom-out-symbolic</property>
+                <property name="action-name">diagram.zoom-out</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton" id="zoom_reset_button">
+                <property name="action-name">diagram.zoom-reset</property>
+                <property name="label">100%</property>
+                <style>
+                  <class name="flat"/>
+                  <class name="numeric"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton" id="zoom_in_button">
+                <property name="icon-name">zoom-in-symbolic</property>
+                <property name="action-name">diagram.zoom-in</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <object class="GtkButton" id="zoom_fit_button">
+                <property name="icon-name">zoom-fit-best-symbolic</property>
+                <property name="action-name">diagram.zoom-fit</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="start">
+              <!-- A refresh keeps the diagram on screen, so its progress sits
+                   here rather than on the loading page, and the Refresh
+                   button turns into Stop. -->
+              <object class="GtkBox" id="refresh_box">
+                <property name="spacing">6</property>
+                <property name="visible">false</property>
+                <child>
+                  <object class="AdwSpinner"/>
+                </child>
+                <child>
+                  <!-- Ellipsized, so the bar fits the narrowest window. -->
+                  <object class="GtkLabel" id="refresh_label">
+                    <property name="ellipsize">end</property>
+                    <style>
+                      <class name="dimmed"/>
+                      <class name="numeric"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkMenuButton" id="more_button">
+                <property name="icon-name">view-more-symbolic</property>
+                <property name="menu-model">more_menu</property>
+                <property name="tooltip-text" translatable="yes">More Actions</property>
+                <accessibility>
+                  <property name="label" translatable="yes">More Actions</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child type="end">
+              <!-- Its icon, label and action are set in code: it turns into
+                   Stop while a refresh runs. -->
+              <object class="GtkButton" id="refresh_button">
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

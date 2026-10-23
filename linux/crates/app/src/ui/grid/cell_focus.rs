@@ -133,6 +133,21 @@ pub(crate) fn edit_row(view: &gtk::ColumnView, position: u32) {
     }
 }
 
+/// Select the first `count` rows, where new rows land, and give the
+/// first of them the focus.
+pub(crate) fn select_top_rows(view: &gtk::ColumnView, count: u32) {
+    let Some(model) = view.model() else {
+        return;
+    };
+    let count = count.min(model.n_items());
+    if count == 0 {
+        return;
+    }
+    model.select_range(0, count, true);
+    view.scroll_to(0, None, gtk::ListScrollFlags::FOCUS, None);
+    view.grab_focus();
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

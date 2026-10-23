@@ -389,6 +389,25 @@ fn sqlite_shows_file_row_and_hides_security_and_ssh() {
 }
 
 #[gtk4::test]
+fn file_paths_with_markup_characters_show_as_written() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+    let path = std::path::PathBuf::from("/data/R&D <team>/ca.pem");
+
+    imp.tls_section.set_file_path(FormField::CaFile, Some(path.clone()));
+
+    let tls = imp.tls_section.imp();
+    for row in [tls.ca_row.get(), tls.certificate_row.get(), tls.key_row.get()] {
+        assert!(!row.uses_markup(), "{}", row.title());
+    }
+    assert!(!imp.file_row.uses_markup());
+    assert_eq!(
+        tls.ca_row.subtitle().as_deref(),
+        Some(path.display().to_string().as_str())
+    );
+}
+
+#[gtk4::test]
 fn new_database_sets_create_new_endpoint() {
     let harness = dialog();
     select(&harness.dialog, "sqlite");

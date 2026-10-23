@@ -563,15 +563,15 @@ mod tests {
     async fn unsupported_version_blocks_key() {
         let fixture = Fixture::new();
         let key = key();
-        fixture.seed(&key, br#"{"version": 2, "tabs": []}"#);
+        fixture.seed(&key, br#"{"version": 3, "tabs": []}"#);
 
         let load = fixture.store.load(&key).await;
 
         assert_eq!(
             load,
             WorkspaceLoad::Blocked(WorkspaceLoadError::UnsupportedVersion {
-                found: Some(2),
-                expected: 1
+                found: Some(3),
+                expected: 2
             })
         );
         assert_eq!(

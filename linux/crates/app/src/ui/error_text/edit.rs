@@ -1,5 +1,6 @@
 use tablepro_core::column::IntegerKind;
 use tablepro_core::edit::{EditParseError, ReadOnlyReason};
+use tablepro_core::import::CsvRowError;
 use tablepro_core::value::JsonTextError;
 
 use crate::i18n::{gettext, gettext_f, ngettext_f};
@@ -58,6 +59,28 @@ pub fn edit_parse_message(error: &EditParseError) -> String {
     }
 }
 
+/// How much of a refused value an alert quotes: enough to find it in
+/// the source, never a whole document laid out in a dialog.
+const QUOTED_VALUE_CHARS: usize = 80;
+
+/// Where an imported or pasted row holds a value its column refused,
+/// and why.
+pub fn row_error_message(error: &CsvRowError) -> String {
+    let text = match error.text.char_indices().nth(QUOTED_VALUE_CHARS) {
+        Some((end, _)) => format!("{}…", &error.text[..end]),
+        None => error.text.clone(),
+    };
+    gettext_f(
+        "Line {line}, column {column}: {reason} (the value was “{text}”)",
+        &[
+            ("line", &error.line.to_string()),
+            ("column", &error.column),
+            ("reason", &edit_parse_message(&error.reason)),
+            ("text", &text),
+        ],
+    )
+}
+
 fn not_editable_message(reason: ReadOnlyReason) -> String {
     match reason {
         ReadOnlyReason::Bytes => gettext("Binary values can't be edited here"),
@@ -92,7 +115,9 @@ mod tests {
     use tablepro_core::edit::{EditParseError, ReadOnlyReason};
     use tablepro_core::value::{DecimalParseError, JsonTextError};
 
-    use super::{edit_parse_message, integer_range};
+    use tablepro_core::import::CsvRowError;
+
+    use super::{QUOTED_VALUE_CHARS, edit_parse_message, integer_range, row_error_message};
 
     #[test]
     fn every_edit_parse_error_variant_has_a_distinct_message() {
@@ -150,6 +175,29 @@ mod tests {
             .collect();
 
         assert_eq!(messages.len(), reasons.len());
+    }
+
+    #[test]
+    fn a_refused_value_is_quoted_short() {
+        let error = |text: String| CsvRowError {
+            line: 3,
+            column: "age".to_owned(),
+            text,
+            reason: EditParseError::InvalidInteger,
+        };
+
+        let short = row_error_message(&error("forty".to_owned()));
+        let long = row_error_message(&error("é".repeat(10_000)));
+
+        assert_eq!(
+            short,
+            "Line 3, column age: Enter a whole number (the value was “forty”)"
+        );
+        assert!(
+            long.contains(&format!("“{}…”", "é".repeat(QUOTED_VALUE_CHARS))),
+            "{long}"
+        );
+        assert!(long.chars().count() < 200, "{long}");
     }
 
     #[test]

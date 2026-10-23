@@ -27,6 +27,9 @@ use crate::workspace::{CloseBlockPrompt, CloseBlocker, InhibitReason, WindowInhi
 /// Chunks in flight between the encoder and the file. Few, so a slow
 /// disk holds the encoder back within a few hundred kilobytes.
 const CHANNEL_CHUNKS: usize = 4;
+/// An image is written this much at a time, so Stop is heard on a slow
+/// destination, as a row export's chunks are.
+const IMAGE_CHUNK: usize = 64 * 1024;
 
 type EndedListener = Rc<dyn Fn(Uuid, WorkOutcome)>;
 
@@ -66,6 +69,15 @@ pub(crate) struct ExportLedgerInit {
     pub hold: Rc<dyn ProcessHold>,
     pub reporter: ExportReporter,
     pub inhibitor: WindowInhibitor,
+}
+
+/// A file made whole before it is written, such as a diagram's image:
+/// its bytes come from a task already running.
+pub(crate) struct ImageExport {
+    pub destination: gio::File,
+    pub bytes: TaskResult<Result<Vec<u8>, String>>,
+    /// The tab the image came from, which hears how the export ended.
+    pub tab: Option<Uuid>,
 }
 
 /// A job the ledger started. Dropping it leaves the job running, and
@@ -111,13 +123,41 @@ impl ExportLedger {
     /// Start `job`, unless the workspace has shut down. A file chooser
     /// still open when the window closed can hand one over after that.
     pub(crate) fn begin(self: &Rc<Self>, job: ExportJob) -> Option<ExportJobHandle> {
+        let cancel = CancellationToken::new();
+        let item = ExportJobItem::new(&file_name(&job.destination), job.expected_rows, cancel.clone());
+        let (destination, tab) = (job.destination.clone(), job.tab);
+        let tasks = self.tasks.clone();
+        let running = item.clone();
+        self.start(item, cancel.clone(), destination, tab, async move {
+            run(&tasks, job, &cancel, &running).await
+        })
+    }
+
+    /// Start writing `image`, as `begin` starts an export of rows: listed
+    /// with Stop, holding the process and the session, and asked about
+    /// when the window closes.
+    pub(crate) fn begin_image(self: &Rc<Self>, image: ImageExport) -> Option<ExportJobHandle> {
+        let cancel = CancellationToken::new();
+        let item = ExportJobItem::whole_file(&file_name(&image.destination), cancel.clone());
+        let (destination, tab) = (image.destination.clone(), image.tab);
+        let running = item.clone();
+        self.start(item, cancel.clone(), destination, tab, async move {
+            run_image(image, &cancel, &running).await
+        })
+    }
+
+    fn start(
+        self: &Rc<Self>,
+        item: ExportJobItem,
+        cancel: CancellationToken,
+        destination: gio::File,
+        tab: Option<Uuid>,
+        work: impl Future<Output = ExportOutcome> + 'static,
+    ) -> Option<ExportJobHandle> {
         if self.state.borrow().shut_down {
             tracing::debug!("an export began after its workspace shut down, and was not started");
             return None;
         }
-        let cancel = CancellationToken::new();
-        let name = file_name(&job.destination);
-        let item = ExportJobItem::new(&name, job.expected_rows, cancel.clone());
         let id = {
             let mut state = self.state.borrow_mut();
             state.next += 1;
@@ -125,7 +165,7 @@ impl ExportLedger {
             state.running.insert(
                 id,
                 Running {
-                    cancel: cancel.clone(),
+                    cancel,
                     _hold: self.hold.acquire(),
                 },
             );
@@ -137,9 +177,7 @@ impl ExportLedger {
         let (reply, outcome) = oneshot::channel();
         let ledger = self.clone();
         glib::spawn_future_local(async move {
-            let destination = job.destination.clone();
-            let tab = job.tab;
-            let ended = run(&ledger.tasks, job, &cancel, &item).await;
+            let ended = work.await;
             ledger.settle(id, &item);
             ledger.reporter.report(&destination, &item.title(), &ended);
             if let Some(tab) = tab {
@@ -359,6 +397,49 @@ async fn run(tasks: &Tasks, job: ExportJob, cancel: &CancellationToken, item: &E
                 return failed(writer, failure).await;
             }
         }
+    }
+}
+
+/// Write an image's bytes once its task has made them.
+async fn run_image(image: ImageExport, cancel: &CancellationToken, item: &ExportJobItem) -> ExportOutcome {
+    let writer = match ReplaceFileWriter::open(&image.destination).await {
+        Ok(writer) => writer,
+        Err(error) => {
+            return ExportOutcome::Failed {
+                failure: error.into(),
+                file: None,
+            };
+        }
+    };
+    show_display_name(&image.destination, item).await;
+    let Some(made) = until_cancelled(cancel, image.bytes).await else {
+        return ExportOutcome::Stopped(writer.abort().await);
+    };
+    let bytes = match made {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(reason)) => return failed(writer, ExportFailure::Image(reason)).await,
+        Err(failure) => return failed(writer, failure.into()).await,
+    };
+    // Each write runs to its end, as a row export's chunks do: a write
+    // dropped mid-flight leaves the stream busy, and the abort could not
+    // close it. Stop is heard between chunks.
+    for chunk in bytes.chunks(IMAGE_CHUNK) {
+        if cancel.is_cancelled() {
+            return ExportOutcome::Stopped(writer.abort().await);
+        }
+        if let Err(error) = writer.write(chunk.to_vec()).await {
+            return failed(writer, error.into()).await;
+        }
+    }
+    if cancel.is_cancelled() {
+        return ExportOutcome::Stopped(writer.abort().await);
+    }
+    match writer.finish().await {
+        Ok(()) => ExportOutcome::Saved,
+        Err(FinishError { error, file }) => ExportOutcome::Failed {
+            failure: error.into(),
+            file: Some(file),
+        },
     }
 }
 

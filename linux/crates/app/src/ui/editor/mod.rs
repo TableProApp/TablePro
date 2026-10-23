@@ -61,6 +61,7 @@ use super::handler_guard::HandlerGuard;
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
+use crate::services::snippet_library::SnippetLibrary;
 use crate::workspace::WorkOutcome;
 
 glib::wrapper! {
@@ -80,6 +81,7 @@ pub struct SqlEditorInit {
     /// Keeps the process alive while the tab's connection closes.
     pub hold: Rc<dyn ProcessHold>,
     pub close_timeout: Duration,
+    pub snippets: Rc<SnippetLibrary>,
 }
 
 /// What one run sends, planned before Safe Mode asks about it, so the
@@ -99,6 +101,7 @@ pub(crate) struct EditorDeps {
     session: ActiveSession,
     hold: Rc<dyn ProcessHold>,
     close_timeout: Duration,
+    snippets: Rc<SnippetLibrary>,
 }
 
 impl SqlEditor {
@@ -112,6 +115,7 @@ impl SqlEditor {
             session: init.session,
             hold: init.hold,
             close_timeout: init.close_timeout,
+            snippets: init.snippets,
         });
         let sql = editor.grammar().is_sql();
         let sample = if sql { "SELECT 1;" } else { "PING" };
@@ -136,7 +140,7 @@ impl SqlEditor {
             }
         });
         editor.connect_theme(&init.settings);
-        editor.connect_completion(&buffer, sql);
+        editor.connect_completion(&buffer);
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
@@ -696,13 +700,15 @@ impl SqlEditor {
         self.imp().app_handlers.replace(handlers);
     }
 
-    /// The catalog's tables and the SQL keywords where the engine speaks
-    /// SQL, and the words in the document everywhere.
-    fn connect_completion(&self, buffer: &sourceview5::Buffer, sql: bool) {
+    /// The catalog's tables, the SQL keywords and the snippets where the
+    /// engine speaks SQL, the engine's own snippets where it does not, and
+    /// the words in the document everywhere.
+    fn connect_completion(&self, buffer: &sourceview5::Buffer) {
         let completion = self.imp().source_view.completion();
         let mut providers = self.imp().completion_providers.borrow_mut();
-        if let Some(deps) = self.deps().filter(|_| sql) {
-            let catalog = completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone());
+        if let Some(deps) = self.deps() {
+            let catalog =
+                completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone(), deps.snippets.clone());
             completion.add_provider(&catalog);
             providers.push(catalog.upcast());
         }

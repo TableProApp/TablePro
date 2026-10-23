@@ -3,6 +3,9 @@ use crate::value::Value;
 
 use super::encoder::{EncodeError, TsvEncoder, encode_rows};
 
+/// What a copy writes for a NULL, and what a paste reads back as one.
+pub const TSV_NULL: &str = "NULL";
+
 /// A tab, a line break or a quote inside a value would move the following
 /// text into the next column or the next row, so such a value is quoted
 /// and its own quotes doubled. That is what a spreadsheet puts on the

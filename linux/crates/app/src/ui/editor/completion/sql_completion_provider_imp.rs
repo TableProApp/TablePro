@@ -9,7 +9,8 @@ use sourceview5::subclass::prelude::*;
 use sourceview5::{CompletionCell, CompletionColumn, CompletionContext, CompletionProposal};
 
 use super::fuzzy;
-use super::sql_completion_provider::{ProviderDeps, column_text, replace_word};
+use super::proposal_kind::ProposalKind;
+use super::sql_completion_provider::{ProviderDeps, column_text, replace_word, replace_word_with_snippet};
 use super::sql_proposal::SqlProposal;
 
 /// Ahead of the document's own words.
@@ -94,6 +95,15 @@ impl CompletionProviderImpl for SqlCompletionProvider {
         // The rows for the last word stay until the ranking for this one
         // lands, and one this word does not match is never inserted.
         if !fuzzy::matches_word(proposal.label(), &word) {
+            return;
+        }
+        if let ProposalKind::Snippet(offered) = proposal.kind() {
+            let (Some(view), Some(deps)) = (context.view(), self.deps.get()) else {
+                return;
+            };
+            if let Some(snippet) = deps.snippets.snippet(offered) {
+                replace_word_with_snippet(&view, &snippet, begin, end);
+            }
             return;
         }
         replace_word(buffer.upcast_ref(), begin, end, &proposal.insert_text(&word));

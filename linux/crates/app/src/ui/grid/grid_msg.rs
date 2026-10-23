@@ -48,6 +48,11 @@ pub enum GridMsg {
     DuplicateRows {
         rows: Vec<RowObject>,
     },
+    /// Paste at the cell `at` names, a row and a column, or as new rows
+    /// from the first column with no cell.
+    Paste {
+        at: Option<(RowObject, usize)>,
+    },
     /// Open the rows a foreign key leads to from the row.
     FollowReference(RowReference),
 }

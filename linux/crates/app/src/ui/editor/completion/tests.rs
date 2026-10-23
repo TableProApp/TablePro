@@ -15,6 +15,7 @@ use super::sql_completion_provider::{
 };
 use super::sql_proposal::SqlProposal;
 use crate::services::active_session::ActiveSession;
+use crate::services::snippet_library::{SnippetLibrary, SnippetOrigin};
 use crate::test_support::{FakeSession, MemorySettings, descendants, finish_on_main, test_runtime, wait_until};
 use crate::ui::editor::{SqlEditor, SqlEditorInit};
 
@@ -83,7 +84,7 @@ fn connected_with(script: ConnectionScript, schemas: Vec<SchemaInfo>, objects: V
     let active = ActiveSession::new();
     active.replace(fake.session.clone());
     Harness {
-        provider: SqlCompletionProvider::new(active, runtime.tasks()),
+        provider: SqlCompletionProvider::new(active, runtime.tasks(), crate::test_support::builtin_snippets_only()),
         session: Some(fake),
         _runtime: runtime,
     }
@@ -92,7 +93,11 @@ fn connected_with(script: ConnectionScript, schemas: Vec<SchemaInfo>, objects: V
 fn unconnected() -> Harness {
     let runtime = test_runtime();
     Harness {
-        provider: SqlCompletionProvider::new(ActiveSession::new(), runtime.tasks()),
+        provider: SqlCompletionProvider::new(
+            ActiveSession::new(),
+            runtime.tasks(),
+            crate::test_support::builtin_snippets_only(),
+        ),
         session: None,
         _runtime: runtime,
     }
@@ -461,6 +466,25 @@ fn refilter_narrows_the_list_without_reading_again() {
     assert_eq!(harness.listed_objects(), listed, "a refilter read the catalog again");
 }
 
+/// Accept the built-in snippet for `trigger` over the word before the
+/// cursor, as the provider does when its row is chosen. GtkSourceView's
+/// list is left out: under the test harness it can close between two
+/// keys, which no user sees in the running app.
+pub(crate) fn accept_builtin_snippet(view: &sourceview5::View, trigger: &str) {
+    let library = crate::test_support::builtin_snippets_only();
+    let offered = library
+        .offered(None, tablepro_core::sql_syntax::SqlGrammar::PostgreSql)
+        .into_iter()
+        .find(|snippet| snippet.trigger == trigger)
+        .unwrap_or_else(|| panic!("no built-in {trigger}"));
+    let snippet = library.snippet(&offered).expect("the built-in parses");
+    let buffer = view.buffer();
+    let end = buffer.iter_at_offset(buffer.cursor_position());
+    let mut begin = end;
+    begin.backward_word_start();
+    super::sql_completion_provider::replace_word_with_snippet(view, &snippet, begin, end);
+}
+
 /// The texts of the completion list GtkSourceView shows for `view`.
 fn shown(view: &sourceview5::View) -> Vec<String> {
     descendants(view)
@@ -482,6 +506,15 @@ struct OnScreen {
 
 impl OnScreen {
     fn new(script: ConnectionScript, objects: Vec<ObjectInfo>, text: &str) -> Self {
+        Self::with_snippets(script, objects, text, crate::test_support::builtin_snippets_only())
+    }
+
+    fn with_snippets(
+        script: ConnectionScript,
+        objects: Vec<ObjectInfo>,
+        text: &str,
+        snippets: Rc<SnippetLibrary>,
+    ) -> Self {
         crate::register_test_resources();
         let runtime = test_runtime();
         let settings = MemorySettings::new();
@@ -497,6 +530,7 @@ impl OnScreen {
             session: active,
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             close_timeout: Duration::from_secs(5),
+            snippets,
         });
         let window = gtk4::Window::new();
         window.set_child(Some(&editor));
@@ -564,4 +598,187 @@ fn typing_a_dot_after_an_alias_lists_its_columns_with_types() {
 
     screen.wait_for("id").expect("the alias's column in the list");
     screen.wait_for("integer").expect("the column's type beside it");
+}
+
+/// A provider on a session to the engine `driver`, speaking `dialect`,
+/// with its snippets from `folder`.
+fn on_engine(
+    driver: &str,
+    dialect: std::sync::Arc<dyn tablepro_core::dialect::SqlDialect>,
+    folder: &std::path::Path,
+) -> Harness {
+    let runtime = test_runtime();
+    let mut request = tablepro_session::fakes::FakeConnector::request().expect("a request");
+    request.metadata.driver_id = driver.to_owned();
+    let script = ConnectionScript {
+        dialect,
+        ..ConnectionScript::default()
+    };
+    let fake = FakeSession::start_for(request, script, [], runtime.tasks());
+    fake.session.catalog().commit(Vec::new(), Vec::new());
+    let active = ActiveSession::new();
+    active.replace(fake.session.clone());
+    Harness {
+        provider: SqlCompletionProvider::new(active, runtime.tasks(), SnippetLibrary::new(folder.to_owned())),
+        session: Some(fake),
+        _runtime: runtime,
+    }
+}
+
+fn snippets(proposals: &[SqlProposal]) -> Vec<&str> {
+    proposals
+        .iter()
+        .filter(|proposal| matches!(proposal.kind(), ProposalKind::Snippet(_)))
+        .map(SqlProposal::label)
+        .collect()
+}
+
+#[gtk4::test]
+fn typing_ins_offers_the_insert_snippet_first() {
+    let harness = unconnected();
+
+    let found = proposals(&harness, "ins|");
+
+    let first = found.first().expect("a proposal");
+    assert_eq!(first.label(), "ins");
+    assert!(
+        matches!(first.kind(), ProposalKind::Snippet(snippet) if matches!(snippet.origin, SnippetOrigin::BuiltIn(_)))
+    );
+    assert_eq!(
+        column_text(first, CompletionColumn::After).as_deref(),
+        Some("INSERT INTO … VALUES")
+    );
+    assert_eq!(column_text(first, CompletionColumn::Comment), None);
+    assert!(labels(&found).contains(&"INSERT"), "the keyword is still offered");
+}
+
+#[gtk4::test]
+fn snippets_are_offered_only_where_a_statement_can_go() {
+    let harness = connected(ConnectionScript::default(), vec![object("inserts", ObjectKind::Table)]);
+
+    let after_from = proposals(&harness, "SELECT * FROM ins|");
+    let after_dot = proposals(&harness, "SELECT inserts.ins| FROM inserts");
+
+    assert_eq!(snippets(&after_from), Vec::<&str>::new());
+    assert_eq!(snippets(&after_dot), Vec::<&str>::new());
+    assert_eq!(snippets(&proposals(&harness, "SELECT 1; del|")), ["del"]);
+}
+
+#[gtk4::test]
+fn a_folder_snippet_is_offered_on_its_engines_connections_only() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    crate::test_support::write_text_file(
+        &folder.path().join("postgres.snippets"),
+        "<snippets>\n  <snippet _name=\"Vacuum\" trigger=\"vac\">\n    <text languages=\"postgres\">VACUUM ${1:table_name};$0</text>\n  </snippet>\n</snippets>\n",
+    );
+    let dialect = || -> std::sync::Arc<dyn tablepro_core::dialect::SqlDialect> {
+        std::sync::Arc::new(tablepro_test_support::FakeDialect)
+    };
+    let postgres = on_engine("postgres", dialect(), folder.path());
+    let mysql = on_engine("mysql", dialect(), folder.path());
+
+    assert_eq!(snippets(&proposals(&postgres, "vac|")), ["vac"]);
+    assert_eq!(snippets(&proposals(&mysql, "vac|")), Vec::<&str>::new());
+}
+
+#[gtk4::test]
+fn a_redis_connection_is_offered_its_own_snippets_and_nothing_of_sql() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    crate::test_support::write_text_file(
+        &folder.path().join("redis.snippets"),
+        "<snippets>\n  <snippet trigger=\"scan\">\n    <text languages=\"redis\">SCAN ${1:0} MATCH ${2:pattern}$0</text>\n  </snippet>\n  <snippet trigger=\"cnt\">\n    <text languages=\"sql\">SELECT COUNT(*) FROM ${1:table_name};$0</text>\n  </snippet>\n</snippets>\n",
+    );
+    let redis = on_engine(
+        "redis",
+        std::sync::Arc::new(tablepro_driver_redis::RedisDialect),
+        folder.path(),
+    );
+
+    assert_eq!(labels(&proposals(&redis, "sc|")), ["scan"]);
+    assert_eq!(labels(&proposals(&redis, "GET key\nsc|")), ["scan"]);
+    for word in ["cnt|", "ins|", "sel|"] {
+        assert_eq!(labels(&proposals(&redis, word)), Vec::<&str>::new(), "{word}");
+    }
+    assert_eq!(redis.listed_objects(), 0, "a Redis completion read the catalog");
+}
+
+#[gtk4::test]
+fn a_snippet_file_added_while_the_editor_is_open_is_offered() {
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let library = SnippetLibrary::new(folder.path().to_owned());
+    let screen = OnScreen::with_snippets(ConnectionScript::default(), Vec::new(), "c", library.clone());
+    let view = screen.view();
+    let buffer = view.buffer();
+    buffer.place_cursor(&buffer.end_iter());
+    view.completion().show();
+    screen.wait_for("ctab").expect("the built-ins in the list");
+    assert!(!shown(&view).iter().any(|text| text == "cnt"));
+    view.completion().hide();
+
+    crate::test_support::write_text_file(
+        &folder.path().join("count.snippets"),
+        "<snippets>\n  <snippet trigger=\"cnt\">\n    <text languages=\"sql\">SELECT COUNT(*) FROM ${1:table_name};$0</text>\n  </snippet>\n</snippets>\n",
+    );
+    wait_until(WAIT, || {
+        library
+            .offered(Some("fake"), tablepro_core::sql_syntax::SqlGrammar::PostgreSql)
+            .iter()
+            .any(|snippet| snippet.trigger == "cnt")
+    })
+    .expect("the library to read the new file");
+    view.completion().show();
+
+    screen.wait_for("cnt").expect("the new file's snippet in the list");
+}
+
+/// These press real keys on the X display every test shares; nextest runs
+/// them with no other test beside them.
+mod real_keys {
+    use gtk4::gdk;
+
+    use super::*;
+
+    fn selected(buffer: &gtk4::TextBuffer) -> Option<String> {
+        buffer
+            .selection_bounds()
+            .map(|(start, end)| buffer.text(&start, &end, false).to_string())
+    }
+
+    #[gtk4::test]
+    fn an_accepted_insert_snippet_takes_tab_through_its_stops() {
+        let screen = OnScreen::new(ConnectionScript::default(), Vec::new(), "");
+        crate::test_support::KeyInjector::focus_only(&screen.window);
+        let view = screen.view();
+        view.grab_focus();
+        wait_until(WAIT, || view.has_focus()).expect("the view with the focus");
+        let buffer = view.buffer();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+        let press = |key: gdk::Key| keys.press(key, gdk::ModifierType::empty()).expect("the key press");
+        let text = |buffer: &gtk4::TextBuffer| buffer.text(&buffer.start_iter(), &buffer.end_iter(), false).to_string();
+
+        for key in [gdk::Key::i, gdk::Key::n, gdk::Key::s] {
+            press(key);
+        }
+        wait_until(WAIT, || text(&buffer) == "ins").expect("the keys typed");
+        accept_builtin_snippet(&view, "ins");
+
+        wait_until(WAIT, || {
+            text(&buffer) == "INSERT INTO table_name (columns)\nVALUES (values);"
+        })
+        .unwrap_or_else(|_| panic!("the INSERT was not written: {:?}", text(&buffer)));
+        assert_eq!(selected(&buffer).as_deref(), Some("table_name"));
+
+        press(gdk::Key::Tab);
+        wait_until(WAIT, || selected(&buffer).as_deref() == Some("columns"))
+            .unwrap_or_else(|_| panic!("Tab selected {:?}", selected(&buffer)));
+        press(gdk::Key::Tab);
+        wait_until(WAIT, || selected(&buffer).as_deref() == Some("values"))
+            .unwrap_or_else(|_| panic!("Tab selected {:?}", selected(&buffer)));
+        press(gdk::Key::Tab);
+        wait_until(WAIT, || {
+            !buffer.has_selection() && buffer.iter_at_offset(buffer.cursor_position()).is_end()
+        })
+        .expect("the last Tab to leave the cursor after the statement");
+        assert_eq!(text(&buffer), "INSERT INTO table_name (columns)\nVALUES (values);");
+    }
 }
