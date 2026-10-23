@@ -59,6 +59,7 @@ where
     let builder = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(writer)
+        .log_internal_errors(false)
         .with_target(false);
     match format {
         LogFormat::Human => Box::new(builder.finish()),
@@ -101,6 +102,42 @@ pub fn init(profile: Profile) -> Result<(), LoggingError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const UNWRITABLE_STDERR_CHILD: &str = "TABLEPRO_LOG_UNWRITABLE_STDERR_CHILD";
+
+    #[test]
+    fn logging_survives_a_stderr_that_can_no_longer_be_written() {
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "logging::tests::log_events_to_the_inherited_stderr",
+                "--nocapture",
+            ])
+            .env(UNWRITABLE_STDERR_CHILD, "1")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::from(writer))
+            .status()
+            .unwrap();
+
+        assert!(
+            status.success(),
+            "logging with an unwritable stderr ended with {status}"
+        );
+    }
+
+    #[test]
+    fn log_events_to_the_inherited_stderr() {
+        if std::env::var_os(UNWRITABLE_STDERR_CHILD).is_none() {
+            return;
+        }
+        let subscriber = build_subscriber(LogFormat::Human, EnvFilter::new("info"), std::io::stderr);
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!("first event after the terminal went away");
+            tracing::warn!("second event after the terminal went away");
+        });
+    }
 
     #[derive(Clone, Default)]
     struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);

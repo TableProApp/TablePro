@@ -48,6 +48,7 @@
 
 ### Fixed
 
+- BookiE and `bookie-agentd` no longer crash when the terminal or pipe receiving their log output closes.
 - In a table tab, the total row count no longer briefly shows the count from before a filter change or refresh.
 - The Rows per page choice in a table tab works after the first page failed to load.
 - The "Couldn't load rows" page in a table tab has a Retry button.
