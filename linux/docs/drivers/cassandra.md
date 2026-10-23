@@ -56,6 +56,8 @@ A plain CQL `UPDATE` of a missing row creates it, and a plain `INSERT` of a take
 
 A static column holds one value for its partition, so an edit of it reaches every row of the partition. An update that sets static columns alone names only the partition key, as CQL requires, and goes plain after a probe for the edited row: its `IF EXISTS` would ask about the partition's static row instead. A partition that holds only static values reads as a row whose clustering columns are NULL, which names no row, so the grid keeps it read-only.
 
+An INSERT the app writes for an export or Copy As INSERT leaves out each NULL cell (`SqlDialect::insert_names_null_cells`): an absent cell reads as NULL without the tombstone a written NULL leaves, and the statement for a static-only partition names only its partition key and static columns, which is all CQL takes for one.
+
 A statement on the wire is never dropped: the server applies it whatever the client does, so a stop waits for its answer within the cancel grace and is honoured between statements. A write timeout (0x1100), a write failure (0x1500), a lost connection or a timeout may have applied, and the outcome comes from the `WriteLedger`. A refusal applied nothing.
 
 Some rows have no value a grid edit could set, and read as `RowIdentity::Unordered`: a materialized view, a counter table, and a table keyed by a map or a user-defined type. A CSV import writes one row per statement, each proved as a grid insert is, so a large file takes one round trip per row.

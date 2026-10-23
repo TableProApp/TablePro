@@ -144,8 +144,12 @@ pub(crate) enum CqlType {
     Map(Box<CqlType>, Box<CqlType>),
     Tuple(Vec<CqlType>),
     Vector(Box<CqlType>, u16),
-    /// A user-defined type, by its name in the column's keyspace.
-    Udt(String),
+    /// A user-defined type, by its name, and by its keyspace where the
+    /// declaration names one, which can only be the column's own.
+    Udt {
+        keyspace: Option<String>,
+        name: String,
+    },
     /// `frozen<...>`, which the server writes as a whole.
     Frozen(Box<CqlType>),
     /// A Java class name the server stores for a custom type.
@@ -159,7 +163,7 @@ impl CqlType {
             Self::List(element) | Self::Set(element) | Self::Vector(element, _) => ColumnKind::Array {
                 element: Box::new(element.kind()),
             },
-            Self::Map(..) | Self::Tuple(_) | Self::Udt(_) => ColumnKind::Composite,
+            Self::Map(..) | Self::Tuple(_) | Self::Udt { .. } => ColumnKind::Composite,
             Self::Frozen(inner) => inner.kind(),
             Self::Custom(_) => ColumnKind::Other,
         }
@@ -188,7 +192,7 @@ impl CqlType {
     /// A map or a user-defined type: no value of one can go back into a
     /// key predicate, since the app holds its value only as text.
     pub(crate) fn is_opaque_composite(&self) -> bool {
-        matches!(self.unfrozen(), Self::Map(..) | Self::Udt(_) | Self::Custom(_))
+        matches!(self.unfrozen(), Self::Map(..) | Self::Udt { .. } | Self::Custom(_))
     }
 
     /// The app's view of a column of this type, `catalog` being the
@@ -224,7 +228,11 @@ impl CqlType {
             }
             WireType::Vector { typ, dimensions } => Self::Vector(Box::new(Self::from_wire(typ)), *dimensions),
             WireType::UserDefinedType { frozen, definition } => {
-                frozen_if(*frozen, Self::Udt(definition.name.to_string()))
+                let udt = Self::Udt {
+                    keyspace: None,
+                    name: definition.name.to_string(),
+                };
+                frozen_if(*frozen, udt)
             }
             WireType::Tuple(elements) => {
                 Self::Frozen(Box::new(Self::Tuple(elements.iter().map(Self::from_wire).collect())))
@@ -293,7 +301,12 @@ impl fmt::Display for CqlType {
                 f.write_str(">")
             }
             Self::Vector(element, dimensions) => write!(f, "vector<{element}, {dimensions}>"),
-            Self::Udt(name) => f.write_str(&quote_type_name(name)),
+            Self::Udt { keyspace, name } => {
+                if let Some(keyspace) = keyspace {
+                    write!(f, "{}.", quote_type_name(keyspace))?;
+                }
+                f.write_str(&quote_type_name(name))
+            }
             Self::Frozen(inner) => match inner.as_ref() {
                 // A tuple is always frozen and the server writes it bare.
                 Self::Tuple(_) => write!(f, "{inner}"),
@@ -354,7 +367,7 @@ impl Parser<'_> {
             return None;
         }
         let length = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .unwrap_or(rest.len());
         if length == 0 {
             return None;
@@ -373,10 +386,24 @@ impl Parser<'_> {
         }
         let quoted = self.text[self.at..].starts_with('"');
         let word = self.word()?;
-        if quoted {
-            return Some(CqlType::Udt(word));
-        }
+        // An unquoted name reads in lower case, as the server folds it.
         let lower = word.to_ascii_lowercase();
+        let name = if quoted { word } else { lower.clone() };
+        if self.eat('.') {
+            let quoted = self.text[self.at..].trim_start().starts_with('"');
+            let type_name = self.word()?;
+            return Some(CqlType::Udt {
+                keyspace: Some(name),
+                name: if quoted {
+                    type_name
+                } else {
+                    type_name.to_ascii_lowercase()
+                },
+            });
+        }
+        if quoted {
+            return Some(CqlType::Udt { keyspace: None, name });
+        }
         let parsed = match lower.as_str() {
             "frozen" => CqlType::Frozen(Box::new(self.single()?)),
             "list" => CqlType::List(Box::new(self.single()?)),
@@ -408,7 +435,7 @@ impl Parser<'_> {
             }
             _ => match Native::named(&lower) {
                 Some(native) => CqlType::Native(native),
-                None => CqlType::Udt(word),
+                None => CqlType::Udt { keyspace: None, name },
             },
         };
         Some(parsed)
@@ -431,7 +458,13 @@ mod tests {
 
     #[test]
     fn a_user_type_is_quoted_where_a_bare_name_would_read_otherwise() {
-        let printed = |name: &str| CqlType::Udt(name.to_owned()).to_string();
+        let printed = |name: &str| {
+            CqlType::Udt {
+                keyspace: None,
+                name: name.to_owned(),
+            }
+            .to_string()
+        };
 
         assert_eq!(printed("address"), "address");
         assert_eq!(printed("Address"), "\"Address\"");
@@ -452,9 +485,25 @@ mod tests {
             "frozen<address>",
             "\"Address\"",
             "map<text, frozen<tuple<int, \"Odd\"\"Name\">>>",
+            "frozen<shop.address>",
+            "frozen<shop.\"Address\">",
+            "\"Shop\".\"Address\"",
         ] {
             assert_eq!(parsed(text).to_string(), text, "{text}");
         }
+    }
+
+    #[test]
+    fn an_unquoted_user_type_reads_in_lower_case() {
+        assert_eq!(parsed("Address").to_string(), "address");
+        assert_eq!(parsed("frozen<Shop . Address>").to_string(), "frozen<shop.address>");
+        assert_eq!(
+            parsed("shop.\"Address\""),
+            CqlType::Udt {
+                keyspace: Some("shop".to_owned()),
+                name: "Address".to_owned()
+            }
+        );
     }
 
     #[test]

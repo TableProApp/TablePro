@@ -200,6 +200,14 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         format!("INSERT INTO {table_sql} ({columns_sql}) VALUES {rows_sql}")
     }
 
+    /// Whether an INSERT names a column whose value is NULL. An engine
+    /// that answers false has the column left out, as CQL does: an absent
+    /// cell reads as NULL without the tombstone a written one leaves, and
+    /// a partition's static row has no clustering value to write.
+    fn insert_names_null_cells(&self) -> bool {
+        true
+    }
+
     /// How much one multi-row INSERT may carry.
     fn insert_batch_limits(&self) -> InsertBatchLimits {
         InsertBatchLimits::DEFAULT

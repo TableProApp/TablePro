@@ -75,14 +75,16 @@ impl Table {
 
 /// The `n` column, which `SELECT *` puts after the partition key.
 fn numbers(read: &PageRead) -> Vec<i64> {
-    read.result
-        .rows
+    let rows = &read.result.rows;
+    let numbers: Vec<i64> = rows
         .iter()
-        .map(|row| match row.get(1) {
-            Some(Value::Int(n)) => *n,
-            other => panic!("n read as {other:?}"),
+        .filter_map(|row| match row.get(1) {
+            Some(Value::Int(n)) => Some(*n),
+            _ => None,
         })
-        .collect()
+        .collect();
+    assert_eq!(numbers.len(), rows.len(), "an n that is not an int: {rows:?}");
+    numbers
 }
 
 async fn series(fixture: &CassandraFixture, name: &str) -> Table {

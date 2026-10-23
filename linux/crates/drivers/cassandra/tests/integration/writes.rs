@@ -50,15 +50,17 @@ async fn save(connection: &dyn Connection, table: &TableRef, changes: Vec<RowCha
 }
 
 async fn names(connection: &dyn Connection, keyspace: &str) -> Vec<(String, i64, Option<String>)> {
-    rows(connection, &format!("SELECT team, id, name FROM {keyspace}.people"))
-        .await
-        .into_iter()
-        .map(|row| match row.as_slice() {
-            [Value::Text(team), Value::Int(id), Value::Text(name)] => (team.clone(), *id, Some(name.clone())),
-            [Value::Text(team), Value::Int(id), Value::Null] => (team.clone(), *id, None),
-            other => panic!("a row read as {other:?}"),
+    let rows = rows(connection, &format!("SELECT team, id, name FROM {keyspace}.people")).await;
+    let names: Vec<(String, i64, Option<String>)> = rows
+        .iter()
+        .filter_map(|row| match row.as_slice() {
+            [Value::Text(team), Value::Int(id), Value::Text(name)] => Some((team.clone(), *id, Some(name.clone()))),
+            [Value::Text(team), Value::Int(id), Value::Null] => Some((team.clone(), *id, None)),
+            _ => None,
         })
-        .collect()
+        .collect();
+    assert_eq!(names.len(), rows.len(), "a row of another shape: {rows:?}");
+    names
 }
 
 /// An update, a delete and an insert, each by the full primary key, then

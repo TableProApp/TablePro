@@ -366,6 +366,10 @@ impl SqlDialect for CqlDialect {
         None
     }
 
+    fn insert_names_null_cells(&self) -> bool {
+        false
+    }
+
     /// A row is named by its whole primary key, so the count is 0 or 1.
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("SELECT COUNT(*) FROM {table_sql} WHERE {predicate_sql}")
@@ -392,7 +396,7 @@ pub(crate) fn literal_of(value: &Value, cql_type: &CqlType) -> Result<String, Li
         // The text of a map or a user-defined type is the CQL literal the
         // driver wrote from the server's own value, and such a cell is
         // never edited, so it goes back as it came.
-        (CqlType::Map(..) | CqlType::Udt(_), Value::Other(other)) => Ok(other.text.clone()),
+        (CqlType::Map(..) | CqlType::Udt { .. }, Value::Other(other)) => Ok(other.text.clone()),
         (CqlType::Native(Native::Inet), Value::Other(other)) => Ok(quoted(other.text.trim())),
         _ => scalar_literal(value),
     }
@@ -735,5 +739,40 @@ mod tests {
         ] {
             assert_eq!(cql.history_recording(sql), HistoryRecording::Record, "{sql}");
         }
+    }
+
+    #[test]
+    fn an_insert_leaves_out_its_null_cells() {
+        let cql = dialect("Cassandra");
+        let typed = |name: &str, declaration: &str| {
+            tablepro_core::column::ResultColumn::new(
+                name,
+                CqlType::parse(declaration).unwrap().column_type(Some(declaration)),
+            )
+        };
+        let columns = [
+            typed("p", "int"),
+            typed("c", "int"),
+            typed("s", "text"),
+            typed("v", "text"),
+        ];
+        let table = TableRef::new(Some("shop".to_owned()), "t");
+        let rows = [
+            vec![Value::Int(1), Value::Null, Value::Text("x".to_owned()), Value::Null],
+            vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Text("x".to_owned()),
+                Value::Text("v".to_owned()),
+            ],
+        ];
+
+        let sql = tablepro_core::export::render_sql_insert(&cql, &table, &columns, &[], &rows);
+
+        assert_eq!(
+            sql,
+            "INSERT INTO \"shop\".\"t\" (\"p\", \"s\") VALUES (1, 'x');\n\
+             INSERT INTO \"shop\".\"t\" (\"p\", \"c\", \"s\", \"v\") VALUES (1, 2, 'x', 'v');\n"
+        );
     }
 }
