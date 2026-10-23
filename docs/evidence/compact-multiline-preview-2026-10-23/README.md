@@ -1,0 +1,7 @@
+# Compact read-only multiline previews
+
+Status: local candidate for [issue 1531](https://github.com/cozyGarage/BookiE/issues/1531). The shared read-only grid label ellipsized long text without bounding line height. A visible preview of about 512 characters with many newlines reached roughly 1800 pixels high.
+
+The [regression](regression.json) calls the actual read-only cell setup and compares requested multiline height with the same font's compact height. It fails before the fix at 1823 versus 22 pixels and passes afterward. It also verifies unchanged text for Unicode/newline, CR/CRLF, paragraph-separator and short recycled values. No stored-value or clipboard assertion is replaced by a layout-flag check.
+
+The candidate enables GTK single-line mode on the existing label. It does not rewrite text, change the value contract or alter editable-cell behavior. Local preflight passed (2,073 unit and 2,086 sandbox tests), warnings-denied app Clippy passed, all 791 app unit tests passed, and all 154 isolated GTK tests passed. The optimized synthetic PostgreSQL probe received 50,000 wide rows and measured the visible preview at 22 pixels high. Its pointer-copy step could not find the context menu, so clipboard, keyboard-menu and subsequent CSV verification are incomplete for this candidate. The diagnostic artifacts record that failed probe; they are not acceptance evidence. Native Wayland appearance remains unchecked. No Forgejo acceptance is claimed.

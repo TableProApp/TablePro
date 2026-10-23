@@ -956,6 +956,11 @@
       "tablepro-app",
       "--lib",
       "ui::browse_tab::chrome_tests::an_edit_for_a_saved_row_does_not_land_on_a_draft_inserted_at_its_position"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::grid::editing::tests::readonly_multiline_cells_keep_compact_height_and_exact_text"
     ]
   ],
   "keyring": [

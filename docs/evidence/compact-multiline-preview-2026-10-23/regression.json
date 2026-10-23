@@ -1,0 +1,27 @@
+{
+  "test": "ui::grid::editing::tests::readonly_multiline_cells_keep_compact_height_and_exact_text",
+  "before": {
+    "exit_code": 101,
+    "multiline_height_pixels": 1823,
+    "compact_height_pixels": 22
+  },
+  "after": {
+    "exit_code": 0,
+    "passed": 1,
+    "text_cases": [
+      "Unicode with LF",
+      "CR and CRLF",
+      "Unicode paragraph separators",
+      "short recycled text"
+    ]
+  },
+  "full_validation": {
+    "preflight": "passed",
+    "unit": 2073,
+    "sandbox": 2086,
+    "app_unit": 791,
+    "isolated_gtk": 154,
+    "clippy": "passed",
+    "installed_probe": "layout passed; context-menu interaction incomplete"
+  }
+}

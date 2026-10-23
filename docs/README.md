@@ -194,5 +194,7 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 - [Shared grid pointer routing, October 23](evidence/grid-pointer-routing-2026-10-23/README.md): controlled allocation measurements and local interaction checks, with [gate acceptance](evidence/grid-pointer-routing-acceptance-2026-10-23/README.md).
 - [Optimized PostgreSQL streaming investigation, October 23](evidence/postgres-optimized-stream-2026-10-23/README.md): two explicit timeout observations, bounded retained rows, sampled RSS and a limited psql control.
+
+- [Compact multiline previews, October 23](evidence/compact-multiline-preview-2026-10-23/README.md): failing height regression and read-only cell layout correction with exact-text checks.
 - [Stream page realization, October 23](evidence/stream-page-realization-2026-10-23/README.md): optimized two-million-row comparisons and retained-page navigation checks.
 - [Local resource profiling, October 23](evidence/local-resource-profiling-2026-10-23/README.md): repeated query/close cycles, large saved SQL files, allocation tracing and paired early-close measurements.

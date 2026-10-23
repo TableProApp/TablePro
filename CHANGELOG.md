@@ -57,6 +57,7 @@
 
 ### Fixed
 
+- Multiline read-only cell previews stay compact instead of expanding query result rows to many text lines.
 - Closing streamed query results releases hidden page labels instead of accumulating retired tab widgets.
 - Closing a SQL editor releases its syntax analysis engine so background highlighting does not keep growing memory for a closed large script.
 

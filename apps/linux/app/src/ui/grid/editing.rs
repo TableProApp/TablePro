@@ -125,6 +125,7 @@ pub(super) fn setup_readonly_cell(
         .xalign(0.0)
         .hexpand(true)
         .selectable(true)
+        .single_line_mode(true)
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .margin_start(8)
         .margin_end(8)
@@ -592,6 +593,33 @@ fn commit_cell_edit(label: &CellEditor, col_index: usize, sender: &relm4::Sender
 #[cfg(test)]
 mod tests {
     use super::{NumericEditor, numeric_editor};
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn readonly_multiline_cells_keep_compact_height_and_exact_text() {
+        use gtk4::prelude::*;
+        gtk4::init().unwrap();
+        let item = gtk4::glib::Object::new::<gtk4::ListItem>();
+        super::setup_readonly_cell(&item, 0, "payload".into(), None, None);
+        let label = item.child().unwrap().downcast::<gtk4::Label>().unwrap();
+        label.set_text("é東京,\"");
+        let compact = label.measure(gtk4::Orientation::Vertical, 320).1;
+        assert!(compact > 0);
+        for text in [
+            "é東京,\"\n".repeat(85),
+            "a\rb\r\nc".into(),
+            "a\u{2028}b\u{2029}c".into(),
+            "short".into(),
+        ] {
+            label.set_text(&text);
+            let height = label.measure(gtk4::Orientation::Vertical, 320).1;
+            assert!(
+                height <= compact * 2,
+                "read-only preview height {height} exceeds compact height {compact}"
+            );
+            assert_eq!(label.text().as_str(), text);
+        }
+    }
 
     #[test]
     fn small_integers_use_the_spin_button() {

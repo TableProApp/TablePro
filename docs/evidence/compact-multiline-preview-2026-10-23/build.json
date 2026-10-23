@@ -1,0 +1,11 @@
+{
+  "base": "60e3cdde12157835d64df2de795c25ec7eef4c77",
+  "profile": "release",
+  "binary_sha256": "756750092b52f820e4b3ec19cef2d3621aad627a869afacf2cf551d95213bc46",
+  "editing_source_sha256": "ce0af66d71e865c159b1c2ab388467e22ae072984611752627c55d911031f6ef",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ]
+}
