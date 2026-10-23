@@ -1400,10 +1400,11 @@ fn vim_write_to_a_name_saves_next_to_the_tabs_file() {
 
     assert!(vim_command(&context, ":w weekly.sql"));
     let copy = root.path().join("weekly.sql");
-    wait_until(WAIT, || copy.exists()).expect("the new file");
+    // The name is claimed empty first; the tab follows once the text is in.
+    wait_until(WAIT, || harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&copy))
+        .expect("the tab on the new file");
 
     assert_eq!(std::fs::read_to_string(&copy).expect("read back"), "SELECT 1;");
-    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(copy));
 }
 
 #[gtk4::test]
@@ -1459,10 +1460,10 @@ fn vim_force_write_to_a_name_replaces_another_file() {
     let context = vim(&harness);
 
     assert!(vim_command(&context, ":w! weekly.sql"));
-    wait_until(WAIT, || std::fs::read_to_string(&other).is_ok_and(|text| text == "SELECT 1;"))
-        .expect("the other file replaced");
+    wait_until(WAIT, || harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&other))
+        .expect("the tab on the other file");
 
-    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(other));
+    assert_eq!(std::fs::read_to_string(&other).expect("read back"), "SELECT 1;");
 }
 
 #[gtk4::test]
