@@ -40,8 +40,12 @@ for command_name in docker dbus-run-session gnome-keyring-daemon secret-tool; do
   fi
 done
 
+socket_directory="$XDG_RUNTIME_DIR/mysql-socket"
+mkdir -m 777 "$socket_directory"
+
 container="$(docker run --rm --detach --publish 127.0.0.1::3306 \
   --tmpfs /var/lib/mysql \
+  --mount "type=bind,source=$socket_directory,target=/var/run/mysqld" \
   --env MYSQL_ROOT_PASSWORD=tablepro_test \
   --env MYSQL_ROOT_HOST=% \
   --env MYSQL_DATABASE=bookie_test \
@@ -91,8 +95,9 @@ printf 'tablepro_test' | secret-tool store --label='BookiE GTK MySQL fixture' \
   kind db_password
 TABLEPRO_GTK_KEYRING_READY=1 \
   TABLEPRO_GTK_DBUS_ACTIVE=1 \
-  TABLEPRO_GTK_SCENARIO="${TABLEPRO_GTK_SCENARIO:-mysql_grid_edit_and_delete_commit_to_the_server,mysql_enum_set_grid_edit_preserves_native_values_and_siblings}" \
+  TABLEPRO_GTK_SCENARIO="${TABLEPRO_GTK_SCENARIO:-mysql_grid_edit_and_delete_commit_to_the_server,mysql_enum_set_grid_edit_preserves_native_values_and_siblings,imported_socket_urls_connect_to_mysql}" \
   TABLEPRO_GTK_MYSQL_CONTAINER="$container" \
   TABLEPRO_GTK_MYSQL_HOST=127.0.0.1 \
   TABLEPRO_GTK_MYSQL_PORT="$port" \
+  TABLEPRO_GTK_MYSQL_SOCKET="$socket_directory/mysqld.sock" \
   bash "$ROOT/scripts/test-gtk-safety.sh"
