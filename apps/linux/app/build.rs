@@ -1,5 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let schema_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../data");
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").ok_or("CARGO_MANIFEST_DIR is not set")?;
+    let schema_dir = std::path::PathBuf::from(manifest_dir).join("../data");
     println!(
         "cargo:rerun-if-changed={}",
         schema_dir.join("com.tablepro.linux.gschema.xml").display()

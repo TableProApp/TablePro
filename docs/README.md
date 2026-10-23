@@ -167,3 +167,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 - [Evidence branch migration proposal](proposals/evidence-branch.md): gradual artifact relocation, immutable source identity and a separately tested CI publisher.
 
 - [Toolkit startup ordering, October 23](evidence/toolkit-startup-2026-10-23/README.md): fresh-process regression for GTK initialization before library version checks.
+
+- [Build-script manifest ownership, October 23](evidence/build-manifest-2026-10-23/README.md): cross-checkout resource ownership and deleted-checkout regressions.

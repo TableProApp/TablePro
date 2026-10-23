@@ -1,0 +1,45 @@
+test_missing_runtime_manifest_does_not_use_the_compilation_checkout (test_build_manifest.BuildManifestTests.test_missing_runtime_manifest_does_not_use_the_compilation_checkout) ... FAIL
+test_reused_script_compiles_the_current_checkouts_schema (test_build_manifest.BuildManifestTests.test_reused_script_compiles_the_current_checkouts_schema) ... FAIL
+test_reused_script_survives_removal_of_its_compilation_checkout (test_build_manifest.BuildManifestTests.test_reused_script_survives_removal_of_its_compilation_checkout) ... FAIL
+
+======================================================================
+FAIL: test_missing_runtime_manifest_does_not_use_the_compilation_checkout (test_build_manifest.BuildManifestTests.test_missing_runtime_manifest_does_not_use_the_compilation_checkout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/bookie-ux-build-manifest/scripts/tests/test_build_manifest.py", line 78, in test_missing_runtime_manifest_does_not_use_the_compilation_checkout
+    self.assertNotEqual(result.returncode, 0)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 0 == 0
+
+======================================================================
+FAIL: test_reused_script_compiles_the_current_checkouts_schema (test_build_manifest.BuildManifestTests.test_reused_script_compiles_the_current_checkouts_schema)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/bookie-ux-build-manifest/scripts/tests/test_build_manifest.py", line 66, in test_reused_script_compiles_the_current_checkouts_schema
+    self.assert_current_schema()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/tmp/bookie-ux-build-manifest/scripts/tests/test_build_manifest.py", line 63, in assert_current_schema
+    self.assertEqual((self.output / "gschemas.compiled").read_text(), "current checkout")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'compiled checkout' != 'current checkout'
+- compiled checkout
++ current checkout
+
+
+======================================================================
+FAIL: test_reused_script_survives_removal_of_its_compilation_checkout (test_build_manifest.BuildManifestTests.test_reused_script_survives_removal_of_its_compilation_checkout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/bookie-ux-build-manifest/scripts/tests/test_build_manifest.py", line 70, in test_reused_script_survives_removal_of_its_compilation_checkout
+    self.assert_current_schema()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/tmp/bookie-ux-build-manifest/scripts/tests/test_build_manifest.py", line 62, in assert_current_schema
+    self.assertEqual(result.returncode, 0, result.stderr)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : Error: "GSettings schema compilation failed"
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.551s
+
+FAILED (failures=3)

@@ -1,0 +1,59 @@
+[
+  {
+    "name": "preflight",
+    "command": [
+      "bash",
+      "scripts/preflight.sh"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "docs",
+    "command": [
+      "python3",
+      "scripts/check-doc-links.py"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "issues",
+    "command": [
+      "python3",
+      "scripts/check-known-issues.py"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "inventory",
+    "command": [
+      "python3",
+      "scripts/inventory-ignored-tests.py",
+      "--check"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "whitespace",
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit": 0
+  },
+  {
+    "name": "app-clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "-p",
+      "tablepro-app",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0
+  }
+]

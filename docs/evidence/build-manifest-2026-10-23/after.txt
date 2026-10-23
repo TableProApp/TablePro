@@ -1,0 +1,8 @@
+test_missing_runtime_manifest_does_not_use_the_compilation_checkout (test_build_manifest.BuildManifestTests.test_missing_runtime_manifest_does_not_use_the_compilation_checkout) ... ok
+test_reused_script_compiles_the_current_checkouts_schema (test_build_manifest.BuildManifestTests.test_reused_script_compiles_the_current_checkouts_schema) ... ok
+test_reused_script_survives_removal_of_its_compilation_checkout (test_build_manifest.BuildManifestTests.test_reused_script_survives_removal_of_its_compilation_checkout) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 1.681s
+
+OK

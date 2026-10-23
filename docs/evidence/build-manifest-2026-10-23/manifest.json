@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "base_commit": "1a8ec3247fa4898bf396a0d4b79f259161257bd2",
+  "working_tree_fix": true,
+  "source_sha256": {
+    "apps/linux/app/build.rs": "e086ce80d51491edd672409bf481fb123e3c8df221a6269fc5c0a0fd827ef89c",
+    "scripts/tests/test_build_manifest.py": "136784164c96636929d1ee44546f86f167ca6ed6b67a6357de3382cdf66255bf"
+  },
+  "log_sha256": {
+    "before.txt": "b03f801bbea6a21b87d3e47772fcecb2d4933aec4601c48d97c0c0c74242a163",
+    "after.txt": "4328c6332766ba30e21650d5df701434c25b5c016baf0bedaa1934b56e981ce6",
+    "validation.json": "e12791e27734c941402cbb874d417924f10fd1fcc4cfd721b544fc7231343d84",
+    "preflight.log.gz": "5cd2ecffa8db938406d4767ace9cc396fa516989176e2f22e3262037dceec7d4",
+    "clippy.txt": "fb51fd9f951dc95a5f7adf6f9ca65dc55906603ce3f24cab495112a86e096625"
+  },
+  "validation": {
+    "harness": {
+      "command": "python3 -m unittest discover -s scripts/tests -p test_build_manifest.py -v",
+      "executed": 3,
+      "before_failures": 3,
+      "after_failures": 0
+    },
+    "real_resources": {
+      "command": "cargo build --locked -p tablepro-app --bin tablepro-app",
+      "exit": 0
+    }
+  }
+}
