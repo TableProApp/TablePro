@@ -1,8 +1,10 @@
+mod keyboard_menu;
+
 use std::rc::Rc;
 use tablepro_core::sql_literal::RowStatement;
 
 use gtk4::prelude::*;
-use gtk4::{self as gtk, gio, glib};
+use gtk4::{self as gtk, gio};
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
 use super::GridMsg;
@@ -470,7 +472,7 @@ pub(super) fn install_grid_context_menus(
         empty_popover.popup();
     });
     column_view.add_controller(gesture);
-    GridMenus {
+    let menus = GridMenus {
         context,
         cell_menu_trigger: crate::ui::shortcut::parse(CELL_MENU_TRIGGER),
         editable_popover,
@@ -480,7 +482,9 @@ pub(super) fn install_grid_context_menus(
         reference_action,
         export_loaded,
         foreign_key_columns: Rc::new(options.foreign_key_columns),
-    }
+    };
+    keyboard_menu::install(column_view, &menus);
+    menus
 }
 
 fn empty_grid_menu(row_mutations_allowed: bool) -> gio::Menu {
@@ -715,11 +719,10 @@ pub(super) fn attach_cell_gesture(
     options: CellGestureOptions,
     menus: &GridMenus,
 ) {
+    super::display::CELL_MENU_OPTIONS_SLOT.set(widget, options);
     let gesture_widget = widget.downgrade();
     let view = column_view.downgrade();
-    let gesture_menus = menus.clone();
-    let gesture_options = Rc::new(options);
-    let options = gesture_options.clone();
+    let menus = menus.clone();
     let gesture = gtk::GestureClick::builder()
         .button(3)
         .propagation_phase(gtk::PropagationPhase::Capture)
@@ -728,8 +731,12 @@ pub(super) fn attach_cell_gesture(
         let (Some(view), Some(widget)) = (view.upgrade(), gesture_widget.upgrade()) else {
             return;
         };
+        let Some(popover) = super::display::CELL_MENU_OPTIONS_SLOT
+            .with(&widget, |options| prepare_cell_menu(&menus, &view, &widget, options))
+        else {
+            return;
+        };
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        let popover = prepare_cell_menu(&gesture_menus, &view, &widget, &gesture_options);
         let local = gtk::graphene::Point::new(x as f32, y as f32);
         let (x, y) = widget
             .compute_point(&view, &local)
@@ -739,36 +746,6 @@ pub(super) fn attach_cell_gesture(
         popover.popup();
     });
     widget.add_controller(gesture);
-    let key_widget = widget.downgrade();
-    let key_view = column_view.downgrade();
-    let menus = menus.clone();
-    let shortcut = gtk::Shortcut::builder()
-        .trigger(&menus.cell_menu_trigger)
-        .action(&gtk::CallbackAction::new(move |_, _| {
-            let (Some(view), Some(widget)) = (key_view.upgrade(), key_widget.upgrade()) else {
-                return glib::Propagation::Proceed;
-            };
-            let popover = prepare_cell_menu(&menus, &view, &widget, &options);
-            popover.set_pointing_to(
-                widget
-                    .compute_bounds(&view)
-                    .map(|bounds| {
-                        gtk::gdk::Rectangle::new(
-                            bounds.x() as i32,
-                            bounds.y() as i32,
-                            bounds.width() as i32,
-                            bounds.height() as i32,
-                        )
-                    })
-                    .as_ref(),
-            );
-            popover.popup();
-            glib::Propagation::Stop
-        }))
-        .build();
-    let controller = gtk::ShortcutController::new();
-    controller.add_shortcut(shortcut);
-    widget.add_controller(controller);
 }
 
 fn edit_enabled_for(widget: &gtk::Widget, fallback: bool) -> bool {
@@ -954,241 +931,5 @@ fn export_snapshot(view: &gtk::ColumnView, columns: &[ColumnInfo], truncated: bo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_empty_read_only_grid_menu_does_not_offer_insert_row() {
-        assert_eq!(empty_grid_menu(false).n_items(), 1);
-    }
-
-    #[test]
-    fn an_empty_writable_grid_menu_offers_insert_row() {
-        assert_eq!(empty_grid_menu(true).n_items(), 2);
-    }
-
-    #[test]
-    fn editable_grid_menu_hides_row_mutations_when_the_table_has_no_key() {
-        let menu = build_menu(true, false, true, true, false);
-        let actions = menu.item_link(3, gio::MENU_LINK_SECTION).expect("actions section");
-        assert_eq!(actions.n_items(), 4);
-    }
-
-    #[test]
-    fn a_local_result_menu_offers_visible_and_all_loaded_row_exports() {
-        let export_targets = |local_result| {
-            let menu = build_menu(false, false, true, false, local_result);
-            let actions = menu
-                .item_link(menu.n_items() - 1, gio::MENU_LINK_SECTION)
-                .expect("actions section");
-            (0..actions.n_items())
-                .filter_map(|index| actions.item_attribute_value(index, "action", None))
-                .filter_map(|value| value.get::<String>())
-                .filter(|action| action.starts_with("cell.export"))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(export_targets(true), ["cell.export", "cell.export-loaded"]);
-        assert_eq!(export_targets(false), ["cell.export"]);
-    }
-
-    #[test]
-    fn editable_grid_menu_offers_row_mutations_when_the_table_has_a_key() {
-        let menu = build_menu(true, true, true, true, false);
-        let actions = menu.item_link(3, gio::MENU_LINK_SECTION).expect("actions section");
-        assert_eq!(actions.n_items(), 8);
-    }
-
-    #[test]
-    #[ignore = "requires an isolated GTK display"]
-    fn copying_a_previewed_cell_copies_the_full_value() {
-        gtk::init().unwrap();
-        let full = "original".repeat(1_200);
-        let row = crate::ui::row_object::RowObject::new(vec![Value::Text(full.clone())]);
-        row.preview_values_from_result();
-        let editor = crate::ui::cell_editor::CellEditor::new();
-        editor.set_text("preview text");
-        IS_NULL_SLOT.set(&editor, false);
-
-        assert_eq!(copy_value_text(editor.upcast_ref(), Some(&row), 0), full);
-    }
-
-    #[test]
-    #[ignore = "requires an isolated GTK display"]
-    fn copy_value_keeps_keyless_previews_pending_edits_and_drafts_whole() {
-        gtk::init().unwrap();
-        let original = "original".repeat(1_200);
-        let keyless = crate::ui::row_object::RowObject::new(vec![Value::Text(original)]);
-        keyless.preview_values_from_result();
-        let pending = "pending".repeat(1_200);
-        let editor = crate::ui::cell_editor::CellEditor::new();
-        editor.set_inline_editable(true);
-        editor.set_text("pending preview");
-        IS_NULL_SLOT.set(&editor, false);
-        FULL_EDIT_TEXT_SLOT.set(&editor, pending.clone());
-        assert_eq!(
-            copy_value_text(editor.upcast_ref(), Some(&keyless), 0),
-            pending,
-            "a pending edit on a keyless query must copy the current full value"
-        );
-
-        let draft_value = "draft".repeat(1_200);
-        let draft = crate::ui::row_object::RowObject::new_draft(1, vec![Value::Text(draft_value.clone())]);
-        editor.set_text("draft preview");
-        IS_NULL_SLOT.set(&editor, false);
-        FULL_EDIT_TEXT_SLOT.set(&editor, draft_value.clone());
-        assert_eq!(copy_value_text(editor.upcast_ref(), Some(&draft), 0), draft_value);
-    }
-
-    #[test]
-    #[ignore = "requires an isolated GTK display"]
-    fn view_value_resolves_pending_text_null_and_draft_values_from_the_cell() {
-        gtk::init().unwrap();
-        let editor = crate::ui::cell_editor::CellEditor::new();
-        let widget = editor.upcast_ref::<gtk::Widget>();
-        let pending = "new value".repeat(1_200);
-        IS_NULL_SLOT.set(&editor, false);
-        FULL_EDIT_TEXT_SLOT.set(&editor, pending.clone());
-        assert_eq!(pending_cell_value(widget), Some(Value::Text(pending.clone())));
-
-        IS_NULL_SLOT.set(&editor, true);
-        FULL_EDIT_TEXT_SLOT.take(&editor);
-        assert_eq!(pending_cell_value(widget), Some(Value::Null));
-
-        IS_NULL_SLOT.set(&editor, false);
-        assert_eq!(pending_cell_value(widget), None);
-
-        FULL_EDIT_TEXT_SLOT.set(&editor, pending.clone());
-        assert_eq!(pending_cell_value(widget), Some(Value::Text(pending)));
-    }
-
-    #[test]
-    fn export_rows_refuse_an_incomplete_page() {
-        assert!(complete_rows([Some(vec![Value::Int(1)]), None].into_iter()).is_none());
-        assert_eq!(
-            complete_rows([Some(vec![Value::Int(1)])].into_iter()),
-            Some(vec![vec![Value::Int(1)]])
-        );
-    }
-
-    #[test]
-    fn full_value_edit_requires_a_persisted_key_or_a_draft_identity() {
-        assert!(!has_persisted_row_key(&[]));
-        assert!(!has_persisted_row_key(&[Value::Undecodable("text".into())]));
-        assert!(has_persisted_row_key(&[Value::Int(7)]));
-    }
-
-    #[test]
-    #[ignore = "requires an isolated GTK display"]
-    fn the_cell_menu_opens_with_the_menu_key_and_shift_f10() {
-        relm4::adw::init().unwrap();
-        let trigger = crate::ui::shortcut::parse(CELL_MENU_TRIGGER);
-        assert!(!trigger.is::<gtk::NeverTrigger>());
-        let text = trigger.to_str().to_string();
-        assert!(text.contains("Menu"), "{text}");
-        assert!(text.contains("<Shift>F10"), "{text}");
-        keyboard_reference_state_follows_current_cell();
-    }
-
-    fn keyboard_reference_state_follows_current_cell() {
-        let (window, label, menus, local) = keyboard_menu_fixture();
-        window.present();
-        while glib::MainContext::default().iteration(false) {}
-        let controllers = label.observe_controllers();
-        let controller = (0..controllers.n_items())
-            .find_map(|index| controllers.item(index)?.downcast::<gtk::ShortcutController>().ok())
-            .unwrap();
-        let shortcut = controller.item(0).and_downcast::<gtk::Shortcut>().unwrap();
-        let action = shortcut.action().unwrap();
-        menus.reference_action.set_enabled(false);
-        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
-        assert!(menus.reference_action.is_enabled());
-        let export = &menus.export_loaded.as_ref().unwrap().0;
-        assert!(!export.is_enabled());
-        local.filter_by_value(0, Value::Int(7));
-        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
-        assert!(export.is_enabled());
-        local.clear_filter();
-        menus.readonly_popover.popdown();
-        POSITION_SLOT.set(&label, 1);
-        assert!(action.activate(gtk::ShortcutActionFlags::empty(), &label, None));
-        assert!(!menus.reference_action.is_enabled());
-        assert!(!export.is_enabled());
-        menus.readonly_popover.popdown();
-        window.close();
-    }
-
-    fn keyboard_menu_fixture() -> (gtk::Window, gtk::Label, GridMenus, LocalResultView) {
-        let rows = gio::ListStore::new::<crate::ui::row_object::RowObject>();
-        rows.append(&crate::ui::row_object::RowObject::new(vec![Value::Int(7)]));
-        rows.append(&crate::ui::row_object::RowObject::new(vec![Value::Null]));
-        let view = gtk::ColumnView::new(Some(gtk::SingleSelection::new(Some(rows))));
-        let label = gtk::Label::new(Some("7"));
-        POSITION_SLOT.set(&label, 0);
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.append(&view);
-        content.append(&label);
-        let window = gtk::Window::builder().child(&content).build();
-        let (sender, _receiver) = relm4::channel();
-        let local = local_result_for_menu();
-        let menus = install_grid_context_menus(
-            &view,
-            sender,
-            &[],
-            false,
-            "sqlite".into(),
-            GridMenuOptions {
-                filterable: false,
-                row_mutations_allowed: false,
-                foreign_key_columns: ["linked".into()].into(),
-                local_result_view: Some(local.clone()),
-            },
-        );
-        let sibling = gtk::Label::new(None);
-        for cell in [&label, &sibling] {
-            attach_cell_gesture(
-                cell.upcast_ref(),
-                &view,
-                CellGestureOptions {
-                    idx: 0,
-                    column_name: "linked".into(),
-                    is_editable: false,
-                    is_text_editable: false,
-                    supports_full_value: false,
-                },
-                &menus,
-            );
-        }
-        let trigger = |label: &gtk::Label| {
-            let controllers = label.observe_controllers();
-            let controller = (0..controllers.n_items())
-                .find_map(|index| controllers.item(index)?.downcast::<gtk::ShortcutController>().ok())
-                .unwrap();
-            controller
-                .item(0)
-                .and_downcast::<gtk::Shortcut>()
-                .unwrap()
-                .trigger()
-                .unwrap()
-        };
-        assert_eq!(trigger(&label), trigger(&sibling));
-        (window, label, menus, local)
-    }
-
-    fn local_result_for_menu() -> LocalResultView {
-        LocalResultView::new(
-            std::sync::Arc::new(QueryResult {
-                columns: Vec::new(),
-                rows: vec![vec![Value::Int(7)]],
-                truncated: false,
-            }),
-            super::super::local_filter::LocalResultSettingsStore::default(),
-            super::super::local_filter::ResultViewKey {
-                statement_identity: crate::ui::editor::StatementIdentity {
-                    statement_index: 0,
-                    digest: [0; 32],
-                },
-                result_set_index: 0,
-            },
-        )
-    }
-}
+#[path = "context_menu_tests.rs"]
+mod tests;

@@ -1,0 +1,32 @@
+{
+  "source_base": "a950891e6d11328a3f2d24401712b9cbb90832b3",
+  "profile": "dev",
+  "binaries": {
+    "before": {
+      "binary": "before/usr/bin/tablepro",
+      "sha256": "0dd8d9ee6946efb8b15a889ba7d09e70960ce28c98a3a723190c2e442f4d6b60"
+    },
+    "after": {
+      "binary": "after/usr/bin/tablepro",
+      "sha256": "4bb4f6dc6a44efb22e498f1c313f0d35eda8b0072f5e44fd24b9be5506721dee"
+    }
+  },
+  "changed_production_source_sha256": {
+    "before": {
+      "apps/linux/app/src/ui/grid/context_menu.rs": "881fcb402f6abebc9e84468bee9ee3fa69082af74e925498084b33b411e380af",
+      "apps/linux/app/src/ui/grid/context_menu/keyboard_menu.rs": null,
+      "apps/linux/app/src/ui/grid/display.rs": "d3396295f55d6efd28e20f464599248732ce6c17b6a29b7502e859131a88f7b3"
+    },
+    "after": {
+      "apps/linux/app/src/ui/grid/context_menu.rs": "aff62eaf0eaffdc8580d74738b8e235f250ddd9346d11a44ef6e0952ded5d34c",
+      "apps/linux/app/src/ui/grid/context_menu/keyboard_menu.rs": "e8171183ade29e35b8b265b0764808c4276845006baadd62573d99e652828b90",
+      "apps/linux/app/src/ui/grid/display.rs": "17da79aaac6fa9bd5109947e95401dc0c24fa18d38880eae334710e3673a062d"
+    }
+  },
+  "toolkit_versions": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+}

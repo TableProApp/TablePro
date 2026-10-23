@@ -272,6 +272,12 @@ macro_rules! define_widget_slot {
     };
 }
 
+define_widget_slot!(
+    CELL_MENU_OPTIONS_SLOT,
+    CellMenuOptionsKey,
+    super::context_menu::CellGestureOptions,
+    "tp-cell-menu-options"
+);
 define_widget_slot!(POSITION_SLOT, PositionKey, u32, "tp-position");
 define_widget_slot!(SNAPSHOT_SLOT, SnapshotKey, EditSnapshot, "tp-snapshot");
 define_widget_slot!(ROW_KEY_SLOT, RowKeyKey, Vec<Value>, "tp-row-key");

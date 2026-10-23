@@ -1,0 +1,33 @@
+--- a/scripts/test-gtk-safety.sh
++++ b/run-probe.sh
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+ 
+-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++ROOT="${TABLEPRO_PROFILE_REPO:?}"
+ cd "$ROOT"
+ 
+ for command_name in dbus-run-session dbus-update-activation-environment gdbus xvfb-run python3; do
+@@ -33,13 +33,13 @@
+   trap cleanup_gtk_runtime EXIT
+   env -u NO_AT_BRIDGE TABLEPRO_GTK_DBUS_ACTIVE=1 XDG_RUNTIME_DIR="$gtk_runtime" \
+     ATSPI_DBUS_IMPLEMENTATION=dbus-daemon XDG_CURRENT_DESKTOP=GNOME \
+-    dbus-run-session -- "$ROOT/scripts/test-gtk-safety.sh" "$@"
++    dbus-run-session -- "$TABLEPRO_PROFILE_RUNNER" "$@"
+   exit $?
+ fi
+ 
+ if [[ "${TABLEPRO_GTK_XVFB_ACTIVE:-0}" != "1" ]]; then
+   exec env TABLEPRO_GTK_XVFB_ACTIVE=1 \
+-    xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24 -nolisten tcp" "$ROOT/scripts/test-gtk-safety.sh" "$@"
++    xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24 -nolisten tcp" "$TABLEPRO_PROFILE_RUNNER" "$@"
+ fi
+ 
+ export GDK_BACKEND=x11
+@@ -70,4 +70,4 @@
+   echo "installed GTK test binary is not executable: $test_binary" >&2
+   exit 1
+ fi
+-timeout 1500s python3 -u "$ROOT/apps/linux/app/tests/gtk_safety.py" "$test_binary"
++timeout 1500s python3 -u "$TABLEPRO_PROFILE_SCRIPT" "$test_binary"
