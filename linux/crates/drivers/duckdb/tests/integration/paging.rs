@@ -93,3 +93,41 @@ async fn an_enum_key_pages_in_declared_order() {
     assert_eq!(backward, declared);
     connection.close().await.unwrap();
 }
+
+/// A DATE key at its infinities pages like any other, the anchor past
+/// `infinity` cast back to a DATE beside the key's other column.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_composite_key_with_an_infinite_date_pages_through() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE days (d DATE, n INTEGER, PRIMARY KEY (d, n))",
+            "INSERT INTO days VALUES ('infinity', 1), ('2024-01-01', 2), ('-infinity', 3), ('infinity', 0)",
+        ],
+    )
+    .await
+    .unwrap();
+    let table = Table::read(connection.as_ref(), "days").await;
+    let ordered: Vec<Value> = crate::support::query(connection.as_ref(), "SELECT d FROM days ORDER BY d, n")
+        .await
+        .rows
+        .into_iter()
+        .map(|row| row[0].clone())
+        .collect();
+
+    let mut forward = Vec::new();
+    let mut position = PagePosition::First;
+    for _ in 0..ordered.len() + 1 {
+        let (read, rows) = table.page(connection.as_ref(), &position).await;
+        if rows.is_empty() {
+            break;
+        }
+        forward.extend(rows);
+        position = read.next.unwrap();
+    }
+
+    assert_eq!(forward, ordered);
+    connection.close().await.unwrap();
+}

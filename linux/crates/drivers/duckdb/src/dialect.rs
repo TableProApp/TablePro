@@ -202,7 +202,9 @@ impl SqlDialect for DuckDbDialect {
 /// Whether a value for the column goes as text DuckDB has to cast: a
 /// column whose type has no binding of its own. An ENUM label bound as
 /// VARCHAR would compare as text, so a key read past `'sad'` in
-/// `ENUM('sad', 'ok', 'happy')` would find nothing after it.
+/// `ENUM('sad', 'ok', 'happy')` would find nothing after it. A DATE's
+/// infinities go as text too, which a row value such as `(d, id) > (?, ?)`
+/// refuses to compare with a DATE.
 fn needs_cast(column: &ColumnType) -> bool {
     !matches!(
         column.kind,
@@ -211,7 +213,6 @@ fn needs_cast(column: &ColumnType) -> bool {
             | ColumnKind::Float(_)
             | ColumnKind::Text { .. }
             | ColumnKind::Bytes { .. }
-            | ColumnKind::Date
             | ColumnKind::Interval
     )
 }
