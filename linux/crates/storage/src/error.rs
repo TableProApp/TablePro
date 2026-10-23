@@ -47,6 +47,9 @@ pub enum StorageError {
     #[error("another saved query of the connection has that name")]
     NameTaken,
 
+    #[error("another tag has that name")]
+    TagNameTaken,
+
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),
 

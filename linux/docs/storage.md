@@ -25,6 +25,10 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard. Version 1 of the file had a `read_only` switch instead, which reads as `read_only` when on and `off` when off.
 - `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A file written before it existed reads as `read_only`, the level a new connection starts at.
 - `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
+- The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`: trimmed, 1 to 32 characters, no control characters, cleaned on read as a group's is) and a `color` from the same palette as `color`. No two tags share a name in any case: `create_tag_blocking` and `update_tag_blocking` refuse one with `TagNameTaken`.
+- A connection's `tags` are ids from that list. Every write drops an id the list lacks and a repeated one, so `delete_tag_blocking` takes the tag off every connection in the same write, and a connection saved with a tag deleted meanwhile loses it.
+- `icon` is one of the `ConnectionIcon` names. The app draws each with a symbolic icon from the theme (`crates/app/src/ui/icons.rs`).
+- On import, a tag is matched by id, then by name in any case, and added only when neither matches, so importing a file twice leaves one tag of each name. A tag matched by id takes the file's colour, and its name unless another tag has it. A connection updated by an import takes the file's tags and icon.
 - An edit, a copy or a move to another group goes through the app's `SavedConnectionEditor`, which writes the keyring first. A refused secret stops before the list changes, and the secrets of a copy whose entry did not land are deleted again. Edits and copies run one at a time, so two windows editing one connection never leave the host of one with the password of the other.
 
 ### SSH settings
@@ -244,6 +248,11 @@ script lexer:
   would.
 - A string, quoted name or comment that never closes withholds it too, since
   what is inside a literal is then a guess.
+- Redis commands carry a password in their arguments, so their rules read the
+  command and its options rather than its words: `AUTH`, `HELLO ... AUTH`,
+  `MIGRATE ... AUTH`, `ACL SETUSER`, `CONFIG SET` of a password parameter,
+  `SENTINEL SET` and a script that names one of them
+  ([redis.md](drivers/redis.md#the-editor)).
 
 An entry is kept whole or not at all, never rewritten to cut a secret out.
 Turning the setting off keeps what is already there; Clear removes it.
@@ -271,6 +280,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `use-system-font` | `b` | `true` | |
 | `custom-font` | `s` | `Monospace 12` | |
 | `style-scheme` | `s` | `Adwaita` | |
+| `vim-keybindings` | `b` | `false` | |
 | `csv-null-to-empty` | `b` | `true` | |
 | `csv-line-break-to-space` | `b` | `false` | |
 | `csv-header-row` | `b` | `true` | |

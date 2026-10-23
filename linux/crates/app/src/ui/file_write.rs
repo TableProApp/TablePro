@@ -15,6 +15,19 @@ pub(crate) async fn replace_file(file: &gio::File, contents: Vec<u8>) -> Result<
         .map_err(|(_, error)| error)
 }
 
+/// Write `contents` to a file of that name only when none exists, so a
+/// file that appears meanwhile is an `Exists` error and is left alone.
+/// New, so private, as `replace_file` makes one.
+pub(crate) async fn create_file(file: &gio::File, contents: Vec<u8>) -> Result<(), glib::Error> {
+    let stream = file
+        .create_future(gio::FileCreateFlags::PRIVATE, glib::Priority::DEFAULT)
+        .await?;
+    match stream.write_all_future(contents, glib::Priority::DEFAULT).await {
+        Ok((_, _, None)) => stream.close_future(glib::Priority::DEFAULT).await,
+        Ok((_, _, Some(error))) | Err((_, error)) => Err(error),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -67,6 +80,41 @@ mod tests {
 
         let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
         assert_eq!(mode & 0o777, 0o640, "{mode:o}");
+    }
+
+    fn create(file: gio::File, contents: &[u8]) -> Result<(), glib::Error> {
+        let contents = contents.to_vec();
+        crate::test_support::finish_on_main(
+            Duration::from_secs(10),
+            async move { create_file(&file, contents).await },
+        )
+        .expect("the write to end")
+    }
+
+    #[gtk4::test]
+    fn a_new_file_is_created_with_its_contents_for_its_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("weekly.sql");
+
+        create(gio::File::for_path(&path), b"SELECT 1;").expect("written");
+
+        assert_eq!(std::fs::read(&path).expect("read back"), b"SELECT 1;");
+        let mode = std::fs::metadata(&path).expect("the file").permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+    }
+
+    #[gtk4::test]
+    fn creating_leaves_a_file_already_there_alone() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("weekly.sql");
+        std::fs::write(&path, "SELECT 7;").expect("seed");
+
+        let error = create(gio::File::for_path(&path), b"SELECT 1;").expect_err("a file is there");
+
+        assert!(error.matches(gio::IOErrorEnum::Exists), "{error}");
+        assert_eq!(std::fs::read(&path).expect("read back"), b"SELECT 7;");
     }
 
     #[gtk4::test]

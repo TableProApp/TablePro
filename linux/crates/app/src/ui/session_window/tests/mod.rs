@@ -54,6 +54,8 @@ pub(crate) struct Script {
     pub tunnel: Option<tablepro_storage::SavedSshConfig>,
     /// The connection list on disk cannot be read, so it holds nothing.
     pub unreadable_list: bool,
+    /// The saved connection's engine holds keys, not tables.
+    pub keys: bool,
     /// The size the window opens at, as the settings remember it.
     pub window_size: Option<(i32, i32)>,
     /// Stands in for the file manager.
@@ -101,13 +103,14 @@ impl TestWindow {
             network,
             tunnel,
             unreadable_list,
+            keys,
             window_size,
             revealer,
         } = script;
         if let Some(size) = window_size {
             remember_window_size(&settings, size);
         }
-        let network = network || tunnel.is_some();
+        let network = network || keys || tunnel.is_some();
         let saved = scripted_connection(network, tunnel, dir.path());
         if unreadable_list {
             write_unreadable_list(&list_file);
@@ -125,10 +128,10 @@ impl TestWindow {
             connection.list_objects.always(FakeReply::ok(Vec::new()));
         }
         let mut drivers = DriverRegistry::new();
-        let capabilities = if network {
-            &FakeDriver::NETWORK_CAPABILITIES
-        } else {
-            &FakeDriver::FILE_CAPABILITIES
+        let capabilities = match (keys, network) {
+            (true, _) => &FakeDriver::KEY_VALUE_CAPABILITIES,
+            (false, true) => &FakeDriver::NETWORK_CAPABILITIES,
+            (false, false) => &FakeDriver::FILE_CAPABILITIES,
         };
         drivers.register(Arc::new(FakeDriver::connecting(capabilities, connection.clone())));
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
@@ -334,6 +337,8 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -355,6 +360,8 @@ fn network_connection() -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -395,6 +402,7 @@ fn a_connected_window_shows_the_workspace_and_claims_its_key() {
 fn stored_level(test: &TestWindow) -> Option<tablepro_core::SafeModeLevel> {
     match test.services.storage.connections().snapshot().state {
         tablepro_storage::ConnectionListState::Ready(list) => list
+            .connections
             .iter()
             .find(|saved| saved.id == test.saved.id)
             .map(|saved| saved.safe_mode),

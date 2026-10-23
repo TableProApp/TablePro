@@ -23,7 +23,7 @@ const SAFE_MODE: &str = "safe-mode";
 /// The window's actions and the input each one sends. A closure holds
 /// only the window's input sender, so an action that outlives the window
 /// drops its input rather than reaching a window that is gone.
-const ACTIONS: [(&str, ActionInput); 10] = [
+const ACTIONS: [(&str, ActionInput); 11] = [
     ("new-connection", || SessionWindowInput::OpenConnectDialog),
     ("close-current", || SessionWindowInput::CloseCurrent),
     ("disconnect", || SessionWindowInput::Disconnect),
@@ -34,6 +34,7 @@ const ACTIONS: [(&str, ActionInput); 10] = [
     ("reset-workspace-layout", || SessionWindowInput::ResetWorkspaceLayout),
     ("export-connections", || SessionWindowInput::ExportConnections),
     ("import-connections", || SessionWindowInput::ImportConnections),
+    ("manage-tags", || SessionWindowInput::ManageTags),
 ];
 
 pub(super) fn install(window: &adw::ApplicationWindow, input: &InputSender<SessionWindowInput>) {

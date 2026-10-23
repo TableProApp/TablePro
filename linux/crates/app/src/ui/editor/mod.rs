@@ -26,6 +26,7 @@ mod statement_cursor;
 #[cfg(test)]
 mod tests;
 mod transaction_dirty;
+mod vim_mode;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -110,8 +111,15 @@ impl SqlEditor {
             hold: init.hold,
             close_timeout: init.close_timeout,
         });
-        let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_owned());
-        let buffer = match sourceview5::LanguageManager::default().language("sql") {
+        let sql = editor.grammar().is_sql();
+        let sample = if sql { "SELECT 1;" } else { "PING" };
+        let initial_text = init.initial_query.unwrap_or_else(|| sample.to_owned());
+        // GtkSourceView has no language for an engine's commands, so they
+        // show as plain text rather than wrongly coloured as SQL.
+        let language = sql
+            .then(|| sourceview5::LanguageManager::default().language("sql"))
+            .flatten();
+        let buffer = match language {
             Some(language) => sourceview5::Buffer::with_language(&language),
             None => sourceview5::Buffer::new(None),
         };
@@ -126,10 +134,13 @@ impl SqlEditor {
             }
         });
         editor.connect_theme(&init.settings);
-        editor.connect_completion(&buffer);
+        editor.connect_completion(&buffer, sql);
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
+        // After the editor's own key controllers, so Vim's runs first.
+        let vim = editor.follow_vim_preference(&init.settings);
+        editor.imp().app_handlers.borrow_mut().push(vim);
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
@@ -265,6 +276,10 @@ impl SqlEditor {
             return;
         }
         let grammar = self.grammar();
+        // The formatter knows only SQL's layout.
+        if !grammar.is_sql() {
+            return;
+        }
         let settings = tablepro_core::sql_syntax::script::LexicalSettings::default_for(grammar);
         let formatted = format_plan::format_script(&text, grammar, settings);
         if formatted == text {
@@ -366,9 +381,9 @@ impl SqlEditor {
         self.imp().deps.get()
     }
 
-    /// The SQL grammar of the server the editor is pointed at, which
-    /// decides where statements begin and end. With no connection the
-    /// split still has to work, and PostgreSQL's is the strictest.
+    /// The grammar of the server the editor is pointed at, which decides
+    /// where statements begin and end. With no connection the split
+    /// still has to work, and PostgreSQL's is the strictest.
     fn grammar(&self) -> SqlGrammar {
         self.deps()
             .and_then(|deps| deps.session.get())
@@ -558,6 +573,7 @@ impl SqlEditor {
             usize::try_from(index).ok()?,
             entry,
             grid_sink,
+            self.grammar().is_sql(),
             actions,
         ))
     }
@@ -675,10 +691,12 @@ impl SqlEditor {
         self.imp().app_handlers.replace(handlers);
     }
 
-    fn connect_completion(&self, buffer: &sourceview5::Buffer) {
+    /// The catalog's tables and the SQL keywords where the engine speaks
+    /// SQL, and the words in the document everywhere.
+    fn connect_completion(&self, buffer: &sourceview5::Buffer, sql: bool) {
         let completion = self.imp().source_view.completion();
         let mut providers = self.imp().completion_providers.borrow_mut();
-        if let Some(deps) = self.deps() {
+        if let Some(deps) = self.deps().filter(|_| sql) {
             let catalog = completion::SqlCompletionProvider::new(deps.session.clone(), deps.tasks.clone());
             completion.add_provider(&catalog);
             providers.push(catalog.upcast());
@@ -854,12 +872,18 @@ impl SqlEditor {
     }
 
     fn open_file(&self) {
-        if buffer_text(&self.buffer()).trim().is_empty() {
-            self.choose_file();
+        self.replace_after_asking(SqlEditor::choose_file);
+    }
+
+    /// Loading replaces what is in the tab, which is where the user's
+    /// unrun work lives, so `replace` runs once the user agrees, or
+    /// straight away when the tab holds nothing. A file emptied and not
+    /// saved still holds a change.
+    fn replace_after_asking(&self, replace: impl Fn(&SqlEditor) + 'static) {
+        if buffer_text(&self.buffer()).trim().is_empty() && !self.has_unsaved_file_changes() {
+            replace(self);
             return;
         }
-        // Loading replaces what is in the tab, which is where the user's
-        // unrun work lives, so it asks first.
         let dialog = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Replace the Editor Contents?")),
             Some(&crate::i18n::gettext(
@@ -873,7 +897,7 @@ impl SqlEditor {
         let weak = self.downgrade();
         dialog.connect_response(Some("replace"), move |_, _| {
             if let Some(editor) = weak.upgrade() {
-                editor.choose_file();
+                replace(&editor);
             }
         });
         dialog.present(Some(self));

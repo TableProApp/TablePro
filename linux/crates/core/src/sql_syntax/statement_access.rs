@@ -157,6 +157,9 @@ const CLAUSE_WORDS: [&str; 15] = [
 /// on the server's version. Each piece a `DELIMITER` line cuts it into is
 /// read on its own too, since a client sends them apart.
 pub fn statement_access(sql: &str, grammar: SqlGrammar) -> StatementAccess {
+    if grammar == SqlGrammar::Redis {
+        return crate::sql_syntax::redis::script_access(sql);
+    }
     access_as_sent(sql, grammar, CLIENT_SPLITS)
 }
 
@@ -480,7 +483,7 @@ mod tests {
 
     #[test]
     fn reads_are_reads_in_every_grammar() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "SELECT * FROM orders",
                 "select id from orders where note = 'DELETE FROM orders'",
@@ -526,7 +529,7 @@ mod tests {
 
     #[test]
     fn writes_are_writes_in_every_grammar() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "INSERT INTO orders VALUES (1)",
                 "UPDATE orders SET total = 0 WHERE id = 1",
@@ -579,7 +582,7 @@ mod tests {
 
     #[test]
     fn drops_truncates_and_unbounded_row_changes_are_destructive() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "DROP TABLE orders",
                 "drop view if exists recent",
@@ -598,7 +601,7 @@ mod tests {
 
     #[test]
     fn bounded_row_changes_and_clauses_are_not_destructive() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "DELETE FROM orders WHERE id = 1",
                 "UPDATE orders SET total = 0 WHERE id = 1",

@@ -42,10 +42,21 @@ impl SidebarObject {
     }
 
     fn icon_name(&self) -> String {
+        use crate::ui::icons;
+        use tablepro_core::meta::KeyKind;
         let icon = match self.kind.get() {
-            Some(ObjectKind::View) => crate::ui::icons::VIEW_LIST,
-            Some(ObjectKind::MaterializedView) => crate::ui::icons::VIEW_PAGED,
-            _ => crate::ui::icons::VIEW_GRID,
+            Some(ObjectKind::View) => icons::VIEW_LIST,
+            Some(ObjectKind::MaterializedView) => icons::VIEW_PAGED,
+            Some(ObjectKind::Key(kind)) => match kind {
+                KeyKind::String => icons::TEXT_X_GENERIC,
+                KeyKind::Hash => icons::VIEW_GRID,
+                KeyKind::List => icons::VIEW_LIST,
+                KeyKind::Set => icons::VIEW_PAGED,
+                KeyKind::SortedSet => icons::VIEW_SORT_ASCENDING,
+                KeyKind::Stream => icons::DOCUMENT_OPEN_RECENT,
+                KeyKind::Other => icons::VIEW_MORE,
+            },
+            _ => icons::VIEW_GRID,
         };
         icon.to_owned()
     }

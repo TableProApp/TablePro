@@ -49,11 +49,15 @@ pub fn parse_type(grammar: SqlGrammar, text: &str, max_len: usize) -> Result<Val
     if text.chars().count() > max_len {
         return Err(TypeSyntaxError::TooLong { max: max_len });
     }
+    // A language that is not SQL has no column types to write.
+    let Some(dialect) = grammar.parser_dialect() else {
+        return Err(TypeSyntaxError::Invalid);
+    };
     if contains_comment(grammar, text) {
         return Err(TypeSyntaxError::Comment);
     }
 
-    let mut parser = Parser::new(grammar.parser_dialect())
+    let mut parser = Parser::new(dialect)
         .with_recursion_limit(RECURSION_LIMIT)
         .try_with_sql(text)
         .map_err(|_| TypeSyntaxError::Invalid)?;
@@ -75,7 +79,10 @@ pub(crate) const RECURSION_LIMIT: usize = 64;
 /// Text the tokenizer refuses is left to the parser's message unless it
 /// opens a comment, such as an unterminated `/*`.
 pub(crate) fn contains_comment(grammar: SqlGrammar, text: &str) -> bool {
-    match Tokenizer::new(grammar.parser_dialect(), text).tokenize_with_location() {
+    let Some(dialect) = grammar.parser_dialect() else {
+        return false;
+    };
+    match Tokenizer::new(dialect, text).tokenize_with_location() {
         Ok(tokens) => tokens.iter().any(|token| {
             matches!(
                 token.token,

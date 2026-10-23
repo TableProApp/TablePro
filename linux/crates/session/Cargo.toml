@@ -26,8 +26,10 @@ uuid.workspace = true
 
 [dev-dependencies]
 tablepro-driver-postgres.workspace = true
+tablepro-driver-redis.workspace = true
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
+async-trait.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 

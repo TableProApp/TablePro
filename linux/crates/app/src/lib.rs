@@ -72,6 +72,7 @@ fn build_registry() -> DriverRegistry {
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     r.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    r.register(Arc::new(tablepro_driver_redis::RedisDriver));
     r.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     r
 }

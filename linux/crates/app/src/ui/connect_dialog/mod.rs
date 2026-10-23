@@ -2,6 +2,7 @@
 //! window a `ConnectSubmission`; the window connects and saves. The
 //! Test button is the one place it connects, and it disconnects again.
 
+mod appearance;
 mod connect_dialog_mode;
 mod connect_form;
 mod connect_submission;
@@ -31,7 +32,7 @@ use tablepro_core::{
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
-use tablepro_storage::{CredentialDemand, SavedConnection};
+use tablepro_storage::{ConnectionTag, CredentialDemand, SavedConnection};
 use uuid::Uuid;
 
 pub use self::connect_dialog_mode::ConnectDialogMode;
@@ -64,6 +65,8 @@ pub struct ConnectDialogInit {
     pub interaction: CredentialInteraction,
     pub tasks: Tasks,
     pub saved_connections: Arc<[SavedConnection]>,
+    /// The tags the Appearance group offers.
+    pub tags: Arc<[ConnectionTag]>,
     pub remembered_driver: String,
     pub ssh_environment: SshEnvironment,
     /// What a Create opens on after a connect from it failed.
@@ -157,6 +160,7 @@ impl ConnectDialog {
             hold: init.hold,
         });
         imp.ssh_section.apply_environment(&init.ssh_environment);
+        let tags = init.tags;
 
         // An Edit opens on what is saved; a Create reopened after a
         // failed connect opens on what was typed.
@@ -192,6 +196,7 @@ impl ConnectDialog {
             (_, None) => ConnectForm::new("", &NO_DRIVER),
         };
         dialog.show_driver(index, &form);
+        dialog.show_appearance(&tags, form.icon, &form.tags);
         dialog.connect_handlers();
         dialog.recheck_files();
         dialog.refresh();
@@ -394,6 +399,8 @@ impl ConnectDialog {
                 .unwrap_or_default(),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
+            tags: self.picked_tags(),
+            icon: self.picked_icon(),
         }
     }
 
@@ -473,10 +480,16 @@ impl ConnectDialog {
         imp.host_row.set_visible(!file_based);
         imp.port_row.set_visible(!file_based);
         imp.database_row.set_visible(!file_based);
-        imp.database_row.set_title(&if caps.database_required {
-            crate::i18n::gettext("Database")
+        imp.database_row
+            .set_title(&match (caps.is_key_value(), caps.database_required) {
+                (true, _) => crate::i18n::gettext("Database Number (optional)"),
+                (false, true) => crate::i18n::gettext("Database"),
+                (false, false) => crate::i18n::gettext("Database (optional)"),
+            });
+        imp.username_row.set_title(&if caps.username_required {
+            crate::i18n::gettext("Username")
         } else {
-            crate::i18n::gettext("Database (optional)")
+            crate::i18n::gettext("Username (optional)")
         });
         imp.file_row.set_visible(file_based);
         imp.auth_group.set_visible(!file_based && !caps.auth_modes.is_empty());
@@ -498,7 +511,7 @@ impl ConnectDialog {
         let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
         self.imp()
             .safe_mode_row
-            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps.read_only));
+            .set_subtitle(&crate::ui::safe_mode::subtitle(self.form().safe_mode, caps));
     }
 
     fn show_external_access_subtitle(&self) {
@@ -606,6 +619,7 @@ impl ConnectDialog {
         imp.ssh_section.show_problems(&errors);
 
         let blocker = match (&pem, errors.message()) {
+            _ if imp.creating_tag.get() => Some(creating_tag_text()),
             (_, Some(message)) => Some(message.to_owned()),
             (PemState::Invalid(error), None) => Some(crate::ui::error_text::config_message(error)),
             (PemState::Pending, None) => Some(crate::i18n::gettext("Checking the certificate files…")),
@@ -618,6 +632,11 @@ impl ConnectDialog {
 
     /// The form, checked, or the reason it cannot be used yet.
     fn checked_form(&self) -> Result<CheckedForm, String> {
+        // A tag made from the dialog is ticked once it exists; a save
+        // before then would leave it off.
+        if self.imp().creating_tag.get() {
+            return Err(creating_tag_text());
+        }
         let entry = self
             .current_entry()
             .ok_or_else(|| crate::i18n::gettext("No driver selected"))?;
@@ -894,8 +913,10 @@ pub fn remedy_field(remedy: TlsRemedy) -> FormField {
 /// Capabilities for a registry with no drivers at all, so the form
 /// still has something to read.
 static NO_DRIVER: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: tablepro_core::EndpointKind::File,
     auth_modes: &[],
+    username_required: true,
     tls: None,
     read_only: tablepro_core::ReadOnlyEnforcement::LoginPrivileges,
     dml_writes: tablepro_core::WriteAtomicity::Transactional,
@@ -906,6 +927,10 @@ static NO_DRIVER: DriverCapabilities = DriverCapabilities {
     object_kinds: &[],
     database_required: false,
 };
+
+fn creating_tag_text() -> String {
+    crate::i18n::gettext("Creating the tag…")
+}
 
 fn auth_mode_label(mode: AuthMode) -> String {
     match mode {

@@ -77,7 +77,10 @@ pub fn plan_batches(
         .batches()
         .iter()
         .filter_map(|batch| {
-            let text = scoped.text.get(batch.range.clone())?.trim();
+            let text = scoped.text.get(batch.range.clone())?;
+            // A Redis command's range is exact, and a blank Rust trims but
+            // Redis does not, such as U+00A0, is part of an argument.
+            let text = if grammar.is_sql() { text.trim() } else { text };
             (!text.is_empty()).then(|| RunBatch {
                 text: text.to_owned(),
                 repeat: batch.repeat.get(),
@@ -779,6 +782,15 @@ mod tests {
 
         assert_eq!(batches[1].text, "SELECT oops");
         assert_eq!(batches[1].error_base, 50 + 14);
+    }
+
+    #[test]
+    fn a_redis_command_keeps_the_unicode_blanks_its_arguments_hold() {
+        let (batches, _, _) = plan_batches(&scoped("  SET k \u{a0}v\u{a0}\nGET k\n"), SqlGrammar::Redis, 0);
+
+        let texts: Vec<&str> = batches.iter().map(|batch| batch.text.as_str()).collect();
+        assert_eq!(texts, ["SET k \u{a0}v\u{a0}", "GET k"]);
+        assert_eq!(batches[0].error_base, 2);
     }
 
     #[test]

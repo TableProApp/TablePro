@@ -112,7 +112,7 @@ Every TLS fixture has two principals:
 - `password_credentials()`: user `tablepro`, which the server forces onto TLS (`ALTER USER ... REQUIRE SSL`, `hostssl ... scram-sha-256`, `require_secure_transport=ON`).
 - `certificate_credentials()`: user `tablepro_client`, which authenticates with the client certificate (`REQUIRE X509`, pg_hba `cert`, ClickHouse `ssl_certificates`).
 
-SQL Server has only the `sa` principal, because its TLS contract carries no client identity.
+SQL Server has only the `sa` principal, because its TLS contract carries no client identity. Redis maps no certificate to a user, so `RedisFixture::start_tls` runs two servers in one container: the TLS-only one on 6379, where the ACL user `tablepro` logs in with its password, and one on 6380 with `tls-auth-clients yes`, which takes only a client with the CA's certificate, as its `default` user. `RedisFixture::start` is the plain server, with the same password on `default` and on `tablepro`.
 
 `HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `UserCertificateAuthority` (only certificates that key signed log in), `KeyboardInteractive` or `HostCertificate`. `OpenSshFixture::start_with` also takes `OpenSshOptions`, which picks the release and sets sshd's `KexAlgorithms`, `MaxAuthTries` and `PubkeyAcceptedAlgorithms`. `SshKeyPair::generate_with` makes an Ed25519, RSA or ECDSA P-256 key, with a passphrase when given one, and `SshAgent` runs a private `ssh-agent` and loads a key with its passphrase. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
@@ -233,6 +233,18 @@ tablepro_test_support::round_trip_suite! {
 
 Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.
 
+### Keyspace conformance
+
+A key-value engine runs `keyspace_conformance_suite!` in place of the SQL suites, through `KeyspaceEngine`: how to start the server and connect, a route the case can drop (`FaultTransport`), the engine's commands that fill a key of each type, wait on a key, write a key and read a whole key, and how many commands the server holds waiting on a key. Redis's adapter is `crates/drivers/redis/tests/integration/conformance_engine.rs`:
+
+```rust
+tablepro_test_support::keyspace_conformance_suite! {
+    engine: RedisEngine,
+}
+```
+
+The cases: keys are listed with their types; a pattern is matched on the server; a listing stops at its limit and says so; every type reads in windows to its end with every entry; a missing key reads as none; a stopped command ends as cancelled within the cancel grace, the server lets it go, and the session runs again; a dropped run stops the command on the server; a statement timeout ends a waiting command as one the server stopped; a read-only connection refuses a write in the editor and in `stream_read` before it reaches the server; `stream_read` streams every row; a probe answers while a command waits; `close` is idempotent; and a dropped route reports `ConnectionLost` within the deadline plus the cancel grace. `keyspace_suite_matches_driver_capabilities` is never ignored and fails when the driver's `data_model` is not `KeyValue`. The engine also runs the TLS suite.
+
 ### TLS conformance
 
 Every network driver's `crates/drivers/<engine>/tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
@@ -290,11 +302,12 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
 | `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
+| `TABLEPRO_TEST_REDIS` | 7.4, 8.10 | 8.10 |
 | `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `RedisVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Redis 7.4, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `RedisFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 

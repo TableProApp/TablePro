@@ -91,6 +91,10 @@ impl SqlGrammar {
     /// PostgreSQL folds an unquoted name to lower case, so a capital
     /// changes the name there.
     pub fn is_bare_identifier(self, name: &str) -> bool {
+        if self == Self::Redis {
+            // A Redis argument is bare until a blank or a quote.
+            return !name.is_empty() && !name.contains([' ', '\t', '\n', '\r', '"', '\'', '\\']);
+        }
         let mut chars = name.chars();
         let Some(first) = chars.next() else {
             return false;
@@ -124,6 +128,7 @@ impl SqlGrammar {
             Self::Sqlite => SQLITE,
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
+            Self::Redis => "",
         }
     }
 }
@@ -134,7 +139,7 @@ mod tests {
 
     #[test]
     fn each_list_is_upper_case_sorted_and_listed_once() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             let words: Vec<&str> = grammar.reserved_words().split_ascii_whitespace().collect();
             for pair in words.windows(2) {
                 assert!(pair[0] < pair[1], "{} before {} for {grammar:?}", pair[0], pair[1]);
@@ -147,7 +152,7 @@ mod tests {
 
     #[test]
     fn plain_names_stay_bare() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             assert!(grammar.is_bare_identifier("users"), "{grammar:?}");
             assert!(grammar.is_bare_identifier("order_items_2"), "{grammar:?}");
             assert!(grammar.is_bare_identifier("_draft"), "{grammar:?}");
@@ -167,7 +172,7 @@ mod tests {
 
     #[test]
     fn names_that_read_differently_bare_need_quotes() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             assert!(!grammar.is_bare_identifier(""), "{grammar:?}");
             assert!(!grammar.is_bare_identifier("order items"), "{grammar:?}");
             assert!(!grammar.is_bare_identifier("2fa"), "{grammar:?}");
@@ -181,7 +186,7 @@ mod tests {
 
     #[test]
     fn reserved_words_the_editor_does_not_complete_need_quotes() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             assert!(!grammar.is_bare_identifier("to"), "{grammar:?}");
             assert!(!grammar.is_bare_identifier("TO"), "{grammar:?}");
         }

@@ -6,18 +6,19 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
 
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
+use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{ConnectionGroupName, ConnectionListState};
 use uuid::Uuid;
 
+use crate::services::connection_search::ConnectionSearch;
 use crate::services::saved_connection_list::{SavedConnectionList, StateObserverId};
 use crate::services::saved_connection_object::SavedConnectionObject;
-use crate::ui::picker::connection_row;
+use crate::ui::picker::{RowChoices, connection_row};
 
 mod imp {
     use super::*;
@@ -60,6 +61,23 @@ mod imp {
     impl BinImpl for WelcomeView {}
 }
 
+/// The first row under `root` that shows.
+fn first_row(root: &gtk::Widget) -> Option<adw::ActionRow> {
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if widget.is_visible() {
+            if let Some(row) = widget.downcast_ref::<adw::ActionRow>() {
+                return Some(row.clone());
+            }
+            if let Some(row) = first_row(&widget) {
+                return Some(row);
+            }
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 /// The row under `root` whose activation connects to `target`.
 fn row_for(root: &gtk::Widget, target: &str) -> Option<adw::ActionRow> {
     let mut child = root.first_child();
@@ -91,6 +109,10 @@ pub(super) struct Parts {
     tasks: Option<Tasks>,
     /// The groups after the ungrouped one, by name, in list order.
     groups: RefCell<Vec<(ConnectionGroupName, adw::PreferencesGroup)>>,
+    /// What the picker's search asks for; every section's filter reads it.
+    search: Rc<RefCell<ConnectionSearch>>,
+    /// The ungrouped section's filter, then each group's.
+    filters: RefCell<Vec<gtk::CustomFilter>>,
     /// A connection whose row takes the focus once the list shows it.
     focus: Cell<Option<Uuid>>,
     rows_changed: RefCell<Option<glib::SignalHandlerId>>,
@@ -106,19 +128,14 @@ impl WelcomeView {
             list: list.clone(),
             tasks,
             groups: RefCell::new(Vec::new()),
+            search: Rc::default(),
+            filters: RefCell::new(Vec::new()),
             focus: Cell::new(None),
             rows_changed: RefCell::new(None),
             state_changed: RefCell::new(None),
         });
         let ungrouped = view.filtered(None);
         let group = imp.ungrouped.get();
-        group.set_visible(ungrouped.n_items() > 0);
-        let shown = group.downgrade();
-        ungrouped.connect_items_changed(move |model, _, _, _| {
-            if let Some(group) = shown.upgrade() {
-                group.set_visible(model.n_items() > 0);
-            }
-        });
         view.bind(&group, &ungrouped);
         let weak = view.downgrade();
         let rows_changed = list.model().connect_items_changed(move |_, _, _, _| {
@@ -154,25 +171,82 @@ impl WelcomeView {
         }
     }
 
-    /// The rows of the connections in `group`, or in none.
+    /// The rows of the connections in `group`, or in none, that the
+    /// search matches.
     fn filtered(&self, group: Option<&str>) -> gtk::FilterListModel {
-        let list = self.imp().parts.get().map(|parts| parts.list.model());
+        let Some(parts) = self.imp().parts.get() else {
+            return gtk::FilterListModel::new(None::<gio::ListModel>, None::<gtk::Filter>);
+        };
         let group = group.map(str::to_owned);
+        let (list, search) = (Rc::downgrade(&parts.list), parts.search.clone());
         let filter = gtk::CustomFilter::new(move |item| {
-            item.downcast_ref::<SavedConnectionObject>()
-                .is_some_and(|object| object.group() == group)
+            let Some(object) = item.downcast_ref::<SavedConnectionObject>() else {
+                return false;
+            };
+            let (Some(saved), Some(list)) = (object.saved(), list.upgrade()) else {
+                return false;
+            };
+            saved.group.as_ref().map(ConnectionGroupName::as_str) == group.as_deref()
+                && search.borrow().matches(saved, &list.tags())
         });
-        gtk::FilterListModel::new(list, Some(filter))
+        parts.filters.borrow_mut().push(filter.clone());
+        gtk::FilterListModel::new(Some(parts.list.model()), Some(filter))
     }
 
+    /// Show `group` while its section has a row to show.
     fn bind(&self, group: &adw::PreferencesGroup, rows: &gtk::FilterListModel) {
         let Some(parts) = self.imp().parts.get() else {
             return;
         };
         let (list, tasks) = (parts.list.clone(), parts.tasks.clone());
         group.bind_model(Some(rows), move |object| {
-            connection_row(object, &list.groups(), tasks.as_ref())
+            let choices = RowChoices {
+                groups: list.groups(),
+                tags: list.tags(),
+            };
+            connection_row(object, &choices, tasks.as_ref())
         });
+        group.set_visible(rows.n_items() > 0);
+        let (shown, view) = (group.downgrade(), self.downgrade());
+        rows.connect_items_changed(move |rows, _, _, _| {
+            if let Some(group) = shown.upgrade() {
+                group.set_visible(rows.n_items() > 0);
+            }
+            // A section can change after the list's own handler ran.
+            if let Some(view) = view.upgrade() {
+                view.refresh_page();
+            }
+        });
+    }
+
+    /// Show only the connections `text` matches, in every section.
+    pub(crate) fn set_search(&self, text: &str) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let search = ConnectionSearch::new(text);
+        if *parts.search.borrow() == search {
+            return;
+        }
+        parts.search.replace(search);
+        for filter in parts.filters.borrow().iter() {
+            filter.changed(gtk::FilterChange::Different);
+        }
+        self.refresh_page();
+    }
+
+    /// Connect to the first connection the list shows, as Enter in the
+    /// search does.
+    pub(crate) fn activate_first(&self) {
+        let Some(row) = first_row(self.imp().page.upcast_ref()) else {
+            return;
+        };
+        let (Some(action), target) = (row.action_name(), row.action_target_value()) else {
+            return;
+        };
+        if let Err(error) = row.activate_action(&action, target.as_ref()) {
+            tracing::warn!(%error, "the first connection's row reached no picker");
+        }
     }
 
     /// Put the focus on the row of the connection `id`, now or once the
@@ -225,6 +299,8 @@ impl WelcomeView {
         for (_, group) in parts.groups.take() {
             imp.page.remove(&group);
         }
+        // The ungrouped section's filter stays; the old groups' go.
+        parts.filters.borrow_mut().truncate(1);
         let mut built = Vec::with_capacity(names.len());
         for name in names {
             // A group's title is markup, and the name is the user's text.
@@ -240,14 +316,20 @@ impl WelcomeView {
 
     /// The empty page only once the list is read and holds nothing. A
     /// list still loading, or one that cannot be read, shows no promise
-    /// to add to it; the banner says why.
+    /// to add to it; the banner says why. A search that matches nothing
+    /// says so rather than showing an empty list.
     fn refresh_page(&self) {
         let imp = self.imp();
         let Some(parts) = imp.parts.get() else {
             return;
         };
         let empty = parts.list.model().n_items() == 0 && matches!(parts.list.state(), ConnectionListState::Ready(_));
-        imp.stack.set_visible_child_name(if empty { "empty" } else { "list" });
+        let unmatched = !parts.search.borrow().is_empty() && first_row(imp.page.upcast_ref()).is_none();
+        imp.stack.set_visible_child_name(match (empty, unmatched) {
+            (true, _) => "empty",
+            (false, true) => "no-results",
+            (false, false) => "list",
+        });
     }
 
     #[cfg(test)]

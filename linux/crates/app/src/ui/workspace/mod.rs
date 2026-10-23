@@ -126,6 +126,9 @@ pub(crate) struct WorkspaceModel {
     /// Says the sidebar's list could not be read again, until a read
     /// lands.
     catalog_banner: adw::Banner,
+    /// Set when the session's engine holds keys, not tables: its sidebar
+    /// lists keys, and a key opens in a key tab.
+    keys: Option<sidebar::KeySidebar>,
     /// Says the saved tabs could not be read, until Reset moves them
     /// aside.
     layout_banner: adw::Banner,
@@ -192,6 +195,25 @@ fn window_inhibitor(window: &adw::ApplicationWindow) -> WindowInhibitor {
     WindowInhibitor::new(ApplicationInhibit::new(window))
 }
 
+/// Where the session's editor tabs write their text.
+fn draft_writer(
+    storage: &crate::storage::SharedStorage,
+    tasks: &tablepro_session::runtime::Tasks,
+) -> Rc<crate::workspace::DraftWriter> {
+    crate::workspace::DraftWriter::new(
+        tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
+        tasks.clone(),
+    )
+}
+
+/// Whether the session's engine holds keys rather than tables.
+fn holds_keys(context: &SessionContext, session: &Session) -> bool {
+    context
+        .drivers
+        .get(&session.metadata().driver_id)
+        .is_some_and(|driver| driver.capabilities().is_key_value())
+}
+
 /// The driver's name, or its id when this build has no such driver.
 fn driver_display_name(context: &SessionContext, driver_id: &str) -> String {
     context
@@ -249,6 +271,9 @@ pub enum ClosedTabDescriptor {
         schema: Option<String>,
         table: String,
     },
+    Key {
+        key: String,
+    },
 }
 
 pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
@@ -290,6 +315,12 @@ pub struct TableTabSlot {
     pub browse: BrowseTab,
 }
 
+/// A tab showing one key of a key-value engine.
+pub struct KeyTabSlot {
+    pub page: adw::TabPage,
+    pub tab: crate::ui::key_tab::KeyTab,
+}
+
 /// A tab in the unified workspace.
 ///
 /// - **Table**: one (schema, table) entity in Data (Browse grid)
@@ -302,6 +333,7 @@ pub enum WorkspaceTab {
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
     Table(TableTabSlot),
+    Key(KeyTabSlot),
 }
 
 impl WorkspaceTab {
@@ -322,13 +354,12 @@ impl WorkspaceTab {
         }
     }
 
-    /// `(schema, table)` when the slot is pinned to one. Editor
-    /// returns `None`.
-    pub fn schema_table(&self) -> Option<(Option<&str>, &str)> {
+    /// The sidebar row the tab shows: its table, or its key.
+    pub(crate) fn sidebar_object(&self) -> Option<tablepro_core::meta::TableRef> {
         match self {
-            WorkspaceTab::Structure(s) => Some((s.schema.as_deref(), &s.table)),
-            WorkspaceTab::Table(s) => Some((s.schema.as_deref(), &s.table)),
-            WorkspaceTab::Editor(_) => None,
+            WorkspaceTab::Table(s) => Some(tablepro_core::meta::TableRef::new(s.schema.clone(), s.table.clone())),
+            WorkspaceTab::Key(s) => Some(tablepro_core::meta::TableRef::unqualified(s.tab.key())),
+            WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) => None,
         }
     }
 
@@ -337,6 +368,7 @@ impl WorkspaceTab {
             WorkspaceTab::Editor(slot) => &slot.page,
             WorkspaceTab::Structure(slot) => &slot.page,
             WorkspaceTab::Table(slot) => &slot.page,
+            WorkspaceTab::Key(slot) => &slot.page,
         }
     }
 
@@ -353,6 +385,7 @@ impl WorkspaceTab {
                 slot.schema.clone(),
                 slot.table.clone(),
             )),
+            WorkspaceTab::Key(slot) => TabIdentity::Key(slot.tab.key().to_owned()),
         }
     }
 }
@@ -418,6 +451,11 @@ pub(crate) enum WorkspaceInput {
         read: u64,
         listing: sidebar::SidebarListing,
     },
+    /// List a key-value engine's keys again, as the search now asks.
+    ListKeys,
+    /// The keys a listing found, indexed for the sidebar, or why they
+    /// could not be listed.
+    KeysListed(sidebar::KeysListed),
     /// A reconnect replaced the connection.
     LinkChanged,
     SelectTable {
@@ -440,6 +478,8 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
+    /// The saved connections changed, the title's icon perhaps with them.
+    SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
@@ -480,6 +520,8 @@ pub(crate) enum WorkspaceInput {
         outcome: crate::workspace::WorkOutcome,
     },
     WorkspaceTabClosed(Uuid),
+    /// Close the tab as its close button does, prompts and all.
+    CloseWorkspaceTab(Uuid),
     /// Each tab still asks about its own unsaved changes.
     CloseOtherWorkspaceTabs(Uuid),
     CloseWorkspaceTabsToRight(Uuid),
@@ -571,14 +613,12 @@ impl Workspace {
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
         let history = services.history();
-        let drafts = crate::workspace::DraftWriter::new(
-            tablepro_storage::DraftStore::new(storage.paths().drafts_dir()),
-            tasks.clone(),
-        );
+        let drafts = draft_writer(&storage, &tasks);
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let sidebar = sidebar::build(&workspace, &input, &session, &tasks);
+        let keys = holds_keys(&context, &session);
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, keys);
         let WorkspaceTabParts {
             tab_view,
             index,
@@ -590,7 +630,7 @@ impl Workspace {
             workspace_handle,
         } = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
         let mut actions = workspace_actions::install(&window, &input);
-        let shell = shell::install(&workspace, &window, &factory);
+        let shell = shell::install(&workspace, &window, &factory, &services, &input);
         actions.push(shell::SHOW_SIDEBAR);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
@@ -623,6 +663,7 @@ impl Workspace {
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
+            keys: keys.then(|| sidebar::KeySidebar::new(imp.key_limit_banner.get())),
             layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
             table_search: imp.table_search.get(),
@@ -923,6 +964,7 @@ impl WorkspaceModel {
         self.window_title.set_subtitle(&title.subtitle);
         self.sidebar_title.set_title(name);
         self.sidebar_title.set_subtitle(&self.driver_name);
+        self.shell.show_connection_icon(&self.key);
         if let Some(workspace) = self.this.upgrade() {
             workspace.emit_by_name::<()>("title-changed", &[&title.window]);
         }
@@ -963,6 +1005,9 @@ impl WorkspaceModel {
 
     fn shutdown(mut self) {
         self.history_gate.abort();
+        if let Some(keys) = self.keys.as_mut() {
+            keys.stop_listing();
+        }
         self.sidebar.shutdown();
         self.shell.release();
         // Their entries name this session's tables and queries.
@@ -988,6 +1033,20 @@ impl WorkspaceModel {
         self.context.active.take();
     }
 
+    fn on_export_results(&self, tab: Uuid, offer: ExportOffer) {
+        if let Some(window) = self.window() {
+            let dialect = self.context.active.get().and_then(|session| session.current_dialect());
+            super::export::dialog::present(super::export::dialog::ExportDialogInit {
+                parent: &window,
+                exports: &self.exports,
+                offer,
+                dialect,
+                settings: &self.settings,
+                tab,
+            });
+        }
+    }
+
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
@@ -1001,6 +1060,8 @@ impl WorkspaceModel {
             WorkspaceInput::RefreshCatalog => self.refresh_catalog(),
             WorkspaceInput::DefaultListCommitted(snapshot) => self.on_default_list_committed(snapshot),
             WorkspaceInput::SidebarRead { read, listing } => self.on_sidebar_read(read, listing),
+            WorkspaceInput::ListKeys => self.list_keys(),
+            WorkspaceInput::KeysListed(listed) => self.on_keys_listed(listed),
             WorkspaceInput::LinkChanged => self.on_link_changed(),
             WorkspaceInput::TabCloseDecided { id, approved } => self.on_tab_close_decided(id, approved),
             WorkspaceInput::SelectTable {
@@ -1019,6 +1080,7 @@ impl WorkspaceModel {
             }
             WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
+            WorkspaceInput::CloseWorkspaceTab(id) => self.close_workspace_tab(id),
             WorkspaceInput::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id),
             WorkspaceInput::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id),
             WorkspaceInput::CloseActiveWorkspaceTab => self.close_active_workspace_tab(),
@@ -1048,7 +1110,7 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
+            WorkspaceInput::SafeModeChanged | WorkspaceInput::SavedConnectionsChanged => self.refresh_window_title(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
@@ -1068,19 +1130,7 @@ impl WorkspaceModel {
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
-            WorkspaceInput::ExportResults { tab, offer } => {
-                if let Some(window) = self.window() {
-                    let dialect = self.context.active.get().and_then(|session| session.current_dialect());
-                    super::export::dialog::present(super::export::dialog::ExportDialogInit {
-                        parent: &window,
-                        exports: &self.exports,
-                        offer: *offer,
-                        dialect,
-                        settings: &self.settings,
-                        tab,
-                    });
-                }
-            }
+            WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
             WorkspaceInput::ExportEnded { tab, outcome } => {
                 self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
             }

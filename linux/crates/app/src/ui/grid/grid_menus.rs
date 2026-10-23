@@ -150,7 +150,9 @@ fn build_cell_menu(shape: MenuShape, references: &gio::Menu) -> gio::Menu {
         Some("cell.copy-csv-headers"),
     );
     copy_as.append(Some(&crate::i18n::gettext("Markdown")), Some("cell.copy-markdown"));
-    copy_as.append(Some(&crate::i18n::gettext("IN Clause")), Some("cell.copy-in-clause"));
+    let in_clause = gio::MenuItem::new(Some(&crate::i18n::gettext("IN Clause")), Some("cell.copy-in-clause"));
+    in_clause.set_attribute_value("hidden-when", Some(&"action-missing".to_variant()));
+    copy_as.append_item(&in_clause);
     if shape.row_ops {
         let sql_section = gio::Menu::new();
         sql_section.append(
@@ -450,7 +452,7 @@ impl CellActionKit {
     }
 
     fn copy_entries(&self) -> Vec<CellEntry> {
-        vec![
+        let mut entries = vec![
             // Plain Copy reads the cell's value, never the widget's text:
             // the widget carries the display form, which is the `<NULL>`
             // sentinel, the `(auto)` placeholder, `<N bytes>` for a blob and
@@ -465,8 +467,11 @@ impl CellActionKit {
             self.copy("copy-csv", |_, _| CopyKind::Csv),
             self.copy("copy-csv-headers", |_, _| CopyKind::CsvWithHeaders),
             self.copy("copy-markdown", |_, _| CopyKind::Markdown),
-            self.copy_in_clause(),
-        ]
+        ];
+        if self.tab.in_clause {
+            entries.push(self.copy_in_clause());
+        }
+        entries
     }
 
     fn copy_in_clause(&self) -> CellEntry {

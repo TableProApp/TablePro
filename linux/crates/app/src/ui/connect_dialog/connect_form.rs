@@ -7,7 +7,7 @@ use tablepro_core::{
     NetworkEndpoint, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
-use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};
+use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
 use uuid::Uuid;
 
 use super::form_errors::FormErrors;
@@ -131,6 +131,9 @@ pub struct ConnectForm {
     pub external_access: ExternalAccess,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
+    /// The ids of the tags ticked in the Appearance group.
+    pub tags: Vec<Uuid>,
+    pub icon: Option<ConnectionIcon>,
 }
 
 /// A form that passed every check, ready to connect and to save.
@@ -158,6 +161,8 @@ impl ConnectForm {
             external_access: ExternalAccess::default(),
             ssh: None,
             file: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -169,6 +174,8 @@ impl ConnectForm {
         let mut form = Self::new(&saved.driver_id, caps);
         form.safe_mode = saved.safe_mode;
         form.external_access = saved.external_access;
+        form.tags.clone_from(&saved.tags);
+        form.icon = saved.icon;
         if caps.is_file_based() {
             form.file = FileEndpoint::open_existing(PathBuf::from(&saved.database)).ok();
         } else {
@@ -252,7 +259,7 @@ impl ConnectForm {
         let username = self.username.trim();
         let credentials = match self.auth {
             AuthMode::Password => {
-                if username.is_empty() {
+                if username.is_empty() && caps.username_required {
                     errors.push(
                         FormField::Username,
                         crate::i18n::gettext("Enter the username to log in with."),
@@ -268,13 +275,7 @@ impl ConnectForm {
         };
 
         let database = self.database.trim();
-        if caps.database_required && database.is_empty() {
-            errors.push(
-                FormField::Database,
-                config_message(&ConfigError::DatabaseRequired),
-                true,
-            );
-        }
+        check_database(caps, database, &mut errors);
 
         let ssh = match self.ssh.as_ref().map(SshFormState::inputs).transpose() {
             Ok(ssh) => ssh,
@@ -338,15 +339,15 @@ impl ConnectForm {
                 .unwrap_or_default();
         }
         let host = self.host.trim();
-        match self.auth {
-            AuthMode::Kerberos => host.to_owned(),
-            AuthMode::Password => format!("{}@{host}", self.username.trim()),
+        match (self.auth, self.username.trim()) {
+            (AuthMode::Kerberos, _) | (AuthMode::Password, "") => host.to_owned(),
+            (AuthMode::Password, username) => format!("{username}@{host}"),
         }
     }
 
     /// The entry a successful connect writes. Colour, group and the
     /// last-opened time come from the entry it replaces, because this
-    /// form does not show them.
+    /// form does not show them; its tags and icon are the form's.
     pub fn saved_connection(
         &self,
         caps: &DriverCapabilities,
@@ -397,6 +398,8 @@ impl ConnectForm {
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
             color: existing.and_then(|saved| saved.color),
             group: existing.and_then(|saved| saved.group.clone()),
+            tags: self.tags.clone(),
+            icon: self.icon,
         }
     }
 
@@ -610,6 +613,23 @@ pub fn tls_field(error: &ConfigError, config: &TlsConfig) -> FormField {
     }
 }
 
+/// A database a connection needs and lacks, or a key-value engine's
+/// database that is not a number.
+fn check_database(caps: &DriverCapabilities, database: &str, errors: &mut FormErrors) {
+    if caps.database_required && database.is_empty() {
+        errors.push(
+            FormField::Database,
+            config_message(&ConfigError::DatabaseRequired),
+            true,
+        );
+    }
+    if caps.is_key_value()
+        && let Err(error) = tablepro_core::keyspace::database_number(Some(database))
+    {
+        errors.push(FormField::Database, config_message(&error), false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use secrecy::ExposeSecret;
@@ -637,6 +657,10 @@ mod tests {
 
     fn sqlite() -> &'static DriverCapabilities {
         caps(&tablepro_driver_sqlite::SqliteDriver)
+    }
+
+    fn redis() -> &'static DriverCapabilities {
+        caps(&tablepro_driver_redis::RedisDriver)
     }
 
     fn filled(driver_id: &str, caps: &DriverCapabilities) -> ConnectForm {
@@ -689,6 +713,39 @@ mod tests {
         };
         let valid = kerberos.validate(mssql()).expect("SQL Server takes Kerberos");
         assert!(matches!(network(&valid.target).1, Credentials::Integrated));
+    }
+
+    #[test]
+    fn redis_logs_in_with_a_password_alone_on_a_numbered_database() {
+        let form = ConnectForm {
+            username: String::new(),
+            database: " 3 ".to_owned(),
+            ..filled("redis", redis())
+        };
+
+        let valid = form.validate(redis()).expect("a password alone and a number");
+
+        assert_eq!(network(&valid.target).2, Some("3"));
+        assert_eq!(
+            form.label(redis()),
+            "db.example.com",
+            "an empty username named the entry"
+        );
+        let named = ConnectForm {
+            database: "sales".to_owned(),
+            ..form.clone()
+        };
+        let errors = named.validate(redis()).err().expect("a name is not a database number");
+        assert!(errors.has(FormField::Database), "{errors:?}");
+        let anonymous = ConnectForm {
+            username: String::new(),
+            ..filled("postgres", postgres())
+        };
+        let errors = anonymous
+            .validate(postgres())
+            .err()
+            .expect("PostgreSQL needs a username");
+        assert!(errors.has(FormField::Username), "{errors:?}");
     }
 
     #[test]
@@ -960,6 +1017,30 @@ mod tests {
         assert_eq!(saved_from(&form, postgres()).name, "app@db2.example.com");
         form.name = "  Shop ".to_owned();
         assert_eq!(saved_from(&form, postgres()).name, "Shop");
+    }
+
+    #[test]
+    fn the_tags_and_icon_go_through_the_form_and_back() {
+        let tag = Uuid::new_v4();
+        let saved = SavedConnection {
+            tags: vec![tag],
+            icon: Some(ConnectionIcon::Shield),
+            ..saved_from(&filled("postgres", postgres()), postgres())
+        };
+
+        let form = ConnectForm::from_saved(&saved, postgres());
+        assert_eq!(form.tags, [tag]);
+        assert_eq!(form.icon, Some(ConnectionIcon::Shield));
+
+        let untagged = ConnectForm {
+            tags: Vec::new(),
+            icon: None,
+            ..form
+        };
+        let valid = untagged.validate(postgres()).expect("valid");
+        let written = untagged.saved_connection(postgres(), &valid, saved.id, Some(&saved));
+        assert!(written.tags.is_empty(), "the entry's tags came back over the form's");
+        assert_eq!(written.icon, None);
     }
 
     #[test]

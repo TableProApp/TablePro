@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to six engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, SQLite and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -18,6 +18,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
@@ -235,6 +236,29 @@ A running TablePro opens the file in its own window and the new launch
 exits. A file already open brings its window forward. A database on a
 network or FUSE filesystem asks whether to open read-only first, because
 SQLite's locking cannot be trusted there.
+
+## Vim keybindings
+
+Turn on **Preferences → Editor → Vim Keybindings**. The SQL editor then
+runs GtkSourceView's Vim emulation: normal, insert, replace and visual
+modes, motions, text objects, registers, marks, search with `/` and `?`,
+and `.` to repeat. The line under the text shows the mode and the command
+you are typing.
+
+| Command | Does |
+|---|---|
+| `:w` | Saves the tab's file, as Ctrl+S does. A tab with no file asks for one |
+| `:w name` | Saves to `name`, next to the tab's file or in your home folder, and the tab follows it. An existing file is left alone; `:w! name` replaces it |
+| `:e` | Reads the tab's file again, asking first when that loses changes. `:e!` does not ask |
+| `:e name` | Opens `name` in the tab, as Open SQL File does. `:e! name` does not ask |
+| `:q`, `:q!` | Closes the tab. A tab with unsaved file changes or an open transaction asks first, as closing does |
+| `:wq`, `:x` | Saves, then closes the tab. `:x` skips the save when the file has no changes |
+
+The editor's own Ctrl shortcuts work in every mode: Ctrl+Return runs,
+Ctrl+Shift+Return runs the statement at the cursor, and find, find and
+replace, format, toggle comment, open and save keep their keys. Every
+other key goes to Vim, Escape too, so while Vim is on the **Stop** button
+stops a running query. Completion opens in insert mode only.
 
 ## SQL Server with Windows integrated auth
 
