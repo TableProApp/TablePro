@@ -146,6 +146,12 @@ pub struct ConnectionWorkspaceState {
     pub database: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub other_databases: BTreeMap<String, ConnectionWorkspaceState>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub omitted_tabs: u32,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 impl ConnectionWorkspaceState {
@@ -610,6 +616,7 @@ fn drop_non_editor_tabs_over_limit(conn: &mut ConnectionWorkspaceState) {
         if surplus > 0 && !matches!(tab, WorkspaceTabRecord::Editor { .. }) {
             keep[index] = false;
             surplus -= 1;
+            conn.omitted_tabs = conn.omitted_tabs.saturating_add(1);
         }
     }
     let mut index = 0;

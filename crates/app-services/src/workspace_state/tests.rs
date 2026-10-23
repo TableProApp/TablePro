@@ -327,6 +327,34 @@ fn clamp_truncates_tabs_beyond_limit() {
 }
 
 #[test]
+fn tabs_dropped_by_the_cap_are_counted_across_save_and_reopen() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = Some(directory.path().join("workspace.json"));
+    let drafts = directory.path().join("drafts");
+    let id = Uuid::new_v4();
+    let mut tabs: Vec<_> = (0..40).map(|i| browse(&format!("t{i}"))).collect();
+    tabs.push(editor("SELECT 1"));
+    let store = WorkspaceStore::new(path.clone(), drafts.clone());
+    store.save_connection(
+        id,
+        ConnectionWorkspaceState {
+            tabs,
+            ..Default::default()
+        },
+    );
+    store
+        .flush()
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap()
+        .unwrap();
+    let reopened = WorkspaceStore::new(path, drafts);
+    reopened.prefetch_connections(&[id]).unwrap();
+    let restored = reopened.load_connection(id).unwrap();
+    assert_eq!(restored.tabs.len(), MAX_TABS_PER_CONNECTION);
+    assert_eq!(restored.omitted_tabs, 9);
+}
+
+#[test]
 fn clamp_never_drops_editor_tabs_beyond_limit() {
     let mut tabs: Vec<_> = (0..40).map(|i| browse(&format!("t{i}"))).collect();
     tabs.extend((0..3).map(|i| editor(&format!("SELECT {i}"))));

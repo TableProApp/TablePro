@@ -256,6 +256,9 @@ impl App {
             tab_view.set_selected_page(&page);
         }
         self.workspace_outer_stack.set_visible_child_name("tabs");
+        if let Some(notice) = omitted_tabs_notice(saved.omitted_tabs) {
+            self.show_toast(&notice);
+        }
     }
 
     /// Public entry: append a Structure draft tab for the New-Table
@@ -980,6 +983,13 @@ fn default_editor_tab_label(n: usize) -> String {
     crate::tr!("Query {n}").replace("{n}", &n.to_string())
 }
 
+fn omitted_tabs_notice(count: u32) -> Option<String> {
+    (count > 0).then(|| {
+        crate::tr!("Table tabs not restored: {n}. At most 32 tabs per connection are kept.")
+            .replace("{n}", &count.to_string())
+    })
+}
+
 fn editor_titles(tabs: &tablepro_app_services::workspace::WorkspaceTabs<WorkspaceTab>) -> Vec<String> {
     tabs.values()
         .filter_map(|tab| match tab {
@@ -1146,6 +1156,12 @@ mod structure_title_tests {
             structure_tab_title(2, Some("sales"), "orders"),
             "sales.orders · Structure"
         );
+    }
+
+    #[test]
+    fn restoring_tabs_dropped_by_the_cap_surfaces_their_count() {
+        assert_eq!(omitted_tabs_notice(0), None);
+        assert!(omitted_tabs_notice(9).is_some_and(|notice| notice.contains('9')));
     }
 }
 

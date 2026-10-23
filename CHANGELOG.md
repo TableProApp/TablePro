@@ -47,6 +47,7 @@
 
 ### Fixed
 
+- When a connection had more than 32 open tabs, the table tabs left out on the next start are now reported in a notice instead of disappearing silently. Query editor tabs are always kept.
 - Query cursor cleanup warnings use diagnostic codes without including database error payloads.
 
 - Copying rows and pasting them back into the grid keeps NULL, empty text and text such as `\N` unchanged. Previously empty text pasted as `""`, and a cell holding `\N` could swap with a NULL.
