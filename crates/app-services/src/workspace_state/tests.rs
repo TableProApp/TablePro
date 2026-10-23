@@ -705,3 +705,53 @@ fn saving_with_a_cold_cache_keeps_the_other_databases_on_disk() {
     assert_eq!(table_of(&restarted.load_database(id, "sales").unwrap()), "sales_orders");
     assert_eq!(table_of(&restarted.load_database(id, "hr").unwrap()), "hr_payroll");
 }
+
+#[test]
+fn a_workspace_with_only_unrestorable_structure_tabs_becomes_empty() {
+    let records = [
+        WorkspaceTabRecord::Structure {
+            schema: None,
+            table: String::new(),
+        },
+        WorkspaceTabRecord::Table {
+            schema: None,
+            table: String::new(),
+            mode: PersistedTableMode::Structure,
+            offset: 0,
+            page_size: 100,
+            sort_col: None,
+            sort_asc: None,
+            preview: false,
+        },
+    ];
+    for record in records {
+        let mut state = ConnectionWorkspaceState {
+            tabs: vec![record],
+            ..Default::default()
+        };
+        clamp_connection(&mut state);
+        assert!(state.tabs.is_empty());
+        assert_eq!(state.active_idx, 0);
+    }
+}
+
+#[test]
+fn dropping_unrestorable_structure_tabs_preserves_the_selected_editor() {
+    let mut state = ConnectionWorkspaceState {
+        tabs: vec![
+            WorkspaceTabRecord::Structure {
+                schema: None,
+                table: String::new(),
+            },
+            editor("selected"),
+            editor("other"),
+        ],
+        active_idx: 1,
+        ..Default::default()
+    };
+    clamp_connection(&mut state);
+    assert!(
+        matches!(&state.tabs[state.active_idx as usize], WorkspaceTabRecord::Editor { query, .. } if query == "selected")
+    );
+    assert_eq!(state.tabs.len(), 2);
+}

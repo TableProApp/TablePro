@@ -2200,6 +2200,31 @@ def closing_a_dirty_file_with_discard_closes_without_writing(database, base, res
     wait_for_node_containing("done in")
 
 
+def skipped_restored_tabs_leave_a_usable_empty_workspace(database, base, restart):
+    def seed_skipped_tab(environment):
+        path = Path(environment["XDG_CONFIG_HOME"]) / storage_dir_name() / "workspace_state.json"
+        path.write_text(json.dumps({"connections": {
+            "d4f5e246-c40a-4a30-90f2-39e93e94d920": {
+                "tabs": [{"kind": "structure", "schema": None, "table": ""}],
+                "active_idx": 0,
+            }
+        }}), encoding="utf-8")
+
+    restart(before_start=seed_skipped_tab, restored=True)
+    button = wait_for_node(name="Open SQL editor", role=pyatspi.ROLE_PUSH_BUTTON)
+    time.sleep(SETTLE_SECONDS / 3)
+    bounds = button.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
+    assert bounds.width > 0 and bounds.height > 0, "empty workspace button is not allocated"
+    gtk_ux.x11_click(bounds.x + bounds.width // 2, bounds.y + bounds.height // 2, button=1)
+    wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
+    run_sql("SELECT 9 AS after_skipped_restore")
+    wait_for_node_containing("done in")
+
+
+skipped_restored_tabs_leave_a_usable_empty_workspace.environment = "local"
+skipped_restored_tabs_leave_a_usable_empty_workspace.needs_restart = True
+
+
 def closing_a_clean_editor_tab_removes_it_and_keeps_the_other(database, base, restart):
     def seed_two_tabs(environment):
         environment["G_DEBUG"] = ""
@@ -2483,6 +2508,7 @@ def main():
         closing_a_file_tab_with_save_writes_the_file_and_closes_the_tab,
         closing_a_dirty_file_with_discard_closes_without_writing,
         closing_a_clean_editor_tab_removes_it_and_keeps_the_other,
+        skipped_restored_tabs_leave_a_usable_empty_workspace,
         switching_one_window_leaves_the_other_windows_edits,
         sidebar_tables_group_collapses_and_expands,
         restart_with_a_deleted_connection_opens_the_welcome_list,

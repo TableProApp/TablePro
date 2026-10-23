@@ -1,10 +1,10 @@
 use tablepro_core::DriverError;
 
-pub(crate) fn warn_cursor_cleanup(error: &DriverError, operation: &'static str) {
+pub(crate) fn warn_driver_cleanup(error: &DriverError, operation: &'static str) {
     tracing::warn!(
         error_code = driver_code(error),
         operation,
-        "query cursor cleanup failed"
+        "database operation cleanup failed"
     );
 }
 
@@ -94,7 +94,7 @@ mod tests {
                     rollback_error: Box::new(DriverError::query("private-query-marker")),
                 },
             ] {
-                warn_cursor_cleanup(&error, operation);
+                warn_driver_cleanup(&error, operation);
             }
         }
         let output = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();

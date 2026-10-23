@@ -640,7 +640,16 @@ fn retain_known_tabs(conn: &mut ConnectionWorkspaceState) {
     let mut retained_index = 0;
     let mut active_index = None;
     conn.tabs.retain(|tab| {
-        let keep = !matches!(tab, WorkspaceTabRecord::Unknown);
+        let keep = match tab {
+            WorkspaceTabRecord::Unknown => false,
+            WorkspaceTabRecord::Structure { table, .. }
+            | WorkspaceTabRecord::Table {
+                table,
+                mode: PersistedTableMode::Structure,
+                ..
+            } => !table.is_empty(),
+            _ => true,
+        };
         if keep {
             if original_index == selected {
                 active_index = Some(retained_index);

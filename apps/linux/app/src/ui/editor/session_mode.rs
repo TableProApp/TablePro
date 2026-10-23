@@ -158,13 +158,13 @@ impl StatementTarget {
     async fn release_cursor_session(target: &StatementTarget, owned_session: bool) {
         let rollback_control = OperationControl::with_timeout(std::time::Duration::from_secs(10));
         if let Err(error) = target.query("ROLLBACK", &[], &rollback_control).await {
-            crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "setup_rollback");
+            crate::services::driver_diagnostics::warn_driver_cleanup(&error, "setup_rollback");
         }
         if owned_session
             && let Self::Session { shared, .. } = target
             && let Err(error) = close_for_teardown(shared.clone()).await
         {
-            crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "setup_close");
+            crate::services::driver_diagnostics::warn_driver_cleanup(&error, "setup_close");
         }
     }
 
@@ -699,14 +699,16 @@ async fn rollback_and_close(shared: &SharedSession) -> Result<(), DriverError> {
 }
 
 pub(crate) fn close_detached(shared: SharedSession) {
-    relm4::spawn(async move {
-        let Some(session) = shared.lock().await.take() else {
-            return;
-        };
-        if let Err(error) = session.close().await {
-            tracing::warn!(error = %error, "closing a dedicated session failed");
-        }
-    });
+    relm4::spawn(close_detached_session(shared));
+}
+
+async fn close_detached_session(shared: SharedSession) {
+    let Some(session) = shared.lock().await.take() else {
+        return;
+    };
+    if let Err(error) = session.close().await {
+        crate::services::driver_diagnostics::warn_driver_cleanup(&error, "session_close");
+    }
 }
 
 fn session_open_message(error: &DriverError) -> String {
@@ -930,6 +932,21 @@ mod tests {
             self.close_calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn detached_cleanup_logs_category_without_server_payload() {
+        let log = tempfile::NamedTempFile::new().unwrap();
+        let subscriber = tracing_subscriber::fmt().with_writer(log.reopen().unwrap()).finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let shared: SharedSession = Arc::new(tokio::sync::Mutex::new(Some(Box::new(CountedClose {
+            calls: Arc::new(AtomicUsize::new(0)),
+            result: Err(DriverError::query("private-session-payload")),
+        }))));
+        close_detached_session(shared).await;
+        let output = std::fs::read_to_string(log.path()).unwrap();
+        assert!(!output.contains("private-session-payload"));
+        assert!(output.contains("query"));
     }
 
     #[tokio::test]

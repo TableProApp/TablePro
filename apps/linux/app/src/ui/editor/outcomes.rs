@@ -518,7 +518,7 @@ where
 
 async fn finish_stream_cursor(cursor: super::session_mode::StatementCursor, close_cursor: bool) {
     if let Err(error) = cursor.finish(close_cursor).await {
-        crate::services::driver_diagnostics::warn_cursor_cleanup(&error, "finish");
+        crate::services::driver_diagnostics::warn_driver_cleanup(&error, "finish");
     }
 }
 

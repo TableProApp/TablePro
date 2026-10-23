@@ -1,0 +1,14 @@
+[
+  {
+    "phase": "baseline",
+    "sha256": "571777636b9b7ff9ec9a3e5a2bc86f782166a3f28cf5b1ad968d9746fc39668a",
+    "profile": "dev",
+    "source": "0053bf339"
+  },
+  {
+    "phase": "fixed",
+    "sha256": "d2b2658a0591517e5c127d54b5653e0480e608643d94c1a59e2631c95246d705",
+    "profile": "dev",
+    "source": "d980faa29"
+  }
+]
