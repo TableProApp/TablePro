@@ -161,6 +161,25 @@ impl AppSettings {
         self.set_boolean(keys::RESTORE_SESSION, restore)
     }
 
+    /// Whether the MCP server runs. Off until the user turns it on.
+    pub fn mcp_server_enabled(&self) -> bool {
+        self.settings.boolean(keys::MCP_SERVER_ENABLED)
+    }
+
+    pub fn set_mcp_server_enabled(&self, enabled: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::MCP_SERVER_ENABLED, enabled)
+    }
+
+    /// The schema's range keeps it a port no other user's service can
+    /// hold below 1024, and one `u16` can carry.
+    pub fn mcp_server_port(&self) -> u16 {
+        u16::try_from(self.settings.uint(keys::MCP_SERVER_PORT)).unwrap_or(u16::MAX)
+    }
+
+    pub fn set_mcp_server_port(&self, port: u16) -> Result<(), SettingsError> {
+        self.set_uint(keys::MCP_SERVER_PORT, u32::from(port))
+    }
+
     pub fn csv_options(&self) -> CsvOptions {
         CsvOptions {
             null_to_empty: self.settings.boolean(keys::CSV_NULL_TO_EMPTY),

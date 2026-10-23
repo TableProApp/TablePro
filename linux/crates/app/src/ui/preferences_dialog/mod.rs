@@ -3,6 +3,7 @@ mod editor_page;
 mod general_page;
 mod history_group;
 mod imp;
+mod mcp_page;
 
 use std::rc::Rc;
 
@@ -14,6 +15,7 @@ use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 
 use crate::services::history_service::HistoryService;
+use crate::services::mcp_service::McpService;
 use crate::ui::file_reveal::FileRevealer;
 
 #[cfg(test)]
@@ -37,14 +39,22 @@ impl PreferencesDialog {
         history: HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
+        mcp: Option<McpService>,
     ) -> Self {
         let dialog: Self = glib::Object::new();
         let imp = dialog.imp();
         imp.settings.replace(Some(settings.clone()));
         imp.general_page.bind(settings, storage, history, tasks, revealer);
         imp.editor_page.bind(settings);
+        imp.mcp_page.bind(settings, mcp);
         let shown_in = dialog.downgrade();
         imp.general_page.history_group().connect_toast(move |_, toast| {
+            if let Some(dialog) = shown_in.upgrade() {
+                dialog.add_toast(toast.clone());
+            }
+        });
+        let shown_in = dialog.downgrade();
+        imp.mcp_page.connect_toast(move |_, toast| {
             if let Some(dialog) = shown_in.upgrade() {
                 dialog.add_toast(toast.clone());
             }
@@ -100,15 +110,20 @@ mod tests {
             history,
             tasks,
             Rc::new(RecordingRevealer::succeeding()),
+            None,
         )
     }
 
     /// The dialog's pages, in the order it shows them. They are not in
     /// its widget tree until it is presented, so they come from the
     /// template.
-    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 2] {
+    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 3] {
         let imp = dialog.imp();
-        [imp.general_page.get().upcast(), imp.editor_page.get().upcast()]
+        [
+            imp.general_page.get().upcast(),
+            imp.editor_page.get().upcast(),
+            imp.mcp_page.get().upcast(),
+        ]
     }
 
     #[gtk4::test]
@@ -123,10 +138,11 @@ mod tests {
             test_history(&root, &runtime.tasks()),
             &runtime.tasks(),
         );
-        let [general, editor] = pages(&dialog);
+        let [general, editor, mcp] = pages(&dialog);
 
         assert_eq!(general.title(), "General");
         assert_eq!(editor.title(), "Editor");
+        assert_eq!(mcp.title(), "MCP");
         assert_eq!(dialog.visible_page().as_ref(), Some(&general));
         dialog.set_visible_page(&editor);
         assert_eq!(

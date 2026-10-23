@@ -11,6 +11,7 @@ pub struct CallCounters {
     pub fetch_columns: Arc<AtomicUsize>,
     pub fetch_indexes: Arc<AtomicUsize>,
     pub fetch_foreign_keys: Arc<AtomicUsize>,
+    pub fetch_outbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_inbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_table_definition: Arc<AtomicUsize>,
     pub row_identity: Arc<AtomicUsize>,

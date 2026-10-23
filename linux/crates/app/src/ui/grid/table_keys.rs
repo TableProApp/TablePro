@@ -1,8 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use tablepro_core::ForeignKeyInfo;
-use tablepro_core::ddl::InboundForeignKey;
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey};
 use tablepro_core::meta::TableRef;
 
 /// A table's foreign keys both ways, as its tab last read them.
@@ -10,7 +9,7 @@ use tablepro_core::meta::TableRef;
 pub struct TableKeys {
     pub(crate) table: TableRef,
     /// The table's own keys, which point at other rows.
-    pub(crate) outbound: Vec<ForeignKeyInfo>,
+    pub(crate) outbound: Vec<OutboundForeignKey>,
     /// Other tables' keys that point at this one.
     pub(crate) inbound: Vec<InboundForeignKey>,
 }

@@ -12,6 +12,7 @@ mod crash_notice;
 mod debug_info;
 mod imp;
 mod legal_section;
+mod mcp_bridge;
 #[cfg(test)]
 mod metainfo_release;
 mod open_files;

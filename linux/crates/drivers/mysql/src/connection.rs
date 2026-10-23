@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -314,6 +314,21 @@ impl Connection for MysqlConnection {
             options,
             read_op(move |connection, flavour| {
                 Box::pin(async move { metadata::fetch_foreign_keys(connection, flavour, &table).await })
+            }),
+        )
+        .await
+    }
+
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
+        let table = table.clone();
+        self.read(
+            options,
+            read_op(move |connection, flavour| {
+                Box::pin(async move { metadata::fetch_outbound_foreign_keys(connection, flavour, &table).await })
             }),
         )
         .await

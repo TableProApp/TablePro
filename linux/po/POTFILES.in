@@ -9,6 +9,7 @@ crates/app/src/application/crash_notice.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/legal_section.rs
+crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
@@ -71,6 +72,8 @@ crates/app/src/services/file_resolution.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/mcp_service.rs
+crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
 crates/app/src/services/pending_structure.rs
 crates/app/src/services/save_batch.rs
@@ -196,7 +199,6 @@ crates/app/src/ui/credential_prompt/prompter.rs
 crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/discard_alert.rs
 crates/app/src/ui/editor/buffer_edit.rs
-crates/app/src/ui/editor/catalog_change.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
 crates/app/src/ui/editor/completion/completion_scope.rs
 crates/app/src/ui/editor/completion/fuzzy.rs
@@ -270,6 +272,7 @@ crates/app/src/ui/export/export_source.rs
 crates/app/src/ui/export/mod.rs
 crates/app/src/ui/export/replace_file_writer/mod.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs
+crates/app/src/ui/external_access.rs
 crates/app/src/ui/file_read.rs
 crates/app/src/ui/file_reveal/file_launcher_revealer.rs
 crates/app/src/ui/file_reveal/file_revealer.rs
@@ -370,6 +373,7 @@ crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
+crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
@@ -595,6 +599,7 @@ data/resources/ui/preferences-dialog.ui
 data/resources/ui/preferences-editor-page.ui
 data/resources/ui/preferences-general-page.ui
 data/resources/ui/preferences-history-group.ui
+data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui

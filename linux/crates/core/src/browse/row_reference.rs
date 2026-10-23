@@ -1,8 +1,7 @@
 use crate::column::{ColumnKind, ColumnType, ResultColumn};
-use crate::ddl::InboundForeignKey;
-use crate::edit::{EditText, edit_text};
+use crate::ddl::{InboundForeignKey, OutboundForeignKey};
+use crate::edit::{EditText, edit_text, parse_filter_text};
 use crate::filter::{Combinator, FilterOp, FilterRule, FilterSet, FilterValue};
-use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::TableRef;
 use crate::value::Value;
 
@@ -21,13 +20,18 @@ impl RowReference {
     /// whose cells are `values` under `columns`.
     pub fn referenced(
         source: &TableRef,
-        key: &ForeignKeyInfo,
+        key: &OutboundForeignKey,
         columns: &[ResultColumn],
         values: &[Value],
     ) -> Result<Self, ReferenceError> {
+        let OutboundForeignKey {
+            key,
+            parent_compares_alike,
+        } = key;
         let cells = key_cells(&key.columns, columns, values)?;
-        let filter = key_filter(&key.name, cells, &key.ref_columns)?;
         let table = target(source, key.ref_schema.as_deref(), &key.ref_table)?;
+        compared_alike(*parent_compares_alike, &table)?;
+        let filter = key_filter(&key.name, cells, &key.ref_columns)?;
         Ok(Self { table, filter })
     }
 
@@ -40,14 +44,19 @@ impl RowReference {
         values: &[Value],
     ) -> Result<Self, ReferenceError> {
         let cells = key_cells(&key.referenced_columns, columns, values)?;
-        let filter = key_filter(&key.name, cells, &key.columns)?;
         let table = target(source, key.table.schema.as_deref(), &key.table.name)?;
-        if !key.child_compares_alike {
-            return Err(ReferenceError::ComparedOtherwise {
-                table: key.table.name.clone(),
-            });
-        }
+        compared_alike(key.child_compares_alike, &table)?;
+        let filter = key_filter(&key.name, cells, &key.columns)?;
         Ok(Self { table, filter })
+    }
+}
+
+fn compared_alike(alike: bool, table: &TableRef) -> Result<(), ReferenceError> {
+    match alike {
+        true => Ok(()),
+        false => Err(ReferenceError::ComparedOtherwise {
+            table: table.name.clone(),
+        }),
     }
 }
 
@@ -100,35 +109,76 @@ fn key_filter(key: &str, cells: Vec<(&ColumnType, &Value)>, targets: &[String]) 
 
 /// The text the filter parses back into `value`: a blob in the `0x`
 /// form an export writes, anything else as an editor would start from.
-/// A blob in a column declared otherwise, which SQLite allows, has no
-/// such text: the filter would read it as the column's type and compare
-/// a string.
+/// The other side reads it under a type that compares alike with this
+/// column's, so text this column's own type does not read back as the
+/// same value has no filter.
 fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
-    match value {
+    let text = match value {
         Value::Bytes(bytes) if matches!(column_type.kind, ColumnKind::Bytes { .. }) => {
-            Some(format!("0x{}", crate::hex::encode_lower(bytes)))
+            format!("0x{}", crate::hex::encode_lower(bytes))
         }
-        Value::Bytes(_) => None,
-        // A key can point at a key of another numeric type, such as an
-        // integer at a numeric(10,2), and the other column parses the
-        // text: the zeros the scale pads with would make it refuse 1.00.
-        Value::Decimal(decimal) if decimal.is_finite() => Some(without_trailing_zeros(decimal.to_string())),
-        // A real key can point at a double one, which holds the real's
-        // exact value; the real's shortest text would parse as another
-        // double. A real column reads the long text back as the same real.
-        Value::Float32(value) => Some(f64::from(*value).to_string()),
+        Value::Bytes(_) => return None,
         other => match edit_text(other, column_type) {
-            EditText::Editable(text) => Some(text),
-            EditText::ReadOnly(_) => None,
+            EditText::Editable(text) => text,
+            EditText::ReadOnly(_) => return None,
         },
+    };
+    let parsed = parse_filter_text(&text, column_type).ok()?;
+    // SQLite keeps whatever a column is given and matches a key on that,
+    // so the filter has to bind the very value: 'true' in a BOOLEAN
+    // column would be bound as 1, and 'inf' in a DECIMAL one as
+    // 'Infinity'. Other engines read every value back in its own form.
+    (!column_type.dynamic_storage || binds_as_stored(&parsed, value)).then_some(text)
+}
+
+fn binds_as_stored(parsed: &Value, stored: &Value) -> bool {
+    match (stored_form(parsed), stored_form(stored)) {
+        (Some(parsed), Some(stored)) if parsed == stored => true,
+        // A NUMERIC column reads number text back as the number, keeping
+        // 15 significant digits of a REAL.
+        (Some(StoredForm::Text(text)), Some(StoredForm::Integer(integer))) => text == integer.to_string(),
+        (Some(StoredForm::Text(text)), Some(StoredForm::Real(real))) => {
+            significant_digits(&text) <= 15 && text.parse::<f64>().is_ok_and(|number| number == real)
+        }
+        _ => false,
     }
 }
 
-fn without_trailing_zeros(text: String) -> String {
-    match text.contains('.') {
-        true => text.trim_end_matches('0').trim_end_matches('.').to_owned(),
-        false => text,
-    }
+fn significant_digits(number: &str) -> usize {
+    let mantissa = number.split(['e', 'E']).next().unwrap_or_default();
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    digits.trim_start_matches('0').len()
+}
+
+/// A value as SQLite binds and keeps it.
+#[derive(Debug, PartialEq)]
+enum StoredForm<'a> {
+    Integer(i128),
+    Real(f64),
+    Text(String),
+    Blob(&'a [u8]),
+    /// MySQL reads a BIT padded to whole bytes and writes the bits the
+    /// column declares, the same number either way.
+    Bits(String),
+}
+
+fn stored_form(value: &Value) -> Option<StoredForm<'_>> {
+    Some(match value {
+        Value::Null => return None,
+        Value::Bool(flag) => StoredForm::Integer(i128::from(*flag)),
+        Value::Int(integer) => StoredForm::Integer(i128::from(*integer)),
+        Value::UInt(integer) => StoredForm::Integer(i128::from(*integer)),
+        Value::WideInt(integer) => StoredForm::Integer(integer.to_i128()?),
+        Value::Float32(real) => StoredForm::Real(f64::from(*real)),
+        Value::Float64(real) => StoredForm::Real(*real),
+        Value::Bytes(bytes) => StoredForm::Blob(bytes),
+        Value::Bits(bits) => {
+            let text = bits.to_string();
+            let number = text.trim_start_matches('0');
+            StoredForm::Bits(if number.is_empty() { "0" } else { number }.to_owned())
+        }
+        other => StoredForm::Text(crate::export::value_to_text(other)?),
+    })
 }
 
 fn target(source: &TableRef, schema: Option<&str>, name: &str) -> Result<TableRef, ReferenceError> {
@@ -143,7 +193,7 @@ mod tests {
     use super::*;
 
     fn text_column(name: &str) -> ResultColumn {
-        ResultColumn::new(name, ColumnType::untyped_text("text"))
+        typed(name, ColumnKind::Other)
     }
 
     fn typed(name: &str, kind: ColumnKind) -> ResultColumn {
@@ -159,19 +209,29 @@ mod tests {
         )
     }
 
+    /// A column of a table that is not STRICT, as SQLite reads one.
+    fn dynamic(name: &str, kind: ColumnKind) -> ResultColumn {
+        let mut column = typed(name, kind);
+        column.column_type.dynamic_storage = true;
+        column
+    }
+
     fn orders() -> TableRef {
         TableRef::new(Some("sales".to_owned()), "orders".to_owned())
     }
 
-    fn key(columns: &[&str], ref_schema: Option<&str>, ref_columns: &[&str]) -> ForeignKeyInfo {
-        ForeignKeyInfo {
-            name: "orders_customer_fkey".to_owned(),
-            columns: columns.iter().map(|name| (*name).to_owned()).collect(),
-            ref_schema: ref_schema.map(str::to_owned),
-            ref_table: "customers".to_owned(),
-            ref_columns: ref_columns.iter().map(|name| (*name).to_owned()).collect(),
-            on_delete: None,
-            on_update: None,
+    fn key(columns: &[&str], ref_schema: Option<&str>, ref_columns: &[&str]) -> OutboundForeignKey {
+        OutboundForeignKey {
+            key: crate::ForeignKeyInfo {
+                name: "orders_customer_fkey".to_owned(),
+                columns: columns.iter().map(|name| (*name).to_owned()).collect(),
+                ref_schema: ref_schema.map(str::to_owned),
+                ref_table: "customers".to_owned(),
+                ref_columns: ref_columns.iter().map(|name| (*name).to_owned()).collect(),
+                on_delete: None,
+                on_update: None,
+            },
+            parent_compares_alike: true,
         }
     }
 
@@ -260,40 +320,107 @@ mod tests {
     }
 
     #[test]
-    fn a_decimal_key_is_written_without_the_zeros_of_its_scale() {
-        let columns = [typed(
-            "amount",
-            ColumnKind::Decimal {
-                precision: Some(10),
-                scale: Some(2),
-            },
-        )];
-        let key = key(&["amount"], Some("sales"), &["id"]);
-        let text_of = |mantissa| {
-            let value = Value::Decimal(crate::value::SqlDecimal::from_scaled_i128(mantissa, 2));
-            RowReference::referenced(&orders(), &key, &columns, &[value])
-                .expect("a decimal key")
-                .filter
-                .rules
-        };
+    fn a_key_whose_sides_compare_otherwise_is_refused_and_shown() {
+        let columns = [typed("weight", ColumnKind::Float(crate::column::FloatWidth::F32))];
+        let mut real_to_double = key(&["weight"], Some("sales"), &["weight"]);
+        real_to_double.parent_compares_alike = false;
 
-        assert_eq!(text_of(100), vec![eq("id", "1")]);
-        assert_eq!(text_of(150), vec![eq("id", "1.5")]);
-        assert_eq!(text_of(-1000), vec![eq("id", "-10")]);
-        assert_eq!(text_of(0), vec![eq("id", "0")]);
+        let error = RowReference::referenced(&orders(), &real_to_double, &columns, &[Value::Float32(0.1)])
+            .expect_err("a real key into a double column");
+
+        assert_eq!(
+            error,
+            ReferenceError::ComparedOtherwise {
+                table: "customers".to_owned()
+            }
+        );
+        assert!(!error.leaves_nothing_to_follow());
     }
 
     #[test]
-    fn a_single_precision_key_is_written_as_the_double_it_widens_to() {
-        let columns = [typed("weight", ColumnKind::Float(crate::column::FloatWidth::F32))];
-        let key = key(&["weight"], Some("sales"), &["weight"]);
+    fn a_value_dynamic_storage_would_bind_as_another_is_refused() {
+        let main = TableRef::new(None, "orders".to_owned());
+        let key = key(&["customer_id"], None, &["id"]);
+        let text_of = |kind: ColumnKind, value: Value| {
+            RowReference::referenced(&main, &key, &[dynamic("customer_id", kind)], &[value])
+                .map(|reference| reference.filter.rules)
+        };
+        let integer = || {
+            ColumnKind::Integer(crate::column::IntegerKind {
+                width: crate::column::IntegerWidth::W64,
+                signed: true,
+            })
+        };
+        let boolean = || ColumnKind::Bool(crate::column::BoolStorage::Integer);
+        let refused = Err(ReferenceError::NoFilterText {
+            column: "id".to_owned(),
+        });
 
-        let reference =
-            RowReference::referenced(&orders(), &key, &columns, &[Value::Float32(0.1)]).expect("a real key");
+        assert_eq!(text_of(integer(), Value::Int(7)), Ok(vec![eq("id", "7")]));
+        assert_eq!(text_of(integer(), Value::Text("n/a".to_owned())), refused, "a word");
+        assert_eq!(
+            text_of(boolean(), Value::Text("true".to_owned())),
+            refused,
+            "text that reads as 1"
+        );
+        assert!(text_of(boolean(), Value::Int(1)).is_ok());
+        assert_eq!(
+            text_of(ColumnKind::Date, Value::Text(" 2026-01-01".to_owned())),
+            refused,
+            "a date the parse trims"
+        );
+        assert_eq!(
+            text_of(ColumnKind::Date, Value::Text("2026-01-01".to_owned())),
+            Ok(vec![eq("id", "2026-01-01")])
+        );
+        assert_eq!(
+            text_of(ColumnKind::Other, Value::Int(5)),
+            Ok(vec![eq("id", "5")]),
+            "a NUMERIC column reads the text back as the number"
+        );
+        assert_eq!(
+            text_of(ColumnKind::Other, Value::Text("ab-12".to_owned())),
+            Ok(vec![eq("id", "ab-12")])
+        );
+        let decimal = || ColumnKind::Decimal {
+            precision: None,
+            scale: None,
+        };
+        assert_eq!(
+            text_of(decimal(), Value::Text("inf".to_owned())),
+            refused,
+            "text bound as 'Infinity'"
+        );
+        assert_eq!(
+            text_of(decimal(), Value::Text("NaN".to_owned())),
+            Ok(vec![eq("id", "NaN")])
+        );
+        assert_eq!(text_of(decimal(), Value::Int(5)), Ok(vec![eq("id", "5")]));
+        assert_eq!(text_of(decimal(), Value::Float64(1.5)), Ok(vec![eq("id", "1.5")]));
+        assert_eq!(
+            text_of(decimal(), Value::Float64(0.1 + 0.2)),
+            refused,
+            "17 digits, past the 15 SQLite keeps reading text as a REAL"
+        );
+    }
 
-        assert_eq!(reference.filter.rules, vec![eq("weight", "0.10000000149011612")]);
-        let parsed: f32 = "0.10000000149011612".parse().expect("a real");
-        assert_eq!(parsed, 0.1_f32, "a real column reads the text back as another value");
+    /// MySQL marks a BIT column as stored per row too, and reads it
+    /// padded to whole bytes.
+    #[test]
+    fn a_bit_key_follows_whatever_its_wire_padding() {
+        let bits = dynamic(
+            "flags",
+            ColumnKind::BitString {
+                length: Some(1),
+                varying: false,
+            },
+        );
+        let key = key(&["flags"], Some("sales"), &["flags"]);
+        let value = Value::Bits(crate::value::BitString::from_u64(1, 8));
+
+        let reference = RowReference::referenced(&orders(), &key, &[bits], &[value]);
+
+        assert!(reference.is_ok(), "{reference:?}");
     }
 
     #[test]

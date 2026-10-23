@@ -51,6 +51,8 @@ fn defaults_match_schema() -> TestResult {
     assert!(fixture.settings.restore_session());
     assert!(fixture.settings.save_query_history());
     assert!(!fixture.settings.vim_keybindings());
+    assert!(!fixture.settings.mcp_server_enabled());
+    assert_eq!(fixture.settings.mcp_server_port(), 23508);
     Ok(())
 }
 
@@ -62,6 +64,21 @@ fn vim_keybindings_round_trip() -> TestResult {
     assert!(fixture.settings.vim_keybindings());
     fixture.settings.set_vim_keybindings(false)?;
     assert!(!fixture.settings.vim_keybindings());
+    Ok(())
+}
+
+#[test]
+fn mcp_server_round_trip_and_port_range() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.set_mcp_server_enabled(true)?;
+    fixture.settings.set_mcp_server_port(40_000)?;
+
+    assert!(fixture.settings.mcp_server_enabled());
+    assert_eq!(fixture.settings.mcp_server_port(), 40_000);
+    // A port below 1024 belongs to a system service, never to the app.
+    assert!(fixture.settings.set_mcp_server_port(80).is_err());
+    assert_eq!(fixture.settings.mcp_server_port(), 40_000);
     Ok(())
 }
 

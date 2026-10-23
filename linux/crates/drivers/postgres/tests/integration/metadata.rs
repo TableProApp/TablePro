@@ -405,6 +405,106 @@ async fn inbound_keys_name_the_referencing_schema_and_pair_their_columns() {
     assert_eq!(inbound[0].referenced_columns, ["region", "id"]);
 }
 
+/// A filter reads a key's value under the other side's type, which
+/// finds what the key matches only when the two compare alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_key_says_whether_its_two_sides_compare_alike() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE narrow (id int4 PRIMARY KEY)",
+            "CREATE TABLE wide (id int8 PRIMARY KEY)",
+            "CREATE TABLE doubles (id float8 PRIMARY KEY)",
+            "CREATE TABLE words (id text PRIMARY KEY)",
+            "CREATE TABLE codes (id char(4) PRIMARY KEY)",
+            "CREATE TABLE days (id timestamp PRIMARY KEY)",
+            "CREATE TABLE child (n4 int4 REFERENCES wide, n8 int8 REFERENCES narrow, \
+             r4 float4 REFERENCES doubles, v varchar(8) REFERENCES words, c char(4) REFERENCES words, \
+             t text REFERENCES codes, d date REFERENCES days, \
+             w text COLLATE \"C\" REFERENCES words)",
+            "CREATE TABLE late (n8 int8)",
+            "ALTER TABLE late ADD CONSTRAINT late_n8 FOREIGN KEY (n8) REFERENCES narrow NOT VALID",
+        ],
+    )
+    .await;
+
+    let outbound = connection
+        .fetch_outbound_foreign_keys(&table("child"), within(CALL))
+        .await
+        .expect("the keys of child");
+    let late = connection
+        .fetch_outbound_foreign_keys(&table("late"), within(CALL))
+        .await
+        .expect("the keys of late");
+    let into_wide = connection
+        .fetch_inbound_foreign_keys(&table("wide"), within(CALL))
+        .await
+        .expect("the keys pointing at wide");
+    let into_narrow = connection
+        .fetch_inbound_foreign_keys(&table("narrow"), within(CALL))
+        .await
+        .expect("the keys pointing at narrow");
+
+    let mut alike: Vec<(&str, bool)> = outbound
+        .iter()
+        .map(|key| (key.key.columns[0].as_str(), key.parent_compares_alike))
+        .collect();
+    alike.sort_unstable();
+    assert_eq!(
+        alike,
+        [
+            ("c", false),
+            ("d", false),
+            ("n4", true),
+            ("n8", true),
+            ("r4", false),
+            ("t", false),
+            ("v", true),
+            ("w", true),
+        ],
+        "a validated int8 key holds only int4 values"
+    );
+    assert!(!late[0].parent_compares_alike, "an unvalidated key can hold any int8");
+    assert!(
+        !into_wide[0].child_compares_alike,
+        "an int4 column cannot hold every int8"
+    );
+    let narrow: Vec<(&str, bool)> = into_narrow
+        .iter()
+        .map(|key| (key.table.name.as_str(), key.child_compares_alike))
+        .collect();
+    assert_eq!(narrow, [("child", true), ("late", true)]);
+
+    if connection.server_info().major >= 18 {
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE EXTENSION IF NOT EXISTS btree_gist",
+                "CREATE TABLE rooms (id int4, during int4range, PRIMARY KEY (id, during WITHOUT OVERLAPS))",
+                "CREATE TABLE stays (room int4, during int4range, \
+                 FOREIGN KEY (room, PERIOD during) REFERENCES rooms (id, PERIOD during))",
+            ],
+        )
+        .await;
+        let stays = connection
+            .fetch_outbound_foreign_keys(&table("stays"), within(CALL))
+            .await
+            .expect("the keys of stays");
+        let into_rooms = connection
+            .fetch_inbound_foreign_keys(&table("rooms"), within(CALL))
+            .await
+            .expect("the keys pointing at rooms");
+        assert!(!stays[0].parent_compares_alike, "a PERIOD key matches by containment");
+        assert!(
+            !into_rooms[0].child_compares_alike,
+            "a PERIOD key matches by containment"
+        );
+    }
+}
+
 const CATALOG_TABLE: &[&str] = &[
     "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
     "CREATE DOMAIN positive AS int4 CHECK (VALUE > 0)",
