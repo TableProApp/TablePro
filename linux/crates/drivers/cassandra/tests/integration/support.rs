@@ -293,9 +293,12 @@ pub async fn loader(fixture: &CassandraFixture) -> Session {
 
 /// `table (bucket int, n int, PRIMARY KEY (bucket, n))` holding `n` from
 /// 0 to `rows - 1`, a thousand to a partition. One partition's batch is
-/// one write, so the rows land in seconds.
+/// one write, so the rows land in seconds. A batch the server timed out
+/// is sent again, which writes the same rows: a loaded host times out
+/// a single node's writes.
 pub async fn load_series(fixture: &CassandraFixture, table: &str, rows: u64) {
     const BUCKET: u64 = 1_000;
+    const ATTEMPTS: u32 = 4;
     let session = loader(fixture).await;
     let name = qualified(table);
     session
@@ -317,9 +320,21 @@ pub async fn load_series(fixture: &CassandraFixture, table: &str, rows: u64) {
             batch.append_statement(insert.clone());
             values.push((to_int(bucket), to_int(n)));
         }
-        async move { session.batch(&batch, values).await.map(|_| ()) }
+        async move {
+            let mut attempt = 1;
+            loop {
+                match session.batch(&batch, values.clone()).await {
+                    Ok(_) => return Ok(()),
+                    Err(_) if attempt < ATTEMPTS => {
+                        attempt += 1;
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        }
     }))
-    .buffer_unordered(32)
+    .buffer_unordered(16)
     .try_collect::<Vec<()>>()
     .await
     .expect("the series rows");
