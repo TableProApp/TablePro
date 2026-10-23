@@ -145,6 +145,7 @@ impl SqlEditor {
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
+        editor.extend_context_menu();
         // After the editor's own key controllers, so Vim's runs first.
         let vim = editor.follow_vim_preference(&init.settings);
         editor.imp().app_handlers.borrow_mut().push(vim);

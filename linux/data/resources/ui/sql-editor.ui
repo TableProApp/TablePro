@@ -62,7 +62,7 @@
       </item>
     </section>
   </menu>
-  <!-- Added to the text view's own context menu. -->
+  <!-- Added after the text view's own context menu items. -->
   <menu id="assistant_menu">
     <section>
       <item>
@@ -165,7 +165,6 @@
                         <property name="bottom-margin">8</property>
                         <property name="left-margin">8</property>
                         <property name="right-margin">8</property>
-                        <property name="extra-menu">assistant_menu</property>
                         <style>
                           <class name="sql-editor"/>
                         </style>

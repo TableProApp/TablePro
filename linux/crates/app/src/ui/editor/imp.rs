@@ -49,6 +49,8 @@ pub struct SqlEditor {
     pub vim_command: TemplateChild<gtk4::Label>,
     #[template_child]
     pub results: TemplateChild<ResultsPane>,
+    #[template_child]
+    pub assistant_menu: TemplateChild<gio::MenuModel>,
 
     pub(super) deps: OnceCell<EditorDeps>,
     /// This tab's own connection, which keeps its transaction and

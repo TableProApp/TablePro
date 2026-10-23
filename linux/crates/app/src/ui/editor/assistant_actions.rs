@@ -30,6 +30,18 @@ impl SqlEditor {
         self.refresh_assistant();
     }
 
+    /// The assistant's items after the text view's own, such as
+    /// GtkSourceView's Change Case, which setting the menu would replace.
+    pub(super) fn extend_context_menu(&self) {
+        let view = self.imp().source_view.get();
+        let menu = gio::Menu::new();
+        if let Some(own) = view.extra_menu() {
+            menu.append_section(None, &own);
+        }
+        menu.append_section(None, &self.imp().assistant_menu.get());
+        view.set_extra_menu(Some(&menu));
+    }
+
     /// Show or hide what the assistant offers, after the provider or the
     /// connection's policy changed.
     pub(crate) fn refresh_assistant(&self) {
@@ -223,6 +235,35 @@ pub(super) mod tests {
         let kept = asked.clone();
         editor.connect_assistant_requested(move |_, request| kept.borrow_mut().push(request));
         asked
+    }
+
+    fn menu_labels(menu: &gio::MenuModel) -> Vec<String> {
+        let mut labels = Vec::new();
+        for item in 0..menu.n_items() {
+            if let Some(label) = menu
+                .item_attribute_value(item, "label", None)
+                .and_then(|label| label.get::<String>())
+            {
+                labels.push(label);
+            }
+            for link in ["section", "submenu"] {
+                if let Some(inner) = menu.item_link(item, link) {
+                    labels.extend(menu_labels(&inner));
+                }
+            }
+        }
+        labels
+    }
+
+    #[gtk4::test]
+    fn the_context_menu_keeps_the_views_own_items() {
+        let harness = editor_with_assistant("SELECT 1;", AiPolicy::Ask);
+
+        let menu = harness.editor.imp().source_view.extra_menu().expect("the context menu");
+        let labels = menu_labels(&menu);
+
+        assert!(labels.iter().any(|label| label == "C_hange Case"), "{labels:?}");
+        assert!(labels.iter().any(|label| label == "Explain with AI"), "{labels:?}");
     }
 
     #[gtk4::test]
