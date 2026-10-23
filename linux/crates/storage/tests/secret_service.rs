@@ -90,7 +90,9 @@ async fn two_schemas_do_not_see_each_other() -> TestResult {
 async fn the_mcp_token_is_replaced_and_outlives_a_connection_delete() -> TestResult {
     let store = store();
     let id = Uuid::new_v4();
-    store.store(id, SecretKind::DatabasePassword, &SecretString::from("pw"), "l").await?;
+    store
+        .store(id, SecretKind::DatabasePassword, &SecretString::from("pw"), "l")
+        .await?;
 
     let before = store.load_mcp_token().await?;
     store.store_mcp_token(&SecretString::from("tp_first"), "token").await?;

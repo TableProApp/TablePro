@@ -285,7 +285,9 @@ Each connection's **External Clients** level, under Options in its connect dialo
 | Read Only, the default | reads the schema and the data |
 | Read & Write | also writes, each statement after you approve it |
 
-A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. Reads and approved writes go into the query history as the editor's runs do.
+Read Only stops statements that write. A function the connection's login may call that reads files on the server still runs, so give such a connection a login without that privilege.
+
+A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
 
 The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. A result set stops at 1,000 rows and a statement at 300 seconds.
 

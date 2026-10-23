@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
-    AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint, NetworkEndpoint,
-    SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
+    AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
+    NetworkEndpoint, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
 use tablepro_storage::{SavedConnection, SavedSshAuth, SavedSshConfig};

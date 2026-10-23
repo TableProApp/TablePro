@@ -34,7 +34,12 @@ fn rule(filter: &FilterArg) -> Result<FilterRule, ToolError> {
         },
         FilterOperator::Between => match filter.values.as_deref() {
             Some([low, high]) if filter.value.is_none() => Some(FilterValue::Pair(low.clone(), high.clone())),
-            _ => return Err(invalid(&filter.column, "between takes values with a low and a high bound")),
+            _ => {
+                return Err(invalid(
+                    &filter.column,
+                    "between takes values with a low and a high bound",
+                ));
+            }
         },
         _ => match (&filter.value, &filter.values) {
             (Some(value), None) => Some(FilterValue::Single(value.clone())),

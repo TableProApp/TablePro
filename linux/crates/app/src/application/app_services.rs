@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use gtk4::glib::prelude::IsA;
 use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
-use tablepro_mcp::{McpHost, ToolContext, TokenVault};
+use tablepro_mcp::{McpHost, TokenVault, ToolContext};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
 use tablepro_session::runtime::{ProcessHold, Tasks};

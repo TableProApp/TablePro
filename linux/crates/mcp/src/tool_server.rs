@@ -15,7 +15,6 @@ use crate::tool_context::ToolContext;
 use crate::tool_error::ToolError;
 use crate::{connection_tools, query_tools, schema_tools};
 
-/// What a model reads before its first call.
 const INSTRUCTIONS: &str = "TablePro reaches the database connections the user saved in it. \
 Start with list_connections. A connection has to be open in a TablePro window: call connect for one whose \
 is_open is false, and the user may have to answer TablePro first. Call describe_table before writing SQL \
@@ -39,7 +38,11 @@ impl ToolServer {
         }
     }
 
-    async fn dispatch(&self, request: CallToolRequestParams, context: &RequestContext<RoleServer>) -> Result<String, ToolError> {
+    async fn dispatch(
+        &self,
+        request: CallToolRequestParams,
+        context: &RequestContext<RoleServer>,
+    ) -> Result<String, ToolError> {
         let arguments = serde_json::Value::Object(request.arguments.unwrap_or_default());
         let tools = &self.context;
         let cancel = context.ct.clone();
@@ -190,18 +193,20 @@ mod tests {
                 "{}",
                 tool.name
             );
-            let read_only = tool.annotations.as_ref().and_then(|annotations| annotations.read_only_hint);
+            let read_only = tool
+                .annotations
+                .as_ref()
+                .and_then(|annotations| annotations.read_only_hint);
             assert_eq!(read_only, Some(tool.name != "execute_query"), "{}", tool.name);
         }
     }
 
     #[test]
     fn an_unknown_argument_is_refused() {
-        let refused = parse::<QueryArgs>(serde_json::json!({
-            "connection_id": "x",
-            "query": "SELECT 1",
-            "database": "other",
-        }));
+        let arguments: serde_json::Value =
+            serde_json::from_str(r#"{"connection_id": "x", "query": "SELECT 1", "database": "other"}"#).expect("JSON");
+
+        let refused = parse::<QueryArgs>(arguments);
 
         assert!(matches!(refused, Err(ToolError::InvalidArgument(_))));
     }

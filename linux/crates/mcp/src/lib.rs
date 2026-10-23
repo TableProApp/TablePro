@@ -12,18 +12,18 @@ mod mcp_host;
 mod mcp_server;
 mod query_tools;
 mod schema_tools;
+mod token_vault;
 mod tool_args;
 mod tool_context;
 mod tool_error;
-mod token_vault;
 mod tool_server;
 
 pub use access_token::{AccessToken, TokenError};
 pub use mcp_host::{McpHost, OpenOutcome, WriteApproval};
 pub use mcp_server::{MCP_PATH, McpServer, StartError};
 pub use query_tools::{DEFAULT_ROWS, DEFAULT_TIMEOUT_SECONDS, MAX_QUERY_BYTES, MAX_ROWS, MAX_TIMEOUT_SECONDS};
-pub use tool_context::ToolContext;
 pub use token_vault::{ObtainError, TokenVault, obtain_token, replace_token};
+pub use tool_context::ToolContext;
 pub use tool_server::catalog;
 
 /// The port a fresh install listens on, the macOS app's as well.

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use gio::prelude::SettingsExt;
 use gtk4::prelude::ObjectExt;
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_mcp::{AccessToken, McpServer, ToolContext, TokenVault};
+use tablepro_mcp::{AccessToken, McpServer, TokenVault, ToolContext};
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
@@ -101,7 +101,9 @@ impl McpService {
             Ok::<_, McpFailure>(token)
         });
         let weak = Rc::downgrade(&self.inner);
-        let token = replacing.await.map_err(|failure| McpFailure::Interrupted(failure.to_string()))??;
+        let token = replacing
+            .await
+            .map_err(|failure| McpFailure::Interrupted(failure.to_string()))??;
         if let Some(inner) = weak.upgrade()
             && inner.status.borrow().port().is_some()
         {
@@ -162,11 +164,15 @@ async fn restart(
     tasks: Tasks,
 ) -> Started {
     let mut live = slot.lock().await;
+    // Tasks can reach the lock out of order. A later change decides for
+    // itself, and may already have started the server that is live.
+    if current.load(Ordering::SeqCst) != generation {
+        return None;
+    }
     if let Some(previous) = live.take() {
         previous.server.shutdown().await;
     }
-    // A later change is queued behind this one and decides for itself.
-    let port = port.filter(|_| current.load(Ordering::SeqCst) == generation)?;
+    let port = port?;
     let started = async {
         let token = tablepro_mcp::obtain_token(&*tokens).await?;
         let server = McpServer::start(port, token.clone(), context, crate::config::VERSION, &tasks).await?;
@@ -316,7 +322,12 @@ pub(crate) mod tests {
         let tokens = Arc::new(MemoryTokens::default());
         let port = free_port();
         settings.get().set_mcp_server_port(port).expect("the port");
-        let service = McpService::start(settings.get().clone(), runtime.tasks(), tokens.clone(), context(root.path()));
+        let service = McpService::start(
+            settings.get().clone(),
+            runtime.tasks(),
+            tokens.clone(),
+            context(root.path()),
+        );
 
         assert_eq!(status(&service), McpStatus::Off);
         settings.get().set_mcp_server_enabled(true).expect("the switch");
@@ -386,6 +397,39 @@ pub(crate) mod tests {
     }
 
     #[gtk4::test]
+    fn a_change_that_reaches_the_lock_late_leaves_the_newer_server_alone() {
+        let runtime = test_runtime();
+        let root = tempfile::tempdir().expect("tempdir");
+        let tokens: Arc<dyn TokenVault> = Arc::new(MemoryTokens::default());
+        let slot = Arc::new(Mutex::new(None));
+        let current = Arc::new(AtomicU64::new(3));
+        let (newer_port, stale_port) = (free_port(), free_port());
+        let start = |generation: u64, port: u16| {
+            runtime.tasks().spawn_task(restart(
+                slot.clone(),
+                current.clone(),
+                generation,
+                Some(port),
+                tokens.clone(),
+                context(root.path()),
+                runtime.tasks(),
+            ))
+        };
+
+        let newer = crate::test_support::finish_on_main(WAIT, start(3, newer_port)).expect("the newer start");
+        let stale = crate::test_support::finish_on_main(WAIT, start(2, stale_port)).expect("the stale start");
+
+        assert!(matches!(newer, Ok(Some(Ok((port, _)))) if port == newer_port));
+        assert!(matches!(stale, Ok(None)));
+        assert!(
+            std::net::TcpListener::bind(("127.0.0.1", newer_port)).is_err(),
+            "the stale change stopped the newer server"
+        );
+        assert!(std::net::TcpListener::bind(("127.0.0.1", stale_port)).is_ok());
+        runtime.shutdown();
+    }
+
+    #[gtk4::test]
     fn a_regenerated_token_replaces_the_one_shown_and_stored() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
@@ -394,7 +438,12 @@ pub(crate) mod tests {
         let port = free_port();
         settings.get().set_mcp_server_port(port).expect("the port");
         settings.get().set_mcp_server_enabled(true).expect("the switch");
-        let service = McpService::start(settings.get().clone(), runtime.tasks(), tokens.clone(), context(root.path()));
+        let service = McpService::start(
+            settings.get().clone(),
+            runtime.tasks(),
+            tokens.clone(),
+            context(root.path()),
+        );
         wait_until(WAIT, || status(&service) == McpStatus::Running { port }).expect("the server to run");
         let before = service.token().map(|token| token.expose_secret().to_owned());
 

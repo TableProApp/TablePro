@@ -24,14 +24,12 @@ use crate::access_token::AccessToken;
 use crate::tool_context::ToolContext;
 use crate::tool_server::ToolServer;
 
-/// The one path the server answers on.
 pub const MCP_PATH: &str = "/mcp";
 
 /// Connections served at once. A client holds one or two; the rest wait
 /// until one closes rather than growing without bound.
 const MAX_CONNECTIONS: usize = 32;
 
-/// How long a client may take to send a request's headers.
 const HEADER_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A request body larger than this is refused before it is read: a
@@ -200,9 +198,10 @@ async fn respond(service: &Service, token: &RwLock<AccessToken>, request: Reques
     });
     if !authorized {
         let mut response = plain(StatusCode::UNAUTHORIZED, "A TablePro access token is required");
-        response
-            .headers_mut()
-            .insert(WWW_AUTHENTICATE, http::HeaderValue::from_static("Bearer realm=\"TablePro\""));
+        response.headers_mut().insert(
+            WWW_AUTHENTICATE,
+            http::HeaderValue::from_static("Bearer realm=\"TablePro\""),
+        );
         return response;
     }
     if declared_length(&request).is_some_and(|length| length > MAX_REQUEST_BYTES) {
@@ -226,8 +225,9 @@ fn declared_length(request: &Request<Incoming>) -> Option<usize> {
 fn plain(status: StatusCode, text: &'static str) -> Response<Body> {
     let mut response = Response::new(Full::new(Bytes::from_static(text.as_bytes())).boxed());
     *response.status_mut() = status;
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, http::HeaderValue::from_static("text/plain; charset=utf-8"));
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        http::HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
     response
 }

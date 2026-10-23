@@ -11,8 +11,10 @@ pub enum McpStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum McpFailure {
     PortInUse(u16),
-    /// The system refused the socket for another reason.
-    Listen { port: u16, kind: std::io::ErrorKind },
+    Listen {
+        port: u16,
+        kind: std::io::ErrorKind,
+    },
     Keyring(SecretError),
     NoRandomness,
     /// The work panicked or the runtime went away; the detail is for the

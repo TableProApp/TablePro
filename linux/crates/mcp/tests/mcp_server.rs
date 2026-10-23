@@ -4,6 +4,10 @@
     clippy::expect_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
+#![expect(
+    clippy::disallowed_types,
+    reason = "requests are written with json!, and a request's key order means nothing to the server"
+)]
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -183,7 +187,11 @@ async fn seed(session: &Session) {
         "INSERT INTO orders (status, total) VALUES ('open', 10), ('open', 20), ('paid', 30)",
     ] {
         let summary = editor
-            .run(UserSql::new(sql), RunOptions::new(CancellationToken::new()), Box::new(Discard))
+            .run(
+                UserSql::new(sql),
+                RunOptions::new(CancellationToken::new()),
+                Box::new(Discard),
+            )
             .await
             .expect("a run");
         assert!(summary.succeeded(), "{sql}: {:?}", summary.end);
@@ -204,13 +212,11 @@ async fn harness() -> Harness {
     let writable = open_session(dir.path(), &file, ids.writable, false, true).await;
     seed(&writable).await;
     let host = Arc::new(TestHost::default());
-    {
-        let mut sessions = host.sessions.lock().expect("sessions");
-        sessions.insert(ids.writable, writable);
-        for (id, read_only) in [(ids.readable, false), (ids.locked, true), (ids.blocked, false)] {
-            sessions.insert(id, open_session(dir.path(), &file, id, read_only, false).await);
-        }
+    let mut opened = vec![(ids.writable, writable)];
+    for (id, read_only) in [(ids.readable, false), (ids.locked, true), (ids.blocked, false)] {
+        opened.push((id, open_session(dir.path(), &file, id, read_only, false).await));
     }
+    host.sessions.lock().expect("sessions").extend(opened);
     let paths = StoragePaths::under(dir.path(), "tablepro-test", "app.tablepro.TablePro.Test");
     let store = ConnectionStore::new(&paths);
     for connection in [
@@ -250,7 +256,10 @@ async fn send(port: u16, path: &str, headers: &[(&str, &str)], body: &str) -> Re
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .expect("a connection to the server");
-    let mut request = format!("POST {path} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n", body.len());
+    let mut request = format!(
+        "POST {path} HTTP/1.1\r\nConnection: close\r\nContent-Length: {}\r\n",
+        body.len()
+    );
     if !headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("host")) {
         request.push_str(&format!("Host: 127.0.0.1:{port}\r\n"));
     }
@@ -346,7 +355,11 @@ async fn a_request_without_the_token_or_off_the_path_is_refused() {
     let elsewhere = send(port, "/other", &MCP_HEADERS, &body).await;
 
     assert_eq!(anonymous.status, 401);
-    assert!(anonymous.headers.contains("www-authenticate: bearer"), "{}", anonymous.headers);
+    assert!(
+        anonymous.headers.contains("www-authenticate: bearer"),
+        "{}",
+        anonymous.headers
+    );
     assert_eq!(guessed.status, 401);
     assert_eq!(elsewhere.status, 404);
 }
@@ -383,7 +396,11 @@ async fn initialize_names_the_server_and_lists_every_tool() {
     let tools = rpc(&harness, "tools/list", json!({})).await;
 
     assert_eq!(info["serverInfo"]["name"], "tablepro");
-    assert!(info["instructions"].as_str().is_some_and(|text| text.contains("list_connections")));
+    assert!(
+        info["instructions"]
+            .as_str()
+            .is_some_and(|text| text.contains("list_connections"))
+    );
     let names: Vec<&str> = tools["tools"]
         .as_array()
         .expect("tools")
@@ -441,7 +458,10 @@ async fn a_read_runs_and_answers_with_its_rows() {
     assert!(!failed, "{text}");
     let answer = parsed(&text);
     let set = &answer["result_sets"][0];
-    assert_eq!(set["rows"], json!([{ "id": 1, "status": "open" }, { "id": 2, "status": "open" }]));
+    assert_eq!(
+        set["rows"],
+        json!([{ "id": 1, "status": "open" }, { "id": 2, "status": "open" }])
+    );
     assert_eq!(set["truncated"], true);
     assert!(harness.host.asked.lock().expect("asked").is_empty());
     let recorded = harness.host.recorded.lock().expect("recorded");
@@ -626,7 +646,12 @@ async fn describe_and_ddl_name_the_table_as_defined() {
         json!({ "connection_id": id, "table": "orders" }),
     )
     .await;
-    let (_, ddl) = call(&harness, "get_table_ddl", json!({ "connection_id": id, "table": "orders" })).await;
+    let (_, ddl) = call(
+        &harness,
+        "get_table_ddl",
+        json!({ "connection_id": id, "table": "orders" }),
+    )
+    .await;
     let (missing_failed, missing) = call(
         &harness,
         "describe_table",
@@ -655,7 +680,12 @@ async fn describe_and_ddl_name_the_table_as_defined() {
             ("total".to_owned(), false)
         ]
     );
-    assert!(parsed(&ddl)["ddl"].as_str().is_some_and(|ddl| ddl.contains("CREATE TABLE")), "{ddl}");
+    assert!(
+        parsed(&ddl)["ddl"]
+            .as_str()
+            .is_some_and(|ddl| ddl.contains("CREATE TABLE")),
+        "{ddl}"
+    );
     // SQLite names the missing table itself; an engine that lists no
     // columns for it answers not_found.
     assert!(missing_failed);
@@ -722,4 +752,42 @@ async fn a_stopped_server_has_freed_its_port() {
     let rebound = tokio::net::TcpListener::bind(("127.0.0.1", port)).await;
 
     assert!(rebound.is_ok(), "{rebound:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_write_stops_when_its_connection_closes_in_tablepro() {
+    let harness = harness().await;
+    harness.host.approves.store(true, Ordering::SeqCst);
+    let session = harness
+        .host
+        .session(harness.ids.writable)
+        .await
+        .expect("the writable session");
+    let bulk = "INSERT INTO orders (status, total) \
+        WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 500000000) \
+        SELECT 'bulk', x FROM n";
+    let closing = async {
+        while harness.host.asked.lock().expect("asked").is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let _ = session.begin_shutdown().await;
+    };
+
+    let ((failed, text), ()) = tokio::join!(
+        call(
+            &harness,
+            "execute_query",
+            json!({
+                "connection_id": harness.ids.writable.to_string(),
+                "query": bulk,
+                "timeout_seconds": 300,
+            }),
+        ),
+        closing,
+    );
+
+    assert!(failed, "{text}");
+    assert!(text.starts_with("not_connected:"), "{text}");
+    assert_eq!(order_count(&harness).await, 3);
 }

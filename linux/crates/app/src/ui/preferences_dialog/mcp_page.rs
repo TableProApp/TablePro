@@ -199,8 +199,7 @@ impl McpPage {
         let imp = self.imp();
         let status = imp.status.borrow().clone().unwrap_or(McpStatus::Off);
         imp.status_row.set_subtitle(&status_text(&status));
-        imp.retry_button
-            .set_visible(matches!(status, McpStatus::Failed(_)));
+        imp.retry_button.set_visible(matches!(status, McpStatus::Failed(_)));
         imp.client_group.set_sensitive(status.port().is_some());
         let port = status.port().unwrap_or(imp.port_row.value() as u16);
         imp.address_row.set_subtitle(&address(port));
@@ -242,9 +241,7 @@ impl McpPage {
                 return;
             };
             match service.regenerate_token().await {
-                Ok(()) => page.toast(&crate::i18n::gettext(
-                    "New access token made. Copy it to your clients.",
-                )),
+                Ok(()) => page.toast(&crate::i18n::gettext("New access token made. Copy it to your clients.")),
                 Err(failure) => page.toast(&failure_text(&failure)),
             }
         });
@@ -263,9 +260,7 @@ pub(crate) fn status_text(status: &McpStatus) -> String {
     match status {
         McpStatus::Off => crate::i18n::gettext("Off"),
         McpStatus::Starting => crate::i18n::gettext("Starting…"),
-        McpStatus::Running { port } => {
-            crate::i18n::gettext_f("Running on port {port}", &[("port", &port.to_string())])
-        }
+        McpStatus::Running { port } => crate::i18n::gettext_f("Running on port {port}", &[("port", &port.to_string())]),
         McpStatus::Failed(failure) => failure_text(failure),
     }
 }
@@ -298,9 +293,9 @@ pub(crate) fn failure_text(failure: &McpFailure) -> String {
 /// server cannot do without it.
 fn keyring_text(error: &SecretError) -> String {
     match error {
-        SecretError::Locked | SecretError::UnlockDismissed => crate::i18n::gettext(
-            "The keyring is locked, so the access token cannot be read. Unlock it and try again.",
-        ),
+        SecretError::Locked | SecretError::UnlockDismissed => {
+            crate::i18n::gettext("The keyring is locked, so the access token cannot be read. Unlock it and try again.")
+        }
         SecretError::ServiceUnavailable { .. } => crate::i18n::gettext(
             "No keyring is running, so the access token cannot be kept. Start a keyring and try again.",
         ),

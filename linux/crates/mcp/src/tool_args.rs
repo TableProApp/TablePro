@@ -1,6 +1,11 @@
 //! What each tool takes. Unknown fields are refused rather than
 //! ignored, so a misspelt argument fails instead of being dropped.
 
+#![expect(
+    clippy::disallowed_types,
+    reason = "the JsonSchema derive builds each schema in a serde_json::Map; a schema's key order means nothing"
+)]
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -93,7 +98,9 @@ pub struct FilterArg {
     #[schemars(description = "The column name, unquoted.")]
     pub column: String,
     pub operator: FilterOperator,
-    #[schemars(description = "The value to compare with, as text. Not used by is_null, is_not_null, in, not_in and between.")]
+    #[schemars(
+        description = "The value to compare with, as text. Not used by is_null, is_not_null, in, not_in and between."
+    )]
     pub value: Option<String>,
     #[schemars(description = "The list for in and not_in, or the low and high bounds for between.")]
     pub values: Option<Vec<String>>,

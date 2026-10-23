@@ -13,13 +13,11 @@ use crate::tool_error::ToolError;
 /// otherwise fill the answer with them.
 const MAX_NOTICES: usize = 20;
 
-/// What a run sent back, kept for the answer.
 #[derive(Debug, Default)]
 pub struct CollectedResults {
     pub sets: Vec<CollectedSet>,
     pub rows_affected: Option<u64>,
     pub notices: Vec<String>,
-    /// The sink stopped the read at the row limit.
     pub stopped_at_limit: bool,
     /// A value the driver could not decode, sent as null.
     pub undecodable: bool,
@@ -183,7 +181,9 @@ impl CollectedResults {
             notes.push("Some values could not be decoded by TablePro and are shown as null.");
         }
         if self.sets.iter().any(|set| set.truncated) {
-            notes.push("A result set has more rows than the limit; ask for fewer with a WHERE clause or raise max_rows.");
+            notes.push(
+                "A result set has more rows than the limit; ask for fewer with a WHERE clause or raise max_rows.",
+            );
         }
         let document = ResultsDocument {
             result_sets: sets,
@@ -234,8 +234,10 @@ mod tests {
 
         sink.accept(ResultEvent::ResultSetStarted { columns: columns() }).await;
         let flow = sink.accept(ResultEvent::Rows(rows(5))).await;
-        sink.accept(ResultEvent::CommandCompleted { rows_affected: Some(2) }).await;
-        sink.accept(ResultEvent::CommandCompleted { rows_affected: Some(3) }).await;
+        sink.accept(ResultEvent::CommandCompleted { rows_affected: Some(2) })
+            .await;
+        sink.accept(ResultEvent::CommandCompleted { rows_affected: Some(3) })
+            .await;
 
         assert_eq!(flow, SinkFlow::Continue);
         let state = state.lock().unwrap();
@@ -259,7 +261,11 @@ mod tests {
         ]]))
         .await;
 
-        let json = state.lock().unwrap().to_json(Duration::from_millis(7), &[]).expect("JSON");
+        let json = state
+            .lock()
+            .unwrap()
+            .to_json(Duration::from_millis(7), &[])
+            .expect("JSON");
 
         assert!(json.contains(r#"{"z":18446744073709551615,"a":"x"}"#), "{json}");
         assert!(json.contains(r#""execution_time_ms":7"#), "{json}");

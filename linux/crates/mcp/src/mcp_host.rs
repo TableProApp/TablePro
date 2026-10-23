@@ -13,10 +13,8 @@ use uuid::Uuid;
 /// open, and asks the user only through the app.
 #[async_trait]
 pub trait McpHost: Send + Sync + 'static {
-    /// The session of the window that has this saved connection open.
     async fn session(&self, id: Uuid) -> Option<Arc<Session>>;
 
-    /// Which saved connections a window has open.
     async fn open_connections(&self) -> Vec<Uuid>;
 
     /// Open the saved connection in a window, as the picker does, and

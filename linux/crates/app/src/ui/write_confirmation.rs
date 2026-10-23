@@ -64,7 +64,7 @@ impl WriteConfirmation {
         Self {
             heading: crate::i18n::gettext("Run Statement from MCP Client?"),
             body,
-            sql: sql.to_owned(),
+            sql: with_hidden_characters_shown(sql),
             proceed: crate::i18n::gettext("_Run"),
             destructive,
         }
@@ -131,6 +131,45 @@ impl WriteConfirmation {
             destructive: false,
         }
     }
+}
+
+/// A client's statement as the user should read it. A character that
+/// draws nothing, or reorders the text around it, shows as its code
+/// point, so the dialog cannot be made to read unlike what runs.
+fn with_hidden_characters_shown(sql: &str) -> String {
+    let mut shown = String::with_capacity(sql.len());
+    for character in sql.chars() {
+        match hides(character) {
+            true => shown.push_str(&format!("\\u{{{:04X}}}", u32::from(character))),
+            false => shown.push(character),
+        }
+    }
+    shown
+}
+
+/// Unicode's Default_Ignorable_Code_Point set, which holds the bidi
+/// controls, and the control characters other than line breaks and tabs.
+fn hides(character: char) -> bool {
+    matches!(
+        character,
+        '\u{00AD}'
+            | '\u{034F}'
+            | '\u{061C}'
+            | '\u{115F}'..='\u{1160}'
+            | '\u{17B4}'..='\u{17B5}'
+            | '\u{180B}'..='\u{180F}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{3164}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{FFA0}'
+            | '\u{FFF0}'..='\u{FFF8}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0000}'..='\u{E0FFF}'
+    ) || (character.is_control() && !matches!(character, '\n' | '\r' | '\t'))
 }
 
 /// The sentence that names the connection and why it asks.
@@ -284,6 +323,18 @@ mod tests {
         assert_eq!(
             dialog.response_appearance(PROCEED),
             adw::ResponseAppearance::Destructive
+        );
+    }
+
+    #[test]
+    fn a_client_statement_shows_the_characters_that_hide_or_reorder_text() {
+        let sql = "UPDATE t SET a = 1 /*\u{202E} } \u{2066}WHERE id = 7\u{2069} \u{2066}*/\u{200B}\nWHERE b = 'é'\t";
+
+        let shown = WriteConfirmation::external("Prod", sql, false).sql;
+
+        assert_eq!(
+            shown,
+            "UPDATE t SET a = 1 /*\\u{202E} } \\u{2066}WHERE id = 7\\u{2069} \\u{2066}*/\\u{200B}\nWHERE b = 'é'\t"
         );
     }
 

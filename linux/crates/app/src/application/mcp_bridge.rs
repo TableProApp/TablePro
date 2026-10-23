@@ -151,28 +151,43 @@ fn answer(app: &TableProApplication, request: McpRequest) {
 /// Open the connection the way the picker does: in the window that has
 /// it, in the active window while it only shows the picker, or in a new
 /// window. Every prompt the connect needs shows there.
-fn open(app: &TableProApplication, services: &AppServices, connection: SavedConnection, reply: oneshot::Sender<OpenOutcome>) {
+fn open(
+    app: &TableProApplication,
+    services: &AppServices,
+    connection: SavedConnection,
+    reply: oneshot::Sender<OpenOutcome>,
+) {
     let key = SessionKey::Saved(connection.id);
     if let Some(session) = services.sessions.session(&key) {
         let _ = reply.send(OpenOutcome::Open(session));
         return;
     }
-    if services.sessions.window_for(&key).is_none() {
-        let idle = app
-            .active_window()
-            .and_downcast::<SessionWindow>()
-            .filter(SessionWindow::is_idle);
-        match idle {
-            Some(window) => {
-                window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
-                window.present();
-            }
-            None => {
-                app.open_window(WindowLaunch::Connect(Box::new(connection)));
+    match services.sessions.window_for(&key) {
+        None => {
+            let idle = app
+                .active_window()
+                .and_downcast::<SessionWindow>()
+                .filter(SessionWindow::is_idle);
+            match idle {
+                Some(window) => {
+                    window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
+                    window.present();
+                }
+                None => {
+                    app.open_window(WindowLaunch::Connect(Box::new(connection)));
+                }
             }
         }
+        // A failed connect keeps its claim, and its window says why.
+        Some(window_id) if !app.imp().windows.keeps_session(window_id) => {
+            app.present_window(window_id);
+            let _ = reply.send(OpenOutcome::Closed);
+            return;
+        }
+        Some(_) => {}
     }
     let sessions = services.sessions.clone();
+    let app = app.downgrade();
     glib::spawn_future_local(async move {
         let deadline = Instant::now() + OPEN_WAIT;
         // The window claims the connection once it reads its input, so
@@ -182,11 +197,16 @@ fn open(app: &TableProApplication, services: &AppServices, connection: SavedConn
             if let Some(session) = sessions.session(&key) {
                 break OpenOutcome::Open(session);
             }
+            let Some(app) = app.upgrade() else {
+                break OpenOutcome::Closed;
+            };
             match sessions.window_for(&key) {
-                Some(_) => claimed = true,
+                Some(window_id) if app.imp().windows.keeps_session(window_id) => claimed = true,
+                Some(_) => break OpenOutcome::Closed,
                 None if claimed => break OpenOutcome::Closed,
                 None => {}
             }
+            drop(app);
             if reply.is_closed() {
                 return;
             }
@@ -204,7 +224,12 @@ fn open(app: &TableProApplication, services: &AppServices, connection: SavedConn
 
 /// Ask in the window that has the connection open, with Safe Mode's
 /// dialog. The question goes away unanswered when the client does.
-fn approve(app: &TableProApplication, services: &AppServices, approval: WriteApproval, mut reply: oneshot::Sender<bool>) {
+fn approve(
+    app: &TableProApplication,
+    services: &AppServices,
+    approval: WriteApproval,
+    mut reply: oneshot::Sender<bool>,
+) {
     let window = services
         .sessions
         .window_for(&SessionKey::Saved(approval.connection_id))

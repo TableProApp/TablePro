@@ -315,7 +315,12 @@ fn an_external_access_level_writes_back_as_it_was_set() -> TestResult {
     assert!(String::from_utf8_lossy(&exported).contains("\"external_access\": \"blocked\""));
     let levels: Vec<ExternalAccess> = read.iter().map(|connection| connection.external_access).collect();
     assert_eq!(levels.iter().filter(|level| level.is_blocked()).count(), 1);
-    assert_eq!(read.iter().find(|connection| connection.id == first).map(|c| c.external_access), Some(ExternalAccess::Blocked));
+    assert_eq!(
+        read.iter()
+            .find(|connection| connection.id == first)
+            .map(|c| c.external_access),
+        Some(ExternalAccess::Blocked)
+    );
     Ok(())
 }
 

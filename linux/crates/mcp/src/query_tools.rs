@@ -48,17 +48,19 @@ pub async fn execute_query(
         )));
     }
     let session = context.session(&connection).await?;
-    let dialect = session.current_dialect().ok_or_else(|| {
-        ToolError::NotConnected(format!("“{}” has no connection right now", connection.name))
-    })?;
+    let dialect = session
+        .current_dialect()
+        .ok_or_else(|| ToolError::NotConnected(format!("“{}” has no connection right now", connection.name)))?;
     let grammar = dialect.grammar();
     let text = single_batch(&args.query, grammar)?;
     let access = statement_access(&text, grammar);
-    let executed_at = SystemTime::now();
-    let started = Instant::now();
-    let ran = match connection.external_access.gate(session.safe_mode(), access) {
+    let (ran, executed_at, elapsed) = match connection.external_access.gate(session.safe_mode(), access) {
         ExternalGate::Refuse(reason) => return Err(refusal(&connection, reason)),
-        ExternalGate::Run => run_read(&session, &text, limit, timeout, &cancel).await,
+        ExternalGate::Run => {
+            let (executed_at, started) = (SystemTime::now(), Instant::now());
+            let ran = run_read(&session, &text, limit, timeout, &cancel).await;
+            (ran, executed_at, started.elapsed())
+        }
         ExternalGate::Confirm { destructive } => {
             let approval = WriteApproval {
                 connection_id: connection.id,
@@ -78,14 +80,16 @@ pub async fn execute_query(
             if let ExternalGate::Refuse(reason) = now.external_access.gate(session.safe_mode(), access) {
                 return Err(refusal(&now, reason));
             }
+            // The time the question was open is not the statement's.
+            let (executed_at, started) = (SystemTime::now(), Instant::now());
             let ran = run_write(&session, &text, limit, timeout, &cancel).await;
+            let elapsed = started.elapsed();
             if ran.is_ok() && changes_catalog(&text, grammar) {
                 refresh_catalog(&session).await;
             }
-            ran
+            (ran, executed_at, elapsed)
         }
     };
-    let elapsed = started.elapsed();
     context
         .host
         .record(history_entry(&connection, &text, executed_at, elapsed, &ran), dialect)
@@ -102,6 +106,28 @@ fn single_batch(query: &str, grammar: SqlGrammar) -> Result<String, ToolError> {
     if !plan.diagnostics().is_empty() {
         return Err(ToolError::InvalidArgument(
             "the query leaves a string, quoted name or comment open".to_owned(),
+        ));
+    }
+    // The server may read a backslash in a string, or a MySQL `/*!`
+    // comment, unlike the client, and then end the statement elsewhere.
+    let one_everywhere = ScriptPlan::server_readings(query, grammar).is_some_and(|mut readings| {
+        readings.all(|reading| {
+            let batches = reading
+                .batches()
+                .iter()
+                .filter(|batch| {
+                    query
+                        .get(batch.range.clone())
+                        .is_some_and(|text| !text.trim().is_empty())
+                })
+                .count();
+            batches <= 1
+        })
+    });
+    if !one_everywhere {
+        return Err(ToolError::InvalidArgument(
+            "the query can read as more than one statement under the server's settings; send one statement per call"
+                .to_owned(),
         ));
     }
     let batches: Vec<_> = plan
@@ -142,13 +168,7 @@ type Ran = Result<(CollectedResults, Vec<&'static str>), ToolError>;
 
 /// A read runs on a connection of its own that the engine holds
 /// read-only, so a write the statement gate did not see still fails.
-async fn run_read(
-    session: &Session,
-    text: &str,
-    limit: usize,
-    timeout: Duration,
-    cancel: &CancellationToken,
-) -> Ran {
+async fn run_read(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
     let read = ReadStatement::User(UserSql::new(text));
     let collected = stream(session, limit, timeout, cancel, None, move |_| Ok(read.clone())).await?;
     Ok((collected, Vec::new()))
@@ -156,13 +176,7 @@ async fn run_read(
 
 /// A write runs on an editor session of its own, opened for the one
 /// statement and closed after it, as an editor tab would run it.
-async fn run_write(
-    session: &Session,
-    text: &str,
-    limit: usize,
-    timeout: Duration,
-    cancel: &CancellationToken,
-) -> Ran {
+async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duration, cancel: &CancellationToken) -> Ran {
     let options = EditorSessionOptions {
         statement_timeout: Some(timeout),
     };
@@ -173,10 +187,22 @@ async fn run_write(
     let state = Arc::new(Mutex::new(CollectedResults::default()));
     let sink = ResultCollector::new(state.clone(), limit, false);
     let row_limit = RowLimit::new(limit as u64).unwrap_or(RowLimit::EDITOR_DEFAULT);
-    let run = RunOptions::new(cancel.child_token())
+    let stop = cancel.child_token();
+    let run = RunOptions::new(stop.clone())
         .with_row_limit(row_limit)
         .with_deadline(Some(timeout));
-    let summary = editor.run(UserSql::new(text), run, Box::new(sink)).await;
+    // The window's teardown closes only its own editor sessions, so this
+    // one stops when the session does, as an editor tab's run would.
+    let closing = session.shutdown_signal();
+    let running = editor.run(UserSql::new(text), run, Box::new(sink));
+    tokio::pin!(running);
+    let (summary, closed) = tokio::select! {
+        summary = &mut running => (summary, false),
+        () = closing.cancelled() => {
+            stop.cancel();
+            (running.await, true)
+        }
+    };
     editor.close().await;
     let collected = std::mem::take(&mut *state.lock().unwrap_or_else(PoisonError::into_inner));
     let summary = summary.map_err(|error| ToolError::from_driver(&error))?;
@@ -189,6 +215,9 @@ async fn run_write(
             Ok((collected, notes))
         }
         RunEnd::Failed(error) => Err(ToolError::QueryFailed(error.to_string())),
+        RunEnd::Cancelled if closed => Err(ToolError::NotConnected(
+            "the connection was closed in TablePro while the statement ran".to_owned(),
+        )),
         RunEnd::Cancelled => Err(ToolError::UserCancelled("the request was cancelled".to_owned())),
         RunEnd::TimedOut { .. } => Err(timed_out(timeout)),
     }
@@ -404,9 +433,26 @@ mod tests {
     }
 
     #[test]
+    fn a_statement_some_server_setting_splits_in_two_is_refused() {
+        assert!(single_batch(r"SELECT 'a\'; DELETE FROM orders; -- '", SqlGrammar::MySql).is_err());
+        assert!(single_batch(r"SELECT 'a\'; DELETE FROM orders; -- '", SqlGrammar::PostgreSql).is_err());
+        assert!(single_batch("SELECT 1 /*!50000 ; DELETE FROM orders */", SqlGrammar::MySql).is_err());
+        assert_eq!(
+            single_batch(r"SELECT 'C:\'", SqlGrammar::PostgreSql).ok().as_deref(),
+            Some(r"SELECT 'C:\'")
+        );
+        assert_eq!(
+            single_batch(r"SELECT 'it\'s'", SqlGrammar::MySql).ok().as_deref(),
+            Some(r"SELECT 'it\'s'")
+        );
+    }
+
+    #[test]
     fn a_sql_server_batch_is_one_unit_and_a_repeated_one_is_refused() {
         assert_eq!(
-            single_batch("DECLARE @n int = 1\nSELECT @n", SqlGrammar::MsSql).ok().as_deref(),
+            single_batch("DECLARE @n int = 1\nSELECT @n", SqlGrammar::MsSql)
+                .ok()
+                .as_deref(),
             Some("DECLARE @n int = 1\nSELECT @n")
         );
         assert!(single_batch("SELECT 1\nGO\nSELECT 2", SqlGrammar::MsSql).is_err());

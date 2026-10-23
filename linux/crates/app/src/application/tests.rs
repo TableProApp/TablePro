@@ -945,6 +945,39 @@ mod mcp {
     }
 
     #[gtk4::test]
+    fn a_failed_connect_answers_closed_at_once_and_keeps_its_window() {
+        let test = TestApp::started("McpFailed");
+        let host = test.app.answer_mcp(&test.services());
+        let saved = SavedConnection {
+            driver_id: "missing".to_owned(),
+            ..saved_file(&test, "shop.db", ExternalAccess::ReadOnly)
+        };
+        test.services()
+            .storage
+            .connections()
+            .upsert_blocking(saved.clone())
+            .expect("the saved connection");
+
+        let first = opened(&test, &host, &saved);
+        let asked_again = std::time::Instant::now();
+        let again = opened(&test, &host, &saved);
+
+        assert!(matches!(first, OpenOutcome::Closed), "{first:?}");
+        assert!(matches!(again, OpenOutcome::Closed), "{again:?}");
+        assert!(
+            asked_again.elapsed() < Duration::from_secs(5),
+            "the second answer waited for a connect"
+        );
+        assert!(
+            test.services()
+                .sessions
+                .window_for(&SessionKey::Saved(saved.id))
+                .is_some()
+        );
+        assert_eq!(test.app.windows().len(), 1);
+    }
+
+    #[gtk4::test]
     fn a_client_write_is_asked_in_the_connection_window_and_cancel_wins() {
         let test = TestApp::started("McpApprove");
         let host = test.app.answer_mcp(&test.services());
@@ -996,6 +1029,10 @@ mod mcp {
 
     /// One `tools/call` over HTTP, as a client sends it, answered with the
     /// tool's text.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "the request is written with json!, and its key order means nothing to the server"
+    )]
     async fn call_tool(port: u16, token: String, tool: &'static str) -> String {
         let body = serde_json::json!({
             "jsonrpc": "2.0",
@@ -1019,7 +1056,10 @@ mod mcp {
         let text = String::from_utf8(raw).expect("a UTF-8 response");
         let (head, body) = text.split_once("\r\n\r\n").expect("a header block");
         assert!(head.starts_with("HTTP/1.1 200"), "{head}");
-        assert!(!head.to_ascii_lowercase().contains("transfer-encoding: chunked"), "{head}");
+        assert!(
+            !head.to_ascii_lowercase().contains("transfer-encoding: chunked"),
+            "{head}"
+        );
         let message: serde_json::Value = serde_json::from_str(body).expect("a JSON-RPC reply");
         message["result"]["content"][0]["text"]
             .as_str()

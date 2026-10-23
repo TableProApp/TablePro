@@ -91,7 +91,10 @@ mod tests {
 
     #[test]
     fn a_closed_session_reads_as_not_connected() {
-        assert_eq!(ToolError::from_operation(&OperationError::Closed).code(), "not_connected");
+        assert_eq!(
+            ToolError::from_operation(&OperationError::Closed).code(),
+            "not_connected"
+        );
         assert_eq!(
             ToolError::from_operation(&OperationError::Driver(DriverError::Cancelled)).code(),
             "user_cancelled"
