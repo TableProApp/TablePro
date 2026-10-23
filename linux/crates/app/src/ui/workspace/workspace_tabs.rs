@@ -227,6 +227,15 @@ impl WorkspaceModel {
         self.report_tabs_changed();
     }
 
+    /// The view's close-page handler takes it from there, as for the
+    /// tab's close button. A tab already gone has nothing to close.
+    pub(super) fn close_workspace_tab(&mut self, id: Uuid) {
+        let page = self.workspace_tabs.borrow().get(&id).map(|tab| tab.page().clone());
+        if let Some(page) = page {
+            self.tab_view.close_page(&page);
+        }
+    }
+
     /// With no tab open, Ctrl+W closes the window, as in GNOME Text
     /// Editor.
     pub(super) fn close_active_workspace_tab(&mut self) {

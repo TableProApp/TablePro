@@ -240,6 +240,7 @@ crates/app/src/ui/editor/sql_file.rs
 crates/app/src/ui/editor/statement_cursor.rs
 crates/app/src/ui/editor/tests.rs
 crates/app/src/ui/editor/transaction_dirty.rs
+crates/app/src/ui/editor/vim_mode.rs
 crates/app/src/ui/editor_font_provider.rs
 crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs

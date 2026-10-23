@@ -19,7 +19,7 @@ struct Harness {
     fake: Arc<FakeEditorSession>,
     history: Option<HistoryService>,
     active: ActiveSession,
-    _settings: MemorySettings,
+    settings: MemorySettings,
     runtime: crate::runtime::AppRuntime,
 }
 
@@ -49,9 +49,17 @@ fn editor_with(runs: Replies<FakeRun>, text: &str) -> Harness {
 }
 
 fn build_editor(runs: Replies<FakeRun>, text: &str, history: impl FnOnce(&Tasks) -> Option<HistoryService>) -> Harness {
+    build_editor_on(MemorySettings::new(), runs, text, history)
+}
+
+fn build_editor_on(
+    settings: MemorySettings,
+    runs: Replies<FakeRun>,
+    text: &str,
+    history: impl FnOnce(&Tasks) -> Option<HistoryService>,
+) -> Harness {
     crate::register_test_resources();
     let runtime = crate::test_support::test_runtime();
-    let settings = MemorySettings::new();
     let fake = Arc::new(FakeEditorSession::new(runs));
     let active = ActiveSession::new();
     active.replace(session_with(fake.clone(), runtime.tasks()));
@@ -70,7 +78,7 @@ fn build_editor(runs: Replies<FakeRun>, text: &str, history: impl FnOnce(&Tasks)
         fake,
         history,
         active,
-        _settings: settings,
+        settings,
         runtime,
     }
 }
@@ -1009,6 +1017,27 @@ fn a_closed_editor_lets_go_of_its_script_and_completion() {
     );
 }
 
+#[gtk4::test]
+fn a_closed_editor_in_vim_lets_go_of_its_script_and_vim() {
+    let harness = editor_with(answering(), "SELECT 1");
+    let vim = vim(&harness).downgrade();
+    let view = harness.editor.imp().source_view.get();
+    let script = harness.editor.buffer().downgrade();
+    {
+        let shown = InWindow::new(&harness.editor);
+        shown.0.present();
+        wait_until(WAIT, || view.is_mapped()).expect("the editor on screen");
+        crate::test_support::after_next_frame(&view);
+    }
+
+    drop(view);
+    drop(harness);
+    crate::test_support::drain_main_context();
+
+    assert!(script.upgrade().is_none(), "the script outlived its editor");
+    assert!(vim.upgrade().is_none(), "Vim outlived its editor");
+}
+
 fn editor_keys(harness: &Harness) -> gtk4::ShortcutController {
     crate::test_support::shortcut_keys::owner_controller(
         &harness.editor.imp().source_view.get(),
@@ -1217,6 +1246,387 @@ fn a_tab_with_no_file_has_nothing_unsaved_to_ask_about() {
 
     assert!(harness.editor.file().is_none());
     assert!(!harness.editor.has_unsaved_file_changes());
+}
+
+/// Turn the preference on and hand over Vim's input method.
+fn vim(harness: &Harness) -> sourceview5::VimIMContext {
+    harness.settings.get().set_vim_keybindings(true).expect("turn Vim on");
+    harness.editor.vim_context().expect("Vim on the view")
+}
+
+/// A command line as GtkSourceView sends it once Return is pressed.
+fn vim_command(context: &sourceview5::VimIMContext, command: &str) -> bool {
+    context.emit_by_name::<bool>("execute-command", &[&command])
+}
+
+#[gtk4::test]
+fn vim_follows_the_preference_and_leaves_the_view_as_it_was() {
+    let harness = editor_with(answering(), "select 1");
+    let imp = harness.editor.imp();
+    let view = imp.source_view.get();
+    assert!(!harness.editor.has_vim(), "Vim is on by default");
+    assert!(!imp.text_pane.reveals_bottom_bars());
+
+    vim(&harness);
+
+    assert!(imp.text_pane.reveals_bottom_bars(), "the mode line is hidden");
+    assert!(view.overwrites(), "normal mode draws no block cursor");
+
+    harness.settings.get().set_vim_keybindings(false).expect("turn Vim off");
+
+    assert!(!harness.editor.has_vim());
+    assert!(!imp.text_pane.reveals_bottom_bars());
+    assert!(!view.overwrites(), "the block cursor stayed");
+    assert!(view.is_cursor_visible());
+    assert_eq!(imp.vim_command_bar.label(), "");
+}
+
+#[gtk4::test]
+fn an_editor_opened_with_the_preference_on_starts_in_vim() {
+    let settings = MemorySettings::new();
+    settings.get().set_vim_keybindings(true).expect("turn Vim on");
+
+    let harness = build_editor_on(settings, answering(), "select 1", |_| None);
+
+    assert!(harness.editor.has_vim());
+    assert!(harness.editor.imp().text_pane.reveals_bottom_bars());
+}
+
+#[gtk4::test]
+fn vim_quit_asks_the_workspace_to_close_the_tab() {
+    let harness = editor_with(answering(), "select 1");
+    let context = vim(&harness);
+    let closes = SignalLog::connect(&harness.editor, "close-requested", |_| ());
+
+    assert!(vim_command(&context, ":q"));
+    assert!(vim_command(&context, ":quit!"));
+    assert!(
+        !vim_command(&context, ":nohl"),
+        "a command of GtkSourceView's own was taken"
+    );
+
+    assert_eq!(closes.count(), 2);
+}
+
+#[gtk4::test]
+fn vim_write_saves_the_tabs_file_as_ctrl_s_does() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":w"));
+    wait_until(WAIT, || !harness.editor.has_unsaved_file_changes()).expect("the save to land");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read back"),
+        "SELECT 1;\nSELECT 2;"
+    );
+}
+
+#[gtk4::test]
+fn vim_write_with_a_trailing_space_saves_the_tabs_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":write "));
+    wait_until(WAIT, || !harness.editor.has_unsaved_file_changes()).expect("the save to land");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read back"),
+        "SELECT 1;\nSELECT 2;"
+    );
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
+fn vim_write_quit_closes_once_the_file_is_written() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+    let closes = SignalLog::connect(&harness.editor, "close-requested", |_| ());
+
+    assert!(vim_command(&context, ":wq"));
+    wait_until(WAIT, || closes.count() == 1).expect("the close after the write");
+
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read back"),
+        "SELECT 1;\nSELECT 2;"
+    );
+    assert!(!harness.editor.has_unsaved_file_changes());
+}
+
+#[gtk4::test]
+fn vim_write_quit_keeps_the_tab_when_the_write_fails() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let harness = editor_with(answering(), "SELECT 1;");
+    harness
+        .editor
+        .restore_file(gio::File::for_path(root.path().join("gone").join("daily.sql")), true);
+    let window = shown(&harness);
+    let context = vim(&harness);
+    let closes = SignalLog::connect(&harness.editor, "close-requested", |_| ());
+
+    assert!(vim_command(&context, ":wq"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the failed write to say so");
+    crate::test_support::drain_main_context();
+
+    assert_eq!(closes.count(), 0, "the tab closed without its text in the file");
+}
+
+/// The file is not there to write to, so a close means no write was tried.
+#[gtk4::test]
+fn vim_exit_closes_an_unchanged_file_without_writing() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let harness = editor_with(answering(), "SELECT 1;");
+    harness
+        .editor
+        .restore_file(gio::File::for_path(root.path().join("gone").join("daily.sql")), false);
+    let context = vim(&harness);
+    let closes = SignalLog::connect(&harness.editor, "close-requested", |_| ());
+
+    assert!(vim_command(&context, ":x"));
+
+    assert_eq!(closes.count(), 1);
+}
+
+#[gtk4::test]
+fn vim_write_to_a_name_saves_next_to_the_tabs_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":w weekly.sql"));
+    let copy = root.path().join("weekly.sql");
+    // The name is claimed empty first; the tab follows once the text is in.
+    wait_until(WAIT, || {
+        harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&copy)
+    })
+    .expect("the tab on the new file");
+
+    assert_eq!(std::fs::read_to_string(&copy).expect("read back"), "SELECT 1;");
+}
+
+#[gtk4::test]
+fn vim_write_to_a_name_leaves_another_file_alone() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    let other = root.path().join("weekly.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    std::fs::write(&other, "SELECT 7;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let context = vim(&harness);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+
+    assert!(vim_command(&context, ":w weekly.sql"));
+    wait_until(WAIT, || toasts.count() == 1).expect("the refusal");
+
+    assert!(toasts.take()[0].starts_with("“weekly.sql” already exists."));
+    assert_eq!(std::fs::read_to_string(&other).expect("read back"), "SELECT 7;");
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
+fn vim_write_to_a_new_name_during_a_save_writes_nothing() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let context = vim(&harness);
+    harness.editor.imp().saving.set(true);
+
+    assert!(vim_command(&context, ":w weekly.sql"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the refusal to say so");
+
+    assert!(!root.path().join("weekly.sql").exists(), "a file was made");
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
+fn vim_force_write_to_a_name_replaces_another_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    let other = root.path().join("weekly.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    std::fs::write(&other, "SELECT 7;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":w! weekly.sql"));
+    wait_until(WAIT, || {
+        harness.editor.file().and_then(|file| file.path()).as_ref() == Some(&other)
+    })
+    .expect("the tab on the other file");
+
+    assert_eq!(std::fs::read_to_string(&other).expect("read back"), "SELECT 1;");
+}
+
+#[gtk4::test]
+fn vim_force_edit_reads_the_tabs_file_without_asking() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e!"));
+    wait_until(WAIT, || buffer_text(&buffer) == "SELECT 1;").expect("the file again");
+
+    assert!(crate::workspace::visible_alert(&window).is_none(), "it asked");
+    assert!(!harness.editor.has_unsaved_file_changes());
+}
+
+#[gtk4::test]
+fn vim_edit_asks_before_it_drops_changes_to_the_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e"));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert_eq!(buffer_text(&buffer), "SELECT 1;\nSELECT 2;");
+    assert!(crate::workspace::answer(&window, "replace"));
+
+    wait_until(WAIT, || buffer_text(&buffer) == "SELECT 1;").expect("the file again");
+}
+
+#[gtk4::test]
+fn vim_edit_a_name_asks_before_it_drops_an_emptied_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    let other = root.path().join("weekly.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    std::fs::write(&other, "SELECT 7;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.delete(&mut buffer.start_iter(), &mut buffer.end_iter());
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e weekly.sql"));
+
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert_eq!(buffer_text(&buffer), "");
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
+fn vim_edit_asks_before_it_undoes_emptying_the_file() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    let window = shown(&harness);
+    let buffer = harness.editor.buffer();
+    buffer.delete(&mut buffer.start_iter(), &mut buffer.end_iter());
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e"));
+
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert_eq!(buffer_text(&buffer), "");
+}
+
+#[gtk4::test]
+fn vim_edit_reads_the_tabs_file_again() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 1;").expect("seed");
+    let harness = editor_with(answering(), "");
+    open_path(&harness, &path);
+    std::fs::write(&path, "SELECT 2;").expect("change it on disk");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, ":e"));
+    let buffer = harness.editor.buffer();
+    wait_until(WAIT, || buffer_text(&buffer) == "SELECT 2;").expect("the file again");
+
+    assert!(!harness.editor.has_unsaved_file_changes());
+}
+
+#[gtk4::test]
+fn vim_edit_without_a_file_says_so() {
+    let harness = editor_with(answering(), "SELECT 1;");
+    let context = vim(&harness);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+
+    assert!(vim_command(&context, ":e"));
+
+    assert_eq!(toasts.take(), ["This tab is not saved to a file."]);
+    assert_eq!(buffer_text(&harness.editor.buffer()), "SELECT 1;");
+}
+
+#[gtk4::test]
+fn vim_edit_a_name_opens_that_file_in_an_empty_tab() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 3;").expect("seed");
+    let harness = editor_with(answering(), "");
+    let context = vim(&harness);
+
+    assert!(vim_command(&context, &format!(":e {}", path.display())));
+    let buffer = harness.editor.buffer();
+    wait_until(WAIT, || buffer_text(&buffer) == "SELECT 3;").expect("the file");
+
+    assert_eq!(harness.editor.file().and_then(|file| file.path()), Some(path));
+}
+
+#[gtk4::test]
+fn vim_edit_a_name_asks_before_it_replaces_the_tabs_text() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("daily.sql");
+    std::fs::write(&path, "SELECT 3;").expect("seed");
+    let harness = editor_with(answering(), "SELECT 1;");
+    let window = shown(&harness);
+    let context = vim(&harness);
+    let buffer = harness.editor.buffer();
+
+    assert!(vim_command(&context, &format!(":e {}", path.display())));
+    wait_until(WAIT, || crate::workspace::visible_alert(&window).is_some()).expect("the question");
+    assert_eq!(buffer_text(&buffer), "SELECT 1;", "the text went before the answer");
+    assert!(crate::workspace::answer(&window, "replace"));
+
+    wait_until(WAIT, || buffer_text(&buffer) == "SELECT 3;").expect("the file");
+    harness.editor.undo();
+    assert_eq!(buffer_text(&buffer), "SELECT 1;");
 }
 
 fn find_bar(harness: &Harness) -> find_bar::FindBar {
@@ -1557,5 +1967,215 @@ mod real_keys {
             .expect("the key press");
         wait_until(Duration::from_secs(2), || !bar.is_open() && view.has_focus())
             .expect("Escape to close the bar and return to the view");
+    }
+
+    const KEY_WAIT: Duration = Duration::from_secs(2);
+
+    /// An editor in Vim's normal mode with the cursor at the start,
+    /// shown and holding the keyboard focus.
+    fn in_vim(harness: &Harness) -> (InWindow, crate::test_support::KeyInjector) {
+        vim(harness);
+        let window = InWindow::presented(&harness.editor);
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.start_iter());
+        harness.editor.imp().source_view.grab_focus();
+        (
+            window,
+            crate::test_support::KeyInjector::connect().expect("an X11 display"),
+        )
+    }
+
+    fn press(keys: &crate::test_support::KeyInjector, key: gtk4::gdk::Key) {
+        keys.press(key, gtk4::gdk::ModifierType::empty())
+            .expect("the key press");
+    }
+
+    /// A key typed with Shift, such as `:` or `G` on a US layout.
+    fn shifted(keys: &crate::test_support::KeyInjector, key: gtk4::gdk::Key) {
+        keys.press(key, gtk4::gdk::ModifierType::SHIFT_MASK)
+            .expect("the key press");
+    }
+
+    fn ctrl(keys: &crate::test_support::KeyInjector, key: gtk4::gdk::Key) {
+        keys.press(key, gtk4::gdk::ModifierType::CONTROL_MASK)
+            .expect("the key press");
+    }
+
+    #[gtk4::test]
+    fn vim_takes_normal_insert_and_visual_mode_keys() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "select 1");
+        let (_window, keys) = in_vim(&harness);
+        let buffer = harness.editor.buffer();
+        let mode = harness.editor.imp().vim_command_bar.get();
+
+        press(&keys, Key::x);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "elect 1").expect("x to delete a character");
+
+        press(&keys, Key::i);
+        wait_until(KEY_WAIT, || !mode.label().is_empty()).expect("i to show insert mode");
+        press(&keys, Key::s);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "select 1").expect("insert mode to type");
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || mode.label().is_empty()).expect("Escape to leave insert mode");
+
+        press(&keys, Key::v);
+        press(&keys, Key::e);
+        wait_until(KEY_WAIT, || buffer.has_selection() && !mode.label().is_empty())
+            .expect("v and e to select a word in visual mode");
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || mode.label().is_empty()).expect("Escape to leave visual mode");
+    }
+
+    #[gtk4::test]
+    fn the_run_keys_run_from_vims_normal_and_insert_modes() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "select 1");
+        let (_window, keys) = in_vim(&harness);
+
+        ctrl(&keys, Key::Return);
+        wait_until(WAIT, || sent(&harness.fake) == ["select 1"]).expect("Ctrl+Return to run in normal mode");
+        wait_until(WAIT, || !harness.editor.is_running()).expect("the run to end");
+
+        press(&keys, Key::i);
+        keys.press(
+            Key::Return,
+            gtk4::gdk::ModifierType::CONTROL_MASK | gtk4::gdk::ModifierType::SHIFT_MASK,
+        )
+        .expect("the key press");
+        wait_until(WAIT, || sent(&harness.fake).len() == 2).expect("Ctrl+Shift+Return to run in insert mode");
+        assert_eq!(
+            buffer_text(&harness.editor.buffer()),
+            "select 1",
+            "Return went into the text"
+        );
+    }
+
+    /// Normal mode binds Ctrl+F to a page down, and the command line
+    /// takes every key.
+    #[gtk4::test]
+    fn find_and_comment_keep_their_keys_in_vim() {
+        use gtk4::gdk::Key;
+        if let Some(settings) = gtk4::Settings::default() {
+            settings.set_gtk_enable_animations(false);
+        }
+        let harness = editor_with(answering(), "select 1");
+        let (_window, keys) = in_vim(&harness);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+
+        ctrl(&keys, Key::slash);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "-- select 1").expect("Ctrl+/ to comment the line");
+
+        shifted(&keys, Key::colon);
+        ctrl(&keys, Key::f);
+        let bar = find_bar(&harness);
+        wait_until(KEY_WAIT, || bar.is_open()).expect("Ctrl+F to open the find bar from the command line");
+        assert!(!view.has_focus(), "the view kept the focus");
+    }
+
+    #[gtk4::test]
+    fn escape_is_vims_while_a_query_runs() {
+        use gtk4::gdk::Key;
+        let mut runs = Replies::default();
+        runs.always(FakeRun::until_stopped());
+        let harness = editor_with(runs, "select 1");
+        let (_window, keys) = in_vim(&harness);
+        let mode = harness.editor.imp().vim_command_bar.get();
+        harness.editor.run();
+        assert!(harness.editor.is_running());
+
+        press(&keys, Key::i);
+        wait_until(KEY_WAIT, || !mode.label().is_empty()).expect("insert mode");
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || mode.label().is_empty()).expect("Escape to leave insert mode");
+
+        assert!(harness.editor.is_running(), "Escape stopped the query");
+        harness.editor.stop();
+        wait_until(WAIT, || !harness.editor.is_running()).expect("the Stop button's stop");
+    }
+
+    #[gtk4::test]
+    fn typing_colon_w_saves_and_colon_q_asks_to_close() {
+        use gtk4::gdk::Key;
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("daily.sql");
+        std::fs::write(&path, "SELECT 1;").expect("seed");
+        let harness = editor_with(answering(), "");
+        open_path(&harness, &path);
+        let buffer = harness.editor.buffer();
+        buffer.insert(&mut buffer.end_iter(), "\nSELECT 2;");
+        let (_window, keys) = in_vim(&harness);
+        let closes = SignalLog::connect(&harness.editor, "close-requested", |_| ());
+
+        shifted(&keys, Key::colon);
+        press(&keys, Key::w);
+        press(&keys, Key::Return);
+        wait_until(WAIT, || !harness.editor.has_unsaved_file_changes()).expect(":w to save");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read back"),
+            "SELECT 1;\nSELECT 2;"
+        );
+
+        shifted(&keys, Key::colon);
+        press(&keys, Key::q);
+        press(&keys, Key::Return);
+        wait_until(KEY_WAIT, || closes.count() == 1).expect(":q to ask for the close");
+    }
+
+    fn completion_list_shown(view: &sourceview5::View) -> bool {
+        let mut child = view.first_child();
+        while let Some(widget) = child {
+            if widget.is::<gtk4::Popover>() && widget.is_visible() {
+                return true;
+            }
+            child = widget.next_sibling();
+        }
+        false
+    }
+
+    /// Each key is waited for, so the list opens in insert mode and not
+    /// while Vim is still taking the keys before it.
+    #[gtk4::test]
+    fn leaving_insert_mode_closes_the_completion_list_for_good() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "SELECT 1;\n");
+        let (_window, keys) = in_vim(&harness);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        let mode = harness.editor.imp().vim_command_bar.get();
+
+        shifted(&keys, Key::G);
+        press(&keys, Key::o);
+        wait_until(KEY_WAIT, || !mode.label().is_empty() && buffer.line_count() == 3).expect("o to open a line");
+        shifted(&keys, Key::S);
+        shifted(&keys, Key::E);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT 1;\n\nSE").expect("insert mode to type");
+        view.completion().show();
+        wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the completion list");
+
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || mode.label().is_empty()).expect("Escape to leave insert mode");
+        wait_until(KEY_WAIT, || !completion_list_shown(&view)).expect("the list to close");
+
+        press(&keys, Key::x);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT 1;\n\nS").expect("x to delete in normal mode");
+        view.completion().show();
+        crate::test_support::drain_main_context();
+        assert!(!completion_list_shown(&view), "the list opened in normal mode");
+    }
+
+    #[gtk4::test]
+    fn completion_comes_back_when_vim_is_turned_off() {
+        let harness = editor_with(answering(), "SE");
+        let (_window, _keys) = in_vim(&harness);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.end_iter());
+
+        harness.settings.get().set_vim_keybindings(false).expect("turn Vim off");
+        view.completion().show();
+
+        wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the list without Vim");
     }
 }
