@@ -10,8 +10,8 @@ use tablepro_core::keyspace::{KeyScan, KeyWindow};
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
     ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, LivenessPolicy,
-    NetworkEndpoint, ResultEvent, ResultSink, RunEnd, RunOptions, ServerCode, SinkFlow, TimeoutPhase, TlsConfig,
-    TransactionState, UnsupportedFeature, UserSql, Value, WorkspaceSettings,
+    NetworkEndpoint, ReadStatement, ResultEvent, ResultSink, RunEnd, RunOptions, ServerCode, SinkFlow, TimeoutPhase,
+    TlsConfig, TransactionState, UnsupportedFeature, UserSql, Value, WorkspaceSettings,
 };
 use tablepro_driver_redis::{RedisDriver, key_text};
 use tablepro_test_support::FaultTransport;
@@ -292,6 +292,28 @@ async fn a_stop_ends_a_run_whose_results_nobody_takes() {
     assert_eq!(session.state(), EditorSessionState::Ready);
     let (ping, _) = run(session.as_ref(), "PING").await;
     assert_eq!(ping.end, RunEnd::Completed);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_export_whose_rows_nobody_takes_ends_at_its_deadline() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let read = ReadStatement::User(UserSql::new("PING"));
+
+    let exported = tokio::time::timeout(
+        CALL,
+        connection.stream_read(&read, Box::new(Stuck), within(Duration::from_millis(500))),
+    )
+    .await
+    .expect("the deadline to end the export");
+
+    let error = exported.err();
+    assert!(matches!(error, Some(DriverError::Timeout { .. })), "{error:?}");
+    connection
+        .probe(within(CALL))
+        .await
+        .expect("the workspace link is still up");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

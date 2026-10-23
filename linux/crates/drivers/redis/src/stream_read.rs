@@ -44,7 +44,12 @@ pub(crate) async fn stream(
         if let ReplyShape::Table { rows: shape_rows, .. } = &shape {
             rows += shape_rows.len() as u64;
         }
-        if emit(sink, shape, None).await == SinkFlow::ConsumerGone {
+        // A sink that is slow to take the rows still yields to a stop.
+        let flow = stoppable(stop, async {
+            Ok::<_, DriverError>(emit(&mut *sink, shape, None).await)
+        })
+        .await?;
+        if flow == SinkFlow::ConsumerGone {
             return Err(DriverError::Cancelled);
         }
     }
