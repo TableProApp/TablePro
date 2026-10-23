@@ -1,0 +1,33 @@
+[
+  {
+    "name": "preflight",
+    "exit": 0,
+    "command": [
+      "bash",
+      "scripts/preflight.sh"
+    ]
+  },
+  {
+    "name": "clippy",
+    "exit": 0,
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "-p",
+      "tablepro-app",
+      "--all-targets",
+      "--",
+      "-D",
+      "warnings"
+    ]
+  },
+  {
+    "name": "widgets",
+    "exit": 1,
+    "command": [
+      "bash",
+      "scripts/test-gtk-widgets.sh"
+    ]
+  }
+]

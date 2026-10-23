@@ -8,7 +8,11 @@
   },
   "log_sha256": {
     "before.log": "45b91755a881034a02a61602a0e3851d8a28167b139056e3b9cf6a82d7f1bed1",
-    "after.log": "8036b4272277ecf0623235181fbac74051833ef9b58dd0f8587fb9590e567abf"
+    "after.log": "8036b4272277ecf0623235181fbac74051833ef9b58dd0f8587fb9590e567abf",
+    "validation.json": "54755564497493009b23e530e7d73b5d0dd2c45d16bae995156536ece92335ba",
+    "final-preflight.log.gz": "132fcece95590e71952fd48b44d5400d19e8c81f9acadaafe3e9592913435651",
+    "final-clippy.log.gz": "eca4435ed59d333e7d47ad642c9e28b236d9d5136f95d0b06f97f528d06c0623",
+    "final-widgets.log.gz": "25f4936c4de77086e4afd046696ae318e1e46fe4987dc09d7c45180ea972747f"
   },
   "test": "tests::startup_reaches_the_application_loop_with_supported_toolkits",
   "validation": {
@@ -19,5 +23,6 @@
     },
     "environment": "Arch, private D-Bus and Xvfb, Cairo, isolated configuration",
     "before": "Production startup failed before the application loop; positive fixture later strengthened to require a mapped window."
-  }
+  },
+  "combined_tested_commit": "65b9fb85f2739c3fa21c9450fb82150a099d0450"
 }

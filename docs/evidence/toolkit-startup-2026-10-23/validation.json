@@ -1,33 +1,78 @@
-[
-  {
-    "name": "preflight",
-    "exit": 0,
-    "command": [
-      "bash",
-      "scripts/preflight.sh"
-    ]
-  },
-  {
-    "name": "clippy",
-    "exit": 0,
-    "command": [
-      "cargo",
-      "clippy",
-      "--locked",
-      "-p",
-      "tablepro-app",
-      "--all-targets",
-      "--",
-      "-D",
-      "warnings"
-    ]
-  },
-  {
-    "name": "widgets",
-    "exit": 1,
-    "command": [
-      "bash",
-      "scripts/test-gtk-widgets.sh"
-    ]
+{
+  "tested_commit": "65b9fb85f2739c3fa21c9450fb82150a099d0450",
+  "linux_base": "33d12b9b45fc3fd414e8bcaec9f30be76d563c93",
+  "results": [
+    {
+      "name": "preflight",
+      "exit": 0,
+      "command": [
+        "bash",
+        "scripts/preflight.sh"
+      ]
+    },
+    {
+      "name": "clippy",
+      "exit": 0,
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "-p",
+        "tablepro-app",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings"
+      ]
+    },
+    {
+      "name": "widgets",
+      "exit": 0,
+      "command": [
+        "bash",
+        "scripts/test-gtk-widgets.sh"
+      ]
+    },
+    {
+      "name": "docs",
+      "exit": 0,
+      "command": [
+        "python3",
+        "scripts/check-doc-links.py"
+      ]
+    },
+    {
+      "name": "issues",
+      "exit": 0,
+      "command": [
+        "python3",
+        "scripts/check-known-issues.py"
+      ]
+    },
+    {
+      "name": "inventory",
+      "exit": 0,
+      "command": [
+        "python3",
+        "scripts/inventory-ignored-tests.py",
+        "--check"
+      ]
+    },
+    {
+      "name": "whitespace",
+      "exit": 0,
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ]
+    }
+  ],
+  "counts": {
+    "harness": 383,
+    "unit": 2070,
+    "sandbox": 2077,
+    "redis_cancellation": 1,
+    "gtk_widgets": 144
   }
-]
+}

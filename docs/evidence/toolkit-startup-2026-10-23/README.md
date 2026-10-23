@@ -1,17 +1,19 @@
 # Toolkit startup ordering, October 23
 
-Status: focused startup regression, preflight and strict app Clippy pass locally. The initial full widget suite stopped at a narrow-toolbar regression; current-Linux validation is running after its separate fix in #1466; GitHub, Forgejo and installed-package acceptance are pending. Refs [#1465](https://github.com/cozyGarage/BookiE/issues/1465).
+Status: [#1468](https://github.com/cozyGarage/BookiE/pull/1468) merged; [#1465](https://github.com/cozyGarage/BookiE/issues/1465) is closed. Local validation passed on the exact PR head `65b9fb85f2739c3fa21c9450fb82150a099d0450`. Hosted checks, Forgejo and installed-package acceptance are separate results.
 
-Linux `e483fe07b` reads libadwaita versions before GTK initialization. The Rust binding requires GTK initialization, so production startup panics before opening a window. The 300-column installed-GTK harness reached this failure before any scenario actions.
+## Cause and regression
 
-The initial fresh-process regression calls production startup. It fails on the original code with the initialization assertion, as recorded in [before.log](before.log). The fix initializes GTK before reading library versions, preserves the version floors and reports an unavailable display as a startup failure.
+Linux `e483fe07b` reads libadwaita versions before GTK initialization. The Rust binding requires initialization, so production startup panics before opening a window. The initial fresh-process regression reproduces this in [before.log](before.log).
 
-The positive regression was strengthened to wait for a mapped main window, quit from the application loop and assert that the window was observed. This regression passes, as recorded in [after.log](after.log). Test builds provide clean application arguments so GTK does not parse the Rust test runner options.
+The fix initializes GTK before reading toolkit versions, preserves the version floors and reports an unavailable display explicitly. The positive regression invokes production startup, waits for a mapped main window, then quits through the application loop. It passes in [after.log](after.log). Test builds provide clean application arguments so GTK does not parse Rust test-runner options; production arguments are unchanged.
 
-The test runs under private D-Bus and Xvfb with Cairo rendering and isolated configuration. Source-built evidence does not establish native Wayland, packaging or Forgejo acceptance. Review is a separate self-review, not independent review.
+## Validation
 
-## Broader local validation
+The [final record](validation.json) pins the tested head and commands. Preflight passed 383 harness tests, 2,070 unit tests, 2,077 sandbox tests and the Redis cancellation test. Strict app Clippy passed. All 144 registered isolated GTK tests passed, including startup and the narrow-toolbar regression. Logs: [preflight](final-preflight.log.gz), [Clippy](final-clippy.log.gz), [GTK widgets](final-widgets.log.gz). The [manifest](manifest.json) records source and artifact hashes.
 
-Preflight passed 379 harness tests, 2,070 unit tests, 2,077 sandbox tests and the Redis cancellation test. App Clippy passed with warnings denied. The widget suite stopped at `editor_actions_fit_narrow_rows_with_running_and_retry_controls`: the toolbar requests 616 px at a 600 px large-text width. That test constructs its editor directly and does not call the changed startup path. Its assertion is preserved; [#1461](https://github.com/cozyGarage/BookiE/pull/1461) already contains the Session-button shrinking correction. This packet does not claim a green full widget suite.
+The [initial run](initial-validation.json) stopped at the unchanged narrow-toolbar test, which requested 616 px at a 600 px large-text width. Its [failure log](widget-failure.log) is historical. Linux separately fixed it in [#1466](https://github.com/cozyGarage/BookiE/pull/1466); the successful combined run includes that fix. No assertion was weakened.
 
-Linux subsequently merged [#1466](https://github.com/cozyGarage/BookiE/pull/1466), the existing Session-button correction. The startup branch includes that newer Linux head; the recorded widget failure belongs to the earlier base and is not attributed to the startup change. Combined-head validation is pending.
+## Scope
+
+Arch Linux, source-built debug tests, private D-Bus/Xvfb, Cairo rendering and isolated configuration. These results do not establish native Wayland, installed-package or Forgejo acceptance. Linux subsequently also merged the independent storage change in #1467; this packet does not claim to validate that change. Review was a separate self-review, not independent review.
