@@ -1,0 +1,64 @@
+{
+  "completed": true,
+  "binary_sha256": "d347df629226392857ea2656908a43a7f2d1e6f8b2f3779cd6d871aa95f93c3d",
+  "seed_revision": "postgres-v1",
+  "scenarios": [
+    {
+      "scenario": "count_0",
+      "outcome": "success",
+      "elapsed_seconds": 0.681,
+      "cpu_seconds": 0.4,
+      "rss_mib": 183.2,
+      "peak_mib": 183.2,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "many_columns_1",
+      "outcome": "success",
+      "elapsed_seconds": 8.084,
+      "cpu_seconds": 7.2,
+      "rss_mib": 585.17,
+      "peak_mib": 585.17,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "after_close_1",
+      "rss_mib": 581.3,
+      "peak_mib": 583.75,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "many_columns_2",
+      "outcome": "success",
+      "elapsed_seconds": 7.877,
+      "cpu_seconds": 7.1,
+      "rss_mib": 587.68,
+      "peak_mib": 587.68,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "after_close_2",
+      "rss_mib": 583.79,
+      "peak_mib": 586.51,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "many_columns_3",
+      "outcome": "success",
+      "elapsed_seconds": 4.766,
+      "cpu_seconds": 4.0,
+      "rss_mib": 590.09,
+      "peak_mib": 590.09,
+      "baseline_mib": 172.72
+    },
+    {
+      "scenario": "after_close_3",
+      "rss_mib": 586.28,
+      "peak_mib": 588.87,
+      "baseline_mib": 172.72
+    }
+  ],
+  "harness_commit": "662ed2f76f88ffd8cf9577d046b02226ca9b33ab",
+  "application_commit": "5b00b4ca6cd358ccb0ddb9f7069a41cb35ee444a",
+  "build_profile": "ci"
+}

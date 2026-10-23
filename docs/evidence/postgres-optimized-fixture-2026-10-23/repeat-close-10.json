@@ -1,0 +1,169 @@
+{
+  "completed": true,
+  "binary_sha256": "d347df629226392857ea2656908a43a7f2d1e6f8b2f3779cd6d871aa95f93c3d",
+  "seed_revision": "postgres-v1",
+  "scenarios": [
+    {
+      "scenario": "count_0",
+      "outcome": "success",
+      "elapsed_seconds": 0.698,
+      "cpu_seconds": 0.4,
+      "rss_mib": 186.75,
+      "peak_mib": 186.75,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_1",
+      "outcome": "success",
+      "elapsed_seconds": 4.889,
+      "cpu_seconds": 4.04,
+      "rss_mib": 585.34,
+      "peak_mib": 585.34,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_1",
+      "rss_mib": 582.12,
+      "peak_mib": 584.61,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_2",
+      "outcome": "success",
+      "elapsed_seconds": 4.795,
+      "cpu_seconds": 4.03,
+      "rss_mib": 588.68,
+      "peak_mib": 588.68,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_2",
+      "rss_mib": 584.71,
+      "peak_mib": 587.47,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_3",
+      "outcome": "success",
+      "elapsed_seconds": 7.957,
+      "cpu_seconds": 7.16,
+      "rss_mib": 588.96,
+      "peak_mib": 588.96,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_3",
+      "rss_mib": 585.07,
+      "peak_mib": 587.89,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_4",
+      "outcome": "success",
+      "elapsed_seconds": 7.88,
+      "cpu_seconds": 7.16,
+      "rss_mib": 589.3,
+      "peak_mib": 589.3,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_4",
+      "rss_mib": 585.43,
+      "peak_mib": 588.2,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_5",
+      "outcome": "success",
+      "elapsed_seconds": 4.821,
+      "cpu_seconds": 4.13,
+      "rss_mib": 591.82,
+      "peak_mib": 591.82,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_5",
+      "rss_mib": 587.94,
+      "peak_mib": 590.72,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_6",
+      "outcome": "success",
+      "elapsed_seconds": 4.917,
+      "cpu_seconds": 4.11,
+      "rss_mib": 591.86,
+      "peak_mib": 591.86,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_6",
+      "rss_mib": 587.99,
+      "peak_mib": 590.72,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_7",
+      "outcome": "success",
+      "elapsed_seconds": 4.825,
+      "cpu_seconds": 4.04,
+      "rss_mib": 592.69,
+      "peak_mib": 592.69,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_7",
+      "rss_mib": 588.82,
+      "peak_mib": 591.5,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_8",
+      "outcome": "success",
+      "elapsed_seconds": 9.441,
+      "cpu_seconds": 7.68,
+      "rss_mib": 593.69,
+      "peak_mib": 593.69,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_8",
+      "rss_mib": 589.94,
+      "peak_mib": 592.57,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_9",
+      "outcome": "success",
+      "elapsed_seconds": 12.724,
+      "cpu_seconds": 11.11,
+      "rss_mib": 596.59,
+      "peak_mib": 596.59,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_9",
+      "rss_mib": 592.84,
+      "peak_mib": 595.48,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "many_columns_10",
+      "outcome": "success",
+      "elapsed_seconds": 12.005,
+      "cpu_seconds": 10.54,
+      "rss_mib": 595.08,
+      "peak_mib": 595.48,
+      "baseline_mib": 182.8
+    },
+    {
+      "scenario": "after_close_10",
+      "rss_mib": 591.54,
+      "peak_mib": 595.48,
+      "baseline_mib": 182.8
+    }
+  ],
+  "harness_commit": "662ed2f76f88ffd8cf9577d046b02226ca9b33ab",
+  "application_commit": "5b00b4ca6cd358ccb0ddb9f7069a41cb35ee444a",
+  "build_profile": "ci"
+}

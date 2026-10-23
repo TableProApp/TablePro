@@ -1,0 +1,74 @@
+{
+  "completed": true,
+  "binary_sha256": "d347df629226392857ea2656908a43a7f2d1e6f8b2f3779cd6d871aa95f93c3d",
+  "seed_revision": "postgres-v1",
+  "scenarios": [
+    {
+      "scenario": "count",
+      "outcome": "success",
+      "elapsed_seconds": 0.724,
+      "cpu_seconds": 0.41,
+      "rss_mib": 180.08,
+      "peak_mib": 180.08,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "exact_numeric",
+      "outcome": "success",
+      "elapsed_seconds": 0.671,
+      "cpu_seconds": 0.39,
+      "rss_mib": 180.59,
+      "peak_mib": 180.59,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "extensions",
+      "outcome": "success",
+      "elapsed_seconds": 0.688,
+      "cpu_seconds": 0.39,
+      "rss_mib": 182.45,
+      "peak_mib": 182.45,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "many_columns",
+      "outcome": "success",
+      "elapsed_seconds": 4.834,
+      "cpu_seconds": 4.02,
+      "rss_mib": 585.23,
+      "peak_mib": 585.23,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "wide_bounded",
+      "outcome": "success",
+      "elapsed_seconds": 4.627,
+      "cpu_seconds": 3.39,
+      "rss_mib": 594.92,
+      "peak_mib": 605.25,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "wide_over_budget",
+      "outcome": "refused_page_budget",
+      "elapsed_seconds": 7.586,
+      "cpu_seconds": 3.48,
+      "rss_mib": 660.71,
+      "peak_mib": 660.71,
+      "baseline_mib": 172.49
+    },
+    {
+      "scenario": "recovery_after_refusal",
+      "outcome": "success",
+      "elapsed_seconds": 0.671,
+      "cpu_seconds": 0.37,
+      "rss_mib": 603.32,
+      "peak_mib": 659.65,
+      "baseline_mib": 172.49
+    }
+  ],
+  "harness_commit": "662ed2f76f88ffd8cf9577d046b02226ca9b33ab",
+  "application_commit": "5b00b4ca6cd358ccb0ddb9f7069a41cb35ee444a",
+  "build_profile": "ci",
+  "binary_source": "Forgejo run 916 GTK shard 1 artifact"
+}
