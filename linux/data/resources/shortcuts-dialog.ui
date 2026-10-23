@@ -283,6 +283,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="browse-paste-rows">
+            <property name="title" translatable="yes">Paste Rows</property>
+            <property name="accelerator">&lt;Primary&gt;v</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="browse-clear-selection">
             <property name="title" translatable="yes">Clear the Multi-Row Selection</property>
             <property name="accelerator">Escape</property>

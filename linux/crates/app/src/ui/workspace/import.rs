@@ -499,17 +499,7 @@ fn import_rows(import: &CsvImport) -> Result<Vec<Vec<CellInput>>, String> {
                 &import.options,
                 first_line + index,
             )
-            .map_err(|error| {
-                crate::i18n::gettext_f(
-                    "Line {line}, column {column}: {reason} (the value was “{text}”)",
-                    &[
-                        ("line", &error.line.to_string()),
-                        ("column", &error.column),
-                        ("reason", &crate::ui::error_text::edit_parse_message(&error.reason)),
-                        ("text", &error.text),
-                    ],
-                )
-            })
+            .map_err(|error| crate::ui::error_text::row_error_message(&error))
         })
         .collect()
 }

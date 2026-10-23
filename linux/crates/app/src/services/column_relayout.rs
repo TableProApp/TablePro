@@ -1,10 +1,10 @@
 use tablepro_core::column::ColumnType;
-use tablepro_core::edit::{CellInput, parse_literal_text};
+use tablepro_core::edit::{CellInput, new_draft_cell, parse_literal_text};
 use tablepro_core::export::value_text;
 use tablepro_core::value::same_value;
 use tablepro_core::{ColumnInfo, Value};
 
-use super::change_tracker::{RowKey, new_draft_cell};
+use super::change_tracker::RowKey;
 
 /// How the columns a tab's pending changes were made against line up
 /// with the columns it read since. Columns are matched by name: once a

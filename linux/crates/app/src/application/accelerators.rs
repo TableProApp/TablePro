@@ -190,7 +190,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary>c"],
         Listed(DataGrid),
     ),
-    local(BrowseGrid, BUBBLE, "browse.paste-rows", &["<Primary>v"], Unlisted),
+    local(
+        BrowseGrid,
+        BUBBLE,
+        "browse.paste-rows",
+        &["<Primary>v"],
+        Listed(DataGrid),
+    ),
     local(
         BrowseGrid,
         BUBBLE,

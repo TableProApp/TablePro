@@ -41,7 +41,8 @@ impl GridRowIndex {
         row
     }
 
-    pub fn position_in(&mut self, store: &gio::ListStore, key: &RowKey) -> Option<u32> {
+    #[cfg(test)]
+    fn position_in(&mut self, store: &gio::ListStore, key: &RowKey) -> Option<u32> {
         store.find(&self.get(key)?)
     }
 

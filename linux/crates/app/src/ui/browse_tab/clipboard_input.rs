@@ -1,11 +1,12 @@
 use tablepro_core::browse::RowReference;
 
+use super::paste_at::PasteAt;
+use super::paste_read::PasteRead;
 use crate::ui::clipboard::{CopyRequest, InClauseRows};
 use crate::ui::export::ExportSource;
 use crate::ui::grid::{RowJsonRequest, RowObject};
 
-/// What the tab hands on and keeps no state for: copies in each format,
-/// exports and the grid's notices.
+/// Copies in each format, pastes, exports and the grid's notices.
 #[derive(Debug)]
 pub(crate) enum ClipboardInput {
     /// The paginator's Export button, or the grid's Export with the page
@@ -15,7 +16,14 @@ pub(crate) enum ClipboardInput {
     GridCopyRowsAsInsert(Vec<RowObject>),
     GridCopyInClause(InClauseRows),
     CopySelectedRowsAsTsv,
-    PasteNotSupported,
+    /// Ctrl+V or a menu's Paste, at the cell it names.
+    Paste(Option<PasteAt>),
+    PasteRead(Box<PasteRead>),
+    /// The user answered the question a large paste asked.
+    PasteAnswered {
+        ticket: u64,
+        confirmed: bool,
+    },
     GridShowRowJson(RowJsonRequest),
     GridShowToast(String),
     GridFollowReference(RowReference),

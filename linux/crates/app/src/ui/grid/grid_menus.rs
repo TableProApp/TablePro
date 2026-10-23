@@ -166,6 +166,9 @@ fn build_cell_menu(shape: MenuShape, references: &gio::Menu) -> gio::Menu {
         Some(&crate::i18n::gettext("Copy Column Name")),
         Some("cell.copy-column-name"),
     );
+    if shape.row_ops {
+        copy_section.append(Some(&crate::i18n::gettext("Paste")), Some("cell.paste"));
+    }
     menu.append_section(None, &copy_section);
 
     let json_section = gio::Menu::new();
@@ -534,6 +537,13 @@ impl CellActionKit {
                 .activate(move |_, _, _| s(GridMsg::InsertRow))
                 .build()
         };
+        // Below the rows there is no cell to paste at.
+        let paste_rows = {
+            let s = self.sink.clone();
+            gio::ActionEntry::builder("paste-rows")
+                .activate(move |_, _, _| s(GridMsg::Paste { at: None }))
+                .build()
+        };
         vec![
             // Editing opens on the cell, which must still show the row.
             self.on_target("edit", |cell, row, _rows| {
@@ -550,6 +560,10 @@ impl CellActionKit {
             insert_row,
             self.send("delete-row", |_cell, _row, rows| GridMsg::DeleteRows { rows }),
             self.send("duplicate-row", |_cell, _row, rows| GridMsg::DuplicateRows { rows }),
+            self.send("paste", |cell, row, _rows| GridMsg::Paste {
+                at: Some((row, cell.column())),
+            }),
+            paste_rows,
         ]
     }
 }
@@ -585,6 +599,7 @@ fn eager_popover(column_view: &gtk::ColumnView, model: &gio::Menu) -> gtk::Popov
 fn install_empty_space_menu(column_view: &gtk::ColumnView) -> gtk::PopoverMenu {
     let empty_menu = gio::Menu::new();
     empty_menu.append(Some(&crate::i18n::gettext("Insert Row")), Some("cell.insert-row"));
+    empty_menu.append(Some(&crate::i18n::gettext("Paste")), Some("cell.paste-rows"));
     let empty_popover = gtk::PopoverMenu::from_model_full(&empty_menu, gtk::PopoverMenuFlags::NESTED);
     empty_popover.set_has_arrow(true);
     empty_popover.set_parent(column_view);

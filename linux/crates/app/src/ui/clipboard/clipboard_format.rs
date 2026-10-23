@@ -1,3 +1,7 @@
+/// The type a grid copy offers its cells as, beside the text: what
+/// `CellsEncoder` writes, which a paste prefers to the text.
+pub(crate) const CELLS_MIME_TYPE: &str = "application/x-tablepro-cells+json";
+
 /// What a copy holds, so an application that reads that type can take
 /// it as such: a spreadsheet pastes tab-separated values into cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
