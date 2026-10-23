@@ -241,14 +241,13 @@ fn selected_source_rows(store: &RowStore, selection: &gtk4::MultiSelection) -> s
 
 fn update_status(state: &LocalResultViewState) {
     if state.filter.is_none() {
-        let sorted_truncated = state.sort.is_some() && state.result.truncated;
         state.clear_button.set_visible(false);
-        state.controls.set_visible(sorted_truncated);
-        if sorted_truncated {
+        state.controls.set_visible(state.result.truncated);
+        if state.result.truncated {
             state.status.add_css_class("warning");
-            state.status.set_text(&crate::tr!(
-                "Sorted the loaded rows only; the result is truncated. Use ORDER BY for the full result."
-            ));
+            state
+                .status
+                .set_text(&truncation_notice(state.sort.is_some(), state.result.rows.len()));
         }
         return;
     }
@@ -268,6 +267,14 @@ fn update_status(state: &LocalResultViewState) {
     }
     state.status.set_text(&summary);
     state.controls.set_visible(true);
+}
+
+fn truncation_notice(sorted: bool, loaded_rows: usize) -> String {
+    if sorted {
+        return crate::tr!("Sorted the loaded rows only; the result is truncated. Use ORDER BY for the full result.");
+    }
+    crate::tr!("Only the first {loaded} rows were loaded; the result is truncated. Narrow the query to see the rest.")
+        .replace("{loaded}", &loaded_rows.to_string())
 }
 
 fn same_filter_value(left: &Value, right: &Value) -> bool {
@@ -298,7 +305,15 @@ mod tests {
     use gtk4::prelude::*;
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
-    use super::{LocalResultSettingsStore, LocalResultView, ResultViewKey, matching_source_indices};
+    use super::{LocalResultSettingsStore, LocalResultView, ResultViewKey, matching_source_indices, truncation_notice};
+
+    #[test]
+    fn an_unsorted_truncated_result_states_how_many_rows_were_loaded() {
+        let notice = truncation_notice(false, 215_804);
+        assert!(notice.contains("215804"), "{notice}");
+        assert!(notice.contains("truncated"), "{notice}");
+        assert!(truncation_notice(true, 215_804).contains("ORDER BY"));
+    }
 
     fn result(values: Vec<Value>) -> QueryResult {
         QueryResult {
@@ -402,7 +417,10 @@ mod tests {
         };
         let view = LocalResultView::new(result.clone(), settings_store.clone(), key);
         view.attach(store.clone(), selection.clone());
-        assert!(!view.0.borrow().controls.is_visible());
+        assert!(
+            view.0.borrow().controls.is_visible(),
+            "a truncated result discloses it before any sort or filter"
+        );
         selection.select_item(2, true);
 
         view.filter_by_value(0, Value::Int(2));
