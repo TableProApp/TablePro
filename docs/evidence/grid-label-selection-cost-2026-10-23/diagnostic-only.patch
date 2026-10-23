@@ -1,0 +1,11 @@
+--- a/apps/linux/app/src/ui/grid/editing.rs
++++ b/apps/linux/app/src/ui/grid/editing.rs
+@@ -131,7 +131,7 @@
+     let label = gtk::Label::builder()
+         .xalign(0.0)
+         .hexpand(true)
+-        .selectable(true)
++        .selectable(false)
+         .ellipsize(gtk::pango::EllipsizeMode::End)
+         .margin_start(8)
+         .margin_end(8)

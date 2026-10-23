@@ -1,0 +1,20 @@
+{
+  "source_base": "9f749bb7c34d91458a9272a75127cde90bfee13e",
+  "profile": "dev",
+  "experiment": "read-only labels selectable true versus false; false is not an accepted product change",
+  "binaries": {
+    "selectable": {
+      "binary": "selectable/usr/bin/tablepro",
+      "sha256": "4bb4f6dc6a44efb22e498f1c313f0d35eda8b0072f5e44fd24b9be5506721dee"
+    },
+    "plain": {
+      "binary": "plain/usr/bin/tablepro",
+      "sha256": "d89e560129eb4ded1e3de2f54219140b12e8f18622b95054e509cd055419515c"
+    }
+  },
+  "toolkit_versions": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ]
+}
