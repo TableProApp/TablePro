@@ -182,13 +182,9 @@ crates/app/src/ui/combo_value.rs
 crates/app/src/ui/connect_dialog/appearance.rs
 crates/app/src/ui/connect_dialog/connect_dialog_mode.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
-crates/app/src/ui/connect_dialog/connect_form.rs
-crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
 crates/app/src/ui/connect_dialog/form_errors.rs
 crates/app/src/ui/connect_dialog/form_field.rs
-crates/app/src/ui/connect_dialog/imp.rs
-crates/app/src/ui/connect_dialog/imp.rs
 crates/app/src/ui/connect_dialog/imp.rs
 crates/app/src/ui/connect_dialog/mod.rs
 crates/app/src/ui/connect_dialog/pem_validation.rs
