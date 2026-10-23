@@ -7172,7 +7172,7 @@ Used by:
 
 - tokio-stream 0.1.19
 - tokio-util 0.7.19
-- tokio 1.53.1
+- tokio 1.53.3
 
 ~~~~text
 MIT License
