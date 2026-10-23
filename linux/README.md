@@ -320,7 +320,7 @@ The SQL editor can type, delete, paste and move at several places at once.
 | Ctrl+click | Adds a cursor, or takes away the one you click |
 | Escape | Returns to one cursor, keeping its selection |
 
-Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list opens only with one cursor, and overwrite (Insert) and Vim mode keep one cursor.
+Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list and snippets work with one cursor, so another cursor ends the snippet being filled in, and overwrite (Insert) and Vim mode keep one cursor.
 
 ## SQL Server with Windows integrated auth
 

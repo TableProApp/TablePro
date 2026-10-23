@@ -396,7 +396,7 @@ impl EditorView {
             buffer: buffer.downgrade(),
             ids,
         }));
-        self.block_completion(false);
+        self.block_completion_and_snippets(false);
         self.queue_draw();
     }
 
@@ -684,14 +684,15 @@ impl EditorView {
         // A new set of carets starts its columns again; Up and Down put
         // theirs back once they have moved.
         self.imp().columns.take();
-        self.block_completion(self.has_extra_carets());
+        self.block_completion_and_snippets(self.has_extra_carets());
         self.queue_draw();
         self.emit_by_name::<()>("carets-changed", &[]);
     }
 
-    /// A completion replaces the word at GTK's cursor alone, so its list
-    /// does not open on typing while there are other carets.
-    fn block_completion(&self, block: bool) {
+    /// A completion replaces the word at GTK's cursor alone, and a
+    /// snippet's stops follow GTK's cursor alone, so neither runs while
+    /// there are other carets.
+    fn block_completion_and_snippets(&self, block: bool) {
         let imp = self.imp();
         if block == imp.completion_blocked.get() {
             return;
@@ -699,8 +700,12 @@ impl EditorView {
         let completion = self.completion();
         if block {
             completion.block_interactive();
+            imp.snippets_enabled.set(self.enables_snippets());
+            // Turning snippets off also ends the one being filled in.
+            self.set_enable_snippets(false);
         } else {
             completion.unblock_interactive();
+            self.set_enable_snippets(imp.snippets_enabled.get());
         }
         imp.completion_blocked.set(block);
     }

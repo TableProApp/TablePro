@@ -57,6 +57,7 @@ pub struct EditorView {
     /// word a completion replaced around them.
     pub(super) swallowed: RefCell<std::collections::HashSet<usize>>,
     pub(super) completion_blocked: Cell<bool>,
+    pub(super) snippets_enabled: Cell<bool>,
 }
 
 #[glib::object_subclass]

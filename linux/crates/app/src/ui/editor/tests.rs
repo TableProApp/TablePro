@@ -2313,7 +2313,7 @@ mod real_keys {
             press(&keys, key);
         }
         wait_until(KEY_WAIT, || buffer_text(&buffer) == "ins").expect("insert mode to type");
-        super::super::completion::accept_builtin_snippet(&view, "ins");
+        super::super::completion::accept_builtin_snippet(view.upcast_ref(), "ins");
         wait_until(KEY_WAIT, || {
             buffer_text(&buffer) == "INSERT INTO table_name (columns)\nVALUES (values);"
         })
@@ -2488,6 +2488,37 @@ mod real_keys {
         keys.press(Key::l, ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK)
             .expect("the key press");
         wait_until(KEY_WAIT, || view.caret_count() == 3).expect("Ctrl+Shift+L to add a cursor at each match");
+    }
+
+    /// A snippet's stops follow GTK's cursor alone, so another cursor
+    /// ends the snippet and Tab types at every cursor instead.
+    #[gtk4::test]
+    fn another_cursor_ends_the_snippet_being_filled_in() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "ins");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.end_iter());
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+        super::super::completion::accept_builtin_snippet(view.upcast_ref(), "ins");
+        wait_until(KEY_WAIT, || {
+            buffer_text(&buffer) == "INSERT INTO table_name (columns)\nVALUES (values);"
+        })
+        .unwrap_or_else(|_| panic!("the INSERT was not written: {:?}", buffer_text(&buffer)));
+
+        view.toggle_caret_at(&buffer.end_iter());
+        assert!(!view.enables_snippets());
+        press(&keys, Key::Tab);
+        wait_until(KEY_WAIT, || {
+            buffer_text(&buffer) == "INSERT INTO \t (columns)\nVALUES (values);\t"
+        })
+        .unwrap_or_else(|_| panic!("Tab typed {:?}", buffer_text(&buffer)));
+
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || view.caret_count() == 1).expect("Escape to return to one cursor");
+        assert!(view.enables_snippets(), "one cursor takes snippets again");
     }
 }
 

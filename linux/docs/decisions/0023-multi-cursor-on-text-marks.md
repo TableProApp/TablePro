@@ -24,7 +24,7 @@ The editor's view is a `GtkSourceView` subclass in the app that keeps each extra
 - The editor depends on GTK's class methods and `end-user-action` order (`gtktextbuffer.c`: the signal before `gtk_text_history_end_user_action`). A GTK release that changes either shows in the editor's tests.
 - The extra cursors do not blink and are not in the accessibility tree; the editor announces how many cursors there are instead.
 - GTK's undo history puts back its own cursor only, so an undo or a redo returns to one cursor, where the edit was. Each edit at several cursors is its own undo step, since GTK joins only single edits that follow each other, and typing over selections longer than one character is two, as GTK makes it for its own cursor (`gtk_text_view_commit_text`).
-- Vim mode edits the buffer itself, so extra cursors are off while it is on. Overwrite keeps one cursor too, and the completion list opens only with one: both act on the text around GTK's cursor, which the other cursors' text need not match.
+- Vim mode edits the buffer itself, so extra cursors are off while it is on. Overwrite keeps one cursor too, and the completion list and snippets work only with one: they act on the text around GTK's cursor, which the other cursors' text need not match.
 - Moving lines and words and joining lines act on GTK's cursor alone, after returning to one cursor, since two cursors on one line would move it twice.
 - The editor takes GtkSourceView's Shift+Alt+Up and Down (scroll by one line) for adding a cursor above and below: GNOME's window manager takes Ctrl+Alt+Up and Down.
 
