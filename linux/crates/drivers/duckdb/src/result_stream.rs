@@ -386,17 +386,27 @@ fn main_verb(sql: &str) -> Option<String> {
     if first_word != "WITH" {
         return Some(first_word);
     }
+    // A CTE may be named `update`, but its name follows WITH, RECURSIVE
+    // or a comma, while the statement follows the last body's `)`.
+    let mut after_body = false;
     for token in code {
         match token.kind {
             ScriptTokenKind::OpenParen => depth += 1,
-            ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
-            ScriptTokenKind::Word if depth == 0 => {
+            ScriptTokenKind::CloseParen => {
+                depth = depth.saturating_sub(1);
+                after_body = depth == 0;
+                continue;
+            }
+            ScriptTokenKind::Word if depth == 0 && after_body => {
                 let candidate = word(token.range)?;
                 if VERBS.contains(&candidate.as_str()) {
                     return Some(candidate);
                 }
             }
             _ => {}
+        }
+        if depth == 0 {
+            after_body = false;
         }
     }
     None
@@ -581,6 +591,23 @@ mod tests {
             ["DELETE FROM t -- why;\n/* open"]
         );
         assert!(split_statements("  -- only a comment\n").is_empty());
+    }
+
+    #[test]
+    fn a_cte_named_like_a_verb_is_not_the_statement() {
+        assert_eq!(
+            main_verb("WITH update AS (SELECT true AS \"Success\") SELECT * FROM update").as_deref(),
+            Some("SELECT")
+        );
+        assert_eq!(
+            main_verb("WITH RECURSIVE insert (n) AS (SELECT 1), delete AS MATERIALIZED (SELECT 2) DELETE FROM t")
+                .as_deref(),
+            Some("DELETE")
+        );
+        assert_eq!(
+            main_verb("WITH src AS (SELECT 1 AS a) INSERT INTO t SELECT a FROM src").as_deref(),
+            Some("INSERT")
+        );
     }
 
     #[test]

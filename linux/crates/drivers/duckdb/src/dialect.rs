@@ -1,4 +1,4 @@
-use tablepro_core::column::{ColumnInfo, ColumnKind, ColumnType, ReadForm, SqlExpression};
+use tablepro_core::column::{ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, SqlExpression};
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
     BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
@@ -208,17 +208,26 @@ impl SqlDialect for DuckDbDialect {
 /// VARCHAR would compare as text, so a key read past `'sad'` in
 /// `ENUM('sad', 'ok', 'happy')` would find nothing after it. A DATE's
 /// infinities go as text too, which a row value such as `(d, id) > (?, ?)`
-/// refuses to compare with a DATE.
+/// refuses to compare with a DATE. A UHUGEINT that fits 128 signed bits
+/// binds as a HUGEINT, which DuckDB compares with a UHUGEINT by rounding.
 fn needs_cast(column: &ColumnType) -> bool {
-    !matches!(
+    let unsigned_128 = matches!(
         column.kind,
-        ColumnKind::Bool(_)
-            | ColumnKind::Integer(_)
-            | ColumnKind::Float(_)
-            | ColumnKind::Text { .. }
-            | ColumnKind::Bytes { .. }
-            | ColumnKind::Interval
-    )
+        ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W128,
+            signed: false,
+        })
+    );
+    unsigned_128
+        || !matches!(
+            column.kind,
+            ColumnKind::Bool(_)
+                | ColumnKind::Integer(_)
+                | ColumnKind::Float(_)
+                | ColumnKind::Text { .. }
+                | ColumnKind::Bytes { .. }
+                | ColumnKind::Interval
+        )
 }
 
 /// The parameter a value takes for a column.
@@ -359,6 +368,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(bound.sql, "CAST(? AS DECIMAL(38,10))");
+        assert_eq!(plain.sql, "?");
+    }
+
+    #[test]
+    fn an_unsigned_128_bit_value_is_cast_to_its_column() {
+        let unsigned = column("UHUGEINT");
+        let signed = column("HUGEINT");
+
+        let bound = DuckDbDialect
+            .placeholder(0, Value::Int(1), BindTarget::Column(&unsigned))
+            .unwrap();
+        let plain = DuckDbDialect
+            .placeholder(0, Value::Int(1), BindTarget::Column(&signed))
+            .unwrap();
+
+        assert_eq!(bound.sql, "CAST(? AS UHUGEINT)");
         assert_eq!(plain.sql, "?");
     }
 
