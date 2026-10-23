@@ -13,16 +13,17 @@ use super::{BrowseSqlError, ExportRequest};
 /// The same projections and filter as a page, so an export holds what
 /// the grid showed. No engine row id is selected: it is never data the
 /// user asked for. A key still orders the rows, so two exports of an
-/// unchanged table come out the same. A heap address orders them only
-/// behind the user's sort: on its own it would sort the whole table
-/// before the first row could be written.
+/// unchanged table come out the same. A heap address, or a key the
+/// engine would sort the whole table by, orders them only behind the
+/// user's sort: on its own it would hold every row before the first
+/// could be written.
 pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Result<Statement, BrowseSqlError> {
     let projection = projection_list(dialect, request.columns)?;
     let components = identity_components(request.identity, request.columns)?;
     let user = user_order(dialect, request.table, request.columns, request.sort)?;
-    let heap_order_only =
-        user.is_empty() && matches!(request.identity, RowIdentity::EngineRowId(id) if id.is_heap_address());
-    let order = match heap_order_only {
+    let sorts_the_table = dialect.key_order_sorts_the_table()
+        || matches!(request.identity, RowIdentity::EngineRowId(id) if id.is_heap_address());
+    let order = match user.is_empty() && sorts_the_table {
         true => Vec::new(),
         false => with_tiebreak(user, &identity_order(dialect, request.table, &components)?),
     };

@@ -30,6 +30,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     create_index: false,
     drop_index: true,
     expression_index_keys: true,
+    descending_index_keys: false,
     partial_indexes: false,
     add_foreign_key: false,
     drop_foreign_key: false,

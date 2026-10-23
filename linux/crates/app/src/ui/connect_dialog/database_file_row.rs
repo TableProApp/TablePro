@@ -5,7 +5,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::{FileEndpoint, FileOpenMode};
+use tablepro_core::{DatabaseDriver, FileEndpoint, FileFormat, FileOpenMode};
 use tablepro_session::runtime::Tasks;
 
 use crate::services::file_location;
@@ -20,21 +20,23 @@ mod imp {
     use super::*;
 
     #[derive(Default, gtk4::CompositeTemplate)]
-    #[template(resource = "/app/tablepro/TablePro/ui/sqlite-file-row.ui")]
-    pub struct SqliteFileRow {
+    #[template(resource = "/app/tablepro/TablePro/ui/database-file-row.ui")]
+    pub struct DatabaseFileRow {
         #[template_child]
         pub choose_button: TemplateChild<gtk4::Button>,
         #[template_child]
         pub create_button: TemplateChild<gtk4::Button>,
         pub endpoint: RefCell<Option<FileEndpoint>>,
+        /// The engine's files, which the choosers offer first.
+        pub files: RefCell<Option<DatabaseFiles>>,
         /// Reads the file a portal path stands for, off the GTK thread.
         pub tasks: OnceCell<Tasks>,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for SqliteFileRow {
-        const NAME: &'static str = "TableProSqliteFileRow";
-        type Type = super::SqliteFileRow;
+    impl ObjectSubclass for DatabaseFileRow {
+        const NAME: &'static str = "TableProDatabaseFileRow";
+        type Type = super::DatabaseFileRow;
         type ParentType = adw::ActionRow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -46,7 +48,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for SqliteFileRow {
+    impl ObjectImpl for DatabaseFileRow {
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| vec![Signal::builder("changed").build()])
@@ -70,28 +72,34 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for SqliteFileRow {}
-    impl ListBoxRowImpl for SqliteFileRow {}
-    impl PreferencesRowImpl for SqliteFileRow {}
-    impl ActionRowImpl for SqliteFileRow {}
+    impl WidgetImpl for DatabaseFileRow {}
+    impl ListBoxRowImpl for DatabaseFileRow {}
+    impl PreferencesRowImpl for DatabaseFileRow {}
+    impl ActionRowImpl for DatabaseFileRow {}
 }
 
 glib::wrapper! {
-    /// The SQLite database file, opened as it is or created on connect.
-    pub struct SqliteFileRow(ObjectSubclass<imp::SqliteFileRow>)
+    /// A file engine's database file, opened as it is or created on
+    /// connect.
+    pub struct DatabaseFileRow(ObjectSubclass<imp::DatabaseFileRow>)
         @extends adw::ActionRow, adw::PreferencesRow, gtk4::ListBoxRow, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Actionable, gtk4::Buildable, gtk4::ConstraintTarget;
 }
 
-impl Default for SqliteFileRow {
+impl Default for DatabaseFileRow {
     fn default() -> Self {
         glib::Object::new()
     }
 }
 
-impl SqliteFileRow {
+impl DatabaseFileRow {
     pub fn endpoint(&self) -> Option<FileEndpoint> {
         self.imp().endpoint.borrow().clone()
+    }
+
+    /// Which engine's files the choosers offer.
+    pub fn set_files(&self, files: Option<DatabaseFiles>) {
+        self.imp().files.replace(files);
     }
 
     pub fn set_tasks(&self, tasks: Tasks) {
@@ -153,7 +161,8 @@ impl SqliteFileRow {
     }
 
     async fn choose_existing(&self) {
-        let dialog = sqlite_file_dialog(&crate::i18n::gettext("Open Database File"));
+        let files = self.imp().files.borrow().clone();
+        let dialog = database_file_dialog(&crate::i18n::gettext("Open Database File"), files.as_ref());
         let chosen = dialog.open_future(self.parent_window().as_ref()).await;
         if let Some(path) = chosen.ok().and_then(|file| file.path()) {
             self.adopt_choice(path, FileOpenMode::OpenExisting);
@@ -163,8 +172,9 @@ impl SqliteFileRow {
     /// The save chooser asks before replacing a file that exists, and
     /// the driver then replaces it whole, so no second question here.
     async fn choose_new(&self) {
-        let dialog = sqlite_file_dialog(&crate::i18n::gettext("New Database File"));
-        dialog.set_initial_name(Some("Untitled.sqlite3"));
+        let files = self.imp().files.borrow().clone();
+        let dialog = database_file_dialog(&crate::i18n::gettext("New Database File"), files.as_ref());
+        dialog.set_initial_name(Some(&new_file_name(files.as_ref())));
         let chosen = dialog.save_future(self.parent_window().as_ref()).await;
         if let Some(path) = chosen.ok().and_then(|file| file.path()) {
             self.adopt_choice(path, FileOpenMode::CreateNew);
@@ -189,34 +199,84 @@ fn subtitle(endpoint: Option<&FileEndpoint>, host_path: Option<&Path>) -> String
     }
 }
 
-/// The file chooser for a SQLite database, with every file a choice
+/// The files one engine opens: its name, for the chooser's filter, and
+/// the suffixes and types its files go by.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DatabaseFiles {
+    pub engine: String,
+    pub format: FileFormat,
+}
+
+impl DatabaseFiles {
+    /// The files `driver` opens, for a driver that opens one.
+    pub(crate) fn of(driver: &dyn DatabaseDriver) -> Option<Self> {
+        driver.capabilities().file_format().map(|format| Self {
+            engine: driver.display_name().to_owned(),
+            format: *format,
+        })
+    }
+}
+
+/// The name a new database is offered under, with the engine's suffix.
+fn new_file_name(files: Option<&DatabaseFiles>) -> String {
+    match files.and_then(|files| files.format.new_file_suffix()) {
+        Some(suffix) => format!("Untitled.{suffix}"),
+        None => "Untitled".to_owned(),
+    }
+}
+
+/// The file chooser for an engine's databases, with every file a choice
 /// when the filter misses it.
-pub(crate) fn sqlite_file_dialog(title: &str) -> gtk4::FileDialog {
-    let sqlite = gtk4::FileFilter::new();
-    sqlite.set_name(Some(&crate::i18n::gettext("SQLite databases")));
-    for mime in ["application/vnd.sqlite3", "application/x-sqlite3"] {
-        sqlite.add_mime_type(mime);
-    }
-    for suffix in ["sqlite", "sqlite3", "db", "db3"] {
-        sqlite.add_suffix(suffix);
-    }
+pub(crate) fn database_file_dialog(title: &str, files: Option<&DatabaseFiles>) -> gtk4::FileDialog {
     let any = gtk4::FileFilter::new();
     any.set_name(Some(&crate::i18n::gettext("All files")));
     any.add_pattern("*");
     let filters = gio::ListStore::new::<gtk4::FileFilter>();
-    filters.append(&sqlite);
+    let builder = gtk4::FileDialog::builder().title(title).modal(true);
+    let Some(files) = files else {
+        filters.append(&any);
+        return builder.filters(&filters).default_filter(&any).build();
+    };
+    let engine = gtk4::FileFilter::new();
+    engine.set_name(Some(&crate::i18n::gettext_f(
+        "{engine} databases",
+        &[("engine", &files.engine)],
+    )));
+    for mime in files.format.mime_types {
+        engine.add_mime_type(mime);
+    }
+    for suffix in files.format.suffixes {
+        engine.add_suffix(suffix);
+    }
+    filters.append(&engine);
     filters.append(&any);
-    gtk4::FileDialog::builder()
-        .title(title)
-        .modal(true)
-        .filters(&filters)
-        .default_filter(&sqlite)
-        .build()
+    builder.filters(&filters).default_filter(&engine).build()
 }
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::FileSignature;
+
     use super::*;
+
+    #[test]
+    fn a_new_database_is_offered_with_its_engines_suffix() {
+        let files = DatabaseFiles {
+            engine: "DuckDB".to_owned(),
+            format: FileFormat {
+                signature: FileSignature {
+                    offset: 8,
+                    bytes: b"DUCK",
+                },
+                suffixes: &["duckdb", "ddb"],
+                mime_types: &[],
+                empty_file_is_database: false,
+            },
+        };
+
+        assert_eq!(new_file_name(Some(&files)), "Untitled.duckdb");
+        assert_eq!(new_file_name(None), "Untitled");
+    }
 
     #[test]
     fn a_portal_file_reads_as_its_host_path_or_its_name() {

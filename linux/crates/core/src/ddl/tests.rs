@@ -422,6 +422,7 @@ fn every_change() -> DdlCapabilities {
         create_index: true,
         drop_index: true,
         expression_index_keys: true,
+        descending_index_keys: true,
         partial_indexes: true,
         add_foreign_key: true,
         drop_foreign_key: true,

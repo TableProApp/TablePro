@@ -45,6 +45,13 @@ for output in third-party.json THIRD-PARTY-NOTICE.md; do
     generate "$root/build-aux/about/$output.hbs" "$root/data/licenses/$output"
 done
 
+# cargo-about cannot read the licenses of code a crate bundles in an
+# archive, such as DuckDB's third_party in libduckdb-sys.
+python3 "$root/build-aux/packaging/bundled_licenses.py" \
+    --bundled "$root/build-aux/about/bundled" \
+    --licenses "$root/data/licenses/third-party.json" \
+    --notice "$root/data/licenses/THIRD-PARTY-NOTICE.md"
+
 python3 "$root/build-aux/packaging/license_metadata.py" write \
     --licenses "$root/data/licenses/third-party.json" \
     --license-file "$root/LICENSE" \

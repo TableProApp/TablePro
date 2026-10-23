@@ -2,26 +2,35 @@
 //! resolved off the GTK thread.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use tablepro_core::{DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, SafeModeLevel, WorkspaceSettings};
+use tablepro_core::{DriverError, DriverRegistry, FileEndpoint, SafeModeLevel, WorkspaceSettings};
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, RequestTarget};
 
-pub(crate) use crate::services::file_resolution::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
+pub(crate) use crate::services::file_resolution::{
+    FileResolveError, FileTarget, ResolvedFile, read_header_blocking, resolve_file_blocking,
+};
 
-/// The request that opens a file nobody saved, through the driver that
-/// opens files.
+/// The path a handed-over file opens at.
+pub(crate) fn file_path(identity: &FileIdentity) -> PathBuf {
+    identity
+        .canonical_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(&identity.uri))
+}
+
+/// The request that opens a file nobody saved, through the engine whose
+/// files carry `header`, the file's first bytes, or go by its name.
 pub(crate) fn file_request(
     identity: &FileIdentity,
     drivers: &DriverRegistry,
+    header: &[u8],
     read_only: bool,
 ) -> Result<ConnectRequest, ConnectError> {
-    let driver = file_driver(drivers).ok_or_else(|| ConnectError::UnknownDriver("sqlite".to_owned()))?;
-    let path = identity
-        .canonical_path
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(&identity.uri));
+    let path = file_path(identity);
+    let driver = drivers
+        .file_driver_for(header, &path)
+        .ok_or_else(|| DriverError::NotADatabase { path: path.clone() })?;
     let name = path
         .file_name()
         .map_or_else(|| identity.uri.clone(), |name| name.to_string_lossy().into_owned());
@@ -43,20 +52,9 @@ pub(crate) fn file_request(
     Ok(request)
 }
 
-fn file_driver(drivers: &DriverRegistry) -> Option<Arc<dyn DatabaseDriver>> {
-    drivers
-        .get("sqlite")
-        .filter(|driver| driver.capabilities().is_file_based())
-        .or_else(|| {
-            drivers
-                .iter()
-                .find(|driver| driver.capabilities().is_file_based())
-                .cloned()
-        })
-}
-
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
 
     use super::*;
@@ -99,14 +97,47 @@ mod tests {
         )));
         let identity = FileIdentity::new(Some(PathBuf::from("/srv/app.db")), "file:///srv/app.db".to_owned());
 
-        let request = file_request(&identity, &drivers, false).expect("a request");
-        let read_only = file_request(&identity, &drivers, true).expect("a read-only request");
+        let request = file_request(&identity, &drivers, b"", false).expect("a request");
+        let read_only = file_request(&identity, &drivers, b"", true).expect("a read-only request");
 
         assert_eq!(request.metadata.name, "app.db");
         assert!(matches!(request.target, RequestTarget::File(_)));
         assert!(!request.workspace_settings.read_only);
         assert!(read_only.workspace_settings.read_only);
         assert_eq!(read_only.safe_mode, SafeModeLevel::ReadOnly);
-        assert!(file_request(&identity, &DriverRegistry::new(), false).is_err());
+        assert!(file_request(&identity, &DriverRegistry::new(), b"", false).is_err());
+    }
+
+    /// The file's own bytes pick its engine, whatever it is named: a
+    /// DuckDB file called `.db` is no SQLite file.
+    #[test]
+    fn the_engine_whose_signature_a_file_carries_opens_it() {
+        let mut drivers = DriverRegistry::new();
+        for (id, capabilities) in [
+            ("sqlite", &tablepro_test_support::FakeDriver::FILE_CAPABILITIES),
+            ("duckdb", &tablepro_test_support::FakeDriver::SIGNED_FILE_CAPABILITIES),
+        ] {
+            drivers.register(Arc::new(
+                tablepro_test_support::FakeDriver::connecting(
+                    capabilities,
+                    tablepro_test_support::ConnectionScript::default(),
+                )
+                .with_id(id),
+            ));
+        }
+        let identity = FileIdentity::new(Some(PathBuf::from("/srv/sales.db")), "file:///srv/sales.db".to_owned());
+        let mut header = vec![0u8; 16];
+        header[8..12].copy_from_slice(b"DUCK");
+
+        let duck = file_request(&identity, &drivers, &header, false).expect("a request");
+        let plain = file_request(&identity, &drivers, b"", false).expect("a request");
+        let unknown = file_request(&identity, &drivers, b"some text file", false);
+
+        assert_eq!(duck.metadata.driver_id, "duckdb");
+        assert_eq!(plain.metadata.driver_id, "sqlite", "an empty .db file goes by its name");
+        assert!(
+            matches!(unknown, Err(ConnectError::Driver(DriverError::NotADatabase { .. }))),
+            "{unknown:?}"
+        );
     }
 }

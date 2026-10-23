@@ -25,6 +25,7 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 | SQL Server | [drivers/sql-server.md](drivers/sql-server.md) |
 | ClickHouse | [drivers/clickhouse.md](drivers/clickhouse.md) |
 | SQLite | [drivers/sqlite.md](drivers/sqlite.md) |
+| DuckDB | [drivers/duckdb.md](drivers/duckdb.md) |
 
 ## Decisions
 

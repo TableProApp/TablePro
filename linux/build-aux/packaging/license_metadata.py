@@ -30,7 +30,7 @@ APACHE_POINTER = [
 COMMON_LICENSES = {"CC0-1.0": "CC0 1.0 Universal license"}
 
 NOTICE = re.compile(r"^(?:copyright\b|©|\(c\)\s*\d)", re.IGNORECASE)
-NOTICE_PREFIX = re.compile(r"^(?:copyright\b\s*)?(?:\(c\)|©)?\s*", re.IGNORECASE)
+NOTICE_PREFIX = re.compile(r"^(?:copyright\b\s*:?\s*)?(?:\(c\)|©)?\s*", re.IGNORECASE)
 NOT_A_NOTICE = re.compile(
     r"\[(?:yyyy|year)\]|\{yyyy\}|<year>"
     r"|^copyright\s+(?:notices?|holders?|owners?|license|and\s+permission|statement)\b"

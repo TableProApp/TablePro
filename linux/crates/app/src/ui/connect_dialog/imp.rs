@@ -12,8 +12,8 @@ use tablepro_session::ConnectAttempts;
 
 use super::connect_dialog_mode::ConnectDialogMode;
 use super::connect_submission::ConnectSubmission;
+use super::database_file_row::DatabaseFileRow;
 use super::pem_validation::PemValidation;
-use super::sqlite_file_row::SqliteFileRow;
 use super::tls_section::TlsSection;
 use super::{DialogServices, DriverEntry};
 use crate::ui::ssh_section::SshSection;
@@ -40,7 +40,7 @@ pub struct ConnectDialog {
     #[template_child]
     pub database_row: TemplateChild<adw::EntryRow>,
     #[template_child]
-    pub file_row: TemplateChild<SqliteFileRow>,
+    pub file_row: TemplateChild<DatabaseFileRow>,
     #[template_child]
     pub auth_group: TemplateChild<adw::PreferencesGroup>,
     #[template_child]
@@ -99,7 +99,7 @@ impl ObjectSubclass for ConnectDialog {
     type ParentType = adw::Dialog;
 
     fn class_init(klass: &mut Self::Class) {
-        SqliteFileRow::ensure_type();
+        DatabaseFileRow::ensure_type();
         TlsSection::ensure_type();
         SshSection::ensure_type();
         klass.bind_template();

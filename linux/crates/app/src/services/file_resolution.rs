@@ -1,9 +1,11 @@
 //! A database file handed to TablePro, resolved to the session it
 //! opens. Resolving reads the disk, so it runs on the blocking pool.
 
+use std::io::Read;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use tablepro_core::DriverRegistry;
+use tablepro_core::{BusyReason, DriverError, DriverRegistry};
 use tablepro_session::SessionKey;
 use tablepro_session::registry::FileIdentity;
 use tablepro_storage::{ConnectionStore, SavedConnection};
@@ -82,11 +84,87 @@ pub fn resolve_file_blocking(
     ResolvedFile { uri, target }
 }
 
+/// The first `len` bytes of the file, or as many as it has, which say
+/// which engine opens it.
+///
+/// SQLite and DuckDB lock a file with POSIX record locks, which belong to
+/// the process: closing any descriptor this process has on the file
+/// drops them all. A file this process already holds open, through
+/// another name such as a hard link, is refused rather than read.
+pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverError> {
+    let failed = |error: std::io::Error| {
+        let path = path.to_path_buf();
+        match error.kind() {
+            std::io::ErrorKind::NotFound => DriverError::FileNotFound { path },
+            std::io::ErrorKind::PermissionDenied => DriverError::FileAccessDenied { path },
+            std::io::ErrorKind::IsADirectory => DriverError::NotADatabase { path },
+            kind => DriverError::FileIo { path, kind },
+        }
+    };
+    let metadata = std::fs::metadata(path).map_err(failed)?;
+    if metadata.is_dir() {
+        return Err(DriverError::NotADatabase {
+            path: path.to_path_buf(),
+        });
+    }
+    if held_by_this_process(&metadata) {
+        return Err(DriverError::Busy(BusyReason::FileLocked));
+    }
+    let mut header = Vec::with_capacity(len);
+    std::fs::File::open(path)
+        .and_then(|file| file.take(len as u64).read_to_end(&mut header))
+        .map_err(failed)?;
+    Ok(header)
+}
+
+/// Whether a descriptor this process has open names the file.
+fn held_by_this_process(file: &std::fs::Metadata) -> bool {
+    let Ok(descriptors) = std::fs::read_dir("/proc/self/fd") else {
+        return false;
+    };
+    descriptors.flatten().any(|descriptor| {
+        std::fs::metadata(descriptor.path()).is_ok_and(|held| held.dev() == file.dev() && held.ino() == file.ino())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_test_support::{ConnectionScript, FakeDriver};
 
     use super::*;
+
+    #[test]
+    fn a_header_is_at_most_what_the_file_holds() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let short = directory.path().join("short.db");
+        std::fs::write(&short, b"abc").expect("seed");
+        let missing = directory.path().join("missing.db");
+
+        assert_eq!(read_header_blocking(&short, 16).expect("the header"), b"abc");
+        assert_eq!(
+            read_header_blocking(&missing, 16),
+            Err(DriverError::FileNotFound { path: missing })
+        );
+    }
+
+    /// Reading a file through a second name would close a descriptor on
+    /// it, which drops every lock this process holds on it.
+    #[test]
+    fn a_file_this_process_holds_is_not_read() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let held = directory.path().join("held.db");
+        std::fs::write(&held, b"SQLite format 3\0").expect("seed");
+        let linked = directory.path().join("linked.db");
+        std::fs::hard_link(&held, &linked).expect("link");
+        let open = std::fs::File::open(&held).expect("open");
+
+        assert_eq!(
+            read_header_blocking(&linked, 16),
+            Err(DriverError::Busy(BusyReason::FileLocked))
+        );
+        drop(open);
+        assert_eq!(read_header_blocking(&linked, 16).expect("the header"), b"SQLite format 3\0");
+    }
 
     #[test]
     fn a_missing_file_is_not_found() {

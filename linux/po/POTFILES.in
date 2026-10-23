@@ -176,13 +176,13 @@ crates/app/src/ui/combo_value.rs
 crates/app/src/ui/connect_dialog/connect_dialog_mode.rs
 crates/app/src/ui/connect_dialog/connect_form.rs
 crates/app/src/ui/connect_dialog/connect_submission.rs
+crates/app/src/ui/connect_dialog/database_file_row.rs
 crates/app/src/ui/connect_dialog/form_errors.rs
 crates/app/src/ui/connect_dialog/form_field.rs
 crates/app/src/ui/connect_dialog/imp.rs
 crates/app/src/ui/connect_dialog/mod.rs
 crates/app/src/ui/connect_dialog/pem_validation.rs
 crates/app/src/ui/connect_dialog/row_problem.rs
-crates/app/src/ui/connect_dialog/sqlite_file_row.rs
 crates/app/src/ui/connect_dialog/tests.rs
 crates/app/src/ui/connect_dialog/tls_section.rs
 crates/app/src/ui/connection_list_banner.rs
@@ -377,6 +377,7 @@ crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/crash_notice.rs
+crates/app/src/ui/session_window/file_location_dialog.rs
 crates/app/src/ui/session_window/imp.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
@@ -391,7 +392,6 @@ crates/app/src/ui/session_window/session_restore.rs
 crates/app/src/ui/session_window/session_teardown.rs
 crates/app/src/ui/session_window/session_window_command.rs
 crates/app/src/ui/session_window/session_window_input.rs
-crates/app/src/ui/session_window/sqlite_location_dialog.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
@@ -572,6 +572,7 @@ data/resources/ui/browse-tab.ui
 data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
 data/resources/ui/connecting-page.ui
+data/resources/ui/database-file-row.ui
 data/resources/ui/export-operations-button.ui
 data/resources/ui/filter-rule-row.ui
 data/resources/ui/filter-strip.ui
@@ -589,7 +590,6 @@ data/resources/ui/preferences-history-group.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui
-data/resources/ui/sqlite-file-row.ui
 data/resources/ui/ssh-section.ui
 data/resources/ui/structure-tab.ui
 data/resources/ui/tls-section.ui

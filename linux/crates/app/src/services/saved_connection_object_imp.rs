@@ -1,4 +1,4 @@
-use std::cell::OnceCell;
+use std::cell::{Cell, OnceCell};
 use std::marker::PhantomData;
 
 use gtk4::glib;
@@ -10,6 +10,7 @@ use tablepro_storage::SavedConnection;
 #[properties(wrapper_type = super::saved_connection_object::SavedConnectionObject)]
 pub struct SavedConnectionObject {
     pub(super) saved: OnceCell<SavedConnection>,
+    pub(super) file_based: Cell<bool>,
     #[property(get = Self::id)]
     id: PhantomData<String>,
     #[property(get = Self::name)]
@@ -45,7 +46,7 @@ impl SavedConnectionObject {
     fn subtitle(&self) -> String {
         self.saved
             .get()
-            .map(|saved| super::saved_connection_object::subtitle_for(saved, None))
+            .map(|saved| super::saved_connection_object::subtitle_for(saved, self.file_based.get(), None))
             .unwrap_or_default()
     }
 

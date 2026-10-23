@@ -24,6 +24,7 @@ mod error;
 mod error_category;
 pub mod export;
 mod file_endpoint;
+mod file_format;
 mod file_open_mode;
 pub mod filter;
 mod foreign_key_check;
@@ -102,6 +103,7 @@ pub use engine_stop::{CallResource, EngineStop, StopDelivery, StopScope};
 pub use error::DriverError;
 pub use error_category::ErrorCategory;
 pub use file_endpoint::FileEndpoint;
+pub use file_format::{FileFormat, FileSignature};
 pub use file_open_mode::FileOpenMode;
 pub use filter::{
     BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter, operators_for,

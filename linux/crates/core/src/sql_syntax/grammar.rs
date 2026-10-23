@@ -5,15 +5,17 @@ pub enum SqlGrammar {
     Sqlite,
     MsSql,
     ClickHouse,
+    DuckDb,
 }
 
 impl SqlGrammar {
-    pub const ALL: [SqlGrammar; 5] = [
+    pub const ALL: [SqlGrammar; 6] = [
         SqlGrammar::PostgreSql,
         SqlGrammar::MySql,
         SqlGrammar::Sqlite,
         SqlGrammar::MsSql,
         SqlGrammar::ClickHouse,
+        SqlGrammar::DuckDb,
     ];
 }
 
@@ -22,13 +24,16 @@ impl SqlGrammar {
     /// private: no public signature names a sqlparser type, so the
     /// parser stays replaceable.
     pub(crate) fn parser_dialect(self) -> &'static dyn sqlparser::dialect::Dialect {
-        use sqlparser::dialect::{ClickHouseDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
+        use sqlparser::dialect::{
+            ClickHouseDialect, DuckDbDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+        };
 
         static POSTGRES: PostgreSqlDialect = PostgreSqlDialect {};
         static MYSQL: MySqlDialect = MySqlDialect {};
         static SQLITE: SQLiteDialect = SQLiteDialect {};
         static MSSQL: MsSqlDialect = MsSqlDialect {};
         static CLICKHOUSE: ClickHouseDialect = ClickHouseDialect {};
+        static DUCKDB: DuckDbDialect = DuckDbDialect {};
 
         match self {
             Self::PostgreSql => &POSTGRES,
@@ -36,6 +41,7 @@ impl SqlGrammar {
             Self::Sqlite => &SQLITE,
             Self::MsSql => &MSSQL,
             Self::ClickHouse => &CLICKHOUSE,
+            Self::DuckDb => &DUCKDB,
         }
     }
 }

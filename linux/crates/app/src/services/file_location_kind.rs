@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
-/// The filesystem a database file is on, as far as SQLite's locking
-/// can trust it.
+/// The filesystem a database file is on, as far as the file locks
+/// SQLite and DuckDB rely on can trust it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileLocationKind {
     Local,
-    /// A network filesystem, whose locks SQLite cannot rely on.
+    /// A network filesystem, whose locks the engines cannot rely on.
     Remote {
         fs_type: String,
     },
@@ -40,7 +40,7 @@ impl FileLocationKind {
         }
     }
 
-    /// SQLite locking through the portal's FUSE layer is not
+    /// Locking through the portal's FUSE layer is not
     /// established, and the host file may be on a network share.
     pub fn requires_read_only_prompt(&self) -> bool {
         match self {

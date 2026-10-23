@@ -1,0 +1,440 @@
+//! One DuckDB database per file in this process.
+//!
+//! Every connection to a file comes from one instance: the workspace's
+//! pool, each editor tab and each streamed read. A second instance on
+//! the same file would keep a catalogue and a write-ahead log of its
+//! own, and DuckDB's file lock does not keep two instances of one
+//! process apart, so two windows on the file would overwrite each
+//! other's changes. A file is known by its device and inode, so a hard
+//! link or a second path to it is the same file, and one attached to
+//! another open database counts as open. Every connection holds its
+//! instance, which closes the file when the last of them is gone,
+//! editor sessions included.
+
+use std::collections::HashMap;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
+use std::time::Duration;
+
+use duckdb::{AccessMode, Config, InterruptHandle};
+use tablepro_core::{BusyReason, DriverError, FileEndpoint, FileOpenMode, LossPhase};
+
+use crate::create_file::create_or_replace;
+use crate::errors::{map_error, map_open_error};
+
+/// The files this process has open. An entry whose instance is gone is
+/// a database still closing: its drop removes the entry once DuckDB has
+/// let the file go.
+static OPEN: LazyLock<Mutex<HashMap<FileId, Opened>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// A file whatever path names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FileId {
+    device: u64,
+    inode: u64,
+}
+
+impl FileId {
+    fn of(path: &Path) -> Option<Self> {
+        std::fs::metadata(path).ok().map(|metadata| Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        })
+    }
+}
+
+struct Opened {
+    instance: Weak<Instance>,
+    read_only: bool,
+    /// The instance's root connection, which asks what it has attached
+    /// without keeping the instance alive.
+    root: Root,
+}
+
+type Root = Arc<Mutex<Option<duckdb::Connection>>>;
+
+/// How long an open waits before it looks again at a file still
+/// closing.
+const CLOSING_POLL: Duration = Duration::from_millis(10);
+
+/// An open database file, shared by every connection to it.
+pub(crate) struct Instance {
+    /// What new connections are cloned from, since DuckDB connects only
+    /// to a database already open. It runs only the catalogue read of
+    /// what is attached. Taken at drop, which closes the file.
+    root: Root,
+    id: FileId,
+    path: PathBuf,
+    read_only: bool,
+    /// The catalogue name DuckDB gave the file, which the catalogue
+    /// reads filter on: attached databases are in the same lists.
+    catalog: String,
+}
+
+impl std::fmt::Debug for Instance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Instance")
+            .field("path", &self.path)
+            .field("read_only", &self.read_only)
+            .field("catalog", &self.catalog)
+            .finish_non_exhaustive()
+    }
+}
+
+/// DuckDB checkpoints the file as its last connection closes. An open of
+/// the same file waits until that is done, or it would read a file still
+/// being written.
+impl Drop for Instance {
+    fn drop(&mut self) {
+        let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
+        drop(self.root.lock().unwrap_or_else(PoisonError::into_inner).take());
+        if open
+            .get(&self.id)
+            .is_some_and(|entry| entry.instance.strong_count() == 0)
+        {
+            open.remove(&self.id);
+        }
+    }
+}
+
+/// One connection to an instance, with the handle that interrupts the
+/// statement it runs. Declared before the instance, so the connection
+/// closes first.
+pub(crate) struct Link {
+    pub(crate) connection: duckdb::Connection,
+    stop: StopHandle,
+    _instance: Arc<Instance>,
+}
+
+/// What stops the statement a connection runs. DuckDB clears an
+/// interrupt when its next statement starts, so one sent just before a
+/// statement begins is lost: a stop keeps sending it for as long as the
+/// connection runs work a stop may cut short.
+#[derive(Clone)]
+pub(crate) struct StopHandle {
+    interrupt: Arc<InterruptHandle>,
+    stoppable: Arc<AtomicBool>,
+}
+
+impl StopHandle {
+    pub(crate) fn interrupt(&self) {
+        self.interrupt.interrupt();
+    }
+
+    pub(crate) fn is_stoppable(&self) -> bool {
+        self.stoppable.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn set_stoppable(&self, stoppable: bool) {
+        self.stoppable.store(stoppable, Ordering::SeqCst);
+    }
+}
+
+impl std::fmt::Debug for Link {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Link").finish_non_exhaustive()
+    }
+}
+
+impl Link {
+    fn new(connection: duckdb::Connection, instance: Arc<Instance>) -> Self {
+        let stop = StopHandle {
+            interrupt: connection.interrupt_handle(),
+            stoppable: Arc::new(AtomicBool::new(false)),
+        };
+        Self {
+            connection,
+            stop,
+            _instance: instance,
+        }
+    }
+
+    pub(crate) fn stop_handle(&self) -> StopHandle {
+        self.stop.clone()
+    }
+
+    /// Keep stops off the statements that clean up after work: a
+    /// rollback must not be interrupted by the stop that caused it.
+    pub(crate) fn hold_stops(&self) {
+        self.stop.set_stoppable(false);
+    }
+}
+
+impl Instance {
+    /// Open the file the endpoint names, or join the instance this
+    /// process already has on it. Blocks: DuckDB reads the file and
+    /// replays its log here, and a file still closing is waited for.
+    pub(crate) fn open(endpoint: &FileEndpoint, read_only: bool) -> Result<Arc<Self>, DriverError> {
+        let path = endpoint.path();
+        loop {
+            // Held through the open, so two windows opening one file at
+            // once get one instance.
+            let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
+            let known = FileId::of(path)
+                .and_then(|id| open.get(&id))
+                .map(|entry| entry.instance.strong_count() > 0);
+            match (known, endpoint.mode()) {
+                (Some(false), _) => {
+                    drop(open);
+                    std::thread::sleep(CLOSING_POLL);
+                    continue;
+                }
+                // Replacing a file this process has open would pull it
+                // out from under the windows using it.
+                (Some(true), FileOpenMode::CreateNew) => return Err(DriverError::Busy(BusyReason::FileLocked)),
+                (None, FileOpenMode::CreateNew) => {
+                    if FileId::of(path).is_some_and(|id| attached(&open, id)) {
+                        return Err(DriverError::Busy(BusyReason::FileLocked));
+                    }
+                    create_or_replace(path)?;
+                }
+                (_, FileOpenMode::OpenExisting) => {}
+            }
+            let canonical = existing_file(path)?;
+            let id = FileId::of(&canonical).ok_or_else(|| DriverError::FileNotFound {
+                path: path.to_path_buf(),
+            })?;
+            if let Some(entry) = open.get(&id) {
+                // One instance is opened one way, and a read-only
+                // connection cannot be told apart on one opened to write.
+                if entry.read_only != read_only {
+                    return Err(DriverError::Busy(BusyReason::FileLocked));
+                }
+                match entry.instance.upgrade() {
+                    Some(instance) => return Ok(instance),
+                    None => {
+                        drop(open);
+                        std::thread::sleep(CLOSING_POLL);
+                        continue;
+                    }
+                }
+            }
+            if attached(&open, id) {
+                return Err(DriverError::Busy(BusyReason::FileLocked));
+            }
+            let root = duckdb::Connection::open_with_flags(&canonical, config(read_only)?)
+                .map_err(|error| map_open_error(error, path))?;
+            let catalog = root
+                .query_row("SELECT current_database()", [], |row| row.get::<_, String>(0))
+                .map_err(|error| map_open_error(error, path))?;
+            let root: Root = Arc::new(Mutex::new(Some(root)));
+            let instance = Arc::new(Self {
+                root: root.clone(),
+                id,
+                path: canonical,
+                read_only,
+                catalog,
+            });
+            open.insert(
+                id,
+                Opened {
+                    instance: Arc::downgrade(&instance),
+                    read_only,
+                    root,
+                },
+            );
+            return Ok(instance);
+        }
+    }
+
+    /// A new connection to the database, as DuckDB documents for using
+    /// one database from several places.
+    pub(crate) fn link(self: &Arc<Self>) -> Result<Link, DriverError> {
+        let root = self.root.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(root) = root.as_ref() else {
+            return Err(DriverError::ConnectionLost {
+                during: LossPhase::Idle,
+            });
+        };
+        let connection = root.try_clone().map_err(map_error)?;
+        Ok(Link::new(connection, self.clone()))
+    }
+
+    pub(crate) fn catalog(&self) -> &str {
+        &self.catalog
+    }
+}
+
+/// Whether an open database has the file attached, which DuckDB lists
+/// with its own file.
+fn attached(open: &HashMap<FileId, Opened>, id: FileId) -> bool {
+    open.values().any(|entry| {
+        let root = entry.root.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(root) = root.as_ref() else {
+            return false;
+        };
+        let paths = root
+            .prepare("SELECT path FROM duckdb_databases() WHERE path IS NOT NULL")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .and_then(|rows| rows.collect::<Result<Vec<_>, _>>())
+            });
+        match paths {
+            Ok(paths) => paths.iter().any(|path| FileId::of(Path::new(path)) == Some(id)),
+            Err(error) => {
+                tracing::warn!(%error, "could not read the databases an open file has attached");
+                false
+            }
+        }
+    })
+}
+
+/// Run `attach`, an ATTACH that may open any of `targets`, unless one of
+/// them is open in this process, as a workspace's database or attached
+/// to one: DuckDB would make a second database on it, which writes past
+/// the first. The registry is held across the check and the attach, so
+/// no window opens the file, and no tab attaches it, in between.
+pub(crate) fn attach_unless_open<T>(
+    targets: &[PathBuf],
+    attach: impl FnOnce() -> Result<T, DriverError>,
+) -> Result<T, DriverError> {
+    let open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
+    let in_use = targets
+        .iter()
+        .filter_map(|target| FileId::of(target))
+        .any(|id| open.contains_key(&id) || attached(&open, id));
+    if in_use {
+        return Err(DriverError::Busy(BusyReason::FileLocked));
+    }
+    let result = attach();
+    drop(open);
+    result
+}
+
+/// Every connection opens the same way. Extensions are never fetched:
+/// a query that needs one DuckDB does not link in fails instead of
+/// downloading it, as the app makes no requests of its own.
+fn config(read_only: bool) -> Result<Config, DriverError> {
+    let mode = match read_only {
+        true => AccessMode::ReadOnly,
+        false => AccessMode::ReadWrite,
+    };
+    Config::default()
+        .access_mode(mode)
+        .and_then(|config| config.with("autoinstall_known_extensions", "false"))
+        .and_then(|config| config.with("autoload_known_extensions", "false"))
+        .map_err(map_error)
+}
+
+/// DuckDB creates a file it is asked to open and cannot find, so a moved
+/// database would come back as a new empty one. Only a file that is
+/// there is opened.
+fn existing_file(path: &Path) -> Result<PathBuf, DriverError> {
+    let canonical = std::fs::canonicalize(path).map_err(|error| file_error(error.kind(), path))?;
+    match std::fs::metadata(&canonical) {
+        Ok(metadata) if metadata.is_dir() => Err(DriverError::NotADatabase {
+            path: path.to_path_buf(),
+        }),
+        Ok(_) => Ok(canonical),
+        Err(error) => Err(file_error(error.kind(), path)),
+    }
+}
+
+pub(crate) fn file_error(kind: std::io::ErrorKind, path: &Path) -> DriverError {
+    let path = path.to_path_buf();
+    match kind {
+        std::io::ErrorKind::NotFound => DriverError::FileNotFound { path },
+        std::io::ErrorKind::IsADirectory | std::io::ErrorKind::NotADirectory => DriverError::NotADatabase { path },
+        std::io::ErrorKind::PermissionDenied => DriverError::FileAccessDenied { path },
+        kind => DriverError::FileIo { path, kind },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn created(directory: &Path, name: &str) -> FileEndpoint {
+        FileEndpoint::create_new(directory.join(name)).unwrap()
+    }
+
+    #[test]
+    fn a_missing_file_is_not_created() {
+        let directory = tempfile::tempdir().unwrap();
+        let missing = directory.path().join("moved.duckdb");
+
+        for read_only in [false, true] {
+            let opened = Instance::open(&FileEndpoint::open_existing(missing.clone()).unwrap(), read_only);
+
+            assert_eq!(opened.unwrap_err(), DriverError::FileNotFound { path: missing.clone() });
+            assert!(!missing.exists(), "opening created the file with read_only={read_only}");
+        }
+    }
+
+    #[test]
+    fn one_file_has_one_instance_in_the_process() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = Instance::open(&created(directory.path(), "one.duckdb"), false).unwrap();
+        let again = FileEndpoint::open_existing(directory.path().join("one.duckdb")).unwrap();
+
+        let second = Instance::open(&again, false).unwrap();
+
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(
+            Instance::open(&again, true).unwrap_err(),
+            DriverError::Busy(BusyReason::FileLocked),
+            "a read-only window joined a writable instance"
+        );
+    }
+
+    /// A window that closes while a tab still runs on the file leaves
+    /// the file to that tab, and a window opening it again joins it.
+    #[test]
+    fn a_connection_keeps_its_instance_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = Instance::open(&created(directory.path(), "kept.duckdb"), false).unwrap();
+        let link = first.link().unwrap();
+        let weak = Arc::downgrade(&first);
+        drop(first);
+
+        let again = Instance::open(
+            &FileEndpoint::open_existing(directory.path().join("kept.duckdb")).unwrap(),
+            false,
+        )
+        .unwrap();
+
+        assert!(weak.upgrade().is_some_and(|kept| Arc::ptr_eq(&kept, &again)));
+        drop((link, again));
+        assert!(weak.upgrade().is_none());
+        assert!(
+            Instance::open(&created(directory.path(), "kept.duckdb"), false).is_ok(),
+            "the file was still held once every connection was gone"
+        );
+    }
+
+    #[test]
+    fn a_file_is_not_replaced_while_this_process_has_it_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let endpoint = created(directory.path(), "busy.duckdb");
+        let _open = Instance::open(&endpoint, false).unwrap();
+
+        assert_eq!(
+            Instance::open(&endpoint, false).unwrap_err(),
+            DriverError::Busy(BusyReason::FileLocked)
+        );
+    }
+
+    #[test]
+    fn the_catalogue_is_named_after_the_file() {
+        let directory = tempfile::tempdir().unwrap();
+
+        let instance = Instance::open(&created(directory.path(), "sales.duckdb"), false).unwrap();
+
+        assert_eq!(instance.catalog(), "sales");
+        assert!(!instance.read_only);
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_database_is_named_as_such() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("notes.duckdb");
+        std::fs::write(&path, b"plain text, longer than any header DuckDB reads first").unwrap();
+
+        let opened = Instance::open(&FileEndpoint::open_existing(path.clone()).unwrap(), true);
+
+        assert_eq!(opened.unwrap_err(), DriverError::NotADatabase { path });
+    }
+}

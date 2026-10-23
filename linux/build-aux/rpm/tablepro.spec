@@ -23,17 +23,22 @@ License:        %{shrink:
     (Apache-2.0 OR BSD-2-Clause OR MIT) AND
     (Apache-2.0 OR BSL-1.0) AND
     (Apache-2.0 OR BSL-1.0 OR MIT) AND
+    (Apache-2.0 OR GPL-2.0-or-later) AND
     (Apache-2.0 OR ISC) AND
     (Apache-2.0 OR ISC OR MIT) AND
     (Apache-2.0 OR ISC OR MIT-0) AND
     (Apache-2.0 OR MIT) AND
     (Apache-2.0 OR MIT OR Zlib) AND
+    BSD-2-Clause AND
+    (BSD-2-Clause OR BSL-1.0) AND
     BSD-3-Clause AND
+    BSL-1.0 AND
     CDLA-Permissive-2.0 AND
     ISC AND
     MIT AND
     (MIT OR Unlicense) AND
     Unicode-3.0 AND
+    Unicode-DFS-2015 AND
     Zlib
 }
 URL:            https://tablepro.app
@@ -46,6 +51,8 @@ BuildRequires:  rust >= 1.97
 BuildRequires:  cargo-rpm-macros >= 26
 BuildRequires:  meson >= 1.4
 BuildRequires:  gcc
+# DuckDB is C++, compiled from the duckdb crate's own sources.
+BuildRequires:  gcc-c++
 BuildRequires:  clang-devel
 BuildRequires:  gettext
 BuildRequires:  desktop-file-utils
@@ -92,9 +99,9 @@ Recommends:     (gnome-keyring or kf6-kwallet or keepassxc)
 Suggests:       krb5-workstation
 
 %description
-TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
-Browse tables, edit rows in place, run SQL with syntax highlighting, and
-reach servers behind an SSH bastion.
+TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server and
+ClickHouse. Browse tables, edit rows in place, run SQL with syntax
+highlighting, and reach servers behind an SSH bastion.
 
 %prep
 %autosetup -n %{name}-%{version_no_tilde} -a1

@@ -1,4 +1,4 @@
-//! A saved SQLite connection whose file is gone: find the file again,
+//! A saved file connection whose file is gone: find the file again,
 //! save its new path and connect to it.
 
 use std::path::{Path, PathBuf};
@@ -20,21 +20,34 @@ use uuid::Uuid;
 use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::DeliverInput;
+use crate::ui::connect_dialog::DatabaseFiles;
 
 const CANCEL: &str = "cancel";
 const LOCATE: &str = "locate";
 
 /// Where the user says a lost database file is now.
 pub(crate) trait LocateChooser {
-    fn choose(&self, parent: &gtk::Window, missing: &Path) -> LocalBoxFuture<'static, Option<PathBuf>>;
+    fn choose(
+        &self,
+        parent: &gtk::Window,
+        missing: &Path,
+        files: Option<&DatabaseFiles>,
+    ) -> LocalBoxFuture<'static, Option<PathBuf>>;
 }
 
-/// The file chooser, opened where the file used to be.
+/// The file chooser, opened where the file used to be and offering the
+/// connection's engine's files first.
 struct FileDialogChooser;
 
 impl LocateChooser for FileDialogChooser {
-    fn choose(&self, parent: &gtk::Window, missing: &Path) -> LocalBoxFuture<'static, Option<PathBuf>> {
-        let dialog = crate::ui::connect_dialog::sqlite_file_dialog(&crate::i18n::gettext("Locate Database File"));
+    fn choose(
+        &self,
+        parent: &gtk::Window,
+        missing: &Path,
+        files: Option<&DatabaseFiles>,
+    ) -> LocalBoxFuture<'static, Option<PathBuf>> {
+        let dialog =
+            crate::ui::connect_dialog::database_file_dialog(&crate::i18n::gettext("Locate Database File"), files);
         // An initial file is read synchronously, which hangs on a dead
         // mount; a folder is only stored.
         if let Some(folder) = missing.parent() {
@@ -76,6 +89,7 @@ impl SessionWindow {
     /// Connection.
     pub(super) fn offer_locate(&self, id: Uuid, missing: PathBuf) {
         let dialog = not_found_dialog(&missing);
+        let files = self.located_files(id);
         let window = self.downgrade();
         glib::spawn_future_local(async move {
             let Some(window) = window.upgrade() else {
@@ -90,11 +104,24 @@ impl SessionWindow {
                 .borrow()
                 .clone()
                 .unwrap_or_else(|| Rc::new(FileDialogChooser));
-            let chosen = chooser.choose(window.upcast_ref(), &missing).await;
+            let chosen = chooser.choose(window.upcast_ref(), &missing, files.as_ref()).await;
             if let Some(path) = chosen {
                 window.send(SessionWindowInput::FileLocated { id, path });
             }
         });
+    }
+
+    /// The files the failed connection's engine opens.
+    fn located_files(&self, id: Uuid) -> Option<DatabaseFiles> {
+        let driver_id = match &*self.imp().page.borrow() {
+            SessionPage::ConnectFailed {
+                source: ConnectSource::Saved(saved),
+                ..
+            } if saved.id == id => saved.driver_id.clone(),
+            _ => return None,
+        };
+        let driver = self.state()?.context.drivers.get(&driver_id)?;
+        DatabaseFiles::of(driver.as_ref())
     }
 
     /// Save the file's new path on the connection the failed page is
@@ -181,7 +208,12 @@ mod tests {
     struct ChosenFile(PathBuf);
 
     impl LocateChooser for ChosenFile {
-        fn choose(&self, _parent: &gtk::Window, _missing: &Path) -> LocalBoxFuture<'static, Option<PathBuf>> {
+        fn choose(
+            &self,
+            _parent: &gtk::Window,
+            _missing: &Path,
+            _files: Option<&DatabaseFiles>,
+        ) -> LocalBoxFuture<'static, Option<PathBuf>> {
             let path = self.0.clone();
             async move { Some(path) }.boxed_local()
         }

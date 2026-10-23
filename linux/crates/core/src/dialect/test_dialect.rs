@@ -27,6 +27,7 @@ pub struct TestDialect {
     row_ids: bool,
     default_row: bool,
     count_all: &'static str,
+    key_order_sorts: bool,
     grammar: SqlGrammar,
     insert_limits: InsertBatchLimits,
     binds: Mutex<Vec<RecordedBind>>,
@@ -65,6 +66,7 @@ impl Default for TestDialect {
             row_ids: true,
             default_row: true,
             count_all: "COUNT(*)",
+            key_order_sorts: false,
             grammar: SqlGrammar::PostgreSql,
             insert_limits: InsertBatchLimits::DEFAULT,
             binds: Mutex::new(Vec::new()),
@@ -101,6 +103,13 @@ impl TestDialect {
 
     pub fn counting_with(self, count_all: &'static str) -> Self {
         Self { count_all, ..self }
+    }
+
+    pub fn sorting_by_key(self) -> Self {
+        Self {
+            key_order_sorts: true,
+            ..self
+        }
     }
 
     pub fn parsing_as(self, grammar: SqlGrammar) -> Self {
@@ -246,6 +255,10 @@ impl SqlDialect for TestDialect {
 
     fn count_all(&self) -> &'static str {
         self.count_all
+    }
+
+    fn key_order_sorts_the_table(&self) -> bool {
+        self.key_order_sorts
     }
 
     fn insert_batch_limits(&self) -> InsertBatchLimits {

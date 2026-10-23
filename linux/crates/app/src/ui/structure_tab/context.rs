@@ -10,6 +10,7 @@ use tablepro_core::ddl::{
     default_text, parse_default, primary_key_permission,
 };
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::meta::IndexInfo;
 
 use super::StructureMode;
 
@@ -79,6 +80,18 @@ impl StructureContext {
 
     /// A draft's indexes and foreign keys are only entries in it, so the
     /// engine's limits apply to a table that exists.
+    /// Whether an index the table had when it was read may be dropped.
+    /// One added in this tab is only a draft.
+    pub(super) fn index_removal(&self, index: &IndexInfo) -> Permission {
+        let (Some(ddl), Some(original)) = (self.ddl(), self.original()) else {
+            return Permission::Allowed;
+        };
+        match original.indexes.iter().any(|known| known.name == index.name) {
+            true => ddl.index_removal(original, index),
+            false => Permission::Allowed,
+        }
+    }
+
     pub(super) fn table_permission(&self, allowed: bool) -> Permission {
         match self.mode {
             StructureMode::New => Permission::Allowed,

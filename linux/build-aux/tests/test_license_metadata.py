@@ -280,6 +280,13 @@ class RenderCopyrightTests(unittest.TestCase):
 
         self.assertEqual(paragraph["Copyright"], ["2019 Alice", "1991-2024 Unicode, Inc."])
 
+    def test_a_notice_written_as_a_field_loses_its_colon(self):
+        text = "This product includes code from Apache Spark.\n\nCopyright: 2014 The Apache Software Foundation.\n"
+        licenses = [entry("MIT", text, crate("a", "1.0.0"))]
+        paragraph = files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")
+
+        self.assertEqual(paragraph["Copyright"], ["2014 The Apache Software Foundation."])
+
     def test_a_text_without_a_notice_credits_the_crates_authors(self):
         licenses = [entry("MIT", MIT_NO_NOTICE, crate("serde", "1.0.0"), crate("syn", "1.0.0"), crate("syn", "2.0.0"))]
         paragraph = files_paragraph(self.render(licenses), "vendor/serde-1.0.0/*")

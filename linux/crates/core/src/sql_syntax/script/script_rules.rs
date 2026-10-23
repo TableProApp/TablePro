@@ -205,6 +205,32 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
     },
 };
 
+/// DuckDB's parser is PostgreSQL's scanner without its procedural
+/// bodies: a string escapes only with an `E` prefix, block comments
+/// nest, `$tag$` quotes, and a backtick quotes nothing.
+const DUCKDB: ScriptRules = ScriptRules {
+    boundary: Boundary::Semicolon,
+    compound: CompoundRule::None,
+    parens_hold_semicolons: false,
+    batch_error: BatchErrorPolicy::StopScript,
+    syntax: ScriptSyntax {
+        single_quote: quote(QuoteKind::StringLiteral, BackslashPolicy::Never),
+        double_quote: quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never),
+        backtick: None,
+        bracket_identifier: BracketIdentifier::None,
+        escape_string_prefix: true,
+        dash_comment_needs_space: false,
+        line_comment_ends_at_cr: true,
+        hash_comment: HashComment::None,
+        slash_slash_comment: false,
+        nested_block_comments: true,
+        executable_comments: false,
+        dollar_quote: DollarQuote::Tagged,
+        word_start_extra: b"",
+        word_part_extra: b"$",
+    },
+};
+
 pub(crate) fn rules_for(grammar: SqlGrammar) -> &'static ScriptRules {
     match grammar {
         SqlGrammar::PostgreSql => &POSTGRESQL,
@@ -212,5 +238,6 @@ pub(crate) fn rules_for(grammar: SqlGrammar) -> &'static ScriptRules {
         SqlGrammar::Sqlite => &SQLITE,
         SqlGrammar::MsSql => &MSSQL,
         SqlGrammar::ClickHouse => &CLICKHOUSE,
+        SqlGrammar::DuckDb => &DUCKDB,
     }
 }

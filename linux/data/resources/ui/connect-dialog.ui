@@ -77,7 +77,7 @@
                       </object>
                     </child>
                     <child>
-                      <object class="TableProSqliteFileRow" id="file_row"/>
+                      <object class="TableProDatabaseFileRow" id="file_row"/>
                     </child>
                   </object>
                 </child>

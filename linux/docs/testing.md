@@ -76,7 +76,7 @@ Each crate keeps its integration tests in `crates/<crate>/tests/`. A driver has 
 
 For `storage`, integration tests build `StoragePaths::under(root, ..)` over a `tempfile::TempDir`, so every file lands under that root.
 
-For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `crates/drivers/<engine>/tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's opens a file endpoint instead:
+For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `crates/drivers/<engine>/tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's and DuckDB's open a file endpoint instead:
 
 ```rust
 use tablepro_core::meta::{ObjectKind, ObjectScope};
@@ -132,7 +132,7 @@ tablepro_test_support::connection_conformance_suite! {
 }
 ```
 
-The cases every engine runs: a created table is listed with its key, one operation's calls share one `CallOptions`, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes, a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, a commit the engine keeps no record of resolves as `Unresolvable`, and `stream_read` streams every row in bounded batches.
+The cases every engine runs: a created table is listed with its key, one operation's calls share one `CallOptions`, a query bound times out within its deadline, a cancelled editor run reports it and leaves the session ready, a read-only connection refuses writes (beside a writable one, unless the adapter's `READ_ONLY_BESIDE_WRITER` says the engine opens a database one way at a time, as DuckDB does), a write batch commits every step and a failed one ends as the driver's atomicity says, a row guard mismatch applies nothing, `close` is idempotent, a commit the engine keeps no record of resolves as `Unresolvable`, and `stream_read` streams every row in bounded batches.
 
 Each flag adds cases and needs its engine trait:
 
@@ -146,7 +146,7 @@ Each flag adds cases and needs its engine trait:
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |
 | `bounded_ddl: true` | a schema-change batch is not cut off by the statement timeout | `BoundedDdlEngine` |
 
-A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
+A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite and DuckDB pass `docker: false` and `endpoint: file`, so their suites run in the unit suite.
 
 Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish, four for the large-table case (`LARGE_TABLE_CASE_LIMIT`). A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
 
@@ -168,7 +168,7 @@ Every case plans through `connection.dialect().ddl()` and runs the plan with `wr
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
 
-The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the MySQL target runs it on MariaDB as well. SQLite passes `docker: false`, so its cases run in the unit suite.
+The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it, and the MySQL target runs it on MariaDB as well. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
 
 ### Large-table conformance
 
@@ -180,7 +180,7 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the
 
 The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server and ClickHouse targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
-SQLite passes `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
+SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, as `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Large-catalog case
 
@@ -212,7 +212,7 @@ tablepro_test_support::value_corpus_suite! {
 
 The corpus is a list of `CorpusColumn`s: a column clause, values of it written as SQL, and the text each one shows, or NULL. It covers the engine's dates and times at their extremes and in other zones, high-precision and negative decimals at their scale, JSON, UUIDs, Unicode text, binary values and the engine's other common types. `value_corpus_reads_as_the_grid_shows` adds each column to a scratch table, inserts its values, and reads them back three times: through `read_page`, as a table tab reads a page, through `build_export` and `stream_read` behind a `DeclaredPrecisionSink`, as Export All reads one, and through an editor run of a plain SELECT. The export has to show what the page shows. Each value's text is `value_text` on the type of the column it came back in, the text the grid draws, `<unreadable type>` for a value the driver could not read, and every value that differs is listed in one failure, with a column the server refused. Where the two paths differ on purpose, the value says what each shows (`CorpusColumn::shows_apart`): a MySQL TIMESTAMP is an instant in a table tab and the server's wall time in the editor, and a PostgreSQL run shows the server's own text, as psql does. A value that shows the wrong text is a decoder bug: fix the decoder, never the corpus.
 
-Every target runs it, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.
+Every target runs it, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the unit suite.
 
 ### Export round trip
 
@@ -230,7 +230,7 @@ tablepro_test_support::round_trip_suite! {
 - `sql_insert_export_runs_back_as_the_same_rows` exports each corpus column as SQL INSERT into an empty copy and runs the file as the editor runs one: split by the engine's grammar and sent a batch at a time. Every value has to come back with the same text and of the same kind.
 - `csv_export_near_the_import_limit_imports_back`, with `near_limit: true`, fills a table through `LargeTableEngine` so its CSV under the export defaults lands within 1 MiB under `MAX_CSV_FILE_BYTES`, imports it into an empty copy, and compares a hash of every row. ClickHouse passes `false`: its import sends values in the request URL, 8 KiB a statement, so such a file takes some 8,000 statements and longer than a case may run.
 
-Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's runs in the unit suite.
+Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suite, the MySQL target on MariaDB as well, and SQLite's and DuckDB's run in the unit suite.
 
 ### TLS conformance
 

@@ -138,6 +138,33 @@ const CLICKHOUSE: &[&str] = &[
     "SAMPLE", "SETTINGS", "SHOW",
 ];
 
+const DUCKDB: &[&str] = &[
+    "ANTI",
+    "ASOF",
+    "ATTACH",
+    "CHECKPOINT",
+    "COPY",
+    "DESCRIBE",
+    "DETACH",
+    "EXCLUDE",
+    "EXPLAIN",
+    "ILIKE",
+    "LIMIT",
+    "OFFSET",
+    "PIVOT",
+    "POSITIONAL",
+    "PRAGMA",
+    "QUALIFY",
+    "REPLACE",
+    "RETURNING",
+    "SAMPLE",
+    "SEMI",
+    "SHOW",
+    "SUMMARIZE",
+    "UNPIVOT",
+    "USE",
+];
+
 impl SqlGrammar {
     /// The keywords the editor completes for this grammar, in upper case.
     pub fn keywords(self) -> impl Iterator<Item = &'static str> {
@@ -147,6 +174,7 @@ impl SqlGrammar {
             Self::Sqlite => SQLITE,
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
+            Self::DuckDb => DUCKDB,
         };
         COMMON.iter().chain(own).copied()
     }
@@ -169,6 +197,7 @@ mod tests {
         assert!(has(SqlGrammar::MsSql, "TOP"));
         assert!(!has(SqlGrammar::MsSql, "LIMIT"));
         assert!(has(SqlGrammar::ClickHouse, "PREWHERE"));
+        assert!(has(SqlGrammar::DuckDb, "QUALIFY"));
     }
 
     #[test]

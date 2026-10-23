@@ -1,7 +1,9 @@
 use std::num::NonZeroU32;
 
 use proptest::prelude::*;
-use sqlparser::dialect::{ClickHouseDialect, Dialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
+use sqlparser::dialect::{
+    ClickHouseDialect, Dialect, DuckDbDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+};
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
@@ -388,6 +390,30 @@ fn backslash_always_escapes() {
 }
 
 #[test]
+fn duckdb_escapes_only_in_an_e_string() {
+    let text = r"SELECT E'it\'s; x'; SELECT 'a\'; SELECT 2;";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        [r"SELECT E'it\'s; x'", r"SELECT 'a\'", "SELECT 2"]
+    );
+}
+
+#[test]
+fn duckdb_nests_comments_and_quotes_with_dollar_tags() {
+    let text = "SELECT /* a /* b; */ c; */ $x$it's; here$x$, $$;$$; SELECT 2;";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        ["SELECT /* a /* b; */ c; */ $x$it's; here$x$, $$;$$", "SELECT 2"]
+    );
+}
+
+#[test]
+fn duckdb_reads_a_backtick_as_no_quote() {
+    let text = "SELECT `a;b` FROM t;";
+    assert_eq!(statements(SqlGrammar::DuckDb, text), ["SELECT `a", "b` FROM t"]);
+}
+
+#[test]
 fn statement_at_on_terminator_takes_preceding() {
     let text = "SELECT 1;SELECT 2;";
     let plan = plan(SqlGrammar::PostgreSql, text);
@@ -505,6 +531,7 @@ const AGREED_CASES: &[(SqlGrammar, &str)] = &[
     ),
     (SqlGrammar::ClickHouse, "SELECT $doc$a; b$doc$; SELECT 2;"),
     (SqlGrammar::ClickHouse, r"SELECT 'a\'; b', `c;d` FROM t; SELECT 2;"),
+    (SqlGrammar::DuckDb, "SELECT 'a;b', \"c;d\" FROM t; -- x;\nSELECT 2;"),
 ];
 
 fn byte_offset(text: &str, line: u64, column: u64) -> usize {
@@ -530,6 +557,7 @@ fn sqlparser_semicolons(grammar: SqlGrammar, text: &str) -> Result<Vec<usize>, T
         SqlGrammar::Sqlite => &SQLiteDialect {},
         SqlGrammar::MsSql => &MsSqlDialect {},
         SqlGrammar::ClickHouse => &ClickHouseDialect {},
+        SqlGrammar::DuckDb => &DuckDbDialect {},
     };
     let tokens = Tokenizer::new(dialect, text)
         .with_unescape(false)

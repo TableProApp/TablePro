@@ -28,6 +28,7 @@ linux/
         ├── postgres/              tokio-postgres
         ├── mysql/                 sqlx-mysql, MySQL and MariaDB
         ├── sqlite/                sqlx-sqlite
+        ├── duckdb/                duckdb, with DuckDB compiled in
         ├── mssql/                 tiberius
         └── clickhouse/            clickhouse over hyper
 ```
@@ -39,7 +40,7 @@ linux/
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
 | `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse` | `core`, `net` |
-| `drivers/sqlite` | `core` |
+| `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `app` | every crate above |
 
@@ -66,6 +67,7 @@ The driver registry is built once, by `build_registry` in `crates/app/src/lib.rs
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    r.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     r.register(Arc::new(tablepro_driver_postgres::PgDriver));
@@ -144,7 +146,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md).
 
 ### SQL scripts
 
@@ -157,6 +159,7 @@ A driver names its grammar through `SqlDialect::grammar`. The rules for each `Sq
 | PostgreSQL | `;` | dollar-quoted bodies, the `BEGIN ... END` body of a `CREATE FUNCTION` or `PROCEDURE`, parentheses | `E'...'` escapes, nested block comments, backslash escapes only with `standard_conforming_strings` off |
 | MySQL, MariaDB | `;`, or the delimiter a `DELIMITER` line sets | nothing | backtick names, `"` strings, `#` comments, `--` only before whitespace, a control character or the end of the text, backslash escapes |
 | SQLite | `;` | a `CREATE TRIGGER` body, as `sqlite3_complete` reads it | `[name]` and backtick names |
+| DuckDB | `;` | `$tag$ ... $tag$` strings | `E'...'` escapes, nested block comments |
 | SQL Server | a `GO` line, with an optional count | the whole batch, whatever `;` it holds | `[name]` with `]]` inside, nested block comments |
 | ClickHouse | `;` | heredocs, `$tag$ ... $tag$` | backslash escapes in every quote, `//`, `# ` and `#!` comments, nested block comments |
 
@@ -225,6 +228,7 @@ Each engine's TLS stack takes trust in its own form, so the driver builds it:
 | MySQL, MariaDB | The system store and the CA file as one PEM bundle (`tablepro_net::tls::mysql_ca_bundle_pem`), plus the Mozilla roots compiled into sqlx | Yes | The rustls error |
 | SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
 | SQLite | No TLS | | |
+| DuckDB | No TLS | | |
 
 PostgreSQL and ClickHouse get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
 

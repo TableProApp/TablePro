@@ -112,6 +112,14 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         "COUNT(*)"
     }
 
+    /// Whether ordering by the table's key sorts the whole table before
+    /// the first row comes back, while a plain scan returns an unchanged
+    /// table's rows in the same order every time. An export with no sort
+    /// of the user's then keeps the scan's order.
+    fn key_order_sorts_the_table(&self) -> bool {
+        false
+    }
+
     /// The column as text, where it meets a LIKE pattern or text the user
     /// typed, for a type the engine will not compare with text as it is.
     /// `None` when the column takes text as it is.

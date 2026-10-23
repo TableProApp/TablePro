@@ -9,10 +9,27 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ServerCode {
     SqlState(String),
-    MySql { number: u16, sqlstate: Option<String> },
-    Tds { number: u32, state: u8, class: u8 },
-    ClickHouse { code: i32 },
-    Sqlite { primary: i32, extended: i32 },
+    MySql {
+        number: u16,
+        sqlstate: Option<String>,
+    },
+    Tds {
+        number: u32,
+        state: u8,
+        class: u8,
+    },
+    ClickHouse {
+        code: i32,
+    },
+    Sqlite {
+        primary: i32,
+        extended: i32,
+    },
+    /// DuckDB names its errors by kind rather than number, as the
+    /// `Constraint` of "Constraint Error: ...".
+    DuckDb {
+        error_type: String,
+    },
 }
 
 impl ServerCode {
@@ -34,6 +51,7 @@ impl fmt::Display for ServerCode {
             Self::Tds { number, .. } => write!(f, "{number}"),
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
+            Self::DuckDb { error_type } => f.write_str(error_type),
         }
     }
 }

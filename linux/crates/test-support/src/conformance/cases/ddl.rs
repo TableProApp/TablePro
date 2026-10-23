@@ -175,7 +175,7 @@ pub async fn create_table_script_recreates_the_table<E: ConformanceDdlEngine>(
             name: format!("{}_label", parent.name),
             keys: vec![IndexKey::Column {
                 name: "label".to_owned(),
-                descending: true,
+                descending: ddl.capabilities().descending_index_keys,
             }],
             unique: false,
             primary: false,
@@ -249,12 +249,10 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
         primary: false,
         predicate: None,
     };
-    step.apply(
-        &mut table,
-        "create index",
-        table_permission(ddl.capabilities().create_index),
-        |draft| draft.indexes.push(index),
-    )
+    let permission = table_permission(ddl.table_capabilities(&table).create_index);
+    step.apply(&mut table, "create index", permission, |draft| {
+        draft.indexes.push(index)
+    })
     .await?;
     let labels = ["first", "second", "third"];
     let inserts = (1..)
@@ -472,13 +470,9 @@ impl Step<'_> {
     ) -> Result<&'static str, ConformanceFailure> {
         let ddl = self.ddl;
         let note = DraftColumn::new("note", DraftType::Typed(text_type.to_owned()));
-        self.apply(
-            table,
-            "add column",
-            table_permission(ddl.capabilities().add_column),
-            |draft| draft.columns.push(note),
-        )
-        .await?;
+        let permission = table_permission(ddl.table_capabilities(table).add_column);
+        self.apply(table, "add column", permission, |draft| draft.columns.push(note))
+            .await?;
 
         let permission = column_permission(ddl, table, "note", |permissions| permissions.rename);
         self.apply(table, "rename column", permission, |draft| {
@@ -518,13 +512,9 @@ impl Step<'_> {
             primary: false,
             predicate: None,
         };
-        self.apply(
-            table,
-            "create index",
-            table_permission(self.ddl.capabilities().create_index),
-            |draft| draft.indexes.push(index),
-        )
-        .await?;
+        let permission = table_permission(self.ddl.table_capabilities(table).create_index);
+        self.apply(table, "create index", permission, |draft| draft.indexes.push(index))
+            .await?;
         Ok(())
     }
 
@@ -548,13 +538,11 @@ impl Step<'_> {
             on_update: None,
         };
         let key_name = key.name.clone();
+        let permission = table_permission(self.ddl.table_capabilities(&child_table).add_foreign_key);
         let added = self
-            .apply(
-                &mut child_table,
-                "add foreign key",
-                table_permission(self.ddl.capabilities().add_foreign_key),
-                |draft| draft.foreign_keys.push(key),
-            )
+            .apply(&mut child_table, "add foreign key", permission, |draft| {
+                draft.foreign_keys.push(key)
+            })
             .await?;
         if !added {
             return Ok(());
@@ -579,13 +567,9 @@ impl Step<'_> {
     ) -> Result<TableRef, ConformanceFailure> {
         let renamed = TableRef::new(parent.schema.clone(), unique("ddl_renamed"));
         let new_name = renamed.name.clone();
+        let permission = table_permission(self.ddl.table_capabilities(table).rename_table);
         let moved = self
-            .apply(
-                table,
-                "rename table",
-                table_permission(self.ddl.capabilities().rename_table),
-                |draft| draft.table.name = new_name,
-            )
+            .apply(table, "rename table", permission, |draft| draft.table.name = new_name)
             .await?;
         if !moved {
             return Ok(parent);

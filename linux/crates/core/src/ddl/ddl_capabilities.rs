@@ -19,6 +19,9 @@ pub struct DdlCapabilities {
     pub create_index: bool,
     pub drop_index: bool,
     pub expression_index_keys: bool,
+    /// Whether an index keeps a key in descending order. DuckDB takes
+    /// `DESC` in CREATE INDEX and drops it.
+    pub descending_index_keys: bool,
     pub partial_indexes: bool,
     pub add_foreign_key: bool,
     pub drop_foreign_key: bool,

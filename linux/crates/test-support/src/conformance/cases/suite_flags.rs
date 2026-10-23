@@ -13,7 +13,7 @@ pub fn suite_flags_match_driver_capabilities<E: ConformanceEngine>(
     let capabilities = E::driver().capabilities();
     let endpoint = match capabilities.endpoint {
         EndpointKind::Network { .. } => SuiteEndpoint::Network,
-        EndpointKind::File => SuiteEndpoint::File,
+        EndpointKind::File(_) => SuiteEndpoint::File,
     };
     expect(CASE, flags.endpoint == endpoint, || {
         format!(

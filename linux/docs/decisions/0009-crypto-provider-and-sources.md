@@ -1,6 +1,6 @@
 # 0009: One crypto provider, upstream sources and dependency bans
 
-- **Status**: Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by [0016](0016-driver-contract-v2.md)
+- **Status**: Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by [0016](0016-driver-contract-v2.md), the ring ban amended by [0021](0021-bundled-duckdb.md)
 - **Date**: 2026-09-15
 
 ## Context

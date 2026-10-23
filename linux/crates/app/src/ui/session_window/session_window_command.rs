@@ -34,7 +34,7 @@ pub(crate) struct Connected {
 pub(crate) enum AttemptError {
     /// The user stopped it, which needs no error.
     Cancelled,
-    /// The database file is on a filesystem whose locking SQLite cannot
+    /// The database file is on a filesystem whose locking the engines cannot
     /// trust, so the user is asked how to open it first.
     AskLocation(crate::services::file_location::FileLocationKind),
     Failed(ConnectFailure),

@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to six engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, SQLite and DuckDB. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -18,6 +18,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| DuckDB | 1.5.6, compiled into the app ([ADR 0021](docs/decisions/0021-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
@@ -47,7 +48,7 @@ apt and dnf, and Software Updater and GNOME Software with them, install the upda
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
 
 ## Stack
 
@@ -57,7 +58,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
-| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server) and the official `clickhouse` crate, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
+| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
 | SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
 | TLS | rustls with aws-lc-rs as the only crypto provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)) |
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
@@ -83,7 +84,7 @@ System dependencies:
 sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev clang libclang-dev openssh-client
 
 # Fedora 44
-sudo dnf install -y gcc pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
+sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
 
 # Arch (not covered by CI)
 sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 clang openssh
@@ -141,6 +142,10 @@ Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). 
 link the system SQLite through sqlx's `sqlite-unbundled` feature rather
 than compiling a second copy into the binary. `libclang-dev` lets
 `libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
+
+A C++ compiler is there for DuckDB, which the `duckdb` crate compiles
+from its own sources: `build-essential` brings g++ on Ubuntu, `gcc-c++`
+on Fedora. The first build of it takes several minutes.
 
 `libkrb5-dev` is there for the app's default `kerberos` feature: SQL
 Server Windows integrated auth links MIT Kerberos and runs bindgen against
@@ -222,19 +227,22 @@ After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag along with
 `data/licenses`.
 
-## Opening SQLite files
+## Opening database files
 
 Once installed, TablePro is in the file manager's **Open With** for
-SQLite databases (`application/vnd.sqlite3`). From a terminal:
+SQLite databases (`application/vnd.sqlite3`). shared-mime-info has no
+type for DuckDB files, so a `.duckdb` file opens from the connect dialog
+or a terminal:
 
 ```bash
-tablepro app.sqlite3
+tablepro app.sqlite3 sales.duckdb
 ```
 
-A running TablePro opens the file in its own window and the new launch
-exits. A file already open brings its window forward. A database on a
-network or FUSE filesystem asks whether to open read-only first, because
-SQLite's locking cannot be trusted there.
+The file's own header picks the engine, whatever its name. A running
+TablePro opens each file in its own window and the new launch exits. A
+file already open brings its window forward. A database on a network or
+FUSE filesystem asks whether to open read-only first, because neither
+engine's locking can be trusted there.
 
 ## SQL Server with Windows integrated auth
 

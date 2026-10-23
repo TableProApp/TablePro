@@ -9,7 +9,7 @@ impl LexicalSettings {
     pub fn default_for(grammar: SqlGrammar) -> Self {
         let backslash_escapes = match grammar {
             SqlGrammar::MySql | SqlGrammar::ClickHouse => true,
-            SqlGrammar::PostgreSql | SqlGrammar::Sqlite | SqlGrammar::MsSql => false,
+            SqlGrammar::PostgreSql | SqlGrammar::Sqlite | SqlGrammar::MsSql | SqlGrammar::DuckDb => false,
         };
         Self { backslash_escapes }
     }
