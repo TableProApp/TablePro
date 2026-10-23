@@ -104,6 +104,9 @@ struct Shown {
     /// The fields or members shown, for a type read by scan: a scan step
     /// can return an entry an earlier one already did.
     seen: Option<HashSet<Vec<u8>>>,
+    /// The bytes read of a string cut at its window, and its length. A
+    /// failed read keeps the cut value on screen, and with it this.
+    cut: Option<(u64, u64)>,
 }
 
 /// Whether a read starts the value again or adds the next window.
@@ -507,20 +510,9 @@ impl Inner {
             next: page.next,
             appending: false,
             seen,
+            cut,
         });
-        match cut {
-            Some((read, total)) => {
-                self.footer.set_label(&crate::i18n::gettext_f(
-                    "Only the first {read} of {total} are read.",
-                    &[
-                        ("read", glib::format_size(read).as_ref()),
-                        ("total", glib::format_size(total).as_ref()),
-                    ],
-                ));
-                self.more.set_visible(false);
-            }
-            None => self.show_footer(page.kind),
-        }
+        self.show_footer(page.kind);
     }
 
     /// The next window, under the rows already shown. A key written over
@@ -564,8 +556,15 @@ impl Inner {
         let Some(shown) = state.shown.as_ref() else {
             return;
         };
-        let text = match kind {
-            KeyKind::String => String::new(),
+        let text = match (kind, shown.cut) {
+            (KeyKind::String, Some((read, total))) => crate::i18n::gettext_f(
+                "Only the first {read} of {total} are read.",
+                &[
+                    ("read", glib::format_size(read).as_ref()),
+                    ("total", glib::format_size(total).as_ref()),
+                ],
+            ),
+            (KeyKind::String, None) => String::new(),
             _ => key_summary::shown_text(shown.rows, shown.length),
         };
         self.footer.set_label(&text);

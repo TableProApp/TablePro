@@ -245,6 +245,33 @@ fn a_field_a_later_scan_step_returns_again_is_shown_once() {
 }
 
 #[gtk4::test]
+fn a_cut_string_still_says_so_after_a_refresh_fails() {
+    let page = KeyPage {
+        kind: KeyKind::String,
+        type_name: "string".to_owned(),
+        ttl: KeyTtl::Persistent,
+        length: Some(4 * 1024 * 1024),
+        rows: QueryResult::new(vec![text_column("value")], vec![vec![Value::Text("x".repeat(1024))]]).truncated(true),
+        next: None,
+    };
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(page)));
+    script
+        .read_key
+        .always(FakeReply::err(tablepro_core::DriverError::server("busy")));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 1).expect("the string's first megabyte");
+    let cut = tab.footer_text();
+    assert!(cut.starts_with("Only the first"), "{cut}");
+
+    tab.refresh();
+
+    wait_until(WAIT, || !tab.is_loading()).expect("the refresh to fail");
+    assert_eq!(tab.rows(), 1, "the failure dropped the value shown");
+    assert_eq!(tab.footer_text(), cut);
+}
+
+#[gtk4::test]
 fn a_module_type_is_named_and_left_to_the_editor() {
     let mut script = ConnectionScript::default();
     script.read_key.always(FakeReply::ok(Some(KeyPage {
