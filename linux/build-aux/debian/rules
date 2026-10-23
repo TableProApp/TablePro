@@ -25,7 +25,10 @@ export CARGO_PROFILE_RELEASE_LTO = thin
 # The release profile carries no debug info, which leaves the dbgsym
 # package empty; line tables are enough to symbolize a backtrace.
 export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+# Ubuntu compiles C and C++ into fat LTO objects by default, which double
+# what DuckDB's C++ build writes and the memory each of its translation
+# units takes; rustc links without -flto, so their GIMPLE half goes unused.
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
 
 %:
 	dh $@ --buildsystem=meson

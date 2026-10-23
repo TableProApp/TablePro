@@ -6,6 +6,10 @@
 # module, and its unit test build passed 7 GB that way. Cargo's release
 # default of 16 splits the work, and thin LTO still optimizes across it.
 %global rustflags_codegen_units 16
+# Fedora compiles C and C++ into fat LTO objects, which double what
+# DuckDB's C++ build writes and the memory each of its translation units
+# takes; rustc links without -flto, so their GIMPLE half goes unused.
+%global _lto_cflags %{nil}
 
 %bcond check 1
 
