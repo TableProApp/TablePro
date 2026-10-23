@@ -562,6 +562,25 @@ fn each_schema_heading_shows_its_er_diagram() {
 }
 
 #[gtk4::test]
+fn a_heading_of_collections_offers_no_er_diagram() {
+    let shown = Shown::new(
+        &["orders"],
+        SidebarAffordances {
+            can_create_table: false,
+            can_edit_structure: false,
+            speaks_sql: false,
+            ..every_affordance()
+        },
+    );
+    wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("a section header");
+
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .expect("the heading's ER Diagram button");
+
+    assert!(!button.is_visible(), "documents have no keys to draw");
+}
+
+#[gtk4::test]
 fn a_heading_of_keys_offers_no_er_diagram() {
     let shown = Shown::new(&[], every_affordance());
     shown.view.hold_keys();
