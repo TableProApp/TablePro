@@ -4,7 +4,7 @@ These rules apply to every coding agent and every contributor. `CLAUDE.md` point
 
 ## Project
 
-**BookiE** is a Linux-only native database client (formerly TablePro on this branch). The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). Work happens on the `linux` branch in the Rust 1.98 Cargo workspace at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`).
+**BookiE** is a Linux-only native database client. The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). Work happens on the `linux` branch in the Rust 1.98 Cargo workspace at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`).
 
 - The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names stay `tablepro-*`. Check the sprint before renaming any of them.
 - The UI uses GTK4, libadwaita, GtkSourceView and Relm4. Database drivers are static workspace crates registered at compile time. No cross-platform UI layers, web views or source for another operating system.
