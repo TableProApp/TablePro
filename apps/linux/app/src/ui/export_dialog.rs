@@ -297,6 +297,7 @@ fn present_export(
         suggested_name,
         driver_id,
     } = request;
+    let result = std::sync::Arc::new(result);
     let null_marker = if paged.is_some() {
         "\\N".to_string()
     } else {
@@ -453,7 +454,7 @@ struct SaveRequest {
     format: ExportFormat,
     suggested_name: String,
     driver_id: String,
-    result: QueryResult,
+    result: std::sync::Arc<QueryResult>,
     paged: Option<PagedExport>,
     include_header: bool,
     sanitize_formulas: bool,
@@ -525,7 +526,7 @@ fn save_with_file_dialog(parent: &adw::ApplicationWindow, toast_overlay: &adw::T
     });
 }
 
-fn job_source(paged: &Option<PagedExport>, result: &QueryResult) -> file::JobSource {
+fn job_source(paged: &Option<PagedExport>, result: &std::sync::Arc<QueryResult>) -> file::JobSource {
     match paged {
         Some(paged) => file::JobSource::Paged {
             mode: paged.mode,
@@ -559,6 +560,21 @@ fn show_export_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn loaded_export_keeps_the_existing_row_allocation() {
+        let result = std::sync::Arc::new(QueryResult {
+            columns: Vec::new(),
+            rows: vec![vec![tablepro_core::Value::Text("exact export value".into())]],
+            truncated: true,
+        });
+        let file::JobSource::Loaded(loaded) = job_source(&None, &result) else {
+            panic!("expected loaded export");
+        };
+        assert_eq!(loaded.rows.as_ptr(), result.rows.as_ptr());
+        assert_eq!(loaded.rows, result.rows);
+        assert!(loaded.truncated);
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

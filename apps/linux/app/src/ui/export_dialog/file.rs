@@ -8,7 +8,7 @@ use tablepro_core::export::{CsvOptions, ExportError, ResultExport, ResultFormat,
 use tokio_util::sync::CancellationToken;
 
 pub(super) enum JobSource {
-    Loaded(tablepro_core::QueryResult),
+    Loaded(Arc<tablepro_core::QueryResult>),
     Paged {
         mode: super::PagedExportMode,
         columns: Vec<tablepro_core::ColumnInfo>,
@@ -255,7 +255,7 @@ mod tests {
     fn a_loaded_result_still_exports_successfully() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("result.csv");
-        let source = JobSource::Loaded(tablepro_core::QueryResult {
+        let source = JobSource::Loaded(Arc::new(tablepro_core::QueryResult {
             columns: vec![tablepro_core::ColumnInfo {
                 name: "label".into(),
                 data_type: "text".into(),
@@ -271,7 +271,7 @@ mod tests {
             }],
             rows: vec![vec![tablepro_core::Value::Text("hello, export".into())]],
             truncated: false,
-        });
+        }));
         write_export(
             job(path.clone(), source),
             &CancellationToken::new(),
