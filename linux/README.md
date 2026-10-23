@@ -289,7 +289,7 @@ Read Only stops statements that write. A function the connection's login may cal
 
 A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
 
-The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. A result set stops at 1,000 rows and a statement at 300 seconds.
+The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. An answer keeps at most 20 result sets of 1,000 rows each, and a statement stops at 300 seconds.
 
 ## Documentation index
 

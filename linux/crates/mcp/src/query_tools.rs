@@ -84,7 +84,9 @@ pub async fn execute_query(
             let (executed_at, started) = (SystemTime::now(), Instant::now());
             let ran = run_write(&session, &text, limit, timeout, &cancel).await;
             let elapsed = started.elapsed();
-            if ran.is_ok() && changes_catalog(&text, grammar) {
+            // A batch that fails after its DDL committed still changed
+            // the catalog.
+            if changes_catalog(&text, grammar) {
                 refresh_catalog(&session).await;
             }
             (ran, executed_at, elapsed)
@@ -187,10 +189,11 @@ async fn run_write(session: &Session, text: &str, limit: usize, timeout: Duratio
     let state = Arc::new(Mutex::new(CollectedResults::default()));
     let sink = ResultCollector::new(state.clone(), limit, false);
     let stop = cancel.child_token();
-    // The editor's limit, not the answer's: a driver that stops fetching
-    // at the limit would also stop a statement's side effects there.
+    // What the user approved runs to its end. A driver stops fetching at
+    // the limit, and with it a statement's side effects; the answer keeps
+    // only `limit` rows either way.
     let run = RunOptions::new(stop.clone())
-        .with_row_limit(RowLimit::EDITOR_DEFAULT)
+        .with_row_limit(RowLimit::LARGEST)
         .with_deadline(Some(timeout));
     // The window's teardown closes only its own editor sessions, so this
     // one stops when the session does, as an editor tab's run would.
