@@ -1,0 +1,282 @@
+[
+  {
+    "number": 1428,
+    "title": "ci: gate refreshed GTK and resource fixes",
+    "headRefName": "ux/ci-resource-train-refresh-20261022",
+    "headRefOid": "4234d1f0638aefdfeccf550549318014e80eb5bd",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1427,
+    "title": "test(app): cover the open-transaction prompt when switching connection",
+    "headRefName": "ux/switch-with-open-transaction-scenario",
+    "headRefOid": "34971853973ebb2e94fc4e2c0a5c2c6ca3a58ed5",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1424,
+    "title": "feat(app): show how long the editor session's transaction has been open",
+    "headRefName": "ux/open-transaction-age",
+    "headRefOid": "5055a76b78b75a5da0190a752028c4753b15c62f",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1422,
+    "title": "feat(app): preview the SQL that saving pending grid edits would run",
+    "headRefName": "ux/pending-edit-sql-preview",
+    "headRefOid": "e076bd4812f913481caa74b9d47ca277a053d672",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1421,
+    "title": "feat(app): reset remembered column widths from the Columns dialog",
+    "headRefName": "ux/reset-column-widths",
+    "headRefOid": "1e47e841edcd14d76831de99bc5f1830851073ee",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1418,
+    "title": "fix(ci): collect dispatched checks at the pinned PR head",
+    "headRefName": "ci/train-dispatched-check-results",
+    "headRefOid": "da18a1fb9a94f792e25a0c7a5ca178fdc1f61d57",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1414,
+    "title": "test(app): recognize dialog titles across GTK versions",
+    "headRefName": "fix/columns-menu-test-target",
+    "headRefOid": "68103e147e8550fa039a8267f4df0961a01ae41c",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1412,
+    "title": "fix(app): trim pasted spaces around connection hosts",
+    "headRefName": "ux/trim-host-database",
+    "headRefOid": "c005bf8f038576016f2ae1b5b5b278dc6d00d09b",
+    "isDraft": true,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1411,
+    "title": "fix(app): avoid a nested schema index borrow on identity change",
+    "headRefName": "ux/schema-index-double-borrow",
+    "headRefOid": "8fcf75d5f7ae796a5790dfaf7c7e993dfcc1237f",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1410,
+    "title": "fix(app): give the main window a minimum size",
+    "headRefName": "ux/window-minimum-size",
+    "headRefOid": "4785445f20336d5a35c34a592da1bd12b2cb5ca5",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1409,
+    "title": "fix(app): keep the catalog kind dropdown at a steady width",
+    "headRefName": "ux/catalog-kind-width",
+    "headRefOid": "5887d1d5edd6ae0399972da8a74d3cb6902d80c6",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1408,
+    "title": "fix(driver-postgres): show a VOID result as an empty value",
+    "headRefName": "ux/pg-void-empty",
+    "headRefOid": "f3725fb949d3414738a644b4e816d8c4f7557e30",
+    "isDraft": true,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1405,
+    "title": "ci: gate database catalog and destructive DDL fixes",
+    "headRefName": "ux/database-correctness-train",
+    "headRefOid": "80abdcbc10d63e3bf3cff1fa5fbc98a0fbdc3fae",
+    "isDraft": true,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1400,
+    "title": "ci: gate GTK correctness fixes and keyboard regression coverage",
+    "headRefName": "ux/gtk-correctness-train-1397-1398-1380",
+    "headRefOid": "ae62c557b400b3a2ce2ebaebfaaad00550519edc",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1398,
+    "title": "fix(ci): scope GTK probes to their owned application",
+    "headRefName": "ux/owned-gtk-process",
+    "headRefOid": "fda5849feca32970a3881ae3f080107edb8392ad",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1397,
+    "title": "fix(app): initialize GtkSourceView before building source widgets",
+    "headRefName": "ux/completion-popup-size",
+    "headRefOid": "957e980c170f7e6fcb8ac0a858aa101828b3d9a8",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1390,
+    "title": "feat(app): navigate SQL errors to their original statement",
+    "headRefName": "ux/editor-error-navigation",
+    "headRefOid": "0e6ede28d79f1a37d9997d136b14ddaaba84478f",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1384,
+    "title": "fix(postgres): resolve bare table names through the whole search_path",
+    "headRefName": "ux/bare-name-search-path",
+    "headRefOid": "ae14142a7a4a188e307a4fce705875e8612d08ed",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1381,
+    "title": "feat(app): export all loaded rows of a filtered result, and cover local filtering in GTK",
+    "headRefName": "ux/local-filter-scenarios",
+    "headRefOid": "4570f658538f90ed4de4ed028b46ba219af8ebd8",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1380,
+    "title": "test(app): keyboard-path registry for the SQL editor, and F10 for the main menu",
+    "headRefName": "ux/keyboard-path-registry",
+    "headRefOid": "c1300345413ebfcaddbfab7f4baf943ac6c9d8ec",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1379,
+    "title": "fix(driver-sqlite): refuse dropping a referenced table in an attached database",
+    "headRefName": "b3/sqlite-attached-drop",
+    "headRefOid": "e4b884e827559e7084b0efaad3beb508ff863333",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1378,
+    "title": "feat(app): add a read-only Audit Log viewer",
+    "headRefName": "ux/audit-viewer",
+    "headRefOid": "4c70e46e2ff7c3233b1794327dfcb1f061b2ecdf",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1376,
+    "title": "fix(drivers): list expression indexes and refuse to rebuild them as column indexes",
+    "headRefName": "b3/mysql-functional-index",
+    "headRefOid": "bdff2860dc1f6a507540f840e039ab87729d51de",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1375,
+    "title": "fix(app): keep the saved workspace per database",
+    "headRefName": "ux/workspace-per-database",
+    "headRefOid": "4473bff1caf602a669384572bcd0f6594924c3db",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1374,
+    "title": "feat(app): add an owned results and errors panel",
+    "headRefName": "ux/editor-bottom-panel",
+    "headRefOid": "1db4ab1fc754488154020d3525624c31a3809e88",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1372,
+    "title": "perf(app): avoid full row copies when showing inspector previews",
+    "headRefName": "perf/inspector-borrowed-preview",
+    "headRefOid": "567882cd7020fd63a7c93f30de9d86e7d8d03016",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1369,
+    "title": "perf(app): avoid copying selected payloads for numeric statistics",
+    "headRefName": "perf/selection-statistics",
+    "headRefOid": "93eccf269451d9b6e05b863a8b812cbf3249c766",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1367,
+    "title": "feat(app): add a Copy Token button to the MCP token dialog",
+    "headRefName": "ux/copy-mcp-token",
+    "headRefOid": "d8d2909d8d03322b1c7646806a7b2977bdc88ed8",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1363,
+    "title": "feat(app): expose editor, sidebar and export workflows",
+    "headRefName": "ux/visible-workflows",
+    "headRefOid": "05cda23b938b503d98428264c82fca4f8e74b2f0",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1361,
+    "title": "feat(app): run the selected text when the editor has a selection",
+    "headRefName": "ux/run-selection",
+    "headRefOid": "e063c3475af7591fdeb30a47be5099e4c806c189",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1352,
+    "title": "feat(app): add selectable colour themes in Preferences",
+    "headRefName": "ux/themes",
+    "headRefOid": "c9a32e707921389f10675adda4ac5ac2ca969e3d",
+    "isDraft": false,
+    "mergeable": "MERGEABLE"
+  },
+  {
+    "number": 1346,
+    "title": "fix(app): keep the sidebar closed in a narrow window and add a Show tables button",
+    "headRefName": "ux/narrow-sidebar-overlay",
+    "headRefOid": "9596df89c4026263b1e29cb309f508098233a428",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1340,
+    "title": "fix(app): confirm saved connection removal once",
+    "headRefName": "fix/saved-connection-confirmation",
+    "headRefOid": "40e58ce1600b12e1244078ea406d015ffd5f9923",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1338,
+    "title": "fix(app): keep saved connection rows readable at narrow widths",
+    "headRefName": "ux/connection-cards",
+    "headRefOid": "10f2e4af13a1bfa259fd53c76899891425ece54b",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  },
+  {
+    "number": 1334,
+    "title": "docs: record repeated wide-result profiling",
+    "headRefName": "docs/resource-repeat-profile",
+    "headRefOid": "cafa14bbcad8d9f8683d3ccd018109f152ce8f5a",
+    "isDraft": false,
+    "mergeable": "CONFLICTING"
+  }
+]
