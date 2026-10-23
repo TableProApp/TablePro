@@ -88,12 +88,16 @@ pub fn driver_message(error: &DriverError) -> String {
 fn save_failure_message(error: &DriverError) -> String {
     match error {
         DriverError::Transaction {
+            statement_index: 0,
+            source,
+        } if matches!(source.as_ref(), DriverError::ConcurrentModification) => driver_message(source),
+        DriverError::Transaction {
             statement_index,
             source,
         } => {
             crate::tr!("Save failed at statement {n}: {error}. The rollback request succeeded; session state and other non-transactional side effects may remain.")
                 .replace("{n}", &(statement_index + 1).to_string())
-                .replace("{error}", &driver_message(source))
+                .replace("{error}", driver_message(source).trim_end_matches('.'))
         }
         DriverError::PartiallyApplied {
             statement_index,
@@ -102,7 +106,7 @@ fn save_failure_message(error: &DriverError) -> String {
             "Save failed at statement {n}: {error}. This database cannot roll a save back, so the statements before it were applied. Refresh the table before saving again."
         )
         .replace("{n}", &(statement_index + 1).to_string())
-        .replace("{error}", &driver_message(source)),
+        .replace("{error}", driver_message(source).trim_end_matches('.')),
         DriverError::TransactionRollbackFailed {
             statement_index,
             source,
@@ -111,8 +115,8 @@ fn save_failure_message(error: &DriverError) -> String {
             "Save failed at statement {n}: {error}. Rollback also failed: {rollback_error}. Database changes may have been applied."
         )
         .replace("{n}", &(statement_index + 1).to_string())
-        .replace("{error}", &driver_message(source))
-        .replace("{rollback_error}", &driver_message(rollback_error)),
+        .replace("{error}", driver_message(source).trim_end_matches('.'))
+        .replace("{rollback_error}", driver_message(rollback_error).trim_end_matches('.')),
         other => driver_message(other),
     }
 }
@@ -178,6 +182,51 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_first_statement_conflict_keeps_the_recovery_advice_without_a_save_wrapper() {
+        let message = driver_message(&DriverError::Transaction {
+            statement_index: 0,
+            source: Box::new(DriverError::ConcurrentModification),
+        });
+
+        assert_eq!(message, driver_message(&DriverError::ConcurrentModification));
+    }
+
+    #[test]
+    fn a_later_conflict_keeps_the_transaction_side_effect_warning() {
+        let message = driver_message(&DriverError::Transaction {
+            statement_index: 1,
+            source: Box::new(DriverError::ConcurrentModification),
+        });
+
+        assert!(message.contains("statement 2"));
+        assert!(message.contains("non-transactional side effects may remain"));
+    }
+
+    #[test]
+    fn save_error_wrappers_do_not_duplicate_sentence_endings() {
+        let errors = [
+            DriverError::Transaction {
+                statement_index: 1,
+                source: Box::new(DriverError::ReadOnly),
+            },
+            DriverError::PartiallyApplied {
+                statement_index: 1,
+                source: Box::new(DriverError::ConcurrentModification),
+            },
+            DriverError::TransactionRollbackFailed {
+                statement_index: 0,
+                source: Box::new(DriverError::ConcurrentModification),
+                rollback_error: Box::new(DriverError::TimedOut),
+            },
+        ];
+
+        for error in errors {
+            let message = driver_message(&error);
+            assert!(!message.contains(".."), "{message}");
+        }
+    }
 
     #[test]
     fn build_sql_messages_have_actionable_advice() {

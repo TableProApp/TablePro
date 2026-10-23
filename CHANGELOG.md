@@ -55,6 +55,7 @@
 
 ### Fixed
 
+- Save-conflict messages keep the recovery advice without a redundant failure prefix or unrelated session warning, and save errors no longer double sentence-ending periods.
 - Restoring older workspaces skips empty table-structure tabs while keeping the active editor aligned and the empty workspace usable.
 
 - Export cleanup warnings omit database error details that could contain private query text or values.
