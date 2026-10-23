@@ -370,7 +370,8 @@ async fn view_row(link: &CqlLink, table: &CatalogTable) -> Result<Option<ViewRow
 
 /// The options a CREATE statement sets, in the order cqlsh's DESCRIBE
 /// writes them. A release keeps only some of them; the rest are left
-/// out.
+/// out, and so are the read repair chances Cassandra 4.0 dropped from
+/// CREATE but still lists in its schema table.
 const TABLE_OPTIONS: &[&str] = &[
     "additional_write_policy",
     "allow_auto_snapshot",
@@ -396,7 +397,7 @@ const TABLE_OPTIONS: &[&str] = &[
 
 /// The table's or view's options as `name = literal`, from its row in
 /// the schema table, whose columns differ between releases.
-async fn options(link: &CqlLink, table: &CatalogTable, view: bool) -> Result<Vec<String>, DriverError> {
+async fn options(link: &CqlLink, table: &CatalogTable, view: bool, scylla: bool) -> Result<Vec<String>, DriverError> {
     let sql = match view {
         true => "SELECT * FROM system_schema.views WHERE keyspace_name = ? AND view_name = ?",
         false => "SELECT * FROM system_schema.tables WHERE keyspace_name = ? AND table_name = ?",
@@ -410,10 +411,13 @@ async fn options(link: &CqlLink, table: &CatalogTable, view: bool) -> Result<Vec
     let Some(row) = rows.maybe_first_row::<Row>().map_err(rows_error)? else {
         return Ok(Vec::new());
     };
-    Ok(written_options(&names, row.columns))
+    Ok(written_options(&names, row.columns, scylla))
 }
 
-fn written_options(names: &[String], values: Vec<Option<CqlValue>>) -> Vec<String> {
+/// ScyllaDB still takes the read repair chances.
+const SCYLLA_ONLY_OPTIONS: &[&str] = &["dclocal_read_repair_chance", "read_repair_chance"];
+
+fn written_options(names: &[String], values: Vec<Option<CqlValue>>, scylla: bool) -> Vec<String> {
     let by_name: HashMap<&str, CqlValue> = names
         .iter()
         .map(String::as_str)
@@ -422,6 +426,7 @@ fn written_options(names: &[String], values: Vec<Option<CqlValue>>) -> Vec<Strin
         .collect();
     TABLE_OPTIONS
         .iter()
+        .filter(|option| scylla || !SCYLLA_ONLY_OPTIONS.contains(option))
         .filter_map(|option| Some(format!("{option} = {}", literal(by_name.get(option)?)?)))
         .collect()
 }
@@ -430,6 +435,7 @@ pub(crate) async fn fetch_table_definition(
     link: &CqlLink,
     table_ref: &TableRef,
     table: &CatalogTable,
+    scylla: bool,
 ) -> Result<TableDefinition, DriverError> {
     let columns = column_rows(link, table).await?;
     let view = view_row(link, table).await?;
@@ -437,7 +443,7 @@ pub(crate) async fn fetch_table_definition(
         Some(_) => Vec::new(),
         None => index_rows(link, table).await?,
     };
-    let options = options(link, table, view.is_some()).await?;
+    let options = options(link, table, view.is_some(), scylla).await?;
     let create_statement = match &view {
         Some(view) => create_view(table, view, &columns, &options),
         None => create_table(table, &columns, &options),
@@ -677,24 +683,42 @@ mod tests {
 
     #[test]
     fn options_are_written_in_describes_order_and_only_where_the_release_keeps_them() {
-        let names: Vec<String> = ["keyspace_name", "default_time_to_live", "caching", "comment", "flags"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-        let values = vec![
-            Some(CqlValue::Text("shop".to_owned())),
-            Some(CqlValue::Int(86_400)),
-            Some(CqlValue::Map(vec![(
-                CqlValue::Text("keys".to_owned()),
-                CqlValue::Text("ALL".to_owned()),
-            )])),
-            None,
-            Some(CqlValue::Set(vec![CqlValue::Text("compound".to_owned())])),
-        ];
+        let names: Vec<String> = [
+            "keyspace_name",
+            "default_time_to_live",
+            "caching",
+            "comment",
+            "flags",
+            "read_repair_chance",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        let values = || {
+            vec![
+                Some(CqlValue::Text("shop".to_owned())),
+                Some(CqlValue::Int(86_400)),
+                Some(CqlValue::Map(vec![(
+                    CqlValue::Text("keys".to_owned()),
+                    CqlValue::Text("ALL".to_owned()),
+                )])),
+                None,
+                Some(CqlValue::Set(vec![CqlValue::Text("compound".to_owned())])),
+                Some(CqlValue::Double(0.0)),
+            ]
+        };
 
         assert_eq!(
-            written_options(&names, values),
+            written_options(&names, values(), false),
             ["caching = {'keys': 'ALL'}", "default_time_to_live = 86400"]
+        );
+        assert_eq!(
+            written_options(&names, values(), true),
+            [
+                "caching = {'keys': 'ALL'}",
+                "default_time_to_live = 86400",
+                "read_repair_chance = 0.0"
+            ]
         );
     }
 

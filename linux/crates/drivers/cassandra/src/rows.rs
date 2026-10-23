@@ -19,6 +19,10 @@ use crate::session::CqlLink;
 /// response held whole in memory.
 pub(crate) const MAX_PAGE_ROWS: u64 = 5_000;
 
+/// The most rows a page skipped on the way to an offset asks for. Its
+/// rows are never decoded, so fewer round trips cost little memory.
+const SKIP_PAGE_ROWS: u64 = 20_000;
+
 /// What a result's metadata says about each column.
 #[derive(Debug, Clone)]
 pub(crate) struct ColumnsRead {
@@ -111,7 +115,7 @@ pub(crate) async fn server_page(
     loop {
         let wanted = match skip {
             0 => (limit - kept.len() as u64).min(MAX_PAGE_ROWS),
-            _ => skip.min(MAX_PAGE_ROWS),
+            _ => skip.min(SKIP_PAGE_ROWS),
         };
         let (result, response) = stoppable(stop, link.page(statement, page_size(wanted), state)).await?;
         let rows = result

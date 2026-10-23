@@ -292,8 +292,9 @@ impl Connection for CqlConnection {
     ) -> Result<TableDefinition, DriverError> {
         let catalog_table = self.catalog_table(table)?;
         let table = table.clone();
+        let scylla = self.dialect.is_scylla();
         self.read(options, move |link, _| async move {
-            catalog::fetch_table_definition(&link, &table, &catalog_table).await
+            catalog::fetch_table_definition(&link, &table, &catalog_table, scylla).await
         })
         .await
     }

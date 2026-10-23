@@ -47,10 +47,6 @@ const WALK_LIMIT: Duration = Duration::from_secs(90);
 /// A page that takes longer than this is a frozen grid.
 const PAGE_LIMIT: Duration = Duration::from_secs(2);
 
-/// How many times the count's time the last page may take where the
-/// server pages a table: it is reached only by reading every row before
-/// it, which the count reads too.
-const SCAN_FACTOR: u32 = 2;
 
 const EXPORT_LIMIT: Duration = Duration::from_secs(90);
 
@@ -188,7 +184,6 @@ async fn export_table(
 fn check_bounds(measured: &Measured) -> Result<(), ConformanceFailure> {
     let Measured {
         walk,
-        count,
         last,
         exported,
         paging_growth,
@@ -200,8 +195,10 @@ fn check_bounds(measured: &Measured) -> Result<(), ConformanceFailure> {
     expect(CASE, walk.slowest <= PAGE_LIMIT, || {
         format!("the slowest page took {:?}, past {PAGE_LIMIT:?}", walk.slowest)
     })?;
+    // Where the server pages, the last page is reached only by reading
+    // every row before it, as the export reads them all.
     let last_limit = match measured.mode {
-        PagingMode::ServerPaging => PAGE_LIMIT.max(*count * SCAN_FACTOR),
+        PagingMode::ServerPaging => PAGE_LIMIT.max(exported.elapsed),
         PagingMode::Keyset | PagingMode::CtidWindow | PagingMode::Offset => PAGE_LIMIT,
     };
     expect(CASE, *last <= last_limit, || {

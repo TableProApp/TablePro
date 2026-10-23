@@ -52,6 +52,10 @@ impl CqlDialect {
         }
     }
 
+    pub(crate) fn is_scylla(&self) -> bool {
+        self.scylla
+    }
+
     fn condition<'a>(&self, condition: &'a str) -> &'a str {
         match self.conditional_writes {
             true => condition,
