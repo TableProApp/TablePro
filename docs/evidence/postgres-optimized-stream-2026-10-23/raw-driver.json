@@ -1,0 +1,6 @@
+{
+  "rows": 2000000,
+  "pages": 401,
+  "elapsed_seconds": 3.367046106,
+  "scope": "raw PostgreSQL driver cursor; no PolicyGuard, GTK, audit or accessibility polling"
+}

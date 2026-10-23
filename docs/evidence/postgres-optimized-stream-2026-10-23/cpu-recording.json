@@ -1,0 +1,10 @@
+{
+  "event": "cpu-clock:u",
+  "frequency_hz": 99,
+  "call_graph": "dwarf,8192",
+  "samples": 6121,
+  "lost_samples": 0,
+  "profiled_probe_sha256": "69e6b250f134aa4a0cec593698fc7c0e4235f80d49172c7d929d16d1b3838047",
+  "raw_perf_data_sha256": "81f7f6c0e96af989441c8bc0da6c66b2c597302e76775a9af1a2f557e2c14115",
+  "raw_perf_data_local_only": "target/quality/postgres-optimized-stream-20261023/cpu.data"
+}

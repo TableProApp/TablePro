@@ -1,0 +1,7 @@
+{
+  "source_head": "12519fa76c0d9bda3f8fb1680faa5fc10b205d1e",
+  "binary_sha256": "b51f0f1ab823cc104811e892280c87993cc83c2b38a2eed88e58492e54c31e26",
+  "source_sha256": "646452de53dc599a57bb1bfe624b753dac4951317fa21cc2c49d42a30fa89236",
+  "profile": "release",
+  "cargo_target": "example; app dev-dependency feature union may differ from the GUI binary"
+}

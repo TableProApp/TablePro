@@ -19,3 +19,23 @@ The largest periodic RSS sample was 231388 KiB. These [measurements](low-poll-me
 The [fixture adaptation](run-fixture.sh) creates and removes its own database and private keyring. Reproduce with TABLEPRO_PROFILE_REPO pointing to the recorded candidate, TABLEPRO_PROFILE_FIXTURE pointing to that adaptation, TABLEPRO_PROFILE_RUNNER using the existing [private runner adaptation](../grid-keyboard-menu-routing-2026-10-23/runner.patch), TABLEPRO_PROFILE_SCRIPT pointing to the selected probe, TABLEPRO_GTK_BINARY pointing to the recorded immutable executable, TABLEPRO_GTK_SCENARIO=profile_postgres_large_stream, TABLEPRO_GTK_SCENARIO_RETRIES=0, TABLEPRO_PROFILE_ROWS=2000000 and TABLEPRO_PROFILE_OUT pointing to an owned result file. The probe's diagnostic record accepts an explicit timeout; completion must be checked separately.
 
 [Build identities](build.json) record the optimized executable, initial probe, fixture and database image. The disposable database and test application from the first run were removed by the fixture cleanup.
+
+## Driver and UI cost isolation
+
+The [raw-driver control](raw-driver.json) used the same generated SELECT through the PostgreSQL driver cursor API, checked all two million row IDs in order, and discarded each page. It completed 401 fetches, including the empty final page, in 3.367 seconds. Process wall time was 3.37 seconds, user CPU 2.19 seconds, system CPU 0.07 seconds and peak RSS 8816 KiB. This excludes PolicyGuard, audit, GTK and accessibility. It does not compare equivalent retention or presentation workloads. The example target also enables app dev-dependency features, which can differ from the GUI binary's feature union.
+
+The [control source](diagnostic_pg_stream.rs), [identity](raw-driver-build.json) and [resource record](raw-driver-resource.txt) are preserved. To reproduce on the recorded candidate, copy the source to apps/linux/app/examples/diagnostic_pg_stream.rs, build with cargo build --release --locked -p tablepro-app --example diagnostic_pg_stream, then run against a disposable loopback-only PostgreSQL fixture with its published port and an owned output path as the two arguments. The diagnostic fixture uses trust authentication and the source permits only 127.0.0.1; it is not a production connection setup.
+
+A separate app run used the same immutable GUI executable and cached-button probe with perf attached only to the owned app process. It timed out at 61.150 seconds after receiving 1425000 rows. The [recording](cpu-recording.json) contains 6121 user CPU-clock samples at 99 Hz, with no reported lost samples. The [instrumented probe](probe-perf.py), [outcome and memory samples](2000000-perf.json), [library distribution](cpu-libraries.txt), [inclusive symbol report](cpu-cumulative.txt) and [recording log](cpu.txt) preserve its scope. Raw perf data is kept locally because stack captures are larger and may contain process data; its hash is recorded.
+
+| Sampled leaf location | Share |
+| --- | ---: |
+| GTK | 25.73% |
+| GObject | 19.05% |
+| GLib | 17.12% |
+| libc on the app main thread | 13.97% |
+| HarfBuzz | 9.07% |
+| Pango | 7.25% |
+| App code on Tokio worker threads | 2.53% |
+
+Inclusive stacks contain gtk_label_set_text at 27.51%, gtk_widget_create_pango_layout at 16.78% and gtk_stack_remove at 8.46%. Inclusive percentages overlap and must not be added. Optimized and system-library symbols leave some frames unresolved. The source still creates a lazy grid for each newly presented stream page. Together, the driver control and app samples make GTK result updates the next investigation target; they do not prove that one function or widget owns the entire slowdown. Compilation overlapped part of the CPU-recorded run, and perf adds overhead, so this is hotspot evidence rather than a controlled timing comparison.

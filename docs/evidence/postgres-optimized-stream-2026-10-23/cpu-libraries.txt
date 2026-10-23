@@ -1,0 +1,26 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 6K of event 'cpu-clock:u'
+# Event count (approx.): 61828282210
+#
+# Overhead  Command          Shared Object                
+# ........  ...............  .............................
+#
+    25.73%  tablepro         libgtk-4.so.1.2400.1         
+    19.05%  tablepro         libgobject-2.0.so.0.9000.1   
+    17.12%  tablepro         libglib-2.0.so.0.9000.1      
+    13.97%  tablepro         libc.so.6                    
+     9.07%  tablepro         libharfbuzz.so.0.61460.0     
+     7.25%  tablepro         libpango-1.0.so.0.5800.2     
+     2.53%  tokio-rt-worker  tablepro                     
+     1.58%  tablepro         tablepro                     
+     0.96%  tokio-rt-worker  libc.so.6                    
+     0.67%  tablepro         libgio-2.0.so.0.9000.1       
+
+
+#
+# (Tip: To record every process run by a user: perf record -u <user>)
+#

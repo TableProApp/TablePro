@@ -1,0 +1,2 @@
+[ perf record: Woken up 201 times to write data ]
+[ perf record: Captured and wrote 49.524 MB $PROFILE/cpu.data (6121 samples) ]

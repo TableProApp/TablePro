@@ -1,0 +1,1258 @@
+{
+  "rows_requested": 2000000,
+  "columns": 6,
+  "terminal_seconds": 61.15003374801017,
+  "terminal_status": "timed_out",
+  "retention_notice": "Received 1425000 rows \u00b7 285 pages\nRetained rows 1405001-1425000. Earlier rows are no longer available.",
+  "polling": "cached Run-button sensitive state every 200ms; no result-tree walk during query",
+  "memory_kib": {
+    "before": [
+      176352,
+      178944
+    ],
+    "complete_settled": [
+      235804,
+      235804
+    ],
+    "after_close_settled": [
+      237044,
+      237044
+    ]
+  },
+  "samples": [
+    {
+      "seconds": 0.75,
+      "memory_kib": [
+        179252,
+        179252
+      ]
+    },
+    {
+      "seconds": 0.951,
+      "memory_kib": [
+        179880,
+        179880
+      ]
+    },
+    {
+      "seconds": 1.29,
+      "memory_kib": [
+        203700,
+        203700
+      ]
+    },
+    {
+      "seconds": 1.734,
+      "memory_kib": [
+        211500,
+        211500
+      ]
+    },
+    {
+      "seconds": 2.109,
+      "memory_kib": [
+        212356,
+        212356
+      ]
+    },
+    {
+      "seconds": 2.503,
+      "memory_kib": [
+        213960,
+        213960
+      ]
+    },
+    {
+      "seconds": 2.902,
+      "memory_kib": [
+        213976,
+        213976
+      ]
+    },
+    {
+      "seconds": 3.169,
+      "memory_kib": [
+        214108,
+        214108
+      ]
+    },
+    {
+      "seconds": 3.416,
+      "memory_kib": [
+        214136,
+        214136
+      ]
+    },
+    {
+      "seconds": 3.668,
+      "memory_kib": [
+        214212,
+        214212
+      ]
+    },
+    {
+      "seconds": 3.937,
+      "memory_kib": [
+        214300,
+        214300
+      ]
+    },
+    {
+      "seconds": 4.23,
+      "memory_kib": [
+        214372,
+        214372
+      ]
+    },
+    {
+      "seconds": 4.481,
+      "memory_kib": [
+        214444,
+        214444
+      ]
+    },
+    {
+      "seconds": 4.736,
+      "memory_kib": [
+        214452,
+        214452
+      ]
+    },
+    {
+      "seconds": 5.065,
+      "memory_kib": [
+        214452,
+        214452
+      ]
+    },
+    {
+      "seconds": 5.486,
+      "memory_kib": [
+        214600,
+        214600
+      ]
+    },
+    {
+      "seconds": 5.907,
+      "memory_kib": [
+        214656,
+        214656
+      ]
+    },
+    {
+      "seconds": 6.306,
+      "memory_kib": [
+        214656,
+        214656
+      ]
+    },
+    {
+      "seconds": 6.721,
+      "memory_kib": [
+        214728,
+        214728
+      ]
+    },
+    {
+      "seconds": 7.0,
+      "memory_kib": [
+        214728,
+        214728
+      ]
+    },
+    {
+      "seconds": 7.256,
+      "memory_kib": [
+        214728,
+        214728
+      ]
+    },
+    {
+      "seconds": 7.505,
+      "memory_kib": [
+        214876,
+        214876
+      ]
+    },
+    {
+      "seconds": 7.728,
+      "memory_kib": [
+        214944,
+        214944
+      ]
+    },
+    {
+      "seconds": 7.956,
+      "memory_kib": [
+        214968,
+        214968
+      ]
+    },
+    {
+      "seconds": 8.162,
+      "memory_kib": [
+        215028,
+        215028
+      ]
+    },
+    {
+      "seconds": 8.366,
+      "memory_kib": [
+        215052,
+        215052
+      ]
+    },
+    {
+      "seconds": 8.575,
+      "memory_kib": [
+        215108,
+        215108
+      ]
+    },
+    {
+      "seconds": 8.961,
+      "memory_kib": [
+        215220,
+        215220
+      ]
+    },
+    {
+      "seconds": 9.347,
+      "memory_kib": [
+        215276,
+        215276
+      ]
+    },
+    {
+      "seconds": 9.726,
+      "memory_kib": [
+        216140,
+        216140
+      ]
+    },
+    {
+      "seconds": 10.169,
+      "memory_kib": [
+        218648,
+        218648
+      ]
+    },
+    {
+      "seconds": 10.563,
+      "memory_kib": [
+        218684,
+        218684
+      ]
+    },
+    {
+      "seconds": 10.956,
+      "memory_kib": [
+        218684,
+        218684
+      ]
+    },
+    {
+      "seconds": 11.354,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 11.756,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 12.158,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 12.569,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 12.968,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 13.364,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 13.758,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 14.152,
+      "memory_kib": [
+        218704,
+        218704
+      ]
+    },
+    {
+      "seconds": 14.531,
+      "memory_kib": [
+        220504,
+        220504
+      ]
+    },
+    {
+      "seconds": 14.93,
+      "memory_kib": [
+        220504,
+        220504
+      ]
+    },
+    {
+      "seconds": 15.332,
+      "memory_kib": [
+        220504,
+        220504
+      ]
+    },
+    {
+      "seconds": 15.785,
+      "memory_kib": [
+        220504,
+        220504
+      ]
+    },
+    {
+      "seconds": 16.107,
+      "memory_kib": [
+        220504,
+        220504
+      ]
+    },
+    {
+      "seconds": 16.38,
+      "memory_kib": [
+        220456,
+        220456
+      ]
+    },
+    {
+      "seconds": 16.663,
+      "memory_kib": [
+        220456,
+        220456
+      ]
+    },
+    {
+      "seconds": 16.93,
+      "memory_kib": [
+        220488,
+        220488
+      ]
+    },
+    {
+      "seconds": 17.182,
+      "memory_kib": [
+        220488,
+        220488
+      ]
+    },
+    {
+      "seconds": 17.482,
+      "memory_kib": [
+        220488,
+        220488
+      ]
+    },
+    {
+      "seconds": 17.883,
+      "memory_kib": [
+        220516,
+        220516
+      ]
+    },
+    {
+      "seconds": 18.291,
+      "memory_kib": [
+        220516,
+        220516
+      ]
+    },
+    {
+      "seconds": 18.726,
+      "memory_kib": [
+        220552,
+        220552
+      ]
+    },
+    {
+      "seconds": 19.152,
+      "memory_kib": [
+        220552,
+        220552
+      ]
+    },
+    {
+      "seconds": 19.569,
+      "memory_kib": [
+        220552,
+        220552
+      ]
+    },
+    {
+      "seconds": 19.981,
+      "memory_kib": [
+        220552,
+        220552
+      ]
+    },
+    {
+      "seconds": 20.218,
+      "memory_kib": [
+        220552,
+        220552
+      ]
+    },
+    {
+      "seconds": 20.447,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 20.702,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 20.965,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 21.189,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 21.402,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 21.615,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 21.824,
+      "memory_kib": [
+        220580,
+        220580
+      ]
+    },
+    {
+      "seconds": 22.033,
+      "memory_kib": [
+        221244,
+        221244
+      ]
+    },
+    {
+      "seconds": 22.255,
+      "memory_kib": [
+        221916,
+        221916
+      ]
+    },
+    {
+      "seconds": 22.635,
+      "memory_kib": [
+        223524,
+        223524
+      ]
+    },
+    {
+      "seconds": 22.982,
+      "memory_kib": [
+        223524,
+        223524
+      ]
+    },
+    {
+      "seconds": 23.327,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 23.673,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 24.007,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 24.348,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 24.55,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 24.905,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 25.246,
+      "memory_kib": [
+        223532,
+        223532
+      ]
+    },
+    {
+      "seconds": 25.586,
+      "memory_kib": [
+        225388,
+        225388
+      ]
+    },
+    {
+      "seconds": 25.934,
+      "memory_kib": [
+        225388,
+        225388
+      ]
+    },
+    {
+      "seconds": 26.27,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 26.616,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 26.956,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 27.335,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 27.677,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 28.022,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 28.362,
+      "memory_kib": [
+        225856,
+        225856
+      ]
+    },
+    {
+      "seconds": 28.719,
+      "memory_kib": [
+        227276,
+        227276
+      ]
+    },
+    {
+      "seconds": 29.065,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 29.4,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 29.741,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 30.078,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 30.427,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 30.769,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 31.118,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 31.479,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 31.816,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 32.176,
+      "memory_kib": [
+        227284,
+        227284
+      ]
+    },
+    {
+      "seconds": 32.552,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 32.759,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 33.104,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 33.454,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 33.834,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 34.205,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 34.549,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 34.924,
+      "memory_kib": [
+        227292,
+        227292
+      ]
+    },
+    {
+      "seconds": 35.301,
+      "memory_kib": [
+        227296,
+        227296
+      ]
+    },
+    {
+      "seconds": 35.666,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 36.03,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 36.398,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 36.765,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 37.132,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 37.498,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 37.862,
+      "memory_kib": [
+        227316,
+        227316
+      ]
+    },
+    {
+      "seconds": 38.236,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 38.594,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 38.967,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 39.334,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 39.701,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 40.075,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 40.443,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 40.81,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 41.179,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 41.54,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 41.904,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 42.269,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 42.631,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 43.001,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 43.366,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 43.728,
+      "memory_kib": [
+        227360,
+        227360
+      ]
+    },
+    {
+      "seconds": 44.095,
+      "memory_kib": [
+        227492,
+        227492
+      ]
+    },
+    {
+      "seconds": 44.464,
+      "memory_kib": [
+        227492,
+        227492
+      ]
+    },
+    {
+      "seconds": 44.848,
+      "memory_kib": [
+        227492,
+        227492
+      ]
+    },
+    {
+      "seconds": 45.218,
+      "memory_kib": [
+        227492,
+        227492
+      ]
+    },
+    {
+      "seconds": 45.593,
+      "memory_kib": [
+        227496,
+        227496
+      ]
+    },
+    {
+      "seconds": 45.966,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 46.332,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 46.706,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 47.07,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 47.447,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 47.833,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 48.212,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 48.58,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 48.949,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 49.152,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 49.526,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 49.909,
+      "memory_kib": [
+        229792,
+        229792
+      ]
+    },
+    {
+      "seconds": 50.282,
+      "memory_kib": [
+        230580,
+        230580
+      ]
+    },
+    {
+      "seconds": 50.665,
+      "memory_kib": [
+        232848,
+        232848
+      ]
+    },
+    {
+      "seconds": 51.034,
+      "memory_kib": [
+        233156,
+        233156
+      ]
+    },
+    {
+      "seconds": 51.412,
+      "memory_kib": [
+        233160,
+        233160
+      ]
+    },
+    {
+      "seconds": 51.786,
+      "memory_kib": [
+        233160,
+        233160
+      ]
+    },
+    {
+      "seconds": 52.161,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 52.544,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 52.925,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 53.273,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 53.62,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 53.967,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 54.317,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 54.697,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 55.088,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 55.452,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 55.817,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 56.178,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 56.524,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 56.726,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 57.092,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 57.46,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 57.838,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 58.24,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 58.642,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 59.028,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 59.392,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 59.765,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 60.127,
+      "memory_kib": [
+        233232,
+        233232
+      ]
+    },
+    {
+      "seconds": 60.518,
+      "memory_kib": [
+        233940,
+        233940
+      ]
+    },
+    {
+      "seconds": 60.724,
+      "memory_kib": [
+        235584,
+        235584
+      ]
+    },
+    {
+      "seconds": 60.941,
+      "memory_kib": [
+        235584,
+        235584
+      ]
+    }
+  ],
+  "application_pid": 1398302,
+  "application_start_ticks": 24640930
+}
