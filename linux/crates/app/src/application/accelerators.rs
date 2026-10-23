@@ -8,7 +8,7 @@ use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
     BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, PickerPage, PickerRow, SidebarList,
-    SqlEditor, SqlEditorTab, StructureTab,
+    SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, General, TableStructure, Tabs};
 
@@ -239,6 +239,52 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Listed(ShortcutSection::SqlEditor),
     ),
     local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-next-match",
+        &["<Primary>d"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursors-all-matches",
+        &["<Primary><Shift>l"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // GNOME's window manager takes Ctrl+Alt+Up and Down, and GtkSourceView
+    // binds Alt+Up and Down to move lines. This takes its Shift+Alt+Up and
+    // Down, which scroll by one line.
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-above",
+        &["<Shift><Alt>Up"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-below",
+        &["<Shift><Alt>Down"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // Enabled only with more than one cursor, so otherwise Escape goes on.
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.single-cursor",
+        &["Escape"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // As Ctrl+click toggles a row in a list.
+    component(
+        SqlEditorCursors,
+        "editor.toggle-cursor",
+        &["<Primary>Pointer_Button1"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
         SqlEditorTab,
         BUBBLE,
         "editor.open-file",
@@ -361,6 +407,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         GridCell => "tablepro-grid-cell-shortcuts",
         CellEditor => "tablepro-cell-editor-shortcuts",
         SqlEditor => "tablepro-sql-editor-shortcuts",
+        SqlEditorCursors => "tablepro-sql-editor-cursor-shortcuts",
         SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",
@@ -492,6 +539,23 @@ mod tests {
     /// accelerator GTK has installed.
     fn shown_by_action_name(entry: &Accelerator) -> bool {
         entry.scope == Application || entry.action == "app.shortcuts"
+    }
+
+    /// What the dialog says for a modifier and a click.
+    fn click_label(entry: &Accelerator) -> Option<String> {
+        let [accel] = entry.triggers else {
+            return None;
+        };
+        let (key, modifiers) = gtk::accelerator_parse(*accel)?;
+        if key != gdk::Key::Pointer_Button1 {
+            return None;
+        }
+        let held = if modifiers == gdk::ModifierType::SHIFT_MASK {
+            "Shift"
+        } else {
+            "Ctrl"
+        };
+        Some(format!("{held}+Click"))
     }
 
     #[gtk4::test]
@@ -800,6 +864,11 @@ mod tests {
             if shown_by_action_name(entry) {
                 assert_eq!(item.action_name(), entry.action);
                 assert_eq!(item.accelerator(), "", "{}", entry.action);
+            } else if let Some(click) = click_label(entry) {
+                // A keycap would read Pointer_Button1, so a click is words.
+                assert_eq!(item.accelerator(), "", "{}", entry.action);
+                assert_eq!(item.subtitle(), click, "{}", entry.action);
+                assert_eq!(item.action_name(), "", "{}", entry.action);
             } else {
                 assert_eq!(item.accelerator(), entry.triggers.join(" "), "{}", entry.action);
                 assert_eq!(item.action_name(), "", "{}", entry.action);

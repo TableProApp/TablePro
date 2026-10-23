@@ -6,7 +6,7 @@ use libadwaita::prelude::*;
 
 use super::find_bar::Direction;
 use super::run_scope::ScopedText;
-use super::{OpenTransaction, SqlEditor, toggle_line_comment};
+use super::{OpenTransaction, SqlEditor, commented_lines, toggle_line_comment};
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
 impl SqlEditor {
@@ -32,7 +32,7 @@ impl SqlEditor {
             entry("run-statement", SqlEditor::run_at_cursor),
             entry("cancel", SqlEditor::close_popup_or_stop),
             entry("format", SqlEditor::format),
-            entry("toggle-comment", |editor| toggle_line_comment(&editor.buffer())),
+            entry("toggle-comment", SqlEditor::toggle_comment),
             entry("find", |editor| editor.imp().find_bar.open(false)),
             entry("find-replace", |editor| editor.imp().find_bar.open(true)),
             entry("find-next", |editor| editor.imp().find_bar.find(Direction::Next)),
@@ -41,21 +41,45 @@ impl SqlEditor {
             }),
             entry("commit", SqlEditor::commit),
             entry("roll-back", SqlEditor::confirm_roll_back),
+            entry("add-cursor-next-match", |editor| {
+                editor.add_carets(|view| view.add_caret_at_next_match());
+            }),
+            entry("add-cursors-all-matches", |editor| {
+                editor.add_carets(|view| view.add_carets_at_all_matches());
+            }),
+            entry("add-cursor-above", |editor| {
+                editor.add_carets(|view| view.add_caret_on_next_line(false));
+            }),
+            entry("add-cursor-below", |editor| {
+                editor.add_carets(|view| view.add_caret_on_next_line(true));
+            }),
+            entry("single-cursor", SqlEditor::close_popup_or_single_cursor),
         ]);
         sync_run_actions(&actions, false, None);
+        sync_caret_actions(&actions, &self.imp().source_view);
         // Commands have no comments, and no layout to format them into.
         let sql = self.grammar().is_sql();
         set_enabled(&actions, "format", sql);
         set_enabled(&actions, "toggle-comment", sql);
         self.insert_action_group("editor", Some(&actions));
         let _ = self.imp().actions.set(actions.clone());
+        let carets = actions.clone();
+        self.imp()
+            .source_view
+            .connect_carets_changed(move |view| sync_caret_actions(&carets, view));
         self.connect_run_state_changed(move |editor, running| {
             sync_run_actions(&actions, running, editor.open_transaction());
         });
 
         let imp = self.imp();
+        self.watch_escape();
+        imp.text_pane.add_controller(imp.source_view.caret_keys());
         imp.source_view
             .add_controller(local_shortcut_controller(ShortcutOwner::SqlEditor));
+        // Added last, so it runs first: Escape returns to one cursor before
+        // it stops a query.
+        imp.source_view
+            .add_controller(local_shortcut_controller(ShortcutOwner::SqlEditorCursors));
         // On the tab, so the find keys work from the find bar's entries too.
         self.add_controller(local_shortcut_controller(ShortcutOwner::SqlEditorTab));
         crate::ui::a11y::announce_key_shortcuts(&imp.run_button.get(), "editor.run");
@@ -106,12 +130,78 @@ impl SqlEditor {
         dialog.present(Some(self));
     }
 
-    /// Escape while a query runs. The stop key's controller runs before
-    /// the view's own, so a popup the view has open, such as the
-    /// completion list, is closed here first, as the view's Escape would.
+    /// Escape while a query runs. A popup the view has open, such as the
+    /// completion list, closes first, as the view's Escape would.
     fn close_popup_or_stop(&self) {
-        if !close_view_popups(&self.imp().source_view.get()) {
+        if !self.closes_a_popup() {
             self.stop();
+        }
+    }
+
+    /// Escape with more than one cursor, enabled only then.
+    fn close_popup_or_single_cursor(&self) {
+        if !self.closes_a_popup() && self.imp().source_view.single_caret() {
+            self.announce_carets();
+        }
+    }
+
+    fn closes_a_popup(&self) -> bool {
+        let found = self.imp().escape_found_popup.take();
+        close_view_popups(&self.imp().source_view.get()) || found
+    }
+
+    /// The completion list adds its key controller to the view when it
+    /// first shows, after the editor's, so it runs first. A controller on
+    /// the pane runs before any of the view's.
+    fn watch_escape(&self) {
+        let keys = gtk4::EventControllerKey::new();
+        keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
+        let editor = self.downgrade();
+        keys.connect_key_pressed(move |_, keyval, _, _| {
+            if let Some(editor) = editor.upgrade() {
+                let imp = editor.imp();
+                let popup = keyval == gtk4::gdk::Key::Escape && imp.source_view.shows_popup();
+                imp.escape_found_popup.set(popup);
+            }
+            gtk4::glib::Propagation::Proceed
+        });
+        self.imp().text_pane.add_controller(keys);
+    }
+
+    fn add_carets(&self, add: impl FnOnce(&super::EditorView) -> bool) {
+        if add(&self.imp().source_view) {
+            self.announce_carets();
+        }
+    }
+
+    /// The other cursors do not show to a screen reader, so the status
+    /// line that counts them says how many there are.
+    fn announce_carets(&self) {
+        let imp = self.imp();
+        let count = u32::try_from(imp.source_view.caret_count()).unwrap_or(u32::MAX);
+        crate::ui::a11y::announce(
+            &imp.cursor_info.get(),
+            &crate::i18n::ngettext_f(
+                "{count} cursor",
+                "{count} cursors",
+                count,
+                &[("count", &count.to_string())],
+            ),
+            gtk4::AccessibleAnnouncementPriority::Medium,
+        );
+    }
+
+    /// Ctrl+/ on every cursor's lines, as one edit.
+    fn toggle_comment(&self) {
+        let view = self.imp().source_view.get();
+        let lines = commented_lines(&view.caret_ranges());
+        let buffer = self.buffer();
+        view.edit_once(|| toggle_line_comment(&buffer, &lines));
+    }
+
+    pub(super) fn refresh_caret_actions(&self) {
+        if let Some(actions) = self.imp().actions.get() {
+            sync_caret_actions(actions, &self.imp().source_view);
         }
     }
 }
@@ -138,6 +228,21 @@ fn sync_run_actions(actions: &gio::SimpleActionGroup, running: bool, open: Optio
     set_enabled(actions, "cancel", running);
     set_enabled(actions, "roll-back", !running && open.is_some());
     set_enabled(actions, "commit", !running && open == Some(OpenTransaction::Open));
+}
+
+/// Vim mode edits the buffer itself, which no other cursor could follow,
+/// and Escape goes on to the view while there is one cursor.
+fn sync_caret_actions(actions: &gio::SimpleActionGroup, view: &super::EditorView) {
+    let enabled = view.carets_enabled();
+    for name in [
+        "add-cursor-next-match",
+        "add-cursors-all-matches",
+        "add-cursor-above",
+        "add-cursor-below",
+    ] {
+        set_enabled(actions, name, enabled);
+    }
+    set_enabled(actions, "single-cursor", view.has_extra_carets());
 }
 
 fn set_enabled(actions: &gio::SimpleActionGroup, name: &str, enabled: bool) {

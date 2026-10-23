@@ -217,6 +217,13 @@ crates/app/src/ui/editor/completion/tests.rs
 crates/app/src/ui/editor/editor_actions.rs
 crates/app/src/ui/editor/editor_file.rs
 crates/app/src/ui/editor/editor_session_slot.rs
+crates/app/src/ui/editor/editor_view/caret.rs
+crates/app/src/ui/editor/editor_view/imp.rs
+crates/app/src/ui/editor/editor_view/matches.rs
+crates/app/src/ui/editor/editor_view/mod.rs
+crates/app/src/ui/editor/editor_view/paint.rs
+crates/app/src/ui/editor/editor_view/pending.rs
+crates/app/src/ui/editor/editor_view/tests.rs
 crates/app/src/ui/editor/find_bar.rs
 crates/app/src/ui/editor/find_state.rs
 crates/app/src/ui/editor/format_plan.rs

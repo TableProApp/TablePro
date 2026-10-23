@@ -931,10 +931,10 @@ fn closed_editor_drops_its_theme_and_font_handlers() {
 
     drop(editor);
     crate::test_support::drain_main_context();
-    let scheme = scheme_id(&view);
+    let scheme = scheme_id(view.upcast_ref());
     settings.get().set_style_scheme("cobalt").expect("a style scheme");
     style.set_color_scheme(adw::ColorScheme::ForceDark);
-    let after = scheme_id(&view);
+    let after = scheme_id(view.upcast_ref());
     style.set_color_scheme(adw::ColorScheme::Default);
 
     assert_eq!(after, scheme, "a closed editor still follows the theme");
@@ -1038,20 +1038,21 @@ fn a_closed_editor_in_vim_lets_go_of_its_script_and_vim() {
     assert!(vim.upgrade().is_none(), "Vim outlived its editor");
 }
 
-fn editor_keys(harness: &Harness) -> gtk4::ShortcutController {
-    crate::test_support::shortcut_keys::owner_controller(
-        &harness.editor.imp().source_view.get(),
-        crate::application::ShortcutOwner::SqlEditor,
-    )
-    .expect("the editor's shortcuts")
+fn owner_keys(harness: &Harness, owner: crate::application::ShortcutOwner) -> gtk4::ShortcutController {
+    crate::test_support::shortcut_keys::owner_controller(&harness.editor.imp().source_view.get(), owner)
+        .expect("the editor's shortcuts")
 }
 
 /// What `accel` does on the source view, as a key reaching the editor's
 /// controller would. `false` when the key goes on.
 fn press(harness: &Harness, accel: &str) -> bool {
+    press_in(harness, crate::application::ShortcutOwner::SqlEditor, accel)
+}
+
+fn press_in(harness: &Harness, owner: crate::application::ShortcutOwner, accel: &str) -> bool {
     use crate::test_support::shortcut_keys::{keystroke, shortcuts, trigger_keys};
     let key = keystroke(accel);
-    let action = shortcuts(&editor_keys(harness))
+    let action = shortcuts(&owner_keys(harness, owner))
         .into_iter()
         .find(|shortcut| {
             shortcut
@@ -1077,16 +1078,24 @@ fn editor_keys_that_the_view_binds_run_in_capture() {
     let harness = editor_with(answering(), "SELECT 1");
     let view = harness.editor.imp().source_view.get();
     let class_keys = class_binding_keys(&view);
-    let controller = editor_keys(&harness);
 
     assert!(
         class_keys.contains(&keystroke("<Primary>slash")),
         "the view's own bindings were not found, so the check reads nothing"
     );
-    assert_eq!(controller.propagation_phase(), gtk4::PropagationPhase::Capture);
+    assert!(
+        class_keys.contains(&keystroke("<Shift><Alt>Down")),
+        "GtkSourceView's own bindings were not found"
+    );
+    for owner in [ShortcutOwner::SqlEditor, ShortcutOwner::SqlEditorCursors] {
+        assert_eq!(
+            owner_keys(&harness, owner).propagation_phase(),
+            gtk4::PropagationPhase::Capture
+        );
+    }
     for entry in ACCELERATORS {
         let AcceleratorScope::Local {
-            owner: ShortcutOwner::SqlEditor,
+            owner: ShortcutOwner::SqlEditor | ShortcutOwner::SqlEditorCursors,
             phase,
         } = entry.scope
         else {
@@ -1914,6 +1923,121 @@ fn tab_keys_are_not_class_bindings_inside_the_tab() {
     assert_eq!(checked, 7);
 }
 
+fn cursors_on(harness: &Harness, offsets: &[i32]) -> EditorView {
+    let view = harness.editor.imp().source_view.get();
+    let buffer = harness.editor.buffer();
+    let (first, rest) = offsets.split_first().expect("a cursor");
+    buffer.place_cursor(&buffer.iter_at_offset(*first));
+    for offset in rest {
+        view.toggle_caret_at(&buffer.iter_at_offset(*offset));
+    }
+    assert_eq!(view.caret_count(), offsets.len());
+    view
+}
+
+#[gtk4::test]
+fn ctrl_slash_comments_every_cursors_line_as_one_edit() {
+    let harness = editor_with(answering(), "select 1;\nselect 2;\nselect 3;");
+    let _window = InWindow::new(&harness.editor);
+    let view = cursors_on(&harness, &[0, 22]);
+    let buffer = harness.editor.buffer();
+
+    assert!(press(&harness, "<Primary>slash"));
+
+    assert_eq!(buffer_text(&buffer), "-- select 1;\nselect 2;\n-- select 3;");
+    assert_eq!(view.caret_count(), 2);
+    buffer.undo();
+    assert_eq!(buffer_text(&buffer), "select 1;\nselect 2;\nselect 3;");
+}
+
+#[gtk4::test]
+fn escape_returns_to_one_cursor_only_while_there_are_more() {
+    use crate::application::ShortcutOwner::SqlEditorCursors;
+    let harness = editor_with(answering(), "select a, a");
+    let _window = InWindow::new(&harness.editor);
+    let view = harness.editor.imp().source_view.get();
+    harness
+        .editor
+        .buffer()
+        .place_cursor(&harness.editor.buffer().iter_at_offset(7));
+
+    assert!(
+        !press_in(&harness, SqlEditorCursors, "Escape"),
+        "Escape was taken with one cursor"
+    );
+    assert!(press_in(&harness, SqlEditorCursors, "<Primary>d"));
+    assert!(press_in(&harness, SqlEditorCursors, "<Primary>d"));
+    assert_eq!(view.caret_count(), 2);
+    assert_eq!(
+        crate::ui::a11y::announced_in(&harness.editor)
+            .last()
+            .map(|(said, _)| said.clone()),
+        Some("2 cursors".to_owned()),
+        "a screen reader hears of the other cursor"
+    );
+    assert!(press_in(&harness, SqlEditorCursors, "Escape"));
+    assert_eq!(view.caret_count(), 1);
+    assert!(!press_in(&harness, SqlEditorCursors, "Escape"));
+}
+
+#[gtk4::test]
+fn the_status_line_counts_the_cursors() {
+    let harness = editor_with(answering(), "select a, a");
+    let label = harness.editor.imp().cursor_info.get();
+
+    cursors_on(&harness, &[7, 10]);
+    assert_eq!(label.label(), "Ln 1, Col 11, 2 cursors");
+
+    harness.editor.imp().source_view.single_caret();
+    assert_eq!(label.label(), "Ln 1, Col 11");
+}
+
+#[gtk4::test]
+fn rewriting_the_whole_text_returns_to_one_cursor() {
+    let harness = editor_with(answering(), "select a, a from t");
+    let view = cursors_on(&harness, &[7, 10]);
+
+    harness.editor.format();
+    assert_eq!(view.caret_count(), 1, "Format kept the other cursor");
+
+    cursors_on(&harness, &[0, 5]);
+    harness.editor.replace_query("select 2");
+    assert_eq!(view.caret_count(), 1, "a query from history kept the other cursor");
+    assert_eq!(buffer_text(&harness.editor.buffer()), "select 2");
+}
+
+#[gtk4::test]
+fn vim_turns_the_other_cursors_off_and_back_on() {
+    let harness = editor_with(answering(), "select a, a");
+    let view = cursors_on(&harness, &[7, 10]);
+    let group = harness
+        .editor
+        .imp()
+        .actions
+        .get()
+        .expect("the editor's actions")
+        .clone();
+    assert!(group.is_action_enabled("single-cursor"));
+
+    vim(&harness);
+
+    assert_eq!(view.caret_count(), 1);
+    for action in [
+        "add-cursor-next-match",
+        "add-cursors-all-matches",
+        "add-cursor-above",
+        "add-cursor-below",
+        "single-cursor",
+    ] {
+        assert!(!group.is_action_enabled(action), "{action} is on in Vim");
+    }
+    view.toggle_caret_at(&harness.editor.buffer().start_iter());
+    assert_eq!(view.caret_count(), 1, "Ctrl+click added a cursor in Vim");
+
+    harness.settings.get().set_vim_keybindings(false).expect("turn Vim off");
+    assert!(group.is_action_enabled("add-cursor-next-match"));
+}
+
 /// These press real keys on the X display every test shares; nextest runs
 /// them with no other test beside them.
 mod real_keys {
@@ -2123,8 +2247,8 @@ mod real_keys {
         wait_until(KEY_WAIT, || closes.count() == 1).expect(":q to ask for the close");
     }
 
-    fn completion_list_shown(view: &sourceview5::View) -> bool {
-        let mut child = view.first_child();
+    fn completion_list_shown(view: &impl IsA<gtk4::Widget>) -> bool {
+        let mut child = view.as_ref().first_child();
         while let Some(widget) = child {
             if widget.is::<gtk4::Popover>() && widget.is_visible() {
                 return true;
@@ -2177,6 +2301,158 @@ mod real_keys {
         view.completion().show();
 
         wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the list without Vim");
+    }
+
+    /// The issue's done line: three cursors type and delete together, and
+    /// one undo reverts all three edits. Real keys, so the typed text
+    /// takes the input method's way into the buffer.
+    #[gtk4::test]
+    fn three_cursors_type_and_delete_together_and_one_undo_reverts_all_three() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "SELECT a, a, a");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.iter_at_offset(7));
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        for _ in 0..3 {
+            ctrl(&keys, Key::d);
+        }
+        wait_until(KEY_WAIT, || view.caret_count() == 3).expect("Ctrl+D to add a cursor at each match");
+        press(&keys, Key::x);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT x, x, x").expect("x typed at every cursor");
+        press(&keys, Key::y);
+        press(&keys, Key::BackSpace);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT x, x, x").expect("BackSpace at every cursor");
+
+        ctrl(&keys, Key::z);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT xy, xy, xy")
+            .expect("one undo to bring the three deleted y back");
+        ctrl(&keys, Key::z);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT x, x, x").expect("one undo to take the three y away");
+        ctrl(&keys, Key::z);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT a, a, a").expect("one undo to bring the three a back");
+        assert_eq!(view.caret_count(), 1, "an undo returns to one cursor");
+    }
+
+    /// GtkSourceView's completion list closes itself on Escape and lets
+    /// the key go on, so the editor's Escape must not act on the same
+    /// press.
+    #[gtk4::test]
+    fn escape_with_the_completion_open_leaves_the_query_running() {
+        use gtk4::gdk::Key;
+        let mut runs = Replies::default();
+        runs.always(FakeRun::until_stopped());
+        let harness = editor_with(runs, "SELECT 1;\nSE");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        harness.editor.run();
+        wait_until(WAIT, || !harness.fake.texts().is_empty()).expect("the statement to start");
+        buffer.place_cursor(&buffer.end_iter());
+        view.grab_focus();
+        view.completion().show();
+        wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the completion list");
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || !completion_list_shown(&view)).expect("Escape to close the list");
+        crate::test_support::drain_main_context();
+
+        assert!(
+            harness.editor.is_running(),
+            "the Escape that closed the list stopped the query"
+        );
+        press(&keys, Key::Escape);
+        wait_until(WAIT, || !harness.editor.is_running()).expect("the next Escape to stop the query");
+    }
+
+    /// GtkSourceView's own Return indents each new line as the line above
+    /// it, at every cursor.
+    #[gtk4::test]
+    fn return_and_tab_work_out_each_cursors_own_line() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "    a\nb");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.iter_at_offset(5));
+        view.toggle_caret_at(&buffer.end_iter());
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        press(&keys, Key::Return);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "    a\n    \nb\n").expect("Return to indent each new line");
+        press(&keys, Key::Tab);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "    a\n    \t\nb\n\t").expect("Tab at each cursor");
+        ctrl(&keys, Key::z);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "    a\n    \nb\n").expect("one undo for both tabs");
+    }
+
+    /// Shift+Tab unindents the lines a cursor is on, so two cursors on
+    /// one line unindent it once.
+    #[gtk4::test]
+    fn shift_tab_unindents_a_line_once_for_two_cursors_on_it() {
+        use gtk4::gdk::{Key, ModifierType};
+        let harness = editor_with(answering(), "        a b");
+        let _window = InWindow::presented(&harness.editor);
+        let view = cursors_on(&harness, &[9, 11]);
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        keys.press(Key::Tab, ModifierType::SHIFT_MASK).expect("the key press");
+
+        wait_until(KEY_WAIT, || buffer_text(&harness.editor.buffer()) == "    a b").expect("one level off the line");
+        crate::test_support::drain_main_context();
+        assert_eq!(buffer_text(&harness.editor.buffer()), "    a b");
+        assert_eq!(view.caret_count(), 2);
+    }
+
+    /// A completion replaces the word at one cursor, so its list waits
+    /// for one cursor.
+    #[gtk4::test]
+    fn typing_at_several_cursors_opens_no_completion_list() {
+        use gtk4::gdk::Key;
+        let harness = editor_with(answering(), "SELECT 1;\nSE\nSE");
+        let _window = InWindow::presented(&harness.editor);
+        let view = cursors_on(&harness, &[12, 15]);
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        press(&keys, Key::l);
+        wait_until(KEY_WAIT, || {
+            buffer_text(&harness.editor.buffer()) == "SELECT 1;\nSEl\nSEl"
+        })
+        .expect("l at both cursors");
+
+        let opened = wait_until(Duration::from_millis(800), || completion_list_shown(&view));
+        assert!(opened.is_err(), "the completion list opened with two cursors");
+    }
+
+    /// Shift+Alt+Down is GtkSourceView's scroll by a line until the editor
+    /// takes it.
+    #[gtk4::test]
+    fn shift_alt_down_adds_a_cursor_and_ctrl_shift_l_one_at_every_match() {
+        use gtk4::gdk::{Key, ModifierType};
+        let harness = editor_with(answering(), "id\nid\nid");
+        let _window = InWindow::presented(&harness.editor);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.start_iter());
+        view.grab_focus();
+        let keys = crate::test_support::KeyInjector::connect().expect("an X11 display");
+
+        keys.press(Key::Down, ModifierType::SHIFT_MASK | ModifierType::ALT_MASK)
+            .expect("the key press");
+        wait_until(KEY_WAIT, || view.caret_count() == 2).expect("Shift+Alt+Down to add a cursor below");
+        press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || view.caret_count() == 1).expect("Escape to return to one cursor");
+
+        keys.press(Key::l, ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK)
+            .expect("the key press");
+        wait_until(KEY_WAIT, || view.caret_count() == 3).expect("Ctrl+Shift+L to add a cursor at each match");
     }
 }
 

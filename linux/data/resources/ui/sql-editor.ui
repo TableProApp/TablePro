@@ -116,7 +116,7 @@
                   <object class="GtkScrolledWindow">
                     <property name="min-content-height">200</property>
                     <property name="child">
-                      <object class="GtkSourceView" id="source_view">
+                      <object class="TableProEditorView" id="source_view">
                         <property name="show-line-numbers">true</property>
                         <property name="monospace">true</property>
                         <property name="auto-indent">true</property>
