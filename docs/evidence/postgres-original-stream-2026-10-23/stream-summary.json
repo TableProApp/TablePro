@@ -1,0 +1,49 @@
+{
+  "cycles": [
+    {
+      "cycle": 1,
+      "seconds": 4.980778829019982,
+      "cpu_seconds_to_terminal": 4.16,
+      "stream_sampled_peak_rss_mib": 220.59765625,
+      "rss_before_mib": 181.3515625,
+      "rss_after_pager_mib": 351.953125,
+      "rss_ten_seconds_after_close_mib": 353.63671875,
+      "received_rows": 2000000,
+      "retained_rows": [
+        1980001,
+        2000000
+      ]
+    },
+    {
+      "cycle": 2,
+      "seconds": 4.845934621000197,
+      "cpu_seconds_to_terminal": 4.1000000000000005,
+      "stream_sampled_peak_rss_mib": 371.72265625,
+      "rss_before_mib": 353.94921875,
+      "rss_after_pager_mib": 371.97265625,
+      "rss_ten_seconds_after_close_mib": 371.66015625,
+      "received_rows": 2000000,
+      "retained_rows": [
+        1980001,
+        2000000
+      ]
+    },
+    {
+      "cycle": 3,
+      "seconds": 4.833234531979542,
+      "cpu_seconds_to_terminal": 4.1,
+      "stream_sampled_peak_rss_mib": 372.015625,
+      "rss_before_mib": 371.97265625,
+      "rss_after_pager_mib": 372.015625,
+      "rss_ten_seconds_after_close_mib": 371.703125,
+      "received_rows": 2000000,
+      "retained_rows": [
+        1980001,
+        2000000
+      ]
+    }
+  ],
+  "interpretation": "three full repeated workloads; later pager/close RSS settles near 372 MiB; not proof of permanent leak freedom",
+  "full_run_passed": true,
+  "duration_seconds": 93.657
+}

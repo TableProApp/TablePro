@@ -1,0 +1,77 @@
+[
+  {
+    "cycle": 1,
+    "before_memory_kib": [
+      183628,
+      183628
+    ],
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.36553430097410455,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 700,
+    "memory_kib": [
+      220540,
+      220540
+    ]
+  },
+  {
+    "cycle": 2,
+    "before_memory_kib": [
+      220540,
+      220540
+    ],
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.3198589330422692,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 701,
+    "memory_kib": [
+      224368,
+      224368
+    ]
+  },
+  {
+    "cycle": 3,
+    "before_memory_kib": [
+      224368,
+      224368
+    ],
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.36527557601220906,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 702,
+    "memory_kib": [
+      238732,
+      238732
+    ]
+  },
+  {
+    "cycle": 4,
+    "before_memory_kib": [
+      238732,
+      238732
+    ],
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.37022530304966494,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 703,
+    "memory_kib": [
+      238776,
+      238776
+    ]
+  },
+  {
+    "cycle": 5,
+    "before_memory_kib": [
+      238776,
+      238776
+    ],
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.38640075898729265,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 704,
+    "memory_kib": [
+      238816,
+      238816
+    ]
+  }
+]

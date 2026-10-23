@@ -1,0 +1,16 @@
+{
+  "source": "3b6ef5f4489f36d8e8d4604d74c65de1b6bf1e4e",
+  "profile": "release",
+  "binary_sha256": "f0e7db7026e144b9e3672a70f52ee00a2ccdea1b49f1f4e9262379a81807f04c",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "postgres_image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+  "query": "SELECT * FROM big",
+  "columns": 10,
+  "rows": 2000000,
+  "build_exit_code": 0,
+  "build_duration_seconds": 168
+}

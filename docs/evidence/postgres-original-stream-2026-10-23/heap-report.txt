@@ -1,0 +1,1037 @@
+reading file ".analysis/postgres-original-stream/heaptrack.gz" - please wait, this might take some time...
+Debuggee command was: <profiling-worktree>/target/qualification/usr/bin/tablepro
+finished reading file, now analyzing data:
+
+PEAK MEMORY CONSUMERS
+12.80M peak memory consumed over 2150000 calls from
+  <alloc::raw_vec::RawVecInner>::finish_grow (.llvm.5299881787191557978)
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <alloc::vec::Vec<tablepro_core::query::Value> as alloc::vec::spec_from_iter::SpecFromIter<tablepro_core::query::Value, core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<core::iter::adapters::enumerate::Enumerate<core::slice::iter::Iter<alloc::string::String>>, drivers_postgres::query::collect_query_rows<core::pin::Pin<alloc::boxed::Box<dyn futures_core::stream::Stream<Item = core::result::Result<sqlx_postgres::row::PgRow, sqlx_core::error::Error>> + core::marker::Send>>>::{closure#0}::{closure#1}::{closure#0}>, core::result::Result<core::convert::Infallible, tablepro_core::error::DriverError>>>>::from_iter
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tablepro_core::query::QueryResultBudget>::decode_and_admit_row::<tablepro_core::error::DriverError, drivers_postgres::query::collect_query_rows<core::pin::Pin<alloc::boxed::Box<dyn futures_core::stream::Stream<Item = core::result::Result<sqlx_postgres::row::PgRow, sqlx_core::error::Error>> + core::marker::Send>>>::{closure#0}::{closure#1}>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_attempt::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_connection_once::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<drivers_postgres::controlled_query::{closure#0}::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::future::poll_fn::PollFn<tablepro_core::operation::run_server_cancellable<tablepro_core::query::QueryResult, drivers_postgres::controlled_query::{closure#0}::{closure#0}, drivers_postgres::request_cancellation::{closure#0}>::{closure#0}::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::controlled_query::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <drivers_postgres::session::PgSession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tablepro_policy::guard::session::PolicySession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::ui::editor::outcomes::run_statement::<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::task::task_local::TaskLocalFuture<core::sync::atomic::Atomic<u64>, tablepro_app::ui::editor::outcomes::run_tracked_statements<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>>::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<&mut <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}> as futures_util::future::future::FutureExt>::poll_unpin
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::current_thread::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::multi_thread::handle::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::scheduler::multi_thread::worker::Context>::run_task
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::context::scoped::Scoped<tokio::runtime::scheduler::Context>>::set::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::context::runtime::enter_runtime::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::scheduler::multi_thread::worker::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::pool::Inner>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::thread::lifecycle::spawn_unchecked<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::sys::thread::unix::Thread>::new::thread_start
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  0x7f5bc2298041
+    in /usr/lib/libc.so.6
+  0x7f5bc232072b
+    in /usr/lib/libc.so.6
+
+2.60M peak memory consumed over 3225000 calls from
+  <alloc::string::String as sqlx_core::decode::Decode<sqlx_postgres::database::Postgres>>::decode
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <sqlx_postgres::row::PgRow as sqlx_core::row::Row>::try_get::<alloc::string::String, usize>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::extract_value
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <alloc::vec::Vec<tablepro_core::query::Value> as alloc::vec::spec_from_iter::SpecFromIter<tablepro_core::query::Value, core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<core::iter::adapters::enumerate::Enumerate<core::slice::iter::Iter<alloc::string::String>>, drivers_postgres::query::collect_query_rows<core::pin::Pin<alloc::boxed::Box<dyn futures_core::stream::Stream<Item = core::result::Result<sqlx_postgres::row::PgRow, sqlx_core::error::Error>> + core::marker::Send>>>::{closure#0}::{closure#1}::{closure#0}>, core::result::Result<core::convert::Infallible, tablepro_core::error::DriverError>>>>::from_iter
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tablepro_core::query::QueryResultBudget>::decode_and_admit_row::<tablepro_core::error::DriverError, drivers_postgres::query::collect_query_rows<core::pin::Pin<alloc::boxed::Box<dyn futures_core::stream::Stream<Item = core::result::Result<sqlx_postgres::row::PgRow, sqlx_core::error::Error>> + core::marker::Send>>>::{closure#0}::{closure#1}>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_attempt::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_connection_once::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<drivers_postgres::controlled_query::{closure#0}::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::future::poll_fn::PollFn<tablepro_core::operation::run_server_cancellable<tablepro_core::query::QueryResult, drivers_postgres::controlled_query::{closure#0}::{closure#0}, drivers_postgres::request_cancellation::{closure#0}>::{closure#0}::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::controlled_query::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <drivers_postgres::session::PgSession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tablepro_policy::guard::session::PolicySession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::ui::editor::outcomes::run_statement::<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::task::task_local::TaskLocalFuture<core::sync::atomic::Atomic<u64>, tablepro_app::ui::editor::outcomes::run_tracked_statements<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>>::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<&mut <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}> as futures_util::future::future::FutureExt>::poll_unpin
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::current_thread::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::multi_thread::handle::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::scheduler::multi_thread::worker::Context>::run_task
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::context::scoped::Scoped<tokio::runtime::scheduler::Context>>::set::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::context::runtime::enter_runtime::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::scheduler::multi_thread::worker::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::pool::Inner>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::thread::lifecycle::spawn_unchecked<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::sys::thread::unix::Thread>::new::thread_start
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  0x7f5bc2298041
+    in /usr/lib/libc.so.6
+  0x7f5bc232072b
+    in /usr/lib/libc.so.6
+
+2.40M peak memory consumed over 614 calls from
+  0x7f5bc056e0dd
+    in /usr/lib/libpixman-1.so.0
+  0x7f5bc056e20d
+    in /usr/lib/libpixman-1.so.0
+  cairo_image_surface_create
+    in /usr/lib/libcairo.so.2
+  0x7f5bc3128584
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc315af9c
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc31a9a3a
+    in /usr/lib/libgtk-4.so.1
+  gsk_renderer_render
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2df79fe
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc30d76b1
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc4410019
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit_valist
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc31857b7
+    in /usr/lib/libgtk-4.so.1
+  g_closure_invoke
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc440dcfa
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc440fed3
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit_valist
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc315a599
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3904053
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc38fc75d
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc3905c4f
+    in /usr/lib/libglib-2.0.so.0
+  g_main_context_iteration
+    in /usr/lib/libglib-2.0.so.0
+  g_application_run
+    in /usr/lib/libgio-2.0.so.0
+  <gtk4::auto::application::Application as gio::application::ApplicationExtManual>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <relm4::app::RelmApp<tablepro_app::ui::app::msg::AppMsg>>::run::<tablepro_app::ui::app::App>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+1.03M peak memory consumed over 110700 calls from
+  g_malloc0
+    in /usr/lib/libglib-2.0.so.0
+  g_type_create_instance
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc4400d64
+    in /usr/lib/libgobject-2.0.so.0
+  g_object_new_with_properties
+    in /usr/lib/libgobject-2.0.so.0
+  <glib::object::Object>::new_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <gtk4::auto::label::LabelBuilder>::build
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::ui::grid::editing::setup_readonly_cell
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <gtk4::auto::signal_list_item_factory::SignalListItemFactory>::connect_setup::setup_trampoline::<tablepro_app::ui::grid::column::build_column::{closure#0}> (.llvm.7223602643242896962)
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  g_cclosure_marshal_VOID__OBJECTv
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc4410019
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit_valist
+    in /usr/lib/libgobject-2.0.so.0
+  g_signal_emit
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc2e156b5
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2d925eb
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ce312a
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9e412
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9e574
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9e412
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9e574
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9e412
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e9fa87
+    in /usr/lib/libgtk-4.so.1
+  glib::source::trampoline_local::<glib::source::fnmut_callback_wrapper_local<tablepro_app::ui::editor::outcomes::build_stream_page_widget::{closure#1}::{closure#0}>::{closure#0}>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  0x7f5bc3904053
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc38fc75d
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc3905c4f
+    in /usr/lib/libglib-2.0.so.0
+  g_main_context_iteration
+    in /usr/lib/libglib-2.0.so.0
+  g_application_run
+    in /usr/lib/libgio-2.0.so.0
+  <gtk4::auto::application::Application as gio::application::ApplicationExtManual>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <relm4::app::RelmApp<tablepro_app::ui::app::msg::AppMsg>>::run::<tablepro_app::ui::app::App>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+983.04K peak memory consumed over 2365 calls from
+  <alloc::raw_vec::RawVecInner>::finish_grow (.llvm.16268926270658707478)
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <alloc::raw_vec::RawVec<alloc::vec::Vec<tablepro_core::query::Value>>>::grow_one
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_attempt::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::query::query_connection_once::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<drivers_postgres::controlled_query::{closure#0}::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::future::poll_fn::PollFn<tablepro_core::operation::run_server_cancellable<tablepro_core::query::QueryResult, drivers_postgres::controlled_query::{closure#0}::{closure#0}, drivers_postgres::request_cancellation::{closure#0}>::{closure#0}::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  drivers_postgres::controlled_query::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <drivers_postgres::session::PgSession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tablepro_policy::guard::session::PolicySession as tablepro_core::session::Session>::fetch_query_cursor_page_controlled::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::ui::editor::outcomes::run_statement::<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::task::task_local::TaskLocalFuture<core::sync::atomic::Atomic<u64>, tablepro_app::ui::editor::outcomes::run_tracked_statements<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#0}, <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}::{closure#1}, core::pin::Pin<alloc::boxed::Box<dyn core::future::future::Future<Output = bool> + core::marker::Send>>>::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<&mut <tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}> as futures_util::future::future::FutureExt>::poll_unpin
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::current_thread::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<core::pin::Pin<alloc::boxed::Box<<relm4::channel::component::ComponentSenderInner<tablepro_app::ui::editor::SqlEditorInput, tablepro_app::ui::editor::SqlEditorOutput, ()>>::command<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}, <relm4::channel::shutdown::attached::AttachedShutdown<<tablepro_app::ui::editor::SqlEditor>::execute_sql::{closure#4}::{closure#0}>>::drop_on_shutdown::{closure#0}>::{closure#0}>>, alloc::sync::Arc<tokio::runtime::scheduler::multi_thread::handle::Handle>>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::scheduler::multi_thread::worker::Context>::run_task
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::context::scoped::Scoped<tokio::runtime::scheduler::Context>>::set::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::context::runtime::enter_runtime::<tokio::runtime::scheduler::multi_thread::worker::run::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tokio::runtime::scheduler::multi_thread::worker::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}> as core::future::future::Future>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::core::Core<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::task::harness::Harness<tokio::runtime::blocking::task::BlockingTask<<tokio::runtime::scheduler::multi_thread::worker::Launch>::launch::{closure#0}>, tokio::runtime::blocking::schedule::BlockingSchedule>>::poll
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <tokio::runtime::blocking::pool::Inner>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::thread::lifecycle::spawn_unchecked<<tokio::runtime::blocking::pool::Spawner>::spawn_thread::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <std::sys::thread::unix::Thread>::new::thread_start
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  0x7f5bc2298041
+    in /usr/lib/libc.so.6
+  0x7f5bc232072b
+    in /usr/lib/libc.so.6
+
+934.80K peak memory consumed over 110700 calls from
+  g_malloc0
+    in /usr/lib/libglib-2.0.so.0
+  g_type_create_instance
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc4400d64
+    in /usr/lib/libgobject-2.0.so.0
+  g_object_new_valist
+    in /usr/lib/libgobject-2.0.so.0
+  g_object_new
+    in /usr/lib/libgobject-2.0.so.0
+  0x7f5bc2ee22a9
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cf2d36
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cf2e6e
+    in /usr/lib/libgtk-4.so.1
+  gtk_column_view_append_column
+    in /usr/lib/libgtk-4.so.1
+  tablepro_app::ui::grid::build_column_view
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::ui::editor::outcomes::build_result_set_widget
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  glib::source::trampoline_local::<glib::source::fnmut_callback_wrapper_local<tablepro_app::ui::editor::outcomes::build_stream_page_widget::{closure#1}::{closure#0}>::{closure#0}>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  0x7f5bc3904053
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc38fc75d
+    in /usr/lib/libglib-2.0.so.0
+  0x7f5bc3905c4f
+    in /usr/lib/libglib-2.0.so.0
+  g_main_context_iteration
+    in /usr/lib/libglib-2.0.so.0
+  g_application_run
+    in /usr/lib/libgio-2.0.so.0
+  <gtk4::auto::application::Application as gio::application::ApplicationExtManual>::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  <relm4::app::RelmApp<tablepro_app::ui::app::msg::AppMsg>>::run::<tablepro_app::ui::app::App>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+843.47K peak memory consumed over 1 calls from
+  0x7f5ba894ffe0
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8961372
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+832.24K peak memory consumed over 110700 calls from
+  g_realloc
+    in /usr/lib/libglib-2.0.so.0
+  pango_glyph_string_set_size
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc4489106
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc4489df7
+    in /usr/lib/libpango-1.0.so.0
+  pango_shape_item
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc44712f5
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc44728c1
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc4474f15
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc44789e6
+    in /usr/lib/libpango-1.0.so.0
+  pango_layout_get_size
+    in /usr/lib/libpango-1.0.so.0
+  0x7f5bc2d85c0e
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e1c06d
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ee1d10
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e1c06d
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ee2d29
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e1c06d
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2d9f2cb
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e1c06d
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ceabeb
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e1c06d
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e03c71
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ccf058
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ccf058
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e31d03
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ccf058
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ccf058
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e31d03
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2dcb2d7
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2753ad9
+    in /usr/lib/libadwaita-1.so.0
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc26d7b6c
+    in /usr/lib/libadwaita-1.so.0
+  0x7f5bc26e0db4
+    in /usr/lib/libadwaita-1.so.0
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cbedc1
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2749cae
+    in /usr/lib/libadwaita-1.so.0
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2ccf058
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cbedc1
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cbedc1
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2e31d03
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2dcb315
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2753ad9
+    in /usr/lib/libadwaita-1.so.0
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc275a5cc
+    in /usr/lib/libadwaita-1.so.0
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2dcb2d7
+    in /usr/lib/libgtk-4.so.1
+  gtk_widget_allocate
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc2cbedc1
+    in /usr/lib/libgtk-4.so.1
+
+
+
+MEMORY LEAKS
+843.47K leaked over 1 calls from
+  0x7f5ba894ffe0
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8961372
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+525.06K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e36b45
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8edbbd8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e8e0f7
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e8e480
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c645b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05da
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d944
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b64bb
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+525.06K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e36b45
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8edbbd8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e8e0f7
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e8e480
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c645b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05da
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d944
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b62b1
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+524.03K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c7644
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98cd92a
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d541
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b4c49
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b5e19
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+524.03K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c7644
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98cd92a
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d944
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b62b1
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+524.03K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c7644
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98cd92a
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d541
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b4c49
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b5e68
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+524.03K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e34a92
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e363fd
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98c7697
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98cd92a
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d541
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b4c49
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b5e68
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+524.03K leaked over 16 calls from
+  0x7f5ba8dcfedd
+    in ??
+  0x7f5ba8dd0ae2
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8dd0bf4
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e34a92
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba8e3635a
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98cda17
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98d05c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9152630
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba904a3ae
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba905d541
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b4c49
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba98b5e68
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba9171e5b
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba896130e
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5ba88bd8c8
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  driCreateContextAttribs
+    in /usr/lib/libgallium-26.2.5-arch1.1.so
+  0x7f5bbc77a82f
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bbc76cbec
+    in /usr/lib/libEGL_mesa.so.0
+  0x7f5bc31666ac
+    in /usr/lib/libgtk-4.so.1
+  0x7f5bc3166a4d
+    in /usr/lib/libgtk-4.so.1
+  gdk_gl_context_realize
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_prepare_gl
+    in /usr/lib/libgtk-4.so.1
+  gdk_x11_display_open
+    in /usr/lib/libgtk-4.so.1
+  gdk_display_manager_open_display
+    in /usr/lib/libgtk-4.so.1
+  gtk_init_check
+    in /usr/lib/libgtk-4.so.1
+  gtk4::rt::init
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  tablepro_app::run
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start::<()>::{closure#0}
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  std::rt::lang_start_internal
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+  main
+    in <profiling-worktree>/target/qualification/usr/bin/tablepro
+
+
+
+total runtime: 84.89s.
+calls to allocation functions: 79384251 (935186/s)
+temporary memory allocations: 8803057 (103704/s)
+peak heap memory consumption: 99.07M
+peak RSS (including heaptrack overhead): 338.96M
+total memory leaked: 47.80M
+suppressed leaks: 1.19K

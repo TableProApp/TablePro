@@ -1,0 +1,14 @@
+{
+  "profiler": "heaptrack",
+  "instrumented_query_seconds": 60.952,
+  "snapshots": 8393,
+  "peak_live_heap_bytes": 97451363,
+  "final_live_heap_bytes": 47797223,
+  "final_seconds": 84.886,
+  "allocation_calls": 79384251,
+  "report_peak_heap_decimal_mb": 99.07,
+  "report_peak_rss_decimal_mb_including_profiler": 338.96,
+  "report_outstanding_decimal_mb": 47.8,
+  "interpretation": "exit-time outstanding allocations are not proof of a BookiE ownership leak; runtime caches and libraries are included",
+  "raw_sha256": "e0ca6e0e527edf8dc57deb00905602d75481ba57716d99dc55d0c64e6babf6df"
+}

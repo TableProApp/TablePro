@@ -1,0 +1,12 @@
+{
+  "passed": false,
+  "query_completed_notice": "done in 4354 ms",
+  "received_rows": 2000000,
+  "retained_rows": [
+    1980001,
+    2000000
+  ],
+  "failure": "pager probe matched hidden panel names and advanced before the visible pager label updated",
+  "qualification": "incomplete; no completed-cycle memory result",
+  "repair": "match exact expected range with ROLE_LABEL, not any role"
+}

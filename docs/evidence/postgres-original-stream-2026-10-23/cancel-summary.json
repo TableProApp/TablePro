@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "cycles": 5,
+  "cancellation_seconds": [
+    0.36553430097410455,
+    0.3198589330422692,
+    0.36527557601220906,
+    0.37022530304966494,
+    0.38640075898729265
+  ],
+  "all_explicitly_cancelled": true,
+  "all_server_activity_clear": true,
+  "all_next_queries_succeeded": [
+    700,
+    701,
+    702,
+    703,
+    704
+  ],
+  "rss_mib_after_settle": [
+    215.37109375,
+    219.109375,
+    233.13671875,
+    233.1796875,
+    233.21875
+  ],
+  "duration_seconds": 62.975,
+  "interpretation": "bounded five-cycle observation; no permanent leak-freedom claim"
+}
