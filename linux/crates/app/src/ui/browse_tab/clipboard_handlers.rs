@@ -29,6 +29,7 @@ impl BrowseModel {
             }
             ClipboardInput::GridShowRowJson(request) => fx.output(BrowseTabOutput::ShowRowJson(request)),
             ClipboardInput::GridShowToast(message) => fx.output(BrowseTabOutput::ShowToast(message)),
+            ClipboardInput::GridFollowReference(reference) => fx.output(BrowseTabOutput::FollowReference(reference)),
         }
     }
 

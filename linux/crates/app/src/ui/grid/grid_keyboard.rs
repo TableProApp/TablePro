@@ -7,6 +7,7 @@ use super::cell_preset::cell_presets;
 use super::column_resize::{ColumnResize, resize_column};
 use super::context_menu::prepare_menu;
 use super::grid_menus::GridMenus;
+use super::reference_menu::OPEN_ONE;
 use super::{CellPreset, GridCell, GridMsg, GridSink};
 use crate::application::{ShortcutOwner, component_trigger, controller_name};
 
@@ -32,11 +33,16 @@ impl GridKeyboard {
         };
         add("cell.edit", on_focused_cell(|_, cell| edit_or_toggle(cell)));
         add("cell.toggle", on_focused_cell(|_, cell| toggle(cell)));
+        let reference_menus = menus.clone();
         add(
             "cell.menu",
             on_focused_cell(move |widget, cell| show_menu(widget, cell, &menus)),
         );
         add("cell.set-null", on_focused_cell(move |_, cell| set_null(cell, &sink)));
+        add(
+            "cell.open-referenced-row",
+            on_focused_cell(move |widget, cell| open_referenced_row(widget, cell, &reference_menus)),
+        );
         add(
             "cell.widen-column",
             on_focused_cell(|widget, cell| resize(widget, cell, ColumnResize::Wider)),
@@ -83,8 +89,14 @@ fn show_menu(widget: &gtk::Widget, cell: &GridCell, menus: &GridMenus) -> glib::
         return glib::Propagation::Proceed;
     };
     let popover = prepare_menu(menus, cell, column_view);
-    // A key has no pointer position, so the menu points at the whole
-    // cell, in the coordinates of the view the menu is parented to.
+    point_at_cell(&popover, cell, column_view);
+    popover.popup();
+    glib::Propagation::Stop
+}
+
+/// A key has no pointer position, so a menu points at the whole cell,
+/// in the coordinates of the view the menu is parented to.
+fn point_at_cell(popover: &gtk::PopoverMenu, cell: &GridCell, column_view: &gtk::ColumnView) {
     let bounds = cell.compute_bounds(column_view).map(|bounds| {
         gdk::Rectangle::new(
             bounds.x() as i32,
@@ -94,7 +106,30 @@ fn show_menu(widget: &gtk::Widget, cell: &GridCell, menus: &GridMenus) -> glib::
         )
     });
     popover.set_pointing_to(bounds.as_ref());
-    popover.popup();
+}
+
+/// Follow the one key the cell's column is in, or offer the keys to
+/// choose from when it is in several. A column in none lets the key go
+/// on.
+fn open_referenced_row(widget: &gtk::Widget, cell: &GridCell, menus: &GridMenus) -> glib::Propagation {
+    let Some(column_view) = widget.downcast_ref::<gtk::ColumnView>() else {
+        return glib::Propagation::Proceed;
+    };
+    if menus.references.offers_for(cell).open.is_empty() {
+        return glib::Propagation::Proceed;
+    }
+    prepare_menu(menus, cell, column_view);
+    match menus.references.only_choice() {
+        Some(_) => {
+            if let Err(error) = column_view.activate_action(&format!("cell.{OPEN_ONE}"), None) {
+                tracing::debug!(%error, "the grid has no action to open a referenced row");
+            }
+        }
+        None => {
+            point_at_cell(&menus.reference_chooser, cell, column_view);
+            menus.reference_chooser.popup();
+        }
+    }
     glib::Propagation::Stop
 }
 
@@ -138,6 +173,7 @@ mod tests {
         trigger_keys,
     };
     use crate::test_support::{descendants, wait_until};
+    use crate::ui::grid::reference_menu::tests::{filter, followed, key as foreign_key, orders_grid, public};
     use crate::ui::grid::test_grid::{Grid, WAIT, content, edited_rows, key, named, recorder, text, two_text_rows};
     use crate::ui::grid::{
         CellPreset, GridCell, GridMsg, GridSorting, RowObject, TabGridContext, begin_edit, build_column_view,
@@ -501,6 +537,48 @@ mod tests {
             popover.popdown();
         }
         window.destroy();
+    }
+
+    #[gtk4::test]
+    fn ctrl_j_follows_the_one_key_of_the_focused_cell_and_lets_the_key_go_on_elsewhere() {
+        let grid = orders_grid(vec![foreign_key(&["customer_id"], public("customers"), &["id"])]);
+        let ctrl = gdk::ModifierType::CONTROL_MASK;
+
+        grid.focus(0, 1);
+        assert!(press(&grid.view, gdk::Key::j, ctrl));
+        grid.focus(0, 2);
+        assert!(!press(&grid.view, gdk::Key::j, ctrl), "a column in no key took Ctrl+J");
+        grid.focus(1, 1);
+        assert!(!press(&grid.view, gdk::Key::j, ctrl), "a NULL key took Ctrl+J");
+
+        assert_eq!(followed(&grid), [(public("customers"), filter(&[("id", "42")]))]);
+    }
+
+    #[gtk4::test]
+    fn ctrl_j_on_a_column_in_two_keys_offers_them_at_the_cell() {
+        let crm = tablepro_core::meta::TableRef::new(Some("crm".to_owned()), "customers");
+        let grid = orders_grid(vec![
+            foreign_key(&["tenant_id"], public("tenants"), &["id"]),
+            foreign_key(&["tenant_id", "customer_id"], crm, &["tenant_id", "id"]),
+        ]);
+        grid.focus(0, 2);
+
+        assert!(press(&grid.view, gdk::Key::j, gdk::ModifierType::CONTROL_MASK));
+
+        let mut chooser = None;
+        wait_until(WAIT, || {
+            chooser = descendants(&grid.view)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::PopoverMenu>().ok())
+                .find(|popover| popover.is_visible());
+            chooser.is_some()
+        })
+        .expect("the keys are offered");
+        let chooser = chooser.expect("an open chooser");
+        let model = chooser.menu_model().expect("the chooser's keys");
+        assert_eq!(model.n_items(), 2);
+        assert!(followed(&grid).is_empty(), "a key was followed before one was chosen");
+        chooser.popdown();
     }
 
     #[gtk4::test]

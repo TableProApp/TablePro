@@ -108,6 +108,9 @@ impl ObjectImpl for BrowseTab {
                     .build(),
                 Signal::builder("stop-save-requested").build(),
                 Signal::builder("refresh-requested").build(),
+                Signal::builder("follow-reference")
+                    .param_types([glib::BoxedAnyObject::static_type()])
+                    .build(),
             ]
         })
     }

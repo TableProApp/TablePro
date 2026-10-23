@@ -2,6 +2,7 @@ use tablepro_core::meta::TableRef;
 use tablepro_storage::DraftId;
 
 use super::structure_target::StructureTarget;
+use crate::ui::browse_tab::TableFilter;
 use crate::workspace::EditorFileRecord;
 
 /// A tab to open. Every way a tab opens builds one of these: the sidebar,
@@ -19,6 +20,7 @@ pub(crate) enum TabSpec {
     Table {
         table: TableRef,
         page: TablePage,
+        filter: TableFilter,
     },
     Structure {
         target: StructureTarget,

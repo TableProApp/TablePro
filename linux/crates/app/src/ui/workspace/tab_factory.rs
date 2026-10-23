@@ -25,7 +25,7 @@ use crate::services::change_tracker_registry::ChangeTrackerRegistry;
 use crate::services::history_service::HistoryService;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
-use crate::ui::browse_tab::{BrowseTab, BrowseTabInit};
+use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, TableFilter};
 use crate::ui::editor::{SqlEditor, SqlEditorInit};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
 use crate::ui::tab_load::FirstLoad;
@@ -67,15 +67,21 @@ impl TabFactory {
     /// Build the tab and append its page, unselected. `None` when the
     /// spec needs a session and the workspace has none any more.
     pub(super) fn create(&self, spec: TabSpec) -> Option<adw::TabPage> {
-        self.build(spec, FirstLoad::Now)
+        self.build(spec, FirstLoad::Now, None)
+    }
+
+    /// As `create`, with the page placed after `parent` and its other
+    /// children, so closing it goes back there.
+    pub(super) fn create_beside(&self, spec: TabSpec, parent: &adw::TabPage) -> Option<adw::TabPage> {
+        self.build(spec, FirstLoad::Now, Some(parent))
     }
 
     /// A saved tab, which reads its table the first time it is shown.
     pub(super) fn restore(&self, spec: TabSpec) -> Option<adw::TabPage> {
-        self.build(spec, FirstLoad::WhenShown)
+        self.build(spec, FirstLoad::WhenShown, None)
     }
 
-    fn build(&self, spec: TabSpec, first_load: FirstLoad) -> Option<adw::TabPage> {
+    fn build(&self, spec: TabSpec, first_load: FirstLoad, parent: Option<&adw::TabPage>) -> Option<adw::TabPage> {
         let id = Uuid::new_v4();
         let slot = match spec {
             TabSpec::Editor {
@@ -83,7 +89,16 @@ impl TabFactory {
                 draft,
                 file,
             } => self.editor(id, initial_query, draft, file),
-            TabSpec::Table { table, page } => self.table(id, table, page, first_load)?,
+            TabSpec::Table { table, page, filter } => self.table(
+                id,
+                TableOpening {
+                    table,
+                    page,
+                    filter,
+                    first_load,
+                    parent,
+                },
+            )?,
             TabSpec::Structure { target } => self.structure(id, target, first_load)?,
         };
         Some(self.insert(id, slot))
@@ -104,8 +119,11 @@ impl TabFactory {
         page
     }
 
-    fn append(&self, child: &impl IsA<gtk::Widget>, id: Uuid) -> adw::TabPage {
-        let page = self.parts.view.append(child);
+    fn append(&self, child: &impl IsA<gtk::Widget>, id: Uuid, parent: Option<&adw::TabPage>) -> adw::TabPage {
+        let page = match parent {
+            Some(parent) => self.parts.view.add_page(child, Some(parent)),
+            None => self.parts.view.append(child),
+        };
         self.parts.index.insert(&page, id);
         page
     }
@@ -136,7 +154,7 @@ impl TabFactory {
             editor.restore_file(gio::File::for_uri(&file.uri), file.modified);
         }
         let ordinal = self.free_ordinal();
-        let page = self.append(&editor, id);
+        let page = self.append(&editor, id, None);
         let label = match (opened_empty, editor.file()) {
             (_, Some(file)) => EditorLabel::file(&file),
             (true, None) => EditorLabel::Untitled(ordinal),
@@ -158,10 +176,16 @@ impl TabFactory {
         })
     }
 
-    fn table(&self, id: Uuid, table: TableRef, page: TablePage, first_load: FirstLoad) -> Option<WorkspaceTab> {
+    fn table(&self, id: Uuid, opening: TableOpening<'_>) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
-        let TableRef { schema, name } = table;
+        let TableOpening {
+            table: TableRef { schema, name },
+            page,
+            filter,
+            first_load,
+            parent,
+        } = opening;
         let browse = BrowseTab::new(BrowseTabInit {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
@@ -171,6 +195,7 @@ impl TabFactory {
             page_size: page.page_size,
             initial_offset: page.offset,
             initial_sort: page.sort,
+            filter,
             column_widths: parts.storage.column_widths().clone(),
             filter_settings: parts.storage.filter_settings().clone(),
             session,
@@ -180,7 +205,7 @@ impl TabFactory {
             first_load,
         });
         connect_browse(&browse, id, &parts.input);
-        let tab_page = self.append(&browse, id);
+        let tab_page = self.append(&browse, id, parent);
         let follow = follow_loading(&tab_page, browse.is_loading());
         browse.connect_loading_changed(move |_, loading| follow(loading));
         Some(WorkspaceTab::Table(TableTabSlot {
@@ -209,7 +234,7 @@ impl TabFactory {
             first_load,
         });
         connect_structure(&structure, id, &parts.input);
-        let page = self.append(&structure, id);
+        let page = self.append(&structure, id, None);
         let follow = follow_loading(&page, structure.is_loading());
         structure.connect_loading_changed(move |_, loading| follow(loading));
         Some(WorkspaceTab::Structure(StructureTabSlot {
@@ -238,6 +263,15 @@ impl TabFactory {
         }
         ordinal
     }
+}
+
+/// What a table tab opens on, and where its page goes.
+struct TableOpening<'a> {
+    table: TableRef,
+    page: TablePage,
+    filter: TableFilter,
+    first_load: FirstLoad,
+    parent: Option<&'a adw::TabPage>,
 }
 
 pub(super) const PREVIEW_CHARS: i32 = 200;
@@ -318,6 +352,13 @@ fn connect_browse(browse: &BrowseTab, tab_id: Uuid, input: &WorkspaceSender) {
     browse.connect_stop_save_requested(move |_| stop.deliver(WorkspaceInput::StopSaving(tab_id)));
     let refresh = input.clone();
     browse.connect_refresh_requested(move |_| refresh.deliver(WorkspaceInput::RefreshTab(tab_id)));
+    let follow = input.clone();
+    browse.connect_follow_reference(move |_, reference| {
+        follow.deliver(WorkspaceInput::FollowReference {
+            tab: tab_id,
+            reference: Box::new(reference),
+        });
+    });
 }
 
 /// Forward an editor tab's signals into the workspace. The toast

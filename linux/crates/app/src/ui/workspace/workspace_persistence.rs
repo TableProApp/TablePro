@@ -121,7 +121,7 @@ pub(super) fn workspace_record(
     index: &TabIndex,
 ) -> WorkspaceRecord {
     let pages = view.pages();
-    let snapshots: Vec<TabSnapshot> = (0..pages.n_items())
+    let mut snapshots: Vec<TabSnapshot> = (0..pages.n_items())
         .filter_map(|position| pages.item(position).and_downcast::<adw::TabPage>())
         .filter_map(|page| {
             let id = index.id_of(&page)?;
@@ -132,8 +132,32 @@ pub(super) fn workspace_record(
             })
         })
         .collect();
+    keep_filters_within(&mut snapshots, KEPT_FILTER_BUDGET);
     let selected = view.selected_page().and_then(|page| index.id_of(&page));
     crate::workspace::workspace_record(&snapshots, selected)
+}
+
+/// How many bytes of filters the saved tabs keep in all. The workspace
+/// file is refused past its size cap, and a filter has no bound of its
+/// own: one followed from a large binary key can be most of a megabyte.
+const KEPT_FILTER_BUDGET: usize = 256 * 1024;
+
+/// Keep each table tab's filter while they fit `budget`, in tab order.
+/// A tab past it is saved without one and opens on the table's
+/// remembered filter, rather than the whole file becoming unreadable.
+fn keep_filters_within(snapshots: &mut [TabSnapshot], mut budget: usize) {
+    for snapshot in snapshots {
+        let Some(TabRecord::Table { filter, .. }) = &mut snapshot.record else {
+            continue;
+        };
+        let size = filter.as_ref().map_or(0, |filter| {
+            serde_json::to_vec(filter).map_or(usize::MAX, |json| json.len())
+        });
+        match budget.checked_sub(size) {
+            Some(left) => budget = left,
+            None => *filter = None,
+        }
+    }
 }
 
 fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
@@ -160,6 +184,7 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
                 .browse
                 .current_sort()
                 .map(|(column, ascending)| SortRecord { column, ascending }),
+            filter: Some(slot.browse.applied_filter()),
         }),
     }
 }
@@ -196,6 +221,55 @@ mod tests {
     use crate::workspace::WorkspaceLoad;
 
     const WAIT: Duration = Duration::from_secs(5);
+
+    fn filtered_table(name: &str, value: &str) -> TabSnapshot {
+        let filter = tablepro_core::FilterSet {
+            combinator: tablepro_core::filter::Combinator::And,
+            rules: vec![tablepro_core::filter::FilterRule {
+                column: "id".to_owned(),
+                op: tablepro_core::filter::FilterOp::Eq,
+                value: Some(tablepro_core::filter::FilterValue::Single(value.to_owned())),
+            }],
+            extra_sql: None,
+        };
+        TabSnapshot {
+            id: Uuid::new_v4(),
+            record: Some(TabRecord::Table {
+                schema: None,
+                table: name.to_owned(),
+                offset: 0,
+                page_size: 100,
+                sort: None,
+                filter: Some(filter),
+            }),
+        }
+    }
+
+    fn kept(snapshots: &[TabSnapshot]) -> Vec<bool> {
+        snapshots
+            .iter()
+            .map(|snapshot| matches!(&snapshot.record, Some(TabRecord::Table { filter: Some(_), .. })))
+            .collect()
+    }
+
+    /// A filter followed from a large binary key would make the file too
+    /// large to read back, and with it every saved tab.
+    #[test]
+    fn filters_past_the_budget_are_saved_without_their_tab_filter() {
+        let large = format!("0x{}", "ab".repeat(KEPT_FILTER_BUDGET / 2));
+        let mut snapshots = vec![
+            filtered_table("users", "1"),
+            filtered_table("blobs", &large),
+            filtered_table("orders", "2"),
+        ];
+
+        keep_filters_within(&mut snapshots, KEPT_FILTER_BUDGET);
+
+        assert_eq!(kept(&snapshots), [true, false, true]);
+        let mut tight = vec![filtered_table("users", "1"), filtered_table("orders", "2")];
+        keep_filters_within(&mut tight, 1);
+        assert_eq!(kept(&tight), [false, false]);
+    }
 
     struct Fixture {
         runtime: crate::runtime::AppRuntime,
@@ -356,6 +430,7 @@ mod tests {
                     table: "orders".to_owned(),
                     offset: 0,
                     page_size: 1_000,
+                    filter: None,
                     sort: None,
                 },
                 TabRecord::Structure {

@@ -186,7 +186,12 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
         .fetch_foreign_keys(&dbo("lines"), within(CALL))
         .await
         .expect("the foreign keys");
+    let alone = connection
+        .fetch_inbound_foreign_keys(&dbo("orders"), within(CALL))
+        .await
+        .expect("the keys pointing at orders");
 
+    assert_eq!(alone, orders.inbound_foreign_keys);
     assert_eq!(orders.inbound_foreign_keys.len(), 1);
     let inbound = &orders.inbound_foreign_keys[0];
     assert_eq!(inbound.name, "FK_lines_orders");

@@ -316,6 +316,27 @@ pub(crate) fn declared_foreign_key_names(sql: &str) -> Option<Vec<Option<String>
     Some(names)
 }
 
+/// How a CREATE TABLE has `column` compare its values. `None` when the
+/// text does not read or names no such column.
+pub(crate) fn declared_comparison(sql: &str, column: &str) -> Option<crate::catalog::Comparison> {
+    let source = CreateTableSource::read(sql).ok()?;
+    let (_, declared) = source
+        .columns()
+        .find(|(_, declared)| declared.name.eq_ignore_ascii_case(column))?;
+    let type_text = declared.type_range.clone().map_or("", |range| source.text(range));
+    let collation = declared
+        .segments
+        .iter()
+        .filter(|segment| segment.kind == ColumnConstraintKind::Collate)
+        .filter_map(|segment| {
+            let text = source.text(segment.range.clone()).trim();
+            let name = text.get("COLLATE".len()..).filter(|_| text.len() > "COLLATE".len())?;
+            Some(unquote(name.trim()))
+        })
+        .next_back();
+    Some(crate::catalog::Comparison::of(type_text, collation.as_deref()))
+}
+
 /// Whether a CREATE TABLE declares `column` `PRIMARY KEY DESC`. Text
 /// that does not read declares nothing.
 pub(crate) fn declared_descending_key(sql: &str, column: &str) -> bool {

@@ -285,6 +285,7 @@ impl WorkspaceModel {
                 self.open_tab(TabSpec::Table {
                     table: TableRef::new(schema.clone(), name.clone()),
                     page: TablePage::first(page_size),
+                    filter: crate::ui::browse_tab::TableFilter::Remembered,
                 });
                 self.input.deliver(WorkspaceInput::SchemaChanged {
                     schema,
@@ -650,6 +651,7 @@ mod tests {
 
         let mut users = definition(vec![text_column("id")]);
         let key = |name: &str, table: TableRef, column: &str| InboundForeignKey {
+            child_compares_alike: true,
             name: name.to_owned(),
             table,
             columns: vec![column.to_owned()],

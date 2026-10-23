@@ -56,6 +56,7 @@ pub(crate) fn inbound_foreign_keys(rows: &[Vec<Value>]) -> Result<Vec<InboundFor
                 key.referenced_columns.push(referenced);
             }
             _ => keys.push(InboundForeignKey {
+                child_compares_alike: true,
                 name,
                 table,
                 columns: vec![column],

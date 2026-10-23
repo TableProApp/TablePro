@@ -125,6 +125,13 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         false
     }
 
+    /// The column where it meets a bound value of its own type, for a
+    /// type the engine compares only once it is cast to another. `None`
+    /// when the column compares as it is.
+    fn compared_operand(&self, _column: &ColumnInfo) -> Option<String> {
+        None
+    }
+
     /// `!` rather than a backslash: a backslash means something else
     /// inside a string literal under some PostgreSQL and MySQL session
     /// modes, and is no escape at all on SQLite and SQL Server.

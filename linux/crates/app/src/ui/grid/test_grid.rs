@@ -10,8 +10,8 @@ use tablepro_core::meta::RowIdentity;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{
-    ColumnWidthBinding, GridCell, GridContent, GridMsg, GridSink, GridSorting, RowObject, TabGridContext, begin_edit,
-    build_column_view, data_columns,
+    ColumnWidthBinding, GridCell, GridContent, GridMsg, GridSink, GridSorting, KeysHandle, RowObject, TabGridContext,
+    TableKeys, begin_edit, build_column_view, data_columns,
 };
 use crate::services::change_tracker::RowKey;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
@@ -70,6 +70,7 @@ pub(super) fn tracked(tracker: &TabTrackerHandle) -> TabGridContext {
         editable: true,
         identity: keyed_by_id(),
         column_widths: None,
+        keys: None,
     }
 }
 
@@ -109,7 +110,7 @@ pub(super) struct Grid {
 impl Grid {
     /// `rows` keyed by their first cell, in a grid that edits them.
     pub(super) fn open(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>) -> Self {
-        Self::open_in(columns, rows, None)
+        Self::open_in(columns, rows, None, None)
     }
 
     /// As `open`, with the column widths saved through `widths`.
@@ -118,10 +119,22 @@ impl Grid {
         rows: Vec<Vec<Value>>,
         widths: ColumnWidthBinding,
     ) -> Self {
-        Self::open_in(columns, rows, Some(widths))
+        Self::open_in(columns, rows, Some(widths), None)
     }
 
-    fn open_in(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>, widths: Option<ColumnWidthBinding>) -> Self {
+    /// As `open`, for a table with `keys`.
+    pub(super) fn open_with_keys(columns: Vec<ColumnInfo>, rows: Vec<Vec<Value>>, keys: TableKeys) -> Self {
+        let handle = KeysHandle::new(keys.table.clone());
+        handle.set(keys);
+        Self::open_in(columns, rows, None, Some(handle))
+    }
+
+    fn open_in(
+        columns: Vec<ColumnInfo>,
+        rows: Vec<Vec<Value>>,
+        widths: Option<ColumnWidthBinding>,
+        keys: Option<KeysHandle>,
+    ) -> Self {
         let tracker = TabTrackerHandle::default();
         let (sink, messages) = recorder();
         let (view, selection) = build_column_view(
@@ -131,6 +144,7 @@ impl Grid {
             GridSorting::Server { initial: None },
             TabGridContext {
                 column_widths: widths,
+                keys,
                 ..tracked(&tracker)
             },
         );
@@ -240,6 +254,16 @@ pub(super) fn page(ids: std::ops::Range<i64>) -> Vec<RowObject> {
         .map(|id| vec![Value::Int(id), Value::Text(format!("row {id}"))])
         .collect();
     persisted(&rows)
+}
+
+/// Open the cell's menu as a right click does.
+pub(super) fn open_menu(cell: &GridCell) {
+    let controllers = cell.observe_controllers();
+    let gesture = (0..controllers.n_items())
+        .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
+        .find(|gesture| gesture.button() == 3)
+        .expect("a cell answers a right-click");
+    gesture.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
 }
 
 /// Whether the window's focus is the grid or inside it.

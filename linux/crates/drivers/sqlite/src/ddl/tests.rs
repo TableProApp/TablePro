@@ -108,6 +108,7 @@ fn foreign_key(name: &str, column: &str, parent: &str, parent_column: &str) -> F
 
 fn inbound(name: &str, child: &str, column: &str, parent_column: &str) -> InboundForeignKey {
     InboundForeignKey {
+        child_compares_alike: true,
         name: name.to_owned(),
         table: TableRef::unqualified(child),
         columns: vec![column.to_owned()],

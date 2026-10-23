@@ -3,6 +3,8 @@ use gtk4::{gio, glib};
 use tablepro_storage::{ConnectionColor, ConnectionGroupName};
 use uuid::Uuid;
 
+use crate::ui::menu_label;
+
 pub(super) const PICKER: &str = "picker";
 pub(super) const CONNECT: &str = "connect";
 pub(super) const EDIT: &str = "edit";
@@ -102,12 +104,6 @@ fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Me
     new.append_item(&item(&crate::i18n::gettext("New Group…"), PICKER, NEW_GROUP, target));
     menu.append_section(None, &new);
     menu
-}
-
-/// A GtkPopoverMenu reads an underscore in a label as a mnemonic, so a
-/// group the user named keeps its underscores by doubling them.
-fn menu_label(text: &str) -> String {
-    text.replace('_', "__")
 }
 
 pub(super) fn color_name(color: ConnectionColor) -> String {
