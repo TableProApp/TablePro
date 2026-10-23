@@ -95,6 +95,8 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 ## Engineering review records (October 2026)
 
+- [Database-client refresh, October 23](archive/database-client-review-2026-10-23.md): all 14 named clients, source/release pins, pagination reversal, FK comparison semantics and ranked BookiE follow-ups.
+
 - [Saved connection row layouts, October 23](evidence/saved-connection-row-2026-10-23/README.md): light/dark narrow/normal widget captures, allocation checks and the remaining GTK measurement warning.
 
 - [Merge baseline validation, October 23](evidence/merge-baseline-validation-2026-10-23/README.md): workspace-test compile repair, scoped local validation and the independent completion-popup timeout.

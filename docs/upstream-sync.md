@@ -1,14 +1,16 @@
 # Optional upstream reference review
 
-The approved [BookiE convergence sprint](bookie-0.2-sprint.md) now includes shared Rust/Linux foundations as well as behavior review. Apple source trees remain excluded.
+BookiE reviews shared Rust/Linux foundations and portable behavior under the accepted decisions. The [completion page](bookie-0.2-sprint.md) records milestone status; Apple source trees remain excluded.
 
 ## Current upstream reference and adoption
 
-The [October 21 adoption and collaboration review](archive/tablepro-collaboration-2026-10-21.md) records the latest inspected pin, Linux changes, open upstream work and contribution candidates. Its [source inventory](evidence/tablepro-collaboration-2026-10-21/README.md) preserves the commit range. These are dated findings; the backlog and owning issue still select implementation.
+The [October 23 database-client refresh](archive/database-client-review-2026-10-23.md) is the newest cross-product review. It records current source/release pins, superseded pagination advice and existing BookiE issue ownership. Earlier entries below remain dated evidence.
+
+The [October 21 adoption and collaboration review](archive/tablepro-collaboration-2026-10-21.md) records its inspected pin, Linux changes, open upstream work and contribution candidates. Its [source inventory](evidence/tablepro-collaboration-2026-10-21/README.md) preserves the commit range. These are dated findings; the backlog and owning issue still select implementation.
 
 Since 2026-10-18, TablePro Linux lives under `linux/` on `TableProApp/TablePro` **main**; the old Linux branch was deleted after [#3541](https://github.com/TableProApp/TablePro/pull/3541). Use a pinned main SHA for new reviews. Earlier sections below remain dated evidence of their old refs.
 
-BookiE 0.2.0 delivery is complete per the maintainer; publication is pending. Selected adoption work is post-0.2.0 under [#1149](https://github.com/cozyGarage/BookiE/issues/1149) and the [backlog](backlog.md). The [development-process review](archive/upstream-linux-adoption-2026-10-18.md) and [movement audit](archive/upstream-linux-movement-2026-10-18.md) distinguish existing coverage, code reuse, investigations and rejected tradeoffs.
+BookiE 0.2.0 is published. The selected adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) is closed; subsequent work is selected through the [backlog](backlog.md). The [development-process review](archive/upstream-linux-adoption-2026-10-18.md) and [movement audit](archive/upstream-linux-movement-2026-10-18.md) distinguish existing coverage, code reuse, investigations and rejected tradeoffs.
 
 For each adopted Rust/Linux change, record the source commit/path, user case, existing BookiE coverage, license/attribution, owner and acceptance tier. Adapt shared code and fixtures to PolicyGuard, native-value and session contracts, stable durable identities and the registered drivers. Reuse existing issues before adding a packet. A wholesale merge, a UI/client-library replacement or removal of a local dependency patch needs its own decision and equivalence evidence.
 

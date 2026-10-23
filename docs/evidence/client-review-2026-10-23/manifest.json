@@ -1,0 +1,945 @@
+{
+  "date": "2026-10-23",
+  "bookie_commit": "220c68757743ef936dafdff859373d05e20595a6",
+  "method": "Official GitHub source/release/PR/issue feeds; paginated commit inventory since October 20; selected source and test diffs; current BookiE source and live issue state. No external application execution or benchmark.",
+  "coverage_limits": "Recent PR feeds limited to 40 and issue feeds to 25 per repository; release feeds limited to three entries and may include helper tags. Commit counts include merges. Selected diffs are not an exhaustive code audit. No license re-audit or reuse authorization.",
+  "sources": [
+    {
+      "repository": "0xErwin1/dbflux",
+      "ref": "main",
+      "commit": "a3e051f4522e249fd78abf72e7da130a5c9b8e03",
+      "commit_date": "2026-10-23T12:44:20Z",
+      "url": "https://github.com/0xErwin1/dbflux/commit/a3e051f4522e249fd78abf72e7da130a5c9b8e03",
+      "commits_since_2026_10_20": 11,
+      "release_feed": [
+        {
+          "tag": "nightly",
+          "published_at": "2026-06-07T05:23:47Z",
+          "prerelease": true,
+          "url": "https://github.com/0xErwin1/dbflux/releases/tag/nightly"
+        },
+        {
+          "tag": "v0.9.0-rc.0",
+          "published_at": "2026-10-18T00:11:39Z",
+          "prerelease": true,
+          "url": "https://github.com/0xErwin1/dbflux/releases/tag/v0.9.0-rc.0"
+        },
+        {
+          "tag": "v0.8.12",
+          "published_at": "2026-10-16T21:55:19Z",
+          "prerelease": false,
+          "url": "https://github.com/0xErwin1/dbflux/releases/tag/v0.8.12"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "JosueRhea/dbui",
+      "ref": "main",
+      "commit": "6b98db2eeb01e4f2971b803383363993c4b99d7b",
+      "commit_date": "2026-10-21T14:49:39Z",
+      "url": "https://github.com/JosueRhea/dbui/commit/6b98db2eeb01e4f2971b803383363993c4b99d7b",
+      "commits_since_2026_10_20": 2,
+      "release_feed": [
+        {
+          "tag": "v0.5.1",
+          "published_at": "2026-10-21T14:52:38Z",
+          "prerelease": false,
+          "url": "https://github.com/JosueRhea/dbui/releases/tag/v0.5.1"
+        },
+        {
+          "tag": "v0.5.0",
+          "published_at": "2026-09-25T15:27:24Z",
+          "prerelease": false,
+          "url": "https://github.com/JosueRhea/dbui/releases/tag/v0.5.0"
+        },
+        {
+          "tag": "v0.4.0",
+          "published_at": "2026-09-23T16:12:20Z",
+          "prerelease": false,
+          "url": "https://github.com/JosueRhea/dbui/releases/tag/v0.4.0"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "ShayanAbbas1/dbdelve",
+      "ref": "main",
+      "commit": "14b761c23c0fd044627e0234a7ac14f870d9f82c",
+      "commit_date": "2026-10-22T21:35:17Z",
+      "url": "https://github.com/ShayanAbbas1/dbdelve/commit/14b761c23c0fd044627e0234a7ac14f870d9f82c",
+      "commits_since_2026_10_20": 21,
+      "release_feed": [
+        {
+          "tag": "v0.5.1",
+          "published_at": "2026-10-22T20:21:46Z",
+          "prerelease": false,
+          "url": "https://github.com/ShayanAbbas1/dbdelve/releases/tag/v0.5.1"
+        },
+        {
+          "tag": "v0.5.0",
+          "published_at": "2026-10-20T21:36:55Z",
+          "prerelease": false,
+          "url": "https://github.com/ShayanAbbas1/dbdelve/releases/tag/v0.5.0"
+        },
+        {
+          "tag": "v0.4.0",
+          "published_at": "2026-10-19T20:36:11Z",
+          "prerelease": false,
+          "url": "https://github.com/ShayanAbbas1/dbdelve/releases/tag/v0.4.0"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "TableProApp/TablePro",
+      "ref": "main",
+      "commit": "25158fb45de5e0a9b8d75afa5508e0d5f4e72343",
+      "commit_date": "2026-10-23T13:34:56Z",
+      "url": "https://github.com/TableProApp/TablePro/commit/25158fb45de5e0a9b8d75afa5508e0d5f4e72343",
+      "commits_since_2026_10_20": 117,
+      "release_feed": [
+        {
+          "tag": "v0.83.0-beta.2",
+          "published_at": "2026-10-23T03:07:46Z",
+          "prerelease": true,
+          "url": "https://github.com/TableProApp/TablePro/releases/tag/v0.83.0-beta.2"
+        },
+        {
+          "tag": "v0.82.2",
+          "published_at": "2026-10-23T02:15:52Z",
+          "prerelease": false,
+          "url": "https://github.com/TableProApp/TablePro/releases/tag/v0.82.2"
+        },
+        {
+          "tag": "libs-5",
+          "published_at": "2026-10-22T05:07:19Z",
+          "prerelease": false,
+          "url": "https://github.com/TableProApp/TablePro/releases/tag/libs-5"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "beekeeper-studio/beekeeper-studio",
+      "ref": "master",
+      "commit": "34074321fe0126cc7368c7f117456db6f428cb23",
+      "commit_date": "2026-10-22T18:02:31Z",
+      "url": "https://github.com/beekeeper-studio/beekeeper-studio/commit/34074321fe0126cc7368c7f117456db6f428cb23",
+      "commits_since_2026_10_20": 151,
+      "release_feed": [
+        {
+          "tag": "v6.2.0-beta.3",
+          "published_at": "2026-10-23T10:15:04Z",
+          "prerelease": true,
+          "url": "https://github.com/beekeeper-studio/beekeeper-studio/releases/tag/v6.2.0-beta.3"
+        },
+        {
+          "tag": "v6.2.0-beta.2",
+          "published_at": "2026-10-22T21:08:51Z",
+          "prerelease": true,
+          "url": "https://github.com/beekeeper-studio/beekeeper-studio/releases/tag/v6.2.0-beta.2"
+        },
+        {
+          "tag": "v6.1.6",
+          "published_at": "2026-10-07T22:22:01Z",
+          "prerelease": false,
+          "url": "https://github.com/beekeeper-studio/beekeeper-studio/releases/tag/v6.1.6"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "dbeaver/dbeaver",
+      "ref": "devel",
+      "commit": "39f772bd0c91ee7a1fe2a1d76fcf6af2cfc7efcd",
+      "commit_date": "2026-10-23T13:00:46Z",
+      "url": "https://github.com/dbeaver/dbeaver/commit/39f772bd0c91ee7a1fe2a1d76fcf6af2cfc7efcd",
+      "commits_since_2026_10_20": 54,
+      "release_feed": [
+        {
+          "tag": "26.2.3",
+          "published_at": "2026-10-18T17:33:40Z",
+          "prerelease": false,
+          "url": "https://github.com/dbeaver/dbeaver/releases/tag/26.2.3"
+        },
+        {
+          "tag": "26.2.2",
+          "published_at": "2026-10-04T19:05:32Z",
+          "prerelease": false,
+          "url": "https://github.com/dbeaver/dbeaver/releases/tag/26.2.2"
+        },
+        {
+          "tag": "26.2.1",
+          "published_at": "2026-09-21T04:23:05Z",
+          "prerelease": false,
+          "url": "https://github.com/dbeaver/dbeaver/releases/tag/26.2.1"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "duanebester/pgui",
+      "ref": "main",
+      "commit": "d01aed7838f1bdbe3aa07c656e9ac7b88f57675e",
+      "commit_date": "2026-05-09T23:56:52Z",
+      "url": "https://github.com/duanebester/pgui/commit/d01aed7838f1bdbe3aa07c656e9ac7b88f57675e",
+      "commits_since_2026_10_20": 0,
+      "release_feed": [
+        {
+          "tag": "v0.1.23",
+          "published_at": "2026-05-09T23:57:37Z",
+          "prerelease": false,
+          "url": "https://github.com/duanebester/pgui/releases/tag/v0.1.23"
+        },
+        {
+          "tag": "v0.1.22",
+          "published_at": "2025-12-15T22:49:57Z",
+          "prerelease": false,
+          "url": "https://github.com/duanebester/pgui/releases/tag/v0.1.22"
+        },
+        {
+          "tag": "v0.1.21",
+          "published_at": "2025-12-08T23:33:47Z",
+          "prerelease": false,
+          "url": "https://github.com/duanebester/pgui/releases/tag/v0.1.21"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "feigeCode/navop",
+      "ref": "main",
+      "commit": "6773a65b73e5c89e3f884d6c24b3f2d7059d2bac",
+      "commit_date": "2026-10-23T06:32:16Z",
+      "url": "https://github.com/feigeCode/navop/commit/6773a65b73e5c89e3f884d6c24b3f2d7059d2bac",
+      "commits_since_2026_10_20": 56,
+      "release_feed": [
+        {
+          "tag": "v0.21.1",
+          "published_at": "2026-10-22T15:32:22Z",
+          "prerelease": false,
+          "url": "https://github.com/feigeCode/navop/releases/tag/v0.21.1"
+        },
+        {
+          "tag": "v0.21.0",
+          "published_at": "2026-10-22T09:52:12Z",
+          "prerelease": false,
+          "url": "https://github.com/feigeCode/navop/releases/tag/v0.21.0"
+        },
+        {
+          "tag": "v0.20.4",
+          "published_at": "2026-10-20T14:44:35Z",
+          "prerelease": false,
+          "url": "https://github.com/feigeCode/navop/releases/tag/v0.20.4"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "fluxdb-alt/fluxDB",
+      "ref": "main",
+      "commit": "670b2b4a4104753ef24daaf5766e2a326e4e33cf",
+      "commit_date": "2026-10-23T08:04:07Z",
+      "url": "https://github.com/fluxdb-alt/fluxDB/commit/670b2b4a4104753ef24daaf5766e2a326e4e33cf",
+      "commits_since_2026_10_20": 86,
+      "release_feed": [
+        {
+          "tag": "v0.1.11",
+          "published_at": "2026-10-23T06:13:41Z",
+          "prerelease": false,
+          "url": "https://github.com/fluxdb-alt/fluxDB/releases/tag/v0.1.11"
+        },
+        {
+          "tag": "v0.1.10",
+          "published_at": "2026-10-21T15:43:28Z",
+          "prerelease": false,
+          "url": "https://github.com/fluxdb-alt/fluxDB/releases/tag/v0.1.10"
+        },
+        {
+          "tag": "v0.1.9",
+          "published_at": "2026-10-19T15:53:49Z",
+          "prerelease": false,
+          "url": "https://github.com/fluxdb-alt/fluxDB/releases/tag/v0.1.9"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "pavi2410/based",
+      "ref": "main",
+      "commit": "db046228e3036212ea6dc4fccdc03bd2bcc475c4",
+      "commit_date": "2026-10-20T16:46:30Z",
+      "url": "https://github.com/pavi2410/based/commit/db046228e3036212ea6dc4fccdc03bd2bcc475c4",
+      "commits_since_2026_10_20": 50,
+      "release_feed": [
+        {
+          "tag": "v2026.10.0",
+          "published_at": "2026-10-20T15:55:12Z",
+          "prerelease": false,
+          "url": "https://github.com/pavi2410/based/releases/tag/v2026.10.0"
+        },
+        {
+          "tag": "v2026.8.1",
+          "published_at": "2026-08-20T15:47:03Z",
+          "prerelease": false,
+          "url": "https://github.com/pavi2410/based/releases/tag/v2026.8.1"
+        },
+        {
+          "tag": "v2026.8.0",
+          "published_at": "2026-08-17T06:46:02Z",
+          "prerelease": false,
+          "url": "https://github.com/pavi2410/based/releases/tag/v2026.8.0"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "pgadmin-org/pgadmin4",
+      "ref": "master",
+      "commit": "ea293b335ead614b5c5bfc69d52663f24d5dbe0c",
+      "commit_date": "2026-10-22T12:48:27Z",
+      "url": "https://github.com/pgadmin-org/pgadmin4/commit/ea293b335ead614b5c5bfc69d52663f24d5dbe0c",
+      "commits_since_2026_10_20": 6,
+      "release_feed": [],
+      "release_feed_empty": true
+    },
+    {
+      "repository": "sqlitebrowser/sqlitebrowser",
+      "ref": "master",
+      "commit": "92f7127b6ffa4ed3fec30c919776797592da2858",
+      "commit_date": "2026-10-23T11:51:32Z",
+      "url": "https://github.com/sqlitebrowser/sqlitebrowser/commit/92f7127b6ffa4ed3fec30c919776797592da2858",
+      "commits_since_2026_10_20": 6,
+      "release_feed": [
+        {
+          "tag": "continuous",
+          "published_at": "2026-10-23T12:17:07Z",
+          "prerelease": true,
+          "url": "https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/continuous"
+        },
+        {
+          "tag": "nightly",
+          "published_at": "2026-10-21T13:15:53Z",
+          "prerelease": true,
+          "url": "https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/nightly"
+        },
+        {
+          "tag": "v3.13.1",
+          "published_at": "2024-10-16T08:42:55Z",
+          "prerelease": false,
+          "url": "https://github.com/sqlitebrowser/sqlitebrowser/releases/tag/v3.13.1"
+        }
+      ],
+      "release_feed_empty": false
+    },
+    {
+      "repository": "t8y2/dbx",
+      "ref": "main",
+      "commit": "209172db070715765a1b4368564782b9ebbec930",
+      "commit_date": "2026-10-23T12:51:44Z",
+      "url": "https://github.com/t8y2/dbx/commit/209172db070715765a1b4368564782b9ebbec930",
+      "commits_since_2026_10_20": 230,
+      "release_feed": [
+        {
+          "tag": "v0.6.52",
+          "published_at": "2026-10-23T03:14:28Z",
+          "prerelease": false,
+          "url": "https://github.com/t8y2/dbx/releases/tag/v0.6.52"
+        },
+        {
+          "tag": "packages-v0.4.128",
+          "published_at": "2026-10-23T02:55:06Z",
+          "prerelease": false,
+          "url": "https://github.com/t8y2/dbx/releases/tag/packages-v0.4.128"
+        },
+        {
+          "tag": "agents-v0.2.148",
+          "published_at": "2026-10-23T02:00:44Z",
+          "prerelease": false,
+          "url": "https://github.com/t8y2/dbx/releases/tag/agents-v0.2.148"
+        }
+      ],
+      "release_feed_empty": false
+    }
+  ],
+  "official_pages": [
+    "https://tableplus.com/blog/2017/02/changelogs.html",
+    "https://tableplus.com/blog/2020/01/changelogs-linux.html",
+    "https://www.pgadmin.org/docs/pgadmin4/9.18/release_notes_9_18.html",
+    "https://dbeaver.io/2026/10/18/dbeaver-26-2-3/"
+  ],
+  "selected_diff_inventory": [
+    {
+      "url": "https://github.com/0xErwin1/dbflux/commit/a3e051f4522e249fd78abf72e7da130a5c9b8e03",
+      "commit": "a3e051f4522e249fd78abf72e7da130a5c9b8e03",
+      "subject": "fix(ui): distinguish referenced columns in FK label caches (#1160)",
+      "files": [
+        "CHANGELOG.md",
+        "crates/dbflux_ui_document/src/data_grid_panel/context_menu/mod.rs",
+        "crates/dbflux_ui_document/src/data_grid_panel/fk_display.rs",
+        "crates/dbflux_ui_document/src/data_grid_panel/row_inspector.rs",
+        "crates/dbflux_ui_document/src/data_grid_panel/tests/fk_label_identity.rs",
+        "crates/dbflux_ui_document/src/data_grid_panel/tests/mod.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/0xErwin1/dbflux/commit/e8f3c03e2b506020ffdfa289c08b936a9f2d943d",
+      "commit": "e8f3c03e2b506020ffdfa289c08b936a9f2d943d",
+      "subject": "fix(mcp): run connection hooks in MCP server (#1139)",
+      "files": [
+        "CHANGELOG.md",
+        "crates/dbflux_core/src/connection/hook.rs",
+        "crates/dbflux_core/src/connection/profile_manager.rs",
+        "crates/dbflux_core/tests/connection_hooks.rs",
+        "crates/dbflux_mcp_server/Cargo.toml",
+        "crates/dbflux_mcp_server/src/connection_cache.rs",
+        "crates/dbflux_mcp_server/src/governance.rs",
+        "crates/dbflux_mcp_server/src/lib.rs",
+        "crates/dbflux_mcp_server/src/server.rs",
+        "crates/dbflux_mcp_server/src/state.rs",
+        "crates/dbflux_mcp_server/src/tools/connection.rs",
+        "crates/dbflux_mcp_server/src/tools/ddl.rs",
+        "crates/dbflux_mcp_server/src/tools/read.rs",
+        "crates/dbflux_mcp_server/src/tools/write.rs",
+        "crates/dbflux_mcp_server/tests/integration_test.rs",
+        "crates/dbflux_mcp_server/tests/integration_tests.rs",
+        "crates/dbflux_mcp_server/tests/mcp_agent_e2e/main.rs",
+        "docs/MCP_AI_INTEGRATION.md",
+        "docs/es/MCP_AI_INTEGRATION.md",
+        "docs/ko/MCP_AI_INTEGRATION.md",
+        "docs/zh_Hans/MCP_AI_INTEGRATION.md"
+      ]
+    },
+    {
+      "url": "https://github.com/ShayanAbbas1/dbdelve/commit/0ce305f4d29e5223e16e0a3a1de068cc9e632f48",
+      "commit": "0ce305f4d29e5223e16e0a3a1de068cc9e632f48",
+      "subject": "ci: save caches from main only, harden apt and the token (#136)",
+      "files": [
+        ".github/workflows/ci.yml"
+      ]
+    },
+    {
+      "url": "https://github.com/ShayanAbbas1/dbdelve/commit/b3af955a4d6dbb37adbaad8289a37229472a505b",
+      "commit": "b3af955a4d6dbb37adbaad8289a37229472a505b",
+      "subject": "Format only the selection, keep line breaks, and make editor rewrites undoable (#135)",
+      "files": [
+        "src/mql.rs",
+        "src/sql.rs",
+        "src/workspace/editing.rs",
+        "src/workspace/queries.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/TableProApp/TablePro/commit/25158fb45de5e0a9b8d75afa5508e0d5f4e72343",
+      "commit": "25158fb45de5e0a9b8d75afa5508e0d5f4e72343",
+      "subject": "feat(linux): add connection tags, icons and search (#3811)",
+      "files": [
+        "linux/ROADMAP.md",
+        "linux/changelog.d/3811.added.md",
+        "linux/crates/app/src/application/accelerators.rs",
+        "linux/crates/app/src/application/shortcut_owner.rs",
+        "linux/crates/app/src/application/tests.rs",
+        "linux/crates/app/src/services/connection_deletion.rs",
+        "linux/crates/app/src/services/connection_search.rs",
+        "linux/crates/app/src/services/file_resolution.rs",
+        "linux/crates/app/src/services/mod.rs",
+        "linux/crates/app/src/services/saved_connection_editor.rs",
+        "linux/crates/app/src/services/saved_connection_error.rs",
+        "linux/crates/app/src/services/saved_connection_list.rs",
+        "linux/crates/app/src/services/saved_connection_object.rs",
+        "linux/crates/app/src/services/saved_connection_order.rs",
+        "linux/crates/app/src/services/secret_changes.rs",
+        "linux/crates/app/src/services/secret_labels.rs",
+        "linux/crates/app/src/ui/connect_dialog/appearance.rs",
+        "linux/crates/app/src/ui/connect_dialog/connect_form.rs",
+        "linux/crates/app/src/ui/connect_dialog/imp.rs",
+        "linux/crates/app/src/ui/connect_dialog/mod.rs",
+        "linux/crates/app/src/ui/connect_dialog/tests.rs",
+        "linux/crates/app/src/ui/connection_appearance.rs",
+        "linux/crates/app/src/ui/connection_list_banner.rs",
+        "linux/crates/app/src/ui/error_text/saved_connection.rs",
+        "linux/crates/app/src/ui/history_dialog/connection_filter.rs",
+        "linux/crates/app/src/ui/history_dialog/tests.rs",
+        "linux/crates/app/src/ui/icons.rs",
+        "linux/crates/app/src/ui/mod.rs",
+        "linux/crates/app/src/ui/picker/connection_menu.rs",
+        "linux/crates/app/src/ui/picker/connection_row.rs",
+        "linux/crates/app/src/ui/picker/mod.rs",
+        "linux/crates/app/src/ui/picker/picker_actions.rs",
+        "linux/crates/app/src/ui/picker/tests.rs",
+        "linux/crates/app/src/ui/session_window/connect_failure_view.rs",
+        "linux/crates/app/src/ui/session_window/connect_flow.rs",
+        "linux/crates/app/src/ui/session_window/connections.rs",
+        "linux/crates/app/src/ui/session_window/imp.rs",
+        "linux/crates/app/src/ui/session_window/mod.rs",
+        "linux/crates/app/src/ui/session_window/picker_page.rs",
+        "linux/crates/app/src/ui/session_window/secret_retry.rs",
+        "linux/crates/app/src/ui/session_window/session_window_input.rs",
+        "linux/crates/app/src/ui/session_window/tests/mod.rs",
+        "linux/crates/app/src/ui/session_window/window_actions.rs",
+        "linux/crates/app/src/ui/tags/manage_tags_dialog.rs",
+        "linux/crates/app/src/ui/tags/mod.rs",
+        "linux/crates/app/src/ui/tags/tag_dialog.rs",
+        "linux/crates/app/src/ui/welcome_view.rs",
+        "linux/crates/app/src/ui/workspace/imp.rs",
+        "linux/crates/app/src/ui/workspace/mod.rs",
+        "linux/crates/app/src/ui/workspace/shell.rs",
+        "linux/crates/app/tests/accessibility/main.rs",
+        "linux/crates/app/tests/accessibility/world.rs",
+        "linux/crates/app/tests/application_lifecycle.rs",
+        "linux/crates/app/tests/secret_save_flow.rs",
+        "linux/crates/mcp/src/tool_context.rs",
+        "linux/crates/mcp/tests/mcp_server.rs",
+        "linux/crates/session/src/connect/persist_pending_save.rs",
+        "linux/crates/session/src/connect/resolve_saved.rs",
+        "linux/crates/session/src/registry/session_key.rs",
+        "linux/crates/storage/src/connection_group_name.rs",
+        "linux/crates/storage/src/connection_icon.rs",
+        "linux/crates/storage/src/connection_tag.rs",
+        "linux/crates/storage/src/connection_tag_name.rs",
+        "linux/crates/storage/src/connections.rs",
+        "linux/crates/storage/src/credentials/keyring_credentials.rs",
+        "linux/crates/storage/src/error.rs",
+        "linux/crates/storage/src/lib.rs",
+        "linux/crates/storage/src/name_rules.rs",
+        "linux/crates/storage/src/tag_name_error.rs",
+        "linux/crates/storage/tests/isolation.rs",
+        "linux/crates/storage/tests/stored_formats.rs",
+        "linux/data/resources/gtk/menus.ui",
+        "linux/data/resources/shortcuts-dialog.ui",
+        "linux/data/resources/style.css",
+        "linux/data/resources/ui/connect-dialog.ui",
+        "linux/data/resources/ui/picker-page.ui",
+        "linux/data/resources/ui/welcome-view.ui",
+        "linux/data/resources/ui/workspace.ui",
+        "linux/docs/storage.md",
+        "linux/po/POTFILES.in"
+      ]
+    },
+    {
+      "url": "https://github.com/TableProApp/TablePro/commit/87d47c3ffd071c2c2cf7a07df11e3bf667b74cc6",
+      "commit": "87d47c3ffd071c2c2cf7a07df11e3bf667b74cc6",
+      "subject": "feat(linux-mcp): add a local MCP server, with ADR 0022 for it and the AI assistant (#3805)",
+      "files": [
+        "linux/ARCHITECTURE.md",
+        "linux/Cargo.lock",
+        "linux/Cargo.toml",
+        "linux/README.md",
+        "linux/ROADMAP.md",
+        "linux/about.toml",
+        "linux/build-aux/debian/copyright",
+        "linux/changelog.d/3805.added.md",
+        "linux/crates/app/Cargo.toml",
+        "linux/crates/app/src/application/app_actions.rs",
+        "linux/crates/app/src/application/app_services.rs",
+        "linux/crates/app/src/application/imp.rs",
+        "linux/crates/app/src/application/mcp_bridge.rs",
+        "linux/crates/app/src/application/mod.rs",
+        "linux/crates/app/src/application/tests.rs",
+        "linux/crates/app/src/services/connection_deletion.rs",
+        "linux/crates/app/src/services/file_resolution.rs",
+        "linux/crates/app/src/services/mcp_service.rs",
+        "linux/crates/app/src/services/mcp_status.rs",
+        "linux/crates/app/src/services/mod.rs",
+        "linux/crates/app/src/services/saved_connection_editor.rs",
+        "linux/crates/app/src/services/saved_connection_list.rs",
+        "linux/crates/app/src/services/saved_connection_object.rs",
+        "linux/crates/app/src/services/saved_connection_order.rs",
+        "linux/crates/app/src/services/secret_changes.rs",
+        "linux/crates/app/src/services/secret_labels.rs",
+        "linux/crates/app/src/ui/connect_dialog/connect_form.rs",
+        "linux/crates/app/src/ui/connect_dialog/imp.rs",
+        "linux/crates/app/src/ui/connect_dialog/mod.rs",
+        "linux/crates/app/src/ui/connect_dialog/tests.rs",
+        "linux/crates/app/src/ui/editor/mod.rs",
+        "linux/crates/app/src/ui/external_access.rs",
+        "linux/crates/app/src/ui/history_dialog/connection_filter.rs",
+        "linux/crates/app/src/ui/history_dialog/tests.rs",
+        "linux/crates/app/src/ui/mod.rs",
+        "linux/crates/app/src/ui/picker/tests.rs",
+        "linux/crates/app/src/ui/preferences_dialog/imp.rs",
+        "linux/crates/app/src/ui/preferences_dialog/mcp_page.rs",
+        "linux/crates/app/src/ui/preferences_dialog/mod.rs",
+        "linux/crates/app/src/ui/session_window/connect_failure_view.rs",
+        "linux/crates/app/src/ui/session_window/connect_flow.rs",
+        "linux/crates/app/src/ui/session_window/secret_retry.rs",
+        "linux/crates/app/src/ui/session_window/tests/mod.rs",
+        "linux/crates/app/src/ui/write_confirmation.rs",
+        "linux/crates/app/tests/accessibility/world.rs",
+        "linux/crates/app/tests/application_lifecycle.rs",
+        "linux/crates/app/tests/secret_save_flow.rs",
+        "linux/crates/core/src/external_access.rs",
+        "linux/crates/core/src/lib.rs",
+        "linux/crates/core/src/row_limit.rs",
+        "linux/crates/core/src/sql_syntax/catalog_change.rs",
+        "linux/crates/core/src/sql_syntax/mod.rs",
+        "linux/crates/mcp/Cargo.toml",
+        "linux/crates/mcp/clippy.toml",
+        "linux/crates/mcp/src/access_token.rs",
+        "linux/crates/mcp/src/browse_request.rs",
+        "linux/crates/mcp/src/collected_results.rs",
+        "linux/crates/mcp/src/connection_tools.rs",
+        "linux/crates/mcp/src/lib.rs",
+        "linux/crates/mcp/src/mcp_host.rs",
+        "linux/crates/mcp/src/mcp_server.rs",
+        "linux/crates/mcp/src/query_tools.rs",
+        "linux/crates/mcp/src/schema_tools.rs",
+        "linux/crates/mcp/src/token_vault.rs",
+        "linux/crates/mcp/src/tool_args.rs",
+        "linux/crates/mcp/src/tool_context.rs",
+        "linux/crates/mcp/src/tool_error.rs",
+        "linux/crates/mcp/src/tool_server.rs",
+        "linux/crates/mcp/tests/mcp_server.rs",
+        "linux/crates/session/src/connect/persist_pending_save.rs",
+        "linux/crates/session/src/connect/resolve_saved.rs",
+        "linux/crates/session/src/registry/session_key.rs",
+        "linux/crates/session/src/session/session.rs",
+        "linux/crates/storage/src/connections.rs",
+        "linux/crates/storage/src/credentials/keyring_credentials.rs",
+        "linux/crates/storage/src/secrets/secret_attributes.rs",
+        "linux/crates/storage/src/secrets/secret_store.rs",
+        "linux/crates/storage/src/settings/keys.rs",
+        "linux/crates/storage/src/settings/mod.rs",
+        "linux/crates/storage/tests/isolation.rs",
+        "linux/crates/storage/tests/secret_service.rs",
+        "linux/crates/storage/tests/settings.rs",
+        "linux/crates/storage/tests/stored_formats.rs",
+        "linux/data/app.tablepro.TablePro.gschema.xml.in",
+        "linux/data/licenses/THIRD-PARTY-NOTICE.md",
+        "linux/data/licenses/third-party.json",
+        "linux/data/resources/resources.gresource.xml",
+        "linux/data/resources/ui/connect-dialog.ui",
+        "linux/data/resources/ui/preferences-dialog.ui",
+        "linux/data/resources/ui/preferences-mcp-page.ui",
+        "linux/docs/decisions/0022-ai-assistant-and-mcp-server.md",
+        "linux/docs/decisions/README.md",
+        "linux/docs/storage.md",
+        "linux/po/POTFILES.in"
+      ]
+    },
+    {
+      "url": "https://github.com/TableProApp/TablePro/commit/99863c4e0eefbe52f563c5cb02248587a355dc69",
+      "commit": "99863c4e0eefbe52f563c5cb02248587a355dc69",
+      "subject": "fix(linux): follow a foreign key only when a filter finds the rows it matches (#3807)",
+      "files": [
+        "linux/changelog.d/3797.added.2.md",
+        "linux/crates/app/src/ui/browse_tab/fetch.rs",
+        "linux/crates/app/src/ui/browse_tab/tests/mod.rs",
+        "linux/crates/app/src/ui/browse_tab/tests/references.rs",
+        "linux/crates/app/src/ui/error_text/reference.rs",
+        "linux/crates/app/src/ui/grid/reference_menu.rs",
+        "linux/crates/app/src/ui/grid/table_keys.rs",
+        "linux/crates/app/src/ui/workspace/tests/references.rs",
+        "linux/crates/app/tests/accessibility/main.rs",
+        "linux/crates/core/src/browse/reference_error.rs",
+        "linux/crates/core/src/browse/row_reference.rs",
+        "linux/crates/core/src/connection.rs",
+        "linux/crates/core/src/ddl/inbound_foreign_key.rs",
+        "linux/crates/core/src/ddl/mod.rs",
+        "linux/crates/core/src/ddl/outbound_foreign_key.rs",
+        "linux/crates/core/src/edit/parse_literal_text.rs",
+        "linux/crates/core/src/sql_syntax/script/lexer.rs",
+        "linux/crates/core/src/sql_syntax/script/script_rules.rs",
+        "linux/crates/core/tests/script_corpus.rs",
+        "linux/crates/drivers/clickhouse/src/connection.rs",
+        "linux/crates/drivers/mssql/src/connection.rs",
+        "linux/crates/drivers/mysql/src/catalog/key_comparison.rs",
+        "linux/crates/drivers/mysql/src/catalog/mod.rs",
+        "linux/crates/drivers/mysql/src/catalog/table_definition.rs",
+        "linux/crates/drivers/mysql/src/connection.rs",
+        "linux/crates/drivers/mysql/src/metadata.rs",
+        "linux/crates/drivers/mysql/tests/integration/metadata.rs",
+        "linux/crates/drivers/postgres/src/catalog/mod.rs",
+        "linux/crates/drivers/postgres/src/catalog/table_definition.rs",
+        "linux/crates/drivers/postgres/src/connection.rs",
+        "linux/crates/drivers/postgres/src/metadata/foreign_keys.rs",
+        "linux/crates/drivers/postgres/src/metadata/mod.rs",
+        "linux/crates/drivers/postgres/tests/integration/metadata.rs",
+        "linux/crates/drivers/sqlite/src/catalog/mod.rs",
+        "linux/crates/drivers/sqlite/src/connection.rs",
+        "linux/crates/drivers/sqlite/src/ddl/create_table_source.rs",
+        "linux/crates/drivers/sqlite/src/metadata.rs",
+        "linux/crates/drivers/sqlite/tests/integration/catalog.rs",
+        "linux/crates/drivers/sqlite/tests/integration/dialect.rs",
+        "linux/crates/test-support/src/call_counters.rs",
+        "linux/crates/test-support/src/connection_script.rs",
+        "linux/crates/test-support/src/fake_connection.rs",
+        "linux/docs/adding-drivers.md"
+      ]
+    },
+    {
+      "url": "https://github.com/TableProApp/TablePro/commit/dacad31b66f190dfa31916c108048b9f9f685f56",
+      "commit": "dacad31b66f190dfa31916c108048b9f9f685f56",
+      "subject": "fix(linux-drivers): stop an editor script before its next statement on MySQL, MariaDB and SQLite (#3780)",
+      "files": [
+        "linux/changelog.d/3780.fixed.1.md",
+        "linux/changelog.d/3780.fixed.2.md",
+        "linux/changelog.d/3780.fixed.md",
+        "linux/crates/drivers/mssql/src/cancel.rs",
+        "linux/crates/drivers/mssql/src/in_band_request.rs",
+        "linux/crates/drivers/mysql/src/cancel.rs",
+        "linux/crates/drivers/mysql/src/editor_run.rs",
+        "linux/crates/drivers/mysql/src/editor_session.rs",
+        "linux/crates/drivers/mysql/src/lib.rs",
+        "linux/crates/drivers/mysql/src/script_split.rs",
+        "linux/crates/drivers/mysql/tests/integration/editor_session.rs",
+        "linux/crates/drivers/sqlite/src/connection.rs",
+        "linux/crates/drivers/sqlite/src/editor_session.rs",
+        "linux/crates/drivers/sqlite/src/result_stream.rs",
+        "linux/crates/drivers/sqlite/tests/integration/sessions.rs",
+        "linux/crates/drivers/sqlite/tests/integration/support.rs",
+        "linux/docs/adding-drivers.md",
+        "linux/docs/drivers/mysql.md",
+        "linux/docs/drivers/sql-server.md",
+        "linux/docs/drivers/sqlite.md"
+      ]
+    },
+    {
+      "url": "https://github.com/TableProApp/TablePro/commit/f68dfb135480565a738c4912bbc758ac046b0639",
+      "commit": "f68dfb135480565a738c4912bbc758ac046b0639",
+      "subject": "fix(linux-safe-mode): run MySQL executable comments and read them as each server does (#3790)",
+      "files": [
+        "linux/changelog.d/3790.fixed.md",
+        "linux/changelog.d/3790.security.md",
+        "linux/crates/app/src/services/history_service.rs",
+        "linux/crates/app/src/ui/editor/catalog_change.rs",
+        "linux/crates/app/src/ui/editor/completion/completion_scope.rs",
+        "linux/crates/app/src/ui/editor/safe_mode_gate.rs",
+        "linux/crates/app/src/ui/editor/significant_tokens.rs",
+        "linux/crates/core/src/sql_syntax/history_recording.rs",
+        "linux/crates/core/src/sql_syntax/script/lexer.rs",
+        "linux/crates/core/src/sql_syntax/script/mod.rs",
+        "linux/crates/core/src/sql_syntax/script/script_plan.rs",
+        "linux/crates/core/src/sql_syntax/script/script_rules.rs",
+        "linux/crates/core/src/sql_syntax/script/script_token_kind.rs",
+        "linux/crates/core/src/sql_syntax/script/server_reading.rs",
+        "linux/crates/core/src/sql_syntax/statement_access.rs",
+        "linux/crates/core/src/sql_syntax/statement_tokens.rs",
+        "linux/crates/core/tests/script_corpus.rs",
+        "linux/crates/drivers/mysql/src/script_split.rs",
+        "linux/crates/drivers/mysql/tests/integration/flavour_suite.rs",
+        "linux/crates/storage/src/query_history/mod.rs",
+        "linux/docs/drivers/mysql.md",
+        "linux/docs/storage.md"
+      ]
+    },
+    {
+      "url": "https://github.com/beekeeper-studio/beekeeper-studio/commit/2eabc2776862ccc295b5c432bd3befc9e70b5ef3",
+      "commit": "2eabc2776862ccc295b5c432bd3befc9e70b5ef3",
+      "subject": "Merge pull request #4865 from eliasthecactus/fix/sqlite-create-4854",
+      "files": [
+        "apps/studio/e2e/tests/connectionErrorHandling.test.ts",
+        "apps/studio/src-commercial/backend/handlers/connHandlers.ts",
+        "apps/studio/src/common/appdb/models/saved_connection.ts",
+        "apps/studio/src/components/common/form/FilePicker.vue",
+        "apps/studio/src/components/connection/SqliteForm.vue",
+        "apps/studio/src/lib/db/clients/sqlite.ts",
+        "apps/studio/src/store/index.ts",
+        "apps/studio/tests/vitest/integration/lib/db/clients/sqlite.spec.js",
+        "apps/studio/tests/vitest/unit/backend/handlers/connCreateRecordsUsed.spec.ts",
+        "apps/studio/tests/vitest/unit/components/FilePicker.spec.ts",
+        "apps/studio/tests/vitest/unit/components/connection/SqliteForm.spec.ts",
+        "apps/studio/tests/vitest/unit/store/connectAction.spec.ts"
+      ]
+    },
+    {
+      "url": "https://github.com/beekeeper-studio/beekeeper-studio/commit/e4a380cf796058e5ddeeea044bfaec7b1a41eca4",
+      "commit": "e4a380cf796058e5ddeeea044bfaec7b1a41eca4",
+      "subject": "Merge pull request #4858 from beekeeper-studio/fix/spreadsheet-gap-1",
+      "files": [
+        "apps/studio/package.json",
+        "apps/studio/src/shared/components/tabulator/NullableInputEditor.vue",
+        "apps/studio/src/shared/lib/tabulator/helpers.ts",
+        "apps/ui-kit/package.json",
+        "yarn.lock"
+      ]
+    },
+    {
+      "url": "https://github.com/dbeaver/dbeaver/commit/318a12ad284ce3c31fe0bd60e57674984f27722d",
+      "commit": "318a12ad284ce3c31fe0bd60e57674984f27722d",
+      "subject": "dbeaver/dbeaver#36192 Handle unresolved PostgreSQL temporary row types (#42534)",
+      "files": [
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/PostgreConstants.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/PostgreUtils.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreDataSource.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreDataType.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreDatabase.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreSchema.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreSchemaMyTemp.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/data/PostgreStructValueHandler.java",
+        "plugins/org.jkiss.dbeaver.ext.postgresql/src/org/jkiss/dbeaver/ext/postgresql/model/data/PostgreValueHandlerProvider.java",
+        "plugins/org.jkiss.dbeaver.model.jdbc/src/org/jkiss/dbeaver/model/impl/jdbc/data/JDBCCompositeDynamic.java",
+        "plugins/org.jkiss.dbeaver.model.jdbc/src/org/jkiss/dbeaver/model/impl/jdbc/exec/JDBCTransactionSavepoint.java",
+        "plugins/org.jkiss.dbeaver.model/src/org/jkiss/dbeaver/model/impl/data/transformers/ComplexTypeAttributeTransformer.java",
+        "test/org.jkiss.dbeaver.ext.postgresql.test/META-INF/MANIFEST.MF",
+        "test/org.jkiss.dbeaver.ext.postgresql.test/src/org/jkiss/dbeaver/ext/postgresql/PostgreUtilsTest.java",
+        "test/org.jkiss.dbeaver.ext.postgresql.test/src/org/jkiss/dbeaver/ext/postgresql/model/PostgreSchemaMyTempTest.java",
+        "test/org.jkiss.dbeaver.ext.postgresql.test/src/org/jkiss/dbeaver/ext/postgresql/model/data/PostgreStructValueHandlerTest.java",
+        "test/org.jkiss.dbeaver.test.platform/src/org/jkiss/dbeaver/model/impl/jdbc/exec/JDBCTransactionSavepointTest.java"
+      ]
+    },
+    {
+      "url": "https://github.com/dbeaver/dbeaver/commit/72476a2dba932587247514e3e0ea875ca96e21ec",
+      "commit": "72476a2dba932587247514e3e0ea875ca96e21ec",
+      "subject": "#42113 Secure temporary PostgreSQL SSL private-key files (#42441)",
+      "files": [
+        "features/org.jkiss.dbeaver.test.feature/feature.xml",
+        "plugins/org.jkiss.dbeaver.model/src/org/jkiss/dbeaver/model/impl/net/SSLHandlerTrustStoreImpl.java",
+        "test/org.jkiss.dbeaver.model.net.test/META-INF/MANIFEST.MF",
+        "test/org.jkiss.dbeaver.model.net.test/build.properties",
+        "test/org.jkiss.dbeaver.model.net.test/pom.xml",
+        "test/org.jkiss.dbeaver.model.net.test/src/org/jkiss/dbeaver/model/impl/net/SSLHandlerTrustStoreImplTest.java",
+        "test/pom.xml"
+      ]
+    },
+    {
+      "url": "https://github.com/dbeaver/dbeaver/commit/aa35a74e0fc6b7c7a1a9f67857a21142976186e6",
+      "commit": "aa35a74e0fc6b7c7a1a9f67857a21142976186e6",
+      "subject": "dbeaver/dbeaver#42501 Avoid exception per value in CSV import date conversion (#42503)",
+      "files": [
+        "plugins/org.jkiss.dbeaver.data.transfer/src/org/jkiss/dbeaver/tools/transfer/stream/StreamTransferResultSet.java",
+        "test/org.jkiss.dbeaver.data.transfer.test/src/org/jkiss/dbeaver/tools/transfer/stream/StreamTransferResultSetTest.java"
+      ]
+    },
+    {
+      "url": "https://github.com/dbeaver/dbeaver/commit/b90cd1fba807a6bf67d541fb2e452c692017195f",
+      "commit": "b90cd1fba807a6bf67d541fb2e452c692017195f",
+      "subject": "dbeaver/dbeaver#35821 Do not roll back the whole transaction on ROLLBACK TO SAVEPOINT (#42492)",
+      "files": [
+        "plugins/org.jkiss.dbeaver.model/src/org/jkiss/dbeaver/model/sql/SQLQuery.java",
+        "test/org.jkiss.dbeaver.model.sql.test/src/org/jkiss/dbeaver/model/sql/SQLQueryTransactionTypeTest.java"
+      ]
+    },
+    {
+      "url": "https://github.com/dbeaver/dbeaver/commit/d46d58a528595666ed279b93a1f938bcc0902bac",
+      "commit": "d46d58a528595666ed279b93a1f938bcc0902bac",
+      "subject": "dbeaver/pro#11240 Detach result set panel listeners on close (#42548)",
+      "files": [
+        "plugins/org.jkiss.dbeaver.ui.editors.data/src/org/jkiss/dbeaver/ui/controls/resultset/panel/ResultSetPanelRefresher.java",
+        "plugins/org.jkiss.dbeaver.ui.editors.data/src/org/jkiss/dbeaver/ui/controls/resultset/panel/aggregate/AggregateColumnsPanel.java",
+        "plugins/org.jkiss.dbeaver.ui.editors.data/src/org/jkiss/dbeaver/ui/controls/resultset/panel/metadata/MetaDataPanel.java",
+        "plugins/org.jkiss.dbeaver.ui.editors.data/src/org/jkiss/dbeaver/ui/controls/resultset/panel/references/ReferencesPanel.java"
+      ]
+    },
+    {
+      "url": "https://github.com/feigeCode/navop/commit/e8753198218ac467c271c91f32960a16249c64bc",
+      "commit": "e8753198218ac467c271c91f32960a16249c64bc",
+      "subject": "fix(settings): \u89e3\u6790\u5931\u8d25\u4e0d\u518d\u9759\u9ed8\u56de\u843d\u9ed8\u8ba4\u503c\uff0c\u4fdd\u5b58\u6539\u4e3a\u539f\u5b50\u5199 + \u5907\u4efd",
+      "files": [
+        "crates/core/src/settings.rs",
+        "main/src/setting_tab.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/feigeCode/navop/commit/f3e1b979ba17cc5757d14cc081da6639d76d170c",
+      "commit": "f3e1b979ba17cc5757d14cc081da6639d76d170c",
+      "subject": "fix(db): \u7c98\u6027\u67e5\u8be2\u4f1a\u8bdd\u65ad\u8fde\u81ea\u6108\u6539\u4e3a\u6267\u884c\u524d\u63a2\u6d3b\uff0c\u91cd\u653e\u98ce\u9669\u4ece\u6839\u4e0a\u6d88\u9664",
+      "files": [
+        "crates/db/src/connection.rs",
+        "crates/db/src/executor.rs",
+        "crates/db/src/manager.rs",
+        "crates/db/src/mysql/connection.rs",
+        "crates/db/src/postgresql/connection.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/fluxdb-alt/fluxDB/commit/0b17dd018ee6c48e4380a891607f8eadf59ca0fe",
+      "commit": "0b17dd018ee6c48e4380a891607f8eadf59ca0fe",
+      "subject": "fix(completion): map sqlparser columns to UTF-8 offsets",
+      "files": [
+        "crates/fluxdb-completion/src/diagnose.rs",
+        "crates/fluxdb-completion/src/locate.rs",
+        "crates/fluxdb-completion/src/parse.rs",
+        "crates/fluxdb-completion/src/symbols.rs",
+        "crates/fluxdb-completion/src/word.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/fluxdb-alt/fluxDB/commit/bd4b8a9669c97d4d8e0e339fc4e4843a03e93adf",
+      "commit": "bd4b8a9669c97d4d8e0e339fc4e4843a03e93adf",
+      "subject": "test(sqlserver): remove live database tests",
+      "files": [
+        "apps/fluxdb-desktop/src/main_parts/i18n_tests.rs",
+        "apps/fluxdb-desktop/src/main_parts/i18n_tests/sqlserver_completion.rs",
+        "apps/fluxdb-desktop/src/main_parts/i18n_tests/sqlserver_copy.rs",
+        "apps/fluxdb-desktop/src/main_parts/i18n_tests/sqlserver_routine_ddl.rs",
+        "apps/fluxdb-desktop/src/main_parts/i18n_tests/sqlserver_security_database.rs",
+        "crates/fluxdb-app/src/parts/ai_sql_query_execution.rs",
+        "crates/fluxdb-app/tests/sqlserver_table_actions_live.rs",
+        "crates/fluxdb-connectors/tests/sqlserver_live.rs",
+        "docs/testing/sqlserver-e2e.md",
+        "scripts/testing/sqlserver-smoke.sh"
+      ]
+    },
+    {
+      "url": "https://github.com/pgadmin-org/pgadmin4/commit/ea293b335ead614b5c5bfc69d52663f24d5dbe0c",
+      "commit": "ea293b335ead614b5c5bfc69d52663f24d5dbe0c",
+      "subject": "Fix the Statistics node failing to list its children in Object Explorer. #10310 (#10639)",
+      "files": [
+        "web/pgadmin/browser/server_groups/servers/databases/schemas/statistics/templates/statistics/sql/default/nodes.sql",
+        "web/pgadmin/browser/server_groups/servers/databases/schemas/statistics/tests/test_statistics_nodes_template.py"
+      ]
+    },
+    {
+      "url": "https://github.com/sqlitebrowser/sqlitebrowser/commit/3e7c38c057345ae3aebf97da0d9e601ffc54c434",
+      "commit": "3e7c38c057345ae3aebf97da0d9e601ffc54c434",
+      "subject": "Build AppImages with the static type2 runtime",
+      "files": [
+        ".github/workflows/cppcmake-ubuntu.yml"
+      ]
+    },
+    {
+      "url": "https://github.com/t8y2/dbx/commit/209172db070715765a1b4368564782b9ebbec930",
+      "commit": "209172db070715765a1b4368564782b9ebbec930",
+      "subject": "perf(data-compare): page SQL Server and PostgreSQL reads by key",
+      "files": [
+        "crates/dbx-core/src/data/data_compare.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/t8y2/dbx/commit/2c8c27089251f99d5d20a0a7d178f0a97d374a74",
+      "commit": "2c8c27089251f99d5d20a0a7d178f0a97d374a74",
+      "subject": "fix(mysql): drop the paged extra-row probe",
+      "files": [
+        "apps/desktop/src/lib/query/__tests__/batchQueryPagination.spec.ts",
+        "apps/desktop/src/stores/__tests__/queryStore.tableDataRefresh.spec.ts",
+        "crates/dbx-sql-data/src/query_result_sql.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/t8y2/dbx/commit/47bb9b39c3e3968a87df42bf4bb81ee4e37b09fa",
+      "commit": "47bb9b39c3e3968a87df42bf4bb81ee4e37b09fa",
+      "subject": "fix(redis): fail fast when a strict server also refuses STRLEN",
+      "files": [
+        "crates/dbx-driver-redis/src/lib.rs"
+      ]
+    },
+    {
+      "url": "https://github.com/t8y2/dbx/commit/fd10debc19657f1af1fc699e1c9f517512a6554e",
+      "commit": "fd10debc19657f1af1fc699e1c9f517512a6554e",
+      "subject": "fix(query): retry table previews without generated left() wrappers",
+      "files": [
+        "crates/dbx-core/src/query/mod.rs"
+      ]
+    }
+  ],
+  "checks_executed": [
+    {
+      "command": "python3 scripts/check-doc-links.py",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/check-known-issues.py",
+      "result": "passed"
+    },
+    {
+      "command": "python3 scripts/inventory-ignored-tests.py --check",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ]
+}
