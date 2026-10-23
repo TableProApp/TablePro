@@ -3,7 +3,7 @@ use std::fmt;
 use serde::Deserialize;
 use serde::de::{self, Deserializer, IgnoredAny, SeqAccess, Visitor};
 
-use crate::column::ColumnInfo;
+use crate::column::{ColumnInfo, ColumnKind, ReadForm};
 use crate::edit::{CellInput, EditContext, EditParseError, new_draft_cell, parse_edit_text, read_only_reason};
 use crate::export::TSV_NULL;
 use crate::value::Value;
@@ -14,6 +14,11 @@ use super::{CsvRowError, ImportError, MAX_FIELDS, PastedRows};
 /// The most lines a paste reads, a header among them. Each becomes a
 /// pending row the grid holds, and Import CSV is the tool for more.
 pub const MAX_PASTED_ROWS: usize = 100_000;
+
+/// The most cells the new rows of a paste may hold, every column of the
+/// table counted: a short line into a wide table makes a whole row, and
+/// the undo history keeps a second copy.
+pub const MAX_PASTED_CELLS: usize = 2_000_000;
 
 /// Rows from the clipboard, before they meet a table: the cells a grid
 /// copy wrote, or text read as tab-separated rows, which is what the
@@ -42,7 +47,76 @@ struct PastedRecord {
     /// Where the record starts, from 1, which an error names.
     line: usize,
     /// `None` is a NULL.
-    fields: Vec<Option<String>>,
+    fields: Vec<Option<PastedField>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(from = "CopiedCell")]
+struct PastedField {
+    text: String,
+    stored: Stored,
+}
+
+/// How the copied value was stored, which its text does not say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stored {
+    Text,
+    Integer,
+    Real,
+    Bytes,
+}
+
+/// A cell as `CellsEncoder` writes it.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum CopiedCell {
+    Text(String),
+    Integer { int: String },
+    Real { real: String },
+    Bytes { bytes: String },
+}
+
+impl From<CopiedCell> for PastedField {
+    fn from(cell: CopiedCell) -> Self {
+        let (text, stored) = match cell {
+            CopiedCell::Text(text) => (text, Stored::Text),
+            CopiedCell::Integer { int } => (int, Stored::Integer),
+            CopiedCell::Real { real } => (real, Stored::Real),
+            CopiedCell::Bytes { bytes } => (bytes, Stored::Bytes),
+        };
+        Self { text, stored }
+    }
+}
+
+impl PastedField {
+    fn plain(text: &str) -> Self {
+        Self {
+            text: text.to_owned(),
+            stored: Stored::Text,
+        }
+    }
+
+    /// The value as it was stored, for a column that keeps whatever it is
+    /// given.
+    fn stored_value(&self) -> Option<Value> {
+        match self.stored {
+            Stored::Text => None,
+            Stored::Integer => self
+                .text
+                .parse()
+                .map(Value::Int)
+                .or_else(|_| self.text.parse().map(Value::UInt))
+                .ok(),
+            // SQLite stores a NaN as NULL, which its text keeps.
+            Stored::Real => self
+                .text
+                .parse()
+                .ok()
+                .filter(|real: &f64| real.is_finite())
+                .map(Value::Float64),
+            Stored::Bytes => crate::hex::decode(self.text.strip_prefix("0x")?).map(Value::Bytes),
+        }
+    }
 }
 
 /// The column each field of a record goes to, by position or by the
@@ -63,7 +137,7 @@ struct CopiedCells {
 }
 
 struct CopiedRows {
-    rows: Vec<Vec<Option<String>>>,
+    rows: Vec<Vec<Option<PastedField>>>,
     truncated: bool,
 }
 
@@ -98,7 +172,7 @@ impl<'de> Visitor<'de> for RowsVisitor {
 
 /// One row's fields, refused past the widest a table can be before they
 /// are all held.
-struct CopiedRow(Vec<Option<String>>);
+struct CopiedRow(Vec<Option<PastedField>>);
 
 impl<'de> Deserialize<'de> for CopiedRow {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -117,7 +191,7 @@ impl<'de> Visitor<'de> for RowVisitor {
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
         let mut fields = Vec::new();
-        while let Some(field) = seq.next_element::<Option<String>>()? {
+        while let Some(field) = seq.next_element::<Option<PastedField>>()? {
             if fields.len() == MAX_FIELDS {
                 return Err(de::Error::custom(format!("a row has more than {MAX_FIELDS} values")));
             }
@@ -151,7 +225,7 @@ impl PastedTable {
                 .map_or(1, |position| usize::try_from(position.line()).unwrap_or(usize::MAX));
             let fields = record
                 .iter()
-                .map(|field| (field != TSV_NULL).then(|| field.to_owned()))
+                .map(|field| (field != TSV_NULL).then(|| PastedField::plain(field)))
                 .collect();
             records.push(PastedRecord { line, fields });
         }
@@ -193,10 +267,11 @@ impl PastedTable {
         self.records.is_empty()
     }
 
-    /// Whether the clipboard held more lines than a paste reads, which
-    /// were left unread.
-    pub fn truncated(&self) -> bool {
-        self.truncated
+    /// Whether the rows are more than a paste takes into a table of
+    /// `width` columns: more lines than it reads, which were left unread,
+    /// or more cells than the new rows may hold.
+    pub fn too_large_for(&self, width: usize) -> bool {
+        self.truncated || self.records.len().saturating_mul(width) > MAX_PASTED_CELLS
     }
 
     /// The one value the clipboard holds, when it holds one and nothing
@@ -204,7 +279,7 @@ impl PastedTable {
     pub fn single_value(&self) -> Option<Option<&str>> {
         match self.records.as_slice() {
             [record] => match record.fields.as_slice() {
-                [field] => Some(field.as_deref()),
+                [field] => Some(field.as_ref().map(|field| field.text.as_str())),
                 _ => None,
             },
             _ => None,
@@ -238,8 +313,8 @@ impl PastedTable {
         let mut pasted = PastedRows::default();
         for record in records {
             let mut cells: Vec<CellInput> = columns.iter().map(new_draft_cell).collect();
-            for (field, text) in record.fields.iter().enumerate() {
-                let text = text.as_deref();
+            for (field, value) in record.fields.iter().enumerate() {
+                let text = value.as_ref().map(|value| value.text.as_str());
                 let target = match &placement {
                     Placement::InOrder(in_order) => in_order.get(field).copied(),
                     Placement::Named(named) => named.get(field).copied().flatten(),
@@ -252,7 +327,7 @@ impl PastedTable {
                     pasted.skipped += usize::from(carries_value(text));
                     continue;
                 }
-                cells[index] = pasted_cell(text, column).map_err(|reason| CsvRowError {
+                cells[index] = pasted_cell(value.as_ref(), column).map_err(|reason| CsvRowError {
                     line: record.line,
                     column: column.name.clone(),
                     text: text.unwrap_or(TSV_NULL).to_owned(),
@@ -274,7 +349,7 @@ impl PastedTable {
         let names: Vec<&str> = first
             .fields
             .iter()
-            .map(|field| field.as_deref().unwrap_or(""))
+            .map(|field| field.as_ref().map_or("", |field| field.text.as_str()))
             .collect();
         let named = named_columns(columns, &names);
         let matched = named.iter().flatten().count();
@@ -327,14 +402,30 @@ fn left_to_the_row(column: &ColumnInfo) -> bool {
         || read_only_reason(&column.column_type.kind).is_some()
 }
 
+/// A column of no type the app knows whose values are read as the
+/// engine stored them, such as SQLite's untyped columns, which keep each
+/// value as it comes. A type only the server knows, such as PostgreSQL's
+/// `tsvector`, is read and written as its text.
+fn stores_as_given(column: &ColumnInfo) -> bool {
+    let column_type = &column.column_type;
+    matches!(column_type.kind, ColumnKind::Other)
+        && column_type.read_form == ReadForm::Native
+        && column_type.dynamic_storage
+}
+
 /// Whether leaving the field out loses anything.
 fn carries_value(text: Option<&str>) -> bool {
     text.is_some_and(|text| !text.is_empty())
 }
 
-fn pasted_cell(text: Option<&str>, column: &ColumnInfo) -> Result<CellInput, EditParseError> {
-    if let Some(text) = text {
-        return parse_edit_text(text, column, EditContext::InsertDraft);
+fn pasted_cell(field: Option<&PastedField>, column: &ColumnInfo) -> Result<CellInput, EditParseError> {
+    if let Some(field) = field {
+        if stores_as_given(column)
+            && let Some(value) = field.stored_value()
+        {
+            return Ok(CellInput::Value(value));
+        }
+        return parse_edit_text(&field.text, column, EditContext::InsertDraft);
     }
     if column.nullable {
         return Ok(CellInput::Value(Value::Null));
@@ -800,11 +891,84 @@ mod tests {
         let over = PastedTable::read(&text).expect("read");
         let copied = PastedTable::from_cells(cells.as_bytes()).expect("read");
 
-        assert!(over.truncated());
+        assert!(over.too_large_for(1));
         assert_eq!(over.records.len(), MAX_PASTED_ROWS);
-        assert!(copied.truncated());
+        assert!(copied.too_large_for(1));
         assert_eq!(copied.records.len(), MAX_PASTED_ROWS);
-        assert!(!PastedTable::read(&at_the_limit).expect("read").truncated());
+        assert!(!PastedTable::read(&at_the_limit).expect("read").too_large_for(1));
+    }
+
+    #[test]
+    fn a_short_paste_into_a_wide_table_counts_every_cell_it_makes() {
+        let lines = PastedTable::read(&"x\n".repeat(1_000)).expect("read");
+
+        assert!(!lines.too_large_for(MAX_PASTED_CELLS / 1_000));
+        assert!(lines.too_large_for(MAX_PASTED_CELLS / 1_000 + 1));
+    }
+
+    #[test]
+    fn an_untyped_column_keeps_how_the_copied_value_was_stored() {
+        let mut untyped = column("v", ColumnKind::Other);
+        untyped.column_type.dynamic_storage = true;
+        let copied = copied_cells(
+            std::slice::from_ref(&untyped),
+            &[
+                vec![Value::Int(42)],
+                vec![Value::Text("42".into())],
+                vec![Value::Float64(1.5)],
+                vec![Value::Bytes(vec![1, 255])],
+            ],
+            false,
+        );
+
+        let rows = PastedTable::from_cells(&copied)
+            .expect("read")
+            .rows(std::slice::from_ref(&untyped), &[0])
+            .expect("rows");
+        let typed = PastedTable::from_cells(&copied).expect("read").rows(&[int("v")], &[0]);
+
+        assert_eq!(rows.rows[0], vec![number(42)]);
+        assert!(
+            matches!(&rows.rows[1][0], CellInput::Value(Value::Other(other)) if other.text == "42"),
+            "{:?}",
+            rows.rows[1]
+        );
+        assert_eq!(rows.rows[2], vec![CellInput::Value(Value::Float64(1.5))]);
+        assert_eq!(rows.rows[3], vec![CellInput::Value(Value::Bytes(vec![1, 255]))]);
+        assert!(typed.is_err(), "an integer column took 1.5");
+    }
+
+    #[test]
+    fn a_type_only_the_server_knows_takes_the_text() {
+        let mut server_typed = column("v", ColumnKind::Other);
+        server_typed.column_type.dynamic_storage = true;
+        server_typed.column_type.read_form = ReadForm::ServerText;
+        let mut untyped = server_typed.clone();
+        untyped.column_type.read_form = ReadForm::Native;
+        let copied = copied_cells(
+            &[server_typed.clone()],
+            &[
+                vec![Value::Int(42)],
+                vec![Value::Decimal("9007199254740993".parse().expect("a decimal"))],
+                vec![Value::Float64(f64::NAN)],
+            ],
+            false,
+        );
+
+        let read = |column: &ColumnInfo| {
+            PastedTable::from_cells(&copied)
+                .expect("read")
+                .rows(std::slice::from_ref(column), &[0])
+                .expect("rows")
+                .rows
+        };
+
+        for rows in [read(&server_typed), read(&untyped).split_off(1)] {
+            for row in rows {
+                assert!(matches!(&row[0], CellInput::Value(Value::Other(_))), "{row:?}");
+            }
+        }
+        assert_eq!(read(&untyped)[0], vec![number(42)]);
     }
 
     #[test]

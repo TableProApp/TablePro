@@ -14,4 +14,4 @@ pub use csv_import::{
 pub use import_column::ImportColumn;
 pub use import_plan::{ImportPlan, plan_import};
 pub use pasted_rows::PastedRows;
-pub use pasted_table::{MAX_PASTED_ROWS, PastedTable};
+pub use pasted_table::{MAX_PASTED_CELLS, MAX_PASTED_ROWS, PastedTable};

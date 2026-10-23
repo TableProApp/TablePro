@@ -169,13 +169,16 @@ pub async fn tsv_copy_pastes_back_as_the_same_rows<E: ValueCorpusEngine>(engine:
             .values
             .rows
             .retain(|row| has_text(read_columns.as_deref(), row));
+        let typed = read_rows(connection.as_ref(), &source, typed_texts, KeepValues::No).await?;
         let text = String::from_utf8(encode(&expected.values, &tsv_encoder())?).map_err(ConformanceFailure::setup)?;
         let cells = encode(&expected.values, &cells_encoder())?;
+        // Text carries no kinds, as a column SQLite types by its values
+        // shows; the cells keep how each value was stored.
         let pastes = [
-            ("text", PastedTable::read(&text)),
-            ("cells", PastedTable::from_cells(&cells)),
+            ("text", PastedTable::read(&text), texts as Keep, &expected),
+            ("cells", PastedTable::from_cells(&cells), typed_texts as Keep, &typed),
         ];
-        for (copy_index, (form, pasted)) in pastes.into_iter().enumerate() {
+        for (copy_index, (form, pasted, keep, source_rows)) in pastes.into_iter().enumerate() {
             let what = format!("`{}` copied and pasted as {form}", column.declaration);
             let copy = corpus_table(
                 &engine,
@@ -196,10 +199,10 @@ pub async fn tsv_copy_pastes_back_as_the_same_rows<E: ValueCorpusEngine>(engine:
                 wrong.push(format!("{what}: {failure}"));
                 continue;
             }
-            let actual = read_rows(connection.as_ref(), &copy, texts, KeepValues::No).await?;
+            let actual = read_rows(connection.as_ref(), &copy, keep, KeepValues::No).await?;
             wrong.extend(order_differences(
                 &what,
-                &in_id_order(&expected, &expected.without_text),
+                &in_id_order(source_rows, &source_rows.without_text),
                 &in_id_order(&actual, &BTreeSet::new()),
             ));
             round_trips += 1;
@@ -276,30 +279,34 @@ fn has_text(columns: Option<&[ResultColumn]>, row: &[Value]) -> bool {
 
 /// The texts of each row in the order of its numeric `id`, without the
 /// `id`, leaving out the rows `skipped` names.
-fn in_id_order(rows: &Rows<Kept>, skipped: &BTreeSet<String>) -> Vec<Vec<Option<String>>> {
+fn in_id_order(rows: &Rows<Kept>, skipped: &BTreeSet<String>) -> Vec<Vec<String>> {
     let id = rows.columns.iter().position(|name| name == "id");
-    let mut ordered: Vec<(i64, Vec<Option<String>>)> = rows
+    let mut ordered: Vec<(i64, Vec<String>)> = rows
         .by_id
         .iter()
         .filter(|(key, _)| !skipped.contains(*key))
         .filter_map(|(key, kept)| {
-            let Kept::Texts(texts) = kept else {
-                return None;
+            let cells: Vec<String> = match kept {
+                Kept::Texts(texts) => texts.iter().map(|text| quoted(text.as_deref())).collect(),
+                Kept::Typed(cells) => cells
+                    .iter()
+                    .map(|cell| format!("{} {}", cell.kind, quoted(cell.text.as_deref())))
+                    .collect(),
             };
-            let texts = texts
-                .iter()
+            let cells = cells
+                .into_iter()
                 .enumerate()
                 .filter(|(index, _)| Some(*index) != id)
-                .map(|(_, text)| text.clone())
+                .map(|(_, cell)| cell)
                 .collect();
-            Some((key.parse().ok()?, texts))
+            Some((key.parse().ok()?, cells))
         })
         .collect();
     ordered.sort_by_key(|(id, _)| *id);
-    ordered.into_iter().map(|(_, texts)| texts).collect()
+    ordered.into_iter().map(|(_, cells)| cells).collect()
 }
 
-fn order_differences(what: &str, source: &[Vec<Option<String>>], copy: &[Vec<Option<String>>]) -> Vec<String> {
+fn order_differences(what: &str, source: &[Vec<String>], copy: &[Vec<String>]) -> Vec<String> {
     let mut wrong = Vec::new();
     if source.len() != copy.len() {
         wrong.push(format!(
@@ -310,18 +317,11 @@ fn order_differences(what: &str, source: &[Vec<Option<String>>], copy: &[Vec<Opt
     }
     for (position, (expected, actual)) in source.iter().zip(copy).enumerate() {
         if expected != actual {
-            let quote = |texts: &[Option<String>]| {
-                texts
-                    .iter()
-                    .map(|text| quoted(text.as_deref()))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
             wrong.push(format!(
                 "{what}: row {} came back as ({}), copied as ({})",
                 position + 1,
-                quote(actual),
-                quote(expected)
+                actual.join(", "),
+                expected.join(", ")
             ));
         }
     }
@@ -639,6 +639,9 @@ enum Kept {
     /// The text and the kind of every value, which a SQL literal keeps.
     Typed(Vec<Cell>),
 }
+
+/// How a comparison keeps a row's cells.
+type Keep = fn(Vec<Cell>) -> Kept;
 
 fn texts(cells: Vec<Cell>) -> Kept {
     Kept::Texts(cells.into_iter().map(|cell| cell.text).collect())

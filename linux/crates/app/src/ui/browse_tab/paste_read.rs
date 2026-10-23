@@ -64,7 +64,7 @@ pub(super) fn read_pasted(
     if table.is_empty() {
         return PasteOutcome::Nothing;
     }
-    if table.truncated() {
+    if table.too_large_for(columns.len()) {
         return PasteOutcome::TooLarge;
     }
     if at_cell && let Some(value) = table.single_value() {
