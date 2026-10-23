@@ -67,28 +67,29 @@ if not runs:
     print("pending")
 else:
     run = max(runs, key=lambda item: item["id"])
-    print(run["status"], run["id"])
+    print(run["status"], run["id"], run["index_in_repo"])
 ' "$sha" "$after"
 }
 
 while [ "$SECONDS" -lt "$deadline" ]; do
-  read -r status run_id <<<"$(summarize)"
+  read -r status run_id run_number <<<"$(summarize)"
   case "$status" in
-    success) echo "forgejo run $run_id passed for $sha"; exit 0 ;;
+    success) echo "forgejo run $run_number (API id $run_id) passed for $sha"; exit 0 ;;
     failure|cancelled)
       report="$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 -H "Authorization: token $token" "$api/actions/tasks?limit=100" | python3 -c '
 import json, sys
-run = int(sys.argv[1])
-tasks = [task for task in json.load(sys.stdin).get("workflow_runs", []) if task.get("run_number") == run]
+run, sha = int(sys.argv[1]), sys.argv[2]
+tasks = [task for task in json.load(sys.stdin).get("workflow_runs", [])
+         if task.get("run_number") == run and task.get("head_sha") == sha]
 if any(task["status"] in ("running", "waiting") for task in tasks):
     print("RUNNING")
 else:
     for task in tasks:
         if task["status"] != "success":
             print("  ", task["status"], task["name"])
-' "$run_id")"
+' "$run_number" "$sha")"
       if [ "$report" != "RUNNING" ]; then
-        echo "forgejo run $run_id $status for $sha"
+        echo "forgejo run $run_number (API id $run_id) $status for $sha"
         [ -n "$report" ] && echo "$report"
         exit 1
       fi ;;

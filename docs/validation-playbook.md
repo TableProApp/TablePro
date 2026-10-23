@@ -106,6 +106,8 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 
 Check every required result against the exact commit under review. A skipped check is not a pass, and a green fast tier does not certify tests that only run in a separate acceptance tier. Accepted aggregate trains follow [ADR 0020](decisions/0020-aggregate-forgejo-trains.md) and the [train procedure](testing.md#aggregate-train-acceptance): one gate on the exact aggregate PR head replaces constituent Forgejo gates only after manifest, freshness and merge-tree verification. A standalone `forgejo-train.sh` preflight is not aggregate acceptance. The current workflow files and [AGENTS.md](../AGENTS.md) define which checks run for each change and where acceptance happens. Forgejo's `ci.yml` merge tier and `nightly.yml` share the `bookie-lab` workflow concurrency group with cancellation disabled. This queues scheduled and manual runs across refs on a best-effort basis; it does not promise strict ordering, and workflow runs already created from older revisions are not retroactively serialized. The gate script's local lock remains an additional guard for manual callers.
 
+The gate reports both the browser run number and the API run ID. They can differ. The train verifier's `--run` argument takes the API ID; task reporting uses the browser run number and the tested revision. Do not substitute one identifier for the other.
+
 Treat static-analysis findings as evidence to review. Fix valid findings in a focused change. For a confirmed false positive or accepted exception, record a short reason in the tool; keep a reusable explanation here only when it helps other contributors.
 
 ### Live issue-state report

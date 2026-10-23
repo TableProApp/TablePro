@@ -136,7 +136,7 @@ def main():
     parser = argparse.ArgumentParser(description='Verify immutable aggregate train inputs and acceptance')
     parser.add_argument('pr', type=int)
     parser.add_argument('--phase', choices=('gate', 'merge', 'merged'), default='gate')
-    parser.add_argument('--run', type=int)
+    parser.add_argument('--run', type=int, help='Forgejo API run ID, which may differ from the browser run number')
     parser.add_argument('--remote', default='origin')
     args = parser.parse_args()
     aggregate = pull_request(args.pr)
