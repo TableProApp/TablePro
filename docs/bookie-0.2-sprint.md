@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-On 2026-10-18, the maintainer confirmed that **0.2.0 delivery work was complete while release publication was pending**. Check the [release page](https://github.com/cozyGarage/BookiE/releases) for current publication status. Delivery branch: `linux`. The app and agentd manifests identify source version `0.2.0`. Tag `linux-v0.2.0` (commit `bd31a1d8b`) exists and a draft release holds its seven assets; as of 2026-10-22 it is not published. The draft's Debian asset is still named `tablepro_0.2.0-1_amd64.deb`; the `bookie` Debian package name landed after the tag. Publishing stays a maintainer action.
+The maintainer confirmed 0.2.0 delivery complete on 2026-10-18. Release `linux-v0.2.0` was published on 2026-10-23 with seven assets. Its Debian package retains the `tablepro_0.2.0-1_amd64.deb` filename because it was built from the release tag. The delivery sprint is closed; remaining work and the candidate order for 0.2.1 are in the [backlog](backlog.md).
 
 The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The previous scope and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). Their historical open rows do not reopen 0.2.0. This status records the maintainer's decision, not a new run of the package, driver or desktop checks.
 
