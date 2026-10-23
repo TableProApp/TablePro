@@ -128,8 +128,26 @@ fn filter_text(value: &Value, column_type: &ColumnType) -> Option<String> {
     // so the filter has to bind the very value: 'true' in a BOOLEAN
     // column would be bound as 1, and 'inf' in a DECIMAL one as
     // 'Infinity'. Other engines read every value back in its own form.
-    let kept = !column_type.dynamic_storage || stored_form(&parsed).is_some_and(|form| Some(form) == stored_form(value));
-    kept.then_some(text)
+    (!column_type.dynamic_storage || binds_as_stored(&parsed, value)).then_some(text)
+}
+
+fn binds_as_stored(parsed: &Value, stored: &Value) -> bool {
+    match (stored_form(parsed), stored_form(stored)) {
+        (Some(parsed), Some(stored)) if parsed == stored => true,
+        // A NUMERIC column reads number text back as the number, keeping
+        // 15 significant digits of a REAL.
+        (Some(StoredForm::Text(text)), Some(StoredForm::Integer(integer))) => text == integer.to_string(),
+        (Some(StoredForm::Text(text)), Some(StoredForm::Real(real))) => {
+            significant_digits(&text) <= 15 && text.parse::<f64>().is_ok_and(|number| number == real)
+        }
+        _ => false,
+    }
+}
+
+fn significant_digits(number: &str) -> usize {
+    let mantissa = number.split(['e', 'E']).next().unwrap_or_default();
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    digits.trim_start_matches('0').len()
 }
 
 /// A value as SQLite binds and keeps it.
@@ -357,8 +375,8 @@ mod tests {
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Int(5)),
-            refused,
-            "a number bound as text"
+            Ok(vec![eq("id", "5")]),
+            "a NUMERIC column reads the text back as the number"
         );
         assert_eq!(
             text_of(ColumnKind::Other, Value::Text("ab-12".to_owned())),
@@ -374,6 +392,13 @@ mod tests {
             "text bound as 'Infinity'"
         );
         assert_eq!(text_of(decimal(), Value::Text("NaN".to_owned())), Ok(vec![eq("id", "NaN")]));
+        assert_eq!(text_of(decimal(), Value::Int(5)), Ok(vec![eq("id", "5")]));
+        assert_eq!(text_of(decimal(), Value::Float64(1.5)), Ok(vec![eq("id", "1.5")]));
+        assert_eq!(
+            text_of(decimal(), Value::Float64(0.1 + 0.2)),
+            refused,
+            "17 digits, past the 15 SQLite keeps reading text as a REAL"
+        );
     }
 
     /// MySQL marks a BIT column as stored per row too, and reads it
