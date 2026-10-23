@@ -1,0 +1,228 @@
+{
+  "pr": 1519,
+  "tested_head": "9f749bb7c34d91458a9272a75127cde90bfee13e",
+  "merge_commit": "9950bcbd825450babe0ceaa6ddd781259faf2034",
+  "forgejo_run": 926,
+  "forgejo_status": "success",
+  "jobs": [
+    {
+      "name": "guards",
+      "status": "success"
+    },
+    {
+      "name": "clippy",
+      "status": "success"
+    },
+    {
+      "name": "unit",
+      "status": "success"
+    },
+    {
+      "name": "sandbox",
+      "status": "success"
+    },
+    {
+      "name": "widgets",
+      "status": "success"
+    },
+    {
+      "name": "distro-floor (debian:testing, 10)",
+      "status": "success"
+    },
+    {
+      "name": "driver (clickhouse)",
+      "status": "success"
+    },
+    {
+      "name": "driver (mongodb)",
+      "status": "success"
+    },
+    {
+      "name": "driver (mssql)",
+      "status": "success"
+    },
+    {
+      "name": "driver (mysql)",
+      "status": "success"
+    },
+    {
+      "name": "driver (postgres)",
+      "status": "success"
+    },
+    {
+      "name": "driver (redis)",
+      "status": "success"
+    },
+    {
+      "name": "e2e (5, postgres)",
+      "status": "success"
+    },
+    {
+      "name": "e2e (6, mysql)",
+      "status": "success"
+    },
+    {
+      "name": "consumers",
+      "status": "success"
+    },
+    {
+      "name": "gtk (1)",
+      "status": "success"
+    },
+    {
+      "name": "gtk (2)",
+      "status": "success"
+    },
+    {
+      "name": "gtk (3)",
+      "status": "success"
+    },
+    {
+      "name": "duckdb",
+      "status": "success"
+    },
+    {
+      "name": "pg-release",
+      "status": "success"
+    },
+    {
+      "name": "pg-dump",
+      "status": "success"
+    },
+    {
+      "name": "socket-ssh",
+      "status": "success"
+    },
+    {
+      "name": "gtk-server (7, clickhouse)",
+      "status": "success"
+    },
+    {
+      "name": "gtk-server (8, mysql-approval)",
+      "status": "success"
+    },
+    {
+      "name": "gtk-server (9, mongodb)",
+      "status": "success"
+    },
+    {
+      "name": "driver-tls",
+      "status": "success"
+    },
+    {
+      "name": "keyring",
+      "status": "success"
+    },
+    {
+      "name": "supply-chain",
+      "status": "success"
+    }
+  ],
+  "github_checks": [
+    {
+      "name": "Pin tested revision",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "flatpak-builder (default)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "workflow-lint",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "resolve-ref",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "SonarScanner for Cargo",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Ensure CI debian-testing GTK image",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "harness",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Security (security-policy)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Security (supply-chain)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Preflight and sandbox tier (no GTK app)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Current stable Clippy (scheduled)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "B4 rollback acceptance (docker)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "Driver TLS fixture (docker)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "PostgreSQL release fixture (docker)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "Optional DuckDB driver and GTK feature",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "Fast checks (GTK)",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "Driver integration tests (docker)",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "Installed GTK safety smoke",
+      "status": "COMPLETED",
+      "conclusion": "SKIPPED"
+    },
+    {
+      "name": "Linux regression gate",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "SonarCloud Code Analysis",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    }
+  ],
+  "comparisons": {
+    "base_changes_before_merge": "documentation only",
+    "merged_runtime_tests_scripts_ci": "equal to gated head"
+  },
+  "exception": "Maintainer authorized documentation-only base changes to retain gate evidence; no full-tree equality is claimed."
+}
