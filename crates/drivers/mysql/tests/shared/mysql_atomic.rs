@@ -105,7 +105,7 @@ async fn mysql_transaction_queries_are_bounded_and_mark_truncation() {
     transaction.rollback().await.unwrap();
 
     assert!(!result.rows.is_empty());
-    assert!(result.rows.len() < tablepro_core::MAX_QUERY_ROWS);
+    assert_eq!(result.rows.len(), tablepro_core::MAX_QUERY_ROWS);
     assert!(result.truncated);
     assert_eq!(result.columns[0].name, "value");
     assert!(result.rows.iter().all(|row| row == &[Value::Int(7)]));

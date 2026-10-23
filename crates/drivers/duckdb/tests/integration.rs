@@ -17,6 +17,8 @@ mod fixed_uhugeint_array;
 mod interval_csv_import;
 #[path = "support/nested_collection_refusal.rs"]
 mod nested_collection_refusal;
+#[path = "support/result_budget.rs"]
+mod result_budget;
 #[path = "support/rust_decimal_boundaries.rs"]
 mod rust_decimal_boundaries;
 #[path = "support/submicro_parameter_expression.rs"]
@@ -130,22 +132,6 @@ async fn query_preserves_duplicate_column_names_and_row_order() {
         ]
     );
     assert!(!result.truncated);
-}
-
-#[tokio::test]
-async fn query_truncates_when_result_memory_budget_is_exceeded() {
-    let connection = native_connection().await;
-    let cap = tablepro_core::MAX_QUERY_ROWS;
-
-    let over = connection
-        .query(&format!("SELECT i FROM range({}) AS t(i)", cap + 1))
-        .await
-        .unwrap();
-    assert!(!over.rows.is_empty());
-    assert!(over.rows.len() < cap, "decoded memory budget binds before row cap");
-    assert_eq!(over.rows.first(), Some(&vec![Value::Int(0)]));
-    assert_eq!(over.rows.last(), Some(&vec![Value::Int((over.rows.len() - 1) as i64)]));
-    assert!(over.truncated, "remaining server rows must be reported");
 }
 
 async fn native_connection() -> Box<dyn Connection> {

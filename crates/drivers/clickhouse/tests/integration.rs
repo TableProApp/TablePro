@@ -7,6 +7,8 @@ mod connect_refusal;
 
 #[path = "support/clickhouse.rs"]
 mod clickhouse;
+#[path = "support/result_budget.rs"]
+mod result_budget;
 
 #[path = "support/database_listing.rs"]
 mod database_listing;
@@ -803,25 +805,6 @@ async fn pagination_and_truncated_flag() {
     let last = conn.fetch_rows(None, "n", 8, 3).await.unwrap();
     assert_eq!(last.rows.len(), 2);
     assert!(!last.truncated);
-}
-
-/// The decoded-result budget truncates arbitrary queries and reports it.
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn query_truncates_when_result_memory_budget_is_exceeded() {
-    let (_c, opts) = start_clickhouse().await;
-    let conn = connect(opts).await;
-
-    let cap = tablepro_core::MAX_QUERY_ROWS;
-    let over = conn
-        .query(&format!("SELECT number FROM numbers({})", cap + 1))
-        .await
-        .unwrap();
-    assert!(!over.rows.is_empty());
-    assert!(over.rows.len() < cap, "decoded memory budget binds before row cap");
-    assert_eq!(over.rows.first(), Some(&vec![Value::Int(0)]));
-    assert_eq!(over.rows.last(), Some(&vec![Value::Int((over.rows.len() - 1) as i64)]));
-    assert!(over.truncated);
 }
 
 #[tokio::test]
