@@ -96,6 +96,12 @@
       <description>GtkSourceView style scheme id for the SQL editor.</description>
     </key>
 
+    <key name="vim-keybindings" type="b">
+      <default>false</default>
+      <summary>Vim keybindings in the SQL editor</summary>
+      <description>Whether the SQL editor takes Vim's modes and commands. The editor's own Ctrl shortcuts keep working in every mode.</description>
+    </key>
+
     <key name="restore-session" type="b">
       <default>true</default>
       <summary>Restore session</summary>

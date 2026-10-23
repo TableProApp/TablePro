@@ -409,6 +409,8 @@ pub(super) fn connect_editor(
     editor.connect_transaction_changed(move |_, _| transaction.deliver(WorkspaceInput::EditorTransactionChanged));
     let toast = input.clone();
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
+    let close = input.clone();
+    editor.connect_close_requested(move |_| close.deliver(WorkspaceInput::CloseWorkspaceTab(tab_id)));
     let export = input.clone();
     editor.connect_export_results(move |_, offer| {
         export.deliver(WorkspaceInput::ExportResults {

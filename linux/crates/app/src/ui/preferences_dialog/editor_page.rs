@@ -27,6 +27,8 @@ mod imp {
         #[template_child]
         pub style_scheme_box: TemplateChild<gtk4::FlowBox>,
         #[template_child]
+        pub vim_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub timeout_row: TemplateChild<adw::SpinRow>,
     }
 
@@ -51,7 +53,8 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// The Editor page: the font, the style scheme and the query timeout.
+    /// The Editor page: the font, the style scheme, Vim keybindings and
+    /// the query timeout.
     pub struct EditorPage(ObjectSubclass<imp::EditorPage>)
         @extends adw::PreferencesPage, gtk4::Widget,
         @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
@@ -73,6 +76,9 @@ impl EditorPage {
             .build();
         gio_settings
             .bind(keys::USE_SYSTEM_FONT, &imp.system_font_row.get(), "active")
+            .build();
+        gio_settings
+            .bind(keys::VIM_KEYBINDINGS, &imp.vim_row.get(), "active")
             .build();
 
         // The font row is only reachable when the system font is off, so
@@ -132,6 +138,7 @@ mod tests {
             [
                 "Use the System Monospace Font",
                 "Editor font",
+                "Vim Keybindings",
                 "Query timeout (seconds)"
             ]
         );
@@ -159,6 +166,18 @@ mod tests {
             imp.font_button.font_desc().map(|font| font.to_str().to_string()),
             Some("Monospace 11".to_owned())
         );
+    }
+
+    #[gtk4::test]
+    fn the_vim_row_is_bound_and_off_by_default() {
+        let settings = MemorySettings::new();
+        let page = bound_page(&settings);
+        let row = page.imp().vim_row.get();
+
+        assert!(!row.is_active());
+        row.set_active(true);
+
+        assert!(settings.get().vim_keybindings());
     }
 
     #[gtk4::test]

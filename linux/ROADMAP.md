@@ -83,6 +83,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Files | Open a .sql file into the editor (Ctrl+O) or drop one on it, and save to it (Ctrl+S, or Save As with Ctrl+Shift+S) |
 | Results | Several result sets per run, a limit of 10,000 rows per result and 100,000 per run with a banner and Export All, and Go to Error |
 | Drafts | Each editor tab's text is kept, and a connection's tabs (table tabs with page and sort, structure and editor tabs) reopen when it opens |
+| Vim mode | GtkSourceView's Vim emulation, off by default, with the mode and pending command under the text; `:w`, `:e`, `:q`, `:wq` and `:x` act on the tab, and the editor's Ctrl shortcuts work in every mode ([README](README.md#vim-keybindings)) |
 
 ### History and saved queries
 
@@ -111,7 +112,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Session restore | The windows of saved connections and SQLite files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
 | Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
-| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, query timeout, the MCP server |
+| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the MCP server |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
 
 ### MCP server
@@ -157,7 +158,6 @@ Not built yet, in no order.
 ### SQL editor
 
 - Multi-cursor editing.
-- Vim mode.
 - Snippets.
 
 ### Release and project

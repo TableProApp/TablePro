@@ -26,6 +26,7 @@ mod statement_cursor;
 #[cfg(test)]
 mod tests;
 mod transaction_dirty;
+mod vim_mode;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -137,6 +138,9 @@ impl SqlEditor {
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
+        // After the editor's own key controllers, so Vim's runs first.
+        let vim = editor.follow_vim_preference(&init.settings);
+        editor.imp().app_handlers.borrow_mut().push(vim);
         editor.install_drop_target();
         editor.connect_buttons();
         editor.connect_grid();
@@ -868,12 +872,18 @@ impl SqlEditor {
     }
 
     fn open_file(&self) {
-        if buffer_text(&self.buffer()).trim().is_empty() {
-            self.choose_file();
+        self.replace_after_asking(SqlEditor::choose_file);
+    }
+
+    /// Loading replaces what is in the tab, which is where the user's
+    /// unrun work lives, so `replace` runs once the user agrees, or
+    /// straight away when the tab holds nothing. A file emptied and not
+    /// saved still holds a change.
+    fn replace_after_asking(&self, replace: impl Fn(&SqlEditor) + 'static) {
+        if buffer_text(&self.buffer()).trim().is_empty() && !self.has_unsaved_file_changes() {
+            replace(self);
             return;
         }
-        // Loading replaces what is in the tab, which is where the user's
-        // unrun work lives, so it asks first.
         let dialog = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Replace the Editor Contents?")),
             Some(&crate::i18n::gettext(
@@ -887,7 +897,7 @@ impl SqlEditor {
         let weak = self.downgrade();
         dialog.connect_response(Some("replace"), move |_, _| {
             if let Some(editor) = weak.upgrade() {
-                editor.choose_file();
+                replace(&editor);
             }
         });
         dialog.present(Some(self));
