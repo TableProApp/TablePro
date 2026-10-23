@@ -6060,7 +6060,7 @@ SOFTWARE.
 
 Used by:
 
-- ctutils 0.4.2
+- ctutils 0.4.4
 
 ~~~~text
 Copyright (c) 2025-2026 The RustCrypto Project Developers
