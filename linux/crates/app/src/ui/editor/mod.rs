@@ -868,8 +868,12 @@ impl SqlEditor {
     fn replace_after_asking(&self, replace: impl Fn(&SqlEditor) + 'static) {
         if buffer_text(&self.buffer()).trim().is_empty() {
             replace(self);
-            return;
+        } else {
+            self.ask_to_replace(replace);
         }
+    }
+
+    fn ask_to_replace(&self, replace: impl Fn(&SqlEditor) + 'static) {
         let dialog = adw::AlertDialog::new(
             Some(&crate::i18n::gettext("Replace the Editor Contents?")),
             Some(&crate::i18n::gettext(

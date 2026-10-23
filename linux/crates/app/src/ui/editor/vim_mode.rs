@@ -260,7 +260,8 @@ impl SqlEditor {
         if force || !self.has_unsaved_file_changes() {
             self.load_file(file);
         } else {
-            self.replace_after_asking(move |editor| editor.load_file(file.clone()));
+            // Even when the text is now empty: emptying it was the change.
+            self.ask_to_replace(move |editor| editor.load_file(file.clone()));
         }
     }
 
@@ -275,20 +276,26 @@ fn leaves_insert(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
     keyval == gdk::Key::Escape || (control && matches!(keyval, gdk::Key::bracketleft | gdk::Key::c))
 }
 
-/// A relative name is next to the tab's file, or in the home folder
-/// when the tab has none, never in the app's working folder.
+/// A relative name is next to the tab's file, which may be a remote
+/// location, or in the home folder when the tab has none, never in the
+/// app's working folder.
 fn typed_file(typed: &str, tab_file: Option<&gio::File>) -> gio::File {
+    if glib::Uri::peek_scheme(typed).is_some() {
+        return gio::File::for_uri(typed);
+    }
     let home = glib::home_dir();
-    let expanded = match typed.strip_prefix('~') {
+    let path = match typed.strip_prefix('~') {
         Some("") => home.clone(),
         Some(rest) if rest.starts_with('/') => home.join(rest.trim_start_matches('/')),
         _ => PathBuf::from(typed),
     };
-    let folder = tab_file
+    if path.is_absolute() {
+        return gio::File::for_path(path);
+    }
+    tab_file
         .and_then(|file| file.parent())
-        .and_then(|parent| parent.path())
-        .unwrap_or(home);
-    gio::File::for_commandline_arg_and_cwd(expanded, folder)
+        .unwrap_or_else(|| gio::File::for_path(home))
+        .resolve_relative_path(path)
 }
 
 async fn exists(file: &gio::File) -> bool {
@@ -364,6 +371,20 @@ mod tests {
         assert_eq!(
             typed_file("/srv/q.sql", Some(&tab)).path(),
             Some(PathBuf::from("/srv/q.sql"))
+        );
+    }
+
+    #[test]
+    fn a_typed_name_next_to_a_remote_file_stays_remote() {
+        let tab = gio::File::for_uri("sftp://db.example/srv/sql/daily.sql");
+
+        assert_eq!(
+            typed_file("weekly.sql", Some(&tab)).uri().as_str(),
+            "sftp://db.example/srv/sql/weekly.sql"
+        );
+        assert_eq!(
+            typed_file("sftp://db.example/all.sql", None).uri().as_str(),
+            "sftp://db.example/all.sql"
         );
     }
 
