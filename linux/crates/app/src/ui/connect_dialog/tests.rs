@@ -425,11 +425,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
             assert_eq!(
                 shown(),
-                Some(crate::ui::safe_mode::subtitle(
-                    level,
-                    caps_of(driver_id).read_only,
-                    &engine
-                )),
+                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id), &engine)),
                 "{driver_id} {level:?}"
             );
         }
@@ -452,6 +448,44 @@ fn an_edit_opens_on_the_saved_level_and_keeps_it() {
 
     assert_eq!(imp.safe_mode_row.selected(), 1);
     assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
+}
+
+#[gtk4::test]
+fn the_external_clients_row_reads_back_each_level_and_says_what_it_allows() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    assert_eq!(harness.dialog.form().external_access, ExternalAccess::ReadOnly);
+    for (index, access) in ExternalAccess::ALL.into_iter().enumerate() {
+        imp.external_access_row.set_selected(index as u32);
+
+        assert_eq!(harness.dialog.form().external_access, access);
+        assert_eq!(
+            imp.external_access_row.subtitle().map(|text| text.to_string()),
+            Some(crate::ui::external_access::subtitle(access)),
+            "{access:?}"
+        );
+    }
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_the_saved_external_clients_level_and_saves_it() {
+    let saved = SavedConnection {
+        external_access: ExternalAccess::Blocked,
+        ..shop()
+    };
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ..Options::default()
+    });
+    let imp = harness.dialog.imp();
+
+    assert_eq!(imp.external_access_row.selected(), 0);
+    imp.external_access_row.set_selected(2);
+    select(&harness.dialog, "mysql");
+
+    assert_eq!(harness.dialog.form().external_access, ExternalAccess::ReadWrite);
 }
 
 #[gtk4::test]
@@ -789,6 +823,7 @@ fn every_row_has_an_accessible_name() {
         imp.password_row.get().upcast(),
         imp.remember_row.get().upcast(),
         imp.safe_mode_row.get().upcast(),
+        imp.external_access_row.get().upcast(),
         tls.encryption_row.get().upcast(),
         tls.certificates_row.get().upcast(),
         tls.ca_row.get().upcast(),

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, ObjectInfo, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo, TableEstimate, TableRef,
@@ -272,6 +272,15 @@ impl Connection for CqlConnection {
         _table: &TableRef,
         _options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        self.ensure_open()?;
+        Ok(Vec::new())
+    }
+
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        _table: &TableRef,
+        _options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         self.ensure_open()?;
         Ok(Vec::new())
     }

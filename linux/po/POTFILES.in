@@ -9,6 +9,7 @@ crates/app/src/application/crash_notice.rs
 crates/app/src/application/debug_info.rs
 crates/app/src/application/imp.rs
 crates/app/src/application/legal_section.rs
+crates/app/src/application/mcp_bridge.rs
 crates/app/src/application/metainfo_release.rs
 crates/app/src/application/mod.rs
 crates/app/src/application/open_files.rs
@@ -71,6 +72,8 @@ crates/app/src/services/file_resolution.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/mcp_service.rs
+crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
 crates/app/src/services/pending_structure.rs
 crates/app/src/services/save_batch.rs
@@ -196,7 +199,6 @@ crates/app/src/ui/credential_prompt/prompter.rs
 crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/discard_alert.rs
 crates/app/src/ui/editor/buffer_edit.rs
-crates/app/src/ui/editor/catalog_change.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
 crates/app/src/ui/editor/completion/completion_scope.rs
 crates/app/src/ui/editor/completion/fuzzy.rs
@@ -231,6 +233,7 @@ crates/app/src/ui/editor/sql_file.rs
 crates/app/src/ui/editor/statement_cursor.rs
 crates/app/src/ui/editor/tests.rs
 crates/app/src/ui/editor/transaction_dirty.rs
+crates/app/src/ui/editor/vim_mode.rs
 crates/app/src/ui/editor_font_provider.rs
 crates/app/src/ui/error_text/ddl.rs
 crates/app/src/ui/error_text/driver.rs
@@ -269,6 +272,7 @@ crates/app/src/ui/export/export_source.rs
 crates/app/src/ui/export/mod.rs
 crates/app/src/ui/export/replace_file_writer/mod.rs
 crates/app/src/ui/export/replace_file_writer/tests.rs
+crates/app/src/ui/external_access.rs
 crates/app/src/ui/file_read.rs
 crates/app/src/ui/file_reveal/file_launcher_revealer.rs
 crates/app/src/ui/file_reveal/file_revealer.rs
@@ -354,6 +358,9 @@ crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/key_tab/key_summary.rs
+crates/app/src/ui/key_tab/mod.rs
+crates/app/src/ui/key_tab/tests.rs
 crates/app/src/ui/menu_label.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
@@ -369,6 +376,7 @@ crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
 crates/app/src/ui/preferences_dialog/history_group.rs
 crates/app/src/ui/preferences_dialog/imp.rs
+crates/app/src/ui/preferences_dialog/mcp_page.rs
 crates/app/src/ui/preferences_dialog/mod.rs
 crates/app/src/ui/result_pane/mod.rs
 crates/app/src/ui/result_pane/result_limit_banner.rs
@@ -470,6 +478,7 @@ crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
 crates/app/src/ui/workspace/shell.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
+crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs
 crates/app/src/ui/workspace/sidebar/sidebar_affordances.rs
@@ -495,6 +504,7 @@ crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/keys.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/references.rs
@@ -594,6 +604,7 @@ data/resources/ui/preferences-dialog.ui
 data/resources/ui/preferences-editor-page.ui
 data/resources/ui/preferences-general-page.ui
 data/resources/ui/preferences-history-group.ui
+data/resources/ui/preferences-mcp-page.ui
 data/resources/ui/results-pane.ui
 data/resources/ui/session-window.ui
 data/resources/ui/sql-editor.ui

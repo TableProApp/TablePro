@@ -67,14 +67,42 @@ impl SqlEditor {
 
     /// Ctrl+S: write to the tab's file, or ask for one.
     pub(super) fn save(&self) {
-        match self.file() {
-            Some(file) => self.write_reporting(file),
-            None => self.save_as(),
-        }
+        self.save_then(|_| {});
+    }
+
+    /// A cancelled choice or a failed write skips `then`.
+    pub(super) fn save_then(&self, then: impl FnOnce(&SqlEditor) + 'static) {
+        let weak = self.downgrade();
+        let file = self.file();
+        let chosen = file.is_none().then(|| self.choose_save_file());
+        glib::spawn_future_local(async move {
+            let file = match (file, chosen) {
+                (Some(file), _) => Some(file),
+                (None, Some(chosen)) => chosen.await,
+                (None, None) => None,
+            };
+            let (Some(file), Some(editor)) = (file, weak.upgrade()) else {
+                return;
+            };
+            if editor.write_reporting(&file).await {
+                then(&editor);
+            }
+        });
     }
 
     /// Ctrl+Shift+S: ask where to write, starting from the tab's file.
     pub(super) fn save_as(&self) {
+        let weak = self.downgrade();
+        let chosen = self.choose_save_file();
+        glib::spawn_future_local(async move {
+            if let (Some(file), Some(editor)) = (chosen.await, weak.upgrade()) {
+                editor.write_reporting(&file).await;
+            }
+        });
+    }
+
+    /// Holds only the dialog's window while it is open.
+    fn choose_save_file(&self) -> impl Future<Output = Option<gio::File>> + use<> {
         let filter = sql_filter();
         let filters = gio::ListStore::new::<gtk4::FileFilter>();
         filters.append(&filter);
@@ -89,15 +117,7 @@ impl SqlEditor {
             None => dialog.set_initial_name(Some(&suggested_file_name(&buffer_text(&self.buffer())))),
         }
         let parent = self.root().and_downcast::<gtk4::Window>();
-        let weak = self.downgrade();
-        glib::spawn_future_local(async move {
-            let Ok(file) = dialog.save_future(parent.as_ref()).await else {
-                return;
-            };
-            if let Some(editor) = weak.upgrade() {
-                editor.write_reporting(file);
-            }
-        });
+        async move { dialog.save_future(parent.as_ref()).await.ok() }
     }
 
     /// Write the text to the tab's file, for a close that chose Save.
@@ -112,32 +132,49 @@ impl SqlEditor {
         }
     }
 
-    fn write_reporting(&self, file: gio::File) {
-        let editor = self.clone();
-        glib::spawn_future_local(async move {
-            if let Err(message) = editor.write_to(&file).await {
-                editor.alert_save_failed(&message);
+    /// Whether the text landed in `file`; an alert says why it did not.
+    pub(super) async fn write_reporting(&self, file: &gio::File) -> bool {
+        match self.write_to(file).await {
+            Ok(()) => true,
+            Err(message) => {
+                self.alert_save_failed(&message);
+                false
             }
-        });
+        }
+    }
+
+    async fn write_to(&self, file: &gio::File) -> Result<(), String> {
+        self.write_with(file, false)
+            .await
+            .map_err(|failure| failure.message(file))
+    }
+
+    /// As Save As to a name no file has yet; one that appears meanwhile
+    /// is left alone and fails with `Exists`.
+    pub(super) async fn write_new(&self, file: &gio::File) -> Result<(), WriteFailure> {
+        self.write_with(file, true).await
     }
 
     /// Text typed while the write runs is not in the file, so the tab
     /// stays changed.
-    async fn write_to(&self, file: &gio::File) -> Result<(), String> {
+    async fn write_with(&self, file: &gio::File, create: bool) -> Result<(), WriteFailure> {
         let imp = self.imp();
         if imp.saving.replace(true) {
-            return Err(crate::i18n::gettext("This tab is already being saved."));
+            return Err(WriteFailure::Busy);
         }
         let buffer = self.buffer();
         let edits = imp.edits.get();
-        let written = crate::ui::file_write::replace_file(file, buffer_text(&buffer).into_bytes()).await;
+        let contents = buffer_text(&buffer).into_bytes();
+        let written = match create {
+            true => crate::ui::file_write::create_file(file, contents).await,
+            false => crate::ui::file_write::replace_file(file, contents).await,
+        };
         imp.saving.set(false);
         if let Err(error) = written {
-            tracing::warn!(%error, "could not save an editor tab to its file");
-            return Err(crate::i18n::gettext_f(
-                "“{name}” could not be saved: {error}",
-                &[("name", &file_name(file)), ("error", error.message())],
-            ));
+            if !error.matches(gio::IOErrorEnum::Exists) {
+                tracing::warn!(%error, "could not save an editor tab to its file");
+            }
+            return Err(WriteFailure::Io(error));
         }
         imp.file.replace(Some(file.clone()));
         if imp.edits.get() == edits {
@@ -147,12 +184,29 @@ impl SqlEditor {
         Ok(())
     }
 
-    fn alert_save_failed(&self, message: &str) {
+    pub(super) fn alert_save_failed(&self, message: &str) {
         let dialog = adw::AlertDialog::new(Some(&crate::i18n::gettext("Could Not Save File")), Some(message));
         dialog.add_response("close", &crate::i18n::gettext("_Close"));
         dialog.set_default_response(Some("close"));
         dialog.set_close_response("close");
         dialog.present(Some(self));
+    }
+}
+
+pub(super) enum WriteFailure {
+    Busy,
+    Io(glib::Error),
+}
+
+impl WriteFailure {
+    pub(super) fn message(&self, file: &gio::File) -> String {
+        match self {
+            Self::Busy => crate::i18n::gettext("This tab is already being saved."),
+            Self::Io(error) => crate::i18n::gettext_f(
+                "“{name}” could not be saved: {error}",
+                &[("name", &file_name(file)), ("error", error.message())],
+            ),
+        }
     }
 }
 

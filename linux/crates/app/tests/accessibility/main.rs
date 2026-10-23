@@ -411,7 +411,7 @@ fn one_table() -> ConnectionScript {
     }]));
     script.fetch_columns.always(FakeReply::ok(columns.clone()));
     script.fetch_indexes.always(FakeReply::ok(Vec::new()));
-    script.fetch_foreign_keys.always(FakeReply::ok(Vec::new()));
+    script.fetch_outbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script.fetch_inbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script.row_identity.always(FakeReply::ok(RowIdentity::UniqueKey {
         columns: vec!["id".to_owned()],

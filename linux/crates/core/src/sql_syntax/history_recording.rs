@@ -29,7 +29,13 @@ const MAX_BODY_DEPTH: u8 = 4;
 /// read it. The text is never rewritten: an entry is kept whole or not
 /// at all, so History can neither show nor run a statement with a secret
 /// cut out of it.
+///
+/// Redis commands carry a secret in their arguments, so they are read by
+/// the command rules in `sql_syntax::redis` and `rules` is not consulted.
 pub fn classify_for_history(grammar: SqlGrammar, rules: &CredentialRules, sql: &str) -> HistoryRecording {
+    if grammar == SqlGrammar::Redis {
+        return crate::sql_syntax::redis::history_recording(sql);
+    }
     classify_as_sent(grammar, rules, sql, CLIENT_SPLITS)
 }
 
@@ -177,7 +183,7 @@ mod tests {
             "-- only a note\n/* and another */",
             "",
         ];
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in plain {
                 assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{grammar:?}: {sql}");
             }
@@ -325,7 +331,7 @@ mod tests {
 
     #[test]
     fn a_carrier_in_a_condition_is_a_call() {
-        for grammar in SqlGrammar::ALL {
+        for grammar in SqlGrammar::SQL {
             for sql in [
                 "SELECT u.id FROM users u JOIN logins l ON dblink_connect('password=x') = l.v",
                 "SELECT a.id FROM a JOIN b ON a.id = b.id AND dblink_connect('password=x') = 'OK'",
@@ -443,7 +449,7 @@ mod tests {
     proptest! {
         #[test]
         fn any_text_classifies_without_panicking(sql in "\\PC{0,120}", grammar in 0usize..5) {
-            let grammar = SqlGrammar::ALL[grammar];
+            let grammar = SqlGrammar::SQL[grammar];
             let _ = classify(grammar, &sql);
         }
 

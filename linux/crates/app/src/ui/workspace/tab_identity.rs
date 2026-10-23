@@ -9,4 +9,6 @@ pub(crate) enum TabIdentity {
     Table(TableRef),
     Structure(StructureTarget),
     Editor(EditorLabel),
+    /// A key-value engine's key, by the name the sidebar lists it as.
+    Key(String),
 }

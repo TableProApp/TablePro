@@ -26,6 +26,7 @@ const SILENCED_LIBRARIES: &[&str] = &[
     "sqlx",
     "clickhouse",
     "scylla",
+    "redis",
     "sqlparser",
 ];
 
@@ -221,7 +222,7 @@ mod tests {
         let _ = tracing_log::LogTracer::init();
 
         let text = written("debug", LogFormat::Text, || {
-            for grammar in SqlGrammar::ALL {
+            for grammar in SqlGrammar::SQL {
                 let parsed = parse_expression(grammar, "api_key = 'hunter2'", MAX_EXPRESSION_LEN);
                 assert!(parsed.is_ok(), "{grammar:?}: {parsed:?}");
             }

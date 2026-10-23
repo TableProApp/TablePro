@@ -30,6 +30,10 @@ pub enum ServerCode {
     Cql {
         code: i32,
     },
+    /// The word a Redis error reply opens with, such as `WRONGTYPE`.
+    Redis {
+        prefix: String,
+    },
 }
 
 impl ServerCode {
@@ -52,6 +56,7 @@ impl fmt::Display for ServerCode {
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
             Self::Cql { code } => write!(f, "{code:#06x}"),
+            Self::Redis { prefix } => f.write_str(prefix),
         }
     }
 }

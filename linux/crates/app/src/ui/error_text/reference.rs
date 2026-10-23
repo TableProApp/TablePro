@@ -16,7 +16,7 @@ pub fn reference_message(error: &ReferenceError) -> String {
             gettext_f("Can't filter {column} on this value", &[("column", column)])
         }
         ReferenceError::ComparedOtherwise { table } => gettext_f(
-            "Can't filter {table} the way its key compares values",
+            "Can't filter {table} on this key: its columns differ in type or collation",
             &[("table", table)],
         ),
     }

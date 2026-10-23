@@ -39,6 +39,15 @@ pub enum UnsupportedFeature {
     },
     /// Pages the server keeps itself, by a paging state.
     ServerPaging,
+    /// Tables, columns and SQL, on an engine that has keys instead.
+    Tables,
+    /// Keys, on an engine that has tables instead.
+    Keys,
+    /// A command the editor cannot run, because it stops the one reply
+    /// per command the editor reads, such as `SUBSCRIBE`.
+    EditorCommand {
+        command: &'static str,
+    },
 }
 
 impl fmt::Display for UnsupportedFeature {
@@ -61,6 +70,9 @@ impl fmt::Display for UnsupportedFeature {
             Self::DecimalOutOfRange { digits } => write!(f, "a decimal NaN, infinity or wider than {digits} digits"),
             Self::DateOutsideYears { first, last } => write!(f, "a date outside years {first} to {last}"),
             Self::ServerPaging => f.write_str("server-side paging"),
+            Self::Tables => f.write_str("tables"),
+            Self::Keys => f.write_str("keys"),
+            Self::EditorCommand { command } => write!(f, "{command} in the editor"),
         }
     }
 }

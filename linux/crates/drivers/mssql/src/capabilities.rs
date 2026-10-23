@@ -14,10 +14,12 @@ const AUTH_MODES: &[AuthMode] = &[AuthMode::Password, AuthMode::Kerberos];
 const AUTH_MODES: &[AuthMode] = &[AuthMode::Password];
 
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: EndpointKind::Network {
         default_port: DEFAULT_PORT,
     },
     auth_modes: AUTH_MODES,
+    username_required: true,
     // tiberius can present a client certificate, but SQL Server logins
     // are not authenticated by one, so there is nothing for it to prove.
     tls: Some(TlsCapabilities {

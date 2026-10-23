@@ -4,12 +4,14 @@
 mod catalog_cells;
 mod column_type_scan_error;
 mod escaped_expression;
+mod key_comparison;
 mod mysql_column_row;
 mod mysql_column_type;
 mod mysql_extra;
 mod table_definition;
 
 pub(crate) use catalog_cells::CatalogCells;
+pub(crate) use key_comparison::{COLUMN_COMPARISONS_SQL, TableComparisons, column_comparisons, compares_alike};
 pub(crate) use mysql_column_row::{MySqlColumnRow, columns_sql};
 pub(crate) use mysql_extra::{ExtraGenerated, MySqlExtra};
 pub(crate) use table_definition::{

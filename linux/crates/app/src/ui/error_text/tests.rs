@@ -148,6 +148,12 @@ fn diagnostics_codes_rendered_per_engine() {
             },
             "SQLite error 2067",
         ),
+        (
+            ServerCode::Redis {
+                prefix: "WRONGTYPE".to_owned(),
+            },
+            "WRONGTYPE",
+        ),
     ];
     for (code, expected) in cases {
         let message = driver_message(&DriverError::reported(ServerDiagnostics::new(Some(code), "refused")));

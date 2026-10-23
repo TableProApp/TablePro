@@ -41,6 +41,12 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
             &[("first", &first.to_string()), ("last", &last.to_string())],
         ),
         UnsupportedFeature::ServerPaging => gettext("This database does not page tables on the server."),
+        UnsupportedFeature::Tables => gettext("This database holds keys, not tables."),
+        UnsupportedFeature::Keys => gettext("This database holds tables, not keys."),
+        UnsupportedFeature::EditorCommand { command } => gettext_f(
+            "{command} cannot run in the editor: it turns the connection into a stream the editor cannot show.",
+            &[("command", command)],
+        ),
     }
 }
 
@@ -70,6 +76,9 @@ mod tests {
             UnsupportedFeature::DecimalOutOfRange { digits: 38 },
             UnsupportedFeature::DateOutsideYears { first: 1, last: 9999 },
             UnsupportedFeature::ServerPaging,
+            UnsupportedFeature::Tables,
+            UnsupportedFeature::Keys,
+            UnsupportedFeature::EditorCommand { command: "MONITOR" },
         ];
 
         let messages: Vec<String> = features.iter().map(|feature| unsupported_message(*feature)).collect();

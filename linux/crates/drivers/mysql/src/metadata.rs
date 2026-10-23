@@ -2,13 +2,15 @@
 //! tab. Every one is a bound query over information_schema, so a table
 //! name never becomes SQL.
 
+use std::collections::HashMap;
+
 use futures_util::TryStreamExt;
 use sqlx::mysql::MySqlConnection;
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
 use tablepro_core::ddl::{
-    ColumnDefinition, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition, TableSource,
-    UnmodeledAttribute,
+    ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction, TableDefinition,
+    TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
@@ -18,9 +20,10 @@ use tablepro_core::meta::{
 use tablepro_core::{DriverError, ForeignKeyInfo, Value};
 
 use crate::catalog::{
-    COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL, ListedSrid,
-    MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, column_checks, column_definition,
-    column_info, columns_sql, geometry_srids, inbound_foreign_keys, place_column_checks, quoted_default,
+    COLUMN_COMPARISONS_SQL, COLUMN_ENGINE_ATTRIBUTES_SQL, CatalogCells, ColumnCheck, INBOUND_FOREIGN_KEYS_SQL,
+    ListedSrid, MARIADB_COLUMN_CHECKS_SQL, MARIADB_GEOMETRY_SRIDS_SQL, MySqlColumnRow, TableComparisons, column_checks,
+    column_comparisons, column_definition, column_info, columns_sql, compares_alike, geometry_srids,
+    inbound_foreign_keys, place_column_checks, quoted_default,
 };
 use crate::decode::decode_row;
 use crate::dialect::MySqlDialect;
@@ -260,6 +263,27 @@ pub(crate) async fn fetch_foreign_keys(
     Ok(keys)
 }
 
+pub(crate) async fn fetch_outbound_foreign_keys(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+    table: &TableRef,
+) -> Result<Vec<OutboundForeignKey>, DriverError> {
+    let keys = fetch_foreign_keys(connection, flavour, table).await?;
+    let mut tables = KeyTables::default();
+    let mut outbound = Vec::with_capacity(keys.len());
+    for key in keys {
+        let parent = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
+        let parent_compares_alike = tables
+            .compare(connection, flavour, (table, &key.columns), (&parent, &key.ref_columns))
+            .await?;
+        outbound.push(OutboundForeignKey {
+            key,
+            parent_compares_alike,
+        });
+    }
+    Ok(outbound)
+}
+
 /// The keys of every database the account can see that point at the
 /// table, since a key can cross databases.
 pub(crate) async fn fetch_inbound_foreign_keys(
@@ -275,7 +299,53 @@ pub(crate) async fn fetch_inbound_foreign_keys(
         &table_binds(table),
     )
     .await?;
-    inbound_foreign_keys(&rows)
+    let mut keys = inbound_foreign_keys(&rows)?;
+    let mut tables = KeyTables::default();
+    for key in &mut keys {
+        key.child_compares_alike = tables
+            .compare(
+                connection,
+                flavour,
+                (table, &key.referenced_columns),
+                (&key.table, &key.columns),
+            )
+            .await?;
+    }
+    Ok(keys)
+}
+
+/// The columns of the tables a read's keys join, each read once, by
+/// table so information_schema opens only that table.
+#[derive(Default)]
+struct KeyTables(HashMap<TableRef, TableComparisons>);
+
+impl KeyTables {
+    /// Whether a value of each column of `from` finds, as text read
+    /// under the paired column of `to`, the rows the key matches.
+    async fn compare(
+        &mut self,
+        connection: &mut MySqlConnection,
+        flavour: MySqlFlavour,
+        from: (&TableRef, &[String]),
+        to: (&TableRef, &[String]),
+    ) -> Result<bool, DriverError> {
+        for table in [from.0, to.0] {
+            if !self.0.contains_key(table) {
+                let rows = catalog_rows(
+                    connection,
+                    flavour,
+                    COLUMN_COMPARISONS_SQL,
+                    "COLUMNS",
+                    &table_binds(table),
+                )
+                .await?;
+                self.0.insert(table.clone(), column_comparisons(&rows)?);
+            }
+        }
+        let empty = TableComparisons::new();
+        let side = |table: &TableRef| self.0.get(table).unwrap_or(&empty);
+        Ok(compares_alike(side(from.0), from.1, side(to.0), to.1))
+    }
 }
 
 fn referential_action(rule: &str) -> Option<ReferentialAction> {

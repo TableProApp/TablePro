@@ -79,6 +79,7 @@ A server error keeps the shape the server sent it in. `ServerCode` holds each en
 | `ClickHouse { code }` | ClickHouse | ClickHouse code 62 |
 | `Sqlite { primary, extended }` | SQLite | SQLite error 2067 |
 | `Cql { code }` | Cassandra, ScyllaDB | CQL error 0x2200 |
+| `Redis { prefix }` | Redis | the error reply's first word, such as WRONGTYPE |
 
 `ServerCode` is closed: an engine with its own numbering adds a variant, and its label in `crates/app/src/ui/error_text/driver.rs`.
 

@@ -12,6 +12,7 @@ mod crash_notice;
 mod debug_info;
 mod imp;
 mod legal_section;
+mod mcp_bridge;
 #[cfg(test)]
 mod metainfo_release;
 mod open_files;
@@ -40,8 +41,8 @@ pub use accelerator_scope::AcceleratorScope;
 #[cfg(test)]
 pub(crate) use accelerators::keypad_twins;
 pub use accelerators::{
-    ACCELERATORS, component_matches, component_trigger, controller_name, install_application_accelerators,
-    local_shortcut_controller, menu_item, triggers_for,
+    ACCELERATORS, component_matches, component_trigger, controller_name, editor_kept_keys,
+    install_application_accelerators, local_shortcut_controller, menu_item, triggers_for,
 };
 pub use app_actions::install_app_actions;
 pub use app_services::{AppServices, AppServicesParts};

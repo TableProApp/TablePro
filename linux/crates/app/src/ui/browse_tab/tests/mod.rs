@@ -141,7 +141,7 @@ pub(super) fn serving_table() -> ConnectionScript {
         .table_estimate
         .always(FakeReply::ok(estimate(RowCountEstimate::Approximate(2))));
     script.probe.always(FakeReply::ok(()));
-    script.fetch_foreign_keys.always(FakeReply::ok(Vec::new()));
+    script.fetch_outbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script.fetch_inbound_foreign_keys.always(FakeReply::ok(Vec::new()));
     script
 }

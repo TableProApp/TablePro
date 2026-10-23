@@ -431,23 +431,29 @@ impl<'a> Lexer<'a> {
     /// malformed `1abc`) stay part of it, as they did before.
     fn number_end(&self, start: usize, delimiter: Option<&str>) -> usize {
         let digit_at = |at: usize| self.bytes.get(at).is_some_and(u8::is_ascii_digit);
-        let mut end = start;
-        while digit_at(end) {
-            end += 1;
-        }
-        if self.bytes.get(end) == Some(&b'.') && self.bytes.get(end + 1) != Some(&b'.') {
-            end += 1;
-            while digit_at(end) {
-                end += 1;
+        let digits_end = |mut at: usize| {
+            loop {
+                while digit_at(at) {
+                    at += 1;
+                }
+                let separator = self.syntax.digit_separators
+                    && self.bytes.get(at) == Some(&b'_')
+                    && at.checked_sub(1).is_some_and(digit_at)
+                    && digit_at(at + 1);
+                if !separator {
+                    return at;
+                }
+                at += 1;
             }
+        };
+        let mut end = digits_end(start);
+        if self.bytes.get(end) == Some(&b'.') && self.bytes.get(end + 1) != Some(&b'.') {
+            end = digits_end(end + 1);
         }
         if matches!(self.bytes.get(end), Some(b'e' | b'E')) {
             let sign = usize::from(matches!(self.bytes.get(end + 1), Some(b'+' | b'-')));
             if digit_at(end + 1 + sign) {
-                end += 1 + sign;
-                while digit_at(end) {
-                    end += 1;
-                }
+                end = digits_end(end + 1 + sign);
             }
         }
         self.word_end(end, delimiter)

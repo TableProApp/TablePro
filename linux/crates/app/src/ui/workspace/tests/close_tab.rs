@@ -253,3 +253,53 @@ fn closing_the_window_keeps_unsaved_file_changes_without_asking() {
 
     wait_until(WAIT, || test.app.windows().is_empty()).expect("the window closes");
 }
+
+/// Vim's `:q` closes its own tab through the prompts Ctrl+W meets.
+#[gtk4::test]
+fn an_editor_asking_to_close_goes_through_the_close_prompts() {
+    let test = TestWindow::connected("VimQuitUnsavedFile");
+    let path = test.dir().join("daily.sql");
+    crate::test_support::write_text_file(&path, "SELECT 1;");
+    let (id, editor) = editor_on_file(&test, &path);
+
+    editor.emit_by_name::<()>("close-requested", &[]);
+
+    wait_until(WAIT, || {
+        visible_alert(&test.window).is_some_and(|alert| alert.heading().as_deref() == Some("Save Changes?"))
+    })
+    .expect("the close asks about the file");
+    assert!(answer(&test.window, "discard"));
+    wait_until(WAIT, || !tab_is_open(&test, id)).expect("the tab closes");
+    assert_eq!(crate::test_support::read_text_file(&path), "SELECT 1;");
+}
+
+/// A `:wq` whose write lands after the user moved to another tab still
+/// closes the tab it was typed in.
+#[gtk4::test]
+fn an_editor_asking_to_close_closes_its_own_tab_not_the_one_in_front() {
+    let test = TestWindow::connected("VimQuitBackgroundTab");
+    let workspace = test.workspace();
+    let open_editor = |query: &str| {
+        workspace.with_model(|model| {
+            model.open_tab(super::super::tab_spec::TabSpec::Editor {
+                initial_query: Some(query.to_owned()),
+                draft: None,
+                file: None,
+            })
+        });
+        let page = workspace.imp().tab_view.selected_page().expect("the editor in front");
+        let editor = page
+            .child()
+            .downcast::<crate::ui::editor::SqlEditor>()
+            .expect("an editor tab");
+        (workspace.selected_tab().expect("its id"), editor)
+    };
+    let (behind, editor) = open_editor("SELECT 1;");
+    let (front, _) = open_editor("SELECT 2;");
+
+    editor.emit_by_name::<()>("close-requested", &[]);
+
+    wait_until(WAIT, || !tab_is_open(&test, behind)).expect("the tab that asked closes");
+    assert!(tab_is_open(&test, front));
+    assert_eq!(workspace.selected_tab(), Some(front));
+}

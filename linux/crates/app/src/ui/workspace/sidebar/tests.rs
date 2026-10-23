@@ -419,7 +419,8 @@ fn focused_name(list_view: &gtk::ListView) -> Option<String> {
     list_view
         .focus_child()
         .and_then(|item| item.first_child())
-        .and_then(|row| row.last_child())
+        .and_then(|row| row.first_child())
+        .and_then(|icon| icon.next_sibling())
         .and_downcast::<gtk::Label>()
         .map(|label| label.label().to_string())
 }

@@ -19,9 +19,10 @@ pub enum ReferenceError {
     UnknownSchema { table: String },
     #[error("the value of {column} has no text a filter can compare")]
     NoFilterText { column: String },
-    /// The engine compares the key under rules the referencing columns
-    /// do not share, so a filter on them would miss rows or add some.
-    #[error("{table} compares its key otherwise than its columns")]
+    /// The key's two sides differ in type or collation, so the engine
+    /// compares them through a conversion a filter on `table` does not
+    /// make, and the filter would miss rows or add some.
+    #[error("the key's columns differ in type or collation from those of {table}")]
     ComparedOtherwise { table: String },
 }
 

@@ -78,6 +78,10 @@ pub(crate) struct ScriptSyntax {
     /// MySQL and MariaDB run what `/*!` and `/*M!` comments hold.
     pub executable_comments: bool,
     pub dollar_quote: DollarQuote,
+    /// An underscore between two digits is part of a number, as in
+    /// `1_000.5e1_0`: PostgreSQL 16, SQLite 3.46 and ClickHouse read it
+    /// so. MySQL reads `1_0e` as a name.
+    pub digit_separators: bool,
     pub word_start_extra: &'static [u8],
     pub word_part_extra: &'static [u8],
 }
@@ -113,6 +117,7 @@ const POSTGRESQL: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::Tagged,
+        digit_separators: true,
         word_start_extra: b"",
         word_part_extra: b"$",
     },
@@ -136,6 +141,7 @@ const MYSQL: ScriptRules = ScriptRules {
         nested_block_comments: false,
         executable_comments: true,
         dollar_quote: DollarQuote::None,
+        digit_separators: false,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -159,6 +165,7 @@ const SQLITE: ScriptRules = ScriptRules {
         nested_block_comments: false,
         executable_comments: false,
         dollar_quote: DollarQuote::None,
+        digit_separators: true,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -182,6 +189,7 @@ const MSSQL: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::None,
+        digit_separators: false,
         word_start_extra: b"@#",
         word_part_extra: b"@#$",
     },
@@ -205,6 +213,7 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::Heredoc,
+        digit_separators: true,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -228,18 +237,21 @@ const CQL: ScriptRules = ScriptRules {
         nested_block_comments: false,
         executable_comments: false,
         dollar_quote: DollarQuote::Untagged,
+        digit_separators: false,
         word_start_extra: b"",
         word_part_extra: b"",
     },
 };
 
-pub(crate) fn rules_for(grammar: SqlGrammar) -> &'static ScriptRules {
+/// `None` for Redis, whose commands have no SQL rules.
+pub(crate) fn rules_for(grammar: SqlGrammar) -> Option<&'static ScriptRules> {
     match grammar {
-        SqlGrammar::PostgreSql => &POSTGRESQL,
-        SqlGrammar::MySql => &MYSQL,
-        SqlGrammar::Sqlite => &SQLITE,
-        SqlGrammar::MsSql => &MSSQL,
-        SqlGrammar::ClickHouse => &CLICKHOUSE,
-        SqlGrammar::Cql => &CQL,
+        SqlGrammar::PostgreSql => Some(&POSTGRESQL),
+        SqlGrammar::MySql => Some(&MYSQL),
+        SqlGrammar::Sqlite => Some(&SQLITE),
+        SqlGrammar::MsSql => Some(&MSSQL),
+        SqlGrammar::ClickHouse => Some(&CLICKHOUSE),
+        SqlGrammar::Cql => Some(&CQL),
+        SqlGrammar::Redis => None,
     }
 }

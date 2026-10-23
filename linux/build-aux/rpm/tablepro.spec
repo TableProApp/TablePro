@@ -29,6 +29,7 @@ License:        %{shrink:
     (Apache-2.0 OR MIT) AND
     (Apache-2.0 OR MIT OR Zlib) AND
     BSD-3-Clause AND
+    BSL-1.0 AND
     CDLA-Permissive-2.0 AND
     ISC AND
     MIT AND

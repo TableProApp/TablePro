@@ -82,6 +82,14 @@
                             <property name="action-name">win.refresh-tables</property>
                           </object>
                         </child>
+                        <child type="top">
+                          <!-- A database of keys can hold millions, and a
+                               listing stops at its limit. -->
+                          <object class="AdwBanner" id="key_limit_banner">
+                            <property name="use-markup">false</property>
+                            <property name="title" translatable="yes">Not every key is listed. Search to narrow the list.</property>
+                          </object>
+                        </child>
                         <property name="content">
                           <object class="AdwBin" id="sidebar_slot">
                             <property name="vexpand">true</property>
@@ -164,12 +172,12 @@
                               <object class="GtkStackPage">
                                 <property name="name">empty</property>
                                 <property name="child">
-                                  <object class="AdwStatusPage">
+                                  <object class="AdwStatusPage" id="empty_page">
                                     <property name="icon-name">view-grid-symbolic</property>
                                     <property name="title" translatable="yes">Select a Table</property>
                                     <property name="description" translatable="yes">Choose a table in the sidebar or open the SQL editor.</property>
                                     <property name="child">
-                                      <object class="GtkButton">
+                                      <object class="GtkButton" id="empty_editor_button">
                                         <property name="label" translatable="yes">Open SQL Editor</property>
                                         <property name="action-name">win.new-editor-tab</property>
                                         <property name="halign">center</property>

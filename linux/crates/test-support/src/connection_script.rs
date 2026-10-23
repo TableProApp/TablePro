@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::keyspace::{KeyListing, KeyPage};
 use tablepro_core::meta::{ObjectInfo, RowIdentity, SchemaInfo, TableEstimate};
 use tablepro_core::{
     ColumnInfo, CommitResolution, EditorSession, ForeignKeyInfo, IndexInfo, QueryResult, ResultEvent, ServerInfo,
@@ -28,6 +29,7 @@ pub struct ConnectionScript {
     pub fetch_columns: Replies<FakeReply<Vec<ColumnInfo>>>,
     pub fetch_indexes: Replies<FakeReply<Vec<IndexInfo>>>,
     pub fetch_foreign_keys: Replies<FakeReply<Vec<ForeignKeyInfo>>>,
+    pub fetch_outbound_foreign_keys: Replies<FakeReply<Vec<OutboundForeignKey>>>,
     pub fetch_inbound_foreign_keys: Replies<FakeReply<Vec<InboundForeignKey>>>,
     pub fetch_table_definition: Replies<FakeReply<TableDefinition>>,
     pub row_identity: Replies<FakeReply<RowIdentity>>,
@@ -41,6 +43,10 @@ pub struct ConnectionScript {
     pub write_batch: Replies<FakeReply<WriteReport>>,
     pub resolve_commit: Replies<FakeReply<CommitResolution>>,
     pub open_editor_session: Replies<FakeReply<Arc<dyn EditorSession>>>,
+    /// Keyed by the pattern asked for, `None` for every key.
+    pub scan_keys: Replies<FakeReply<KeyListing>>,
+    /// Keyed by the key's name.
+    pub read_key: Replies<FakeReply<Option<KeyPage>>>,
 }
 
 impl Default for ConnectionScript {
@@ -56,6 +62,7 @@ impl Default for ConnectionScript {
             fetch_columns: Replies::default(),
             fetch_indexes: Replies::default(),
             fetch_foreign_keys: Replies::default(),
+            fetch_outbound_foreign_keys: Replies::default(),
             fetch_inbound_foreign_keys: Replies::default(),
             fetch_table_definition: Replies::default(),
             row_identity: Replies::default(),
@@ -67,6 +74,8 @@ impl Default for ConnectionScript {
             write_batch: Replies::default(),
             resolve_commit: Replies::default(),
             open_editor_session: Replies::default(),
+            scan_keys: Replies::default(),
+            read_key: Replies::default(),
         }
     }
 }

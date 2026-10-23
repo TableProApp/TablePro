@@ -71,6 +71,7 @@ pub(super) fn tracked(tracker: &TabTrackerHandle) -> TabGridContext {
         editable: true,
         identity: keyed_by_id(),
         column_widths: None,
+        in_clause: true,
         keys: None,
     }
 }

@@ -1,16 +1,20 @@
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
-    AuthMode, CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
-    ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
+    AuthMode, CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality,
+    ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 
 pub(crate) const DEFAULT_PORT: u16 = 9042;
 
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
+    data_model: DataModel::Relational,
     endpoint: EndpointKind::Network {
         default_port: DEFAULT_PORT,
     },
     auth_modes: &[AuthMode::Password],
+    // A server on AllowAllAuthenticator takes no login, and an empty
+    // username sends none.
+    username_required: false,
     // The relay hands rustls a loopback address, so the certificate is
     // checked against the name the driver supplies on every route.
     tls: Some(TlsCapabilities {

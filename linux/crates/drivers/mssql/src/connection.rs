@@ -5,7 +5,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -298,6 +298,24 @@ impl Connection for MssqlConnection {
             }),
         )
         .await
+    }
+
+    /// SQL Server refuses a key between columns that differ in type,
+    /// length, scale or collation, so both sides of every key compare
+    /// alike.
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
+        let keys = self.fetch_foreign_keys(table, options).await?;
+        Ok(keys
+            .into_iter()
+            .map(|key| OutboundForeignKey {
+                key,
+                parent_compares_alike: true,
+            })
+            .collect())
     }
 
     async fn fetch_inbound_foreign_keys(

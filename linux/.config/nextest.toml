@@ -4,6 +4,7 @@ mysql = { max-threads = 1 }
 mssql = { max-threads = 1 }
 clickhouse = { max-threads = 1 }
 cassandra = { max-threads = 1 }
+redis = { max-threads = 1 }
 ssh = { max-threads = 1 }
 fixtures = { max-threads = 1 }
 session = { max-threads = 1 }
@@ -41,6 +42,10 @@ test-group = 'clickhouse'
 [[profile.default.overrides]]
 filter = 'package(tablepro-driver-cassandra)'
 test-group = 'cassandra'
+
+[[profile.default.overrides]]
+filter = 'package(tablepro-driver-redis)'
+test-group = 'redis'
 
 [[profile.default.overrides]]
 filter = 'package(tablepro-ssh)'

@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Every engine is one crate under `crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Cassandra and ScyllaDB](drivers/cassandra.md).
+Every engine is one crate under `crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Cassandra and ScyllaDB](drivers/cassandra.md), [Redis](drivers/redis.md). An engine that does not speak SQL meets the same contract the way [Engines without SQL](#engines-without-sql) says.
 
 The work, in order:
 
@@ -35,6 +35,7 @@ What the shipped drivers use:
 | SQL Server | tiberius 0.13 | deadpool 0.13 | `Transport::open` |
 | ClickHouse | clickhouse 0.15 over hyper-util and hyper-rustls | hyper's connection pool | `Transport::open` |
 | Cassandra, ScyllaDB | scylla 1.9 (`rustls-023`) | none: one multiplexed connection per session | a loopback relay over `Transport::open` |
+| Redis | redis 1.7 (`aio`, `tokio-comp`), tokio-rustls | one multiplexed link | `Transport::open` |
 
 Open an issue before starting an engine that is not listed, and say which library and why.
 
@@ -86,18 +87,20 @@ pub trait DatabaseDriver: Send + Sync {
 }
 ```
 
-`id()` is written into saved connections and never changes once shipped. The ids in use are `postgres`, `mysql`, `sqlite`, `mssql`, `clickhouse` and `cassandra`.
+`id()` is written into saved connections and never changes once shipped. The ids in use are `postgres`, `mysql`, `sqlite`, `mssql`, `clickhouse`, `cassandra` and `redis`.
 
 ### Capabilities
 
-`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `tls`, `read_only` and `database_required`, and the structure review reads `ddl_writes`. The conformance suites hold `endpoint`, `dml_writes`, `ddl_writes`, `commit_resolution`, `statement_stop` and the TLS client certificate flag to what the engine does. Nothing reads `script_execution`, `row_count_estimate` or `object_kinds` yet: set them to what the engine does.
+`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `username_required`, `tls`, `read_only` and `database_required`, the workspace reads `data_model`, and the structure review reads `ddl_writes`. The conformance suites hold `endpoint`, `dml_writes`, `ddl_writes`, `commit_resolution`, `statement_stop` and the TLS client certificate flag to what the engine does. Nothing reads `script_execution`, `row_count_estimate` or `object_kinds` yet: set them to what the engine does.
 
 | Field | Meaning |
 |---|---|
+| `data_model` | `Relational` (schemas of tables, in SQL) or `KeyValue` (numbered databases of keys, in commands). It decides what the sidebar lists, what an object opens in and the editor's language ([Engines without SQL](#engines-without-sql)). |
 | `endpoint` | `Network { default_port }` or `File`. A file engine gets a path row instead of host, port, TLS and SSH. The picker's file subtitle and opening a file from Files look for the id `sqlite` (`is_sqlite` in `crates/app/src/services/saved_connection_object.rs`, `file_driver` in `crates/app/src/ui/session_window/resolve_file_identity.rs`), so a second file engine changes those too. |
 | `auth_modes` | The `AuthMode`s the driver can log in with. `Kerberos` only where `connect` maps it to a real integrated login. |
+| `username_required` | Whether a password login needs a username. Redis takes a password alone, for its `default` user. |
 | `tls` | `TlsCapabilities`: the `TlsMode`s offered, whether a CA file and a client certificate are accepted, and where a server name override works (`ServerNameOverride`). `None` for an engine with no TLS. |
-| `read_only` | How a read-only connection is held: `EngineEnforced` (the engine refuses every write), `SessionDefault` (a statement can lift it) or `LoginPrivileges` (only the login's grants hold). The connect dialog says which one the user gets. |
+| `read_only` | How a read-only connection is held: `EngineEnforced` (the engine refuses every write), `SessionDefault` (a statement can lift it), `LoginPrivileges` (only the login's grants hold) or `ClientGuard` (the engine has no read-only session, and the driver refuses every command that is not a read before sending it). The connect dialog says which one the user gets. |
 | `dml_writes`, `ddl_writes` | `WriteAtomicity` of row changes and of schema changes: `Transactional` or `StatementByStatement`. |
 | `script_execution` | `NativeBatch` (a run takes a whole script) or `SingleStatement` (one statement per run). |
 | `commit_resolution` | How an unanswered commit can be resolved: `ServerTransactionStatus`, `QueryLog` or `Unavailable`. |
@@ -108,22 +111,24 @@ pub trait DatabaseDriver: Send + Sync {
 
 The shipped drivers:
 
-| | PostgreSQL | MySQL | SQLite | SQL Server | ClickHouse | Cassandra |
-|---|---|---|---|---|---|---|
-| `endpoint` | 5432 | 3306 | `File` | 1433 | 8123 | 9042 |
-| `auth_modes` | Password | Password | none | Password, Kerberos | Password | Password |
-| TLS modes | all three | all three | none | all three | all three | all three |
-| CA file | yes | yes | | yes | yes | yes |
-| Client certificate | yes | yes | | no | yes | yes |
-| Server name override | `AnyRoute` | `SshForwardOnly` | | `AnyRoute` | `AnyRoute` | `AnyRoute` |
-| `read_only` | `SessionDefault` | `SessionDefault` | `EngineEnforced` | `LoginPrivileges` | `EngineEnforced` | `LoginPrivileges` |
-| `dml_writes` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` |
-| `ddl_writes` | `Transactional` | `StatementByStatement` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` |
-| `script_execution` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `SingleStatement` | `SingleStatement` |
-| `commit_resolution` | `ServerTransactionStatus` | `Unavailable` | `Unavailable` | `Unavailable` | `QueryLog` | `Unavailable` |
-| `row_count_estimate` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `ExactMetadata` | `Unavailable` |
-| `database_required` | no | yes | no | no | no | no |
-| `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` |
+| | PostgreSQL | MySQL | SQLite | SQL Server | ClickHouse | Cassandra | Redis |
+|---|---|---|---|---|---|---|---|
+| `data_model` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `KeyValue` |
+| `endpoint` | 5432 | 3306 | `File` | 1433 | 8123 | 9042 | 6379 |
+| `auth_modes` | Password | Password | none | Password, Kerberos | Password | Password | Password |
+| `username_required` | yes | yes | | yes | yes | no | no |
+| TLS modes | all three | all three | none | all three | all three | all three | all three |
+| CA file | yes | yes | | yes | yes | yes | yes |
+| Client certificate | yes | yes | | no | yes | yes | yes |
+| Server name override | `AnyRoute` | `SshForwardOnly` | | `AnyRoute` | `AnyRoute` | `AnyRoute` | `AnyRoute` |
+| `read_only` | `SessionDefault` | `SessionDefault` | `EngineEnforced` | `LoginPrivileges` | `EngineEnforced` | `LoginPrivileges` | `ClientGuard` |
+| `dml_writes` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` | `StatementByStatement` |
+| `ddl_writes` | `Transactional` | `StatementByStatement` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` | `StatementByStatement` |
+| `script_execution` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `SingleStatement` | `SingleStatement` | `SingleStatement` |
+| `commit_resolution` | `ServerTransactionStatus` | `Unavailable` | `Unavailable` | `Unavailable` | `QueryLog` | `Unavailable` | `Unavailable` |
+| `row_count_estimate` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `ExactMetadata` | `Unavailable` | `ExactMetadata` |
+| `database_required` | no | yes | no | no | no | no | no |
+| `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` | `Server` |
 
 SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
 
@@ -156,7 +161,7 @@ The `Connection` is a workspace's link to one server: the pool behind the sideba
 | `server_info`, `dialect`, `read_only` | Fixed at connect. |
 | `link_state`, `lost` | A `LinkWatch` shared by every call. `lost()` resolves when the link is gone: a failed probe, or a failed call that a check outside the pool confirmed. One dead backend in the pool does not resolve it, so the session monitor can act on it. |
 | `probe` | Whether the server answers. It never waits for a pool slot: with every slot busy it opens a connection of its own. |
-| `list_schemas`, `list_objects`, `fetch_columns`, `fetch_indexes`, `fetch_foreign_keys`, `fetch_inbound_foreign_keys`, `fetch_table_definition`, `row_identity`, `table_estimate` | Catalogue reads. `fetch_table_definition` reads columns, keys and dependents in one call so they come from the same moment. `fetch_inbound_foreign_keys` returns the inbound keys that definition lists, read alone for a table tab's cell menu. Each key names its other table as the sidebar does, and its columns as declared. An inbound key's `child_compares_alike` is false when `=` on the referencing columns finds other rows than the key matches, as on SQLite when the two sides differ in affinity or collation. |
+| `list_schemas`, `list_objects`, `fetch_columns`, `fetch_indexes`, `fetch_foreign_keys`, `fetch_outbound_foreign_keys`, `fetch_inbound_foreign_keys`, `fetch_table_definition`, `row_identity`, `table_estimate` | Catalogue reads. `fetch_table_definition` reads columns, keys and dependents in one call so they come from the same moment. `fetch_outbound_foreign_keys` and `fetch_inbound_foreign_keys` return the keys that definition lists, read alone for a table tab's cell menu. Each key names its other table as the sidebar does, and its columns as declared. `parent_compares_alike` and `child_compares_alike` are false when a value of one side, as text read under the other side's column type, can find other rows than the key matches: the two sides differ in type or collation and the engine compares them through a conversion. |
 | `query_bound` | A generated read that keeps at most `limit` rows and reads one more to set `truncated`. |
 | `count_rows` | A generated count. |
 | `stream_read` | Every row of a read into a `ResultSink`, with no row limit, on a connection of its own, held read-only for its whole length. |
@@ -205,6 +210,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 | SQL Server | TDS attention on the request's own connection (`Client::cancel_query`) | `InBand` |
 | ClickHouse | `KILL QUERY WHERE query_id = ? ASYNC` on a sessionless client | `OutOfBand(Statement)` |
 | Cassandra, ScyllaDB | None in the protocol: the call drops its request, and the server runs it to its own timeout | `InBand` |
+| Redis | A workspace read stops between its bounded commands; an editor command gets `CLIENT UNBLOCK <id> ERROR`, then `CLIENT KILL ID <id>` past the grace, from a link of its own ([redis.md](drivers/redis.md#stops-and-timeouts)) | `InBand` |
 
 ### `CallResource` release rules
 
@@ -317,7 +323,7 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 A table whose scan has no order to page by, as a CQL scan in token order has none, returns `TablePaging::ServerState` from `table_paging`: the browse tab then pages by the state the server hands back, through `Connection::query_server_page`, offers no sort, and reaches a page by number by skipping rows. `filter_operators`, `filter_combinators` and `filtered_read_suffix` narrow the filter strip to what the engine evaluates and add what it needs after a WHERE clause. `capabilities().insert_conflict` says what an INSERT of a taken key does, which decides how a save proves an insert: refused (`Refused`), skipped (`Skipped`, proved by the count), or replaced (`Replaced`, proved by a probe for the key first). A column that holds one value per partition, a CQL partition key or static column, is `ColumnInfo::partition_scoped`: an update of such columns alone names only the partition, is spelled by `partition_update_statement`, and is proved by a probe for its row.
 
-`SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `crates/core/src/sql_syntax/script/script_rules.rs`. Each rule gets a named case in `crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
+`SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `crates/core/src/sql_syntax/script/script_rules.rs`. A language that is not SQL adds a variant too, with no SQL rules ([Engines without SQL](#engines-without-sql)). Each rule gets a named case in `crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
 
 `SqlDialect::history_recording` says whether SQL the user ran may go into the query history. Implement it as `classify_for_history(<grammar>, &CREDENTIAL_RULES, sql)`, with a `CredentialRules` const next to the dialect naming the engine's statements, conditional statements and functions that can carry a password or a connection string, and test each one ([storage.md](storage.md#what-goes-into-the-history)).
 
@@ -350,6 +356,7 @@ fn build_registry() -> DriverRegistry {
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     r.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    r.register(Arc::new(tablepro_driver_redis::RedisDriver));
     r.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     r
 }
@@ -371,6 +378,29 @@ Behaviour the suites do not cover gets a test of its own against the real engine
 
 A new package with Docker tests also needs its nextest group and CI matrix entry, and runs one package at a time ([testing.md](testing.md#running-the-docker-tests)).
 
+## Engines without SQL
+
+Redis is the first engine that holds keys rather than tables and takes commands rather than SQL. It implements the same `DatabaseDriver`, `Connection` and `EditorSession`, runs every call under `OwnedCalls` and opens every stream from the transport, and says what it is with `data_model: DataModel::KeyValue`. The app reads that once per workspace and keeps the SQL surfaces out of its way:
+
+| | `Relational` | `KeyValue` |
+|---|---|---|
+| Sidebar | `list_schemas` and `list_objects` through the session's catalog, filtered in the app | `Connection::scan_keys(KeyScan)`: the server matches the search, and the listing stops at its limit and says so (`KeyListing::complete`) |
+| An object opens in | a table tab, paging with `query_bound` | a key tab, reading `Connection::read_key(name, KeyWindow)` one window at a time |
+| Catalogue | every call | `list_schemas` and `list_objects` return nothing; calls that name a table, generated reads and `write_batch` return `Unsupported(Tables)` |
+| Editor | SQL highlighting, completion and formatter | none of them; the engine's grammar splits the commands |
+| Read-only | the engine, a session default or the login | `ClientGuard`, unless the engine has a read-only session of its own |
+
+What a new engine without SQL does:
+
+1. **Capabilities.** `data_model: KeyValue`, `object_kinds` the `ObjectKind::Key(KeyKind)`s it lists, and `read_only: ClientGuard` when the engine cannot hold a session read-only.
+2. **Keys.** `scan_keys` walks the keyspace in bounded steps under the call's stop, never in one command that holds the server, keeps at most `KeyScan::limit` keys and sets `complete` when it reached the end. `KeyScan::pattern` is a glob (`*`, `?`, `[...]`, `\` to escape); `KeyScan::search` turns what the user typed into one. A key's name is its text as listed, quoted the engine's way when it is not plain text, and `read_key` takes that name back. `read_key` returns the type, the TTL, the length and one window of rows in the columns the type has, with an opaque `KeyCursor` for the next window, or `None` for a key that is gone.
+3. **Grammar.** A `SqlGrammar` variant for the language, whose `rules_for` is `None` and whose `parser_dialect` is `None`, so `parse_type` and `parse_expression` refuse it. Its own module under `crates/core/src/sql_syntax/` (Redis: `sql_syntax/redis/`) builds the `ScriptPlan` (a statement and a batch per command, tokens covering the text, a diagnostic for what does not close), reads `statement_access` from the command's name and options, with an unknown command a write, and decides `history_recording` from the commands that carry a password. `ScriptPlan::build`, `statement_access` and `classify_for_history` hand the variant to it. Each rule gets a named case in `crates/core/tests/script_corpus.rs`.
+4. **Dialect.** `Connection::dialect()` still returns a `SqlDialect`, because the editor reads its grammar and its history check from one. Its `grammar()` is the engine's, `history_recording` the module's rules, `quote_identifier` writes a name as one argument of a command, `escape_like_text` escapes a glob, `ddl()` is `None`, and every builder that would write SQL (`placeholder`, `literal`, `parse_type`) refuses.
+5. **Editor session.** One link per tab, one command at a time in the order written, stopping at the first that fails. A command that would turn the link into a stream the editor cannot read is refused with `Unsupported(EditorCommand)`. With `ClientGuard`, a command that is not a read is refused with `ReadOnlyRefusal::ClientGuard` before it is sent, in `run` and in `stream_read`. A transaction the engine keeps per link is tracked from the replies, since it cannot be asked.
+6. **Tests.** `keyspace_conformance_suite!` through `KeyspaceEngine`, and `tls_conformance_suite!` for a network engine. The connection, DDL, large-table, value corpus and round-trip suites are SQL's and do not apply.
+
+A document engine, MongoDB next, reuses the grammar, dialect, read-only guard and suite rules above, and adds the `DataModel` variant and the listing its collections need.
+
 ## Checklist
 
 - [ ] The client library is on crates.io, unforked, and uses aws-lc-rs.
@@ -383,7 +413,8 @@ A new package with Docker tests also needs its nextest group and CI matrix entry
 - [ ] Errors map to `DriverError` by the engine's code ([error-handling.md](error-handling.md)).
 - [ ] The client library's log target is in `SILENCED_LIBRARIES` in `crates/app/src/logging.rs`, so no statement text reaches the journal ([error-handling.md](error-handling.md#logging)).
 - [ ] Registered in `build_registry`; added to the workspace and to `crates/app/Cargo.toml`.
-- [ ] The connection, DDL, large-table, value corpus and TLS conformance suites run; the CI matrix and nextest groups include the package.
+- [ ] The connection, DDL, large-table, value corpus and TLS conformance suites run, or for an engine without SQL the keyspace and TLS suites; the CI matrix and nextest groups include the package.
+- [ ] An engine without SQL has its `data_model`, its grammar module with named corpus cases, `scan_keys` and `read_key`, and refuses writes before sending them where its `read_only` is `ClientGuard` ([Engines without SQL](#engines-without-sql)).
 - [ ] `build-aux/update-third-party-licenses.sh` ran and its output is committed; `cargo deny check` passes.
 - [ ] A page in `docs/drivers/` covers timeouts, stops, the server codes the driver maps, read-only, writes, trust and the engine's limits.
 - [ ] `meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings` passes, and again with `--no-default-features`.

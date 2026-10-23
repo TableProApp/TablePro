@@ -7,10 +7,12 @@ use tablepro_core::{
 pub(crate) const DEFAULT_PORT: u16 = 8123;
 
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
+    data_model: tablepro_core::DataModel::Relational,
     endpoint: EndpointKind::Network {
         default_port: DEFAULT_PORT,
     },
     auth_modes: &[AuthMode::Password],
+    username_required: true,
     tls: Some(TlsCapabilities {
         modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
         ca_file: true,

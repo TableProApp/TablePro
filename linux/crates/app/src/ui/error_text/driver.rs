@@ -94,6 +94,9 @@ pub fn config_message(error: &ConfigError) -> String {
             crate::i18n::gettext("This database does not support that way of logging in.")
         }
         ConfigError::DatabaseRequired => crate::i18n::gettext("Enter the name of the database to open."),
+        ConfigError::DatabaseNumber => {
+            crate::i18n::gettext("Enter the database's number, such as 0, or leave it empty.")
+        }
     }
 }
 
@@ -180,6 +183,8 @@ fn server_code_text(code: &ServerCode) -> String {
         ServerCode::ClickHouse { .. } => crate::i18n::gettext_f("ClickHouse code {code}", &[("code", &number)]),
         ServerCode::Sqlite { .. } => crate::i18n::gettext_f("SQLite error {code}", &[("code", &number)]),
         ServerCode::Cql { .. } => crate::i18n::gettext_f("CQL error {code}", &[("code", &number)]),
+        // Redis names its errors by a word, such as WRONGTYPE.
+        ServerCode::Redis { .. } => number,
     }
 }
 

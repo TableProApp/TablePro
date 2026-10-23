@@ -11,6 +11,7 @@ pub struct CallCounters {
     pub fetch_columns: Arc<AtomicUsize>,
     pub fetch_indexes: Arc<AtomicUsize>,
     pub fetch_foreign_keys: Arc<AtomicUsize>,
+    pub fetch_outbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_inbound_foreign_keys: Arc<AtomicUsize>,
     pub fetch_table_definition: Arc<AtomicUsize>,
     pub row_identity: Arc<AtomicUsize>,
@@ -21,6 +22,8 @@ pub struct CallCounters {
     pub write_batch: Arc<AtomicUsize>,
     pub resolve_commit: Arc<AtomicUsize>,
     pub open_editor_session: Arc<AtomicUsize>,
+    pub scan_keys: Arc<AtomicUsize>,
+    pub read_key: Arc<AtomicUsize>,
     pub close: Arc<AtomicUsize>,
     /// Calls that ended because their cancel or deadline fired, or the
     /// connection was closed under them.

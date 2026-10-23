@@ -47,7 +47,6 @@ const WALK_LIMIT: Duration = Duration::from_secs(90);
 /// A page that takes longer than this is a frozen grid.
 const PAGE_LIMIT: Duration = Duration::from_secs(2);
 
-
 const EXPORT_LIMIT: Duration = Duration::from_secs(90);
 
 /// How far the process's resident peak may rise while it pages or

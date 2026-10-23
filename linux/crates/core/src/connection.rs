@@ -6,11 +6,12 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::{InboundForeignKey, TableDefinition};
+use crate::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
 use crate::foreign_key_info::ForeignKeyInfo;
+use crate::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use crate::link_watch::LinkState;
 use crate::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use crate::query_result::QueryResult;
@@ -66,6 +67,14 @@ pub trait Connection: Send + Sync {
         table: &TableRef,
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError>;
+
+    /// The table's own foreign keys as `fetch_foreign_keys` lists them,
+    /// each with whether its two sides compare alike.
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError>;
 
     /// The foreign keys of other tables that point at this one, as
     /// `fetch_table_definition` lists them, without the rest of the
@@ -148,4 +157,26 @@ pub trait Connection: Send + Sync {
     /// Stop every call and release the pool. Safe to call more than
     /// once, and it never closes an editor session.
     async fn close(&self) -> Result<(), DriverError>;
+
+    /// A key-value engine's keys: those matching the scan's pattern, up to
+    /// its limit, read in steps that never hold the server for long. A
+    /// relational engine keeps this default.
+    async fn scan_keys(&self, _scan: &KeyScan, _options: CallOptions) -> Result<KeyListing, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::Keys,
+        })
+    }
+
+    /// One window of a key's value, or `None` when the key does not
+    /// exist. `key` is the name `scan_keys` listed.
+    async fn read_key(
+        &self,
+        _key: &str,
+        _window: &KeyWindow,
+        _options: CallOptions,
+    ) -> Result<Option<KeyPage>, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::Keys,
+        })
+    }
 }
