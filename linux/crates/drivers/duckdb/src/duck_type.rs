@@ -6,6 +6,8 @@ use tablepro_core::column::{
     BoolStorage, CatalogType, ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, SqlTypeExpr,
     TemporalZone, TextLength, TimeRange,
 };
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptTokenKind};
 
 /// The unit a timestamp counts in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +326,13 @@ pub(crate) fn column_type_from_text(text: &str) -> ColumnType {
         _ => Vec::new(),
     };
     let known = !matches!(duck, DuckType::Other(_));
+    // DuckDB's text for a UNION names no member and reads back as the
+    // first member it fits, so a table tab reads one as a value of its
+    // type, which a SQL export has no literal for, rather than as text.
+    let read_form = match holds_union(declared) {
+        true => ReadForm::Native,
+        false => duck.read_form(),
+    };
     ColumnType {
         name: declared.to_owned(),
         kind: duck.kind(labels),
@@ -332,8 +341,26 @@ pub(crate) fn column_type_from_text(text: &str) -> ColumnType {
             cast_target: SqlTypeExpr::from_catalog_text(declared),
         }),
         dynamic_storage: !known,
-        read_form: duck.read_form(),
+        read_form,
     }
+}
+
+/// Whether a spelled type holds a UNION, at any depth. A field may be
+/// named `"union("`, so only the word itself before a parenthesis counts.
+pub(crate) fn holds_union(text: &str) -> bool {
+    let grammar = SqlGrammar::DuckDb;
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    let tokens: Vec<_> = plan
+        .tokens(0..text.len())
+        .filter(|token| !token.kind.is_trivia())
+        .collect();
+    tokens.windows(2).any(|pair| {
+        pair[0].kind == ScriptTokenKind::Word
+            && text
+                .get(pair[0].range.clone())
+                .is_some_and(|word| word.eq_ignore_ascii_case("UNION"))
+            && pair[1].kind == ScriptTokenKind::OpenParen
+    })
 }
 
 /// The shape of a spelled type: enough to choose how it is read.
@@ -453,6 +480,21 @@ fn enum_labels(text: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_union_is_found_at_any_depth_and_never_in_a_name() {
+        for text in [
+            "UNION(n INTEGER, s VARCHAR)",
+            "union(n INTEGER)[]",
+            "STRUCT(a UNION(n INTEGER, s VARCHAR))",
+            "MAP(VARCHAR, UNION (n INTEGER))",
+        ] {
+            assert!(holds_union(text), "{text}");
+        }
+        for text in ["STRUCT(\"union(\" INTEGER)", "VARCHAR", "STRUCT(\"a\" VARCHAR)"] {
+            assert!(!holds_union(text), "{text}");
+        }
+    }
 
     #[test]
     fn the_catalogue_spelling_reads_as_its_kind() {

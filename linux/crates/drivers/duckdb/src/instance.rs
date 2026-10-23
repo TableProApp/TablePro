@@ -105,7 +105,7 @@ impl Drop for Instance {
 pub(crate) struct Link {
     pub(crate) connection: duckdb::Connection,
     stop: StopHandle,
-    _instance: Arc<Instance>,
+    instance: Arc<Instance>,
 }
 
 /// What stops the statement a connection runs. DuckDB clears an
@@ -147,7 +147,7 @@ impl Link {
         Self {
             connection,
             stop,
-            _instance: instance,
+            instance,
         }
     }
 
@@ -186,7 +186,7 @@ impl Instance {
                 // out from under the windows using it.
                 (Some(true), FileOpenMode::CreateNew) => return Err(DriverError::Busy(BusyReason::FileLocked)),
                 (None, FileOpenMode::CreateNew) => {
-                    if FileId::of(path).is_some_and(|id| attached(&open, id)) {
+                    if FileId::of(path).is_some_and(|id| attached(&open, id, None)) {
                         return Err(DriverError::Busy(BusyReason::FileLocked));
                     }
                     create_or_replace(path)?;
@@ -212,7 +212,7 @@ impl Instance {
                     }
                 }
             }
-            if attached(&open, id) {
+            if attached(&open, id, None) {
                 return Err(DriverError::Busy(BusyReason::FileLocked));
             }
             let root = duckdb::Connection::open_with_flags(&canonical, config(read_only)?)
@@ -271,46 +271,68 @@ impl Instance {
     }
 }
 
-/// Whether an open database has the file attached, which DuckDB lists
-/// with its own file.
-fn attached(open: &HashMap<FileId, Opened>, id: FileId) -> bool {
-    open.values().any(|entry| {
-        let root = entry.root.lock().unwrap_or_else(PoisonError::into_inner);
-        let Some(root) = root.as_ref() else {
-            return false;
-        };
-        let paths = root
-            .prepare("SELECT path FROM duckdb_databases() WHERE path IS NOT NULL")
-            .and_then(|mut statement| {
-                statement
-                    .query_map([], |row| row.get::<_, String>(0))
-                    .and_then(|rows| rows.collect::<Result<Vec<_>, _>>())
-            });
-        match paths {
-            Ok(paths) => paths.iter().any(|path| FileId::of(Path::new(path)) == Some(id)),
-            Err(error) => {
-                tracing::warn!(%error, "could not read the databases an open file has attached");
-                false
-            }
-        }
+/// The files a database has open, its own and the ones attached to it,
+/// under the paths DuckDB lists them by.
+fn database_paths(entry: &Opened) -> Vec<String> {
+    let root = entry.root.lock().unwrap_or_else(PoisonError::into_inner);
+    let Some(root) = root.as_ref() else {
+        return Vec::new();
+    };
+    let paths = root
+        .prepare("SELECT path FROM duckdb_databases() WHERE path IS NOT NULL")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .and_then(|rows| rows.collect::<Result<Vec<_>, _>>())
+        });
+    paths.unwrap_or_else(|error| {
+        tracing::warn!(%error, "could not read the databases an open file has attached");
+        Vec::new()
     })
 }
 
-/// Run `attach`, an ATTACH that may open any of `targets`, unless one of
-/// them is open in this process, as a workspace's database or attached
-/// to one: DuckDB would make a second database on it, which writes past
-/// the first. The registry is held across the check and the attach, so
-/// no window opens the file, and no tab attaches it, in between.
+/// Whether an open database other than `except` has the file attached,
+/// which DuckDB lists with its own file.
+fn attached(open: &HashMap<FileId, Opened>, id: FileId, except: Option<FileId>) -> bool {
+    open.iter().filter(|(key, _)| Some(**key) != except).any(|(_, entry)| {
+        database_paths(entry)
+            .iter()
+            .any(|path| FileId::of(Path::new(path)) == Some(id))
+    })
+}
+
+/// Run `attach`, an ATTACH on `link` that may open any of `targets`,
+/// unless a database in this process has one of them open, as its own
+/// file or attached to it: DuckDB would make a second database on it,
+/// which writes past the first. DuckDB finds a file the link's own
+/// database has open by the path it lists it under, so `ATTACH IF NOT
+/// EXISTS` of that path again does nothing, while another name for the
+/// file, a hard link among them, would open it twice. The registry is
+/// held across the check and the attach, so no window opens the file,
+/// and no tab attaches it, in between.
 pub(crate) fn attach_unless_open<T>(
+    link: &Link,
     targets: &[PathBuf],
     attach: impl FnOnce() -> Result<T, DriverError>,
 ) -> Result<T, DriverError> {
     let _opening = tablepro_core::opening_file_blocking();
     let open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
-    let in_use = targets
-        .iter()
-        .filter_map(|target| FileId::of(target))
-        .any(|id| open.contains_key(&id) || attached(&open, id));
+    let own = link.instance.id;
+    let own_paths = open.get(&own).map(database_paths).unwrap_or_default();
+    let in_use = targets.iter().any(|target| {
+        let Some(id) = FileId::of(target) else {
+            return false;
+        };
+        let mut held_here = own_paths
+            .iter()
+            .filter(|path| FileId::of(Path::new(path)) == Some(id))
+            .peekable();
+        if held_here.peek().is_some() {
+            let spelled = target.to_string_lossy();
+            return !held_here.any(|path| *path == spelled);
+        }
+        open.contains_key(&id) || attached(&open, id, Some(own))
+    });
     if in_use {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }

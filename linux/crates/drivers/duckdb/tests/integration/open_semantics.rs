@@ -221,6 +221,24 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
 
     let (attaching_open, _) = run(editor.as_ref(), &format!("ATTACH '{}' AS o", other.path.display())).await;
     let (attaching_spare, _) = run(editor.as_ref(), &format!("ATTACH '{}' AS s", spare.path.display())).await;
+    let (attaching_again, _) = run(
+        editor.as_ref(),
+        &format!("ATTACH IF NOT EXISTS '{}' AS s", spare.path.display()),
+    )
+    .await;
+    let spare_link = spare.path.with_file_name("spare-link.duckdb");
+    std::fs::hard_link(&spare.path, &spare_link).unwrap();
+    let own_link = file.path.with_file_name("own-link.duckdb");
+    std::fs::hard_link(&file.path, &own_link).unwrap();
+    let mut through_links = Vec::new();
+    for (alias, link) in [("s2", &spare_link), ("me", &own_link)] {
+        let (summary, _) = run(
+            editor.as_ref(),
+            &format!("ATTACH IF NOT EXISTS '{}' AS {alias}", link.display()),
+        )
+        .await;
+        through_links.push(summary.end);
+    }
     let opening_attached = connect(spare.endpoint(), writable()).await;
 
     assert_eq!(
@@ -228,6 +246,19 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
         RunEnd::Failed(DriverError::Busy(BusyReason::FileLocked))
     );
     assert_eq!(attaching_spare.end, RunEnd::Completed);
+    assert_eq!(
+        attaching_again.end,
+        RunEnd::Completed,
+        "the tab's own database has the file, which DuckDB finds itself"
+    );
+    assert_eq!(
+        through_links,
+        [
+            RunEnd::Failed(DriverError::Busy(BusyReason::FileLocked)),
+            RunEnd::Failed(DriverError::Busy(BusyReason::FileLocked))
+        ],
+        "DuckDB finds its own files by path, so a hard link would open one twice"
+    );
     assert_eq!(opening_attached.err(), Some(DriverError::Busy(BusyReason::FileLocked)));
     editor.close().await;
     opened.close().await.unwrap();

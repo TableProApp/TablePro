@@ -2,9 +2,10 @@
 //! for them.
 
 use tablepro_core::RunEnd;
+use tablepro_core::meta::TableRef;
 use tablepro_core::value::{OtherValue, Value};
 
-use crate::support::{TestFile, run, session};
+use crate::support::{TestFile, apply, call, query, run, session};
 
 /// Nested values an editor run reads come back as DuckDB's own text,
 /// the text a table tab gets from `CAST(... AS VARCHAR)`.
@@ -120,5 +121,44 @@ async fn an_interval_arrow_cannot_carry_is_not_read_as_another() {
     assert!(matches!(&rows[0][0], Value::Undecodable(_)), "{:?}", rows[0][0]);
     assert!(matches!(&rows[0][1], Value::Interval(_)), "{:?}", rows[0][1]);
     editor.close().await;
+    connection.close().await.unwrap();
+}
+
+/// A table tab reads a UNION, or a type holding one, as a value of its
+/// type rather than as DuckDB's text, which names no member: a SQL export
+/// then has no literal for it instead of writing text that reads back as
+/// another member.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_union_in_a_table_reads_as_a_value_with_no_literal() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE u (id INTEGER PRIMARY KEY, v UNION(n INTEGER, s VARCHAR), \
+             l UNION(n INTEGER, s VARCHAR)[], st STRUCT(a UNION(n INTEGER, s VARCHAR)))",
+            "INSERT INTO u VALUES (1, union_value(n := 2), [union_value(s := 'x')], {'a': union_value(n := 3)})",
+        ],
+    )
+    .await
+    .unwrap();
+    let columns = connection
+        .fetch_columns(&TableRef::unqualified("u"), call())
+        .await
+        .unwrap();
+    let dialect = connection.dialect();
+    let projected: Vec<String> = columns.iter().map(|column| dialect.projection(column)).collect();
+
+    let read = query(connection.as_ref(), &format!("SELECT {} FROM u", projected.join(", "))).await;
+
+    for (index, column) in columns.iter().enumerate().skip(1) {
+        let value = &read.rows[0][index];
+        assert!(matches!(value, Value::Other(_)), "{}: {value:?}", column.name);
+        assert!(
+            dialect.literal(value, &read.columns[index].column_type).is_err(),
+            "{} has a literal: {value:?}",
+            column.name
+        );
+    }
     connection.close().await.unwrap();
 }

@@ -110,7 +110,7 @@ Integers to 128 bits, decimals at their scale, dates and timestamps to their ext
 
 An interval past about 292 years is the exception. DuckDB hands an interval to Arrow in nanoseconds, multiplying its microseconds in 64 bits, which wraps. The driver shows a wrapped value as unreadable; one past about 73,000 years can wrap to a whole number of microseconds and read as another interval.
 
-Lists, arrays, structs, maps and unions read as DuckDB's own text, the text `CAST(... AS VARCHAR)` gives, and are read-only in the grid. `TIME WITH TIME ZONE` loses its offset in DuckDB's Arrow result, so an editor run shows it as unreadable, and a table tab reads it as DuckDB's text. `VARIANT` columns are refused by the storage version a new database gets.
+Lists, arrays, structs, maps and unions read as DuckDB's own text, the text `CAST(... AS VARCHAR)` gives, and are read-only in the grid. DuckDB's text for a UNION names no member and reads back as the first member it fits, so a table tab reads a UNION, or a value holding one, as an editor run does, and a SQL export writes it as a marked `NULL` rather than as that text. A `TIME WITH TIME ZONE` inside one is unreadable there, as in an editor run. `TIME WITH TIME ZONE` loses its offset in DuckDB's Arrow result, so an editor run shows it as unreadable, and a table tab reads it as DuckDB's text. `VARIANT` columns are refused by the storage version a new database gets.
 
 ## Extensions
 

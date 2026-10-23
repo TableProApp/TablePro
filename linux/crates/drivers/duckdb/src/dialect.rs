@@ -11,7 +11,7 @@ use tablepro_core::sql_syntax::{
 use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::Value;
 
-use crate::duck_type::column_type_from_text;
+use crate::duck_type::{column_type_from_text, holds_union};
 use crate::encode::duck_text;
 
 /// How DuckDB spells SQL.
@@ -99,7 +99,7 @@ impl SqlDialect for DuckDbDialect {
             // DuckDB writes a UNION as its member's value alone, and reads
             // that text back as the first member it fits, which may be
             // another one.
-            Value::Other(other) if names_union(&other.type_name) || names_union(&column.name) => {
+            Value::Other(other) if holds_union(&other.type_name) || holds_union(&column.name) => {
                 Err(LiteralError::Unrepresentable { found: "a UNION value" })
             }
             other => {
@@ -252,11 +252,6 @@ fn value_param(value: Value, column: &ColumnType) -> Result<(Value, ParamType), 
         }
     };
     Ok((value, param_type))
-}
-
-/// Whether a DuckDB type name holds a UNION, at any depth.
-fn names_union(type_name: &str) -> bool {
-    type_name.to_ascii_uppercase().contains("UNION(")
 }
 
 /// The type a literal of `value` is cast to when the column names none.
@@ -444,6 +439,11 @@ mod tests {
             "CAST(\"v\" AS VARCHAR) AS \"v\""
         );
         assert_eq!(DuckDbDialect.projection(&column("INTEGER")), "\"v\"");
+        assert_eq!(
+            DuckDbDialect.projection(&column("UNION(n INTEGER, s VARCHAR)[]")),
+            "\"v\"",
+            "a UNION's text names no member"
+        );
     }
 
     #[test]

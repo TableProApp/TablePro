@@ -241,8 +241,7 @@ impl Connection for DuckDbConnection {
     }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(options, |link, catalog| catalog::list_schemas(link, catalog))
-            .await
+        self.read(options, catalog::list_schemas).await
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {

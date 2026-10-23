@@ -182,7 +182,7 @@ pub(crate) fn run_script(
         match attach_literal(statement) {
             Some(literal) => {
                 let targets = attach_targets(link, literal)?;
-                attach_unless_open(&targets, || {
+                attach_unless_open(link, &targets, || {
                     run_statement(link, statement, &[], limit, events, &mut outcome)
                 })?;
             }
