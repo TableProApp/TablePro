@@ -110,6 +110,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         tls: TlsConfig::disabled(),
         safe_mode: SafeModeLevel::Off,
         external_access: access,
+        ai_policy: tablepro_core::AiPolicy::Ask,
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,

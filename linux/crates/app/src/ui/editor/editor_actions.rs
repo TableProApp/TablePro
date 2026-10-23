@@ -42,6 +42,19 @@ impl SqlEditor {
             entry("commit", SqlEditor::commit),
             entry("roll-back", SqlEditor::confirm_roll_back),
         ]);
+        for (name, action) in super::assistant_actions::ASSISTANT_ACTIONS {
+            let weak = self.downgrade();
+            let entry = gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
+                .activate(move |_, _, _| {
+                    if let Some(editor) = weak.upgrade() {
+                        editor.ask_assistant(action);
+                    }
+                })
+                .build();
+            actions.add_action_entries([entry]);
+            // Hidden until a workspace attaches an assistant that may send.
+            set_enabled(&actions, name, false);
+        }
         sync_run_actions(&actions, false, None);
         // Commands have no comments, and no layout to format them into.
         let sql = self.grammar().is_sql();

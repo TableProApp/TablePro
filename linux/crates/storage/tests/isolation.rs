@@ -47,6 +47,7 @@ fn connection(name: &str) -> SavedConnection {
         tls: tablepro_core::TlsConfig::disabled(),
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
+        ai_policy: tablepro_core::AiPolicy::Ask,
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,

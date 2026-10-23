@@ -2,6 +2,7 @@
 //! the tabs open on them. A workspace never changes session; a
 //! disconnect drops it and the window shows the connection picker.
 
+mod assistant;
 mod close_flow;
 mod editor_label;
 mod finished_work;
@@ -110,6 +111,8 @@ pub(crate) struct WorkspaceModel {
     history_gate: glib::JoinHandle<()>,
     /// The window's actions this workspace added, removed with it.
     actions: Vec<&'static str>,
+    /// The assistant's column, its toggle and what it may send.
+    assistant: assistant::AssistantShell,
     sidebar: sidebar::SidebarView,
     /// The schemas the sidebar's sections are made from, which also
     /// decide whether tab titles name their schema.
@@ -248,6 +251,8 @@ struct WorkspaceTabParts {
     naming: Rc<Cell<table_naming::TableNaming>>,
     factory: Rc<tab_factory::TabFactory>,
     workspace_handle: WorkspaceHandle,
+    /// What the window's assistant may send, which editor tabs ask.
+    assistant: Rc<crate::ui::assistant::AssistantAccess>,
 }
 
 /// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
@@ -593,6 +598,12 @@ pub(crate) enum WorkspaceInput {
     RefreshTab(Uuid),
     /// Bring the tab to the front, for a notification about it.
     FocusTab(Uuid),
+    /// An editor tab asked the assistant about a statement.
+    AskAssistant(Box<crate::ui::assistant::AssistantRequest>),
+    /// A code block's Insert.
+    InsertFromAssistant(String),
+    /// The provider or a preference of the assistant changed.
+    AssistantChanged,
 }
 
 impl Workspace {
@@ -619,19 +630,11 @@ impl Workspace {
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
         let keys = holds_keys(&context, &session);
         let sidebar = sidebar::build(&workspace, &input, &session, &tasks, keys);
-        let WorkspaceTabParts {
-            tab_view,
-            index,
-            workspace_tabs,
-            change_trackers,
-            structure_trackers,
-            naming,
-            factory,
-            workspace_handle,
-        } = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
+        let parts = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
         let mut actions = workspace_actions::install(&window, &input);
-        let shell = shell::install(&workspace, &window, &factory, &services, &input);
-        actions.push(shell::SHOW_SIDEBAR);
+        let shell = shell::install(&workspace, &window, &parts.factory, &services, &input);
+        let assistant = assistant::install(&workspace, &window, &parts, &input);
+        actions.extend([shell::SHOW_SIDEBAR, assistant::SHOW_ASSISTANT]);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
         let draft_failures = draft_failure_watch(&drafts, &input);
@@ -655,6 +658,7 @@ impl Workspace {
             shell,
             history_gate,
             actions,
+            assistant,
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
@@ -670,14 +674,14 @@ impl Workspace {
             ssh: services.ssh(),
             file_revealer: services.file_revealer.clone(),
             reviewing_host_key: false,
-            tab_view,
-            index,
-            factory,
-            naming,
-            workspace_tabs,
-            change_trackers,
-            structure_trackers,
-            workspace_handle,
+            tab_view: parts.tab_view,
+            index: parts.index,
+            factory: parts.factory,
+            naming: parts.naming,
+            workspace_tabs: parts.workspace_tabs,
+            change_trackers: parts.change_trackers,
+            structure_trackers: parts.structure_trackers,
+            workspace_handle: parts.workspace_handle,
             close_guards,
             exports: exports.clone(),
             imports: imports.clone(),
@@ -741,6 +745,8 @@ impl Workspace {
         drafts: &Rc<crate::workspace::DraftWriter>,
         input: &WorkspaceSender,
     ) -> WorkspaceTabParts {
+        let engine = driver_display_name(context, &session.metadata().driver_id);
+        let assistant = assistant::access(services, key, context.active.clone(), engine);
         let change_trackers = Rc::new(ChangeTrackerRegistry::default());
         let structure_trackers = Rc::new(StructureTrackerRegistry::default());
         let workspace_tabs: workspace_persistence::WorkspaceTabs = Rc::new(RefCell::new(HashMap::new()));
@@ -785,6 +791,7 @@ impl Workspace {
             structure_trackers: structure_trackers.clone(),
             read_only: session.read_only(),
             naming: naming.clone(),
+            assistant: assistant.clone(),
         });
         workspace_tabs::connect_tab_view(&tab_view, &index, input);
         WorkspaceTabParts {
@@ -796,6 +803,7 @@ impl Workspace {
             naming,
             factory,
             workspace_handle,
+            assistant,
         }
     }
 
@@ -1005,6 +1013,7 @@ impl WorkspaceModel {
 
     fn shutdown(mut self) {
         self.history_gate.abort();
+        self.assistant.shutdown();
         if let Some(keys) = self.keys.as_mut() {
             keys.stop_listing();
         }
@@ -1110,7 +1119,11 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
-            WorkspaceInput::SafeModeChanged | WorkspaceInput::SavedConnectionsChanged => self.refresh_window_title(),
+            WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
+            WorkspaceInput::SavedConnectionsChanged => {
+                self.refresh_window_title();
+                self.refresh_assistant();
+            }
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
@@ -1137,6 +1150,9 @@ impl WorkspaceModel {
             WorkspaceInput::ReopenClosedTab => self.on_reopen_closed_tab(),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),
+            WorkspaceInput::AskAssistant(request) => self.on_ask_assistant(*request),
+            WorkspaceInput::InsertFromAssistant(code) => self.on_insert_from_assistant(code),
+            WorkspaceInput::AssistantChanged => self.refresh_assistant(),
         }
     }
 }

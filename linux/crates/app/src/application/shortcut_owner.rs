@@ -21,4 +21,8 @@ pub enum ShortcutOwner {
     PickerRow,
     /// The picker as a whole, its search included.
     PickerPage,
+    /// The assistant's suggestion shown in the SQL editor.
+    InlineSuggestion,
+    /// The assistant pane's message field.
+    AssistantComposer,
 }

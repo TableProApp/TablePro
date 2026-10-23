@@ -13,4 +13,6 @@ mod sql_proposal_imp;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use catalog_read::read as read_catalog;
+pub(crate) use completion_scope::{CompletionScope, tables_named};
 pub use sql_completion_provider::SqlCompletionProvider;

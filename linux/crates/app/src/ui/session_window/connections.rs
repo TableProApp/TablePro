@@ -109,6 +109,7 @@ impl SessionWindow {
             saved_connections: state.services.saved_connections.connections(),
             tags: state.services.saved_connections.tags(),
             remembered_driver: state.services.settings.connect_dialog_driver(),
+            ai_assistant: state.services.settings.ai_provider().is_some(),
             ssh_environment: ssh,
             prefill,
             mode,

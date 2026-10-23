@@ -141,6 +141,7 @@ mod tests {
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh: Some(SavedSshConfig {
                 host: "bastion.example.com".into(),
