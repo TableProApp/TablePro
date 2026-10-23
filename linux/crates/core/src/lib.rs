@@ -23,6 +23,7 @@ mod engine_stop;
 mod error;
 mod error_category;
 pub mod export;
+mod external_access;
 mod file_endpoint;
 mod file_format;
 mod file_open_mode;
@@ -103,6 +104,7 @@ pub use editor_session::{EditorSession, EditorSessionId, EditorSessionOptions, E
 pub use engine_stop::{CallResource, EngineStop, StopDelivery, StopScope};
 pub use error::DriverError;
 pub use error_category::ErrorCategory;
+pub use external_access::{ExternalAccess, ExternalGate, ExternalRefusal};
 pub use file_endpoint::FileEndpoint;
 pub use file_format::{FileFormat, FileSignature};
 pub use file_open_mode::FileOpenMode;

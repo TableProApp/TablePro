@@ -9,7 +9,7 @@ mod indexes;
 mod objects;
 
 pub(crate) use estimate::table_estimate;
-pub(crate) use foreign_keys::fetch_foreign_keys;
+pub(crate) use foreign_keys::{fetch_foreign_keys, fetch_outbound_foreign_keys};
 pub(crate) use identity::row_identity;
 pub(crate) use indexes::fetch_indexes;
 pub(crate) use objects::{list_objects, list_schemas};
@@ -23,7 +23,7 @@ use tablepro_core::meta::TableRef;
 use tokio_postgres::{Client, Row};
 
 use crate::catalog::{
-    INBOUND_FOREIGN_KEYS_SQL, PRIMARY_KEY_NAME_SQL, PgColumnRow, column_definition, column_info, inbound_foreign_key,
+    PRIMARY_KEY_NAME_SQL, PgColumnRow, column_definition, column_info, inbound_foreign_key, inbound_foreign_keys_sql,
 };
 use crate::errors::map_error;
 
@@ -72,7 +72,7 @@ pub(crate) async fn fetch_inbound_foreign_keys(
     client: &Client,
     relation: &str,
 ) -> Result<Vec<InboundForeignKey>, DriverError> {
-    text_rows(client, INBOUND_FOREIGN_KEYS_SQL, &[relation])
+    text_rows(client, &inbound_foreign_keys_sql(), &[relation])
         .await?
         .iter()
         .map(inbound_foreign_key)

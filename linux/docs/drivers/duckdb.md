@@ -91,7 +91,7 @@ DuckDB takes one action per `ALTER TABLE`, and the plan sends one statement per 
 
 DuckDB names a foreign key itself, `<table>_<columns>_<referenced>_fkey`, whatever the CREATE TABLE called it. A generated column is read from the table's stored SQL, since `duckdb_columns()` reports its expression as a default.
 
-DuckDB matches a foreign key byte for byte and refuses one whose two sides differ in type. A referencing column declared with a `COLLATE` finds other rows with `=` than the key matches, so its key is not followed from the referenced row (`child_compares_alike`). `duckdb_columns()` lists no collation, so it is read from the stored SQL too.
+DuckDB matches a foreign key byte for byte and refuses one whose two sides differ in type. A column declared with a `COLLATE` on either side finds other rows with `=` than the key matches, so its key is not followed toward that side (`child_compares_alike`, `parent_compares_alike`). `duckdb_columns()` lists no collation, so it is read from the stored SQL too.
 
 ## Editor sessions
 

@@ -130,6 +130,14 @@
                         </property>
                       </object>
                     </child>
+                    <child>
+                      <object class="AdwComboRow" id="external_access_row">
+                        <property name="title" translatable="yes">External Clients</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="external_access_names"/>
+                        </property>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

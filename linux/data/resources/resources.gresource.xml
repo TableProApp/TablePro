@@ -27,6 +27,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-editor-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-general-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-history-group.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-mcp-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>

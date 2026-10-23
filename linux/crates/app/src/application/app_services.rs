@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use gtk4::glib::prelude::IsA;
 use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
+use tablepro_mcp::{McpHost, TokenVault, ToolContext};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -18,6 +19,7 @@ use crate::services::active_session::ActiveSession;
 use crate::services::connection_deletion::ConnectionDeletion;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::services::history_service::HistoryService;
+use crate::services::mcp_service::McpService;
 use crate::services::saved_connection_editor::SavedConnectionEditor;
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
@@ -52,6 +54,10 @@ pub struct AppServices {
     open_sessions: Rc<OpenSessions>,
     history: OnceCell<HistoryService>,
     ssh: Option<SshServices>,
+    /// Where the MCP access token is kept. `None` in a test that brings
+    /// none, which then runs no server.
+    mcp_tokens: Option<Arc<dyn TokenVault>>,
+    mcp: OnceCell<McpService>,
 }
 
 /// What `AppServices::new` builds from, for a caller that brings its own
@@ -101,6 +107,8 @@ impl AppServices {
             open_sessions,
             history: OnceCell::new(),
             ssh: None,
+            mcp_tokens: None,
+            mcp: OnceCell::new(),
         }
     }
 
@@ -109,6 +117,7 @@ impl AppServices {
     /// for `start`.
     pub fn production(drivers: DriverRegistry, settings: Rc<AppSettings>, paths: StoragePaths, tasks: Tasks) -> Self {
         let secrets = Arc::new(SecretStore::new(config::secret_schema()));
+        let mcp_tokens: Arc<dyn TokenVault> = secrets.clone();
         let storage = AppStorage::new(paths, secrets, &tasks);
         let ssh = SshServices::system(storage.paths().runtime.clone(), Path::new(config::LIBEXECDIR));
         let liveness = LivenessPolicy::DESKTOP;
@@ -131,6 +140,7 @@ impl AppServices {
             tasks,
         });
         services.ssh = Some(ssh);
+        services.mcp_tokens = Some(mcp_tokens);
         services
     }
 
@@ -166,6 +176,40 @@ impl AppServices {
                 HistoryService::start(self.storage.paths().clone(), preferences, &self.tasks)
             })
             .clone()
+    }
+
+    /// Run the MCP server while its preference is on, from the primary
+    /// instance's startup.
+    pub(crate) fn start_mcp(&self, host: Arc<dyn McpHost>) {
+        let Some(tokens) = self.mcp_tokens.clone() else {
+            return;
+        };
+        let context = ToolContext {
+            host,
+            connections: self.storage.connections().clone(),
+        };
+        let service = McpService::start(self.settings.clone(), self.tasks.clone(), tokens, context);
+        if let Err(service) = self.mcp.set(service) {
+            service.stop();
+        }
+    }
+
+    pub(crate) fn stop_mcp(&self) {
+        if let Some(service) = self.mcp.get() {
+            service.stop();
+        }
+    }
+
+    /// `None` before startup and in an instance that only hands its
+    /// command line over.
+    pub(crate) fn mcp(&self) -> Option<McpService> {
+        self.mcp.get().cloned()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_mcp_tokens(mut self, tokens: Arc<dyn TokenVault>) -> Self {
+        self.mcp_tokens = Some(tokens);
+        self
     }
 
     /// The OpenSSH client and its helpers. `None` in a test that brings

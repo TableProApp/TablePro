@@ -152,7 +152,7 @@ async fn keys_and_indexes_are_listed_with_the_keys_that_point_here() {
 
 /// An inbound key pairs its columns in declared order, and is read alone
 /// as the definition lists it. DuckDB matches a key byte for byte, so a
-/// referencing column declared with a collation finds other rows with
+/// column on either side declared with a collation finds other rows with
 /// `=` than the key matches.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn inbound_keys_pair_their_columns_and_say_how_they_compare() {
@@ -220,6 +220,19 @@ async fn inbound_keys_pair_their_columns_and_say_how_they_compare() {
         by_code.rows,
         vec![vec![Value::Int(0)]],
         "the plain column finds only the rows the key points at"
+    );
+    let mut outbound = Vec::new();
+    for table in ["by_code", "by_region", "orders"] {
+        let keys = connection
+            .fetch_outbound_foreign_keys(&TableRef::unqualified(table), call())
+            .await
+            .unwrap();
+        outbound.extend(keys.into_iter().map(|key| (table, key.parent_compares_alike)));
+    }
+    assert_eq!(
+        outbound,
+        [("by_code", false), ("by_region", true), ("orders", true)],
+        "a key to a collated column finds other rows with `=` there than it matches"
     );
     for refused in [
         "INSERT INTO by_code VALUES ('aBc')",

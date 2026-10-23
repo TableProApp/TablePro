@@ -73,6 +73,10 @@ pub(crate) struct ScriptSyntax {
     /// MySQL and MariaDB run what `/*!` and `/*M!` comments hold.
     pub executable_comments: bool,
     pub dollar_quote: DollarQuote,
+    /// An underscore between two digits is part of a number, as in
+    /// `1_000.5e1_0`: PostgreSQL 16, SQLite 3.46 and ClickHouse read it
+    /// so. MySQL reads `1_0e` as a name.
+    pub digit_separators: bool,
     pub word_start_extra: &'static [u8],
     pub word_part_extra: &'static [u8],
 }
@@ -108,6 +112,7 @@ const POSTGRESQL: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::Tagged,
+        digit_separators: true,
         word_start_extra: b"",
         word_part_extra: b"$",
     },
@@ -131,6 +136,7 @@ const MYSQL: ScriptRules = ScriptRules {
         nested_block_comments: false,
         executable_comments: true,
         dollar_quote: DollarQuote::None,
+        digit_separators: false,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -154,6 +160,7 @@ const SQLITE: ScriptRules = ScriptRules {
         nested_block_comments: false,
         executable_comments: false,
         dollar_quote: DollarQuote::None,
+        digit_separators: true,
         word_start_extra: b"$",
         word_part_extra: b"$",
     },
@@ -177,6 +184,7 @@ const MSSQL: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::None,
+        digit_separators: false,
         word_start_extra: b"@#",
         word_part_extra: b"@#$",
     },
@@ -200,6 +208,7 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::Heredoc,
+        digit_separators: true,
         word_start_extra: b"",
         word_part_extra: b"",
     },
@@ -226,6 +235,7 @@ const DUCKDB: ScriptRules = ScriptRules {
         nested_block_comments: true,
         executable_comments: false,
         dollar_quote: DollarQuote::Tagged,
+        digit_separators: true,
         word_start_extra: b"",
         word_part_extra: b"$",
     },

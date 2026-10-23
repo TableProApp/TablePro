@@ -245,6 +245,7 @@ mod tests {
             username: String::new(),
             tls: tablepro_core::TlsConfig::disabled(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,

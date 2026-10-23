@@ -60,7 +60,7 @@ impl BrowseModel {
                 .run_cancellable(OperationKind::Metadata, &cancel, move |lease, options| {
                     let table = table.clone();
                     async move {
-                        let outbound = lease.fetch_foreign_keys(&table, options.clone()).await?;
+                        let outbound = lease.fetch_outbound_foreign_keys(&table, options.clone()).await?;
                         let inbound = lease.fetch_inbound_foreign_keys(&table, options).await?;
                         Ok(TableKeys {
                             table,

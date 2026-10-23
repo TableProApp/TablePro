@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/app",
     "crates/core",
+    "crates/mcp",
     "crates/net",
     "crates/session",
     "crates/ssh",
@@ -31,6 +32,7 @@ tablepro-driver-mssql = { path = "crates/drivers/mssql" }
 tablepro-driver-mysql = { path = "crates/drivers/mysql" }
 tablepro-driver-postgres = { path = "crates/drivers/postgres" }
 tablepro-driver-sqlite = { path = "crates/drivers/sqlite" }
+tablepro-mcp = { path = "crates/mcp" }
 tablepro-net = { path = "crates/net" }
 tablepro-session = { path = "crates/session" }
 tablepro-ssh = { path = "crates/ssh" }

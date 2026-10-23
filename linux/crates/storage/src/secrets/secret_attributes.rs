@@ -20,6 +20,15 @@ pub(super) fn for_connection(schema: &str, id: Uuid) -> HashMap<&'static str, St
     attributes
 }
 
+/// Attributes of the token MCP clients present. It belongs to no
+/// connection, so deleting a connection's secrets never matches it.
+pub(super) fn for_mcp_token(schema: &str) -> HashMap<&'static str, String> {
+    let mut attributes = HashMap::new();
+    attributes.insert("xdg:schema", schema.to_owned());
+    attributes.insert("kind", "mcp_token".to_owned());
+    attributes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,6 +70,17 @@ mod tests {
         let devel = for_secret("app.tablepro.TablePro.Devel.Password", id, SecretKind::DatabasePassword);
 
         assert_ne!(installed.get("xdg:schema"), devel.get("xdg:schema"));
+    }
+
+    #[test]
+    fn the_mcp_token_matches_no_connection() {
+        let token = for_mcp_token(SCHEMA);
+
+        assert!(!token.contains_key("connection-id"));
+        assert_eq!(token.get("xdg:schema").map(String::as_str), Some(SCHEMA));
+        for kind in SecretKind::ALL {
+            assert_ne!(token.get("kind"), for_secret(SCHEMA, Uuid::new_v4(), kind).get("kind"));
+        }
     }
 
     #[test]

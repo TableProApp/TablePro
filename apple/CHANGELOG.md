@@ -9,6 +9,21 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.82.2](https://github.com/TableProApp/TablePro/releases/tag/v0.82.2) - 2026-10-23 [CRITICAL]
+
+### Changed
+
+- The grid no longer edits or deletes ClickHouse, Snowflake, Trino or keyless Dameng rows; use a SQL statement instead. ([#3794](https://github.com/TableProApp/TablePro/pull/3794))
+
+### Fixed
+
+- A grid edit or delete on ClickHouse, Snowflake, Trino or a keyless Dameng table could change other rows too. ([#3794](https://github.com/TableProApp/TablePro/pull/3794))
+
+### Security
+
+- SAP HANA connections accepting a server certificate issued through a compromised intermediate CA (GO-2026-6809). ([#3796](https://github.com/TableProApp/TablePro/pull/3796))
+
+
 ## [0.82.0](https://github.com/TableProApp/TablePro/releases/tag/v0.82.0) - 2026-10-19
 
 Solarized, GitHub, Catppuccin, Gruvbox, Tokyo Night and One Dark themes, VS Code theme import, and a Theme Editor with live preview.

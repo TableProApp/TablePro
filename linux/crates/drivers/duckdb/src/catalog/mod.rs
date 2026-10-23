@@ -11,8 +11,8 @@ use std::collections::HashSet;
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::{
     CollationName, ColumnAttributes, ColumnDefinition, GeneratedColumn, GeneratedStorage, IdentityStyle,
-    InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind, SchemaObjectSource, TableDefinition,
-    TableSource,
+    InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind,
+    SchemaObjectSource, TableDefinition, TableSource,
 };
 use tablepro_core::edit::parse_literal_text;
 use tablepro_core::meta::{
@@ -340,6 +340,45 @@ pub(crate) fn fetch_foreign_keys(
         .collect())
 }
 
+/// The table's own keys, each with whether `=` on the referenced columns
+/// finds the rows it matches: not when one of them is declared with a
+/// collation, since DuckDB matches a key byte for byte.
+pub(crate) fn outbound_foreign_keys(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+) -> Result<Vec<OutboundForeignKey>, DriverError> {
+    let keys = fetch_foreign_keys(link, catalog, table)?;
+    let mut outbound = Vec::with_capacity(keys.len());
+    for key in keys {
+        let referenced = TableRef::new(key.ref_schema.clone(), key.ref_table.clone());
+        let collated = collated_columns(link, catalog, &referenced)?;
+        let parent_compares_alike = !key
+            .ref_columns
+            .iter()
+            .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)));
+        outbound.push(OutboundForeignKey {
+            key,
+            parent_compares_alike,
+        });
+    }
+    Ok(outbound)
+}
+
+/// The columns of a table declared with a collation, as its stored SQL
+/// spells them.
+fn collated_columns(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<String>, DriverError> {
+    Ok(table_sql(link, catalog, table)?
+        .map(|sql| {
+            declared_columns(&sql)
+                .into_iter()
+                .filter(|column| column.collation.is_some())
+                .map(|column| column.name)
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
 fn split_names(joined: &str) -> Vec<String> {
     match joined.is_empty() {
         true => Vec::new(),
@@ -399,15 +438,7 @@ pub(crate) fn inbound_foreign_keys(
 /// byte for byte, while `=` and ORDER BY compare under the collation, so
 /// `'ABC'` and `'abc'` are two rows one predicate finds.
 pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Result<RowIdentity, DriverError> {
-    let collated: Vec<String> = table_sql(link, catalog, table)?
-        .map(|sql| {
-            declared_columns(&sql)
-                .into_iter()
-                .filter(|column| column.collation.is_some())
-                .map(|column| column.name)
-                .collect()
-        })
-        .unwrap_or_default();
+    let collated = collated_columns(link, catalog, table)?;
     let compares_bytes = |columns: &[String]| {
         !columns
             .iter()

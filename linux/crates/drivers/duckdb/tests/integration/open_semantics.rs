@@ -397,9 +397,19 @@ async fn an_attach_of_a_fifo_is_refused() {
     let connection = file.open().await;
     let editor = session(connection.as_ref()).await;
     let fifo = file.path.with_file_name("pipe.duckdb");
-    assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
 
-    let (attached, _) = run(editor.as_ref(), &format!("ATTACH '{}' AS p (READ_ONLY)", fifo.display())).await;
+    let (attached, _) = run(
+        editor.as_ref(),
+        &format!("ATTACH '{}' AS p (READ_ONLY)", fifo.display()),
+    )
+    .await;
 
     assert_eq!(attached.end, RunEnd::Failed(DriverError::NotADatabase { path: fifo }));
     editor.close().await;

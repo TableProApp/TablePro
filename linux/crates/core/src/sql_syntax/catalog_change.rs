@@ -1,5 +1,5 @@
-use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{ScriptPlan, ScriptTokenKind};
+use super::SqlGrammar;
+use super::script::{ScriptPlan, ScriptTokenKind};
 
 /// Words that add, rename or remove what the sidebar lists. They count
 /// anywhere in a statement: a SQL Server batch needs no `;` between its
@@ -14,7 +14,7 @@ const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 /// every way the server may read it. A commit counts as the statement's
 /// first word, and `SELECT … INTO` counts too, since PostgreSQL and SQL
 /// Server create its target table.
-pub(super) fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
+pub fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }
 

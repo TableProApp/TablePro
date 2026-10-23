@@ -198,6 +198,59 @@ async fn fetch_table_definition_lists_inbound_foreign_keys() {
     }
 }
 
+/// CHAR and VARCHAR may pair in a key, and the key matches them
+/// padded where `=` on the VARCHAR side does not. ENUM keys match by
+/// member number, whatever the members are called.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_key_says_whether_its_two_sides_compare_alike() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE TABLE codes (code varchar(4) PRIMARY KEY, id int UNIQUE)",
+                "CREATE TABLE moods (mood enum('a','b') PRIMARY KEY)",
+                "CREATE TABLE tagged (id int PRIMARY KEY, padded char(4), longer varchar(8), owner int, \
+                 feeling enum('b','a'), \
+                 CONSTRAINT tagged_padded FOREIGN KEY (padded) REFERENCES codes (code), \
+                 CONSTRAINT tagged_longer FOREIGN KEY (longer) REFERENCES codes (code), \
+                 CONSTRAINT tagged_owner FOREIGN KEY (Owner) REFERENCES codes (ID), \
+                 CONSTRAINT tagged_feeling FOREIGN KEY (feeling) REFERENCES moods (mood))",
+            ],
+        )
+        .await;
+
+        let outbound = connection
+            .fetch_outbound_foreign_keys(&table("tagged"), within(CALL))
+            .await
+            .expect("the keys of tagged");
+        let inbound = connection
+            .fetch_inbound_foreign_keys(&table("codes"), within(CALL))
+            .await
+            .expect("the keys pointing at codes");
+
+        let out: Vec<(&str, bool)> = outbound
+            .iter()
+            .map(|key| (key.key.name.as_str(), key.parent_compares_alike))
+            .collect();
+        let into: Vec<(&str, bool)> = inbound
+            .iter()
+            .map(|key| (key.name.as_str(), key.child_compares_alike))
+            .collect();
+        let expected = [
+            ("tagged_longer", true),
+            ("tagged_owner", true),
+            ("tagged_padded", false),
+        ];
+        assert_eq!(out[0], ("tagged_feeling", false), "{flavour:?}");
+        assert_eq!(out[1..], expected, "{flavour:?}");
+        assert_eq!(into, expected, "{flavour:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn objects_and_estimates_are_listed() {
