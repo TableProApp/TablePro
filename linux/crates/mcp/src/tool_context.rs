@@ -21,6 +21,7 @@ impl ToolContext {
     pub fn visible_connections(&self) -> Result<Vec<SavedConnection>, ToolError> {
         match self.connections.snapshot().state {
             ConnectionListState::Ready(list) => Ok(list
+                .connections
                 .iter()
                 .filter(|connection| !connection.external_access.is_blocked())
                 .cloned()

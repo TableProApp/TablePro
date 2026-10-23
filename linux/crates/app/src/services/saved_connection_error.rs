@@ -13,6 +13,9 @@ pub enum SavedConnectionError {
     /// Deleted, here or in another window, since it was shown.
     #[error("no saved connection has the id {0}")]
     NotFound(Uuid),
+    /// Deleted, here or in another window, since it was shown.
+    #[error("no tag has the id {0}")]
+    TagNotFound(Uuid),
     #[error(transparent)]
     Task(#[from] TaskFailure),
 }

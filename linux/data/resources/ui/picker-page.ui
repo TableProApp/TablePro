@@ -20,6 +20,31 @@
                     <property name="action-name">win.new-connection</property>
                   </object>
                 </child>
+                <child type="end">
+                  <object class="GtkToggleButton" id="search_toggle">
+                    <property name="icon-name">system-search-symbolic</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="top">
+              <!-- No close button: GTK gives it no accessible name, and
+                   the search toggle and Escape close the bar. -->
+              <object class="GtkSearchBar" id="search_bar">
+                <property name="child">
+                  <object class="AdwClamp">
+                    <property name="maximum-size">600</property>
+                    <property name="child">
+                      <object class="GtkSearchEntry" id="search_entry">
+                        <property name="placeholder-text" translatable="yes">Search connections…</property>
+                        <property name="hexpand">true</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Search connections</property>
+                        </accessibility>
+                      </object>
+                    </property>
+                  </object>
+                </property>
               </object>
             </child>
             <child type="top">

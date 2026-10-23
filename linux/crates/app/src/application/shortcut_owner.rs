@@ -19,4 +19,6 @@ pub enum ShortcutOwner {
     HistoryRow,
     /// A saved connection's row in the picker.
     PickerRow,
+    /// The picker as a whole, its search included.
+    PickerPage,
 }

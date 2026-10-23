@@ -148,6 +148,20 @@ impl SessionWindow {
         let welcome = WelcomeView::new(list.clone(), Some(services.tasks.clone()));
         crate::ui::picker::install_picker_actions(&welcome, list.clone(), input.clone());
         let picker = PickerPage::new(&welcome, self.application().as_ref());
+        let searching = welcome.downgrade();
+        picker.search_entry().connect_search_changed(move |entry| {
+            if let Some(welcome) = searching.upgrade() {
+                welcome.set_search(&entry.text());
+            }
+        });
+        let connecting = welcome.downgrade();
+        picker.search_entry().connect_activate(move |entry| {
+            if let Some(welcome) = connecting.upgrade() {
+                // Enter can come before search-changed, which waits for typing to pause.
+                welcome.set_search(&entry.text());
+                welcome.activate_first();
+            }
+        });
         let reset_input = input.clone();
         picker
             .banner()
@@ -188,6 +202,19 @@ impl SessionWindow {
     #[cfg(test)]
     pub(crate) fn connection_list_banner(&self) -> Option<adw::Banner> {
         self.imp().picker.get().map(PickerPage::banner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn picker_search(&self) -> Option<(gtk4::SearchBar, gtk4::SearchEntry)> {
+        self.imp()
+            .picker
+            .get()
+            .map(|picker| (picker.search_bar(), picker.search_entry()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manage_tags(&self) -> Option<std::rc::Rc<crate::ui::tags::ManageTagsDialog>> {
+        self.imp().manage_tags.borrow().clone()
     }
 
     /// What the window's actions, pages and background work send it.
@@ -377,6 +404,11 @@ impl SessionWindow {
             SessionWindowInput::DuplicateConnection(id) => self.on_duplicate_connection(id),
             SessionWindowInput::SetConnectionColor(id, color) => self.on_set_connection_color(id, color),
             SessionWindowInput::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group),
+            SessionWindowInput::SetConnectionTag(id, tag, carried) => self.on_set_connection_tag(id, tag, carried),
+            SessionWindowInput::CreateTag { name, color, on } => self.on_create_tag(name, color, on),
+            SessionWindowInput::UpdateTag(tag) => self.on_update_tag(tag),
+            SessionWindowInput::DeleteTag(id) => self.on_delete_tag(id),
+            SessionWindowInput::ManageTags => self.on_manage_tags(),
             SessionWindowInput::ExportConnections => self.on_export_connections(),
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),

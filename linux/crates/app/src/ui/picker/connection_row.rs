@@ -6,25 +6,29 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
+use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
 
 use super::connection_menu::{
-    CONNECT, MOVE_TO_GROUP, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP, ROW_MENU, SET_COLOR, color_name, connection_menu,
+    CONNECT, MOVE_TO_GROUP, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP, ROW_MENU, SET_COLOR, SET_TAG, connection_menu,
+    tag_action,
 };
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::file_location;
 use crate::services::saved_connection_object::{SavedConnectionObject, subtitle_for};
 use crate::ui::a11y::describe_icon_button;
+use crate::ui::connection_appearance::{color_dot, icon_image, tag_pills, tags_description};
+
+/// What every row's menu offers: the list's groups and tags.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RowChoices {
+    pub groups: Vec<ConnectionGroupName>,
+    pub tags: std::sync::Arc<[ConnectionTag]>,
+}
 
 /// The row for one saved connection: activating it connects, and its
-/// menu holds the rest. `groups` are the list's groups, which the menu
-/// offers. `tasks` reads the file a portal path stands for; `None`
-/// names the file alone.
-pub(crate) fn connection_row(
-    object: &glib::Object,
-    groups: &[ConnectionGroupName],
-    tasks: Option<&Tasks>,
-) -> gtk::Widget {
+/// menu holds the rest. `tasks` reads the file a portal path stands
+/// for; `None` names the file alone.
+pub(crate) fn connection_row(object: &glib::Object, choices: &RowChoices, tasks: Option<&Tasks>) -> gtk::Widget {
     let Some(connection) = object.downcast_ref::<SavedConnectionObject>() else {
         return adw::ActionRow::new().upcast();
     };
@@ -41,13 +45,17 @@ pub(crate) fn connection_row(
         .build();
     row.set_action_target_value(Some(&saved.id.to_string().to_variant()));
     row.set_action_name(Some(&format!("{PICKER}.{CONNECT}")));
-    row.add_prefix(&color_tag(saved.color));
+    row.add_prefix(&color_dot(saved.color));
+    row.add_prefix(&icon_image(saved.icon));
+    let carried: Vec<ConnectionTag> = carried_tags(&saved, &choices.tags).into_iter().cloned().collect();
+    row.add_suffix(&tag_pills(&carried));
+    describe_row(&row, &subtitle_for(&saved, file_based, None), &carried);
     // One menu rather than a button per action: the row gains actions as
     // the app does, and a row of icons stops reading as a row.
     let menu_button = gtk::MenuButton::builder()
         .icon_name(crate::ui::icons::VIEW_MORE)
         .valign(gtk::Align::Center)
-        .menu_model(&connection_menu(saved.id, groups))
+        .menu_model(&connection_menu(saved.id, &choices.groups, &choices.tags))
         .build();
     menu_button.add_css_class("flat");
     describe_icon_button(
@@ -56,18 +64,42 @@ pub(crate) fn connection_row(
         Some(&format!("{ROW}.{ROW_MENU}")),
     );
     row.add_suffix(&menu_button);
-    row.insert_action_group(ROW, Some(&row_actions(&row, &saved, &menu_button)));
+    row.insert_action_group(ROW, Some(&row_actions(&row, &saved, &choices.tags, &menu_button)));
     row.add_controller(local_shortcut_controller(ShortcutOwner::PickerRow));
     row.add_controller(secondary_click(&menu_button));
     if let Some(tasks) = tasks {
-        show_host_path(&row, &saved, file_based, tasks);
+        show_host_path(&row, &saved, file_based, carried, tasks);
     }
     row.upcast()
 }
 
-/// The row's menu, and the colour and group radios ticked at what the
-/// connection has. A pick goes to the picker's action with the id.
-fn row_actions(row: &adw::ActionRow, saved: &SavedConnection, menu_button: &gtk::MenuButton) -> gio::SimpleActionGroup {
+/// The tags `saved` carries, in the list's order.
+fn carried_tags<'a>(saved: &SavedConnection, tags: &'a [ConnectionTag]) -> Vec<&'a ConnectionTag> {
+    tags.iter().filter(|tag| saved.tags.contains(&tag.id)).collect()
+}
+
+/// The row's description: where it connects, then its tags. libadwaita
+/// describes a row by its subtitle label, and GTK reads a described-by
+/// relation before the description property, so the row drops the
+/// relation and says both itself.
+fn describe_row(row: &adw::ActionRow, subtitle: &str, tags: &[ConnectionTag]) {
+    let Some(tags) = tags_description(tags) else {
+        return;
+    };
+    let row = row.upcast_ref::<gtk::Widget>();
+    row.reset_relation(gtk::AccessibleRelation::DescribedBy);
+    let description = crate::i18n::gettext_f("{subtitle}. {tags}", &[("subtitle", subtitle), ("tags", &tags)]);
+    row.update_property(&[gtk::accessible::Property::Description(&description)]);
+}
+
+/// The row's menu, and the colour, group and tag items ticked at what
+/// the connection has. A pick goes to the picker's action with the id.
+fn row_actions(
+    row: &adw::ActionRow,
+    saved: &SavedConnection,
+    tags: &[ConnectionTag],
+    menu_button: &gtk::MenuButton,
+) -> gio::SimpleActionGroup {
     let actions = gio::SimpleActionGroup::new();
     let menu = gio::SimpleAction::new(ROW_MENU, None);
     let button = menu_button.downgrade();
@@ -97,6 +129,24 @@ fn row_actions(row: &adw::ActionRow, saved: &SavedConnection, menu_button: &gtk:
         });
         actions.add_action(&radio);
     }
+    // A check item needs an action of its own: one per tag.
+    for tag in tags {
+        let check =
+            gio::SimpleAction::new_stateful(&tag_action(tag.id), None, &saved.tags.contains(&tag.id).to_variant());
+        let (row, target) = (row.downgrade(), (saved.id.to_string(), tag.id.to_string()));
+        check.connect_activate(move |check, _| {
+            let Some(row) = row.upgrade() else {
+                return;
+            };
+            let carried = !check.state().and_then(|state| state.get::<bool>()).unwrap_or(false);
+            check.set_state(&carried.to_variant());
+            let target = (target.0.clone(), target.1.clone(), carried).to_variant();
+            if let Err(error) = row.activate_action(&format!("{PICKER}.{SET_TAG}"), Some(&target)) {
+                tracing::warn!(%error, "a connection row's tag reached no picker");
+            }
+        });
+        actions.add_action(&check);
+    }
     actions
 }
 
@@ -113,42 +163,15 @@ fn secondary_click(menu_button: &gtk::MenuButton) -> gtk::GestureClick {
     gesture
 }
 
-/// The colour the user put on this connection, as a dot ahead of the
-/// name. Absent rather than grey when there is none, so an untagged list
-/// has no decoration in it.
-fn color_tag(color: Option<ConnectionColor>) -> gtk::Box {
-    let tag = gtk::Box::builder().valign(gtk::Align::Center).build();
-    tag.set_css_classes(&tag_classes(color));
-    tag.set_visible(color.is_some());
-    if let Some(color) = color {
-        tag.set_tooltip_text(Some(&color_name(color)));
-    }
-    tag
-}
-
-/// The dot's classes. Set as a whole list rather than added one by one
-/// so a colour change never leaves the previous colour's class behind.
-pub(super) fn tag_classes(color: Option<ConnectionColor>) -> Vec<&'static str> {
-    let mut classes = vec!["tp-connection-tag"];
-    if let Some(color) = color {
-        classes.push(match color {
-            ConnectionColor::Blue => "tp-tag-blue",
-            ConnectionColor::Teal => "tp-tag-teal",
-            ConnectionColor::Green => "tp-tag-green",
-            ConnectionColor::Yellow => "tp-tag-yellow",
-            ConnectionColor::Orange => "tp-tag-orange",
-            ConnectionColor::Red => "tp-tag-red",
-            ConnectionColor::Pink => "tp-tag-pink",
-            ConnectionColor::Purple => "tp-tag-purple",
-            ConnectionColor::Slate => "tp-tag-slate",
-        });
-    }
-    classes
-}
-
 /// A portal path's folder is an id, so the row names the file the
 /// portal stands for once it is read.
-fn show_host_path(row: &adw::ActionRow, saved: &SavedConnection, file_based: bool, tasks: &Tasks) {
+fn show_host_path(
+    row: &adw::ActionRow,
+    saved: &SavedConnection,
+    file_based: bool,
+    tags: Vec<ConnectionTag>,
+    tasks: &Tasks,
+) {
     let path = PathBuf::from(&saved.database);
     if !file_based || !file_location::is_portal_path(&path) {
         return;
@@ -157,42 +180,147 @@ fn show_host_path(row: &adw::ActionRow, saved: &SavedConnection, file_based: boo
     let (saved, row) = (saved.clone(), row.downgrade());
     glib::spawn_future_local(async move {
         if let (Ok(Some(host)), Some(row)) = (looking.await, row.upgrade()) {
-            row.set_subtitle(&subtitle_for(&saved, true, Some(&host)));
+            let subtitle = subtitle_for(&saved, true, Some(&host));
+            row.set_subtitle(&subtitle);
+            describe_row(&row, &subtitle, &tags);
         }
     });
 }
 
 #[cfg(test)]
 mod tests {
+    use gtk4::AccessibleRelation;
+    use tablepro_storage::{ConnectionColor, ConnectionIcon, ConnectionTagName};
+    use uuid::Uuid;
+
     use super::*;
 
-    #[test]
-    fn a_connection_with_no_colour_carries_no_colour_class() {
-        assert_eq!(tag_classes(None), vec!["tp-connection-tag"]);
-    }
-
-    /// A class with no rule behind it paints nothing, and nothing is
-    /// exactly what a missing tag looks like.
-    #[test]
-    fn every_colour_class_has_a_rule_in_the_stylesheet() {
-        let css = include_str!("../../../../../data/resources/style.css");
-
-        for color in ConnectionColor::ALL {
-            let class = tag_classes(Some(color))[1];
-            assert!(
-                css.contains(&format!(".tp-connection-tag.{class} {{")),
-                "{class} has no rule in style.css"
-            );
+    fn saved(tags: &[&ConnectionTag], icon: Option<ConnectionIcon>) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: "acme-prod".to_owned(),
+            driver_id: "postgres".to_owned(),
+            host: "db".to_owned(),
+            port: 5432,
+            database: "app".to_owned(),
+            username: "app".to_owned(),
+            tls: tablepro_core::TlsConfig::verify_full(),
+            safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
+            auth_mode: tablepro_core::AuthMode::Password,
+            ssh: None,
+            last_opened_at: None,
+            color: Some(ConnectionColor::Red),
+            group: None,
+            tags: tags.iter().map(|tag| tag.id).collect(),
+            icon,
         }
     }
 
-    #[test]
-    fn every_colour_has_a_class_of_its_own() {
-        let classes: std::collections::HashSet<&str> = ConnectionColor::ALL
-            .into_iter()
-            .map(|color| tag_classes(Some(color))[1])
-            .collect();
+    fn tag(name: &str, color: ConnectionColor) -> ConnectionTag {
+        ConnectionTag::new(ConnectionTagName::new(name).expect("a tag name"), color)
+    }
 
-        assert_eq!(classes.len(), ConnectionColor::ALL.len());
+    fn row_for(saved: SavedConnection, tags: Vec<ConnectionTag>) -> adw::ActionRow {
+        let object = SavedConnectionObject::new(saved, false);
+        let choices = RowChoices {
+            groups: Vec::new(),
+            tags: tags.into(),
+        };
+        connection_row(object.upcast_ref(), &choices, None)
+            .downcast::<adw::ActionRow>()
+            .expect("an action row")
+    }
+
+    fn labels(row: &adw::ActionRow) -> Vec<String> {
+        crate::test_support::descendants(row)
+            .into_iter()
+            .filter(|widget| widget.has_css_class("tp-tag-pill"))
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .map(|label| label.label().to_string())
+            .collect()
+    }
+
+    #[gtk4::test]
+    fn the_row_shows_its_tags_after_the_name_and_says_them() {
+        let (acme, production, other) = (
+            tag("acme", ConnectionColor::Blue),
+            tag("production", ConnectionColor::Red),
+            tag("staging", ConnectionColor::Yellow),
+        );
+        let row = row_for(
+            saved(&[&production, &acme], None),
+            vec![acme.clone(), production.clone(), other],
+        );
+
+        assert_eq!(labels(&row), ["acme", "production"]);
+        let row = row.upcast_ref::<gtk::Widget>();
+        assert!(!gtk::test_accessible_has_relation(row, AccessibleRelation::DescribedBy));
+        assert!(gtk::test_accessible_has_property(
+            row,
+            gtk::AccessibleProperty::Description
+        ));
+    }
+
+    #[gtk4::test]
+    fn a_row_without_tags_keeps_the_subtitle_as_its_description() {
+        let row = row_for(saved(&[], None), vec![tag("acme", ConnectionColor::Blue)]);
+
+        assert!(labels(&row).is_empty());
+        let row = row.upcast_ref::<gtk::Widget>();
+        assert!(gtk::test_accessible_has_relation(row, AccessibleRelation::DescribedBy));
+        assert!(!gtk::test_accessible_has_property(
+            row,
+            gtk::AccessibleProperty::Description
+        ));
+    }
+
+    #[gtk4::test]
+    fn the_icon_sits_in_the_prefix_beside_the_colour() {
+        let with = row_for(saved(&[], Some(ConnectionIcon::Cloud)), Vec::new());
+        let without = row_for(saved(&[], None), Vec::new());
+        let icon = |row: &adw::ActionRow| {
+            crate::test_support::descendants(row)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Image>().ok())
+                .find(|image| {
+                    image.is_visible()
+                        && image
+                            .icon_name()
+                            .is_some_and(|name| name.as_str() != crate::ui::icons::VIEW_MORE)
+                })
+                .and_then(|image| image.icon_name())
+                .map(|name| name.to_string())
+        };
+
+        assert_eq!(
+            icon(&with).as_deref(),
+            Some(crate::ui::icons::connection_icon(ConnectionIcon::Cloud))
+        );
+        assert_eq!(icon(&without), None);
+    }
+
+    #[gtk4::test]
+    fn the_tag_items_are_ticked_at_the_tags_the_connection_has() {
+        let (acme, production) = (
+            tag("acme", ConnectionColor::Blue),
+            tag("production", ConnectionColor::Red),
+        );
+        let saved = saved(&[&production], None);
+        let group = row_actions(
+            &adw::ActionRow::new(),
+            &saved,
+            &[acme.clone(), production.clone()],
+            &gtk::MenuButton::new(),
+        );
+        let state = |tag: &ConnectionTag| {
+            group
+                .lookup_action(&tag_action(tag.id))
+                .and_then(|action| action.state())
+                .and_then(|state| state.get::<bool>())
+        };
+
+        assert_eq!(state(&production), Some(true));
+        assert_eq!(state(&acme), Some(false));
     }
 }

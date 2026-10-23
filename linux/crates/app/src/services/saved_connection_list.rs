@@ -8,7 +8,7 @@ use std::sync::Arc;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_core::DriverRegistry;
-use tablepro_storage::{ConnectionGroupName, ConnectionListState, ConnectionStore, SavedConnection};
+use tablepro_storage::{ConnectionGroupName, ConnectionListState, ConnectionStore, ConnectionTag, SavedConnection};
 use uuid::Uuid;
 
 use super::saved_connection_object::SavedConnectionObject;
@@ -26,6 +26,8 @@ pub struct SavedConnectionList {
     /// The last list the store had ready, in display order. A list that
     /// cannot be read keeps it, as the rows do.
     connections: RefCell<Arc<[SavedConnection]>>,
+    /// The tags of that list, by name.
+    tags: RefCell<Arc<[ConnectionTag]>>,
     state: RefCell<ConnectionListState>,
     watch: RefCell<Option<glib::JoinHandle<()>>>,
     observers: RefCell<Vec<(u64, StateObserver)>>,
@@ -47,6 +49,7 @@ impl SavedConnectionList {
             store: gio::ListStore::new::<SavedConnectionObject>(),
             drivers,
             connections: RefCell::new(Arc::from([])),
+            tags: RefCell::new(Arc::from([])),
             state: RefCell::new(ConnectionListState::Loading),
             watch: RefCell::new(None),
             observers: RefCell::new(Vec::new()),
@@ -90,6 +93,11 @@ impl SavedConnectionList {
         saved_connection_order::groups(&self.connections.borrow())
     }
 
+    /// Every tag, by name.
+    pub fn tags(&self) -> Arc<[ConnectionTag]> {
+        self.tags.borrow().clone()
+    }
+
     /// Run `observer` on every state the store publishes, as the banner
     /// that says the list cannot be read needs.
     pub fn connect_state_changed(&self, observer: impl Fn(&ConnectionListState) + 'static) -> StateObserverId {
@@ -105,20 +113,25 @@ impl SavedConnectionList {
 
     /// A ready list replaces the objects of the connections that changed
     /// and keeps the rest, so a write from another window leaves a row's
-    /// open menu and the keyboard focus alone. A new set of groups
-    /// replaces every object, because every row's menu offers them. A
-    /// list that is loading or cannot be read keeps the rows it had, and
-    /// only its state changes, for the banner.
+    /// open menu and the keyboard focus alone. A new set of groups or a
+    /// changed tag replaces every object, because every row's menu
+    /// offers them and a row shows its tags' names and colours. A list
+    /// that is loading or cannot be read keeps the rows it had, and only
+    /// its state changes, for the banner.
     pub(crate) fn apply(&self, state: ConnectionListState) {
         // The state first: the rows the splice builds read it.
         self.state.replace(state.clone());
         if let ConnectionListState::Ready(list) = &state {
-            let mut sorted = list.to_vec();
+            let mut sorted = list.connections.to_vec();
             saved_connection_order::sort(&mut sorted);
+            let mut tags = list.tags.to_vec();
+            saved_connection_order::sort_tags(&mut tags);
             let regrouped = saved_connection_order::groups(&sorted) != self.groups();
+            let retagged = *tags != **self.tags.borrow();
             let sorted: Arc<[SavedConnection]> = Arc::from(sorted);
             self.connections.replace(sorted.clone());
-            if regrouped || self.store.n_items() == 0 {
+            self.tags.replace(Arc::from(tags));
+            if regrouped || retagged || self.store.n_items() == 0 {
                 let objects: Vec<SavedConnectionObject> = sorted.iter().map(|saved| self.object(saved)).collect();
                 self.store.splice(0, self.store.n_items(), &objects);
             } else {
@@ -219,6 +232,8 @@ mod tests {
             last_opened_at: None,
             color: None,
             group: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -234,7 +249,7 @@ mod tests {
     }
 
     fn ready(connections: &[SavedConnection]) -> ConnectionListState {
-        ConnectionListState::Ready(Arc::from(connections.to_vec()))
+        ConnectionListState::Ready(tablepro_storage::ConnectionList::new(connections.to_vec(), Vec::new()))
     }
 
     #[gtk4::test]
@@ -266,7 +281,7 @@ mod tests {
                 .push(matches!(state, ConnectionListState::Unavailable(_)));
         });
         let corp = connection("Corp");
-        list.apply(ConnectionListState::Ready(Arc::from([corp.clone()])));
+        list.apply(ready(std::slice::from_ref(&corp)));
 
         list.apply(ConnectionListState::Unavailable(Arc::new(DocumentProblem::new(
             "/tmp/connections.json",
@@ -323,6 +338,36 @@ mod tests {
         let after = objects(&list);
         assert_eq!(list.groups(), [ConnectionGroupName::new("Work").expect("a group name")]);
         assert_ne!(after[0], before[0], "Alpha's menu does not offer the new group");
+    }
+
+    #[gtk4::test]
+    fn a_changed_tag_replaces_every_object_and_the_tags_read_by_name() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let (alpha, beta) = (connection("Alpha"), connection("Beta"));
+        let name = |name: &str| tablepro_storage::ConnectionTagName::new(name).expect("a tag name");
+        let zeta = ConnectionTag::new(name("zeta"), tablepro_storage::ConnectionColor::Red);
+        let acme = ConnectionTag::new(name("Acme"), tablepro_storage::ConnectionColor::Blue);
+        let tagged = |tags: Vec<ConnectionTag>| {
+            ConnectionListState::Ready(tablepro_storage::ConnectionList::new(
+                vec![alpha.clone(), beta.clone()],
+                tags,
+            ))
+        };
+        list.apply(tagged(vec![zeta.clone(), acme.clone()]));
+        let before = objects(&list);
+
+        assert_eq!(list.tags().to_vec(), vec![acme.clone(), zeta.clone()]);
+        list.apply(tagged(vec![zeta.clone(), acme.clone()]));
+        assert_eq!(objects(&list), before, "an unchanged tag list rebuilt the rows");
+
+        let recoloured = ConnectionTag {
+            color: tablepro_storage::ConnectionColor::Green,
+            ..zeta
+        };
+        list.apply(tagged(vec![recoloured, acme]));
+        assert_ne!(objects(&list)[0], before[0], "a recoloured tag left a row as it was");
     }
 
     #[gtk4::test]

@@ -476,6 +476,8 @@ fn saved_connection(database: &Path) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 

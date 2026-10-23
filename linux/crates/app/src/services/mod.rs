@@ -5,6 +5,7 @@ pub mod change_tracker;
 pub mod change_tracker_registry;
 pub mod column_relayout;
 pub mod connection_deletion;
+pub(crate) mod connection_search;
 pub mod deletion_error;
 pub mod deletion_report;
 pub mod duplicate_name;
