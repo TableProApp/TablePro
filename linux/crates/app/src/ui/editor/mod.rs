@@ -116,7 +116,6 @@ impl SqlEditor {
             snippets: init.snippets,
         });
         let grammar = editor.grammar();
-        let sql = grammar.is_sql();
         let initial_text = init
             .initial_query
             .unwrap_or_else(|| sample_statement(grammar).to_owned());
