@@ -1,0 +1,9 @@
+{
+  "rows_requested": 2000000,
+  "columns": 6,
+  "command": "psql -A -t -P pager=off -v ON_ERROR_STOP=1 -c <same generated SELECT>",
+  "elapsed_seconds": 1.801,
+  "exit_code": 0,
+  "stdout": "discarded",
+  "scope": "Separate disposable container. This control does not reproduce SQLx decoding, GTK presentation or accessibility polling."
+}

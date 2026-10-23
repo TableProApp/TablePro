@@ -1,0 +1,16 @@
+{
+  "source_head": "12519fa76c0d9bda3f8fb1680faa5fc10b205d1e",
+  "profile": "release",
+  "shipping_dist_profile": false,
+  "binary_sha256": "69c4ef139676e50b44c5223e7b43de284da896cf78710ad285e99c6c9d96fd16",
+  "probe_sha256": "1ddffa54aff1bb07fccb80d76ff2fa1f92991a4271d8dbf241df6ac4a9a42f08",
+  "fixture_sha256": "335fdcc47b1d8a936986be4d7adffd38b53f9d87b0edffecd7bb4b355f073b2c",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "postgres_image_id": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+  "low_poll_probe_sha256": "faaf055c058e09bfb2bb92680874c0b95d0d946cbcf626e012ecb28cf73a132d"
+}
