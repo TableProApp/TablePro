@@ -4,7 +4,7 @@ use crate::column::ResultColumn;
 use crate::value::Value;
 
 use super::super::column_type;
-use super::super::tsv::tsv_writer_builder;
+use super::super::tsv::{TSV_NULL, tsv_writer_builder};
 use super::super::value_text::value_text;
 use super::{EncodeError, RecordWriter, RowEncoder, readable_cells};
 
@@ -42,7 +42,7 @@ impl RowEncoder for TsvEncoder {
         self.writer.write(
             out,
             cells.iter().enumerate().map(|(index, value)| {
-                value_text(value, column_type(&self.columns, index)).unwrap_or_else(|| "NULL".to_owned())
+                value_text(value, column_type(&self.columns, index)).unwrap_or_else(|| TSV_NULL.to_owned())
             }),
         );
         Ok(())

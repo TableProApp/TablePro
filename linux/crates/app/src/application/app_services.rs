@@ -24,6 +24,7 @@ use crate::services::mcp_service::McpService;
 use crate::services::saved_connection_editor::SavedConnectionEditor;
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::services::session_context::{CredentialSourceFactory, KeyringSources, SessionContext};
+use crate::services::snippet_library::SnippetLibrary;
 use crate::storage::{AppStorage, SharedStorage};
 use crate::ui::credential_prompt::{GtkCredentialPrompter, PromptQueue};
 use crate::ui::file_reveal::{FileLauncherRevealer, FileRevealer};
@@ -47,6 +48,8 @@ pub struct AppServices {
     pub(crate) file_revealer: Rc<dyn FileRevealer>,
     /// The AI provider the settings name, with its key in the keyring.
     pub(crate) ai: AiService,
+    /// The SQL editor's snippets, read from the snippets folder.
+    pub snippets: Rc<SnippetLibrary>,
     /// Where each session's secrets come from.
     credentials: Rc<dyn CredentialSourceFactory>,
     /// Bound to the application once it exists, which is after this.
@@ -92,6 +95,7 @@ impl AppServices {
         let saved_connection_editor =
             SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
         let ai = AiService::new(settings.clone(), tasks.clone(), None);
+        let snippets = SnippetLibrary::new(storage.paths().snippets_dir());
         Self {
             drivers: Arc::new(drivers),
             connector,
@@ -106,6 +110,7 @@ impl AppServices {
             saved_connection_editor,
             file_revealer: Rc::new(FileLauncherRevealer),
             ai,
+            snippets,
             hold: application_hold.clone(),
             application_hold,
             open_sessions,

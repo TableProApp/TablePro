@@ -66,6 +66,14 @@ pub(crate) fn read_text_file(path: &std::path::Path) -> String {
     std::fs::read_to_string(path).expect("read the test's file")
 }
 
+/// A snippet library on a folder that never exists, for a test that
+/// needs the built-in snippets alone.
+pub(crate) fn builtin_snippets_only() -> std::rc::Rc<crate::services::snippet_library::SnippetLibrary> {
+    crate::services::snippet_library::SnippetLibrary::new(std::path::PathBuf::from(
+        "/nonexistent/tablepro-test/snippets",
+    ))
+}
+
 /// A runtime a GTK test can borrow `Tasks` from.
 ///
 /// A `#[gtk4::test]` has no ambient tokio runtime, so it owns one for

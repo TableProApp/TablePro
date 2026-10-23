@@ -25,7 +25,7 @@ mod unsupported;
 
 pub use ddl::{build_error_text, refusal_text, save_blocker_text};
 pub use driver::{config_message, driver_message};
-pub use edit::edit_parse_message;
+pub use edit::{edit_parse_message, row_error_message};
 pub use files::storage_io_message;
 pub use operation::{connect_error_message, operation_error_message, task_failure_message};
 pub use reference::reference_message;

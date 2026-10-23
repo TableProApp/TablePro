@@ -14,6 +14,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connecting-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/diagram-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/export-operations-button.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/filter-rule-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/filter-strip.ui</file>

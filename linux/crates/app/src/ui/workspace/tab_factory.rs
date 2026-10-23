@@ -18,8 +18,8 @@ use super::tab_title::resolve_tab_title;
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    EditorTabSlot, KeyTabSlot, StructureTabSlot, TableTabSlot, WorkspaceInput, WorkspaceSender, WorkspaceTab,
-    apply_tab_title,
+    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TableTabSlot, WorkspaceInput,
+    WorkspaceSender, WorkspaceTab, apply_tab_title,
 };
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -27,6 +27,7 @@ use crate::services::history_service::HistoryService;
 use crate::services::session_context::SessionContext;
 use crate::services::structure_tracker_registry::StructureTrackerRegistry;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, TableFilter};
+use crate::ui::diagram::{DiagramTab, DiagramTabInit};
 use crate::ui::editor::{SqlEditor, SqlEditorInit};
 use crate::ui::key_tab::{KeyTab, KeyTabEvent, KeyTabInit};
 use crate::ui::structure_tab::{StructureMode, StructureTab, StructureTabInit};
@@ -49,11 +50,14 @@ pub(super) struct TabFactoryParts {
     pub draft_scope: DraftScope,
     pub change_trackers: Rc<ChangeTrackerRegistry>,
     pub structure_trackers: Rc<StructureTrackerRegistry>,
+    /// The exports a diagram writes its images through.
+    pub exports: Rc<crate::ui::export::ExportLedger>,
     pub read_only: bool,
     /// Whether a tab's title names the table's schema.
     pub naming: Rc<Cell<TableNaming>>,
     /// The window's assistant, which editor tabs ask.
     pub assistant: Rc<crate::ui::assistant::AssistantAccess>,
+    pub snippets: Rc<crate::services::snippet_library::SnippetLibrary>,
 }
 
 /// The one place a tab is built: its widget, its page, its slot and its
@@ -104,6 +108,14 @@ impl TabFactory {
                 },
             )?,
             TabSpec::Structure { target } => self.structure(id, target, first_load)?,
+            TabSpec::Diagram { schema, places } => self.diagram(
+                id,
+                DiagramOpening {
+                    schema,
+                    places,
+                    first_load,
+                },
+            )?,
             TabSpec::Key { key } => self.key(id, key, first_load)?,
         };
         Some(self.insert(id, slot))
@@ -151,6 +163,7 @@ impl TabFactory {
             session: parts.context.active.clone(),
             hold: parts.context.hold.clone(),
             close_timeout: parts.context.close_timeout(),
+            snippets: parts.snippets.clone(),
         });
         connect_editor(&editor, id, &parts.input, &parts.toasts);
         editor.attach_assistant(parts.assistant.clone());
@@ -253,6 +266,30 @@ impl TabFactory {
         }))
     }
 
+    fn diagram(&self, id: Uuid, opening: DiagramOpening) -> Option<WorkspaceTab> {
+        let parts = &self.parts;
+        let session = parts.context.active.get()?;
+        let DiagramOpening {
+            schema,
+            places,
+            first_load,
+        } = opening;
+        let diagram = DiagramTab::new(DiagramTabInit {
+            schema: schema.clone(),
+            session,
+            tasks: parts.context.tasks.clone(),
+            exports: parts.exports.clone(),
+            tab_id: id,
+            first_load,
+            places,
+        });
+        connect_diagram(&diagram, &parts.input);
+        let page = self.append(&diagram, id, None);
+        let follow = follow_loading(&page, diagram.is_loading());
+        diagram.connect_loading_changed(move |_, loading| follow(loading));
+        Some(WorkspaceTab::Diagram(DiagramTabSlot { page, schema, diagram }))
+    }
+
     fn key(&self, id: Uuid, key: String, first_load: FirstLoad) -> Option<WorkspaceTab> {
         let parts = &self.parts;
         let session = parts.context.active.get()?;
@@ -289,6 +326,13 @@ impl TabFactory {
         }
         ordinal
     }
+}
+
+/// What a diagram tab opens on.
+struct DiagramOpening {
+    schema: Option<String>,
+    places: Vec<crate::workspace::DiagramPlace>,
+    first_load: FirstLoad,
 }
 
 /// What a table tab opens on, and where its page goes.
@@ -339,6 +383,28 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
+}
+
+/// The diagram's signals, as the workspace's inputs: a table it names
+/// opens in a table or structure tab of its own.
+fn connect_diagram(diagram: &DiagramTab, input: &WorkspaceSender) {
+    let open = input.clone();
+    diagram.connect_open_table(move |_, table| {
+        open.deliver(WorkspaceInput::SelectTable {
+            schema: table.schema,
+            name: table.name,
+            open_mode: OpenMode::SwitchOrAppend,
+        });
+    });
+    let structure = input.clone();
+    diagram.connect_show_structure(move |_, table| {
+        structure.deliver(WorkspaceInput::EditStructureTab {
+            schema: table.schema,
+            table: table.name,
+        });
+    });
+    let layout = input.clone();
+    diagram.connect_layout_changed(move |_| layout.deliver(WorkspaceInput::WorkspaceTabsChanged));
 }
 
 /// The tab bar spins on a tab's page while the tab reads. The tab
@@ -483,6 +549,7 @@ mod tests {
             session: crate::services::active_session::ActiveSession::new(),
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             close_timeout: std::time::Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&editor));

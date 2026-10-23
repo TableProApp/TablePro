@@ -260,6 +260,54 @@ replace, format, toggle comment, open and save keep their keys. Every
 other key goes to Vim, Escape too, so while Vim is on the **Stop** button
 stops a running query. Completion opens in insert mode only.
 
+## Snippets
+
+Type a snippet's trigger in the SQL editor and pick it in the completion
+list (Down, then Enter or Tab). The editor writes the statement and
+selects its first stop; Tab moves to the next stop and Shift+Tab back.
+
+| Trigger | Writes |
+|---|---|
+| `sel` | `SELECT … FROM … WHERE` |
+| `ins` | `INSERT INTO … VALUES` |
+| `upd` | `UPDATE … SET … WHERE`, and `ALTER TABLE … UPDATE … WHERE` on ClickHouse |
+| `del` | `DELETE FROM … WHERE` |
+| `selj` | `SELECT … JOIN … ON` |
+| `ctab` | `CREATE TABLE` with an `id` key column, as the engine spells one |
+| `cidx` | `CREATE INDEX` |
+
+Your own snippets live in the folder **Preferences → Editor → Snippets
+folder** shows, which **Open Folder** creates:
+`~/.local/share/tablepro/snippets`, or
+`~/.var/app/app.tablepro.TablePro/data/tablepro/snippets` under Flatpak.
+Each `.snippets` file is in GtkSourceView's snippet format, and a file
+added, changed or removed takes effect without a restart:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<snippets _group="Mine">
+  <snippet _name="Count rows" trigger="cnt" _description="Count the rows of a table">
+    <text languages="sql"><![CDATA[SELECT COUNT(*) FROM ${1:table_name};$0]]></text>
+  </snippet>
+  <snippet _name="Vacuum" trigger="vac">
+    <text languages="postgres"><![CDATA[VACUUM (ANALYZE) ${1:table_name};$0]]></text>
+  </snippet>
+</snippets>
+```
+
+- `${1:table_name}` is a stop and the text it starts with, `$1` repeats
+  what stop 1 holds, and `$0` is where the cursor ends. GtkSourceView
+  reads every `$` this way, so keep PostgreSQL dollar quotes and `$1`
+  parameters out of snippets.
+- `languages` says where a snippet shows: `sql` on every SQL connection
+  and in a tab with no connection, or one engine: `postgres`, `mysql`
+  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse` or `redis`, whose
+  editor offers its own snippets and no SQL ones. Separate several with
+  `;`.
+- A snippet for the engine replaces a `sql` one with the same trigger,
+  and either replaces the built-in one.
+- A file that does not parse is skipped, and GtkSourceView logs its name.
+
 ## SQL Server with Windows integrated auth
 
 Pick **Method → Windows (Kerberos)** in the connect dialog. There is no

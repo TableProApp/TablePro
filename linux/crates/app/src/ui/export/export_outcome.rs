@@ -12,6 +12,9 @@ pub(crate) enum ExportOutcome {
     Exported {
         rows: u64,
     },
+    /// A file made whole before it was written, such as an image, which
+    /// has no rows to count.
+    Saved,
     Stopped(AbortOutcome),
     /// `file` says what became of the file, when the export had opened
     /// it.
@@ -24,7 +27,7 @@ pub(crate) enum ExportOutcome {
 impl From<&ExportOutcome> for WorkOutcome {
     fn from(outcome: &ExportOutcome) -> Self {
         match outcome {
-            ExportOutcome::Exported { .. } => Self::Succeeded,
+            ExportOutcome::Exported { .. } | ExportOutcome::Saved => Self::Succeeded,
             ExportOutcome::Stopped(_) => Self::Cancelled,
             ExportOutcome::Failed { .. } => Self::Failed,
         }
@@ -48,6 +51,9 @@ pub(crate) enum ExportFailure {
     Statement(OperationError),
     #[error("another export is writing to this file")]
     InUse,
+    /// The image could not be drawn or encoded.
+    #[error("the image could not be made: {0}")]
+    Image(String),
 }
 
 impl From<OpenError> for ExportFailure {

@@ -272,8 +272,10 @@ impl ImportCsvDialog {
         let suggested = suggest_mapping(&self.sheet.headers, &self.columns);
 
         for (column, field) in self.columns.iter().zip(&suggested) {
+            // The subtitle shows values from the file, which may hold & or <.
             let row = adw::ComboRow::builder()
-                .title(glib::markup_escape_text(&column.info.name))
+                .use_markup(false)
+                .title(column.info.name.as_str())
                 .model(&choices)
                 .sensitive(!column.server_filled)
                 .build();
@@ -513,6 +515,25 @@ mod dialog_tests {
             columns: vec![column("id"), column("name"), column("nickname")],
             bytes: csv.as_bytes().to_vec(),
         })
+    }
+
+    #[gtk4::test]
+    fn names_and_values_with_markup_characters_show_as_written() {
+        let dialog = ImportCsvDialog::builder().launch(ImportCsvDialogInit {
+            schema: Some("public".to_owned()),
+            table: "people".to_owned(),
+            columns: vec![column("R&D <team>")],
+            bytes: b"R&D <team>\nAT&T <b>\n".to_vec(),
+        });
+        crate::test_support::drain_main_context();
+
+        let model = dialog.model();
+        let rows = model.mapping_rows.borrow();
+        let row = rows.first().expect("a mapping row");
+
+        assert!(!row.uses_markup());
+        assert_eq!(row.title(), "R&D <team>");
+        assert_eq!(row.subtitle().as_deref(), Some("AT&T <b>"));
     }
 
     #[gtk4::test]

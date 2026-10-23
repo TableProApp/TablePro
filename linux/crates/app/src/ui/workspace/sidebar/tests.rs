@@ -520,9 +520,8 @@ fn the_new_table_button_follows_the_dialect() {
     let shown = Shown::new(&["orders"], every_affordance());
     wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("a section header");
     assert_eq!(headers(&shown.list_view()), [("public".to_owned(), true)]);
-    let button = descendants(&shown.list_view())
-        .into_iter()
-        .find_map(|widget| widget.downcast::<gtk::Button>().ok())
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.new-table")
+        .and_downcast::<gtk::Button>()
         .expect("the New Table button");
     assert_eq!(button.tooltip_text().as_deref(), Some("New Table in public…"));
     button.emit_clicked();
@@ -534,6 +533,52 @@ fn the_new_table_button_follows_the_dialect() {
     });
     wait_until(WAIT, || headers(&shown.list_view()) == [("public".to_owned(), false)])
         .expect("the button hidden once the server cannot create tables");
+}
+
+/// Every engine draws a diagram, so the button stays where New Table
+/// goes away.
+#[gtk4::test]
+fn each_schema_heading_shows_its_er_diagram() {
+    let shown = Shown::new(&["orders"], every_affordance());
+    wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("a section header");
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .and_downcast::<gtk::Button>()
+        .expect("the ER Diagram button");
+    assert_eq!(button.tooltip_text().as_deref(), Some("Show ER Diagram of public"));
+    crate::test_support::assert_labelled(&button).expect("the ER Diagram button is named");
+
+    button.emit_clicked();
+
+    assert_eq!(shown.taken(), [SidebarEvent::ShowDiagram(Some("public".to_owned()))]);
+    shown.view.set_affordances(SidebarAffordances {
+        can_create_table: false,
+        ..every_affordance()
+    });
+    wait_until(WAIT, || headers(&shown.list_view()) == [("public".to_owned(), false)]).expect("New Table hidden");
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .expect("the ER Diagram button");
+    assert!(button.is_visible());
+}
+
+#[gtk4::test]
+fn a_heading_of_keys_offers_no_er_diagram() {
+    let shown = Shown::new(&[], every_affordance());
+    shown.view.hold_keys();
+    let key = ObjectInfo {
+        schema: None,
+        name: "user:1".to_owned(),
+        kind: ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+    };
+    shown.view.show_keys(
+        super::sidebar_index::SidebarIndex::keys(&[key], "db0".to_owned()),
+        false,
+    );
+    wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("the keys' heading");
+
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .expect("the heading's ER Diagram button");
+
+    assert!(!button.is_visible(), "keys have no diagram");
 }
 
 #[gtk4::test]

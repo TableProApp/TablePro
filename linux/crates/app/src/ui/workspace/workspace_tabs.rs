@@ -121,6 +121,7 @@ impl WorkspaceModel {
             TabRecord::Structure { schema, table } => TabSpec::Structure {
                 target: StructureTarget::Existing(TableRef::new(schema, table)),
             },
+            TabRecord::Diagram { schema, places } => TabSpec::Diagram { schema, places },
             // Its text is on disk already, or there is none to keep, so
             // nothing is written until the user types.
             TabRecord::Editor { draft, file } => TabSpec::Editor {
@@ -215,6 +216,7 @@ impl WorkspaceModel {
                 slot.browse.shutdown();
                 self.change_trackers.unregister(slot.id);
             }
+            WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
             WorkspaceTab::Key(slot) => slot.tab.shutdown(),
         }
         let page = removed.page().clone();
@@ -476,6 +478,7 @@ impl WorkspaceModel {
                     slot.browse.shutdown();
                     self.change_trackers.unregister(slot.id);
                 }
+                WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
                 WorkspaceTab::Key(slot) => slot.tab.shutdown(),
             }
         }
@@ -638,6 +641,10 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
                 table: s.table.clone(),
             }),
         },
+        WorkspaceTab::Diagram(s) => Some(ClosedTabDescriptor::Diagram {
+            schema: s.schema.clone(),
+            places: s.diagram.places(),
+        }),
         WorkspaceTab::Key(s) => Some(ClosedTabDescriptor::Key {
             key: s.tab.key().to_owned(),
         }),
@@ -695,6 +702,7 @@ impl WorkspaceModel {
                     target: StructureTarget::Existing(TableRef::new(schema, table)),
                 });
             }
+            ClosedTabDescriptor::Diagram { schema, places } => self.show_diagram(schema, places),
             ClosedTabDescriptor::Key { key } => {
                 self.open_tab(TabSpec::Key { key });
             }

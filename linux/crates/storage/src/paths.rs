@@ -62,6 +62,11 @@ impl StoragePaths {
         self.data.join("drafts")
     }
 
+    /// The user's own SQL editor snippets, in GtkSourceView's format.
+    pub fn snippets_dir(&self) -> PathBuf {
+        self.data.join("snippets")
+    }
+
     pub fn crashes_dir(&self) -> PathBuf {
         self.state.join("crashes")
     }
@@ -82,6 +87,7 @@ mod tests {
         assert_eq!(paths.runtime, root.join("runtime/app/app.tablepro.TablePro"));
         assert_eq!(paths.history_database(), root.join("state/tablepro/history.db"));
         assert_eq!(paths.connections_file(), root.join("config/tablepro/connections.json"));
+        assert_eq!(paths.snippets_dir(), root.join("data/tablepro/snippets"));
     }
 
     #[test]

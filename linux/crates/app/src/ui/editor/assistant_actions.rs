@@ -190,6 +190,7 @@ pub(super) mod tests {
             session: ActiveSession::new(),
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             close_timeout: std::time::Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         let policy = Rc::new(Cell::new(policy));
         let read = policy.clone();
@@ -237,6 +238,7 @@ pub(super) mod tests {
             session: ActiveSession::new(),
             hold: Rc::new(tablepro_session::runtime::CountingHold::new()),
             close_timeout: std::time::Duration::from_secs(5),
+            snippets: crate::test_support::builtin_snippets_only(),
         });
         let harness = editor_with_assistant("SELECT 1;", AiPolicy::Ask);
 

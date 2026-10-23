@@ -29,7 +29,7 @@ pub(crate) use export_failure_text::{ExportReporter, failure_text};
 pub(crate) use export_format::{DocumentFormat, ExportFormat, InsertTarget, RowFormat};
 pub(crate) use export_job::{ExpectedRows, ExportJob, ExportJobId};
 pub(crate) use export_job_item::ExportJobItem;
-pub(crate) use export_ledger::{ExportLedger, ExportLedgerInit};
+pub(crate) use export_ledger::{ExportLedger, ExportLedgerInit, ImageExport};
 pub(crate) use export_message::{ExportMessage, ExportStreamFailure};
 pub(crate) use export_operations_button::ExportOperationsButton;
 pub(crate) use export_outcome::{ExportFailure, ExportOutcome};

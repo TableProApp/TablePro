@@ -159,6 +159,8 @@
                         <property name="auto-indent">true</property>
                         <property name="highlight-current-line">true</property>
                         <property name="tab-width">4</property>
+                        <!-- Tab moves between a snippet's stops only with this on. -->
+                        <property name="enable-snippets">true</property>
                         <property name="top-margin">8</property>
                         <property name="bottom-margin">8</property>
                         <property name="left-margin">8</property>

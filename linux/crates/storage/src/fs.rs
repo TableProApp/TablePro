@@ -30,6 +30,20 @@ pub fn ensure_private_dir(path: &Path) -> Result<(), StorageError> {
     })
 }
 
+/// Create a folder the user keeps their own files in, and any missing
+/// above it, as 0700. One that exists keeps its mode: it is the user's,
+/// and may be a link to a folder other tools read too.
+pub fn ensure_user_dir(path: &Path) -> Result<(), StorageError> {
+    DirBuilder::new()
+        .recursive(true)
+        .mode(PRIVATE_DIR)
+        .create(path)
+        .map_err(|source| StorageError::Io {
+            path: path.to_owned(),
+            source,
+        })
+}
+
 /// Write bytes so a reader sees either the old file or the new one, and
 /// so the new one survives a power cut.
 ///
@@ -245,6 +259,23 @@ mod tests {
         ensure_private_dir(&dir).expect("ensure");
 
         assert_eq!(mode_of(&dir), 0o700);
+    }
+
+    #[test]
+    fn ensure_user_dir_makes_missing_folders_private_and_leaves_an_existing_one() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let made = root.path().join("data").join("snippets");
+        let kept = root.path().join("kept");
+        std::fs::create_dir(&kept).expect("create");
+        std::fs::set_permissions(&kept, Permissions::from_mode(0o755)).expect("chmod");
+
+        ensure_user_dir(&made).expect("make");
+        ensure_user_dir(&made).expect("make again");
+        ensure_user_dir(&kept).expect("keep");
+
+        assert_eq!(mode_of(&made), 0o700);
+        assert_eq!(mode_of(made.parent().expect("parent")), 0o700);
+        assert_eq!(mode_of(&kept), 0o755);
     }
 
     #[test]

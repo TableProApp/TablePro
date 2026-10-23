@@ -9,9 +9,12 @@ use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::{EditText, edit_text, read_only_reason};
 use tablepro_core::export::{
-    CsvDelimiter, CsvEncoder, CsvLineBreak, CsvOptions, CsvQuote, RowEncoder, SqlInsertEncoder,
+    CellsEncoder, CsvDelimiter, CsvEncoder, CsvLineBreak, CsvOptions, CsvQuote, RowEncoder, SqlInsertEncoder,
+    TsvEncoder,
 };
-use tablepro_core::import::{CsvImportOptions, MAX_CSV_FILE_BYTES};
+use tablepro_core::import::{CsvImportOptions, MAX_CSV_FILE_BYTES, PastedTable};
+use tablepro_core::meta::RowIdentity;
+use tablepro_core::save::{ChangeSet, RowChange, plan_save};
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan};
 use tablepro_core::{
     Connection, EditorSession, EditorSessionOptions, FilterSet, ReadStatement, ResultEvent, ResultSink, SinkFlow,
@@ -30,6 +33,7 @@ use crate::{import_csv, lock};
 const CSV_CASE: &str = "csv_export_imports_back_as_the_same_rows";
 const SQL_CASE: &str = "sql_insert_export_runs_back_as_the_same_rows";
 const NEAR_LIMIT_CASE: &str = "csv_export_near_the_import_limit_imports_back";
+const PASTE_CASE: &str = "tsv_copy_pastes_back_as_the_same_rows";
 
 /// What the import reads as NULL in every pairing, and what the export
 /// writes for one.
@@ -126,6 +130,202 @@ pub async fn csv_export_imports_back_as_the_same_rows<E: ValueCorpusEngine>(
             wrong.join("\n")
         )
     })
+}
+
+/// Every corpus value with a text form, copied from the grid as rows and
+/// pasted into an empty copy of its table, saves as the same rows. A
+/// copy offers the cells and their text: each is pasted on its own, read
+/// as a paste reads it, and saved as a table tab saves new rows.
+///
+/// The rows are compared in the order of their `id`, without it: a
+/// paste leaves an id the server numbers, such as SQLite's row id, to
+/// the server.
+pub async fn tsv_copy_pastes_back_as_the_same_rows<E: ValueCorpusEngine>(engine: E) -> Result<(), ConformanceFailure> {
+    let corpus = engine.value_corpus();
+    expect(PASTE_CASE, !corpus.is_empty(), || {
+        "the engine lists no corpus".to_owned()
+    })?;
+    let connection = connect(PASTE_CASE, &engine, writable()).await?;
+    let mut wrong = Vec::new();
+    let mut round_trips = 0;
+    for (index, column) in corpus.iter().enumerate() {
+        let source = match load(&engine, connection.as_ref(), &format!("tsv_{index}"), column).await {
+            Ok(table) => table,
+            Err(failure) => {
+                wrong.push(failure.to_string());
+                continue;
+            }
+        };
+        let columns = connection.fetch_columns(&source, within(CALL_DEADLINE)).await?;
+        if columns
+            .iter()
+            .any(|info| read_only_reason(&info.column_type.kind).is_some())
+        {
+            continue;
+        }
+        let mut expected = read_rows(connection.as_ref(), &source, texts, KeepValues::Yes).await?;
+        let read_columns = expected.values.columns.clone();
+        expected
+            .values
+            .rows
+            .retain(|row| has_text(read_columns.as_deref(), row));
+        let typed = read_rows(connection.as_ref(), &source, typed_texts, KeepValues::No).await?;
+        let text = String::from_utf8(encode(&expected.values, &tsv_encoder())?).map_err(ConformanceFailure::setup)?;
+        let cells = encode(&expected.values, &cells_encoder())?;
+        // Text carries no kinds, as a column SQLite types by its values
+        // shows; the cells keep how each value was stored.
+        let pastes = [
+            ("text", PastedTable::read(&text), texts as Keep, &expected),
+            ("cells", PastedTable::from_cells(&cells), typed_texts as Keep, &typed),
+        ];
+        for (copy_index, (form, pasted, keep, source_rows)) in pastes.into_iter().enumerate() {
+            let what = format!("`{}` copied and pasted as {form}", column.declaration);
+            let copy = corpus_table(
+                &engine,
+                connection.as_ref(),
+                &format!("tsv_{index}_copy_{copy_index}"),
+                column,
+                &[],
+            )
+            .await?;
+            let pasted = match pasted {
+                Ok(pasted) => pasted,
+                Err(error) => {
+                    wrong.push(format!("{what}: the copy did not read as rows: {error}"));
+                    continue;
+                }
+            };
+            if let Some(failure) = paste(connection.as_ref(), &copy, &pasted).await? {
+                wrong.push(format!("{what}: {failure}"));
+                continue;
+            }
+            let actual = read_rows(connection.as_ref(), &copy, keep, KeepValues::No).await?;
+            wrong.extend(order_differences(
+                &what,
+                &in_id_order(source_rows, &source_rows.without_text),
+                &in_id_order(&actual, &BTreeSet::new()),
+            ));
+            round_trips += 1;
+        }
+    }
+    connection.close().await?;
+    expect(PASTE_CASE, round_trips > 0, || {
+        "no corpus column could travel as copied rows".to_owned()
+    })?;
+    expect(PASTE_CASE, wrong.is_empty(), || {
+        format!(
+            "{} differences after a copy and paste:\n{}",
+            wrong.len(),
+            wrong.join("\n")
+        )
+    })
+}
+
+/// Paste `pasted` into `table` and save the rows, as a table tab does
+/// with the rows a paste gives it. Returns why that stopped short.
+async fn paste(
+    connection: &dyn Connection,
+    table: &TableRef,
+    pasted: &PastedTable,
+) -> Result<Option<String>, ConformanceFailure> {
+    let columns = connection.fetch_columns(table, within(CALL_DEADLINE)).await?;
+    let in_order: Vec<usize> = (0..columns.len()).collect();
+    let rows = match pasted.rows(&columns, &in_order) {
+        Ok(rows) => rows,
+        Err(error) => return Ok(Some(format!("the paste refused a value: {error:?}"))),
+    };
+    let identity = RowIdentity::UniqueKey {
+        columns: columns
+            .iter()
+            .filter(|column| column.primary_key)
+            .map(|column| column.name.clone())
+            .collect(),
+    };
+    let changes = ChangeSet {
+        changes: rows.rows.into_iter().map(|cells| RowChange::Insert { cells }).collect(),
+    };
+    let plan = match plan_save(&*connection.dialect(), table, &columns, &identity, &changes) {
+        Ok(plan) => plan,
+        Err(error) => return Ok(Some(format!("the save could not be planned: {error}"))),
+    };
+    Ok(connection
+        .write_batch(&plan.batch, within(IMPORT_DEADLINE))
+        .await
+        .err()
+        .map(|error| format!("the save failed: {error}")))
+}
+
+/// Rows as the grid's Copy writes them: tab-separated, no header.
+fn tsv_encoder() -> EncoderFor {
+    Box::new(|columns| Box::new(TsvEncoder::new(columns, false)))
+}
+
+/// The cells the grid's Copy offers beside that text.
+fn cells_encoder() -> EncoderFor {
+    Box::new(|columns| Box::new(CellsEncoder::new(columns, false)))
+}
+
+/// Whether every value of `row` has a text form, which a copy needs to
+/// carry it.
+fn has_text(columns: Option<&[ResultColumn]>, row: &[Value]) -> bool {
+    let untyped = ColumnType::unknown();
+    row.iter().enumerate().all(|(index, value)| {
+        let column_type = columns
+            .and_then(|columns| columns.get(index))
+            .map_or(&untyped, |column| &column.column_type);
+        matches!(edit_text(value, column_type), EditText::Editable(_))
+    })
+}
+
+/// The texts of each row in the order of its numeric `id`, without the
+/// `id`, leaving out the rows `skipped` names.
+fn in_id_order(rows: &Rows<Kept>, skipped: &BTreeSet<String>) -> Vec<Vec<String>> {
+    let id = rows.columns.iter().position(|name| name == "id");
+    let mut ordered: Vec<(i64, Vec<String>)> = rows
+        .by_id
+        .iter()
+        .filter(|(key, _)| !skipped.contains(*key))
+        .filter_map(|(key, kept)| {
+            let cells: Vec<String> = match kept {
+                Kept::Texts(texts) => texts.iter().map(|text| quoted(text.as_deref())).collect(),
+                Kept::Typed(cells) => cells
+                    .iter()
+                    .map(|cell| format!("{} {}", cell.kind, quoted(cell.text.as_deref())))
+                    .collect(),
+            };
+            let cells = cells
+                .into_iter()
+                .enumerate()
+                .filter(|(index, _)| Some(*index) != id)
+                .map(|(_, cell)| cell)
+                .collect();
+            Some((key.parse().ok()?, cells))
+        })
+        .collect();
+    ordered.sort_by_key(|(id, _)| *id);
+    ordered.into_iter().map(|(_, cells)| cells).collect()
+}
+
+fn order_differences(what: &str, source: &[Vec<String>], copy: &[Vec<String>]) -> Vec<String> {
+    let mut wrong = Vec::new();
+    if source.len() != copy.len() {
+        wrong.push(format!(
+            "{what}: {} rows came back, {} were copied",
+            copy.len(),
+            source.len()
+        ));
+    }
+    for (position, (expected, actual)) in source.iter().zip(copy).enumerate() {
+        if expected != actual {
+            wrong.push(format!(
+                "{what}: row {} came back as ({}), copied as ({})",
+                position + 1,
+                actual.join(", "),
+                expected.join(", ")
+            ));
+        }
+    }
+    wrong
 }
 
 /// Every corpus value exports as SQL INSERT, and the file, run in an
@@ -439,6 +639,9 @@ enum Kept {
     /// The text and the kind of every value, which a SQL literal keeps.
     Typed(Vec<Cell>),
 }
+
+/// How a comparison keeps a row's cells.
+type Keep = fn(Vec<Cell>) -> Kept;
 
 fn texts(cells: Vec<Cell>) -> Kept {
     Kept::Texts(cells.into_iter().map(|cell| cell.text).collect())

@@ -25,6 +25,7 @@ mod fake_secret_vault;
 mod fault;
 pub mod history_cases;
 mod replies;
+mod snippet_text;
 mod stream_end;
 
 pub use call_counters::CallCounters;
@@ -42,6 +43,7 @@ pub use fake_run::{FakeRun, RunWait};
 pub use fake_secret_vault::{Call, FakeSecretVault};
 pub use fault::FaultTransport;
 pub use replies::Replies;
+pub use snippet_text::expand_snippet;
 pub use stream_end::StreamEnd;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
