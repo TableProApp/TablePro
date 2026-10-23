@@ -100,9 +100,7 @@ impl SqlDialect for DuckDbDialect {
             // that text back as the first member it fits, which may be
             // another one.
             Value::Other(other) if names_union(&other.type_name) || names_union(&column.name) => {
-                Err(LiteralError::Unrepresentable {
-                    found: "a UNION value",
-                })
+                Err(LiteralError::Unrepresentable { found: "a UNION value" })
             }
             other => {
                 let text = duck_text(other).ok_or(LiteralError::Unrepresentable {
@@ -387,9 +385,21 @@ mod tests {
             }))
         };
 
-        assert!(dialect.literal(&value("UNION(n INTEGER, s VARCHAR)"), &union.column_type).is_err());
-        assert!(dialect.literal(&value("UNION(n INTEGER, s VARCHAR)[]"), &list.column_type).is_err());
-        assert!(dialect.literal(&value("INTEGER[]"), &column("INTEGER[]").column_type).is_ok());
+        assert!(
+            dialect
+                .literal(&value("UNION(n INTEGER, s VARCHAR)"), &union.column_type)
+                .is_err()
+        );
+        assert!(
+            dialect
+                .literal(&value("UNION(n INTEGER, s VARCHAR)[]"), &list.column_type)
+                .is_err()
+        );
+        assert!(
+            dialect
+                .literal(&value("INTEGER[]"), &column("INTEGER[]").column_type)
+                .is_ok()
+        );
     }
 
     #[test]

@@ -140,7 +140,7 @@ impl DuckDbConnection {
     /// busy and for a streamed read.
     async fn own_call(&self) -> Result<DuckCall, DriverError> {
         let instance = self.instance()?;
-        blocking(move || instance.link()).await.map(DuckCall::own)
+        blocking(move || instance.workspace_link()).await.map(DuckCall::own)
     }
 }
 

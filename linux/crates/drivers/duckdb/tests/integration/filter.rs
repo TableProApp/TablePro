@@ -54,11 +54,23 @@ async fn each_type_filters_on_the_text_the_grid_shows() {
     let first = || vec![Value::Int(1)];
     let second = || vec![Value::Int(2)];
 
-    assert_eq!(ids_where(connection.as_ref(), "b", FilterOp::Eq, "0x0AFF").await, first());
-    assert_eq!(ids_where(connection.as_ref(), "b", FilterOp::NotEq, "0x0aff").await, second());
-    assert_eq!(ids_where(connection.as_ref(), "j", FilterOp::Contains, "red").await, first());
+    assert_eq!(
+        ids_where(connection.as_ref(), "b", FilterOp::Eq, "0x0AFF").await,
+        first()
+    );
+    assert_eq!(
+        ids_where(connection.as_ref(), "b", FilterOp::NotEq, "0x0aff").await,
+        second()
+    );
+    assert_eq!(
+        ids_where(connection.as_ref(), "j", FilterOp::Contains, "red").await,
+        first()
+    );
     assert_eq!(ids_where(connection.as_ref(), "m", FilterOp::Eq, "calm").await, first());
-    assert_eq!(ids_where(connection.as_ref(), "m", FilterOp::Contains, "ros").await, second());
+    assert_eq!(
+        ids_where(connection.as_ref(), "m", FilterOp::Contains, "ros").await,
+        second()
+    );
     assert_eq!(
         ids_where(
             connection.as_ref(),

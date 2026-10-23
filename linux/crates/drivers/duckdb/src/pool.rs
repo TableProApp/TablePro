@@ -28,7 +28,7 @@ impl Manager for LinkManager {
 
     async fn create(&self) -> Result<Link, DriverError> {
         match self.instance.upgrade() {
-            Some(instance) => instance.link(),
+            Some(instance) => crate::connection::blocking(move || instance.workspace_link()).await,
             None => Err(DriverError::ConnectionLost {
                 during: LossPhase::Idle,
             }),

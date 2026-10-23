@@ -177,12 +177,13 @@ async fn inbound_keys_pair_their_columns_and_say_how_they_compare() {
     .unwrap();
     let customers = TableRef::unqualified("customers");
 
-    let inbound = connection
-        .fetch_inbound_foreign_keys(&customers, call())
-        .await
-        .unwrap();
+    let inbound = connection.fetch_inbound_foreign_keys(&customers, call()).await.unwrap();
     let definition = connection.fetch_table_definition(&customers, call()).await.unwrap();
-    let by_region = query(connection.as_ref(), "SELECT count(*) FROM by_region WHERE \"Region\" = 'eu'").await;
+    let by_region = query(
+        connection.as_ref(),
+        "SELECT count(*) FROM by_region WHERE \"Region\" = 'eu'",
+    )
+    .await;
     let by_code = query(connection.as_ref(), "SELECT count(*) FROM by_code WHERE code = 'ABC'").await;
 
     let keys: Vec<(String, Vec<String>, Vec<String>, bool)> = inbound
@@ -250,7 +251,11 @@ async fn a_row_is_named_by_a_key_and_never_by_rowid() {
     )
     .await
     .unwrap();
-    let both = query(connection.as_ref(), "SELECT count(*) FROM folded_only WHERE \"Code\" = 'abc'").await;
+    let both = query(
+        connection.as_ref(),
+        "SELECT count(*) FROM folded_only WHERE \"Code\" = 'abc'",
+    )
+    .await;
     let mut identities = Vec::new();
     for name in ["keyed", "coded", "loose", "folded", "folded_only"] {
         identities.push(
@@ -283,6 +288,34 @@ async fn a_row_is_named_by_a_key_and_never_by_rowid() {
 
 /// Why a table without a key is read-only: a checkpoint that compacts
 /// row groups hands the rows new rowids.
+/// `SET default_collation` in a tab reaches every connection to the
+/// database, but the grid's reads keep comparing a key byte for byte, so
+/// `'ABC'` and `'abc'` stay two rows to them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tabs_default_collation_leaves_the_grids_keys_alone() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE k (code VARCHAR PRIMARY KEY)",
+            "INSERT INTO k VALUES ('ABC'), ('abc')",
+        ],
+    )
+    .await
+    .unwrap();
+    let editor = session(connection.as_ref()).await;
+
+    run(editor.as_ref(), "SET default_collation = 'nocase'").await;
+    let (_, in_tab) = run(editor.as_ref(), "SELECT count(*) FROM k WHERE code = 'abc'").await;
+    let in_grid = query(connection.as_ref(), "SELECT count(*) FROM k WHERE code = 'abc'").await;
+
+    assert_eq!(in_tab.rows(), vec![vec![Value::Int(2)]], "the setting took");
+    assert_eq!(in_grid.rows, vec![vec![Value::Int(1)]]);
+    editor.close().await;
+    connection.close().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_rowid_moves_when_a_checkpoint_compacts_the_table() {
     let file = TestFile::new();

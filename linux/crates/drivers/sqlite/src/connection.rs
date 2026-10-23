@@ -61,6 +61,9 @@ impl SqliteConnection {
         liveness: LivenessPolicy,
     ) -> Result<Self, DriverError> {
         let path = endpoint.path().to_path_buf();
+        // Until the pool holds a descriptor on the file, a header read
+        // elsewhere in the process could close one and drop its locks.
+        let opening = tablepro_core::opening_file().await;
         if endpoint.mode() == FileOpenMode::CreateNew {
             let target = path.clone();
             tokio::task::spawn_blocking(move || create_or_replace(&target))
@@ -74,6 +77,7 @@ impl SqliteConnection {
             .connect_with(options)
             .await
             .map_err(|error| map_open_error(error, &path))?;
+        drop(opening);
 
         let version = match check_file(&pool, &path).await {
             Ok(version) => version,

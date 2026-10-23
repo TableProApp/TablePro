@@ -168,6 +168,7 @@ impl Instance {
     /// replays its log here, and a file still closing is waited for.
     pub(crate) fn open(endpoint: &FileEndpoint, read_only: bool) -> Result<Arc<Self>, DriverError> {
         let path = endpoint.path();
+        let _opening = tablepro_core::opening_file_blocking();
         loop {
             // Held through the open, so two windows opening one file at
             // once get one instance.
@@ -252,6 +253,19 @@ impl Instance {
         Ok(Link::new(connection, self.clone()))
     }
 
+    /// A connection for the app's own reads and saves. `SET
+    /// default_collation` in an editor tab reaches every connection to
+    /// the database, and `=` on a key would then find `'ABC'` and `'abc'`
+    /// alike, which DuckDB keeps as two rows: these compare byte for byte
+    /// whatever the tabs set.
+    pub(crate) fn workspace_link(self: &Arc<Self>) -> Result<Link, DriverError> {
+        let link = self.link()?;
+        link.connection
+            .execute_batch("SET SESSION default_collation = ''")
+            .map_err(map_error)?;
+        Ok(link)
+    }
+
     pub(crate) fn catalog(&self) -> &str {
         &self.catalog
     }
@@ -291,6 +305,7 @@ pub(crate) fn attach_unless_open<T>(
     targets: &[PathBuf],
     attach: impl FnOnce() -> Result<T, DriverError>,
 ) -> Result<T, DriverError> {
+    let _opening = tablepro_core::opening_file_blocking();
     let open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
     let in_use = targets
         .iter()

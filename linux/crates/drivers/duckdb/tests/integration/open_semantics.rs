@@ -328,7 +328,10 @@ async fn a_file_another_process_has_open_is_not_replaced() {
     let mut line = String::new();
     while !line.contains(HELD) {
         line.clear();
-        assert!(output.read_line(&mut line).unwrap() > 0, "the other process never opened the file");
+        assert!(
+            output.read_line(&mut line).unwrap() > 0,
+            "the other process never opened the file"
+        );
     }
 
     let replaced = connect(FileEndpoint::create_new(file.path.clone()).unwrap(), writable()).await;

@@ -36,7 +36,7 @@ DuckDB relies on the POSIX lock on the file and writes its log to `<path>.wal` b
 | One connection per call | `stream_read` (exports), and the probe when every pool slot is busy |
 | One connection per editor tab | `EditorSession` |
 
-DuckDB runs the queries of one instance side by side, so a slow page does not hold up the sidebar. Calls wait for a slot for up to the pool wait (5 s), then fail as `Busy(NoFreeConnection)`. Each call ends its own transaction. A save that cannot show its connection is out of a transaction, and a call given up while DuckDB still runs it, take the connection out of the pool.
+DuckDB runs the queries of one instance side by side, so a slow page does not hold up the sidebar. A tab's `SET default_collation` reaches every connection to the instance, so the pool's connections and the per-call ones set it back to none for their own session: the grid compares a key byte for byte, as DuckDB keeps it unique. Calls wait for a slot for up to the pool wait (5 s), then fail as `Busy(NoFreeConnection)`. Each call ends its own transaction. A save that cannot show its connection is out of a transaction, and a call given up while DuckDB still runs it, take the connection out of the pool.
 
 The health probe runs `SELECT 1` on a free slot, or on a connection of its own when none is free. It never waits for a slot.
 

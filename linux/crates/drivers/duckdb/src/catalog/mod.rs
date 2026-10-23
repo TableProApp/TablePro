@@ -10,8 +10,9 @@ use std::collections::HashSet;
 
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnType, SqlExpression};
 use tablepro_core::ddl::{
-    ColumnAttributes, ColumnDefinition, GeneratedColumn, GeneratedStorage, IdentityStyle, InboundForeignKey,
-    PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind, SchemaObjectSource, TableDefinition, TableSource,
+    CollationName, ColumnAttributes, ColumnDefinition, GeneratedColumn, GeneratedStorage, IdentityStyle,
+    InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind, SchemaObjectSource, TableDefinition,
+    TableSource,
 };
 use tablepro_core::edit::parse_literal_text;
 use tablepro_core::meta::{
@@ -374,7 +375,7 @@ pub(crate) fn inbound_foreign_keys(
             let columns = split_names(&text(row, 3));
             let collated: Vec<String> = declared_columns(&text(row, 5))
                 .into_iter()
-                .filter(|column| column.collated)
+                .filter(|column| column.collation.is_some())
                 .map(|column| column.name)
                 .collect();
             let compares_alike = !columns
@@ -402,7 +403,7 @@ pub(crate) fn row_identity(link: &Link, catalog: &str, table: &TableRef) -> Resu
         .map(|sql| {
             declared_columns(&sql)
                 .into_iter()
-                .filter(|column| column.collated)
+                .filter(|column| column.collation.is_some())
                 .map(|column| column.name)
                 .collect()
         })
@@ -465,6 +466,13 @@ pub(crate) fn fetch_table_definition(
     let create_sql = table_sql(link, catalog, table)?;
     let columns = fetch_columns(link, catalog, table)?;
     let check_columns = check_constraints(link, catalog, table)?;
+    let collations: Vec<(String, String)> = create_sql
+        .as_deref()
+        .map(declared_columns)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|column| Some((column.name, column.collation?)))
+        .collect();
     let definitions = columns
         .into_iter()
         .map(|info| {
@@ -476,8 +484,13 @@ pub(crate) fn fetch_table_definition(
                     expression,
                     storage: GeneratedStorage::Virtual,
                 });
+            let collation = collations
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(&info.name))
+                .map(|(_, collation)| CollationName::new(None, collation.clone()));
             let attributes = ColumnAttributes {
                 generated,
+                collation,
                 check: check_columns.get(&info.name).cloned(),
                 identity: match info.is_auto_increment {
                     true => IdentityStyle::SequenceDefault,

@@ -90,8 +90,10 @@ pub fn resolve_file_blocking(
 /// SQLite and DuckDB lock a file with POSIX record locks, which belong to
 /// the process: closing any descriptor this process has on the file
 /// drops them all. A file this process already holds open, through
-/// another name such as a hard link, is refused rather than read.
+/// another name such as a hard link, is refused rather than read, and no
+/// engine opens a file until the read is done (`opening_file_blocking`).
 pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverError> {
+    let _opening = tablepro_core::opening_file_blocking();
     let failed = |error: std::io::Error| {
         let path = path.to_path_buf();
         match error.kind() {
@@ -147,6 +149,27 @@ mod tests {
         );
     }
 
+    /// An engine opening a file holds no descriptor on it yet, so the
+    /// read waits until it does.
+    #[test]
+    fn a_header_read_waits_for_an_engine_opening_a_file() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("opening.db");
+        std::fs::write(&path, b"SQLite format 3\0").expect("seed");
+        let opening = tablepro_core::opening_file_blocking();
+
+        let reading = std::thread::spawn(move || read_header_blocking(&path, 16));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let waited = !reading.is_finished();
+        drop(opening);
+
+        assert!(waited, "the header was read while an engine was opening a file");
+        assert_eq!(
+            reading.join().expect("the read").expect("the header"),
+            b"SQLite format 3\0"
+        );
+    }
+
     /// Reading a file through a second name would close a descriptor on
     /// it, which drops every lock this process holds on it.
     #[test]
@@ -163,7 +186,10 @@ mod tests {
             Err(DriverError::Busy(BusyReason::FileLocked))
         );
         drop(open);
-        assert_eq!(read_header_blocking(&linked, 16).expect("the header"), b"SQLite format 3\0");
+        assert_eq!(
+            read_header_blocking(&linked, 16).expect("the header"),
+            b"SQLite format 3\0"
+        );
     }
 
     #[test]

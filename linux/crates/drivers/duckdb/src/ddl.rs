@@ -8,11 +8,11 @@
 //! The plans offer only what DuckDB 1.5 takes, measured against it in
 //! the driver's DDL tests.
 
-use tablepro_core::column::ColumnType;
+use tablepro_core::column::{ColumnKind, ColumnType};
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, default_sql, foreign_key_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan,
-    DraftColumn, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, ColumnAttributes, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlDialect, DdlOperation,
+    DdlPlan, DraftColumn, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition, TableDraft,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, TableRef};
@@ -283,7 +283,10 @@ impl DdlDialect for DuckDbDialect {
             let changed = alteration.changed;
             if changed.column_type {
                 let resolved = draft.column_type.resolve(self, &draft.name)?;
-                statements.push(alter(format!("ALTER COLUMN {name} TYPE {}", resolved.sql)));
+                // DuckDB drops a column's collation with its old type
+                // unless the new one names it again.
+                let collation = collation_clause(Some(&alteration.original.attributes), &resolved.column_type);
+                statements.push(alter(format!("ALTER COLUMN {name} TYPE {}{collation}", resolved.sql)));
             }
             if changed.nullability {
                 let action = if draft.nullable {
@@ -363,6 +366,16 @@ impl DdlDialect for DuckDbDialect {
     }
 }
 
+/// ` COLLATE <name>` for a text column the catalogue read with one, as
+/// DuckDB's own text spelled it.
+fn collation_clause(attributes: Option<&ColumnAttributes>, column_type: &ColumnType) -> String {
+    attributes
+        .and_then(|attributes| attributes.collation.as_ref())
+        .filter(|_| matches!(column_type.kind, ColumnKind::Text { .. }))
+        .map(|collation| format!(" COLLATE {}", collation.name))
+        .unwrap_or_default()
+}
+
 fn refused(column: &str, operation: DdlOperation, users: Vec<String>) -> BuildDdlError {
     BuildDdlError::Refused {
         column: column.to_owned(),
@@ -381,7 +394,14 @@ impl DuckDbDialect {
     fn column_definition(&self, column: &DraftColumn, constraints: bool) -> Result<String, BuildDdlError> {
         let resolved = column.column_type.resolve(self, &column.name)?;
         let attributes = column.original.as_ref().map(|original| &original.attributes);
-        let mut parts = vec![self.quote_identifier(&column.name), resolved.sql.clone()];
+        let mut parts = vec![
+            self.quote_identifier(&column.name),
+            format!(
+                "{}{}",
+                resolved.sql,
+                collation_clause(attributes, &resolved.column_type)
+            ),
+        ];
         if let Some(generated) = attributes.and_then(|attributes| attributes.generated.as_ref()) {
             parts.push(format!(
                 "GENERATED ALWAYS AS ({}) VIRTUAL",

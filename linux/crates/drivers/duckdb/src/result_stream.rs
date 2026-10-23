@@ -12,9 +12,7 @@ use std::sync::Arc;
 use duckdb::arrow::array::{Array, StructArray};
 use tablepro_core::column::ResultColumn;
 use tablepro_core::sql_syntax::SqlGrammar;
-use tablepro_core::sql_syntax::script::{
-    LexicalSettings, OpenConstruct, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind,
-};
+use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptDiagnostic, ScriptPlan, ScriptToken, ScriptTokenKind};
 use tablepro_core::statement::{BoundParam, Statement};
 use tablepro_core::value::Value;
 use tablepro_core::{DriverError, QueryResult, ResultEvent, RowLimit, Truncation};
@@ -349,8 +347,21 @@ pub(crate) fn changes_rows(sql: &str) -> bool {
 /// statement, as in `WITH src AS (...) INSERT INTO ...`.
 fn main_verb(sql: &str) -> Option<String> {
     const VERBS: [&str; 15] = [
-        "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "VALUES", "FROM", "TABLE", "PIVOT", "UNPIVOT",
-        "SUMMARIZE", "DESCRIBE", "SHOW", "EXPLAIN",
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "MERGE",
+        "UPSERT",
+        "VALUES",
+        "FROM",
+        "TABLE",
+        "PIVOT",
+        "UNPIVOT",
+        "SUMMARIZE",
+        "DESCRIBE",
+        "SHOW",
+        "EXPLAIN",
     ];
     let grammar = SqlGrammar::DuckDb;
     let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
@@ -501,34 +512,41 @@ fn words(sql: &str) -> Vec<String> {
 
 /// The statements of a script, split where DuckDB's parser ends one.
 ///
-/// An unterminated string or identifier runs to the end of the text,
-/// and the statement it opens goes to DuckDB as it stands, so the error
-/// is DuckDB's own. An open comment is a comment, so only the text
-/// before it is sent.
+/// An unterminated string, identifier or block comment runs to the end
+/// of the text, and the statement it opens or continues goes to DuckDB as
+/// it stands, so the error is DuckDB's own. Cutting an open comment off
+/// would run what came before it: `DELETE FROM t /* where ...` would
+/// empty the table.
 pub(crate) fn split_statements(sql: &str) -> Vec<&str> {
     let grammar = SqlGrammar::DuckDb;
     let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
-    let open = plan
+    let open_at = plan
         .diagnostics()
         .iter()
-        .map(|ScriptDiagnostic::Unterminated { construct, start }| (*start, *construct))
-        .min_by_key(|(start, _)| *start);
-    let (open_at, tail_end) = match open {
-        Some((start, OpenConstruct::BlockComment)) => (start, start),
-        Some((start, _)) => (start, sql.len()),
-        None => (sql.len(), sql.len()),
+        .map(|ScriptDiagnostic::Unterminated { start, .. }| *start)
+        .min();
+    let Some(open_at) = open_at else {
+        return plan.statements().iter().map(|statement| statement.text(sql)).collect();
     };
     let mut statements = Vec::with_capacity(plan.statements().len());
+    let mut tail_start = open_at;
     for statement in plan.statements() {
-        if statement.range.end <= open_at {
-            statements.push(statement.text(sql));
-            continue;
+        if statement.range.start >= open_at {
+            break;
         }
-        let tail = sql.get(statement.range.start..tail_end).unwrap_or_default().trim_end();
-        if !tail.is_empty() {
-            statements.push(tail);
+        let ended = statement.range.end <= open_at
+            && plan
+                .tokens(statement.range.end..open_at)
+                .any(|token| token.kind == ScriptTokenKind::Semicolon);
+        if !ended {
+            tail_start = statement.range.start;
+            break;
         }
-        break;
+        statements.push(statement.text(sql));
+    }
+    let tail = sql.get(tail_start..).unwrap_or_default().trim_end();
+    if !tail.is_empty() {
+        statements.push(tail);
     }
     statements
 }
@@ -544,7 +562,15 @@ mod tests {
             ["SELECT 1", "SELECT $$a;b$$", "SELECT 'd;e'"]
         );
         assert_eq!(split_statements("SELECT 1; SELECT 'open"), ["SELECT 1", "SELECT 'open"]);
-        assert_eq!(split_statements("SELECT 1; /* open"), ["SELECT 1"]);
+        assert_eq!(split_statements("SELECT 1; /* open"), ["SELECT 1", "/* open"]);
+        assert_eq!(
+            split_statements("SELECT 1; DELETE FROM t /* WHERE a = 1"),
+            ["SELECT 1", "DELETE FROM t /* WHERE a = 1"]
+        );
+        assert_eq!(
+            split_statements("DELETE FROM t -- why;\n/* open"),
+            ["DELETE FROM t -- why;\n/* open"]
+        );
         assert!(split_statements("  -- only a comment\n").is_empty());
     }
 
@@ -557,22 +583,36 @@ mod tests {
         assert!(!changes_rows("SELECT 1 AS \"Count\""));
         assert!(!changes_rows("CREATE TABLE t (a INTEGER)"));
         assert!(changes_rows("INSERT INTO t VALUES ('returning')"));
-        assert!(changes_rows("WITH src AS (SELECT 1 AS a) INSERT INTO t SELECT a FROM src"));
+        assert!(changes_rows(
+            "WITH src AS (SELECT 1 AS a) INSERT INTO t SELECT a FROM src"
+        ));
         assert!(!changes_rows("WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x"));
-        assert_eq!(main_verb("WITH RECURSIVE r AS (SELECT 1) SELECT * FROM r").as_deref(), Some("SELECT"));
+        assert_eq!(
+            main_verb("WITH RECURSIVE r AS (SELECT 1) SELECT * FROM r").as_deref(),
+            Some("SELECT")
+        );
         assert_eq!(main_verb("(SELECT 1)").as_deref(), Some("SELECT"));
     }
 
     #[test]
     fn an_attach_names_its_path_with_a_string_constant() {
-        assert_eq!(attach_literal("ATTACH $db$/srv/b.db$db$ AS b"), Some("$db$/srv/b.db$db$"));
+        assert_eq!(
+            attach_literal("ATTACH $db$/srv/b.db$db$ AS b"),
+            Some("$db$/srv/b.db$db$")
+        );
         assert_eq!(attach_literal(r"ATTACH E'\x2fsrv/c.db'"), Some(r"E'\x2fsrv/c.db'"));
         assert_eq!(
             attach_literal("/* x */ attach database if not exists 'it''s.db' (READ_ONLY)"),
             Some("'it''s.db'")
         );
-        assert_eq!(attach_literal("ATTACH OR REPLACE U&'d\\0061ta.db' AS d"), Some("U&'d\\0061ta.db'"));
-        assert_eq!(attach_literal("ATTACH '/srv/'\n-- more\n'a.db' AS a"), Some("'/srv/'\n-- more\n'a.db'"));
+        assert_eq!(
+            attach_literal("ATTACH OR REPLACE U&'d\\0061ta.db' AS d"),
+            Some("U&'d\\0061ta.db'")
+        );
+        assert_eq!(
+            attach_literal("ATTACH '/srv/'\n-- more\n'a.db' AS a"),
+            Some("'/srv/'\n-- more\n'a.db'")
+        );
         assert_eq!(attach_literal("SELECT 'ATTACH x'"), None);
         assert_eq!(attach_literal("DETACH s"), None);
     }
@@ -584,9 +624,15 @@ mod tests {
         assert_eq!(expand_path("~/a.db", home), PathBuf::from("/home/ana/a.db"));
         assert_eq!(expand_path("~a.db", home), PathBuf::from("/home/anaa.db"));
         assert_eq!(expand_path("file:///srv/a.db", home), PathBuf::from("/srv/a.db"));
-        assert_eq!(expand_path("file://localhost/srv/a.db", home), PathBuf::from("/srv/a.db"));
+        assert_eq!(
+            expand_path("file://localhost/srv/a.db", home),
+            PathBuf::from("/srv/a.db")
+        );
         assert_eq!(expand_path("file:/srv/a.db", home), PathBuf::from("/srv/a.db"));
-        assert_eq!(expand_path("file://host/srv/a.db", home), PathBuf::from("file://host/srv/a.db"));
+        assert_eq!(
+            expand_path("file://host/srv/a.db", home),
+            PathBuf::from("file://host/srv/a.db")
+        );
         assert_eq!(expand_path("rel/a.db", home), PathBuf::from("rel/a.db"));
     }
 
@@ -612,7 +658,10 @@ mod tests {
 
         assert_eq!(command_result("EXECUTE q", &count), None);
         assert_eq!(command_result("CALL counted()", &count), None);
-        assert_eq!(command_result("INSERT INTO t VALUES (1)", &count), Some(Command::ChangedRows));
+        assert_eq!(
+            command_result("INSERT INTO t VALUES (1)", &count),
+            Some(Command::ChangedRows)
+        );
     }
 
     #[test]

@@ -235,3 +235,50 @@ async fn a_column_a_check_shares_is_not_dropped() {
     assert!(alone.is_ok(), "{alone:?}");
     connection.close().await.unwrap();
 }
+
+/// DuckDB drops a column's collation with its old type unless the change
+/// names it again, so a new type keeps the collation the column had.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_new_type_keeps_the_columns_collation() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &["CREATE TABLE t (code VARCHAR COLLATE nocase.noaccent, n INTEGER)"],
+    )
+    .await
+    .unwrap();
+    let dialect = connection.dialect();
+    let ddl = dialect.ddl().unwrap();
+    let original = definition(connection.as_ref(), "t").await;
+    let mut retyped = TableDraft::from_definition(&original);
+    retyped.columns[0].column_type = DraftType::Typed("TEXT".to_owned());
+
+    let plan = ddl
+        .plan_alter_table(&original, &diff_table(&original, &retyped))
+        .unwrap();
+    connection
+        .write_batch(&plan.into_write_batch(TableRef::unqualified("t")), call())
+        .await
+        .unwrap();
+    let stored = query(
+        connection.as_ref(),
+        "SELECT sql FROM duckdb_tables() WHERE table_name = 't'",
+    )
+    .await;
+
+    assert_eq!(
+        original.columns[0]
+            .attributes
+            .collation
+            .as_ref()
+            .map(|collation| collation.name.as_str()),
+        Some("nocase.noaccent")
+    );
+    assert!(
+        matches!(&stored.rows[0][0], Value::Text(sql) if sql.contains("code VARCHAR COLLATE nocase.noaccent")),
+        "{:?}",
+        stored.rows
+    );
+    connection.close().await.unwrap();
+}

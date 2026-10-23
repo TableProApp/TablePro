@@ -220,7 +220,9 @@ async fn a_change_after_a_with_clause_reports_its_count() {
     .await;
 
     assert!(
-        inserted.events().contains(&ResultEvent::CommandCompleted { rows_affected: Some(4) }),
+        inserted
+            .events()
+            .contains(&ResultEvent::CommandCompleted { rows_affected: Some(4) }),
         "{:?}",
         inserted.events()
     );
