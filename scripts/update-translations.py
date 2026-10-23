@@ -15,9 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "apps/linux/po/bookie.pot"
 POTFILES = ROOT / "apps/linux/po/POTFILES.in"
 TRANSLATION_MACRO = re.compile(
-    r"(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*::)*tr!(?=\s*(?:\(|\{|\[))"
+    r"(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*::)*trn?!(?=\s*(?:\(|\{|\[))"
 )
-TRANSLATION_CALL = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*::)*tr!\s*\(\s*")
+TRANSLATION_CALL = re.compile(r"(?<![A-Za-z0-9_])(?:[A-Za-z_][A-Za-z0-9_]*::)*(trn?)!\s*\(\s*")
+PLURAL_SEPARATOR = re.compile(r"\s*,\s*")
 RUST_STRING = re.compile(r'"(?:\\.|[^"\\])*"', re.DOTALL)
 CATALOG_DATE = re.compile(r'(?m)^"POT-Creation-Date: [^"\n]*\\n"$')
 
@@ -31,17 +32,28 @@ def translation_sources(root=ROOT):
     )
 
 
+def rust_message(rust_string):
+    rust_string = re.sub(r"\\\n[ \t]*", "", rust_string)
+    rust_string = re.sub(r"\\u\{([0-9a-fA-F]{1,6})\}", lambda item: f"\\U{int(item.group(1), 16):08x}", rust_string)
+    return ast.literal_eval(rust_string)
+
+
 def extraction_source(source):
     lines = [[] for _ in source.splitlines()]
     for match in TRANSLATION_CALL.finditer(source):
         literal = RUST_STRING.match(source, match.end())
         if literal is None:
             raise RuntimeError("translation calls must start with a string literal")
-        rust_string = re.sub(r"\\\n[ \t]*", "", literal.group())
-        rust_string = re.sub(r"\\u\{([0-9a-fA-F]{1,6})\}", lambda item: f"\\U{int(item.group(1), 16):08x}", rust_string)
-        message = ast.literal_eval(rust_string)
+        messages = [rust_message(literal.group())]
+        if match.group(1) == "trn":
+            separator = PLURAL_SEPARATOR.match(source, literal.end())
+            plural = RUST_STRING.match(source, separator.end()) if separator else None
+            if plural is None:
+                raise RuntimeError("plural translation calls must start with two string literals")
+            messages.append(rust_message(plural.group()))
         line = source.count("\n", 0, literal.start())
-        lines[line].append(f"tr({json.dumps(message, ensure_ascii=False)})")
+        arguments = ", ".join(json.dumps(message, ensure_ascii=False) for message in messages)
+        lines[line].append(f"{match.group(1)}({arguments})")
     return "\n".join("; ".join(items) for items in lines) + "\n"
 
 
@@ -77,6 +89,7 @@ def generate_catalog(root=ROOT):
                 "xgettext",
                 "--language=Python",
                 "--keyword=tr",
+                "--keyword=trn:1,2",
                 "--from-code=UTF-8",
                 "--no-wrap",
                 "--package-name=BookiE",

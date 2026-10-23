@@ -940,7 +940,7 @@ impl HistoryDialog {
             return;
         }
         self.selection_label
-            .set_label(&crate::tr!("{n} selected").replace("{n}", &n.to_string()));
+            .set_label(&crate::trn!("{n} selected", "{n} selected", n).replace("{n}", &n.to_string()));
         self.selection_bar.set_reveal_child(true);
     }
 

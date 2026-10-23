@@ -287,11 +287,8 @@ impl BrowseTab {
     pub(super) fn refresh_pending_bar(&self, count: usize) {
         let visible = count > 0;
         if visible {
-            let label = if count == 1 {
-                crate::tr!("1 unsaved change")
-            } else {
-                crate::tr!("{n} unsaved changes").replace("{n}", &count.to_string())
-            };
+            let label =
+                crate::trn!("{n} unsaved change", "{n} unsaved changes", count).replace("{n}", &count.to_string());
             self.pending_label.set_label(&label);
         }
         // Slide the whole footer in/out as one unit instead of
@@ -404,7 +401,12 @@ impl BrowseTab {
             self.filter_badge.set_label(&n.to_string());
             self.filter_badge.set_visible(true);
             self.filter_button.set_tooltip_text(Some(
-                &crate::tr!("{n} filter rule(s) active — click to edit").replace("{n}", &n.to_string()),
+                &crate::trn!(
+                    "{n} filter rule active — click to edit",
+                    "{n} filter rules active — click to edit",
+                    n
+                )
+                .replace("{n}", &n.to_string()),
             ));
         }
     }

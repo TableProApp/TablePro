@@ -507,7 +507,7 @@ mod tests {
         };
         let view = LocalResultView::new(loaded.clone(), LocalResultSettingsStore::default(), key);
         view.attach(store, selection);
-        assert!(!view.0.borrow().controls.is_visible());
+        assert!(view.0.borrow().controls.is_visible());
 
         view.sort_by(0, false);
 

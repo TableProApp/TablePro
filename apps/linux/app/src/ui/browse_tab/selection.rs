@@ -174,9 +174,13 @@ pub(super) fn update_selection_chrome(
     }
     let count = n.to_string();
     let template = if deletable {
-        crate::tr!("{n} selected · press Delete to remove")
+        crate::trn!(
+            "{n} selected · press Delete to remove",
+            "{n} selected · press Delete to remove",
+            n
+        )
     } else {
-        crate::tr!("{n} selected")
+        crate::trn!("{n} selected", "{n} selected", n)
     };
     let selected_label = template.replace("{n}", &count);
     count_label.set_label(&selected_label);

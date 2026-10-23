@@ -1,5 +1,6 @@
 use relm4::gtk::prelude::*;
 use relm4::{ComponentController, Controller, gtk};
+use tablepro_core::Value;
 use uuid::Uuid;
 
 use super::save_in_flight_tests::{column, launch_with_read_only, load_two_rows, pump};
@@ -128,4 +129,15 @@ fn paginator_controls_have_accessible_names() {
         dropdown,
         gtk::AccessibleRelation::LabelledBy
     ));
+}
+
+#[test]
+#[ignore = "requires isolated GTK display"]
+fn an_edit_for_a_saved_row_does_not_land_on_a_draft_inserted_at_its_position() {
+    let (controller, outputs) = launch_tab(false);
+    load_two_rows(&controller, &outputs);
+    assert!(controller.model().row_position_still_holds(0, &[Value::Int(1)]));
+    controller.sender().send(BrowseTabInput::InsertRow).unwrap();
+    pump(&outputs);
+    assert!(!controller.model().row_position_still_holds(0, &[Value::Int(1)]));
 }

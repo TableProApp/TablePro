@@ -229,7 +229,7 @@ impl BrowseTab {
             // window. The inner_stack is always parented to
             // the BrowseTab's root toolbar, so it resolves
             // correctly while the tab is visible.
-            let title = crate::tr!("Delete {n} rows?").replace("{n}", &count.to_string());
+            let title = crate::trn!("Delete {n} row?", "Delete {n} rows?", count).replace("{n}", &count.to_string());
             let body = crate::tr!("These rows will be marked for deletion. They aren't removed until you click Save.");
             let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
             dialog.add_response("cancel", &crate::tr!("Cancel"));
@@ -422,9 +422,6 @@ impl BrowseTab {
         let Some(row_obj) = self.row_object_at(row_position) else {
             return false;
         };
-        if row_obj.draft_id().is_some() {
-            return true;
-        }
         row_key_matches(&self.current_columns, &row_obj, expected_key)
     }
 

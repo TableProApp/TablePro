@@ -50,6 +50,12 @@ let value = 3;
         self.assertEqual(TRANSLATIONS.extraction_source(source), 'tr("Hello world…")\n\n\n')
         self.assertEqual(TRANSLATIONS.extraction_source('crate::tr!(\n    "Next line");\n'), '\ntr("Next line")\n')
 
+    def test_extracts_both_forms_of_a_plural_call(self):
+        source = 'crate::trn!("{n} row", "{n} rows", count)\n'
+        self.assertEqual(TRANSLATIONS.extraction_source(source), 'trn("{n} row", "{n} rows")\n')
+        with self.assertRaisesRegex(RuntimeError, "two string literals"):
+            TRANSLATIONS.extraction_source('crate::trn!("{n} row", plural, count)')
+
     def test_normalizes_only_catalog_creation_timestamp(self):
         pot = '"POT-Creation-Date: 2026-10-19 10:20+0200\\n"\nmsgid "A"\n'
         normalized = TRANSLATIONS.normalize_catalog(pot)
