@@ -92,7 +92,7 @@ def x11_resize_window(width, height):
         for index in range(count.value):
             attrs = XWindowAttributes()
             x11.XGetWindowAttributes(display, children[index], ctypes.byref(attrs))
-            if attrs.map_state == 2 and attrs.width >= 800 and attrs.height >= 600:
+            if attrs.map_state == 2 and not attrs.override_redirect and attrs.width >= 800 and attrs.height >= 600:
                 window = children[index]
         if children:
             x11.XFree(children)
@@ -133,7 +133,7 @@ def x11_click(window_x, window_y, button=3, clicks=1):
         for index in range(count.value):
             attrs = XWindowAttributes()
             x11.XGetWindowAttributes(display, children[index], ctypes.byref(attrs))
-            if attrs.map_state == 2 and attrs.width >= 800 and attrs.height >= 600:
+            if attrs.map_state == 2 and not attrs.override_redirect and attrs.width >= 800 and attrs.height >= 600:
                 origin = (attrs.x, attrs.y)
         if children:
             x11.XFree(children)

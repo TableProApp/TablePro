@@ -1,0 +1,20 @@
+{
+  "before": {
+    "failed": 2,
+    "tests": 7,
+    "resize_window": "popup",
+    "pointer_root": [
+      410,
+      339
+    ]
+  },
+  "after": {
+    "passed": 7,
+    "resize_window": "application",
+    "pointer_root": [
+      110,
+      89
+    ]
+  },
+  "scope": "X11 test-harness targeting; application unchanged"
+}

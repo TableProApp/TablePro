@@ -1,0 +1,16 @@
+{
+  "scenario": "grid_pointer_menu_uses_the_clicked_result_cell",
+  "passed": true,
+  "retries": 0,
+  "seconds": 4.013,
+  "display": "private Xvfb and D-Bus",
+  "binary_sha256": "756750092b52f820e4b3ec19cef2d3621aad627a869afacf2cf551d95213bc46",
+  "provenance": "existing optimized compact-preview candidate; not rebuilt from this branch",
+  "scope": "compatibility of updated test helper with installed app; not full current-head application qualification",
+  "resize_scenario": {
+    "name": "tables_sidebar_button_hides_the_docked_sidebar_and_opens_the_overlay",
+    "passed": true,
+    "seconds": 5.613,
+    "retries": 0
+  }
+}
