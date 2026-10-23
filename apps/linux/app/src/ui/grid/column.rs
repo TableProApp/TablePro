@@ -85,7 +85,6 @@ pub(super) fn build_column(
     tab_ctx: TabGridContext,
     sort_enabled: bool,
     default_min_width: Option<i32>,
-    column_view: gtk4::ColumnView,
     grid_menus: Option<GridMenus>,
     column_widths: Option<crate::services::column_widths::ColumnWidthStore>,
 ) -> gtk4::ColumnViewColumn {
@@ -97,12 +96,8 @@ pub(super) fn build_column(
     let column_data_type = info.data_type.clone();
     let choices_for_setup = tab_ctx.choices.clone();
     let column_name = info.name.clone();
-    let column_view_for_setup = column_view.downgrade();
     let grid_menus_for_setup = grid_menus.clone();
     factory.connect_setup(move |_, item| {
-        let Some(column_view_for_setup) = column_view_for_setup.upgrade() else {
-            return;
-        };
         let Some(item) = item.downcast_ref::<gtk4::ListItem>() else {
             return;
         };
@@ -113,7 +108,6 @@ pub(super) fn build_column(
                     idx,
                     column_name.clone(),
                     edit_sender,
-                    &column_view_for_setup,
                     grid_menus_for_setup.as_ref(),
                 );
             } else {
@@ -126,7 +120,6 @@ pub(super) fn build_column(
                     edit_sender,
                     editor_kind,
                     choices_for_setup.clone(),
-                    &column_view_for_setup,
                     grid_menus_for_setup.as_ref(),
                 );
             }
@@ -136,7 +129,6 @@ pub(super) fn build_column(
                 idx,
                 column_name.clone(),
                 readonly_sender.clone(),
-                &column_view_for_setup,
                 grid_menus_for_setup.as_ref(),
             );
         }

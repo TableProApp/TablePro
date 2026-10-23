@@ -300,6 +300,31 @@ def scenarios(ui):
             if expected == "keyboard-first":
                 ui.press_x11_key("Down")
 
+    def grid_pointer_menu_uses_the_clicked_result_cell(_database, _base):
+        ui.run_sql("SELECT 'pointer-first' AS payload UNION ALL SELECT 'pointer-second'")
+        wait_for_result_column("payload")
+        ui.press_x11_key("j", ("Control_L", "Shift_L"))
+        search = ui.wait_for_node(name="Search columns")
+        search.queryEditableText().setTextContents("payload")
+        ui.press_x11_key("Return")
+        ui.wait_for_node(name="Search columns", present=False)
+        wait_for_focused_grid_row(ui, pyatspi, "pointer-first")
+        open_cell_menu("pointer-second")
+        choose_menu_item(4)
+        wait_for_adw_dialog("payload")
+        deadline = time.monotonic() + ui.WAIT_SECONDS
+        while time.monotonic() < deadline:
+            if any(
+                ui.node_role(node) == pyatspi.ROLE_TEXT and "pointer-second" in text_of(node)
+                for node in ui.descendants(ui.application_node())
+            ):
+                break
+            time.sleep(ui.POLL_SECONDS)
+        else:
+            raise AssertionError("the pointer menu opened a different cell value")
+        ui.press_x11_key("Escape")
+        wait_for_adw_dialog("payload", present=False)
+
     def click_cell(cell_text, count=1):
         cell = ui.wait_for_node(name=cell_text, role=pyatspi.ROLE_LABEL)
         extents = cell.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
@@ -1956,6 +1981,7 @@ GLib.MainLoop().run()
     result = [
         sqlite_grid_context_menu_columns_action_is_reachable_via_atspi,
         grid_keyboard_menu_uses_the_current_focused_result_cell,
+        grid_pointer_menu_uses_the_clicked_result_cell,
         editing_a_saved_connection_prefills_it_and_saves_the_new_name,
         workspace_connection_removal_confirms_once_and_preserves_the_database,
         welcome_connection_removal_confirms_once_and_preserves_the_database,

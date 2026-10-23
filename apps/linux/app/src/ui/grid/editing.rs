@@ -4,7 +4,7 @@ use gtk4::{self as gtk, glib};
 use sourceview5::prelude::*;
 
 use super::GridMsg;
-use super::context_menu::{GridMenus, attach_cell_gesture};
+use super::context_menu::{GridMenus, set_cell_menu_options};
 use super::display::{
     COLUMN_SLOT, EditSnapshot, FULL_EDIT_TEXT_SLOT, IS_NULL_SLOT, POPOVER_SLOT, POSITION_SLOT, PREEDIT_SLOT,
     ROW_KEY_SLOT, SNAPSHOT_SLOT, SUPPRESS_SLOT,
@@ -35,7 +35,6 @@ pub(super) fn setup_editable_cell(
     sender: relm4::Sender<GridMsg>,
     editor_kind: CellEditorKind,
     choices: super::ChoiceMap,
-    column_view: &gtk::ColumnView,
     menus: Option<&GridMenus>,
 ) {
     let label = CellEditor::new();
@@ -53,10 +52,9 @@ pub(super) fn setup_editable_cell(
     });
     label.add_controller(remember_click);
 
-    if let Some(menus) = menus {
-        attach_cell_gesture(
+    if menus.is_some() {
+        set_cell_menu_options(
             label.upcast_ref(),
-            column_view,
             super::context_menu::CellGestureOptions {
                 idx,
                 column_name: column_name.clone(),
@@ -64,7 +62,6 @@ pub(super) fn setup_editable_cell(
                 is_text_editable: true,
                 supports_full_value,
             },
-            menus,
         );
     }
     install_edit_commit_handler(&label, idx, sender.clone());
@@ -76,7 +73,6 @@ pub(super) fn setup_bool_cell(
     idx: usize,
     column_name: String,
     sender: relm4::Sender<GridMsg>,
-    column_view: &gtk::ColumnView,
     menus: Option<&GridMenus>,
 ) {
     let checkbox = gtk::CheckButton::builder()
@@ -88,10 +84,9 @@ pub(super) fn setup_bool_cell(
     COLUMN_SLOT.set(&checkbox, idx);
     item.set_child(Some(&checkbox));
 
-    if let Some(menus) = menus {
-        attach_cell_gesture(
+    if menus.is_some() {
+        set_cell_menu_options(
             checkbox.upcast_ref(),
-            column_view,
             super::context_menu::CellGestureOptions {
                 idx,
                 column_name,
@@ -99,7 +94,6 @@ pub(super) fn setup_bool_cell(
                 is_text_editable: false,
                 supports_full_value: false,
             },
-            menus,
         );
     }
     checkbox.connect_toggled(move |cb| {
@@ -125,7 +119,6 @@ pub(super) fn setup_readonly_cell(
     idx: usize,
     column_name: String,
     _sender: Option<relm4::Sender<GridMsg>>,
-    column_view: &gtk::ColumnView,
     menus: Option<&GridMenus>,
 ) {
     let label = gtk::Label::builder()
@@ -139,10 +132,9 @@ pub(super) fn setup_readonly_cell(
     COLUMN_SLOT.set(&label, idx);
     label.connect_map(sync_readonly_cell_focus);
     item.set_child(Some(&label));
-    if let Some(menus) = menus {
-        attach_cell_gesture(
+    if menus.is_some() {
+        set_cell_menu_options(
             label.upcast_ref(),
-            column_view,
             super::context_menu::CellGestureOptions {
                 idx,
                 column_name,
@@ -150,7 +142,6 @@ pub(super) fn setup_readonly_cell(
                 is_text_editable: false,
                 supports_full_value: false,
             },
-            menus,
         );
     }
 }

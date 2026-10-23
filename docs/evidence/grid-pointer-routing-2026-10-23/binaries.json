@@ -1,0 +1,35 @@
+{
+  "source_base": "9f749bb7c34d91458a9272a75127cde90bfee13e",
+  "profile": "dev",
+  "binaries": {
+    "before": {
+      "sha256": "333bc0115c73d2c1fd2ea8aaedbd527d6ad0f7b4ec2e3aa8cb81a6b3f8609e1d"
+    },
+    "after": {
+      "sha256": "a77f4d2c02d6d628c9c1190094e00e8d0f9bb0f5ce0554cf1a81bb8285fafd3b"
+    }
+  },
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "production_source_sha256": {
+    "before": {
+      "apps/linux/app/src/ui/grid/column.rs": "ce021bc20bfede9de67d0838344a12de872bee7faa12b4b6f2acd8b6fc4c9a8b",
+      "apps/linux/app/src/ui/grid/context_menu.rs": "aff62eaf0eaffdc8580d74738b8e235f250ddd9346d11a44ef6e0952ded5d34c",
+      "apps/linux/app/src/ui/grid/editing.rs": "ddb6e90d8987242767c536a5962afd597ec93ff48acfd7206a1a9cfc56cda00d",
+      "apps/linux/app/src/ui/grid/mod.rs": "19ee70227a42305350eedbddbcfbaec24b438a780957d6880c61a509c06bb067",
+      "apps/linux/app/src/ui/grid/context_menu/pointer_menu.rs": null
+    },
+    "after": {
+      "apps/linux/app/src/ui/grid/column.rs": "c7bba13349b38d8dccf010542542b1937224483243e47e6128a7e2bb736a81ea",
+      "apps/linux/app/src/ui/grid/context_menu.rs": "e421239e11da573501219a0cbc463bf8cee539addc6a4b82058fb26c6b91ea61",
+      "apps/linux/app/src/ui/grid/editing.rs": "89d8e3ba7539927b06c935be6f49642bb8ce20cab8acd303aa12bedb6a3b3943",
+      "apps/linux/app/src/ui/grid/mod.rs": "1118ffd8eb09a240aae39d69536010d5df9a38b8a9222248d89a652112fb30b6",
+      "apps/linux/app/src/ui/grid/context_menu/pointer_menu.rs": "8836204648d2e830455a61912054efd47da66b9995d9ac21e31e23ceec98960b"
+    }
+  },
+  "tracked_diff_sha256": "0db5ee5bd532f2e46c17324aa072b490db58374ede984b0ff9e4be1b2395a3f4"
+}

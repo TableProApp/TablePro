@@ -1,4 +1,5 @@
 mod keyboard_menu;
+mod pointer_menu;
 
 use std::rc::Rc;
 use tablepro_core::sql_literal::RowStatement;
@@ -457,21 +458,6 @@ pub(super) fn install_grid_context_menus(
         readonly_for_destroy.unparent();
         empty_for_destroy.unparent();
     });
-    let view = column_view.downgrade();
-    let gesture = gtk::GestureClick::builder().button(3).build();
-    gesture.connect_pressed(move |gesture, _, x, y| {
-        let Some(view) = view.upgrade() else { return };
-        let widget: gtk::Widget = view.clone().upcast();
-        if let Some(picked) = view.pick(x, y, gtk::PickFlags::DEFAULT)
-            && picked != widget
-        {
-            return;
-        }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        empty_popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-        empty_popover.popup();
-    });
-    column_view.add_controller(gesture);
     let menus = GridMenus {
         context,
         cell_menu_trigger: crate::ui::shortcut::parse(CELL_MENU_TRIGGER),
@@ -484,6 +470,7 @@ pub(super) fn install_grid_context_menus(
         foreign_key_columns: Rc::new(options.foreign_key_columns),
     };
     keyboard_menu::install(column_view, &menus);
+    pointer_menu::install(column_view, &menus, empty_popover);
     menus
 }
 
@@ -713,39 +700,8 @@ fn prepare_cell_menu(
     }
 }
 
-pub(super) fn attach_cell_gesture(
-    widget: &gtk::Widget,
-    column_view: &gtk::ColumnView,
-    options: CellGestureOptions,
-    menus: &GridMenus,
-) {
+pub(super) fn set_cell_menu_options(widget: &gtk::Widget, options: CellGestureOptions) {
     super::display::CELL_MENU_OPTIONS_SLOT.set(widget, options);
-    let gesture_widget = widget.downgrade();
-    let view = column_view.downgrade();
-    let menus = menus.clone();
-    let gesture = gtk::GestureClick::builder()
-        .button(3)
-        .propagation_phase(gtk::PropagationPhase::Capture)
-        .build();
-    gesture.connect_pressed(move |gesture, _, x, y| {
-        let (Some(view), Some(widget)) = (view.upgrade(), gesture_widget.upgrade()) else {
-            return;
-        };
-        let Some(popover) = super::display::CELL_MENU_OPTIONS_SLOT
-            .with(&widget, |options| prepare_cell_menu(&menus, &view, &widget, options))
-        else {
-            return;
-        };
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        let local = gtk::graphene::Point::new(x as f32, y as f32);
-        let (x, y) = widget
-            .compute_point(&view, &local)
-            .map(|point| (point.x() as i32, point.y() as i32))
-            .unwrap_or((x as i32, y as i32));
-        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
-        popover.popup();
-    });
-    widget.add_controller(gesture);
 }
 
 fn edit_enabled_for(widget: &gtk::Widget, fallback: bool) -> bool {

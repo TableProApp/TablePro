@@ -21,6 +21,7 @@
 
 ### Changed
 
+- Large result grids share keyboard and pointer menu handling to reduce per-cell allocations.
 - Large result grids share keyboard menu handling to reduce per-cell allocations.
 
 - Editing a cell or pasting in a table tab no longer rebuilds every loaded row on the page, so large pages with long text values stay responsive.

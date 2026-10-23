@@ -132,6 +132,7 @@ fn the_cell_menu_opens_with_the_menu_key_and_shift_f10() {
     assert!(text.contains("<Shift>F10"), "{text}");
     keyboard_reference_state_follows_current_cell();
     keyboard_menus_preserve_editing_and_checkbox_targets();
+    pointer_menu_uses_target_and_current_row();
 }
 
 fn keyboard_reference_state_follows_current_cell() {
@@ -141,6 +142,13 @@ fn keyboard_reference_state_follows_current_cell() {
         .and_downcast::<gtk::ColumnView>()
         .unwrap();
     assert!(menu_shortcuts(label.upcast_ref()).is_empty());
+    let controllers = label.observe_controllers();
+    assert!(!(0..controllers.n_items()).any(|index| {
+        controllers
+            .item(index)
+            .and_downcast::<gtk::GestureClick>()
+            .is_some_and(|gesture| gesture.button() == gtk::gdk::BUTTON_SECONDARY)
+    }));
     let shortcuts = menu_shortcuts(view.upcast_ref());
     assert_eq!(shortcuts.len(), 1);
     let action = shortcuts[0].action().unwrap();
@@ -195,7 +203,7 @@ fn keyboard_menu_fixture() -> (gtk::Window, gtk::Label, GridMenus, LocalResultVi
         },
     );
     let cells = Rc::new(std::cell::RefCell::new(Vec::new()));
-    let factory = keyboard_menu_factory(&view, &menus, cells.clone());
+    let factory = keyboard_menu_factory(&menus, cells.clone());
     view.append_column(&gtk::ColumnViewColumn::new(None, Some(factory)));
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.append(&view);
@@ -223,23 +231,14 @@ fn keyboard_menu_fixture() -> (gtk::Window, gtk::Label, GridMenus, LocalResultVi
 }
 
 fn keyboard_menu_factory(
-    view: &gtk::ColumnView,
     menus: &GridMenus,
     cells: Rc<std::cell::RefCell<Vec<gtk::Label>>>,
 ) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
-    let view = view.downgrade();
     let menus = menus.clone();
     factory.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-        super::super::editing::setup_readonly_cell(
-            item,
-            0,
-            "linked".into(),
-            None,
-            &view.upgrade().unwrap(),
-            Some(&menus),
-        );
+        super::super::editing::setup_readonly_cell(item, 0, "linked".into(), None, Some(&menus));
         cells
             .borrow_mut()
             .push(item.child().and_downcast::<gtk::Label>().unwrap());
@@ -311,8 +310,8 @@ fn keyboard_menus_preserve_editing_and_checkbox_targets() {
     super::super::display::COLUMN_SLOT.set(&editor, 1);
     let checkbox = gtk::CheckButton::new();
     super::super::display::COLUMN_SLOT.set(&checkbox, 2);
-    append_menu_widget(&view, &menus, editor.clone().upcast());
-    append_menu_widget(&view, &menus, checkbox.clone().upcast());
+    append_menu_widget(&view, editor.clone().upcast());
+    append_menu_widget(&view, checkbox.clone().upcast());
     for _ in 0..200 {
         while glib::MainContext::default().iteration(false) {}
         if editor.is_mapped() && checkbox.is_mapped() {
@@ -333,8 +332,36 @@ fn keyboard_menus_preserve_editing_and_checkbox_targets() {
     );
     assert!(menus.edit_action.is_enabled());
     menus.editable_popover.popdown();
+    for _ in 0..20 {
+        while glib::MainContext::default().iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     editor.start_editing();
     assert!(editor.is_editing());
+    for _ in 0..20 {
+        while glib::MainContext::default().iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(editor.is_editing());
+    let bounds = editor.compute_bounds(&view).unwrap();
+    let picked = view
+        .pick(
+            f64::from(bounds.x() + bounds.width() / 2.0),
+            f64::from(bounds.y() + bounds.height() / 2.0),
+            gtk::PickFlags::DEFAULT,
+        )
+        .unwrap();
+    assert!(picked == editor || picked.is_ancestor(&editor));
+    assert!(
+        pointer_menu::popover_at(
+            &view,
+            &menus,
+            &menus.readonly_popover,
+            f64::from(bounds.x() + bounds.width() / 2.0),
+            f64::from(bounds.y() + bounds.height() / 2.0),
+        )
+        .is_none()
+    );
     assert!(!action.activate(gtk::ShortcutActionFlags::empty(), &view, None));
     editor.stop_editing(false);
     assert!(checkbox.grab_focus());
@@ -348,17 +375,14 @@ fn keyboard_menus_preserve_editing_and_checkbox_targets() {
     window.close();
 }
 
-fn append_menu_widget(view: &gtk::ColumnView, menus: &GridMenus, widget: gtk::Widget) {
+fn append_menu_widget(view: &gtk::ColumnView, widget: gtk::Widget) {
     let factory = gtk::SignalListItemFactory::new();
-    let weak_view = view.downgrade();
-    let menus = menus.clone();
     factory.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
         let idx = super::super::display::COLUMN_SLOT.get(&widget).unwrap();
         POSITION_SLOT.set(&widget, 0);
-        attach_cell_gesture(
+        set_cell_menu_options(
             &widget,
-            &weak_view.upgrade().unwrap(),
             CellGestureOptions {
                 idx,
                 column_name: format!("c{idx}"),
@@ -366,9 +390,35 @@ fn append_menu_widget(view: &gtk::ColumnView, menus: &GridMenus, widget: gtk::Wi
                 is_text_editable: widget.is::<crate::ui::cell_editor::CellEditor>(),
                 supports_full_value: false,
             },
-            &menus,
         );
         item.set_child(Some(&widget));
     });
     view.append_column(&gtk::ColumnViewColumn::new(Some("Fixture"), Some(factory)));
+}
+
+fn pointer_menu_uses_target_and_current_row() {
+    let (window, label, menus, _) = keyboard_menu_fixture();
+    let view = label
+        .ancestor(gtk::ColumnView::static_type())
+        .and_downcast::<gtk::ColumnView>()
+        .unwrap();
+    let outside = window.child().unwrap().last_child().unwrap();
+    assert!(outside.grab_focus());
+    let bounds = label.compute_bounds(&view).unwrap();
+    let x = f64::from(bounds.x() + bounds.width() / 2.0);
+    let y = f64::from(bounds.y() + bounds.height() / 2.0);
+    let empty = gtk::PopoverMenu::from_model(None::<&gio::Menu>);
+    let popover = pointer_menu::popover_at(&view, &menus, &empty, x, y).unwrap();
+    assert_eq!(popover, menus.readonly_popover);
+    assert_eq!(
+        menus.context.snapshot().unwrap().widget,
+        label.clone().upcast::<gtk::Widget>()
+    );
+    assert!(menus.reference_action.is_enabled());
+    POSITION_SLOT.set(&label, 1);
+    assert!(pointer_menu::popover_at(&view, &menus, &empty, x, y).is_some());
+    assert!(!menus.reference_action.is_enabled());
+    assert!(pointer_menu::popover_at(&view, &menus, &empty, -10.0, -10.0).is_none());
+    assert!(label.is_selectable());
+    window.close();
 }

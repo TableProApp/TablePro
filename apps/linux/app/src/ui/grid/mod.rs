@@ -234,7 +234,6 @@ pub fn build_column_view(
             tab_ctx.clone(),
             sort_sender.is_some() || (tab_ctx.local_result_sort && tab_ctx.sortable_result_columns.contains(&i)),
             default_min_width,
-            column_view.clone(),
             grid_menus.clone(),
             column_widths.clone(),
         );
