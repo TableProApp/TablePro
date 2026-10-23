@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
@@ -232,6 +232,14 @@ impl Connection for RedisConnection {
         _table: &TableRef,
         _options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        no_tables()
+    }
+
+    async fn fetch_outbound_foreign_keys(
+        &self,
+        _table: &TableRef,
+        _options: CallOptions,
+    ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         no_tables()
     }
 
