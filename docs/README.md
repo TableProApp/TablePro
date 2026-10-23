@@ -190,5 +190,5 @@ Record a rule once in an ADR and a task once on Project #3. Do not copy old test
 
 - [Keyboard menu routing acceptance, October 23](evidence/grid-keyboard-routing-acceptance-2026-10-23/README.md): exact-head Forgejo run 926 and post-merge source comparison for #1519.
 
-- [Shared grid pointer routing, October 23](evidence/grid-pointer-routing-2026-10-23/README.md): controlled allocation measurements and local interaction checks; acceptance remains pending.
+- [Shared grid pointer routing, October 23](evidence/grid-pointer-routing-2026-10-23/README.md): controlled allocation measurements and local interaction checks, with [gate acceptance](evidence/grid-pointer-routing-acceptance-2026-10-23/README.md).
 - [Optimized PostgreSQL streaming investigation, October 23](evidence/postgres-optimized-stream-2026-10-23/README.md): two explicit timeout observations, bounded retained rows, sampled RSS and a limited psql control.
