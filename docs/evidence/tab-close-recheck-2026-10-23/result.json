@@ -16,5 +16,17 @@
   "unverified": [
     "native Wayland freeze",
     "arbitrary long-session tab lifetimes"
-  ]
+  ],
+  "separate_toolbar_check": {
+    "scenario": "narrow_window_keeps_main_and_editor_toolbar_actions_reachable",
+    "duration_seconds": 3.165,
+    "passed": true,
+    "retries": 0,
+    "widths": [
+      928,
+      847,
+      802
+    ],
+    "scope": "existing scenario, same pinned executable; not streaming or larger-text acceptance"
+  }
 }
