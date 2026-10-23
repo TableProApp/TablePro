@@ -2124,32 +2124,63 @@ mod real_keys {
         wait_until(KEY_WAIT, || closes.count() == 1).expect(":q to ask for the close");
     }
 
+    fn completion_list_shown(view: &sourceview5::View) -> bool {
+        let mut child = view.first_child();
+        while let Some(widget) = child {
+            if widget.is::<gtk4::Popover>() && widget.is_visible() {
+                return true;
+            }
+            child = widget.next_sibling();
+        }
+        false
+    }
+
+    /// Each key is waited for, so the list opens in insert mode and not
+    /// while Vim is still taking the keys before it.
     #[gtk4::test]
-    fn escape_from_insert_mode_closes_the_completion_list() {
+    fn leaving_insert_mode_closes_the_completion_list_for_good() {
         use gtk4::gdk::Key;
         let harness = editor_with(answering(), "SELECT 1;\n");
         let (_window, keys) = in_vim(&harness);
         let view = harness.editor.imp().source_view.get();
-        let shown_popup = || {
-            let mut child = view.first_child();
-            while let Some(widget) = child {
-                if widget.is::<gtk4::Popover>() && widget.is_visible() {
-                    return true;
-                }
-                child = widget.next_sibling();
-            }
-            false
-        };
+        let buffer = harness.editor.buffer();
+        let mode = harness.editor.imp().vim_command_bar.get();
 
         shifted(&keys, Key::G);
         press(&keys, Key::o);
+        wait_until(KEY_WAIT, || !mode.label().is_empty() && buffer.line_count() == 3).expect("o to open a line");
         shifted(&keys, Key::S);
         shifted(&keys, Key::E);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT 1;\n\nSE").expect("insert mode to type");
         view.completion().show();
-        wait_until(KEY_WAIT, shown_popup).expect("the completion list");
+        wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the completion list");
 
         press(&keys, Key::Escape);
+        wait_until(KEY_WAIT, || mode.label().is_empty()).expect("Escape to leave insert mode");
+        wait_until(KEY_WAIT, || !completion_list_shown(&view)).expect("the list to close");
 
-        wait_until(KEY_WAIT, || !shown_popup()).expect("Escape to close the list");
+        press(&keys, Key::x);
+        wait_until(KEY_WAIT, || buffer_text(&buffer) == "SELECT 1;\n\nS").expect("x to delete in normal mode");
+        view.completion().show();
+        crate::test_support::drain_main_context();
+        assert!(!completion_list_shown(&view), "the list opened in normal mode");
+    }
+
+    #[gtk4::test]
+    fn completion_comes_back_when_vim_is_turned_off() {
+        let harness = editor_with(answering(), "SE");
+        let (_window, _keys) = in_vim(&harness);
+        let view = harness.editor.imp().source_view.get();
+        let buffer = harness.editor.buffer();
+        buffer.place_cursor(&buffer.end_iter());
+
+        harness
+            .settings
+            .get()
+            .set_vim_keybindings(false)
+            .expect("turn Vim off");
+        view.completion().show();
+
+        wait_until(KEY_WAIT, || completion_list_shown(&view)).expect("the list without Vim");
     }
 }

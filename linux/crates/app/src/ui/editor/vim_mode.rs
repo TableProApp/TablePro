@@ -1,9 +1,11 @@
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
+use sourceview5::prelude::*;
 use tablepro_storage::AppSettings;
 use tablepro_storage::settings::keys;
 
@@ -14,6 +16,8 @@ pub(crate) struct VimMode {
     context: sourceview5::VimIMContext,
     keys: gtk4::EventControllerKey,
     bindings: [glib::Binding; 2],
+    mode: glib::SignalHandlerId,
+    completion_blocked: Rc<Cell<bool>>,
 }
 
 /// GtkSourceView runs `:w` and `:e` itself and leaves these to the
@@ -106,9 +110,8 @@ impl SqlEditor {
         keys.set_name(Some("tablepro-vim"));
         keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
         let filter = context.clone();
-        let popups = view.downgrade();
         let kept = crate::application::editor_kept_keys();
-        keys.connect_key_pressed(move |keys, keyval, _, state| {
+        keys.connect_key_pressed(move |keys, _, _, _| {
             let Some(event) = keys.current_event() else {
                 return glib::Propagation::Proceed;
             };
@@ -118,21 +121,23 @@ impl SqlEditor {
             {
                 return glib::Propagation::Proceed;
             }
-            if !filter.filter_keypress(&event) {
-                return glib::Propagation::Proceed;
+            if filter.filter_keypress(&event) {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
             }
-            // Vim takes Escape before the view, whose own Escape hides
-            // the completion list.
-            if leaves_insert(keyval, state)
-                && let Some(view) = popups.upgrade()
-            {
-                super::editor_actions::close_view_popups(&view);
-            }
-            glib::Propagation::Stop
         });
         // GTK runs a widget's last controller first, so this one runs
         // before the editor's own keys, which it lets through.
         view.add_controller(keys.clone());
+
+        // Completion belongs to insert mode: a list left open in normal
+        // mode would follow motions and edits that are not typing. Vim
+        // turns overwrite off in insert mode only.
+        let completion_blocked = Rc::new(Cell::new(false));
+        follow_insert_mode(&view, &completion_blocked);
+        let blocked = completion_blocked.clone();
+        let mode = view.connect_overwrite_notify(move |view| follow_insert_mode(view, &blocked));
 
         imp.text_pane.set_reveal_bottom_bars(true);
         // Escape is Vim's now; the Stop button still stops a run.
@@ -141,6 +146,8 @@ impl SqlEditor {
             context,
             keys,
             bindings,
+            mode,
+            completion_blocked,
         }));
     }
 
@@ -151,11 +158,15 @@ impl SqlEditor {
         };
         let view = imp.source_view.get();
         view.remove_controller(&vim.keys);
+        view.disconnect(vim.mode);
         for binding in vim.bindings {
             binding.unbind();
         }
         vim.context.reset();
         vim.context.set_client_widget(None::<&gtk4::Widget>);
+        if vim.completion_blocked.get() {
+            view.completion().unblock_interactive();
+        }
         // Normal mode draws a block cursor through overwrite, and the
         // command line hides the cursor.
         view.set_overwrite(false);
@@ -293,9 +304,20 @@ fn named(path: Option<&str>) -> Option<&str> {
     path.map(str::trim).filter(|path| !path.is_empty())
 }
 
-fn leaves_insert(keyval: gdk::Key, state: gdk::ModifierType) -> bool {
-    let control = state.contains(gdk::ModifierType::CONTROL_MASK);
-    keyval == gdk::Key::Escape || (control && matches!(keyval, gdk::Key::bracketleft | gdk::Key::c))
+/// Blocking cancels the list and its pending results too, which only
+/// hiding the list would leave to reopen it.
+fn follow_insert_mode(view: &sourceview5::View, blocked: &Cell<bool>) {
+    let block = view.overwrites();
+    if block == blocked.get() {
+        return;
+    }
+    let completion = view.completion();
+    if block {
+        completion.block_interactive();
+    } else {
+        completion.unblock_interactive();
+    }
+    blocked.set(block);
 }
 
 /// A relative name is next to the tab's file, which may be a remote
@@ -430,15 +452,5 @@ mod tests {
         assert_eq!(named(Some("")), None);
         assert_eq!(named(Some("  ")), None);
         assert_eq!(named(Some(" a.sql ")), Some("a.sql"));
-    }
-
-    #[test]
-    fn escape_and_its_control_twins_leave_insert() {
-        let ctrl = gdk::ModifierType::CONTROL_MASK;
-        assert!(leaves_insert(gdk::Key::Escape, gdk::ModifierType::empty()));
-        assert!(leaves_insert(gdk::Key::bracketleft, ctrl));
-        assert!(leaves_insert(gdk::Key::c, ctrl));
-        assert!(!leaves_insert(gdk::Key::c, gdk::ModifierType::empty()));
-        assert!(!leaves_insert(gdk::Key::bracketleft, gdk::ModifierType::empty()));
     }
 }

@@ -111,7 +111,7 @@ impl SqlEditor {
 
 /// GtkSourceView parents its completion list and other assistants to
 /// the view as popovers, and its Escape hides every visible one.
-pub(super) fn close_view_popups(view: &impl IsA<gtk4::Widget>) -> bool {
+fn close_view_popups(view: &impl IsA<gtk4::Widget>) -> bool {
     let mut closed = false;
     let mut child = view.as_ref().first_child();
     while let Some(widget) = child {

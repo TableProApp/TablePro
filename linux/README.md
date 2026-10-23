@@ -257,7 +257,7 @@ The editor's own Ctrl shortcuts work in every mode: Ctrl+Return runs,
 Ctrl+Shift+Return runs the statement at the cursor, and find, find and
 replace, format, toggle comment, open and save keep their keys. Every
 other key goes to Vim, Escape too, so while Vim is on the **Stop** button
-stops a running query.
+stops a running query. Completion opens in insert mode only.
 
 ## SQL Server with Windows integrated auth
 
