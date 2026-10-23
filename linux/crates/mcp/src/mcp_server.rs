@@ -59,7 +59,7 @@ pub struct McpServer {
     address: SocketAddr,
     token: Arc<RwLock<AccessToken>>,
     cancel: CancellationToken,
-    _accept: AbortOnDropHandle<()>,
+    accept: Option<AbortOnDropHandle<()>>,
 }
 
 impl McpServer {
@@ -99,12 +99,21 @@ impl McpServer {
             address,
             token,
             cancel,
-            _accept: accept,
+            accept: Some(accept),
         })
     }
 
     pub fn address(&self) -> SocketAddr {
         self.address
+    }
+
+    /// Stop, and return once the port is free again, so a restart on the
+    /// same port can bind it.
+    pub async fn shutdown(mut self) {
+        self.cancel.cancel();
+        if let Some(accept) = self.accept.take() {
+            let _ = accept.await;
+        }
     }
 
     /// Clients holding the old token are refused from the next request.

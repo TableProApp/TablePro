@@ -4480,6 +4480,7 @@ dependencies = [
  "tablepro-driver-mysql",
  "tablepro-driver-postgres",
  "tablepro-driver-sqlite",
+ "tablepro-mcp",
  "tablepro-net",
  "tablepro-session",
  "tablepro-ssh",

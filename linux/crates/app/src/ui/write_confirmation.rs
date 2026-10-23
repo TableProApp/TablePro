@@ -2,6 +2,7 @@
 //! connection it runs on, and Cancel as the answer Enter gives.
 
 use gtk4 as gtk;
+use gtk4::glib;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::Value;
@@ -44,6 +45,26 @@ impl WriteConfirmation {
             heading: crate::i18n::ngettext_f("Run This Statement?", "Run These {n} Statements?", count, &args),
             body,
             sql: statements.join("\n\n"),
+            proceed: crate::i18n::gettext("_Run"),
+            destructive,
+        }
+    }
+
+    /// A statement an MCP client sent, asked about whatever the Safe Mode
+    /// level: a client asking is not the user asking.
+    pub(crate) fn external(connection: &str, sql: &str, destructive: bool) -> Self {
+        let args = [("connection", connection)];
+        let body = match destructive {
+            true => crate::i18n::gettext_f(
+                "An MCP client asks to drop or empty a table, or change every row of one, on “{connection}”.",
+                &args,
+            ),
+            false => crate::i18n::gettext_f("An MCP client asks to change the database on “{connection}”.", &args),
+        };
+        Self {
+            heading: crate::i18n::gettext("Run Statement from MCP Client?"),
+            body,
+            sql: sql.to_owned(),
             proceed: crate::i18n::gettext("_Run"),
             destructive,
         }
@@ -153,6 +174,25 @@ pub(crate) async fn confirm(parent: &gtk::Widget, confirmation: &WriteConfirmati
     crate::workspace::respond(&dialog, parent).await == PROCEED
 }
 
+/// As `confirm`, and taken down unanswered once `cancel` fires, for a
+/// question whose asker can go away.
+pub(crate) async fn confirm_until(
+    parent: &gtk::Widget,
+    confirmation: &WriteConfirmation,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> bool {
+    let dialog = build(confirmation);
+    let shown = dialog.clone();
+    let cancelled = cancel.clone();
+    let watching = glib::spawn_future_local(async move {
+        cancelled.cancelled().await;
+        shown.force_close();
+    });
+    let answer = crate::workspace::respond(&dialog, parent).await;
+    watching.abort();
+    answer == PROCEED && !cancel.is_cancelled()
+}
+
 pub(crate) fn build(confirmation: &WriteConfirmation) -> adw::AlertDialog {
     let dialog = adw::AlertDialog::new(Some(&confirmation.heading), Some(&confirmation.body));
     // A table or connection name is never markup.
@@ -226,6 +266,53 @@ mod tests {
             dialog.response_appearance(PROCEED),
             adw::ResponseAppearance::Destructive
         );
+    }
+
+    #[gtk4::test]
+    fn a_client_statement_names_the_client_and_cancel_is_the_default() {
+        adw::init().expect("libadwaita initialises under the test backend");
+
+        let dialog = build(&WriteConfirmation::external("Prod", "DROP TABLE lines", true));
+
+        assert_eq!(dialog.heading().as_deref(), Some("Run Statement from MCP Client?"));
+        assert_eq!(
+            dialog.body(),
+            "An MCP client asks to drop or empty a table, or change every row of one, on “Prod”."
+        );
+        assert_eq!(shown_sql(&dialog), "DROP TABLE lines");
+        assert_eq!(dialog.default_response().as_deref(), Some(CANCEL));
+        assert_eq!(
+            dialog.response_appearance(PROCEED),
+            adw::ResponseAppearance::Destructive
+        );
+    }
+
+    #[gtk4::test]
+    fn a_question_whose_client_went_away_closes_unanswered() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = crate::test_support::OwnedWindow::presented(adw::Window::new());
+        let parent: gtk::Widget = (*window).clone().upcast();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let answer = std::rc::Rc::new(std::cell::Cell::new(None));
+        let (sink, asked) = (answer.clone(), cancel.clone());
+        glib::spawn_future_local(async move {
+            let confirmation = WriteConfirmation::external("Prod", "UPDATE t SET a = 1 WHERE id = 1", false);
+            sink.set(Some(confirm_until(&parent, &confirmation, &asked).await));
+        });
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || {
+            crate::workspace::visible_alert(&*window).is_some()
+        })
+        .expect("the question");
+
+        cancel.cancel();
+
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || answer.get().is_some())
+            .expect("an answer");
+        assert_eq!(answer.get(), Some(false));
+        crate::test_support::wait_until(std::time::Duration::from_secs(10), || {
+            crate::workspace::visible_alert(&*window).is_none()
+        })
+        .expect("the question to close");
     }
 
     #[test]

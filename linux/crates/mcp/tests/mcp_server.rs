@@ -656,8 +656,10 @@ async fn describe_and_ddl_name_the_table_as_defined() {
         ]
     );
     assert!(parsed(&ddl)["ddl"].as_str().is_some_and(|ddl| ddl.contains("CREATE TABLE")), "{ddl}");
+    // SQLite names the missing table itself; an engine that lists no
+    // columns for it answers not_found.
     assert!(missing_failed);
-    assert!(missing.starts_with("not_found:"), "{missing}");
+    assert!(missing.contains("no such table: main.nowhere"), "{missing}");
     assert_eq!(parsed(&tables)["tables"][0]["name"], "orders");
 }
 
@@ -709,4 +711,15 @@ async fn a_replaced_token_turns_the_old_one_away() {
 
     assert_eq!(send(port, "/mcp", &MCP_HEADERS, &body).await.status, 401);
     assert_eq!(send(port, "/mcp", &renewed, &body).await.status, 200);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stopped_server_has_freed_its_port() {
+    let Harness { _dir, server, .. } = harness().await;
+    let port = server.address().port();
+
+    server.shutdown().await;
+    let rebound = tokio::net::TcpListener::bind(("127.0.0.1", port)).await;
+
+    assert!(rebound.is_ok(), "{rebound:?}");
 }

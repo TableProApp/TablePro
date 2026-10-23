@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProMcpPage" parent="AdwPreferencesPage">
+    <property name="title" translatable="yes">MCP</property>
+    <property name="icon-name">network-server-symbolic</property>
+    <child>
+      <object class="AdwPreferencesGroup">
+        <property name="title" translatable="yes">MCP Server</property>
+        <property name="description" translatable="yes">AI clients on this computer can use your saved connections while TablePro is open. Each connection’s External Clients level decides what they may do.</property>
+        <child>
+          <object class="AdwSwitchRow" id="enabled_row">
+            <property name="title" translatable="yes">Enable MCP Server</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow" id="status_row">
+            <property name="title" translatable="yes">Status</property>
+            <style>
+              <class name="property"/>
+            </style>
+            <child type="suffix">
+              <object class="GtkButton" id="retry_button">
+                <property name="label" translatable="yes">Try Again</property>
+                <property name="valign">center</property>
+                <property name="visible">false</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwSpinRow" id="port_row">
+            <property name="title" translatable="yes">Port</property>
+            <property name="subtitle" translatable="yes">On 127.0.0.1, which only this computer can reach</property>
+            <property name="adjustment">
+              <object class="GtkAdjustment">
+                <property name="lower">1024</property>
+                <property name="upper">65535</property>
+                <property name="value">23508</property>
+                <property name="step-increment">1</property>
+                <property name="page-increment">10</property>
+              </object>
+            </property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="client_group">
+        <property name="title" translatable="yes">Client Setup</property>
+        <property name="description" translatable="yes">Give a client the address, and the access token to send as a Bearer token in the Authorization header. The token is kept in the keyring.</property>
+        <child>
+          <object class="AdwActionRow" id="address_row">
+            <property name="title" translatable="yes">Address</property>
+            <property name="subtitle-selectable">true</property>
+            <style>
+              <class name="property"/>
+            </style>
+            <child type="suffix">
+              <object class="GtkButton" id="copy_address_button">
+                <property name="icon-name">edit-copy-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Copy Address</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Copy Address</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwActionRow" id="token_row">
+            <property name="title" translatable="yes">Access Token</property>
+            <child type="suffix">
+              <object class="GtkButton" id="copy_token_button">
+                <property name="icon-name">edit-copy-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Copy Access Token</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Copy Access Token</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwButtonRow" id="regenerate_row">
+            <property name="title" translatable="yes">Regenerate Access Token…</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

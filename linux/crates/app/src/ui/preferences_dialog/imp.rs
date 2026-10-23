@@ -10,6 +10,7 @@ use tablepro_storage::AppSettings;
 
 use super::editor_page::EditorPage;
 use super::general_page::GeneralPage;
+use super::mcp_page::McpPage;
 
 #[derive(Default, gtk4::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/preferences-dialog.ui")]
@@ -18,6 +19,8 @@ pub struct PreferencesDialog {
     pub general_page: TemplateChild<GeneralPage>,
     #[template_child]
     pub editor_page: TemplateChild<EditorPage>,
+    #[template_child]
+    pub mcp_page: TemplateChild<McpPage>,
     pub settings: RefCell<Option<Rc<AppSettings>>>,
 }
 
@@ -30,6 +33,7 @@ impl ObjectSubclass for PreferencesDialog {
     fn class_init(klass: &mut Self::Class) {
         GeneralPage::ensure_type();
         EditorPage::ensure_type();
+        McpPage::ensure_type();
         klass.bind_template();
     }
 
