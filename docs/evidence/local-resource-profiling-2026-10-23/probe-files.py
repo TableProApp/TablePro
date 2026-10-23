@@ -30,8 +30,8 @@ def profile_sql_files(_database, base, restart):
     sizes = [int(os.environ["TABLEPRO_PROFILE_FILE_BYTES"])] if os.environ.get("TABLEPRO_PROFILE_FILE_BYTES") else [1024 * 1024, 8 * 1024 * 1024]
     assert all(1 <= size <= 8 * 1024 * 1024 for size in sizes)
     for size in sizes:
-        line = "SELECT 1 AS value; -- profile\n"
-        content = (line * (size // len(line)))
+        line = "SELECT 'Grüße 東京 😀' AS value; -- profile\n" if os.environ.get("TABLEPRO_PROFILE_UTF8") == "1" else "SELECT 1 AS value; -- profile\n"
+        content = line * (size // len(line.encode("utf-8")))
         sql_file = base / f"profile-{size}.sql"
         sql_file.write_text(content)
 
@@ -52,10 +52,12 @@ def profile_sql_files(_database, base, restart):
             time.sleep(0.2)
         loaded_seconds = time.monotonic() - started
         loaded = snapshot()
-        print(f"loaded {len(content)} bytes in {loaded_seconds:.3f}s", flush=True)
+        print(f"loaded {len(content.encode())} bytes in {loaded_seconds:.3f}s", flush=True)
         if os.environ.get("TABLEPRO_PROFILE_EARLY_CLOSE") == "1":
+            close_started = time.monotonic()
             ui.press_x11_key("w", ("Control_L",))
             ui.wait_for_node_containing(sql_file.name, role=pyatspi.ROLE_PAGE_TAB, present=False)
+            close_observed_seconds = time.monotonic() - close_started
             time.sleep(10)
             closed = snapshot()
             assert sql_file.read_text() == content
@@ -63,7 +65,7 @@ def profile_sql_files(_database, base, restart):
             ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
             ui.run_sql("SELECT 1 AS responsive_after_close")
             ui.wait_for_node_containing("done in")
-            records.append({"bytes": len(content), "startup_and_load_seconds": loaded_seconds, "loaded": loaded, "closed_after_ten_seconds": closed})
+            records.append({"bytes": len(content.encode()), "startup_and_load_seconds": loaded_seconds, "close_observed_seconds": close_observed_seconds, "loaded": loaded, "closed_after_ten_seconds": closed})
             Path(os.environ["TABLEPRO_PROFILE_OUT"]).write_text(json.dumps(records, indent=2) + "\n")
             continue
         time.sleep(3)
@@ -90,7 +92,7 @@ def profile_sql_files(_database, base, restart):
         ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
         ui.run_sql("SELECT 1 AS responsive_after_close")
         ui.wait_for_node_containing("done in")
-        records.append({"bytes": len(content), "startup_and_load_seconds": loaded_seconds, "edit_ack_seconds": edit_seconds, "loaded": loaded, "settled": settled, "edited": edited, "closed": closed})
+        records.append({"bytes": len(content.encode()), "startup_and_load_seconds": loaded_seconds, "edit_ack_seconds": edit_seconds, "loaded": loaded, "settled": settled, "edited": edited, "closed": closed})
         Path(os.environ["TABLEPRO_PROFILE_OUT"]).write_text(json.dumps(records, indent=2) + "\n")
 
 

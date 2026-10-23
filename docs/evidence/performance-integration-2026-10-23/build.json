@@ -1,0 +1,17 @@
+{
+  "profile": "release",
+  "binary_sha256": "18c2f589d58c3c13b56df30b7b0c9374847f2713e12b2eb9221d29d3f57291ff",
+  "source_sha256": {
+    "apps/linux/app/src/ui/editor/mod.rs": "7b263f39fbfaea4664f9a3e438fb8d101c483725f312b93ee63c54eb6d02f9eb",
+    "apps/linux/app/src/ui/editor/outcomes.rs": "68bf467665b3bdfcf78f0a912ce41da6ac37c1b59a82a8a14b6dfdc3cd9aa910",
+    "apps/linux/app/src/ui/editor/stream_view.rs": "d95879789dbe3cbe34f9ecf01d74c46eed0db714857f737633c4e7f4c762fb6d",
+    "apps/linux/app/src/ui/editor/stream_view/pager.rs": "2c37ea3f1f163c6e8d84122ab8742b554fc20d1e88c2f63c80645afa9ab3ea56"
+  },
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "baseline_binary_sha256": "69c4ef139676e50b44c5223e7b43de284da896cf78710ad285e99c6c9d96fd16",
+  "baseline_source": "32580207537c1d1b8e726e52d8e94b57a27ea706"
+}

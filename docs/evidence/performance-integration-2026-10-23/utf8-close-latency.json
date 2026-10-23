@@ -1,0 +1,27 @@
+[
+  {
+    "bytes": 8388600,
+    "startup_and_load_seconds": 6.67196352101746,
+    "close_observed_seconds": 1.5847546279837843,
+    "loaded": {
+      "cpu_seconds": 6.19,
+      "memory_kib": {
+        "Rss": 304508,
+        "Pss": 254505,
+        "Private_Clean": 47628,
+        "Private_Dirty": 190752,
+        "Swap": 0
+      }
+    },
+    "closed_after_ten_seconds": {
+      "cpu_seconds": 11.68,
+      "memory_kib": {
+        "Rss": 304196,
+        "Pss": 254032,
+        "Private_Clean": 47556,
+        "Private_Dirty": 190332,
+        "Swap": 0
+      }
+    }
+  }
+]

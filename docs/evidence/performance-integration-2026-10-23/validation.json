@@ -1,0 +1,30 @@
+{
+  "preflight": {
+    "passed": true,
+    "unit": 2073,
+    "sandbox": 2086,
+    "additional_redis_cancellation": 1
+  },
+  "all_target_app_clippy": "passed",
+  "app_unit": {
+    "passed": 791,
+    "failed": 0,
+    "ignored": 191
+  },
+  "gtk_widgets_passed": 153,
+  "optimized_one_million_cycles": 2,
+  "optimized_two_million_pager_cycles": 3,
+  "utf8_early_close": {
+    "passed": true,
+    "bytes": 8388600,
+    "candidate_load_seconds": 6.67196352101746,
+    "baseline_load_seconds": 6.711094141996,
+    "candidate_observed_close_seconds": 1.5847546279837843,
+    "baseline_observed_close_seconds": 3.8950057219772134,
+    "candidate_post_close_rss_kib": 304196,
+    "baseline_post_close_rss_kib": 420624,
+    "limit": "one paired fixture observation, not a variance estimate or file-chooser acceptance"
+  },
+  "forgejo": "not run",
+  "native_wayland": "not checked"
+}

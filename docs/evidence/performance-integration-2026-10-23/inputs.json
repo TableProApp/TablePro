@@ -1,0 +1,9 @@
+{
+  "linux_base": "60e3cdde12157835d64df2de795c25ec7eef4c77",
+  "integration_head": "56257d41d04a95217d0bf908f70301915ff8e41c",
+  "editor_shutdown_head": "bdbedf0d839887e081ae68a1deaee3c3cce46198",
+  "stream_head": "e1b43daacc6489941ead75704ba27f25e3c4022c",
+  "scope": "local integration only; no aggregate gate acceptance",
+  "conflict_resolution": "preserve both additive rows in docs/README.md and docs/known-issues.md",
+  "additional_evidence_revision": "7d713ce0e: documentation only; apps/crates/scripts diff from integrated stream head is empty"
+}
