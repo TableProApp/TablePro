@@ -61,7 +61,12 @@ impl EditorRun {
         for lexed in split_commands(sql.as_str()) {
             let arguments = match lexed.values {
                 Ok(arguments) => arguments,
-                Err(error) => return (Ok(self.summary(started, RunEnd::Failed(invalid_arguments(error)))), true),
+                Err(error) => {
+                    return (
+                        Ok(self.summary(started, RunEnd::Failed(invalid_arguments(error)))),
+                        true,
+                    );
+                }
             };
             if let Some(refused) = self.refusal(&arguments) {
                 return (Ok(self.summary(started, RunEnd::Failed(refused))), true);
@@ -70,15 +75,18 @@ impl EditorRun {
                 (Some(run), Some(statement)) => Some(run.min(Instant::now() + statement)),
                 (run, statement) => run.or_else(|| statement.map(|statement| Instant::now() + statement)),
             };
+            // Once polled, the send has written the command, so a stop that
+            // came first must be seen here.
+            if let Some(interrupt) = self.interrupted(&options.cancel, deadline) {
+                return (Ok(self.summary(started, interrupt.end(false))), true);
+            }
             let (reply, end) = match self.send(&arguments, &options.cancel, deadline).await {
                 Sent::Reply(reply) => (reply, None),
                 Sent::Stopped { interrupt, reply } => {
-                    let server_cancelled = matches!(&reply, Some(Reply::ServerError(error)) if is_unblocked_reply(error));
+                    let server_cancelled =
+                        matches!(&reply, Some(Reply::ServerError(error)) if is_unblocked_reply(error));
                     let kept = reply.is_some();
-                    let end = match interrupt {
-                        Interrupt::Cancelled => RunEnd::Cancelled,
-                        Interrupt::DeadlineElapsed => RunEnd::TimedOut { server_cancelled },
-                    };
+                    let end = interrupt.end(server_cancelled);
                     match reply.filter(|_| !server_cancelled) {
                         Some(reply) => (reply, Some((end, kept))),
                         None => {
@@ -122,6 +130,15 @@ impl EditorRun {
             .then_some(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
     }
 
+    fn interrupted(&self, cancel: &CancellationToken, deadline: Option<Instant>) -> Option<Interrupt> {
+        if cancel.is_cancelled() || self.shutdown.is_cancelled() {
+            return Some(Interrupt::Cancelled);
+        }
+        deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+            .then_some(Interrupt::DeadlineElapsed)
+    }
+
     /// Send one command and wait for its reply, or stop it: `CLIENT
     /// UNBLOCK` ends a command waiting on a key or a replica, and the
     /// reply then comes back as an error. A command that is still busy
@@ -141,7 +158,10 @@ impl EditorRun {
             () = until(deadline) => Interrupt::DeadlineElapsed,
         };
         let grace_ends = Instant::now() + self.endpoint.liveness().cancel_grace;
-        let control = tokio::time::timeout_at(grace_ends, self.endpoint.open()).await.ok().and_then(Result::ok);
+        let control = tokio::time::timeout_at(grace_ends, self.endpoint.open())
+            .await
+            .ok()
+            .and_then(Result::ok);
         if let (Some(control), Some(id)) = (&control, self.link.client_id()) {
             let unblock = command(&["CLIENT", "UNBLOCK", &id.to_string(), "ERROR"]);
             let _ = tokio::time::timeout_at(grace_ends, control.ask(&unblock)).await;
@@ -163,20 +183,13 @@ impl EditorRun {
         }
     }
 
-    /// Where the link's `MULTI` stands after `reply` to `arguments`.
     fn track(&self, arguments: &[Vec<u8>], reply: &Reply) {
         let name = arguments
             .first()
             .map(|name| String::from_utf8_lossy(name).to_ascii_uppercase())
             .unwrap_or_default();
         let mut state = self.transaction.lock().unwrap_or_else(PoisonError::into_inner);
-        *state = match (name.as_str(), reply, *state) {
-            ("MULTI", Reply::Okay, _) => TransactionState::InTransaction,
-            ("EXEC" | "DISCARD" | "RESET", _, _) => TransactionState::Idle,
-            // A command that cannot be queued makes EXEC abort them all.
-            (_, Reply::ServerError(_), TransactionState::InTransaction) => TransactionState::Failed,
-            (_, _, current) => current,
-        };
+        *state = next_transaction_state(&name, reply, *state);
     }
 
     fn forget_transaction(&self) {
@@ -192,6 +205,33 @@ impl EditorRun {
     }
 }
 
+impl Interrupt {
+    fn end(self, server_cancelled: bool) -> RunEnd {
+        match self {
+            Self::Cancelled => RunEnd::Cancelled,
+            Self::DeadlineElapsed => RunEnd::TimedOut { server_cancelled },
+        }
+    }
+}
+
+/// Where a link's `MULTI` stands once the command `name` got `reply`.
+fn next_transaction_state(name: &str, reply: &Reply, current: TransactionState) -> TransactionState {
+    let open = matches!(current, TransactionState::InTransaction | TransactionState::Failed);
+    match (name, reply) {
+        ("MULTI", Reply::Okay) => TransactionState::InTransaction,
+        ("EXEC", Reply::ServerError(error)) if error.code() == "EXECABORT" => TransactionState::Idle,
+        // Redis refuses a nested MULTI and a WATCH inside one without
+        // touching the transaction.
+        ("MULTI" | "WATCH", Reply::ServerError(_)) => current,
+        // Any other refusal, EXEC's and DISCARD's included, keeps the
+        // transaction open and makes its EXEC abort.
+        (_, Reply::ServerError(_)) if open => TransactionState::Failed,
+        ("EXEC" | "DISCARD" | "RESET", Reply::ServerError(_)) => current,
+        ("EXEC" | "DISCARD" | "RESET", _) => TransactionState::Idle,
+        _ => current,
+    }
+}
+
 fn is_unblocked_reply(error: &redis::ServerError) -> bool {
     is_unblocked(&crate::errors::server_error(error))
 }
@@ -200,5 +240,62 @@ async fn until(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline).await,
         None => std::future::pending().await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn error(line: &str) -> Reply {
+        redis::parse_redis_value(format!("-{line}\r\n").as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn exec_and_discard_end_the_transaction_they_run() {
+        use TransactionState::{Failed, Idle, InTransaction};
+        let queued = Reply::SimpleString("QUEUED".to_owned());
+
+        assert_eq!(next_transaction_state("MULTI", &Reply::Okay, Idle), InTransaction);
+        assert_eq!(next_transaction_state("SET", &queued, InTransaction), InTransaction);
+        assert_eq!(
+            next_transaction_state("EXEC", &Reply::Array(Vec::new()), InTransaction),
+            Idle
+        );
+        assert_eq!(next_transaction_state("EXEC", &Reply::Nil, InTransaction), Idle);
+        assert_eq!(next_transaction_state("DISCARD", &Reply::Okay, Failed), Idle);
+        assert_eq!(
+            next_transaction_state("EXEC", &error("EXECABORT Transaction discarded"), Failed),
+            Idle
+        );
+    }
+
+    #[test]
+    fn a_refused_exec_or_discard_leaves_the_transaction_open() {
+        use TransactionState::{Failed, Idle, InTransaction, Unknown};
+        let arity = error("ERR wrong number of arguments for 'exec' command");
+
+        assert_eq!(next_transaction_state("EXEC", &arity, InTransaction), Failed);
+        assert_eq!(next_transaction_state("DISCARD", &arity, InTransaction), Failed);
+        assert_eq!(next_transaction_state("RESET", &arity, Failed), Failed);
+        assert_eq!(
+            next_transaction_state("EXEC", &error("ERR EXEC without MULTI"), Idle),
+            Idle
+        );
+        assert_eq!(next_transaction_state("EXEC", &arity, Unknown), Unknown);
+    }
+
+    #[test]
+    fn a_nested_multi_or_a_watch_inside_one_changes_nothing() {
+        use TransactionState::InTransaction;
+
+        let nested = error("ERR MULTI calls can not be nested");
+        let watch = error("ERR WATCH inside MULTI is not allowed");
+        assert_eq!(next_transaction_state("MULTI", &nested, InTransaction), InTransaction);
+        assert_eq!(next_transaction_state("WATCH", &watch, InTransaction), InTransaction);
+        assert_eq!(
+            next_transaction_state("NOSUCH", &error("ERR unknown command"), InTransaction),
+            TransactionState::Failed
+        );
     }
 }

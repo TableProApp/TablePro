@@ -94,7 +94,9 @@ pub fn config_message(error: &ConfigError) -> String {
             crate::i18n::gettext("This database does not support that way of logging in.")
         }
         ConfigError::DatabaseRequired => crate::i18n::gettext("Enter the name of the database to open."),
-        ConfigError::DatabaseNumber => crate::i18n::gettext("Enter the database's number, such as 0, or leave it empty."),
+        ConfigError::DatabaseNumber => {
+            crate::i18n::gettext("Enter the database's number, such as 0, or leave it empty.")
+        }
     }
 }
 

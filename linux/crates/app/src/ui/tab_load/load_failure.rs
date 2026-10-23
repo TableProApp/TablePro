@@ -34,9 +34,9 @@ impl LoadFailure {
             Self::ColumnsChanged => crate::i18n::gettext(
                 "The table's columns changed while its rows were read. Try again to read it as it is now.",
             ),
-            Self::KeyMissing => crate::i18n::gettext(
-                "This key no longer exists. It may have been deleted or renamed, or it expired.",
-            ),
+            Self::KeyMissing => {
+                crate::i18n::gettext("This key no longer exists. It may have been deleted or renamed, or it expired.")
+            }
         }
     }
 

@@ -99,6 +99,9 @@ mod tests {
         let read = stream.read(&mut [0; 8]).await;
 
         assert!(read.is_err());
-        assert_eq!(slot.get().map(|(failure, _)| failure), Some(TlsFailure::HandshakeRejected));
+        assert_eq!(
+            slot.get().map(|(failure, _)| failure),
+            Some(TlsFailure::HandshakeRejected)
+        );
     }
 }

@@ -9,12 +9,26 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ServerCode {
     SqlState(String),
-    MySql { number: u16, sqlstate: Option<String> },
-    Tds { number: u32, state: u8, class: u8 },
-    ClickHouse { code: i32 },
-    Sqlite { primary: i32, extended: i32 },
+    MySql {
+        number: u16,
+        sqlstate: Option<String>,
+    },
+    Tds {
+        number: u32,
+        state: u8,
+        class: u8,
+    },
+    ClickHouse {
+        code: i32,
+    },
+    Sqlite {
+        primary: i32,
+        extended: i32,
+    },
     /// The word a Redis error reply opens with, such as `WRONGTYPE`.
-    Redis { prefix: String },
+    Redis {
+        prefix: String,
+    },
 }
 
 impl ServerCode {

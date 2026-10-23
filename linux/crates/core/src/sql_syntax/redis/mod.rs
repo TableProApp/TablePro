@@ -21,9 +21,7 @@ pub fn may_change_keys(text: &str) -> bool {
     split_commands(text).iter().any(|command| match &command.values {
         Ok(arguments) => {
             command_access(arguments) >= StatementAccess::Write
-                || arguments
-                    .first()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(b"EXEC"))
+                || arguments.first().is_some_and(|name| name.eq_ignore_ascii_case(b"EXEC"))
         }
         Err(_) => true,
     })

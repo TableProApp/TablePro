@@ -450,11 +450,12 @@ impl ConnectDialog {
         imp.host_row.set_visible(!file_based);
         imp.port_row.set_visible(!file_based);
         imp.database_row.set_visible(!file_based);
-        imp.database_row.set_title(&match (caps.is_key_value(), caps.database_required) {
-            (true, _) => crate::i18n::gettext("Database Number (optional)"),
-            (false, true) => crate::i18n::gettext("Database"),
-            (false, false) => crate::i18n::gettext("Database (optional)"),
-        });
+        imp.database_row
+            .set_title(&match (caps.is_key_value(), caps.database_required) {
+                (true, _) => crate::i18n::gettext("Database Number (optional)"),
+                (false, true) => crate::i18n::gettext("Database"),
+                (false, false) => crate::i18n::gettext("Database (optional)"),
+            });
         imp.username_row.set_title(&if caps.username_required {
             crate::i18n::gettext("Username")
         } else {

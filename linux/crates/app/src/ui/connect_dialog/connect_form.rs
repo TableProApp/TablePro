@@ -713,7 +713,11 @@ mod tests {
         let valid = form.validate(redis()).expect("a password alone and a number");
 
         assert_eq!(network(&valid.target).2, Some("3"));
-        assert_eq!(form.label(redis()), "db.example.com", "an empty username named the entry");
+        assert_eq!(
+            form.label(redis()),
+            "db.example.com",
+            "an empty username named the entry"
+        );
         let named = ConnectForm {
             database: "sales".to_owned(),
             ..form.clone()
@@ -724,7 +728,10 @@ mod tests {
             username: String::new(),
             ..filled("postgres", postgres())
         };
-        let errors = anonymous.validate(postgres()).err().expect("PostgreSQL needs a username");
+        let errors = anonymous
+            .validate(postgres())
+            .err()
+            .expect("PostgreSQL needs a username");
         assert!(errors.has(FormField::Username), "{errors:?}");
     }
 

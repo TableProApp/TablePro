@@ -14,7 +14,9 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities) -> String {
     let keys = capabilities.data_model == DataModel::KeyValue;
     match (level, capabilities.read_only) {
-        (SafeModeLevel::Off, _) if keys => crate::i18n::gettext("Asks only before commands that empty a database or stop the server, such as FLUSHDB."),
+        (SafeModeLevel::Off, _) if keys => {
+            crate::i18n::gettext("Asks only before commands that empty a database or stop the server, such as FLUSHDB.")
+        }
         (SafeModeLevel::Off, _) => {
             crate::i18n::gettext("Asks only before DROP, TRUNCATE, and DELETE or UPDATE without WHERE.")
         }
@@ -89,7 +91,12 @@ mod tests {
         ];
         let texts: HashSet<String> = enforcements
             .into_iter()
-            .map(|enforcement| subtitle(SafeModeLevel::ReadOnly, &capabilities(DataModel::Relational, enforcement)))
+            .map(|enforcement| {
+                subtitle(
+                    SafeModeLevel::ReadOnly,
+                    &capabilities(DataModel::Relational, enforcement),
+                )
+            })
             .collect();
 
         assert_eq!(texts.len(), enforcements.len());

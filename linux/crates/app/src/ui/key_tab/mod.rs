@@ -380,7 +380,8 @@ impl Inner {
         let kind = key_kind_name(page.kind);
         self.type_label.set_label(&kind);
         let parts: Vec<String> = [
-            page.length.and_then(|length| key_summary::length_text(page.kind, length)),
+            page.length
+                .and_then(|length| key_summary::length_text(page.kind, length)),
             key_summary::ttl_text(page.ttl),
         ]
         .into_iter()
@@ -547,12 +548,7 @@ impl Inner {
             }
         }
         self.banner.show(presentation.stale.as_ref());
-        let appending = self
-            .state
-            .borrow()
-            .shown
-            .as_ref()
-            .is_some_and(|shown| shown.appending);
+        let appending = self.state.borrow().shown.as_ref().is_some_and(|shown| shown.appending);
         self.set_tab_loading(presentation.tab_loading || appending);
     }
 

@@ -265,7 +265,9 @@ fn stream_rows(read: Reply, limit: u64) -> Result<(QueryResult, Option<KeyCursor
             return Err(unexpected(&entry));
         };
         let (Some(fields), Some(id)) = (parts.pop(), parts.pop()) else {
-            return Err(DriverError::Protocol("a stream entry without its id and fields".to_owned()));
+            return Err(DriverError::Protocol(
+                "a stream entry without its id and fields".to_owned(),
+            ));
         };
         let id = match id {
             Reply::BulkString(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
@@ -362,7 +364,10 @@ mod tests {
         let plan = WindowPlan::new(KeyKind::SortedSet, b"z", &KeyWindow::first()).unwrap();
 
         let (rows, next) = plan
-            .rows(Reply::Array(vec![bulk("a"), bulk("1.5"), bulk("b"), bulk("inf")]), Some(2))
+            .rows(
+                Reply::Array(vec![bulk("a"), bulk("1.5"), bulk("b"), bulk("inf")]),
+                Some(2),
+            )
             .unwrap();
 
         assert_eq!(
@@ -380,7 +385,10 @@ mod tests {
         let plan = WindowPlan::new(KeyKind::Hash, b"h", &KeyWindow::first()).unwrap();
 
         let (rows, next) = plan
-            .rows(Reply::Array(vec![bulk("12"), Reply::Array(vec![bulk("f"), bulk("v")])]), Some(9))
+            .rows(
+                Reply::Array(vec![bulk("12"), Reply::Array(vec![bulk("f"), bulk("v")])]),
+                Some(9),
+            )
             .unwrap();
 
         assert_eq!(

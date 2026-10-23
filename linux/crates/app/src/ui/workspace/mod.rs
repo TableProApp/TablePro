@@ -1028,6 +1028,20 @@ impl WorkspaceModel {
         self.context.active.take();
     }
 
+    fn on_export_results(&self, tab: Uuid, offer: ExportOffer) {
+        if let Some(window) = self.window() {
+            let dialect = self.context.active.get().and_then(|session| session.current_dialect());
+            super::export::dialog::present(super::export::dialog::ExportDialogInit {
+                parent: &window,
+                exports: &self.exports,
+                offer,
+                dialect,
+                settings: &self.settings,
+                tab,
+            });
+        }
+    }
+
     fn update(&mut self, msg: WorkspaceInput) {
         match msg {
             WorkspaceInput::HealthChanged(health) => self.refresh_health_banner(&health),
@@ -1110,19 +1124,7 @@ impl WorkspaceModel {
             WorkspaceInput::OpenHistoryQuery(text) => self.open_editor_tab(Some(text)),
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
-            WorkspaceInput::ExportResults { tab, offer } => {
-                if let Some(window) = self.window() {
-                    let dialect = self.context.active.get().and_then(|session| session.current_dialect());
-                    super::export::dialog::present(super::export::dialog::ExportDialogInit {
-                        parent: &window,
-                        exports: &self.exports,
-                        offer: *offer,
-                        dialect,
-                        settings: &self.settings,
-                        tab,
-                    });
-                }
-            }
+            WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
             WorkspaceInput::ExportEnded { tab, outcome } => {
                 self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
             }

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use redis::Value as Reply;
-use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
 use tablepro_core::column::{
     ColumnKind, ColumnType, FloatWidth, IntegerKind, IntegerWidth, ReadForm, ResultColumn, TextLength,
 };
 use tablepro_core::value::{JsonText, Value};
+use tablepro_core::{DriverError, ResultEvent, ResultSink, RowLimit, SinkFlow, Truncation};
 
 use crate::errors::server_error;
 use crate::key_name::quoted_argument;
@@ -43,7 +43,10 @@ pub(crate) fn reply_shape(reply: Reply) -> Result<ReplyShape, DriverError> {
         },
         Reply::Map(pairs) => ReplyShape::Table {
             columns: Arc::from([text_column("key"), text_column("value")]),
-            rows: pairs.into_iter().map(|(key, value)| vec![cell(key), cell(value)]).collect(),
+            rows: pairs
+                .into_iter()
+                .map(|(key, value)| vec![cell(key), cell(value)])
+                .collect(),
         },
         other => single(cell(other)),
     })
@@ -247,7 +250,10 @@ mod tests {
     fn a_nested_array_is_a_json_cell() {
         let reply = Reply::Array(vec![
             Reply::BulkString(b"0".to_vec()),
-            Reply::Array(vec![Reply::BulkString(b"k1".to_vec()), Reply::BulkString(b"\xff".to_vec())]),
+            Reply::Array(vec![
+                Reply::BulkString(b"k1".to_vec()),
+                Reply::BulkString(b"\xff".to_vec()),
+            ]),
         ]);
 
         let (_, rows) = table(reply_shape(reply).unwrap());

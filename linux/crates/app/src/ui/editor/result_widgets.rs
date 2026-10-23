@@ -35,15 +35,13 @@ where
         export_all,
     } = actions;
     match &entry.kind {
-        EntryKind::ResultSet(result) => {
-            result_set_page(
-                result,
-                &result.summary.tab_label(index),
-                grid_sink.clone(),
-                in_clause,
-                export_all,
-            )
-        }
+        EntryKind::ResultSet(result) => result_set_page(
+            result,
+            &result.summary.tab_label(index),
+            grid_sink.clone(),
+            in_clause,
+            export_all,
+        ),
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
@@ -195,7 +193,13 @@ mod tests {
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(0, &entry, &sink(), true, actions(move |position| seen.set(Some(position))));
+        let widget = entry_widget(
+            0,
+            &entry,
+            &sink(),
+            true,
+            actions(move |position| seen.set(Some(position))),
+        );
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();

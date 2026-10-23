@@ -189,7 +189,10 @@ const READ_SUBCOMMANDS: &[(&str, &[&str])] = &[
     ),
     ("MEMORY", &["USAGE", "STATS", "DOCTOR", "MALLOC-STATS", "HELP"]),
     ("SLOWLOG", &["GET", "LEN", "HELP"]),
-    ("LATENCY", &["LATEST", "HISTORY", "DOCTOR", "GRAPH", "HISTOGRAM", "HELP"]),
+    (
+        "LATENCY",
+        &["LATEST", "HISTORY", "DOCTOR", "GRAPH", "HISTOGRAM", "HELP"],
+    ),
     (
         "ACL",
         &["WHOAMI", "LIST", "USERS", "GETUSER", "CAT", "DRYRUN", "GENPASS", "HELP"],
@@ -311,14 +314,28 @@ mod tests {
 
     #[test]
     fn reads_are_reads_in_any_case() {
-        for command in ["GET k", "get k", "HSCAN h 0", "ZRANGE z 0 -1 WITHSCORES", "XRANGE s - +", "INFO"] {
+        for command in [
+            "GET k",
+            "get k",
+            "HSCAN h 0",
+            "ZRANGE z 0 -1 WITHSCORES",
+            "XRANGE s - +",
+            "INFO",
+        ] {
             assert_eq!(access(command), StatementAccess::Read, "{command}");
         }
     }
 
     #[test]
     fn a_command_not_listed_is_a_write() {
-        for command in ["SET k v", "DEL k", "HSET h f v", "EXPIRE k 10", "EVAL x 0", "FROBNICATE"] {
+        for command in [
+            "SET k v",
+            "DEL k",
+            "HSET h f v",
+            "EXPIRE k 10",
+            "EVAL x 0",
+            "FROBNICATE",
+        ] {
             assert_eq!(access(command), StatementAccess::Write, "{command}");
         }
     }
@@ -343,7 +360,13 @@ mod tests {
 
     #[test]
     fn emptying_a_database_is_destructive() {
-        for command in ["FLUSHDB", "flushall ASYNC", "SWAPDB 0 1", "SHUTDOWN NOSAVE", "FUNCTION FLUSH"] {
+        for command in [
+            "FLUSHDB",
+            "flushall ASYNC",
+            "SWAPDB 0 1",
+            "SHUTDOWN NOSAVE",
+            "FUNCTION FLUSH",
+        ] {
             assert_eq!(access(command), StatementAccess::Destructive, "{command}");
         }
     }
@@ -352,7 +375,10 @@ mod tests {
     fn push_and_replication_commands_cannot_run_in_the_editor() {
         assert_eq!(editor_use(&argv("subscribe news")), EditorUse::Refused("SUBSCRIBE"));
         assert_eq!(editor_use(&argv("MONITOR")), EditorUse::Refused("MONITOR"));
-        assert_eq!(editor_use(&argv("CLIENT REPLY OFF")), EditorUse::Refused("CLIENT REPLY"));
+        assert_eq!(
+            editor_use(&argv("CLIENT REPLY OFF")),
+            EditorUse::Refused("CLIENT REPLY")
+        );
         assert_eq!(editor_use(&argv("HELLO 3")), EditorUse::Refused("HELLO"));
         assert_eq!(editor_use(&argv("HELLO 2")), EditorUse::Sendable);
         assert_eq!(editor_use(&argv("GET k")), EditorUse::Sendable);

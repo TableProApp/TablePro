@@ -5,9 +5,11 @@ use tablepro_core::{DriverError, LossPhase, ReadOnlyRefusal, ServerCode, ServerD
 /// A failure the library reported, from the phase the link was in.
 pub(crate) fn map_error(error: &RedisError, phase: LossPhase) -> DriverError {
     match error.kind() {
-        ErrorKind::AuthenticationFailed => DriverError::auth(error.detail().map(|detail| {
-            ServerDiagnostics::new(None, detail.to_owned())
-        })),
+        ErrorKind::AuthenticationFailed => DriverError::auth(
+            error
+                .detail()
+                .map(|detail| ServerDiagnostics::new(None, detail.to_owned())),
+        ),
         ErrorKind::Server(_) | ErrorKind::Extension => {
             from_code(error.code().unwrap_or("ERR"), error.detail().unwrap_or_default())
         }
@@ -98,7 +100,10 @@ mod tests {
     fn a_replica_refusing_a_write_is_the_servers_read_only_refusal() {
         let error = reply("READONLY You can't write against a read only replica.");
 
-        assert!(matches!(error, DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_))), "{error:?}");
+        assert!(
+            matches!(error, DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(_))),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -114,7 +119,10 @@ mod tests {
                 prefix: "WRONGTYPE".to_owned()
             })
         );
-        assert_eq!(diagnostics.message, "Operation against a key holding the wrong kind of value");
+        assert_eq!(
+            diagnostics.message,
+            "Operation against a key holding the wrong kind of value"
+        );
         assert!(!is_unblocked(&error));
         assert!(is_unblocked(&reply("UNBLOCKED client unblocked via CLIENT UNBLOCK")));
     }

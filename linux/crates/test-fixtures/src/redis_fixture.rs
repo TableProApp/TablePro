@@ -113,9 +113,15 @@ impl RedisFixture {
             ContainerFile::readable(format!("{CONFIG_DIR}/tls.conf"), tls_only),
             ContainerFile::readable(format!("{CONFIG_DIR}/certificate.conf"), certificate_only),
             ContainerFile::readable(format!("{CONFIG_DIR}/ca.pem"), pki.read(PkiFile::Ca)?),
-            ContainerFile::readable(format!("{CONFIG_DIR}/server.pem"), pki.read(PkiFile::ServerCertificate)?),
+            ContainerFile::readable(
+                format!("{CONFIG_DIR}/server.pem"),
+                pki.read(PkiFile::ServerCertificate)?,
+            ),
             ContainerFile::readable(format!("{CONFIG_DIR}/server.key"), pki.read(PkiFile::ServerKey)?),
-            ContainerFile::readable(format!("{CONFIG_DIR}/client.pem"), pki.read(PkiFile::ClientCertificate)?),
+            ContainerFile::readable(
+                format!("{CONFIG_DIR}/client.pem"),
+                pki.read(PkiFile::ClientCertificate)?,
+            ),
             ContainerFile::readable(format!("{CONFIG_DIR}/client.key"), pki.read(PkiFile::ClientKey)?),
         ])
     }
@@ -231,9 +237,9 @@ impl RedisFixture {
 fn start_command(listening: Listening) -> String {
     match listening {
         Listening::Plain => format!("exec redis-server {CONFIG_DIR}/plain.conf"),
-        Listening::Tls => format!(
-            "redis-server {CONFIG_DIR}/certificate.conf & exec redis-server {CONFIG_DIR}/tls.conf"
-        ),
+        Listening::Tls => {
+            format!("redis-server {CONFIG_DIR}/certificate.conf & exec redis-server {CONFIG_DIR}/tls.conf")
+        }
     }
 }
 
@@ -260,9 +266,15 @@ mod tests {
 
         assert!(file(&files, "plain.conf").contains("port 6379\n"));
         let tls = file(&files, "tls.conf");
-        assert!(tls.contains("port 0\ntls-port 6379\ntls-auth-clients optional\n"), "{tls}");
+        assert!(
+            tls.contains("port 0\ntls-port 6379\ntls-auth-clients optional\n"),
+            "{tls}"
+        );
         let certificate = file(&files, "certificate.conf");
-        assert!(certificate.contains("tls-port 6380\ntls-auth-clients yes\n"), "{certificate}");
+        assert!(
+            certificate.contains("tls-port 6380\ntls-auth-clients yes\n"),
+            "{certificate}"
+        );
         assert!(!certificate.contains("requirepass"), "the certificate is the login");
         for name in ["plain.conf", "tls.conf"] {
             assert!(file(&files, name).contains("user tablepro on >secret ~* &* +@all\n"));

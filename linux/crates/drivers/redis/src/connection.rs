@@ -12,9 +12,9 @@ use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, Schem
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
-    ErrorCategory, ForeignKeyInfo, LinkState, LinkWatch, LossPhase, OwnedCalls, QueryResult, ReadStatement,
-    ResultSink, RowLimit, ServerInfo, StopRequest, StreamSummary, TimeoutPhase, UnsupportedFeature,
-    WorkspaceSettings, WriteBatch, WriteReport,
+    ErrorCategory, ForeignKeyInfo, LinkState, LinkWatch, LossPhase, OwnedCalls, QueryResult, ReadStatement, ResultSink,
+    RowLimit, ServerInfo, StopRequest, StreamSummary, TimeoutPhase, UnsupportedFeature, WorkspaceSettings, WriteBatch,
+    WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -46,7 +46,12 @@ fn no_tables<T>() -> Result<T, DriverError> {
 }
 
 impl RedisConnection {
-    pub(crate) fn new(endpoint: Arc<RedisEndpoint>, first: Link, settings: WorkspaceSettings, server: ServerInfo) -> Self {
+    pub(crate) fn new(
+        endpoint: Arc<RedisEndpoint>,
+        first: Link,
+        settings: WorkspaceSettings,
+        server: ServerInfo,
+    ) -> Self {
         let grace = endpoint.liveness().cancel_grace;
         Self {
             workspace: WorkspaceLink::new(endpoint.clone(), first),

@@ -6,12 +6,12 @@ use tablepro_core::keyspace::{KeyScan, KeyWindow};
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
     ConfigError, Credentials, DatabaseDriver, DriverError, EditorSessionState, ErrorCategory, ResultEvent, RunEnd,
-    ServerCode, TransactionState, UnsupportedFeature, Value,
+    RunOptions, ServerCode, TransactionState, UnsupportedFeature, Value,
 };
 use tablepro_driver_redis::{RedisDriver, key_text};
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{CALL, connect, editor, fixture_options, password, rows, run, start, unique, within};
+use crate::support::{CALL, connect, editor, fixture_options, password, rows, run, run_with, start, unique, within};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
@@ -100,10 +100,7 @@ async fn a_database_that_is_not_a_number_is_refused_before_connecting() {
 
     let outcome = RedisDriver.connect(options, CancellationToken::new()).await;
 
-    assert_eq!(
-        outcome.err(),
-        Some(DriverError::Config(ConfigError::DatabaseNumber))
-    );
+    assert_eq!(outcome.err(), Some(DriverError::Config(ConfigError::DatabaseNumber)));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -122,10 +119,7 @@ async fn multi_holds_a_transaction_until_exec() {
     assert_eq!(queued.transaction_state, TransactionState::InTransaction);
     assert_eq!(rows(&queued_events), vec![vec![Value::Text("QUEUED".to_owned())]]);
     assert_eq!(executed.transaction_state, TransactionState::Idle);
-    assert_eq!(
-        rows(&executed_events),
-        vec![vec![Value::Int(1), Value::Int(1)]]
-    );
+    assert_eq!(rows(&executed_events), vec![vec![Value::Int(1), Value::Int(1)]]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -142,6 +136,55 @@ async fn a_command_that_cannot_be_queued_fails_the_transaction() {
     assert_eq!(refused.transaction_state, TransactionState::Failed);
     assert!(matches!(executed.end, RunEnd::Failed(_)), "{:?}", executed.end);
     assert_eq!(executed.transaction_state, TransactionState::Idle);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_refused_exec_or_discard_is_read_as_the_server_reads_it() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+
+    run(session.as_ref(), "MULTI").await;
+    let (nested, _) = run(session.as_ref(), "MULTI").await;
+    let (refused_discard, _) = run(session.as_ref(), "DISCARD extra").await;
+    let (aborted, _) = run(session.as_ref(), "EXEC").await;
+    run(session.as_ref(), "MULTI").await;
+    let (refused_exec, _) = run(session.as_ref(), "EXEC extra").await;
+    let (after, _) = run(session.as_ref(), "EXEC").await;
+
+    assert_eq!(nested.transaction_state, TransactionState::InTransaction);
+    assert_eq!(refused_discard.transaction_state, TransactionState::Failed);
+    assert_eq!(aborted.transaction_state, TransactionState::Idle);
+    assert_eq!(refused_exec.transaction_state, TransactionState::Idle);
+    let RunEnd::Failed(DriverError::Server(diagnostics)) = &after.end else {
+        panic!("EXEC with no MULTI ended {:?}", after.end);
+    };
+    assert_eq!(
+        diagnostics.code,
+        Some(ServerCode::Redis {
+            prefix: "ERR".to_owned()
+        })
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_run_stopped_before_it_starts_sends_nothing() {
+    let fixture = start().await;
+    let connection = connect(&fixture).await;
+    let session = editor(connection.as_ref()).await;
+    let key = unique("unsent");
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+
+    let (summary, events) = run_with(session.as_ref(), &format!("SET {key} 1"), RunOptions::new(cancel)).await;
+
+    assert_eq!(summary.end, RunEnd::Cancelled);
+    assert!(rows(&events).is_empty(), "{events:?}");
+    assert_eq!(session.state(), EditorSessionState::Ready);
+    let (_, events) = run(session.as_ref(), &format!("EXISTS {key}")).await;
+    assert_eq!(rows(&events), vec![vec![Value::Int(0)]]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -173,11 +216,7 @@ async fn a_failed_command_stops_the_rest_of_the_text() {
     let session = editor(connection.as_ref()).await;
     let (text, after) = (unique("text"), unique("after"));
 
-    let (summary, _) = run(
-        session.as_ref(),
-        &format!("SET {text} abc\nINCR {text}\nSET {after} 1"),
-    )
-    .await;
+    let (summary, _) = run(session.as_ref(), &format!("SET {text} abc\nINCR {text}\nSET {after} 1")).await;
 
     let RunEnd::Failed(DriverError::Server(diagnostics)) = &summary.end else {
         panic!("the run ended {:?}", summary.end);
@@ -284,7 +323,10 @@ async fn info_reads_as_one_value_and_counts_as_a_result() {
     let (summary, events) = run(session.as_ref(), "INFO server").await;
 
     assert_eq!(summary.end, RunEnd::Completed);
-    assert!(matches!(events.first(), Some(ResultEvent::ResultSetStarted { .. })), "{events:?}");
+    assert!(
+        matches!(events.first(), Some(ResultEvent::ResultSetStarted { .. })),
+        "{events:?}"
+    );
     let rows = rows(&events);
     assert!(
         matches!(rows.as_slice(), [row] if matches!(row.first(), Some(Value::Text(text)) if text.contains("redis_version"))),

@@ -34,7 +34,11 @@ pub fn history_recording(text: &str) -> HistoryRecording {
 }
 
 fn carries_secret(arguments: &[Vec<u8>]) -> bool {
-    let word = |at: usize| arguments.get(at).map(|word| String::from_utf8_lossy(word).to_ascii_uppercase());
+    let word = |at: usize| {
+        arguments
+            .get(at)
+            .map(|word| String::from_utf8_lossy(word).to_ascii_uppercase())
+    };
     let rest_mentions = |from: usize, words: &[&str]| {
         arguments
             .iter()

@@ -53,7 +53,9 @@ async fn editor(
     connection: &dyn Connection,
     options: EditorSessionOptions,
 ) -> Result<Arc<dyn EditorSession>, ConformanceFailure> {
-    Ok(connection.open_editor_session(options, CancellationToken::new()).await?)
+    Ok(connection
+        .open_editor_session(options, CancellationToken::new())
+        .await?)
 }
 
 async fn fill<E: KeyspaceEngine>(
@@ -124,7 +126,9 @@ pub async fn keys_are_listed_with_their_kinds<E: KeyspaceEngine>(engine: E) -> R
     expect(LISTED_CASE, found == expected, || {
         format!("listed {found:?}, not {expected:?}")
     })?;
-    expect(LISTED_CASE, complete, || "a listing under its limit says it is cut short".to_owned())?;
+    expect(LISTED_CASE, complete, || {
+        "a listing under its limit says it is cut short".to_owned()
+    })?;
     session.close().await;
     connection.close().await?;
     Ok(())
@@ -163,9 +167,7 @@ pub async fn a_pattern_is_matched_on_the_server<E: KeyspaceEngine>(engine: E) ->
 
 const LIMIT_CASE: &str = "a_listing_stops_at_its_limit_and_says_so";
 
-pub async fn a_listing_stops_at_its_limit_and_says_so<E: KeyspaceEngine>(
-    engine: E,
-) -> Result<(), ConformanceFailure> {
+pub async fn a_listing_stops_at_its_limit_and_says_so<E: KeyspaceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let connection = connect(LIMIT_CASE, &engine, writable()).await?;
     let session = editor(connection.as_ref(), EditorSessionOptions::default()).await?;
     let prefix = unique("limit");
@@ -181,7 +183,10 @@ pub async fn a_listing_stops_at_its_limit_and_says_so<E: KeyspaceEngine>(
         format!("a limit of 10 listed {} keys, complete {cut_complete}", cut.len())
     })?;
     expect(LIMIT_CASE, whole.len() == 25 && whole_complete, || {
-        format!("a limit of 100 listed {} of 25 keys, complete {whole_complete}", whole.len())
+        format!(
+            "a limit of 100 listed {} of 25 keys, complete {whole_complete}",
+            whole.len()
+        )
     })?;
     session.close().await;
     connection.close().await?;
@@ -243,7 +248,9 @@ pub async fn a_missing_key_reads_as_none<E: KeyspaceEngine>(engine: E) -> Result
         .read_key(&unique("missing"), &KeyWindow::first(), within(CALL_DEADLINE))
         .await?;
 
-    expect(MISSING_CASE, page.is_none(), || format!("a missing key read as {page:?}"))?;
+    expect(MISSING_CASE, page.is_none(), || {
+        format!("a missing key read as {page:?}")
+    })?;
     connection.close().await?;
     Ok(())
 }
@@ -285,7 +292,13 @@ pub async fn a_stopped_command_ends_and_the_session_runs_again<E: KeyspaceEngine
         format!("the session is {:?} after a stop", session.state())
     })?;
     until_unblocked(STOPPED_CASE, &engine, grace).await?;
-    run_completed(STOPPED_CASE, session.as_ref(), &engine.read_all_command(&key), run_options()).await?;
+    run_completed(
+        STOPPED_CASE,
+        session.as_ref(),
+        &engine.read_all_command(&key),
+        run_options(),
+    )
+    .await?;
     session.close().await;
     connection.close().await?;
     Ok(())
@@ -330,14 +343,16 @@ pub async fn a_timed_out_command_is_stopped_by_the_server<E: KeyspaceEngine>(
     };
     let session = editor(connection.as_ref(), options).await?;
 
-    let (summary, _) = run_editor(session.as_ref(), &engine.blocking_command(&unique("timeout")), run_options()).await?;
+    let (summary, _) = run_editor(
+        session.as_ref(),
+        &engine.blocking_command(&unique("timeout")),
+        run_options(),
+    )
+    .await?;
 
     expect(
         TIMEOUT_CASE,
-        summary.end
-            == RunEnd::TimedOut {
-                server_cancelled: true,
-            },
+        summary.end == RunEnd::TimedOut { server_cancelled: true },
         || format!("the timed-out command ended {:?}", summary.end),
     )?;
     expect(TIMEOUT_CASE, session.state() == EditorSessionState::Ready, || {
@@ -367,19 +382,29 @@ pub async fn a_read_only_connection_refuses_writes_before_sending<E: KeyspaceEng
             within(CALL_DEADLINE),
         )
         .await;
-    let written = read_only.read_key(&key, &KeyWindow::first(), within(CALL_DEADLINE)).await?;
+    let written = read_only
+        .read_key(&key, &KeyWindow::first(), within(CALL_DEADLINE))
+        .await?;
 
     let refused = |end: &RunEnd| matches!(end, RunEnd::Failed(DriverError::ReadOnly(_)));
     expect(READ_ONLY_CASE, refused(&summary.end), || {
         format!("a write on a read-only connection ended {:?}", summary.end)
     })?;
-    expect(READ_ONLY_CASE, matches!(streamed, Err(DriverError::ReadOnly(_))), || {
-        format!("a write streamed on a read-only connection gave {streamed:?}")
-    })?;
+    expect(
+        READ_ONLY_CASE,
+        matches!(streamed, Err(DriverError::ReadOnly(_))),
+        || format!("a write streamed on a read-only connection gave {streamed:?}"),
+    )?;
     expect(READ_ONLY_CASE, written.is_none(), || {
         format!("the refused write left {written:?}")
     })?;
-    run_completed(READ_ONLY_CASE, session.as_ref(), &engine.read_all_command(&key), run_options()).await?;
+    run_completed(
+        READ_ONLY_CASE,
+        session.as_ref(),
+        &engine.read_all_command(&key),
+        run_options(),
+    )
+    .await?;
     session.close().await;
     read_only.close().await?;
     Ok(())
@@ -403,9 +428,11 @@ pub async fn stream_read_streams_every_row<E: KeyspaceEngine>(engine: E) -> Resu
         .await?;
 
     let rows = collected.rows().len();
-    expect(STREAM_CASE, rows == MANY as usize && summary.rows == u64::from(MANY), || {
-        format!("streamed {rows} rows, summary {}, of {MANY}", summary.rows)
-    })?;
+    expect(
+        STREAM_CASE,
+        rows == MANY as usize && summary.rows == u64::from(MANY),
+        || format!("streamed {rows} rows, summary {}, of {MANY}", summary.rows),
+    )?;
     session.close().await;
     connection.close().await?;
     Ok(())
@@ -484,7 +511,9 @@ pub async fn a_lost_transport_reports_connection_lost_to_a_listing<E: KeyspaceEn
     let bound = LOST_DEADLINE + liveness.cancel_grace + SCHEDULING_SLACK;
 
     let lost = matches!(&outcome, Err(error) if error.category() == ErrorCategory::ConnectionLost);
-    expect(LOST_CASE, lost, || format!("a listing over a dropped route gave {outcome:?}"))?;
+    expect(LOST_CASE, lost, || {
+        format!("a listing over a dropped route gave {outcome:?}")
+    })?;
     expect(LOST_CASE, elapsed <= bound, || {
         format!("the loss was reported after {elapsed:?}, past the {bound:?} bound")
     })?;

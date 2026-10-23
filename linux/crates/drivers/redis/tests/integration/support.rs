@@ -96,13 +96,13 @@ pub async fn editor(connection: &dyn Connection) -> Arc<dyn EditorSession> {
 
 /// Run `text` in the editor session and keep what it sent.
 pub async fn run(session: &dyn EditorSession, text: &str) -> (RunSummary, Vec<ResultEvent>) {
+    run_with(session, text, RunOptions::new(CancellationToken::new())).await
+}
+
+pub async fn run_with(session: &dyn EditorSession, text: &str, options: RunOptions) -> (RunSummary, Vec<ResultEvent>) {
     let kept = Arc::new(Mutex::new(Vec::new()));
     let summary = session
-        .run(
-            UserSql::new(text),
-            RunOptions::new(CancellationToken::new()),
-            Box::new(Keep(kept.clone())),
-        )
+        .run(UserSql::new(text), options, Box::new(Keep(kept.clone())))
         .await
         .expect("the session ran the text");
     let events = std::mem::take(&mut *kept.lock().unwrap_or_else(PoisonError::into_inner));

@@ -37,7 +37,9 @@ pub enum TabRecord {
         file: Option<EditorFileRecord>,
     },
     /// A key-value engine's key, by the name the sidebar lists it as.
-    Key { key: String },
+    Key {
+        key: String,
+    },
 }
 
 impl TabRecord {

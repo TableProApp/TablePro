@@ -24,10 +24,10 @@ mod corpus_column;
 mod ddl_conformance_engine;
 mod ddl_suite_macro;
 mod editor_transaction_engine;
-mod keyspace_engine;
-mod keyspace_suite_macro;
 #[cfg(test)]
 mod fake_engine;
+mod keyspace_engine;
+mod keyspace_suite_macro;
 mod large_table_engine;
 mod large_table_suite_macro;
 mod network_conformance_engine;

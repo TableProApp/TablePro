@@ -36,10 +36,8 @@ fn three_keys() -> Vec<ObjectInfo> {
 }
 
 fn string_page(value: &str) -> FakeReply<Option<KeyPage>> {
-    let column = tablepro_core::column::ResultColumn::new(
-        "value",
-        tablepro_core::column::ColumnType::untyped_text("string"),
-    );
+    let column =
+        tablepro_core::column::ResultColumn::new("value", tablepro_core::column::ColumnType::untyped_text("string"));
     FakeReply::ok(Some(KeyPage {
         kind: KeyKind::String,
         type_name: "string".to_owned(),
@@ -179,7 +177,12 @@ fn a_key_opens_in_one_tab_that_reads_its_value() {
         Some("user:2")
     );
     assert_eq!(
-        test.connection().observed_sql("read_key").first().cloned().flatten().as_deref(),
+        test.connection()
+            .observed_sql("read_key")
+            .first()
+            .cloned()
+            .flatten()
+            .as_deref(),
         Some("user:2")
     );
 }

@@ -117,7 +117,11 @@ fn a_key_written_over_with_another_type_is_read_again() {
 
     wait_until(WAIT, || tab.type_text() == "String").expect("the key read again as a string");
     assert_eq!(tab.rows(), 1);
-    assert_eq!(tab.summary_text(), "3 bytes", "an expiry the server would not give was shown");
+    assert_eq!(
+        tab.summary_text(),
+        "3 bytes",
+        "an expiry the server would not give was shown"
+    );
 }
 
 #[gtk4::test]

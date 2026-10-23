@@ -44,10 +44,8 @@ impl DatabaseDriver for RedisDriver {
         }
         let (setup_target, liveness, environment) = (target.clone(), options.liveness, options.environment.clone());
         let endpoint = Arc::new(
-            tablepro_net::tls::set_up_off_runtime(move || {
-                RedisEndpoint::new(&setup_target, liveness, &environment)
-            })
-            .await?,
+            tablepro_net::tls::set_up_off_runtime(move || RedisEndpoint::new(&setup_target, liveness, &environment))
+                .await?,
         );
         // The first link opens here, so a refused password or a failed
         // handshake is the connect's error and a cancel abandons the login.

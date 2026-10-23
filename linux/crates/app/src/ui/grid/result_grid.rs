@@ -51,7 +51,12 @@ mod tests {
 
     fn grid(columns: &[ColumnInfo], rows: Vec<Vec<Value>>, sink: GridSink) -> (gtk::ColumnView, gtk::MultiSelection) {
         let rows = rows.into_iter().map(|cells| RowObject::result(cells.into())).collect();
-        build_result_grid(columns.iter().map(ColumnInfo::result_column).collect(), rows, sink, true)
+        build_result_grid(
+            columns.iter().map(ColumnInfo::result_column).collect(),
+            rows,
+            sink,
+            true,
+        )
     }
 
     fn sort(view: &gtk::ColumnView, column: u32, order: gtk::SortType) {
