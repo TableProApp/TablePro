@@ -236,7 +236,8 @@ async fn a_file_open_in_one_place_is_not_opened_in_another() {
 
 /// DuckDB reads an ATTACH path in every string form it has, and each
 /// spelling of a file another window has open names that file. A
-/// `U&'...'` string DuckDB refuses itself, as it refuses an expression.
+/// `U&'...'` string and a `\u` escape DuckDB refuses itself, as it
+/// refuses an expression.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn every_spelling_of_an_open_file_is_refused() {
     let file = TestFile::new();
@@ -248,7 +249,6 @@ async fn every_spelling_of_an_open_file_is_refused() {
     let (directory, name) = path.rsplit_once('/').unwrap();
     let spellings = [
         format!("ATTACH E'{}' AS o", path.replace('/', "\\x2f")),
-        format!("ATTACH E'{}' AS o", path.replace('/', "\\u002f")),
         format!("ATTACH '{directory}/'\n'{name}' AS o"),
         format!("ATTACH 'file://{path}' AS o"),
         format!("ATTACH 'duckdb:{path}' AS o"),
@@ -263,8 +263,12 @@ async fn every_spelling_of_an_open_file_is_refused() {
             "{sql}"
         );
     }
-    for sql in ["ATTACH 40 + 2 AS o", &format!("ATTACH U&'{path}' AS o")] {
-        let (malformed, _) = run(editor.as_ref(), sql).await;
+    for sql in [
+        "ATTACH 40 + 2 AS o".to_owned(),
+        format!("ATTACH U&'{path}' AS o"),
+        format!("ATTACH E'{}' AS o", path.replace('/', "\\u002f")),
+    ] {
+        let (malformed, _) = run(editor.as_ref(), &sql).await;
         assert!(
             matches!(
                 &malformed.end,

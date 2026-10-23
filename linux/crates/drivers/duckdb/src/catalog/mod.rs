@@ -4,7 +4,7 @@
 //! editor tab lists in the same functions, and its tables are not this
 //! connection's to browse. The functions work with no extension loaded.
 
-mod generated;
+mod declared_columns;
 
 use std::collections::HashSet;
 
@@ -22,7 +22,7 @@ use tablepro_core::sql_syntax::{LiteralToken, MAX_EXPRESSION_LEN, SqlGrammar, pa
 use tablepro_core::value::Value;
 use tablepro_core::{DriverError, ForeignKeyInfo};
 
-use self::generated::generated_columns;
+use self::declared_columns::declared_columns;
 use crate::duck_type::column_type_from_text;
 use crate::errors::map_error;
 use crate::instance::Link;
@@ -131,7 +131,13 @@ pub(crate) fn fetch_columns(link: &Link, catalog: &str, table: &TableRef) -> Res
         .map(|key| key.columns)
         .unwrap_or_default();
     let generated: HashSet<String> = table_sql(link, catalog, table)?
-        .map(|sql| generated_columns(&sql).into_iter().collect())
+        .map(|sql| {
+            declared_columns(&sql)
+                .into_iter()
+                .filter(|column| column.generated)
+                .map(|column| column.name)
+                .collect()
+        })
         .unwrap_or_default();
     Ok(rows
         .iter()
@@ -340,25 +346,47 @@ fn split_names(joined: &str) -> Vec<String> {
     }
 }
 
-/// The keys of other tables that point at this one.
-fn inbound_foreign_keys(link: &Link, catalog: &str, table: &TableRef) -> Result<Vec<InboundForeignKey>, DriverError> {
+/// The keys of other tables that point at this one. DuckDB matches a key
+/// byte for byte and refuses one whose two sides differ in type, so `=`
+/// on the referencing columns finds the rows the key matches unless one
+/// of them is declared with a collation.
+pub(crate) fn inbound_foreign_keys(
+    link: &Link,
+    catalog: &str,
+    table: &TableRef,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
     let rows = text_rows(
         link,
-        "SELECT constraint_name, schema_name, table_name, \
-                array_to_string(constraint_column_names, chr(31)), \
-                array_to_string(referenced_column_names, chr(31)) \
-         FROM duckdb_constraints() \
-         WHERE database_name = ? AND schema_name = ? AND referenced_table = ? AND constraint_type = 'FOREIGN KEY' \
-         ORDER BY table_name, constraint_index",
+        "SELECT c.constraint_name, c.schema_name, c.table_name, \
+                array_to_string(c.constraint_column_names, chr(31)), \
+                array_to_string(c.referenced_column_names, chr(31)), t.sql \
+         FROM duckdb_constraints() c \
+         JOIN duckdb_tables() t \
+           ON t.database_name = c.database_name AND t.schema_name = c.schema_name AND t.table_name = c.table_name \
+         WHERE c.database_name = ? AND c.schema_name = ? AND c.referenced_table = ? \
+           AND c.constraint_type = 'FOREIGN KEY' \
+         ORDER BY c.table_name, c.constraint_index",
         &[catalog, schema_of(table), &table.name],
     )?;
     Ok(rows
         .iter()
-        .map(|row| InboundForeignKey {
-            name: text(row, 0),
-            table: TableRef::new(Some(text(row, 1)), text(row, 2)),
-            columns: split_names(&text(row, 3)),
-            referenced_columns: split_names(&text(row, 4)),
+        .map(|row| {
+            let columns = split_names(&text(row, 3));
+            let collated: Vec<String> = declared_columns(&text(row, 5))
+                .into_iter()
+                .filter(|column| column.collated)
+                .map(|column| column.name)
+                .collect();
+            let compares_alike = !columns
+                .iter()
+                .any(|column| collated.iter().any(|name| name.eq_ignore_ascii_case(column)));
+            InboundForeignKey {
+                name: text(row, 0),
+                table: TableRef::new(Some(text(row, 1)), text(row, 2)),
+                child_compares_alike: compares_alike,
+                columns,
+                referenced_columns: split_names(&text(row, 4)),
+            }
         })
         .collect())
 }

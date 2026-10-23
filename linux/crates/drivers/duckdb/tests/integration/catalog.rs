@@ -150,6 +150,85 @@ async fn keys_and_indexes_are_listed_with_the_keys_that_point_here() {
     connection.close().await.unwrap();
 }
 
+/// An inbound key pairs its columns in declared order, and is read alone
+/// as the definition lists it. DuckDB matches a key byte for byte, so a
+/// referencing column declared with a collation finds other rows with
+/// `=` than the key matches.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inbound_keys_pair_their_columns_and_say_how_they_compare() {
+    let file = TestFile::new();
+    let connection = file.open().await;
+    apply(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id INTEGER, region VARCHAR, code VARCHAR COLLATE NOCASE UNIQUE, \
+             PRIMARY KEY (region, id))",
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, buyer INTEGER, buyer_region VARCHAR, \
+             FOREIGN KEY (buyer_region, buyer) REFERENCES customers (region, id))",
+            "CREATE TABLE by_code (code VARCHAR REFERENCES customers (code))",
+            "CREATE TABLE by_region (id INTEGER, \"Region\" VARCHAR COLLATE NOCASE, \
+             FOREIGN KEY (\"Region\", id) REFERENCES customers (region, id))",
+            "INSERT INTO customers VALUES (1, 'eu', 'ABC'), (1, 'EU', 'abc')",
+            "INSERT INTO by_code VALUES ('abc')",
+            "INSERT INTO by_region VALUES (1, 'EU')",
+        ],
+    )
+    .await
+    .unwrap();
+    let customers = TableRef::unqualified("customers");
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&customers, call())
+        .await
+        .unwrap();
+    let definition = connection.fetch_table_definition(&customers, call()).await.unwrap();
+    let by_region = query(connection.as_ref(), "SELECT count(*) FROM by_region WHERE \"Region\" = 'eu'").await;
+    let by_code = query(connection.as_ref(), "SELECT count(*) FROM by_code WHERE code = 'ABC'").await;
+
+    let keys: Vec<(String, Vec<String>, Vec<String>, bool)> = inbound
+        .iter()
+        .map(|key| {
+            (
+                key.table.name.clone(),
+                key.columns.clone(),
+                key.referenced_columns.clone(),
+                key.child_compares_alike,
+            )
+        })
+        .collect();
+    let key = |table: &str, columns: &[&str], referenced: &[&str], alike: bool| {
+        let owned = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>();
+        (table.to_owned(), owned(columns), owned(referenced), alike)
+    };
+    assert_eq!(
+        keys,
+        [
+            key("by_code", &["code"], &["code"], true),
+            key("by_region", &["Region", "id"], &["region", "id"], false),
+            key("orders", &["buyer_region", "buyer"], &["region", "id"], true),
+        ]
+    );
+    assert_eq!(inbound[0].table.schema.as_deref(), Some("main"));
+    assert_eq!(definition.inbound_foreign_keys, inbound);
+    assert_eq!(
+        by_region.rows,
+        vec![vec![Value::Int(1)]],
+        "the collated column finds a row the key does not point at"
+    );
+    assert_eq!(
+        by_code.rows,
+        vec![vec![Value::Int(0)]],
+        "the plain column finds only the rows the key points at"
+    );
+    for refused in [
+        "INSERT INTO by_code VALUES ('aBc')",
+        "CREATE TABLE by_wide_id (id BIGINT, region VARCHAR, FOREIGN KEY (region, id) REFERENCES customers (region, id))",
+    ] {
+        assert!(apply(connection.as_ref(), &[refused]).await.is_err(), "{refused}");
+    }
+    connection.close().await.unwrap();
+}
+
 /// A row is named by its key, or by a UNIQUE key over NOT NULL columns.
 /// Without one the grid is read-only: DuckDB's rowid names no row.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

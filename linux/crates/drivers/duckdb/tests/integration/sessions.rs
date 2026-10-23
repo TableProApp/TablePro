@@ -258,25 +258,34 @@ async fn an_execute_or_a_call_returns_its_rows() {
 async fn a_state_read_given_up_loses_the_session() {
     let file = TestFile::new();
     let connection = file.open().await;
-    let editor = session(connection.as_ref()).await;
 
-    let mut reading = Box::pin(editor.transaction_state(crate::support::call()));
-    let first = std::future::poll_fn(|context| Poll::Ready(reading.as_mut().poll(context))).await;
-    drop(reading);
-    let next = editor
-        .run(
-            tablepro_core::UserSql::new("SELECT 1"),
-            RunOptions::new(CancellationToken::new()),
-            crate::support::Collected::default().sink(),
-        )
-        .await;
+    // The read runs on a thread of its own and can end before the first
+    // poll returns, so each try gives one up on a new tab.
+    for _ in 0..50 {
+        let editor = session(connection.as_ref()).await;
+        let mut reading = Box::pin(editor.transaction_state(crate::support::call()));
+        let first = std::future::poll_fn(|context| Poll::Ready(reading.as_mut().poll(context))).await;
+        drop(reading);
+        if first.is_ready() {
+            editor.close().await;
+            continue;
+        }
+        let next = editor
+            .run(
+                tablepro_core::UserSql::new("SELECT 1"),
+                RunOptions::new(CancellationToken::new()),
+                crate::support::Collected::default().sink(),
+            )
+            .await;
 
-    assert!(first.is_pending(), "the state read finished before it was given up");
-    assert_eq!(editor.state(), EditorSessionState::Lost);
-    assert!(
-        matches!(next, Err(tablepro_core::DriverError::ConnectionLost { .. })),
-        "{next:?}"
-    );
-    editor.close().await;
-    connection.close().await.unwrap();
+        assert_eq!(editor.state(), EditorSessionState::Lost);
+        assert!(
+            matches!(next, Err(tablepro_core::DriverError::ConnectionLost { .. })),
+            "{next:?}"
+        );
+        editor.close().await;
+        connection.close().await.unwrap();
+        return;
+    }
+    panic!("every state read finished before it was given up");
 }

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use tablepro_core::ddl::TableDefinition;
+use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
 use tablepro_core::statement::Statement;
@@ -277,6 +277,18 @@ impl Connection for DuckDbConnection {
         let table = table.clone();
         self.read(options, move |link, catalog| {
             catalog::fetch_foreign_keys(link, catalog, &table)
+        })
+        .await
+    }
+
+    async fn fetch_inbound_foreign_keys(
+        &self,
+        table: &TableRef,
+        options: CallOptions,
+    ) -> Result<Vec<InboundForeignKey>, DriverError> {
+        let table = table.clone();
+        self.read(options, move |link, catalog| {
+            catalog::inbound_foreign_keys(link, catalog, &table)
         })
         .await
     }
