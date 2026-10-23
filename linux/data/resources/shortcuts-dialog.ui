@@ -217,6 +217,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="cell-open-referenced-row">
+            <property name="title" translatable="yes">Open the Referenced Row</property>
+            <property name="accelerator">&lt;Primary&gt;j</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="cell-widen-column">
             <property name="title" translatable="yes">Widen Column</property>
             <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Right</property>

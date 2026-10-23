@@ -160,6 +160,7 @@ pub(crate) fn inbound_foreign_keys(rows: &[CatalogCells]) -> Result<Vec<InboundF
                 key.referenced_columns.push(referenced);
             }
             None => keys.push(InboundForeignKey {
+                child_compares_alike: true,
                 name,
                 table: TableRef::new(Some(schema), table),
                 columns: vec![column],

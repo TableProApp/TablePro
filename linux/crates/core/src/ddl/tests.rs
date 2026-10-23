@@ -399,6 +399,7 @@ fn a_nullable_key_read_back_as_it_is_saves() {
 
 fn inbound(name: &str, referenced: &str) -> InboundForeignKey {
     InboundForeignKey {
+        child_compares_alike: true,
         name: name.to_owned(),
         table: TableRef::new(Some("app".to_owned()), "orders"),
         columns: vec!["user_id".to_owned()],

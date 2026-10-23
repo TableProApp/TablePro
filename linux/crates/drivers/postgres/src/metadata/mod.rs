@@ -18,7 +18,7 @@ use futures_util::TryStreamExt;
 use postgres_types::{ToSql, Type};
 use tablepro_core::DriverError;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{PrimaryKeyConstraint, TableDefinition};
+use tablepro_core::ddl::{InboundForeignKey, PrimaryKeyConstraint, TableDefinition};
 use tablepro_core::meta::TableRef;
 use tokio_postgres::{Client, Row};
 
@@ -68,6 +68,17 @@ async fn column_rows(client: &Client, columns_sql: &str, relation: &str) -> Resu
         .collect()
 }
 
+pub(crate) async fn fetch_inbound_foreign_keys(
+    client: &Client,
+    relation: &str,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    text_rows(client, INBOUND_FOREIGN_KEYS_SQL, &[relation])
+        .await?
+        .iter()
+        .map(inbound_foreign_key)
+        .collect()
+}
+
 pub(crate) async fn fetch_table_definition(
     client: &Client,
     columns_sql: &str,
@@ -82,7 +93,7 @@ pub(crate) async fn fetch_table_definition(
         text_rows(client, PRIMARY_KEY_NAME_SQL, &params),
         fetch_indexes(client, relation),
         fetch_foreign_keys(client, relation),
-        text_rows(client, INBOUND_FOREIGN_KEYS_SQL, &params),
+        fetch_inbound_foreign_keys(client, relation),
     )?;
     let primary_key = primary_key
         .first()
@@ -94,10 +105,6 @@ pub(crate) async fn fetch_table_definition(
             })
         })
         .transpose()?;
-    let inbound_foreign_keys = inbound_foreign_keys
-        .iter()
-        .map(inbound_foreign_key)
-        .collect::<Result<_, _>>()?;
     Ok(TableDefinition {
         table: table.clone(),
         columns: columns.iter().map(column_definition).collect(),

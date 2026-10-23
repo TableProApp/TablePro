@@ -574,6 +574,7 @@ fn sync_selection_selects_matching_row_and_clears_for_editor() {
         model.open_tab(TabSpec::Table {
             table: table("users"),
             page: TablePage::first(100),
+            filter: crate::ui::browse_tab::TableFilter::Remembered,
         })
     });
     wait_until(WAIT, || sidebar_selected(&workspace) == Some(table("users"))).expect("the table's row selected");

@@ -62,7 +62,7 @@ final class AIChatInlineSource: InlineSuggestionSource {
             ChatTurnWire(role: .user, blocks: [.text(userMessage)])
         ]
 
-        let systemPrompt = await buildSystemPrompt(settings: settings)
+        let systemPrompt = await buildSystemPrompt(settings: settings, context: context)
 
         guard accessGate.allowsUnpromptedAccess(to: connectionId) else { return nil }
 
@@ -94,13 +94,17 @@ final class AIChatInlineSource: InlineSuggestionSource {
 
     // MARK: - Private
 
-    private func buildSystemPrompt(settings: AISettings) async -> String {
+    private func buildSystemPrompt(settings: AISettings, context: SuggestionContext) async -> String {
         guard settings.includeSchema,
               let provider = schemaProvider else {
             return AIPromptTemplates.inlineSuggestSystemPrompt()
         }
 
-        let schemaContext = await provider.buildSchemaContextForAI(settings: settings)
+        let schemaContext = await provider.buildSchemaContextForAI(
+            settings: settings,
+            editorText: context.fullText,
+            cursorOffset: context.cursorOffset
+        )
 
         if let schemaContext, !schemaContext.isEmpty {
             return AIPromptTemplates.inlineSuggestSystemPrompt(schemaContext: schemaContext)

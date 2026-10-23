@@ -1022,6 +1022,7 @@ mod tests {
 
     fn referenced(table: &mut TableDefinition, column: &str) {
         table.inbound_foreign_keys = vec![InboundForeignKey {
+            child_compares_alike: true,
             name: "orders_user_fk".to_owned(),
             table: TableRef::new(Some("app".to_owned()), "orders"),
             columns: vec!["user_id".to_owned()],

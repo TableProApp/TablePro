@@ -26,6 +26,11 @@ impl<R: Clone> Replies<R> {
         self
     }
 
+    /// Whether every call has an answer once the queue is empty.
+    pub fn answers_always(&self) -> bool {
+        self.otherwise.is_some()
+    }
+
     /// Answer every call whose SQL contains `fragment` with `reply`,
     /// before the queue is consulted. The first matching rule wins.
     pub fn when_sql_contains(&mut self, fragment: impl Into<String>, reply: R) -> &mut Self {

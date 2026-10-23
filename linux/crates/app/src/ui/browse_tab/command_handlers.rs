@@ -24,6 +24,9 @@ impl BrowseModel {
                         }
                         self.identity = Some(reply.identity);
                         self.on_columns_loaded(reply.columns.to_vec(), fx);
+                        // A table whose columns changed may have other
+                        // keys too.
+                        self.after_columns.insert(BrowseRequestKind::Keys);
                         for kind in std::mem::take(&mut self.after_columns) {
                             self.fetch(kind, fx);
                         }
@@ -63,6 +66,24 @@ impl BrowseModel {
                 self.on_estimate(value, fx);
                 if failed {
                     self.retry_if_link_moved(BrowseRequestKind::Estimate, fx);
+                }
+            }
+            // The keys only add to the menus, so a failure leaves the tab
+            // as it is, with the keys it had, and is asked again on the
+            // next connection.
+            BrowseCommand::Keys(Stamped { stamp, value }) => {
+                if !self.sequencer.accept(BrowseRequestKind::Keys, stamp) {
+                    return;
+                }
+                self.failed.record(BrowseRequestKind::Keys, &value);
+                match value {
+                    Ok(keys) => self.keys.set(keys),
+                    Err(error) => {
+                        if error != OperationError::Cancelled {
+                            tracing::warn!(category = ?error.category(), "browse foreign keys failed");
+                        }
+                        self.retry_if_link_moved(BrowseRequestKind::Keys, fx);
+                    }
                 }
             }
             // A failed count is not asked again on a reconnect: Try Again

@@ -152,6 +152,9 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// Default implementation falls back to per-table fetchColumns.
     func fetchAllColumns() async throws -> [String: [ColumnInfo]]
 
+    // False when `fetchAllColumns` degrades to one round trip per table.
+    var providesBulkColumnFetch: Bool { get }
+
     /// Dotted field paths a document store exposes for a collection, for query authoring.
     /// Default implementation returns nothing, which is correct for every SQL driver.
     func sampleFieldPaths(table: String, limit: Int) async throws -> [PluginFieldPath]
@@ -756,6 +759,8 @@ extension DatabaseDriver {
         }
         return results
     }
+
+    var providesBulkColumnFetch: Bool { false }
 
     var providesBulkForeignKeyFetch: Bool { false }
 

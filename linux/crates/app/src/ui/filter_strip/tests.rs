@@ -301,8 +301,10 @@ fn a_saved_filter_opens_the_rule_editor_and_an_empty_one_does_not() {
     assert!(!strip_with(Vec::new()).imp().rules_expander.is_expanded());
 }
 
+/// A blob compares for equality on its hex form, so it is a column like
+/// any other.
 #[gtk4::test]
-fn add_rule_appends_a_row_for_the_first_filterable_column() {
+fn add_rule_appends_a_row_for_the_first_column() {
     let strip = Hosted::new(new_strip(
         vec![blob("payload"), placeholder_column("name")],
         &FilterSet::default(),
@@ -319,7 +321,7 @@ fn add_rule_appends_a_row_for_the_first_filterable_column() {
     assert_eq!(
         strip.filter().rules,
         [FilterRule {
-            column: "name".to_owned(),
+            column: "payload".to_owned(),
             op: FilterOp::Eq,
             value: Some(FilterValue::Single(String::new())),
         }]
@@ -397,7 +399,7 @@ fn set_columns_rebuilds_the_column_choices() {
     strip.set_columns(vec![placeholder_column("a"), blob("payload"), integer("total")]);
 
     let [row] = rows(&strip).try_into().expect("one rule row");
-    assert_eq!(column_choices(&row), ["a", "total"]);
+    assert_eq!(column_choices(&row), ["a", "payload", "total"]);
     assert_eq!(strip.filter().rules, [rule("a")], "new columns changed the rule");
 }
 

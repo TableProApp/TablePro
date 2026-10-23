@@ -4,6 +4,9 @@ use tokio_postgres::Client;
 
 use super::{decode_error, text_rows};
 
+/// A key to a partitioned table has a clone on the same table for each
+/// partition it reaches, made and dropped with it, so only the key the
+/// user declared is listed.
 const FOREIGN_KEYS_SQL: &str = "\
 SELECT c.conname::text,
        ARRAY(SELECT a.attname::text
@@ -22,6 +25,8 @@ FROM pg_catalog.pg_constraint c
 JOIN pg_catalog.pg_class t ON t.oid = c.confrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
 WHERE c.conrelid = $1::text::regclass AND c.contype = 'f'
+  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
+                   WHERE p.oid = c.conparentid AND p.conrelid = c.conrelid)
 ORDER BY c.conname";
 
 pub(crate) async fn fetch_foreign_keys(client: &Client, relation: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {

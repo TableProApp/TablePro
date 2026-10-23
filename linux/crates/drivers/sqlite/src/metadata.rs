@@ -2,15 +2,15 @@
 //!
 //! `catalog` owns the SQL and what the rows mean. This runs it.
 
-use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, HashMap};
 
 use sqlx::sqlite::{SqliteConnection as SqlxConnection, SqliteRow};
 use sqlx::{AssertSqlSafe, Row};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{
-    ColumnDefinition, GeneratedColumn, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind, TableDefinition,
-    TableSource,
+    ColumnDefinition, GeneratedColumn, InboundForeignKey, PrimaryKeyConstraint, ReferentialAction, SchemaObjectKind,
+    TableDefinition, TableSource,
 };
 use tablepro_core::meta::{
     EngineRowId, IndexInfo, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, SchemaInfo,
@@ -22,7 +22,7 @@ use crate::catalog::{
     self, InboundKeyRow, MAIN_SCHEMA, SchemaRow, SqliteColumnRow, TableFacts, foreign_key_names, generated_expressions,
     inbound_foreign_keys, select_dependents,
 };
-use crate::ddl::{declared_descending_key, declared_foreign_key_names};
+use crate::ddl::{declared_comparison, declared_descending_key, declared_foreign_key_names};
 use crate::errors::{SQLITE_ERROR, map_error};
 use crate::index_sql::read_index_sql;
 
@@ -161,8 +161,14 @@ async fn foreign_key_rows(
     Ok(keys)
 }
 
-/// Name the keys from the table's CREATE TABLE, and give a key that
-/// names no parent columns the parent's primary key.
+/// Name the keys from the table's CREATE TABLE, and spell each parent
+/// and its columns as the parent declares them: the pragma repeats the
+/// REFERENCES clause as written, and every other read here, the grid's
+/// filter among them, names them as declared. A key that names no
+/// parent columns takes the parent's primary key. A parent that is gone,
+/// as one dropped while foreign keys were off, keeps the clause's
+/// spelling, and a key of it naming no columns is left with none rather
+/// than failing the read of every key of the table.
 async fn resolve_foreign_keys(
     connection: &mut SqlxConnection,
     table: &TableRef,
@@ -171,16 +177,158 @@ async fn resolve_foreign_keys(
 ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
     let declared = create_statement.and_then(declared_foreign_key_names);
     let mut names = foreign_key_names(&table.name, declared, keys.len()).into_iter();
+    let mut parents: Vec<(String, Option<DeclaredTable>)> = Vec::new();
     let mut resolved = Vec::with_capacity(keys.len());
     for (mut key, to_primary) in keys.into_values() {
         key.name = names.next().unwrap_or_default();
-        if to_primary {
-            let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
-            key.ref_columns = table_shape(connection, &parent).await?.primary_key();
+        let known = parents
+            .iter()
+            .position(|(written, _)| written.eq_ignore_ascii_case(&key.ref_table));
+        let index = match known {
+            Some(index) => index,
+            None => {
+                let parent = TableRef::new(table.schema.clone(), key.ref_table.clone());
+                let found = declared_table(connection, &parent).await?;
+                parents.push((key.ref_table.clone(), found));
+                parents.len() - 1
+            }
+        };
+        if let Some((_, Some(parent))) = parents.get(index) {
+            key.ref_table = parent.name.clone();
+            key.ref_columns = match to_primary {
+                true => parent.primary_key(),
+                false => key.ref_columns.iter().map(|column| parent.spelling(column)).collect(),
+            };
         }
         resolved.push(key);
     }
     Ok(resolved)
+}
+
+/// A table's declared name and columns.
+struct DeclaredTable {
+    name: String,
+    columns: Vec<SqliteColumnRow>,
+}
+
+impl DeclaredTable {
+    fn primary_key(&self) -> Vec<String> {
+        let mut keyed: Vec<&SqliteColumnRow> = self.columns.iter().filter(|column| column.pk > 0).collect();
+        keyed.sort_by_key(|column| column.pk);
+        keyed.into_iter().map(|column| column.name.clone()).collect()
+    }
+
+    /// `written` as the table declares it. SQLite folds ASCII letters
+    /// alone when it compares names, so this does too.
+    fn spelling(&self, written: &str) -> String {
+        declared_spelling(written, self.columns.iter().map(|column| column.name.as_str()))
+    }
+}
+
+fn declared_spelling<'a>(written: &str, mut declared: impl Iterator<Item = &'a str>) -> String {
+    declared
+        .find(|name| name.eq_ignore_ascii_case(written))
+        .unwrap_or(written)
+        .to_owned()
+}
+
+/// `None` when no table of that name is in the schema.
+async fn declared_table(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+) -> Result<Option<DeclaredTable>, DriverError> {
+    let schema = schema_of(table);
+    let name: Option<String> = sqlx::query_scalar(catalog::DECLARED_TABLE_NAME_SQL)
+        .bind(table.name.as_str())
+        .bind(schema)
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(map_error)?;
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    let columns = sqlx::query(catalog::TABLE_XINFO_SQL)
+        .bind(name.as_str())
+        .bind(schema)
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(map_error)?
+        .iter()
+        .map(SqliteColumnRow::from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(DeclaredTable { name, columns }))
+}
+
+pub(crate) async fn fetch_inbound_foreign_keys(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    let shape = table_shape(connection, table).await?;
+    inbound_keys(connection, table, &shape).await
+}
+
+/// The keys of the schema's other tables that point at `table`, its
+/// columns spelled as `shape` declares them, since a child's REFERENCES
+/// clause can spell them otherwise.
+async fn inbound_keys(
+    connection: &mut SqlxConnection,
+    table: &TableRef,
+    shape: &TableShape,
+) -> Result<Vec<InboundForeignKey>, DriverError> {
+    let schema_sql = quote(schema_of(table));
+    let rows = sqlx::query(AssertSqlSafe(catalog::inbound_keys_sql(&schema_sql)))
+        .bind(table.name.as_str())
+        .bind(schema_of(table))
+        .fetch_all(&mut *connection)
+        .await
+        .map_err(map_error)?
+        .iter()
+        .map(|row| {
+            Ok(InboundKeyRow {
+                child: text(row, "child")?,
+                child_sql: row.try_get("child_sql").map_err(map_error)?,
+                child_keys: usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
+                id: row.try_get("id").map_err(map_error)?,
+                from: text(row, "from")?,
+                to: row.try_get("to").map_err(map_error)?,
+            })
+        })
+        .collect::<Result<Vec<_>, DriverError>>()?;
+    let child_sql: HashMap<String, Option<String>> = rows
+        .iter()
+        .map(|row| (row.child.clone(), row.child_sql.clone()))
+        .collect();
+    let parent_sql = match rows.is_empty() {
+        true => None,
+        false => create_statement(connection, table).await?,
+    };
+    let mut keys = inbound_foreign_keys(table.schema.as_deref(), rows, &shape.primary_key());
+    for key in &mut keys {
+        for column in &mut key.referenced_columns {
+            *column = declared_spelling(column, shape.columns.iter().map(|declared| declared.name.as_str()));
+        }
+        let child = child_sql.get(&key.table.name).and_then(Option::as_deref);
+        key.child_compares_alike = compares_alike(parent_sql.as_deref(), child, key);
+    }
+    Ok(keys)
+}
+
+/// SQLite compares a key under the parent columns' affinity and
+/// collation, so `=` on a child column declared otherwise finds other
+/// rows than the key matches. Text that does not read is taken at its
+/// word: nothing says the two sides differ.
+fn compares_alike(parent_sql: Option<&str>, child_sql: Option<&str>, key: &InboundForeignKey) -> bool {
+    key.columns
+        .iter()
+        .zip(&key.referenced_columns)
+        .all(|(child_column, parent_column)| {
+            let child = child_sql.and_then(|sql| declared_comparison(sql, child_column));
+            let parent = parent_sql.and_then(|sql| declared_comparison(sql, parent_column));
+            match (child, parent) {
+                (Some(child), Some(parent)) => child.finds_as(&parent),
+                _ => true,
+            }
+        })
 }
 
 /// How a row can be named again: the primary key, else a unique index
@@ -287,33 +435,15 @@ pub(crate) async fn fetch_table_definition(
         })
         .collect();
     let key_columns = shape.primary_key();
-    let primary_key = (!key_columns.is_empty()).then(|| PrimaryKeyConstraint {
+    let primary_key = (!key_columns.is_empty()).then_some(PrimaryKeyConstraint {
         name: None,
-        columns: key_columns.clone(),
+        columns: key_columns,
     });
     let indexes = indexes(connection, table, &shape).await?;
     let foreign_keys = foreign_key_rows(connection, table).await?;
     let foreign_keys = resolve_foreign_keys(connection, table, foreign_keys, create_statement.as_deref()).await?;
 
-    let inbound_rows = sqlx::query(AssertSqlSafe(catalog::inbound_keys_sql(&schema_sql)))
-        .bind(table.name.as_str())
-        .bind(schema_of(table))
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(map_error)?
-        .iter()
-        .map(|row| {
-            Ok(InboundKeyRow {
-                child: text(row, "child")?,
-                child_sql: row.try_get("child_sql").map_err(map_error)?,
-                child_keys: usize::try_from(row.try_get::<i64, _>("child_keys").map_err(map_error)?).unwrap_or(0),
-                id: row.try_get("id").map_err(map_error)?,
-                from: text(row, "from")?,
-                to: row.try_get("to").map_err(map_error)?,
-            })
-        })
-        .collect::<Result<Vec<_>, DriverError>>()?;
-    let inbound = inbound_foreign_keys(table.schema.as_deref(), inbound_rows, &key_columns);
+    let inbound = inbound_keys(connection, table, &shape).await?;
 
     let source = match create_statement {
         Some(create_statement) => Some(TableSource {

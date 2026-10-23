@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use tablepro_core::browse::RowReference;
+
 use super::{CellPreset, RowJsonRequest, RowObject};
 use crate::services::tracker_edit::TrackerEdit;
 use crate::ui::clipboard::{CopyRequest, InClauseRows};
@@ -46,4 +48,6 @@ pub enum GridMsg {
     DuplicateRows {
         rows: Vec<RowObject>,
     },
+    /// Open the rows a foreign key leads to from the row.
+    FollowReference(RowReference),
 }

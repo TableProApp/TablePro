@@ -127,10 +127,11 @@ extension AIChatViewModel {
         let assistantID = assistantMessage.id
         streamingState = .streaming(assistantID: assistantID)
 
+        let question = Self.schemaQuestion(in: messages, override: schemaQuestionOverride)
         prepTask = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             if settings.includeSchema {
-                await self.ensureSchemaLoaded()
+                await self.ensureSchemaLoaded(relevantTo: question)
             }
             if Task.isCancelled { return }
             let priorTurns: [ChatTurn] = await MainActor.run {
@@ -511,6 +512,20 @@ extension AIChatViewModel {
             toolUseMetadata: toolUseMetadata,
             cancelled: Task.isCancelled
         )
+    }
+
+    static func schemaQuestion(in messages: [ChatTurn], override: (turnID: UUID, text: String)?) -> String? {
+        // A turn that only returns tool results is the app's, not the user's.
+        let lastUserTurn = messages.last { turn in
+            turn.role == .user && !turn.blocks.allSatisfy { block in
+                if case .toolResult = block.kind { return true }
+                return false
+            }
+        }
+        if let override, override.turnID == lastUserTurn?.id {
+            return override.text
+        }
+        return lastUserTurn?.plainText
     }
 
     nonisolated static func buildSystemPrompt(

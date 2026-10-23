@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tablepro_core::ddl::TableDefinition;
+use tablepro_core::ddl::{InboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{ObjectInfo, RowIdentity, SchemaInfo, TableEstimate};
 use tablepro_core::{
@@ -28,6 +28,7 @@ pub struct ConnectionScript {
     pub fetch_columns: Replies<FakeReply<Vec<ColumnInfo>>>,
     pub fetch_indexes: Replies<FakeReply<Vec<IndexInfo>>>,
     pub fetch_foreign_keys: Replies<FakeReply<Vec<ForeignKeyInfo>>>,
+    pub fetch_inbound_foreign_keys: Replies<FakeReply<Vec<InboundForeignKey>>>,
     pub fetch_table_definition: Replies<FakeReply<TableDefinition>>,
     pub row_identity: Replies<FakeReply<RowIdentity>>,
     pub table_estimate: Replies<FakeReply<TableEstimate>>,
@@ -55,6 +56,7 @@ impl Default for ConnectionScript {
             fetch_columns: Replies::default(),
             fetch_indexes: Replies::default(),
             fetch_foreign_keys: Replies::default(),
+            fetch_inbound_foreign_keys: Replies::default(),
             fetch_table_definition: Replies::default(),
             row_identity: Replies::default(),
             table_estimate: Replies::default(),

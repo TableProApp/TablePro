@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Serialize};
+use tablepro_core::FilterSet;
 use tablepro_storage::DraftId;
 
 use super::{EditorFileRecord, SortRecord};
@@ -18,6 +19,11 @@ pub enum TabRecord {
         offset: u64,
         page_size: u64,
         sort: Option<SortRecord>,
+        /// The tab's own filter, which two tabs on one table can hold
+        /// apart. `None` in a record written before tabs kept one,
+        /// which opens on the table's remembered filter as it did.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<FilterSet>,
     },
     Structure {
         schema: Option<String>,
@@ -43,6 +49,7 @@ impl TabRecord {
                 offset,
                 page_size,
                 sort,
+                filter,
             } => {
                 if table.is_empty() {
                     return None;
@@ -58,6 +65,7 @@ impl TabRecord {
                     offset,
                     page_size,
                     sort,
+                    filter,
                 })
             }
             Self::Structure { schema, table } => (!table.is_empty()).then_some(Self::Structure { schema, table }),
@@ -77,6 +85,7 @@ mod tests {
             offset: 0,
             page_size,
             sort: None,
+            filter: None,
         }
     }
 

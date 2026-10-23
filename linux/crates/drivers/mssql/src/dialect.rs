@@ -253,6 +253,16 @@ impl SqlDialect for MssqlDialect {
         matches!(column.column_type.kind, ColumnKind::Xml)
     }
 
+    /// text, ntext and image take no `=`, `<` or IN until cast to the
+    /// max type that replaced each, which the column's cast target names.
+    fn compared_operand(&self, column: &ColumnInfo) -> Option<String> {
+        let legacy = ["text", "ntext", "image"]
+            .iter()
+            .any(|name| column.column_type.name.eq_ignore_ascii_case(name));
+        let target = column.column_type.catalog.as_ref()?.cast_target.as_sql();
+        legacy.then(|| format!("CAST({} AS {target})", self.quote_identifier(&column.name)))
+    }
+
     /// COUNT(*) is an int on SQL Server and overflows past two billion
     /// rows.
     fn count_all(&self) -> &'static str {

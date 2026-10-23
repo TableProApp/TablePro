@@ -9,6 +9,7 @@ import Foundation
 import os
 import TableProAutocomplete
 import TableProPluginKit
+import TableProSQLGrammar
 
 actor SQLSchemaProvider {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLSchemaProvider")
@@ -430,17 +431,9 @@ actor SQLSchemaProvider {
 
     // MARK: - AI Schema Context
 
-    func buildSchemaContextForAI(settings: AISettings) async -> String? {
+    // The tables the statement at the cursor reads take the column budget first.
+    func buildSchemaContextForAI(settings: AISettings, editorText: String? = nil, cursorOffset: Int = 0) async -> String? {
         guard !tables.isEmpty, let connection = connectionInfo else { return nil }
-
-        let listedTables = tables
-        var schemaTables: [AISchemaTable] = []
-        schemaTables.reserveCapacity(listedTables.count)
-        for table in listedTables.prefix(settings.maxSchemaTables) {
-            let columns = await getColumns(for: table.name, schema: table.schema)
-            schemaTables.append(AISchemaTable(table: table, columns: columns))
-        }
-        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         let dbType = connection.type
         let capturedConnection = connection
@@ -454,6 +447,32 @@ actor SQLSchemaProvider {
             let langName = PluginManager.shared.queryLanguageName(for: dbType)
             return (resolvedName, quote, lang, langName)
         }
+
+        var listedTables = tables
+        if let editorText, editorLanguage == .sql, listedTables.count > settings.maxSchemaTables {
+            let grammar = dbType.lexicalGrammar
+            let statement = SQLStatementScanner.statementAtCursor(
+                in: editorText,
+                cursorPosition: cursorOffset,
+                grammar: grammar
+            )
+            let first = AISchemaContext.indices(
+                of: AISchemaContext.referencedTables(in: statement, grammar: grammar),
+                in: listedTables,
+                defaultSchema: defaultSchema
+            )
+            let picked = Set(first)
+            listedTables = first.map { listedTables[$0] }
+                + listedTables.indices.filter { !picked.contains($0) }.map { listedTables[$0] }
+        }
+
+        var schemaTables: [AISchemaTable] = []
+        schemaTables.reserveCapacity(listedTables.count)
+        for table in listedTables.prefix(settings.maxSchemaTables) {
+            let columns = await getColumns(for: table.name, schema: table.schema)
+            schemaTables.append(AISchemaTable(table: table, columns: columns))
+        }
+        schemaTables += listedTables.dropFirst(settings.maxSchemaTables).map { AISchemaTable(table: $0) }
 
         return AISchemaContext.buildSystemPrompt(
             databaseType: dbType,
