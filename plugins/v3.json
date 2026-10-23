@@ -11,6 +11,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/BeancountDriver-0.83.0-beta.2.zip",
+          "sha256": "777424880a6286f3c70f9f4927e54d75dde3c943ab0912cf77ee21b37519bf2e"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -48,6 +57,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/BigQueryDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "4adc35bd428ee223ccd0d8de9ea8434393b765f98ba7530791d45c982ac533f6"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -84,6 +102,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/BigtableDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "aa488020cb03478717a04685759e4fab9ebf0761dae78967ec46478da7f361f3"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -123,6 +150,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/CassandraDriver-0.83.0-beta.2.zip",
+          "sha256": "4e617ad7300607163d7938844a7ef4e42c6e6db700531a63fbe056aa891c6be0"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -159,6 +195,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/CloudflareD1DriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "5314002d96113e25207a4f946860b551590e2c6a4590e5bc3abdbfc95ece50f9"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -197,6 +242,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/CloudflareR2SQLDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "304f28298dcabee9b414fa0ffef1c98ecdefb8fa471e67884e6b4560d16247b2"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -233,6 +287,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/DamengDriver-0.83.0-beta.2.zip",
+          "sha256": "d603805c9a5b552dbe1df8152682fd742a9a0b6db30d3ab99c454eddb65cd061"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -271,6 +334,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/DuckDBDriver-0.83.0-beta.2.zip",
+          "sha256": "0c94a2983b7b9663949dfebb57b8d40f06089ed6bef81d12c4544cf78b8c96da"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -307,6 +379,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/DynamoDBDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "67816006729bf0dcd4b467dc0d9498b3e6cf660527d460c1b5221af1a5833c89"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -345,6 +426,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/ElasticsearchDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "8ba77bb4ce56c6ada061e0a53a6b94820b58fdb1845d31019b4c4aa6fb61139e"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -381,6 +471,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/EtcdDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "566a6f3ccfb9ff1f3d8f1fe4843da58306beac1a2ecc9c88feaccf1f448c3236"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -420,6 +519,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/FirebaseDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "6e7fcffe956b14e2e71b61c33f46f627bc792b5ceac73b0fc530680c09eede74"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -457,6 +565,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/HanaDriver-0.83.0-beta.2.zip",
+          "sha256": "d089a9fd76fc7f612d988d036b4b1de0f4d8c0bf43dcc2313b79b43114a5ab01"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -493,6 +610,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/KafkaDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "a6d4dbd6da9d878e24e719c30aa49fe016a23d30d048d8024fb51ec9db552fe9"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -532,6 +658,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/LibSQLDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "78c85fdf5342f58e7e5a425c75362eb9d21add39838291042d8ce15692406fb5"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -568,6 +703,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/MSSQLDriver-0.83.0-beta.2.zip",
+          "sha256": "1ecb216e45002984d352e05be91defbf111dfdf0509942c756a9b877fe1eab62"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -606,6 +750,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/MongoDBDriver-0.83.0-beta.2.zip",
+          "sha256": "a07106090e41b104bcf9cc4381283f497e8303b23e2bac1c7a346dce86d2c96a"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -642,6 +795,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/OracleDriver-0.83.0-beta.2.zip",
+          "sha256": "acf98c2acdf98bb2cc062792363523ebd1cab0e85b94f4099a5c504866ff9ecf"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -680,6 +842,15 @@
       ],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/ParquetExport-0.83.0-beta.2.zip",
+          "sha256": "e137618f01ddf68703f1dca6448941b0fe9678eabeab61c33b5e63f7913f8d95"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -716,6 +887,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/SnowflakeDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "900bab4befa31791c05df7eb7174779160370ad3c5ab8632d246f5a00b1b4724"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -754,6 +934,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/SpannerDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "b65f5eb594eaa06526c3210d84acc02a0a2327f0eeb2997ffe4b23c7abf7f511"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -790,6 +979,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/SurrealDBDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "c6f1a21739610abfde1b32a71cb8a4ab0224b0fe61b54a4c54e715540f51836b"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -828,6 +1026,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/TeradataDriver-0.83.0-beta.2.zip",
+          "sha256": "6253d4096d4caa24db5b7a0f2c53d0e19d4b961d020f81e9a8bbe80b3ad850cc"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -860,10 +1067,20 @@
       "id": "com.TablePro.TrinoDriverPlugin",
       "name": "Trino Driver",
       "databaseTypeIds": [
-        "Trino"
+        "Trino",
+        "Presto"
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/TrinoDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "ab1d3fdc072e08c3595206e1c4b433194d86ed78cb7ca20529a481409f2a68e0"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
@@ -902,6 +1119,15 @@
       "exportFormatIds": [],
       "releases": [
         {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/TypesenseDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "6564f6bbf4be03ac183b6d68dfb7cda909a8fe10faf0960808d80215a7d9ada1"
+        },
+        {
           "version": "0.83.0-beta.1",
           "build": 830001,
           "channel": "beta",
@@ -938,6 +1164,15 @@
       ],
       "exportFormatIds": [],
       "releases": [
+        {
+          "version": "0.83.0-beta.2",
+          "build": 830002,
+          "channel": "beta",
+          "pluginKit": 40,
+          "minimumSystemVersion": "13.0",
+          "url": "https://github.com/TableProApp/TablePro/releases/download/v0.83.0-beta.2/WeaviateDriverPlugin-0.83.0-beta.2.zip",
+          "sha256": "236517476fb3c2d32cdeabd2480ea76fa6aa7c7832d99225485b02474368d315"
+        },
         {
           "version": "0.83.0-beta.1",
           "build": 830001,
