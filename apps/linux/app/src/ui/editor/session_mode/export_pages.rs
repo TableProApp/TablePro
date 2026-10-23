@@ -186,7 +186,7 @@ async fn close_export_cursor(cursor: &mut Option<StatementCursor>, close_cursor:
 
 async fn close_export_cursor_after_error(cursor: &mut Option<StatementCursor>, close_cursor: bool) {
     if let Err(error) = close_export_cursor(cursor, close_cursor).await {
-        tracing::warn!(%error, "query export cursor cleanup failed");
+        crate::services::driver_diagnostics::warn_export_cleanup(&error, "cursor_close_after_error");
     }
 }
 

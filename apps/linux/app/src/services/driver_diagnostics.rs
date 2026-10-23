@@ -8,6 +8,27 @@ pub(crate) fn warn_cursor_cleanup(error: &DriverError, operation: &'static str) 
     );
 }
 
+pub(crate) fn warn_export_cleanup(error: &tablepro_core::export::ExportError, operation: &'static str) {
+    use tablepro_core::export::ExportError;
+
+    let error_code = match error {
+        ExportError::Write(_) => "write",
+        ExportError::Cancelled => "cancelled",
+        ExportError::SqlLiteralsUnsupported { .. } => "sql_literals_unsupported",
+        ExportError::MissingSqlTarget => "missing_sql_target",
+        ExportError::Statement(_) => "statement",
+        ExportError::WorkbookTooLarge { .. } => "workbook_row_limit",
+        ExportError::WorkbookColumnLimit { .. } => "workbook_column_limit",
+        ExportError::WorkbookEmptyText { .. } => "workbook_empty_text",
+        ExportError::XmlCharacter { .. } => "xml_character",
+        ExportError::HtmlCharacter { .. } => "html_character",
+        ExportError::NullMarkerCollision { .. } => "null_marker_collision",
+        ExportError::Source(_) => "source",
+        ExportError::Workbook(_) => "workbook",
+    };
+    tracing::warn!(error_code, operation, "export source cleanup failed");
+}
+
 fn driver_code(error: &DriverError) -> &'static str {
     match error {
         DriverError::ConnectionRefused => "connection_refused",

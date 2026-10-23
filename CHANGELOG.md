@@ -48,6 +48,7 @@
 
 ### Fixed
 
+- Export cleanup warnings omit database error details that could contain private query text or values.
 - Exporting loaded results avoids two extra copies of the result data while choosing and writing the destination file.
 
 - Keyboard cell menus refresh reference and loaded-row export availability for the current cell and filter.

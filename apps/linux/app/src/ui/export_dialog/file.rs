@@ -80,7 +80,7 @@ fn write_export(job: ExportJob, cancel: &CancellationToken, completed: &AtomicUs
 fn finish_pages(result: Result<(), ExportError>, finish: Result<(), ExportError>) -> Result<(), ExportError> {
     match (result, finish) {
         (Err(error), Err(cleanup)) => {
-            tracing::warn!(%cleanup, "paged export source cleanup failed after export error");
+            crate::services::driver_diagnostics::warn_export_cleanup(&cleanup, "finish_after_error");
             Err(error)
         }
         (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
@@ -211,6 +211,40 @@ pub(super) fn start(parent: &adw::ApplicationWindow, toast: &adw::ToastOverlay, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Capture {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn cleanup_warning_keeps_source_payloads_out_of_logs_and_preserves_the_primary_error() {
+        let capture = Capture::default();
+        let writer = capture.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let outcome = finish_pages(
+            Err(ExportError::Source("primary-private-marker".into())),
+            Err(ExportError::Source("cleanup-private-marker".into())),
+        );
+        assert!(matches!(outcome, Err(ExportError::Source(message)) if message == "primary-private-marker"));
+        let output = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+        assert!(!output.contains("private-marker"));
+        assert!(output.contains("cleanup failed"));
+    }
 
     fn job(path: std::path::PathBuf, source: JobSource) -> ExportJob {
         ExportJob {
