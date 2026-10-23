@@ -244,6 +244,9 @@ mod tests {
                         schema: None,
                         places: Vec::new(),
                     },
+                    TabRecord::Key {
+                        key: "user:1".to_owned(),
+                    },
                 ],
             }
         );

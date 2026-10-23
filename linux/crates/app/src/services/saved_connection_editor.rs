@@ -3,7 +3,10 @@ use std::sync::Arc;
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionStore, SavedConnection};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag, ConnectionTagName,
+    SavedConnection, StorageError,
+};
 use uuid::Uuid;
 
 use super::duplicate_name::duplicate_name;
@@ -47,9 +50,10 @@ impl SavedConnectionEditor {
 
     /// Save `connection` over the entry with its id, applying `changes`
     /// to its secrets. The id stays, so a rename or a new host keeps
-    /// every secret the edit does not change. Colour, group and the
-    /// last-opened time are taken from the list as it is at the write,
-    /// since the connect dialog shows none of them.
+    /// every secret the edit does not change. Its tags and icon are the
+    /// dialog's. Colour, group and the last-opened time are taken from
+    /// the list as it is at the write, since the connect dialog shows
+    /// none of them.
     pub async fn update(
         &self,
         connection: SavedConnection,
@@ -207,6 +211,69 @@ impl SavedConnectionEditor {
             .ok_or(SavedConnectionError::NotFound(id))
     }
 
+    pub async fn set_icon(&self, id: Uuid, icon: Option<ConnectionIcon>) -> Result<(), SavedConnectionError> {
+        self.write(id, move |entry| entry.icon = icon)
+            .await?
+            .map(drop)
+            .ok_or(SavedConnectionError::NotFound(id))
+    }
+
+    /// Put the tag `tag` on the connection `id`, or take it off.
+    pub async fn set_tag(&self, id: Uuid, tag: Uuid, carried: bool) -> Result<(), SavedConnectionError> {
+        self.write(id, move |entry| {
+            if !carried {
+                entry.tags.retain(|held| *held != tag);
+            } else if !entry.tags.contains(&tag) {
+                entry.tags.push(tag);
+            }
+        })
+        .await?
+        .map(drop)
+        .ok_or(SavedConnectionError::NotFound(id))
+    }
+
+    /// A new tag, put on the connection `on` when there is one.
+    pub async fn create_tag(
+        &self,
+        name: ConnectionTagName,
+        color: ConnectionColor,
+        on: Option<Uuid>,
+    ) -> Result<ConnectionTag, SavedConnectionError> {
+        let store = self.store.clone();
+        let tag = self
+            .tasks
+            .spawn_blocking_task(move || store.create_tag_blocking(name, color))
+            .await??;
+        if let Some(id) = on {
+            self.set_tag(id, tag.id, true).await?;
+        }
+        Ok(tag)
+    }
+
+    /// Rename or recolour a tag on every connection that has it.
+    pub async fn update_tag(&self, tag: ConnectionTag) -> Result<(), SavedConnectionError> {
+        let id = tag.id;
+        let store = self.store.clone();
+        match self
+            .tasks
+            .spawn_blocking_task(move || store.update_tag_blocking(tag))
+            .await?
+        {
+            Err(StorageError::NotFound) => Err(SavedConnectionError::TagNotFound(id)),
+            written => Ok(written?),
+        }
+    }
+
+    /// Delete a tag and take it off every connection. One already gone
+    /// is what the user asked for.
+    pub async fn delete_tag(&self, id: Uuid) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        self.tasks
+            .spawn_blocking_task(move || store.delete_tag_blocking(id))
+            .await??;
+        Ok(())
+    }
+
     /// Give the connection `id` another Safe Mode level.
     pub async fn set_safe_mode(&self, id: Uuid, level: SafeModeLevel) -> Result<(), SavedConnectionError> {
         self.write(id, move |entry| entry.safe_mode = level)
@@ -296,11 +363,14 @@ mod tests {
             username: "app".to_owned(),
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(chrono::Utc::now()),
             color: Some(ConnectionColor::Red),
             group: Some(ConnectionGroupName::new("Work").expect("a name")),
+            tags: Vec::new(),
+            icon: None,
         }
     }
 
@@ -573,6 +643,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_takes_the_tags_and_icon_the_dialog_shows() {
+        let fixture = fixture().await;
+        let tag = fixture
+            .editor
+            .create_tag(
+                ConnectionTagName::new("production").expect("a name"),
+                ConnectionColor::Red,
+                None,
+            )
+            .await
+            .expect("the tag");
+        let edited = SavedConnection {
+            tags: vec![tag.id],
+            icon: Some(ConnectionIcon::Shield),
+            ..fixture.saved.clone()
+        };
+
+        let saved = fixture
+            .editor
+            .update(edited, SecretChanges::default())
+            .await
+            .expect("the edit");
+
+        assert_eq!(saved.tags, [tag.id]);
+        assert_eq!(saved.icon, Some(ConnectionIcon::Shield));
+        assert_eq!(stored(&fixture.store)[0], saved);
+    }
+
+    #[tokio::test]
+    async fn tags_go_on_and_off_and_follow_a_rename_and_a_delete() {
+        let fixture = fixture().await;
+        let id = fixture.saved.id;
+        let name = |name: &str| ConnectionTagName::new(name).expect("a name");
+        let production = fixture
+            .editor
+            .create_tag(name("production"), ConnectionColor::Red, Some(id))
+            .await
+            .expect("the tag");
+        let acme = fixture
+            .editor
+            .create_tag(name("acme"), ConnectionColor::Blue, None)
+            .await
+            .expect("the tag");
+        fixture.editor.set_tag(id, acme.id, true).await.expect("on");
+        fixture.editor.set_tag(id, acme.id, true).await.expect("on again");
+        assert_eq!(stored(&fixture.store)[0].tags, [production.id, acme.id]);
+
+        let renamed = ConnectionTag {
+            name: name("prod"),
+            color: ConnectionColor::Orange,
+            ..production.clone()
+        };
+        fixture.editor.update_tag(renamed.clone()).await.expect("the rename");
+        let tags = fixture.store.tags_blocking().expect("the tags");
+        assert!(tags.contains(&renamed), "{tags:?}");
+
+        let taken = fixture
+            .editor
+            .create_tag(name("ACME"), ConnectionColor::Green, None)
+            .await
+            .expect_err("a name another tag holds");
+        assert!(
+            matches!(taken, SavedConnectionError::Storage(StorageError::TagNameTaken)),
+            "{taken:?}"
+        );
+
+        fixture.editor.set_tag(id, production.id, false).await.expect("off");
+        assert_eq!(stored(&fixture.store)[0].tags, [acme.id]);
+        fixture.editor.delete_tag(acme.id).await.expect("the delete");
+        assert!(stored(&fixture.store)[0].tags.is_empty());
+        fixture.editor.delete_tag(acme.id).await.expect("gone already");
+        assert!(matches!(
+            fixture.editor.update_tag(acme).await,
+            Err(SavedConnectionError::TagNotFound(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_icon_goes_on_and_off() {
+        let fixture = fixture().await;
+
+        fixture
+            .editor
+            .set_icon(fixture.saved.id, Some(ConnectionIcon::Cloud))
+            .await
+            .expect("the icon");
+        assert_eq!(stored(&fixture.store)[0].icon, Some(ConnectionIcon::Cloud));
+        fixture.editor.set_icon(fixture.saved.id, None).await.expect("no icon");
+        assert_eq!(stored(&fixture.store)[0].icon, None);
+        assert!(matches!(
+            fixture.editor.set_icon(Uuid::new_v4(), None).await,
+            Err(SavedConnectionError::NotFound(_))
+        ));
+    }
+
+    #[tokio::test]
     async fn a_new_target_relabels_the_kept_secrets() {
         let fixture = fixture().await;
         let moved = SavedConnection {
@@ -736,7 +902,7 @@ mod tests {
         let ConnectionListState::Ready(list) = receiver.borrow_and_update().state.clone() else {
             panic!("expected a ready list");
         };
-        assert_eq!(list[0].group, Some(archive));
+        assert_eq!(list.connections[0].group, Some(archive));
         fixture
             .editor
             .move_to_group(fixture.saved.id, None)

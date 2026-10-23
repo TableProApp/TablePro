@@ -8,8 +8,9 @@ use super::sidebar_object::SidebarObject;
 use super::sidebar_view::SidebarInner;
 
 /// Builds the rows the list view recycles: an icon and the table's name,
-/// with one click gesture for what activation does not cover.
-pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactory {
+/// with one click gesture for what activation does not cover. A key's
+/// row adds its type.
+pub(super) fn row_factory(view: Weak<SidebarInner>, keys: bool) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(move |_, object| {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
@@ -47,6 +48,16 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
             .build();
         row.append(&icon);
         row.append(&label);
+        // A key's type, as a dim suffix: its icon alone would leave the
+        // user to learn which picture means a sorted set.
+        if keys {
+            let kind = gtk::Label::builder()
+                .accessible_role(gtk::AccessibleRole::Presentation)
+                .build();
+            kind.add_css_class("dimmed");
+            kind.add_css_class("caption");
+            row.append(&kind);
+        }
         row.add_controller(click_gesture(view.clone(), item));
         item.set_child(Some(&row));
         if let Some(view) = view.upgrade() {
@@ -68,8 +79,15 @@ pub(super) fn row_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFactor
         {
             icon.set_icon_name(Some(&icon_name));
         }
-        if let Some(label) = row.last_child().and_downcast::<gtk::Label>() {
+        let label = row.first_child().and_then(|icon| icon.next_sibling());
+        if let Some(label) = label.and_downcast_ref::<gtk::Label>() {
             label.set_label(&object.name());
+        }
+        if let Some(kind) = label
+            .and_then(|label| label.next_sibling())
+            .and_downcast::<gtk::Label>()
+        {
+            kind.set_label(&object.type_label().unwrap_or_default());
         }
         // The getter's binding cannot read an unset description, which a
         // new row has; the property can.

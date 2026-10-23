@@ -22,6 +22,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="picker-page-search">
+            <property name="title" translatable="yes">Search Connections</property>
+            <property name="accelerator">&lt;Primary&gt;f</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="win-show-history">
             <property name="title" translatable="yes">Query History</property>
             <property name="action-name">win.show-history</property>

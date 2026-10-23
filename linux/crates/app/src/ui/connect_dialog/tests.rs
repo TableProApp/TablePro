@@ -30,6 +30,7 @@ struct Options {
     saved: Vec<SavedConnection>,
     prefill: Option<ConnectPrefill>,
     mode: ConnectDialogMode,
+    tags: Vec<tablepro_storage::ConnectionTag>,
 }
 
 impl Default for Options {
@@ -41,6 +42,7 @@ impl Default for Options {
             saved: Vec::new(),
             prefill: None,
             mode: ConnectDialogMode::Create,
+            tags: Vec::new(),
         }
     }
 }
@@ -66,9 +68,21 @@ fn open(options: Options) -> Harness {
         "tablepro",
         crate::config::APP_ID,
     ));
-    for saved in &options.saved {
-        store.upsert_blocking(saved.clone()).expect("the saved connection");
+    // Written as a file so the entries keep the tags' ids.
+    #[derive(serde::Serialize)]
+    struct Seeded<'a> {
+        version: u32,
+        connections: &'a [SavedConnection],
+        tags: &'a [tablepro_storage::ConnectionTag],
     }
+    let seeded = Seeded {
+        version: 2,
+        connections: &options.saved,
+        tags: &options.tags,
+    };
+    let file = store.path().to_owned();
+    std::fs::create_dir_all(file.parent().expect("a folder")).expect("the folder");
+    std::fs::write(&file, serde_json::to_vec(&seeded).expect("the list")).expect("the file");
     let vault = Arc::new(tablepro_test_support::FakeSecretVault::new());
     let dialog = ConnectDialog::new(ConnectDialogInit {
         drivers: registry(),
@@ -76,6 +90,7 @@ fn open(options: Options) -> Harness {
         interaction: CredentialInteraction::Unattended,
         tasks: runtime.tasks(),
         saved_connections: Arc::from(options.saved),
+        tags: Arc::from(options.tags),
         remembered_driver: options.remembered.to_owned(),
         ssh_environment: options.environment,
         prefill: options.prefill,
@@ -420,7 +435,7 @@ fn safe_mode_subtitle_follows_the_level_and_the_enforcement() {
             assert_eq!(harness.dialog.form().safe_mode, level, "{driver_id}");
             assert_eq!(
                 shown(),
-                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id).read_only)),
+                Some(crate::ui::safe_mode::subtitle(level, caps_of(driver_id))),
                 "{driver_id} {level:?}"
             );
         }
@@ -443,6 +458,44 @@ fn an_edit_opens_on_the_saved_level_and_keeps_it() {
 
     assert_eq!(imp.safe_mode_row.selected(), 1);
     assert_eq!(harness.dialog.form().safe_mode, SafeModeLevel::ConfirmWrites);
+}
+
+#[gtk4::test]
+fn the_external_clients_row_reads_back_each_level_and_says_what_it_allows() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    assert_eq!(harness.dialog.form().external_access, ExternalAccess::ReadOnly);
+    for (index, access) in ExternalAccess::ALL.into_iter().enumerate() {
+        imp.external_access_row.set_selected(index as u32);
+
+        assert_eq!(harness.dialog.form().external_access, access);
+        assert_eq!(
+            imp.external_access_row.subtitle().map(|text| text.to_string()),
+            Some(crate::ui::external_access::subtitle(access)),
+            "{access:?}"
+        );
+    }
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_the_saved_external_clients_level_and_saves_it() {
+    let saved = SavedConnection {
+        external_access: ExternalAccess::Blocked,
+        ..shop()
+    };
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ..Options::default()
+    });
+    let imp = harness.dialog.imp();
+
+    assert_eq!(imp.external_access_row.selected(), 0);
+    imp.external_access_row.set_selected(2);
+    select(&harness.dialog, "mysql");
+
+    assert_eq!(harness.dialog.form().external_access, ExternalAccess::ReadWrite);
 }
 
 #[gtk4::test]
@@ -780,6 +833,7 @@ fn every_row_has_an_accessible_name() {
         imp.password_row.get().upcast(),
         imp.remember_row.get().upcast(),
         imp.safe_mode_row.get().upcast(),
+        imp.external_access_row.get().upcast(),
         tls.encryption_row.get().upcast(),
         tls.certificates_row.get().upcast(),
         tls.ca_row.get().upcast(),
@@ -982,4 +1036,159 @@ fn tested_password(harness: &Harness) -> String {
         panic!("expected a password login");
     };
     secrecy::ExposeSecret::expose_secret(password).to_owned()
+}
+
+fn tag_checks(dialog: &ConnectDialog) -> Vec<(String, bool)> {
+    dialog
+        .imp()
+        .tag_checks
+        .borrow()
+        .iter()
+        .map(|(tag, check)| (tag.name.as_str().to_owned(), check.is_active()))
+        .collect()
+}
+
+fn tick(dialog: &ConnectDialog, name: &str, ticked: bool) {
+    let checks = dialog.imp().tag_checks.borrow();
+    let (_, check) = checks
+        .iter()
+        .find(|(tag, _)| tag.name.as_str() == name)
+        .unwrap_or_else(|| panic!("no row for {name}"));
+    check.set_active(ticked);
+}
+
+fn pick_icon(dialog: &ConnectDialog, icon: Option<tablepro_storage::ConnectionIcon>) {
+    let position = icon
+        .and_then(|icon| {
+            tablepro_storage::ConnectionIcon::ALL
+                .iter()
+                .position(|candidate| *candidate == icon)
+        })
+        .map_or(0, |at| at + 1);
+    dialog
+        .imp()
+        .icon_row
+        .set_selected(u32::try_from(position).expect("a position"));
+}
+
+fn tag(name: &str) -> tablepro_storage::ConnectionTag {
+    tablepro_storage::ConnectionTag::new(
+        tablepro_storage::ConnectionTagName::new(name).expect("a tag name"),
+        tablepro_storage::ConnectionColor::Red,
+    )
+}
+
+#[gtk4::test]
+fn the_tags_and_icon_picked_go_with_the_connection_a_connect_saves() {
+    let (acme, production) = (tag("acme"), tag("production"));
+    let harness = open(Options {
+        tags: vec![acme, production.clone()],
+        ..Options::default()
+    });
+    let _window = present(&harness.dialog);
+    fill_network(&harness.dialog);
+    assert_eq!(
+        tag_checks(&harness.dialog),
+        [("acme".to_owned(), false), ("production".to_owned(), false)]
+    );
+    assert_eq!(harness.dialog.imp().tags_row.subtitle().as_str(), "None");
+    tick(&harness.dialog, "production", true);
+    pick_icon(&harness.dialog, Some(tablepro_storage::ConnectionIcon::Shield));
+    let submissions = SignalLog::connect(&harness.dialog, "submitted", |values| {
+        values[1].get::<ConnectSubmission>().expect("a submission")
+    });
+
+    assert_eq!(harness.dialog.imp().tags_row.subtitle().as_str(), "production");
+    without_criticals(|| harness.dialog.imp().connect_button.emit_clicked());
+
+    let saved = submissions.take().remove(0).pending_save.connection;
+    assert_eq!(saved.tags, [production.id]);
+    assert_eq!(saved.icon, Some(tablepro_storage::ConnectionIcon::Shield));
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_its_tags_and_icon_and_saves_what_changed() {
+    let (acme, production) = (tag("acme"), tag("production"));
+    let saved = SavedConnection {
+        tags: vec![acme.id],
+        icon: Some(tablepro_storage::ConnectionIcon::Cloud),
+        ..shop()
+    };
+    let harness = open(Options {
+        tags: vec![acme, production.clone()],
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved.clone())),
+        ..Options::default()
+    });
+    let _window = present(&harness.dialog);
+    let imp = harness.dialog.imp();
+
+    assert_eq!(
+        tag_checks(&harness.dialog),
+        [("acme".to_owned(), true), ("production".to_owned(), false)]
+    );
+    assert_eq!(
+        harness.dialog.picked_icon(),
+        Some(tablepro_storage::ConnectionIcon::Cloud)
+    );
+    let cloud = crate::ui::icons::connection_icon(tablepro_storage::ConnectionIcon::Cloud);
+    assert!(
+        crate::test_support::descendants(&*imp.icon_row)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::Image>().ok())
+            .any(|image| image.is_visible() && image.icon_name().is_some_and(|name| name.as_str() == cloud)),
+        "the picked icon does not show in the row"
+    );
+    tick(&harness.dialog, "acme", false);
+    tick(&harness.dialog, "production", true);
+    pick_icon(&harness.dialog, None);
+    let log = SignalLog::connect(&harness.dialog, "saved", |_| ());
+
+    without_criticals(|| {
+        imp.connect_button.emit_clicked();
+        wait_until(WAIT, || log.count() == 1).expect("the save");
+    });
+
+    let stored = harness.store.load_blocking().expect("the list");
+    assert_eq!(stored[0].tags, [production.id]);
+    assert_eq!(stored[0].icon, None);
+}
+
+#[gtk4::test]
+fn a_tag_name_is_listed_as_text_not_markup() {
+    let odd = tag("R&D <prod>");
+    let harness = open(Options {
+        tags: vec![odd],
+        ..Options::default()
+    });
+
+    tick(&harness.dialog, "R&D <prod>", true);
+
+    let row = &harness.dialog.imp().tags_row;
+    assert!(!row.uses_markup());
+    assert_eq!(row.subtitle().as_str(), "R&D <prod>");
+}
+
+#[gtk4::test]
+fn connect_waits_while_a_tag_made_from_the_dialog_is_written() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+    fill_network(&harness.dialog);
+    harness.dialog.refresh();
+    assert!(imp.connect_button.is_sensitive());
+
+    imp.creating_tag.set(true);
+    harness.dialog.refresh();
+
+    assert!(
+        !imp.connect_button.is_sensitive(),
+        "Connect could leave the new tag off"
+    );
+    assert_eq!(
+        harness.dialog.build_submission().err().as_deref(),
+        Some("Creating the tag…")
+    );
+    imp.creating_tag.set(false);
+    harness.dialog.refresh();
+    assert!(imp.connect_button.is_sensitive());
 }

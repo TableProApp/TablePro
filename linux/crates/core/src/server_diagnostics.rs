@@ -9,10 +9,26 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ServerCode {
     SqlState(String),
-    MySql { number: u16, sqlstate: Option<String> },
-    Tds { number: u32, state: u8, class: u8 },
-    ClickHouse { code: i32 },
-    Sqlite { primary: i32, extended: i32 },
+    MySql {
+        number: u16,
+        sqlstate: Option<String>,
+    },
+    Tds {
+        number: u32,
+        state: u8,
+        class: u8,
+    },
+    ClickHouse {
+        code: i32,
+    },
+    Sqlite {
+        primary: i32,
+        extended: i32,
+    },
+    /// The word a Redis error reply opens with, such as `WRONGTYPE`.
+    Redis {
+        prefix: String,
+    },
 }
 
 impl ServerCode {
@@ -34,6 +50,7 @@ impl fmt::Display for ServerCode {
             Self::Tds { number, .. } => write!(f, "{number}"),
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
+            Self::Redis { prefix } => f.write_str(prefix),
         }
     }
 }

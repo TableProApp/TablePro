@@ -96,10 +96,29 @@
       <description>GtkSourceView style scheme id for the SQL editor.</description>
     </key>
 
+    <key name="vim-keybindings" type="b">
+      <default>false</default>
+      <summary>Vim keybindings in the SQL editor</summary>
+      <description>Whether the SQL editor takes Vim's modes and commands. The editor's own Ctrl shortcuts keep working in every mode.</description>
+    </key>
+
     <key name="restore-session" type="b">
       <default>true</default>
       <summary>Restore session</summary>
       <description>Whether the connections open when TablePro quit are opened again at the next launch.</description>
+    </key>
+
+    <key name="mcp-server-enabled" type="b">
+      <default>false</default>
+      <summary>Run the MCP server</summary>
+      <description>Whether MCP clients on this computer can reach your saved connections over http://127.0.0.1 while TablePro runs. Each connection's External Clients level decides what they may do.</description>
+    </key>
+
+    <key name="mcp-server-port" type="u">
+      <default>23508</default>
+      <range min="1024" max="65535"/>
+      <summary>MCP server port</summary>
+      <description>The port on 127.0.0.1 the MCP server listens on.</description>
     </key>
 
     <key name="connect-dialog-driver" type="s">

@@ -103,11 +103,14 @@ impl Harness {
                 username: "postgres".to_owned(),
                 tls: tablepro_core::TlsConfig::verify_full(),
                 safe_mode: tablepro_core::SafeModeLevel::Off,
+                external_access: tablepro_core::ExternalAccess::ReadOnly,
                 auth_mode: tablepro_core::AuthMode::Password,
                 ssh: None,
                 last_opened_at: None,
                 color: None,
                 group: None,
+                tags: Vec::new(),
+                icon: None,
             })
             .expect("save the connection");
     }

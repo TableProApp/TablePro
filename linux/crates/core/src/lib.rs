@@ -23,6 +23,7 @@ mod engine_stop;
 mod error;
 mod error_category;
 pub mod export;
+mod external_access;
 mod file_endpoint;
 mod file_open_mode;
 pub mod filter;
@@ -31,6 +32,7 @@ pub mod foreign_key_info;
 mod foreign_key_mode;
 pub mod hex;
 pub mod import;
+pub mod keyspace;
 mod link_watch;
 mod liveness_policy;
 mod loss_phase;
@@ -84,7 +86,8 @@ pub use auth_mode::AuthMode;
 pub use busy_reason::BusyReason;
 pub use call_options::CallOptions;
 pub use capabilities::{
-    CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution,
+    CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
+    ScriptExecution,
 };
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;
@@ -101,6 +104,7 @@ pub use editor_session::{EditorSession, EditorSessionId, EditorSessionOptions, E
 pub use engine_stop::{CallResource, EngineStop, StopDelivery, StopScope};
 pub use error::DriverError;
 pub use error_category::ErrorCategory;
+pub use external_access::{ExternalAccess, ExternalGate, ExternalRefusal};
 pub use file_endpoint::FileEndpoint;
 pub use file_open_mode::FileOpenMode;
 pub use filter::{

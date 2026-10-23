@@ -1,7 +1,7 @@
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
 
 use super::resolve_file_identity::ResolvedFile;
@@ -111,6 +111,18 @@ pub(crate) enum SessionWindowInput {
     /// A group picked from a connection row's menu, or `None` when the
     /// user took it out of one.
     SetConnectionGroup(Uuid, Option<ConnectionGroupName>),
+    /// A tag ticked on or off in a connection row's menu.
+    SetConnectionTag(Uuid, Uuid, bool),
+    /// A new tag, put on the connection `on` when there is one.
+    CreateTag {
+        name: ConnectionTagName,
+        color: ConnectionColor,
+        on: Option<Uuid>,
+    },
+    /// A tag renamed or recoloured in Manage Tags.
+    UpdateTag(ConnectionTag),
+    DeleteTag(Uuid),
+    ManageTags,
     ExportConnections,
     ImportConnections,
     /// The file the user picked to import, read off the GTK thread.

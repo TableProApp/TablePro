@@ -61,6 +61,14 @@ pub struct ConnectDialog {
     pub safe_mode_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub safe_mode_names: TemplateChild<gtk4::StringList>,
+    #[template_child]
+    pub external_access_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub external_access_names: TemplateChild<gtk4::StringList>,
+    #[template_child]
+    pub icon_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub tags_row: TemplateChild<adw::ExpanderRow>,
 
     pub(super) services: OnceCell<DialogServices>,
     pub(super) drivers: RefCell<Vec<DriverEntry>>,
@@ -88,6 +96,12 @@ pub struct ConnectDialog {
     /// cancels it, and its late answer is dropped.
     pub tests: ConnectAttempts,
     pub testing: Cell<bool>,
+    /// Each tag the Tags row offers, with its check button.
+    pub tag_checks: RefCell<Vec<(tablepro_storage::ConnectionTag, gtk4::CheckButton)>>,
+    /// The Tags row's last row, which makes a tag.
+    pub new_tag_row: RefCell<Option<adw::ButtonRow>>,
+    /// A tag made from the dialog is being written.
+    pub creating_tag: Cell<bool>,
     #[cfg(test)]
     pub toasts: RefCell<Vec<String>>,
 }

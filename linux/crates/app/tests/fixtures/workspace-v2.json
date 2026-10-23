@@ -37,6 +37,10 @@
     },
     {
       "kind": "diagram"
+    },
+    {
+      "kind": "key",
+      "key": "user:1"
     }
   ]
 }

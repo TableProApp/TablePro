@@ -133,6 +133,15 @@ impl AppSettings {
         self.set_string(keys::STYLE_SCHEME, scheme)
     }
 
+    /// Whether the SQL editor runs Vim's modes and commands.
+    pub fn vim_keybindings(&self) -> bool {
+        self.settings.boolean(keys::VIM_KEYBINDINGS)
+    }
+
+    pub fn set_vim_keybindings(&self, on: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::VIM_KEYBINDINGS, on)
+    }
+
     /// The driver the connect dialog opens on. Remembered so the
     /// common case is one click, not a combo hunt every time.
     pub fn connect_dialog_driver(&self) -> String {
@@ -150,6 +159,25 @@ impl AppSettings {
 
     pub fn set_restore_session(&self, restore: bool) -> Result<(), SettingsError> {
         self.set_boolean(keys::RESTORE_SESSION, restore)
+    }
+
+    /// Whether the MCP server runs. Off until the user turns it on.
+    pub fn mcp_server_enabled(&self) -> bool {
+        self.settings.boolean(keys::MCP_SERVER_ENABLED)
+    }
+
+    pub fn set_mcp_server_enabled(&self, enabled: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::MCP_SERVER_ENABLED, enabled)
+    }
+
+    /// The schema's range keeps it a port no other user's service can
+    /// hold below 1024, and one `u16` can carry.
+    pub fn mcp_server_port(&self) -> u16 {
+        u16::try_from(self.settings.uint(keys::MCP_SERVER_PORT)).unwrap_or(u16::MAX)
+    }
+
+    pub fn set_mcp_server_port(&self, port: u16) -> Result<(), SettingsError> {
+        self.set_uint(keys::MCP_SERVER_PORT, u32::from(port))
     }
 
     pub fn csv_options(&self) -> CsvOptions {

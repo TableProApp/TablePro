@@ -43,7 +43,12 @@ impl SqlEditor {
             entry("roll-back", SqlEditor::confirm_roll_back),
         ]);
         sync_run_actions(&actions, false, None);
+        // Commands have no comments, and no layout to format them into.
+        let sql = self.grammar().is_sql();
+        set_enabled(&actions, "format", sql);
+        set_enabled(&actions, "toggle-comment", sql);
         self.insert_action_group("editor", Some(&actions));
+        let _ = self.imp().actions.set(actions.clone());
         self.connect_run_state_changed(move |editor, running| {
             sync_run_actions(&actions, running, editor.open_transaction());
         });
@@ -66,11 +71,13 @@ impl SqlEditor {
     // Sent as typed SQL is, so the results, the history and the
     // transaction line follow it. The buffer keeps the user's script.
     fn commit(&self) {
-        self.end_transaction("COMMIT");
+        let ending = if self.grammar().is_sql() { "COMMIT" } else { "EXEC" };
+        self.end_transaction(ending);
     }
 
     fn roll_back(&self) {
-        self.end_transaction("ROLLBACK");
+        let ending = if self.grammar().is_sql() { "ROLLBACK" } else { "DISCARD" };
+        self.end_transaction(ending);
     }
 
     fn end_transaction(&self, sql: &str) {

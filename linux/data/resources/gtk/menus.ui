@@ -39,6 +39,10 @@
         <attribute name="label" translatable="yes">Export Connections…</attribute>
         <attribute name="action">win.export-connections</attribute>
       </item>
+      <item>
+        <attribute name="label" translatable="yes">Manage Tags…</attribute>
+        <attribute name="action">win.manage-tags</attribute>
+      </item>
     </section>
     <section>
       <item>

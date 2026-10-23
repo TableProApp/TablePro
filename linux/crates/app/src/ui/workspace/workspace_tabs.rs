@@ -129,6 +129,7 @@ impl WorkspaceModel {
                 draft: Some(draft),
                 file,
             },
+            TabRecord::Key { key } => TabSpec::Key { key },
         };
         // Selecting each tab as it opens would show, and so load, every
         // one of them; `reopen` selects the one that was active.
@@ -216,6 +217,7 @@ impl WorkspaceModel {
                 self.change_trackers.unregister(slot.id);
             }
             WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
+            WorkspaceTab::Key(slot) => slot.tab.shutdown(),
         }
         let page = removed.page().clone();
         self.index.remove(&page);
@@ -227,6 +229,15 @@ impl WorkspaceModel {
         self.refresh_unsaved();
         self.refresh_transaction_banner();
         self.report_tabs_changed();
+    }
+
+    /// The view's close-page handler takes it from there, as for the
+    /// tab's close button. A tab already gone has nothing to close.
+    pub(super) fn close_workspace_tab(&mut self, id: Uuid) {
+        let page = self.workspace_tabs.borrow().get(&id).map(|tab| tab.page().clone());
+        if let Some(page) = page {
+            self.tab_view.close_page(&page);
+        }
     }
 
     /// With no tab open, Ctrl+W closes the window, as in GNOME Text
@@ -304,6 +315,10 @@ impl WorkspaceModel {
     /// A sidebar click never replaces the active tab: AdwTabView's
     /// close animation overlapped the append and flashed both tabs.
     pub(super) fn dispatch_select_table(&mut self, schema: Option<String>, name: String, open_mode: OpenMode) {
+        if self.keys.is_some() {
+            self.open_key(name, open_mode);
+            return;
+        }
         if matches!(open_mode, OpenMode::SwitchOrAppend) {
             // Multiple tabs may be open for the same (schema, table)
             // pair (Ctrl+click duplicates). Prefer the currently-
@@ -339,9 +354,44 @@ impl WorkspaceModel {
         });
     }
 
+    /// A key opens in its tab, the one in front first; a new tab only
+    /// when asked for one.
+    fn open_key(&mut self, key: String, open_mode: OpenMode) {
+        if matches!(open_mode, OpenMode::SwitchOrAppend) {
+            let existing = {
+                let tabs = self.workspace_tabs.borrow();
+                let shows_key = |tab: &WorkspaceTab| match tab {
+                    WorkspaceTab::Key(slot) if slot.tab.key() == key => Some(slot.page.clone()),
+                    _ => None,
+                };
+                let selected = self
+                    .selected_workspace_tab_id()
+                    .and_then(|id| shows_key(tabs.get(&id)?));
+                selected.or_else(|| tabs.values().find_map(shows_key))
+            };
+            if let Some(page) = existing {
+                self.tab_view.set_selected_page(&page);
+                return;
+            }
+        }
+        self.open_tab(TabSpec::Key { key });
+    }
+
     pub(super) fn on_refresh_active_tab(&self) {
-        if let Some(id) = self.selected_browse_tab_id() {
-            self.on_refresh_tab(id);
+        let Some(id) = self.selected_workspace_tab_id() else {
+            return;
+        };
+        let key = match self.workspace_tabs.borrow().get(&id) {
+            Some(WorkspaceTab::Key(slot)) => Some(slot.tab.clone()),
+            _ => None,
+        };
+        match key {
+            Some(tab) => tab.refresh(),
+            None => {
+                if let Some(id) = self.selected_browse_tab_id() {
+                    self.on_refresh_tab(id);
+                }
+            }
         }
     }
 
@@ -413,13 +463,6 @@ impl WorkspaceModel {
         if slot.browse_tab().is_some() { Some(id) } else { None }
     }
 
-    pub(super) fn selected_browse_slot_table(&self) -> Option<(Option<String>, String)> {
-        let id = self.selected_browse_tab_id()?;
-        let tabs = self.workspace_tabs.borrow();
-        let (schema, table) = tabs.get(&id)?.schema_table()?;
-        Some((schema.map(str::to_owned), table.to_string()))
-    }
-
     /// Stop every tab and let go of the tab view. The pending edits
     /// name rows of the connection going away, so they cannot be saved
     /// after it.
@@ -436,6 +479,7 @@ impl WorkspaceModel {
                     self.change_trackers.unregister(slot.id);
                 }
                 WorkspaceTab::Diagram(slot) => slot.diagram.shutdown(),
+                WorkspaceTab::Key(slot) => slot.tab.shutdown(),
             }
         }
         self.index.clear();
@@ -601,6 +645,9 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
             schema: s.schema.clone(),
             places: s.diagram.places(),
         }),
+        WorkspaceTab::Key(s) => Some(ClosedTabDescriptor::Key {
+            key: s.tab.key().to_owned(),
+        }),
     }
 }
 
@@ -656,6 +703,9 @@ impl WorkspaceModel {
                 });
             }
             ClosedTabDescriptor::Diagram { schema, places } => self.show_diagram(schema, places),
+            ClosedTabDescriptor::Key { key } => {
+                self.open_tab(TabSpec::Key { key });
+            }
         }
     }
 }

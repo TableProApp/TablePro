@@ -18,6 +18,7 @@ linux/
 └── crates/
     ├── app/                       binary, the GTK application, its windows and views
     ├── core/                      domain types and the driver contract, no GUI deps
+    ├── mcp/                       the MCP server: transport, token and tools, no GUI deps
     ├── net/                       direct TCP transport and rustls client configs
     ├── ssh/                       system OpenSSH transport and the askpass helper
     ├── session/                   connect, sessions, health monitor, operation runner
@@ -29,7 +30,8 @@ linux/
         ├── mysql/                 sqlx-mysql, MySQL and MariaDB
         ├── sqlite/                sqlx-sqlite
         ├── mssql/                 tiberius
-        └── clickhouse/            clickhouse over hyper
+        ├── clickhouse/            clickhouse over hyper
+        └── redis/                 redis-rs
 ```
 
 ## Dependency graph
@@ -38,9 +40,10 @@ linux/
 |---|---|
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
-| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse` | `core`, `net` |
+| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/redis` | `core`, `net` |
 | `drivers/sqlite` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
+| `mcp` | `core`, `session`, `storage` |
 | `app` | every crate above |
 
 Rules, enforced by review:
@@ -48,13 +51,14 @@ Rules, enforced by review:
 - `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits.
 - `net`, `ssh` and `storage` depend on `core` only.
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
-- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker test takes `tablepro-driver-postgres` as a dev-dependency.
+- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres` and `tablepro-driver-redis` as dev-dependencies.
+- `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `app` depends on all of them. It is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
 
 Consequences:
 
-- Adding a driver does not touch `core`, `session`, `storage` or any other driver.
+- Adding a driver does not touch `core`, `session`, `storage` or any other driver, unless it is the first engine of its data model ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
 - Replacing the GUI framework would require rewriting only `app`.
 - Drivers are tested against `core` traits without pulling GTK.
 
@@ -92,7 +96,7 @@ One second runtime remains. Relm4 runs a component's commands (`sender.command`,
 `TableProApplication` (`crates/app/src/application/`) is an `adw::Application` subclass. `run()` builds it with the `AppServices` every window shares: the driver registry, the connector and its deadlines, the liveness policy, the `SessionRegistry`, the settings, the storage, the saved connection list and its editor, the SSH services, the credential sources, the file revealer, `Tasks`, the process hold, the open-sessions record and the query history.
 
 - **One process per profile.** GApplication owns the application id on the session bus. A second launch parses its own options, sends the running process an activate, or an open with the files it was given, and exits. With `--new-window` (`-n`), `handle_local_options` sends `app.new-window` instead. The development profile has an id of its own and runs beside the stable app.
-- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`, `focus-tab`) and installs the application accelerators from the accelerator table, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
+- **Startup**, in the primary process only, adds the app actions (`new-window`, `quit`, `preferences`, `about`, `focus-tab`) and installs the application accelerators from the accelerator table, opens the query history, checks the askpass helper, ends SSH masters a crashed instance left running, starts the [MCP server](#mcp-server) when its preference is on, and starts `SessionSignals`, which tells every session about network changes and a resume from suspend.
 - **Windows.** `open_window` builds a `SessionWindow` for a `WindowLaunch`: the picker, a saved connection, a file, or a session to restore. The application keeps each window in its `WindowRegistry` by window id, and a window reaches the others through its `WindowHost`, which holds the application weakly.
 - **Holds.** A `ProcessHold` keeps the process alive while work that must finish runs: a session closing, a save, a durable write, a file being resolved. The app's `GioProcessHold` is `gio::Application::hold`, so the process ends once the last window and the last hold are gone.
 - **Quit.** `request_quit` runs `QuitSequence`, which asks each window in turn through its close prompts and never calls `g_application_quit`. A second Quit while a window asks brings that window forward. At logout, `query-end` brings forward the first window that holds the session back.
@@ -144,7 +148,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Redis](docs/drivers/redis.md). An engine without SQL says so through `DriverCapabilities::data_model`, and the workspace lists its keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
 
 ### SQL scripts
 
@@ -275,6 +279,7 @@ pub enum WorkspaceTab {
     Structure(StructureTabSlot), // a new table's draft, or an existing table's definition
     Table(TableTabSlot),         // one (schema, table) in the browse grid
     Diagram(DiagramTabSlot),     // one schema's ER diagram
+    Key(KeyTabSlot),             // one key of a key-value engine
 }
 ```
 
@@ -312,6 +317,14 @@ Workspace tabs are one JSON file per session in `$XDG_STATE_HOME/tablepro/worksp
 A restore deletes the drafts no saved or open tab names, except while a moved-aside copy of the session's file is there, since that copy may name them. A draft that cannot be read is moved aside as `<id>.sql.corrupt-<seconds>`, which the cleanup never deletes, and its tab opens empty with a toast. A disconnect writes the open tabs' text before their buffers go.
 
 `SavedConnection::last_opened_at` is stamped through `touch_last_opened` each time a window adopts a saved connection's session. Every picker shows the list in one order (`saved_connection_order::sort`): ungrouped connections first, then each group by name. Inside each block the connection opened last comes first, ties sort by name, and never-opened connections go to the end of their block.
+
+## MCP server
+
+`tablepro-mcp` serves the Model Context Protocol over stateless Streamable HTTP with `rmcp`, on `127.0.0.1` alone ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). `McpServer` accepts at most 32 connections at once and checks every request's `Authorization: Bearer` token in constant time before rmcp reads the body; rmcp refuses a `Host` that is not a loopback name and any `Origin`. The token is an `AccessToken` of 32 random bytes kept in the keyring through `TokenVault`.
+
+The app's `McpService` (`crates/app/src/services/mcp_service.rs`) follows the `mcp-server-enabled` and `mcp-server-port` keys on the GTK thread and starts, stops and moves the server on the runtime. Every change takes one lock in turn, so a stop has freed the port before the next start binds it. Its status, a `watch` of `McpStatus`, drives the Preferences page.
+
+A tool reads the saved connections from the `ConnectionStore` on each call, so an External Clients level changed a moment ago applies, and leaves a Blocked one out as if it did not exist. It reaches a connection through `McpHost`, which the app's `GtkMcpHost` answers on the GTK thread: the `Session` the registry holds for the saved connection's key, a window opened for it the way the picker opens one, and the write approval, which `confirm_until` shows in that window with Safe Mode's dialog and takes down when the client goes away. `ExternalAccess::gate` decides each statement from the level, the session's Safe Mode level and `statement_access`. A read streams through `Connection::stream_read` on a read-only connection, cut at the row limit by the sink; a write runs on an editor session of its own, opened for the one statement. Both go into the query history through `HistoryService::record`, under the editor's rules.
 
 ## Build & CI
 

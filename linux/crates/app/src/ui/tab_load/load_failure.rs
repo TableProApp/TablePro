@@ -18,6 +18,8 @@ pub(crate) enum LoadFailure {
     Definition(Arc<OperationError>),
     /// A schema's tables or one of them, for the diagram.
     Schema(Arc<OperationError>),
+    /// The key a key tab shows is gone: deleted, renamed or expired.
+    KeyMissing,
 }
 
 impl LoadFailure {
@@ -34,6 +36,9 @@ impl LoadFailure {
             Self::ColumnsChanged => crate::i18n::gettext(
                 "The table's columns changed while its rows were read. Try again to read it as it is now.",
             ),
+            Self::KeyMissing => {
+                crate::i18n::gettext("This key no longer exists. It may have been deleted or renamed, or it expired.")
+            }
         }
     }
 
@@ -44,7 +49,7 @@ impl LoadFailure {
             Self::Columns(error) | Self::Page(error) | Self::Definition(error) | Self::Schema(error) => {
                 error.category()
             }
-            Self::NoColumns | Self::ColumnsChanged => None,
+            Self::NoColumns | Self::ColumnsChanged | Self::KeyMissing => None,
         }
     }
 }

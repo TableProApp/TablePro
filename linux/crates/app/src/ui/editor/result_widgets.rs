@@ -17,11 +17,13 @@ pub struct PageActions<G, E> {
     pub export_all: E,
 }
 
-/// The widget the results list's `index`th line shows.
+/// The widget the results list's `index`th line shows. `in_clause` is
+/// false where the engine has no SQL to copy rows into.
 pub fn entry_widget<G, E>(
     index: usize,
     entry: &RunLogEntry,
     grid_sink: &GridSink,
+    in_clause: bool,
     actions: PageActions<G, E>,
 ) -> gtk4::Widget
 where
@@ -33,9 +35,13 @@ where
         export_all,
     } = actions;
     match &entry.kind {
-        EntryKind::ResultSet(result) => {
-            result_set_page(result, &result.summary.tab_label(index), grid_sink.clone(), export_all)
-        }
+        EntryKind::ResultSet(result) => result_set_page(
+            result,
+            &result.summary.tab_label(index),
+            grid_sink.clone(),
+            in_clause,
+            export_all,
+        ),
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
@@ -144,7 +150,7 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(1, &entry, &sink(), actions(|_| {}));
+        let widget = entry_widget(1, &entry, &sink(), true, actions(|_| {}));
 
         let grid = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(&widget).expect("the grid");
         assert_eq!(name, "Result 2 (0)");
@@ -165,7 +171,7 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(0, &entry, &sink(), actions(|_| {}));
+        let widget = entry_widget(0, &entry, &sink(), true, actions(|_| {}));
 
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         assert_eq!(
@@ -187,7 +193,13 @@ mod tests {
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(0, &entry, &sink(), actions(move |position| seen.set(Some(position))));
+        let widget = entry_widget(
+            0,
+            &entry,
+            &sink(),
+            true,
+            actions(move |position| seen.set(Some(position))),
+        );
         let page = widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();

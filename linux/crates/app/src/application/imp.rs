@@ -35,6 +35,8 @@ pub struct TableProApplication {
     pub(super) pending_files: RefCell<Vec<gio::File>>,
     /// A crash report found before any window opened.
     pub(super) crash_report: RefCell<Option<std::path::PathBuf>>,
+    /// Answers the MCP server's questions about windows and sessions.
+    pub(super) mcp_requests: RefCell<Option<glib::JoinHandle<()>>>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +86,7 @@ impl ApplicationImpl for TableProApplication {
         install_application_accelerators(&*app);
         if let Some(services) = self.services.get() {
             services.start();
+            app.start_mcp();
             app.look_for_crash_report();
             self.session_signals
                 .replace(Some(SessionSignals::start(&services.sessions)));
@@ -148,6 +151,7 @@ impl ApplicationImpl for TableProApplication {
         if let Some(services) = self.services.get() {
             services.open_sessions().freeze_for_quit();
         }
+        self.obj().stop_mcp();
         self.windows.clear();
         drop(self.session_signals.take());
         drop(self.quit.take());

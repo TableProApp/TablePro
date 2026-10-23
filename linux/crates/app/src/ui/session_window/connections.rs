@@ -10,7 +10,9 @@ use libadwaita::prelude::*;
 use tablepro_core::SafeModeLevel;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionListState, SavedConnection};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, SavedConnection,
+};
 use uuid::Uuid;
 
 use super::session_page::SessionPage;
@@ -105,6 +107,7 @@ impl SessionWindow {
             interaction: context.attended(),
             tasks: state.services.tasks.clone(),
             saved_connections: state.services.saved_connections.connections(),
+            tags: state.services.saved_connections.tags(),
             remembered_driver: state.services.settings.connect_dialog_driver(),
             ssh_environment: ssh,
             prefill,
@@ -211,7 +214,7 @@ impl SessionWindow {
             return Some(saved.clone());
         };
         match state.services.storage.connections().snapshot().state {
-            ConnectionListState::Ready(list) => list.iter().find(|entry| entry.id == saved.id).cloned(),
+            ConnectionListState::Ready(list) => list.connections.iter().find(|entry| entry.id == saved.id).cloned(),
             ConnectionListState::Loading | ConnectionListState::Unavailable(_) => Some(saved.clone()),
         }
     }
@@ -411,6 +414,67 @@ impl SessionWindow {
         });
     }
 
+    pub(super) fn on_set_connection_tag(&self, id: Uuid, tag: Uuid, carried: bool) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.set_tag(id, tag, carried).await }, |reason| {
+            crate::i18n::gettext_f("The tag could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_create_tag(&self, name: ConnectionTagName, color: ConnectionColor, on: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(
+            async move { editor.create_tag(name, color, on).await.map(drop) },
+            |reason| crate::i18n::gettext_f("The tag could not be created. {reason}", &[("reason", reason)]),
+        );
+    }
+
+    pub(super) fn on_update_tag(&self, tag: ConnectionTag) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.update_tag(tag).await }, |reason| {
+            crate::i18n::gettext_f("The tag could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_delete_tag(&self, id: Uuid) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.delete_tag(id).await }, |reason| {
+            crate::i18n::gettext_f("The tag could not be deleted. {reason}", &[("reason", reason)])
+        });
+    }
+
+    /// One Manage Tags per window: a second ask brings the open one back.
+    pub(super) fn on_manage_tags(&self) {
+        let (Some(state), Some(input)) = (self.state(), self.input()) else {
+            return;
+        };
+        if let Some(open) = self.imp().manage_tags.borrow().as_ref() {
+            open.dialog.present(Some(self));
+            return;
+        }
+        let manage = crate::ui::tags::ManageTagsDialog::new(state.services.saved_connections.clone(), input);
+        let window = self.downgrade();
+        manage.dialog.connect_closed(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.imp().manage_tags.take();
+            }
+        });
+        manage.dialog.present(Some(self));
+        self.imp().manage_tags.replace(Some(manage));
+    }
+
     /// Move the session on screen to `level`, and the saved connection
     /// with it. A level on the other side of Read-Only needs the
     /// connection opened again, so the window reconnects once the tabs
@@ -450,7 +514,7 @@ impl SessionWindow {
     /// The saved connection `id` as the list on disk holds it now.
     fn stored_connection(&self, id: Uuid) -> Option<SavedConnection> {
         match self.state()?.services.storage.connections().snapshot().state {
-            ConnectionListState::Ready(list) => list.iter().find(|entry| entry.id == id).cloned(),
+            ConnectionListState::Ready(list) => list.connections.iter().find(|entry| entry.id == id).cloned(),
             ConnectionListState::Loading | ConnectionListState::Unavailable(_) => None,
         }
     }

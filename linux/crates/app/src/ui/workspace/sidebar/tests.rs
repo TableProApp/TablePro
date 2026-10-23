@@ -419,7 +419,8 @@ fn focused_name(list_view: &gtk::ListView) -> Option<String> {
     list_view
         .focus_child()
         .and_then(|item| item.first_child())
-        .and_then(|row| row.last_child())
+        .and_then(|row| row.first_child())
+        .and_then(|icon| icon.next_sibling())
         .and_downcast::<gtk::Label>()
         .map(|label| label.label().to_string())
 }
@@ -557,6 +558,27 @@ fn each_schema_heading_shows_its_er_diagram() {
     let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
         .expect("the ER Diagram button");
     assert!(button.is_visible());
+}
+
+#[gtk4::test]
+fn a_heading_of_keys_offers_no_er_diagram() {
+    let shown = Shown::new(&[], every_affordance());
+    shown.view.hold_keys();
+    let key = ObjectInfo {
+        schema: None,
+        name: "user:1".to_owned(),
+        kind: ObjectKind::Key(tablepro_core::meta::KeyKind::Hash),
+    };
+    shown.view.show_keys(
+        super::sidebar_index::SidebarIndex::keys(&[key], "db0".to_owned()),
+        false,
+    );
+    wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("the keys' heading");
+
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .expect("the heading's ER Diagram button");
+
+    assert!(!button.is_visible(), "keys have no diagram");
 }
 
 #[gtk4::test]

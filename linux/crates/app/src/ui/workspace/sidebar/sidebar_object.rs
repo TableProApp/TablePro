@@ -49,13 +49,25 @@ impl SidebarObject {
         match self.kind() {
             ObjectKind::View => crate::i18n::pgettext("object kind", "View"),
             ObjectKind::MaterializedView => crate::i18n::pgettext("object kind", "Materialized View"),
+            ObjectKind::Key(kind) => crate::ui::key_tab::key_kind_name(kind),
             _ => crate::i18n::pgettext("object kind", "Table"),
+        }
+    }
+
+    /// What a key's row says it holds, beside its name. A table's row
+    /// says nothing: its icon tells a view from a table.
+    pub(crate) fn type_label(&self) -> Option<String> {
+        match self.kind() {
+            ObjectKind::Key(kind) => Some(crate::ui::key_tab::key_kind_name(kind)),
+            _ => None,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use tablepro_core::meta::KeyKind;
+
     use super::*;
 
     #[gtk4::test]
@@ -82,5 +94,19 @@ mod tests {
             [table.kind_name(), totals.kind_name(), view.kind_name()],
             ["Table", "Materialized View", "View"]
         );
+        assert_eq!(table.type_label(), None);
+    }
+
+    #[gtk4::test]
+    fn a_key_says_what_it_holds() {
+        let session = TableRef::unqualified("session:1");
+
+        let hash = SidebarObject::new(&session, ObjectKind::Key(KeyKind::Hash), "Database 0");
+        let zset = SidebarObject::new(&session, ObjectKind::Key(KeyKind::SortedSet), "Database 0");
+
+        assert_eq!(hash.kind_name(), "Hash");
+        assert_eq!(hash.type_label().as_deref(), Some("Hash"));
+        assert_eq!(zset.type_label().as_deref(), Some("Sorted Set"));
+        assert_ne!(hash.icon_name(), zset.icon_name());
     }
 }

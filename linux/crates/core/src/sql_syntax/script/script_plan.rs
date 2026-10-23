@@ -32,7 +32,26 @@ impl ScriptPlan {
         settings: LexicalSettings,
         reading: ServerReading,
     ) -> ScriptPlan {
-        Builder::new(text, rules_for(grammar), settings, reading).run()
+        match rules_for(grammar) {
+            Some(rules) => Builder::new(text, rules, settings, reading).run(),
+            None => crate::sql_syntax::redis::plan(text),
+        }
+    }
+
+    pub(crate) fn from_parts(
+        tokens: Vec<ScriptToken>,
+        statements: Vec<ScriptStatement>,
+        batches: Vec<ScriptBatch>,
+        diagnostics: Vec<ScriptDiagnostic>,
+        batch_error: BatchErrorPolicy,
+    ) -> ScriptPlan {
+        ScriptPlan {
+            tokens,
+            statements,
+            batches,
+            diagnostics,
+            batch_error,
+        }
     }
 
     /// Every plan the client or a server may make of `text`: as the client

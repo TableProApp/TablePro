@@ -18,6 +18,10 @@ pub(crate) struct TabTitle {
 pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> TabTitle {
     match identity {
         TabIdentity::Table(table) => table_title(table, naming),
+        TabIdentity::Key(key) => TabTitle {
+            label: key.clone(),
+            tooltip: None,
+        },
         TabIdentity::Structure(StructureTarget::Existing(table)) => {
             let structure = |name: &str| crate::i18n::gettext_f("{table} · Structure", &[("table", name)]);
             let base = table_title(table, naming);

@@ -21,6 +21,7 @@ accepted = [
     "CDLA-Permissive-2.0",
     "LGPL-2.1-or-later",
     "0BSD",
+    "BSL-1.0",
 ]
 targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 # Neither kind of crate ends up in the shipped binaries.
@@ -155,3 +156,21 @@ license = "MIT OR Apache-2.0"
 path = "LICENSE-MIT"
 license = "MIT"
 checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
+
+# The LICENSE opens with a note on the project's move from MIT to
+# Apache-2.0, then holds both texts: code whose authors have not agreed to
+# the move stays under MIT, so the notice carries both.
+[rmcp.clarify]
+license = "Apache-2.0 AND MIT"
+[[rmcp.clarify.files]]
+path = "LICENSE"
+license = "Apache-2.0"
+start = "                                 Apache License"
+end = "END OF TERMS AND CONDITIONS"
+checksum = "447523816cc73790680a0eab741ef8653bb7e4bb224ceb569ded9dcfa515c3f0"
+[[rmcp.clarify.files]]
+path = "LICENSE"
+license = "MIT"
+start = "Copyright (c) 2024-2025 Model Context Protocol"
+end = "SOFTWARE."
+checksum = "a403f7ef905cd68df03a304a8c169dc7b3c5c50e4dba17c0ce8c58421055bd43"

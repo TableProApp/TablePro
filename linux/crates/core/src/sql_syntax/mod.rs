@@ -1,3 +1,4 @@
+mod catalog_change;
 mod credential_rules;
 mod errors;
 mod grammar;
@@ -6,11 +7,13 @@ mod keywords;
 mod literal_token;
 mod parse_expression;
 mod parse_type;
+pub mod redis;
 mod reserved_words;
 pub mod script;
 mod statement_access;
 mod statement_tokens;
 
+pub use catalog_change::changes_catalog;
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;

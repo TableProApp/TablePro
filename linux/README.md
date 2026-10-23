@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to five engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse and SQLite. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to six engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, SQLite and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -18,6 +18,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
@@ -47,7 +48,7 @@ apt and dnf, and Software Updater and GNOME Software with them, install the upda
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
 
 ## Stack
 
@@ -236,6 +237,29 @@ exits. A file already open brings its window forward. A database on a
 network or FUSE filesystem asks whether to open read-only first, because
 SQLite's locking cannot be trusted there.
 
+## Vim keybindings
+
+Turn on **Preferences → Editor → Vim Keybindings**. The SQL editor then
+runs GtkSourceView's Vim emulation: normal, insert, replace and visual
+modes, motions, text objects, registers, marks, search with `/` and `?`,
+and `.` to repeat. The line under the text shows the mode and the command
+you are typing.
+
+| Command | Does |
+|---|---|
+| `:w` | Saves the tab's file, as Ctrl+S does. A tab with no file asks for one |
+| `:w name` | Saves to `name`, next to the tab's file or in your home folder, and the tab follows it. An existing file is left alone; `:w! name` replaces it |
+| `:e` | Reads the tab's file again, asking first when that loses changes. `:e!` does not ask |
+| `:e name` | Opens `name` in the tab, as Open SQL File does. `:e! name` does not ask |
+| `:q`, `:q!` | Closes the tab. A tab with unsaved file changes or an open transaction asks first, as closing does |
+| `:wq`, `:x` | Saves, then closes the tab. `:x` skips the save when the file has no changes |
+
+The editor's own Ctrl shortcuts work in every mode: Ctrl+Return runs,
+Ctrl+Shift+Return runs the statement at the cursor, and find, find and
+replace, format, toggle comment, open and save keep their keys. Every
+other key goes to Vim, Escape too, so while Vim is on the **Stop** button
+stops a running query. Completion opens in insert mode only.
+
 ## SQL Server with Windows integrated auth
 
 Pick **Method → Windows (Kerberos)** in the connect dialog. There is no
@@ -263,6 +287,33 @@ worth knowing:
 Under Flatpak the app brings its own Kerberos configuration and reads
 tickets from the KCM cache. [Kerberos inside Flatpak](docs/drivers/sql-server.md#kerberos-inside-flatpak)
 says where the realm, the KDC and the tickets come from there.
+
+## MCP server
+
+MCP clients on this computer, such as Claude Code, can use your saved connections through TablePro ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). The server is off until you turn on **Preferences > MCP > Enable MCP Server**, and runs while TablePro is open. It listens on `127.0.0.1` only, on port 23508 unless you change it there.
+
+Copy the address and the access token from the same page into the client. With Claude Code:
+
+```bash
+claude mcp add --transport http tablepro http://127.0.0.1:23508/mcp \
+  --header "Authorization: Bearer <access token>"
+```
+
+**Regenerate Access Token** on that page turns the old token away from the next request.
+
+Each connection's **External Clients** level, under Options in its connect dialog, decides what a client may do there:
+
+| Level | A client |
+|---|---|
+| Blocked | does not see the connection |
+| Read Only, the default | reads the schema and the data |
+| Read & Write | also writes, each statement after you approve it |
+
+Read Only stops statements that write. A function the connection's login may call that reads files on the server still runs, so give such a connection a login without that privilege.
+
+A client works on a connection open in a TablePro window; its `connect` tool opens one there, and anything the connect needs, such as a password, is asked in that window. A read runs on a read-only connection. A write runs one statement per call, never under Safe Mode Read-Only, and only after you click **Run** in Safe Mode's dialog in the connection's window, whatever the Safe Mode level. What a client runs with `execute_query` goes into the query history as the editor's runs do.
+
+The tools are `list_connections`, `connect`, `list_schemas`, `list_tables`, `describe_table`, `get_table_ddl`, `browse_table`, `count_rows` and `execute_query`. An answer keeps at most 20 result sets of 1,000 rows each, and a statement stops at 300 seconds.
 
 ## Documentation index
 

@@ -32,6 +32,10 @@ pub(crate) enum TabSpec {
         /// Where the user put tables, for a restored or reopened tab.
         places: Vec<DiagramPlace>,
     },
+    /// A key-value engine's key, by the name the sidebar lists it as.
+    Key {
+        key: String,
+    },
 }
 
 /// Where a table tab opens in its rows.

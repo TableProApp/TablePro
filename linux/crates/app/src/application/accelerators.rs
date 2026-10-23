@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow, PickerRow,
-    SidebarList, SqlEditor, SqlEditorTab, StructureTab,
+    BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow, PickerPage,
+    PickerRow, SidebarList, SqlEditor, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -388,6 +388,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Alt>Down"],
         Listed(ErDiagram),
     ),
+    local(
+        PickerPage,
+        BUBBLE,
+        "picker-page.search",
+        &["<Primary>f"],
+        Listed(General),
+    ),
 ];
 
 pub fn install_application_accelerators(app: &impl IsA<gtk::Application>) {
@@ -438,6 +445,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         PickerRow => "tablepro-picker-row-shortcuts",
         DiagramTab => "tablepro-diagram-tab-shortcuts",
         DiagramCanvas => "tablepro-diagram-canvas-shortcuts",
+        PickerPage => "tablepro-picker-page-shortcuts",
     }
 }
 
@@ -462,6 +470,30 @@ pub fn component_matches(action: &str, keyval: gdk::Key, state: gdk::ModifierTyp
         .iter()
         .filter_map(|accel| parse(accel))
         .any(|(key, mods)| mods == modifiers && (key == keyval || keypad_twins(key).contains(&keyval)))
+}
+
+/// The SQL editor's own Ctrl keys, which Vim mode leaves to the editor in
+/// every mode. A trigger, so an event matches it as the editor's shortcut
+/// controllers match it, layout and consumed Shift included. Escape and
+/// the other plain keys are Vim's.
+pub fn editor_kept_keys() -> Option<gtk::ShortcutTrigger> {
+    let accels: Vec<&str> = ACCELERATORS
+        .iter()
+        .filter(|entry| is_editors(entry))
+        .flat_map(|entry| entry.triggers.iter().copied())
+        .filter(|accel| parse(accel).is_some_and(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK)))
+        .collect();
+    shortcut_trigger(&accels)
+}
+
+fn is_editors(entry: &Accelerator) -> bool {
+    matches!(
+        entry.scope,
+        Local {
+            owner: SqlEditor | SqlEditorTab,
+            ..
+        }
+    )
 }
 
 /// GtkPopoverMenu shows an application accelerator by itself; a Local or
@@ -744,6 +776,49 @@ mod tests {
             gdk::ModifierType::CONTROL_MASK
         ));
         assert!(!component_matches("cell-editor.pick-date", gdk::Key::Return, none));
+    }
+
+    #[gtk4::test]
+    fn the_editor_keeps_its_ctrl_keys_from_vim() {
+        let kept: HashSet<Keystroke> = trigger_keys(&editor_kept_keys().expect("the editor has Ctrl keys"))
+            .into_iter()
+            .collect();
+
+        for accel in [
+            "<Primary>Return",
+            "<Primary>KP_Enter",
+            "<Primary><Shift>Return",
+            "<Primary><Shift>f",
+            "<Primary>slash",
+            "<Primary>f",
+            "<Primary>h",
+            "<Primary>g",
+            "<Primary><Shift>g",
+            "<Primary>o",
+            "<Primary>s",
+            "<Primary><Shift>s",
+        ] {
+            assert!(kept.contains(&keystroke(accel)), "{accel}");
+        }
+        for accel in ["Escape", "<Primary>r", "<Primary>d", "<Primary>v", "<Primary>w", "f"] {
+            assert!(!kept.contains(&keystroke(accel)), "{accel}");
+        }
+    }
+
+    #[gtk4::test]
+    fn every_ctrl_key_of_the_editor_is_kept_from_vim() {
+        let kept: HashSet<Keystroke> = trigger_keys(&editor_kept_keys().expect("the editor has Ctrl keys"))
+            .into_iter()
+            .collect();
+        let owned: HashSet<Keystroke> = ACCELERATORS
+            .iter()
+            .filter(|entry| is_editors(entry))
+            .flat_map(|entry| entry.triggers.iter())
+            .flat_map(|accel| keystrokes_with_twins(accel))
+            .filter(|(_, mods)| mods.contains(gdk::ModifierType::CONTROL_MASK))
+            .collect();
+
+        assert_eq!(kept, owned);
     }
 
     #[gtk4::test]

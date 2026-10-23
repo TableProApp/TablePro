@@ -23,4 +23,6 @@ pub enum ShortcutOwner {
     DiagramTab,
     /// The diagram's canvas, where a table has the keyboard focus.
     DiagramCanvas,
+    /// The picker as a whole, its search included.
+    PickerPage,
 }

@@ -12,6 +12,8 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
     match error {
         SavedConnectionError::Secret(error) => secret_message(error),
         SavedConnectionError::NotFound(_) => crate::i18n::gettext("The connection was deleted."),
+        SavedConnectionError::TagNotFound(_) => crate::i18n::gettext("The tag was deleted."),
+        SavedConnectionError::Storage(StorageError::TagNameTaken) => crate::i18n::gettext("Another tag has that name."),
         SavedConnectionError::Storage(StorageError::DocumentUnavailable(_)) => {
             crate::i18n::gettext("The saved connections could not be read, so nothing was changed.")
         }
@@ -50,6 +52,14 @@ mod tests {
                 "the connections write task failed".to_owned(),
             ))),
             "The saved connections could not be written."
+        );
+        assert_eq!(
+            saved_connection_error_message(&SavedConnectionError::Storage(StorageError::TagNameTaken)),
+            "Another tag has that name."
+        );
+        assert_eq!(
+            saved_connection_error_message(&SavedConnectionError::TagNotFound(Uuid::nil())),
+            "The tag was deleted."
         );
     }
 }
