@@ -3,7 +3,7 @@ use tablepro_storage::DraftId;
 
 use super::structure_target::StructureTarget;
 use crate::ui::browse_tab::TableFilter;
-use crate::workspace::EditorFileRecord;
+use crate::workspace::{DiagramPlace, EditorFileRecord};
 
 /// A tab to open. Every way a tab opens builds one of these: the sidebar,
 /// the overview's new-tab button, a restore and a reopen.
@@ -24,6 +24,13 @@ pub(crate) enum TabSpec {
     },
     Structure {
         target: StructureTarget,
+    },
+    /// The ER diagram of a schema, or of the default one of an engine
+    /// without schemas.
+    Diagram {
+        schema: Option<String>,
+        /// Where the user put tables, for a restored or reopened tab.
+        places: Vec<DiagramPlace>,
     },
     /// A key-value engine's key, by the name the sidebar lists it as.
     Key {

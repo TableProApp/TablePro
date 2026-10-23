@@ -23,7 +23,9 @@ fn take_editor_sessions(tabs: &WorkspaceTabs) -> Vec<Arc<dyn EditorSession>> {
         .values()
         .filter_map(|tab| match tab {
             WorkspaceTab::Editor(slot) => slot.editor.take_editor_session(),
-            WorkspaceTab::Structure(_) | WorkspaceTab::Table(_) | WorkspaceTab::Key(_) => None,
+            WorkspaceTab::Structure(_) | WorkspaceTab::Table(_) | WorkspaceTab::Key(_) | WorkspaceTab::Diagram(_) => {
+                None
+            }
         })
         .collect()
 }
@@ -72,7 +74,10 @@ impl WorkspaceModel {
             .filter(|(tab, _)| id.is_none_or(|id| id == **tab))
             .filter_map(|(_, tab)| match tab {
                 WorkspaceTab::Table(slot) => Some(slot.browse.clone()),
-                WorkspaceTab::Editor(_) | WorkspaceTab::Structure(_) | WorkspaceTab::Key(_) => None,
+                WorkspaceTab::Editor(_)
+                | WorkspaceTab::Structure(_)
+                | WorkspaceTab::Key(_)
+                | WorkspaceTab::Diagram(_) => None,
             })
             .collect()
     }

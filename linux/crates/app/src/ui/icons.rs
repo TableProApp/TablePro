@@ -60,6 +60,9 @@ pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
 pub const WEATHER_OVERCAST: &str = "weather-overcast-symbolic";
 pub const WEB_BROWSER: &str = "web-browser-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
+pub const ZOOM_FIT_BEST: &str = "zoom-fit-best-symbolic";
+pub const ZOOM_IN: &str = "zoom-in-symbolic";
+pub const ZOOM_OUT: &str = "zoom-out-symbolic";
 
 #[cfg_attr(
     not(test),
@@ -127,6 +130,9 @@ pub const ALL: &[&str] = &[
     WEATHER_OVERCAST,
     WEB_BROWSER,
     WINDOW_CLOSE,
+    ZOOM_FIT_BEST,
+    ZOOM_IN,
+    ZOOM_OUT,
 ];
 
 /// The theme's icon for each icon a connection can carry.

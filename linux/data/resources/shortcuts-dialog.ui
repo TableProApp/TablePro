@@ -390,5 +390,70 @@
         </child>
       </object>
     </child>
+    <child>
+      <object class="AdwShortcutsSection" id="section-er-diagram">
+        <property name="title" translatable="yes">ER Diagram</property>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-zoom-in">
+            <property name="title" translatable="yes">Zoom In</property>
+            <property name="accelerator">&lt;Primary&gt;plus &lt;Primary&gt;equal</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-zoom-out">
+            <property name="title" translatable="yes">Zoom Out</property>
+            <property name="accelerator">&lt;Primary&gt;minus</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-zoom-reset">
+            <property name="title" translatable="yes">Reset Zoom</property>
+            <property name="accelerator">&lt;Primary&gt;0</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-zoom-fit">
+            <property name="title" translatable="yes">Best Fit</property>
+            <property name="accelerator">f</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-refresh">
+            <property name="title" translatable="yes">Read the Tables Again</property>
+            <property name="accelerator">F5 &lt;Primary&gt;r</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-open-table">
+            <property name="title" translatable="yes">Open the Selected Table</property>
+            <property name="accelerator">Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-move-table-left">
+            <property name="title" translatable="yes">Move the Selected Table Left</property>
+            <property name="accelerator">&lt;Alt&gt;Left</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-move-table-right">
+            <property name="title" translatable="yes">Move the Selected Table Right</property>
+            <property name="accelerator">&lt;Alt&gt;Right</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-move-table-up">
+            <property name="title" translatable="yes">Move the Selected Table Up</property>
+            <property name="accelerator">&lt;Alt&gt;Up</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="diagram-move-table-down">
+            <property name="title" translatable="yes">Move the Selected Table Down</property>
+            <property name="accelerator">&lt;Alt&gt;Down</property>
+          </object>
+        </child>
+      </object>
+    </child>
   </object>
 </interface>
