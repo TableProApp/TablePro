@@ -525,26 +525,46 @@ fn resolved_like_duckdb(path: PathBuf) -> PathBuf {
 }
 
 /// Whether an ATTACH asks for a HIDDEN database, which DuckDB leaves out
-/// of `duckdb_databases()`: its options are the parenthesis after the path.
+/// of `duckdb_databases()`. Its options are the parenthesis after the
+/// path, each a name, quoted or not, and an optional value; measured on
+/// DuckDB 1.5, `HIDDEN false` attaches a listed database.
 fn attach_hides(statement: &str) -> bool {
     let grammar = SqlGrammar::DuckDb;
     let plan = ScriptPlan::build(statement, grammar, LexicalSettings::default_for(grammar));
-    let mut depth = 0usize;
-    plan.tokens(0..statement.len())
+    let tokens: Vec<(ScriptTokenKind, &str)> = plan
+        .tokens(0..statement.len())
         .filter(|token| !token.kind.is_trivia())
-        .any(|token| {
-            match token.kind {
-                ScriptTokenKind::OpenParen => depth += 1,
-                ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
-                ScriptTokenKind::Word if depth == 1 => {
-                    return statement
-                        .get(token.range)
-                        .is_some_and(|word| word.eq_ignore_ascii_case("HIDDEN"));
-                }
-                _ => {}
+        .map(|token| (token.kind, statement.get(token.range).unwrap_or_default()))
+        .collect();
+    let mut depth = 0usize;
+    let mut option_starts = false;
+    for (index, &(kind, text)) in tokens.iter().enumerate() {
+        let is_option_name = option_starts;
+        option_starts = false;
+        match kind {
+            ScriptTokenKind::OpenParen => {
+                depth += 1;
+                option_starts = depth == 1;
             }
-            false
-        })
+            ScriptTokenKind::CloseParen => depth = depth.saturating_sub(1),
+            ScriptTokenKind::Punct if depth == 1 && text == "," => option_starts = true,
+            ScriptTokenKind::Word | ScriptTokenKind::QuotedIdentifier if is_option_name => {
+                let name = text.strip_prefix('"').and_then(|name| name.strip_suffix('"')).unwrap_or(text);
+                let turned_off = tokens.get(index + 1).is_some_and(|&(kind, value)| {
+                    let value = match kind {
+                        ScriptTokenKind::StringLiteral => value.trim_matches('\''),
+                        _ => value,
+                    };
+                    value.eq_ignore_ascii_case("false") || value == "0"
+                });
+                if name.eq_ignore_ascii_case("hidden") && !turned_off {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 /// A `name:` before the path, which DuckDB reads as the engine that
@@ -755,12 +775,20 @@ mod tests {
         assert!(resolved_like_duckdb(PathBuf::from("rel.duckdb")).is_absolute());
     }
 
+    /// Measured against DuckDB 1.5: a quoted option name is read as the
+    /// bare one, and `false` turns the option off.
     #[test]
     fn a_hidden_attach_is_told_by_its_options() {
         assert!(attach_hides("ATTACH 'a.duckdb' AS a (HIDDEN)"));
         assert!(attach_hides("ATTACH 'a.duckdb' (READ_ONLY, hidden true)"));
+        assert!(attach_hides("ATTACH 'a.duckdb' AS a (\"hidden\")"));
+        assert!(attach_hides("ATTACH 'a.duckdb' AS a (\"read_only\" false,hidden)"));
+        assert!(!attach_hides("ATTACH 'a.duckdb' AS a (HIDDEN false)"));
+        assert!(!attach_hides("ATTACH 'a.duckdb' AS a (TYPE duckdb, HIDDEN 0)"));
+        assert!(!attach_hides("ATTACH 'a.duckdb' AS a (HIDDEN 'false')"));
         assert!(!attach_hides("ATTACH 'a.duckdb' AS hidden"));
         assert!(!attach_hides("ATTACH 'hidden.duckdb' AS a (READ_ONLY)"));
+        assert!(!attach_hides("ATTACH 'a.duckdb' AS a (TYPE hidden)"));
     }
 
     #[test]

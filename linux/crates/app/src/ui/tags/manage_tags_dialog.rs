@@ -286,7 +286,10 @@ mod tests {
     fn list() -> (Rc<SavedConnectionList>, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        (SavedConnectionList::follow(&store, std::sync::Arc::new(crate::build_registry())), dir)
+        (
+            SavedConnectionList::follow(&store, std::sync::Arc::new(crate::build_registry())),
+            dir,
+        )
     }
 
     fn ready(connections: Vec<SavedConnection>, tags: Vec<ConnectionTag>) -> ConnectionListState {
