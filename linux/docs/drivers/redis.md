@@ -46,7 +46,7 @@ The editor sends one command per line, each read as redis-cli's `sdssplitargs` r
 
 A reply shows as redis-cli lays it out: one value in a cell of its own, an array numbered from 1, a map by its keys, and an element that is itself an array or a map as a JSON cell. A bare `OK` is a completed command. An error reply fails the command with its code, such as `WRONGTYPE`. The run's row limit keeps at most 10,000 rows of a reply; the reply is already whole in memory, so the rest are counted and dropped.
 
-The editor refuses what would turn the link into a stream of pushes or stop its replies: `SUBSCRIBE` and the other pub/sub subscriptions, `MONITOR`, `SYNC`, `PSYNC`, `REPLCONF`, `QUIT`, `CLIENT REPLY` and `HELLO` with any protocol but 2.
+The editor refuses what would turn the link into a stream of pushes or stop its replies: `SUBSCRIBE` and the other pub/sub subscriptions, `MONITOR`, `SYNC`, `PSYNC`, `REPLCONF`, `QUIT`, `CLIENT REPLY`, `SCRIPT DEBUG YES` or `SYNC`, whose Lua debugger answers with a session of its own, and `HELLO` with any protocol but 2.
 
 `MULTI` opens a transaction the tab tracks from the replies: `MULTI` answered `OK` is in a transaction, `EXEC`, `DISCARD` and `RESET` end it, and a command that cannot be queued fails it, since `EXEC` will abort. The transaction banner's Commit sends `EXEC` and Roll Back `DISCARD`. A tab's `SELECT` changes only its own link.
 

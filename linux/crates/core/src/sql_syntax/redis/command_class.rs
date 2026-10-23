@@ -284,6 +284,10 @@ pub fn editor_use(arguments: &[Vec<u8>]) -> EditorUse {
         ("REPLCONF", _) => EditorUse::Refused("REPLCONF"),
         ("QUIT", _) => EditorUse::Refused("QUIT"),
         ("CLIENT", Some("REPLY")) => EditorUse::Refused("CLIENT REPLY"),
+        // The Lua debugger answers a script with a session of its own.
+        ("SCRIPT", Some("DEBUG")) if arguments.get(2).is_some_and(|mode| !mode.eq_ignore_ascii_case(b"NO")) => {
+            EditorUse::Refused("SCRIPT DEBUG")
+        }
         // RESP3 changes the shape of every reply after it.
         ("HELLO", Some(protocol)) if protocol != "2" => EditorUse::Refused("HELLO"),
         _ => EditorUse::Sendable,
@@ -433,6 +437,15 @@ mod tests {
             EditorUse::Refused("CLIENT REPLY")
         );
         assert_eq!(editor_use(&argv("HELLO 3")), EditorUse::Refused("HELLO"));
+        assert_eq!(
+            editor_use(&argv("SCRIPT DEBUG YES")),
+            EditorUse::Refused("SCRIPT DEBUG")
+        );
+        assert_eq!(
+            editor_use(&argv("script debug sync")),
+            EditorUse::Refused("SCRIPT DEBUG")
+        );
+        assert_eq!(editor_use(&argv("SCRIPT DEBUG NO")), EditorUse::Sendable);
         assert_eq!(editor_use(&argv("HELLO 2")), EditorUse::Sendable);
         assert_eq!(editor_use(&argv("GET k")), EditorUse::Sendable);
     }
