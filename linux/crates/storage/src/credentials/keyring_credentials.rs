@@ -326,6 +326,8 @@ mod tests {
             last_opened_at: None,
             color: None,
             group: None,
+            tags: Vec::new(),
+            icon: None,
         }
     }
 

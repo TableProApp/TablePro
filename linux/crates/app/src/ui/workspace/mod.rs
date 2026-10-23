@@ -440,6 +440,8 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
+    /// The saved connections changed, the window's icon perhaps with them.
+    SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
     /// An editor draft failed to land after the last one did.
     DraftsNotSaved,
@@ -590,7 +592,7 @@ impl Workspace {
             workspace_handle,
         } = workspace.build_tabs(&key, &session, &services, &context, &drafts, &input);
         let mut actions = workspace_actions::install(&window, &input);
-        let shell = shell::install(&workspace, &window, &factory);
+        let shell = shell::install(&workspace, &window, &factory, &services, &input);
         actions.push(shell::SHOW_SIDEBAR);
         let history_gate = workspace_actions::spawn_history_gate(&window, history.availability());
         let watches = SessionWatches::new(&session, &input);
@@ -923,6 +925,7 @@ impl WorkspaceModel {
         self.window_title.set_subtitle(&title.subtitle);
         self.sidebar_title.set_title(name);
         self.sidebar_title.set_subtitle(&self.driver_name);
+        self.shell.show_connection_icon(&self.key);
         if let Some(workspace) = self.this.upgrade() {
             workspace.emit_by_name::<()>("title-changed", &[&title.window]);
         }
@@ -1049,6 +1052,7 @@ impl WorkspaceModel {
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
+            WorkspaceInput::SavedConnectionsChanged => self.shell.show_connection_icon(&self.key),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
                 "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",

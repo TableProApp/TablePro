@@ -24,6 +24,18 @@
         </child>
         <child>
           <object class="GtkStackPage">
+            <property name="name">no-results</property>
+            <property name="child">
+              <object class="AdwStatusPage">
+                <property name="icon-name">system-search-symbolic</property>
+                <property name="title" translatable="yes">No Results Found</property>
+                <property name="description" translatable="yes">Try a different search.</property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
             <property name="name">empty</property>
             <property name="child">
               <object class="AdwStatusPage">

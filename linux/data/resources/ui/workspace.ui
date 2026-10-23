@@ -106,7 +106,20 @@
                               </object>
                             </child>
                             <property name="title-widget">
-                              <object class="AdwWindowTitle" id="window_title"/>
+                              <!-- The connection's icon, when it has one,
+                                   beside the title that names it. -->
+                              <object class="GtkBox">
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkImage" id="connection_icon">
+                                    <property name="visible">false</property>
+                                    <property name="accessible-role">presentation</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwWindowTitle" id="window_title"/>
+                                </child>
+                              </object>
                             </property>
                             <child type="end">
                               <object class="AdwTabButton" id="tab_button">

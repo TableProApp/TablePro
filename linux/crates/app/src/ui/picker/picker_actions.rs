@@ -3,10 +3,12 @@ use std::rc::Rc;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, SavedConnection};
 use uuid::Uuid;
 
-use super::connection_menu::{CONNECT, DELETE, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NONE, PICKER, SET_COLOR};
+use super::connection_menu::{
+    CONNECT, DELETE, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NEW_TAG, NONE, PICKER, SET_COLOR, SET_TAG,
+};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::ui::SessionWindowInput;
@@ -27,6 +29,7 @@ pub(crate) fn install_picker_actions(
         (DELETE, OnConnection::Delete),
         (DUPLICATE, OnConnection::Duplicate),
         (NEW_GROUP, OnConnection::NewGroup),
+        (NEW_TAG, OnConnection::NewTag),
     ];
     for (name, picked) in by_id {
         let action = gio::SimpleAction::new(name, Some(&String::static_variant_type()));
@@ -43,6 +46,11 @@ pub(crate) fn install_picker_actions(
                 OnConnection::NewGroup => {
                     if let Some(root) = root.upgrade() {
                         ask_for_group(root, saved.id, list.groups(), sender.clone());
+                    }
+                }
+                OnConnection::NewTag => {
+                    if let Some(root) = root.upgrade() {
+                        ask_for_tag(root, saved.id, list.tags().to_vec(), sender.clone());
                     }
                 }
             }
@@ -74,7 +82,32 @@ pub(crate) fn install_picker_actions(
         });
         actions.add_action(&action);
     }
+    actions.add_action(&set_tag_action(list, sender));
     root.insert_action_group(PICKER, Some(&actions));
+}
+
+/// Takes the connection's id, the tag's id and whether the connection
+/// now carries it.
+fn set_tag_action(list: Rc<SavedConnectionList>, sender: InputSender<SessionWindowInput>) -> gio::SimpleAction {
+    let action = gio::SimpleAction::new(SET_TAG, Some(&<(String, String, bool)>::static_variant_type()));
+    action.connect_activate(move |_, target| {
+        let Some((id, tag, carried)) = target.and_then(|target| target.get::<(String, String, bool)>()) else {
+            tracing::warn!(action = SET_TAG, "a picker action came without its target");
+            return;
+        };
+        let Some(saved) = connection(&list, Some(id), SET_TAG) else {
+            return;
+        };
+        let Some(tag) = Uuid::parse_str(&tag)
+            .ok()
+            .filter(|tag| list.tags().iter().any(|held| held.id == *tag))
+        else {
+            tracing::warn!(action = SET_TAG, "a picker action named a tag the list no longer has");
+            return;
+        };
+        sender.deliver(SessionWindowInput::SetConnectionTag(saved.id, tag, carried));
+    });
+    action
 }
 
 /// What an action that names only a connection does with it.
@@ -85,6 +118,7 @@ enum OnConnection {
     Delete,
     Duplicate,
     NewGroup,
+    NewTag,
 }
 
 /// What an action that names a connection and a value sets.
@@ -127,6 +161,20 @@ fn ask_for_group(
     glib::spawn_future_local(async move {
         if let Some(group) = super::new_group_dialog::ask_group_name(&parent, &existing).await {
             sender.deliver(SessionWindowInput::SetConnectionGroup(id, Some(group)));
+        }
+    });
+}
+
+/// Ask for a new tag's name and colour, then make it and put it on the
+/// connection.
+fn ask_for_tag(parent: gtk::Widget, id: Uuid, existing: Vec<ConnectionTag>, sender: InputSender<SessionWindowInput>) {
+    glib::spawn_future_local(async move {
+        if let Some((name, color)) = crate::ui::tags::ask_new_tag(&parent, &existing).await {
+            sender.deliver(SessionWindowInput::CreateTag {
+                name,
+                color,
+                on: Some(id),
+            });
         }
     });
 }

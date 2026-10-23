@@ -54,6 +54,8 @@ pub struct Workspace {
     #[template_child]
     pub window_title: TemplateChild<adw::WindowTitle>,
     #[template_child]
+    pub connection_icon: TemplateChild<gtk::Image>,
+    #[template_child]
     pub tab_button: TemplateChild<adw::TabButton>,
     #[template_child]
     pub export_operations_button: TemplateChild<ExportOperationsButton>,

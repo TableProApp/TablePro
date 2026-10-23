@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, PickerRow, SidebarList, SqlEditor,
-    SqlEditorTab, StructureTab,
+    BrowseGrid, BrowseTab, CellEditor, FilterStrip, GridCell, HistoryRow, PickerPage, PickerRow, SidebarList,
+    SqlEditor, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, General, TableStructure, Tabs};
 
@@ -312,6 +312,13 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Unlisted,
     ),
     local(PickerRow, BUBBLE, "picker-row.menu", &["Menu", "<Shift>F10"], Unlisted),
+    local(
+        PickerPage,
+        BUBBLE,
+        "picker-page.search",
+        &["<Primary>f"],
+        Listed(General),
+    ),
 ];
 
 pub fn install_application_accelerators(app: &impl IsA<gtk::Application>) {
@@ -360,6 +367,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         SidebarList => "tablepro-sidebar-list-shortcuts",
         HistoryRow => "tablepro-history-row-shortcuts",
         PickerRow => "tablepro-picker-row-shortcuts",
+        PickerPage => "tablepro-picker-page-shortcuts",
     }
 }
 

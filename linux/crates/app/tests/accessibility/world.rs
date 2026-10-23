@@ -15,7 +15,9 @@ use tablepro_app::storage::AppStorage;
 use tablepro_core::{AuthMode, DriverRegistry, LivenessPolicy, TlsConfig};
 use tablepro_session::fakes::FakeConnector;
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_storage::{AppSettings, SavedConnection, StoragePaths};
+use tablepro_storage::{
+    AppSettings, ConnectionColor, ConnectionIcon, ConnectionTagName, SavedConnection, StoragePaths,
+};
 use tablepro_test_support::FakeSecretVault;
 
 /// Long enough for a page to settle on a loaded CI runner.
@@ -38,7 +40,19 @@ impl World {
         let settings = Rc::new(settings(dir.path())?);
         let paths = StoragePaths::under(dir.path(), "tablepro", tablepro_app::config::APP_ID);
         let storage = AppStorage::new(paths, Arc::new(FakeSecretVault::new()), &runtime.tasks());
-        let saved = saved_connection(&dir.path().join("fake.db"));
+        // A tag, so its pills and its rows are audited too.
+        let tag = storage
+            .connections()
+            .create_tag_blocking(
+                ConnectionTagName::new("production").map_err(|error| error.to_string())?,
+                ConnectionColor::Red,
+            )
+            .map_err(|error| format!("could not save the tag: {error}"))?;
+        let saved = SavedConnection {
+            tags: vec![tag.id],
+            icon: Some(ConnectionIcon::Server),
+            ..saved_connection(&dir.path().join("fake.db"))
+        };
         storage
             .connections()
             .upsert_blocking(saved.clone())
@@ -126,6 +140,8 @@ fn saved_connection(database: &Path) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 

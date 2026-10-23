@@ -1,6 +1,6 @@
 //! The order every connection picker shows the saved connections in.
 
-use tablepro_storage::{ConnectionGroupName, SavedConnection};
+use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
 
 /// Sort the list the way every picker shows it.
 ///
@@ -37,6 +37,17 @@ fn recency_key(connection: &SavedConnection) -> (bool, i64) {
         Some(at) => (false, -at.timestamp_millis()),
         None => (true, 0),
     }
+}
+
+/// Tags read by name, in any case, wherever the list shows them.
+pub(crate) fn sort_tags(tags: &mut [ConnectionTag]) {
+    tags.sort_by(|a, b| {
+        a.name
+            .as_str()
+            .to_lowercase()
+            .cmp(&b.name.as_str().to_lowercase())
+            .then_with(|| a.name.cmp(&b.name))
+    });
 }
 
 /// Every group in `sorted`, once each, in the order the list shows them:
@@ -77,6 +88,8 @@ mod tests {
             }),
             color: None,
             group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
+            tags: Vec::new(),
+            icon: None,
         }
     }
 

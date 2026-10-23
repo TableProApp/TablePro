@@ -333,6 +333,8 @@ fn saved_connection(database: &std::path::Path) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -353,6 +355,8 @@ fn network_connection() -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -393,6 +397,7 @@ fn a_connected_window_shows_the_workspace_and_claims_its_key() {
 fn stored_level(test: &TestWindow) -> Option<tablepro_core::SafeModeLevel> {
     match test.services.storage.connections().snapshot().state {
         tablepro_storage::ConnectionListState::Ready(list) => list
+            .connections
             .iter()
             .find(|saved| saved.id == test.saved.id)
             .map(|saved| saved.safe_mode),

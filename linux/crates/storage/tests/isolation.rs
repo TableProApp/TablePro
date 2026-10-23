@@ -51,6 +51,8 @@ fn connection(name: &str) -> SavedConnection {
         last_opened_at: None,
         color: None,
         group: None,
+        tags: Vec::new(),
+        icon: None,
     }
 }
 
@@ -159,7 +161,7 @@ async fn store_files_are_private_in_both_roots() -> TestResult {
 
 fn names(store: &ConnectionStore) -> Result<Vec<String>, Box<dyn Error>> {
     match store.snapshot().state {
-        ConnectionListState::Ready(connections) => Ok(connections.iter().map(|c| c.name.clone()).collect()),
+        ConnectionListState::Ready(list) => Ok(list.connections.iter().map(|c| c.name.clone()).collect()),
         other => Err(format!("the list is not ready: {other:?}").into()),
     }
 }
