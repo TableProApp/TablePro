@@ -262,9 +262,11 @@ fn next_transaction_state(name: &str, reply: &Reply, current: TransactionState) 
     match (name, reply) {
         ("MULTI", Reply::Okay) => TransactionState::InTransaction,
         ("EXEC", Reply::ServerError(error)) if error.code() == "EXECABORT" => TransactionState::Idle,
-        // Redis refuses a nested MULTI and a WATCH inside one without
-        // touching the transaction.
-        ("MULTI" | "WATCH", Reply::ServerError(_)) => current,
+        // The handlers of MULTI and WATCH refuse a nested MULTI and a WATCH
+        // inside one without touching the transaction. Refused before
+        // them, for arity or an ACL, they make its EXEC abort like any
+        // other command.
+        ("MULTI" | "WATCH", Reply::ServerError(error)) if refused_by_its_handler(error) => current,
         // Any other refusal, EXEC's and DISCARD's included, keeps the
         // transaction open and makes its EXEC abort.
         (_, Reply::ServerError(_)) if open => TransactionState::Failed,
@@ -272,6 +274,11 @@ fn next_transaction_state(name: &str, reply: &Reply, current: TransactionState) 
         ("EXEC" | "DISCARD" | "RESET", _) => TransactionState::Idle,
         _ => current,
     }
+}
+
+fn refused_by_its_handler(error: &redis::ServerError) -> bool {
+    let detail = error.details().unwrap_or_default();
+    detail.contains("MULTI calls can not be nested") || detail.contains("WATCH inside MULTI is not allowed")
 }
 
 /// Whether the link can run the next command after a stop: the reply
@@ -360,5 +367,15 @@ mod tests {
             next_transaction_state("NOSUCH", &error("ERR unknown command"), InTransaction),
             TransactionState::Failed
         );
+    }
+
+    #[test]
+    fn a_multi_or_watch_refused_before_its_handler_fails_the_transaction() {
+        use TransactionState::{Failed, InTransaction};
+
+        let multi = error("ERR wrong number of arguments for 'multi' command");
+        let watch = error("ERR wrong number of arguments for 'watch' command");
+        assert_eq!(next_transaction_state("MULTI", &multi, InTransaction), Failed);
+        assert_eq!(next_transaction_state("WATCH", &watch, InTransaction), Failed);
     }
 }

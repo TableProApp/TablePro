@@ -220,6 +220,9 @@ async fn a_refused_exec_or_discard_is_read_as_the_server_reads_it() {
     let session = editor(connection.as_ref()).await;
 
     run(session.as_ref(), "MULTI").await;
+    let (malformed, _) = run(session.as_ref(), "MULTI extra").await;
+    let (aborted_malformed, _) = run(session.as_ref(), "EXEC").await;
+    run(session.as_ref(), "MULTI").await;
     let (nested, _) = run(session.as_ref(), "MULTI").await;
     let (refused_discard, _) = run(session.as_ref(), "DISCARD extra").await;
     let (aborted, _) = run(session.as_ref(), "EXEC").await;
@@ -227,6 +230,13 @@ async fn a_refused_exec_or_discard_is_read_as_the_server_reads_it() {
     let (refused_exec, _) = run(session.as_ref(), "EXEC extra").await;
     let (after, _) = run(session.as_ref(), "EXEC").await;
 
+    assert_eq!(malformed.transaction_state, TransactionState::Failed);
+    assert!(
+        matches!(aborted_malformed.end, RunEnd::Failed(_)),
+        "{:?}",
+        aborted_malformed.end
+    );
+    assert_eq!(aborted_malformed.transaction_state, TransactionState::Idle);
     assert_eq!(nested.transaction_state, TransactionState::InTransaction);
     assert_eq!(refused_discard.transaction_state, TransactionState::Failed);
     assert_eq!(aborted.transaction_state, TransactionState::Idle);
