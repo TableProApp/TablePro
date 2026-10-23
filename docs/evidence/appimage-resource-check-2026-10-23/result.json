@@ -1,0 +1,17 @@
+{
+  "version": [
+    5,
+    22,
+    0
+  ],
+  "sql": true,
+  "light": true,
+  "dark": true,
+  "loaded_libraries": [
+    "<extracted-release>/usr/lib/libgtksourceview-5.so.0"
+  ],
+  "release": "linux-v0.2.0",
+  "appimage_sha256": "42583551f61b022773c498cdd6e938b3caa51919f2c29fd807b98666f360287d",
+  "checksum_matches_published_manifest": true,
+  "library_sha256": "026ed1fccb71655da83c62f35a0b11a19f032c4724ae8547818372233e004aef"
+}
