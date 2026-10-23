@@ -75,6 +75,11 @@ impl SqliteConnection {
                 .await
                 .map_err(|error| DriverError::Protocol(format!("creating the database file stopped: {error}")))??;
         }
+        // A FIFO would hold the open, and every other engine's open behind
+        // it, until something wrote to it.
+        if std::fs::metadata(&path).is_ok_and(|metadata| !metadata.is_file()) {
+            return Err(DriverError::NotADatabase { path });
+        }
         let options = connect_options(&path, settings.read_only, settings.lock_timeout);
         let pool = SqlitePoolOptions::new()
             .max_connections(u32::try_from(WORKSPACE_POOL_MAX_SIZE).unwrap_or(1))

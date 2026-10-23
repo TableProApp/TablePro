@@ -103,7 +103,9 @@ pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverEr
         }
     };
     let metadata = std::fs::metadata(path).map_err(failed)?;
-    if metadata.is_dir() {
+    // A FIFO would hold the read, and every engine's open behind it,
+    // until something wrote to it.
+    if !metadata.is_file() {
         return Err(DriverError::NotADatabase {
             path: path.to_path_buf(),
         });
@@ -136,6 +138,21 @@ mod tests {
             read_header_blocking(&missing, 16),
             Err(DriverError::FileNotFound { path: missing })
         );
+    }
+
+    /// Reading a FIFO would wait for a writer, with every engine's open
+    /// waiting behind it.
+    #[test]
+    fn a_fifo_is_not_read() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("pipe.db");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo");
+        assert!(made.success());
+
+        assert_eq!(read_header_blocking(&path, 16), Err(DriverError::NotADatabase { path }));
     }
 
     /// An engine opening a file holds no descriptor on it yet, so the

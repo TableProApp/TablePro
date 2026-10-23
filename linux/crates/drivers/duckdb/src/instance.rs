@@ -204,7 +204,7 @@ impl Instance {
                     if given_up.is_cancelled() {
                         return Err(DriverError::Cancelled);
                     }
-                    create_or_replace(path)?;
+                    create_or_replace(path, given_up)?;
                 }
                 (_, FileOpenMode::OpenExisting) => {}
             }
@@ -404,10 +404,12 @@ fn config(read_only: bool) -> Result<Config, DriverError> {
 /// DuckDB creates a file it is asked to open and cannot find, so a moved
 /// database would come back as a new empty one. Only a file that is
 /// there is opened.
+/// A directory, a FIFO or a device is no database, and opening a FIFO
+/// would wait for a writer that never comes.
 fn existing_file(path: &Path) -> Result<PathBuf, DriverError> {
     let canonical = std::fs::canonicalize(path).map_err(|error| file_error(error.kind(), path))?;
     match std::fs::metadata(&canonical) {
-        Ok(metadata) if metadata.is_dir() => Err(DriverError::NotADatabase {
+        Ok(metadata) if !metadata.is_file() => Err(DriverError::NotADatabase {
             path: path.to_path_buf(),
         }),
         Ok(_) => Ok(canonical),
@@ -566,6 +568,29 @@ mod tests {
 
         assert_eq!(instance.catalog(), "sales");
         assert!(!instance.read_only);
+    }
+
+    /// Opening a FIFO would wait for a writer, with every other open in
+    /// the process waiting behind it.
+    #[test]
+    fn a_fifo_is_no_database() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("pipe.duckdb");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let opened = Instance::open(
+            &FileEndpoint::open_existing(path.clone()).unwrap(),
+            true,
+            &CancellationToken::new(),
+        );
+
+        assert_eq!(opened.unwrap_err(), DriverError::NotADatabase { path });
     }
 
     #[test]

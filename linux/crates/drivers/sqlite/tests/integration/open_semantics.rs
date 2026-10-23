@@ -255,3 +255,26 @@ async fn create_new_refuses_a_file_this_process_holds() {
     assert_eq!(tables.rows[0][0], Value::Int(1));
     open.close().await.unwrap();
 }
+
+/// Opening a FIFO read-only would wait for a writer, with every other
+/// open in the process waiting behind it.
+#[tokio::test]
+async fn a_fifo_is_no_database() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("pipe.sqlite3");
+    assert!(
+        std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let opened = connect(
+        FileEndpoint::open_existing(path.clone()).unwrap(),
+        WorkspaceSettings::workspace(true),
+    )
+    .await;
+
+    assert_eq!(opened.err(), Some(DriverError::NotADatabase { path }));
+}

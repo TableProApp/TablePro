@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use rustix::fs::FlockOperation;
 use rustix::io::Errno;
 use tablepro_core::{BusyReason, DriverError};
+use tokio_util::sync::CancellationToken;
 
 use crate::errors::map_error;
 use crate::instance::file_error;
@@ -21,7 +22,11 @@ const WAL_SUFFIX: &str = ".wal";
 /// file is no DuckDB database, so the new one is written beside the
 /// target first, then renamed over it, which is atomic: a reader sees the
 /// old file or the new one, never half of one.
-pub(crate) fn create_or_replace(path: &Path) -> Result<(), DriverError> {
+///
+/// `given_up` is the connect's stop, read again once the new database is
+/// built: building it takes a while, and a connect given up meanwhile
+/// leaves the old file where it is.
+pub(crate) fn create_or_replace(path: &Path, given_up: &CancellationToken) -> Result<(), DriverError> {
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => {
@@ -41,7 +46,10 @@ pub(crate) fn create_or_replace(path: &Path) -> Result<(), DriverError> {
         });
     }
     let temporary = beside(parent, name, "tmp");
-    let placed = build_empty(&temporary, path).and_then(|()| place(&temporary, path, parent, name));
+    let placed = build_empty(&temporary, path).and_then(|()| match given_up.is_cancelled() {
+        true => Err(DriverError::Cancelled),
+        false => place(&temporary, path, parent, name),
+    });
     if placed.is_err() {
         // Nothing half-built is left beside the user's files.
         let _ = std::fs::remove_file(&temporary);
@@ -152,7 +160,7 @@ mod tests {
         std::fs::write(&path, b"old contents").unwrap();
         std::fs::write(wal_of(&path), b"old log").unwrap();
 
-        create_or_replace(&path).unwrap();
+        create_or_replace(&path, &CancellationToken::new()).unwrap();
 
         let metadata = std::fs::metadata(&path).unwrap();
         assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
@@ -181,7 +189,7 @@ mod tests {
         std::fs::write(path.join("inside"), b"keeps the directory from being replaced").unwrap();
         std::fs::write(wal_of(&path), b"committed changes").unwrap();
 
-        assert!(create_or_replace(&path).is_err());
+        assert!(create_or_replace(&path, &CancellationToken::new()).is_err());
 
         assert_eq!(std::fs::read(wal_of(&path)).unwrap(), b"committed changes");
         let mut leftovers: Vec<_> = std::fs::read_dir(directory.path())
@@ -205,9 +213,32 @@ mod tests {
         std::fs::write(&path, b"open elsewhere in this process").unwrap();
         let open = File::open(&path).unwrap();
 
-        assert_eq!(create_or_replace(&path), Err(DriverError::Busy(BusyReason::FileLocked)));
+        assert_eq!(
+            create_or_replace(&path, &CancellationToken::new()),
+            Err(DriverError::Busy(BusyReason::FileLocked))
+        );
         assert_eq!(std::fs::read(&path).unwrap(), b"open elsewhere in this process");
         drop(open);
+    }
+
+    /// A connect given up while the new database was built leaves the
+    /// old file, and nothing half-built beside it.
+    #[test]
+    fn a_create_given_up_while_building_keeps_the_old_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("data.duckdb");
+        std::fs::write(&path, b"what the user had").unwrap();
+        let given_up = CancellationToken::new();
+        given_up.cancel();
+
+        assert_eq!(create_or_replace(&path, &given_up), Err(DriverError::Cancelled));
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"what the user had");
+        let left: Vec<_> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(left, [std::ffi::OsString::from("data.duckdb")]);
     }
 
     #[test]
@@ -215,6 +246,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("missing").join("data.duckdb");
 
-        assert_eq!(create_or_replace(&path), Err(DriverError::FileNotFound { path }));
+        assert_eq!(
+            create_or_replace(&path, &CancellationToken::new()),
+            Err(DriverError::FileNotFound { path })
+        );
     }
 }
