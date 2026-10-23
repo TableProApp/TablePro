@@ -163,6 +163,7 @@ pub(super) fn update_selection_chrome(
     details: &gtk::Label,
     n: u32,
     stats_tooltip: Option<&str>,
+    deletable: bool,
 ) {
     if n <= 1 {
         button.set_visible(false);
@@ -172,7 +173,12 @@ pub(super) fn update_selection_chrome(
         return;
     }
     let count = n.to_string();
-    let selected_label = crate::tr!("{n} selected · press Delete to remove").replace("{n}", &count);
+    let template = if deletable {
+        crate::tr!("{n} selected · press Delete to remove")
+    } else {
+        crate::tr!("{n} selected")
+    };
+    let selected_label = template.replace("{n}", &count);
     count_label.set_label(&selected_label);
     button.update_property(&[gtk::accessible::Property::Label(&selected_label)]);
     let summary = selection_details(n, stats_tooltip);

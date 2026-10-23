@@ -2,12 +2,12 @@ use super::{BrowsePageRequest, BrowseTab, BrowseTabInit, BrowseTabInput, BrowseT
 use relm4::gtk::gio::prelude::ListModelExt;
 use relm4::gtk::glib::prelude::Cast;
 use relm4::gtk::prelude::{ButtonExt, SelectionModelExt, ShortcutActionExt, ShortcutTriggerExt, WidgetExt};
-use relm4::{Component, ComponentController};
+use relm4::{Component, ComponentController, Controller};
 use std::sync::mpsc::Receiver;
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 use uuid::Uuid;
 
-fn column(name: &str, primary_key: bool) -> ColumnInfo {
+pub(super) fn column(name: &str, primary_key: bool) -> ColumnInfo {
     ColumnInfo {
         name: name.into(),
         data_type: if primary_key { "integer" } else { "text" }.into(),
@@ -23,7 +23,7 @@ fn column(name: &str, primary_key: bool) -> ColumnInfo {
     }
 }
 
-fn pump(outputs: &Receiver<BrowseTabOutput>) -> Vec<BrowseTabOutput> {
+pub(super) fn pump(outputs: &Receiver<BrowseTabOutput>) -> Vec<BrowseTabOutput> {
     let context = relm4::gtk::glib::MainContext::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(300);
     let mut seen = Vec::new();
@@ -41,7 +41,7 @@ fn launch(tab_id: Uuid) -> (relm4::Controller<BrowseTab>, Receiver<BrowseTabOutp
     launch_with_read_only(tab_id, false)
 }
 
-fn launch_with_read_only(tab_id: Uuid, read_only: bool) -> (relm4::Controller<BrowseTab>, Receiver<BrowseTabOutput>) {
+pub(super) fn launch_with_read_only(id: Uuid, read_only: bool) -> (Controller<BrowseTab>, Receiver<BrowseTabOutput>) {
     let (output_sender, output_receiver) = relm4::channel::<BrowseTabOutput>();
     let (observed_sender, observed) = std::sync::mpsc::channel();
     relm4::spawn_local(async move {
@@ -53,7 +53,7 @@ fn launch_with_read_only(tab_id: Uuid, read_only: bool) -> (relm4::Controller<Br
     });
     let controller = BrowseTab::builder()
         .launch(BrowseTabInit {
-            tab_id,
+            tab_id: id,
             schema: Some("public".into()),
             table: "notes".into(),
             driver_id: "postgres".into(),
@@ -636,7 +636,7 @@ fn undecodable_cell_edit_and_null_messages_do_not_stage_mutations() {
     controller.detach_runtime();
 }
 
-fn load_two_rows(controller: &relm4::Controller<BrowseTab>, observed: &Receiver<BrowseTabOutput>) {
+pub(super) fn load_two_rows(controller: &relm4::Controller<BrowseTab>, observed: &Receiver<BrowseTabOutput>) {
     let columns = vec![column("id", true), column("title", false), column("body", false)];
     controller
         .sender()

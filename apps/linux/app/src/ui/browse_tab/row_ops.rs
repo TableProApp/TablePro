@@ -607,6 +607,7 @@ impl BrowseTab {
 
     pub(super) fn emit_fetch_page_and_count(&self, sender: &ComponentSender<Self>) {
         self.emit_fetch_page(sender);
+        self.row_count_requests.invalidate();
         let _ = sender.output(BrowseTabOutput::FetchRowCount);
     }
 

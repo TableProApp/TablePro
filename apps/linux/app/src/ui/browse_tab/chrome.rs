@@ -45,6 +45,14 @@ impl BrowseTab {
             .tooltip_text(crate::tr!("Last page"))
             .sensitive(false)
             .build();
+        for (button, label) in [
+            (&first_button, crate::tr!("First page")),
+            (&prev_button, crate::tr!("Previous page")),
+            (&next_button, crate::tr!("Next page")),
+            (&last_button, crate::tr!("Last page")),
+        ] {
+            button.update_property(&[gtk::accessible::Property::Label(&label)]);
+        }
         let paginator_label = gtk::Label::builder().build();
         paginator_label.add_css_class("dim-label");
 
@@ -112,6 +120,7 @@ impl BrowseTab {
         });
         let page_size_label = gtk::Label::builder().label(crate::tr!("Rows:")).build();
         page_size_label.add_css_class("dim-label");
+        page_size_combo.update_relation(&[gtk::accessible::Relation::LabelledBy(&[page_size_label.upcast_ref()])]);
 
         let sender_for_first = sender.clone();
         first_button.connect_clicked(move |_| sender_for_first.input(BrowseTabInput::FirstPage));
@@ -136,6 +145,7 @@ impl BrowseTab {
             .action_name("win.export-csv")
             .build();
         export_button.add_css_class("flat");
+        export_button.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Export results"))]);
 
         // Filter button — opens the rule editor for server-side WHERE.
         // Action `win.open-filter` is registered in app/mod.rs and
@@ -368,8 +378,7 @@ impl BrowseTab {
         if let Some(strip) = self.filter_strip.as_ref() {
             strip.update_filter(set);
         }
-        self.emit_fetch_page(sender);
-        let _ = sender.output(BrowseTabOutput::FetchRowCount);
+        self.emit_fetch_page_and_count(sender);
         let _ = sender.output(BrowseTabOutput::StateChanged);
     }
 
@@ -449,7 +458,7 @@ impl BrowseTab {
         self.replace_status_child("loading", &page);
     }
 
-    pub(super) fn show_error_inner(&self, message: &str) {
+    pub(super) fn show_error_inner(&self, message: &str, sender: &ComponentSender<Self>) {
         // Title pattern matches the structure tab ("Couldn't load
         // structure"). The previous terse "Failed" left the user
         // guessing what failed.
@@ -457,9 +466,21 @@ impl BrowseTab {
             .icon_name("dialog-error-symbolic")
             .title(crate::tr!("Couldn't load rows"))
             .description(message)
+            .child(&retry_button(sender))
             .build();
         self.replace_status_child("error", &page);
     }
+}
+
+fn retry_button(sender: &ComponentSender<BrowseTab>) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .label(crate::tr!("Retry"))
+        .halign(gtk::Align::Center)
+        .build();
+    button.add_css_class("pill");
+    let sender = sender.clone();
+    button.connect_clicked(move |_| sender.input(BrowseTabInput::Refresh));
+    button
 }
 
 fn paginator_summary(result: &QueryResult, offset: u64, total: Option<u64>) -> String {

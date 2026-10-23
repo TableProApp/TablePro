@@ -205,7 +205,7 @@ impl BrowseTab {
             && let Some(store) = self.list_store()
         {
             if !self.refresh_grid_data(&result, &store) {
-                self.show_projection_error();
+                self.show_projection_error(&sender);
                 return;
             }
             self.refresh_grid_chrome();
@@ -276,6 +276,7 @@ impl BrowseTab {
         if let Some(sel) = self.current_selection.as_ref() {
             let inspector = self.inspector.downgrade();
             let columns = self.current_columns.clone();
+            let deletable = self.allows_keyed_row_mutations();
             sel.connect_selection_changed(move |sel, _, _| {
                 let n = sel.selection().size() as u32;
                 let tooltip = selection_tooltip(sel, &columns);
@@ -285,6 +286,7 @@ impl BrowseTab {
                     &selection_details_label_for_signal,
                     n,
                     tooltip.as_deref(),
+                    deletable,
                 );
                 inspector.show_row(inspected_row(sel, &columns));
             });
@@ -296,6 +298,7 @@ impl BrowseTab {
                 &self.selection_details_label,
                 0,
                 None,
+                false,
             );
         }
 
@@ -374,10 +377,11 @@ impl BrowseTab {
         true
     }
 
-    pub(super) fn show_projection_error(&self) {
-        self.show_error_inner(&crate::tr!(
-            "The database returned rows that do not match the table columns."
-        ));
+    pub(super) fn show_projection_error(&self, sender: &ComponentSender<Self>) {
+        self.show_error_inner(
+            &crate::tr!("The database returned rows that do not match the table columns."),
+            sender,
+        );
         self.inner_stack.set_visible_child_name("error");
     }
 
@@ -402,7 +406,6 @@ impl BrowseTab {
             .set_sensitive(last_target.is_some_and(|target| self.current_offset != target));
 
         self.refresh_inner_stack_visibility();
-        self.suppress_combo_emit.set(false);
     }
 
     /// Switch the inner stack to the grid once the first page has

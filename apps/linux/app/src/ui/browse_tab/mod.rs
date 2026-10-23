@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use relm4::adw::prelude::*;
 use relm4::gtk::glib;
 use relm4::prelude::*;
@@ -181,15 +179,13 @@ pub struct BrowseTab {
     pending_label: gtk::Label,
     grid_sender: relm4::Sender<GridMsg>,
     rejected_edit_revision: std::cell::Cell<u64>,
-    /// Set to true on init / refresh; flipped off after first RowsLoaded so
-    /// PageSizeChanged emits don't fire while the combo is being driven by
-    /// programmatic state restores.
-    suppress_combo_emit: Rc<std::cell::Cell<bool>>,
 }
 
 mod accessors;
 mod choices;
 mod chrome;
+#[cfg(test)]
+mod chrome_tests;
 mod grid_messages;
 mod grid_render;
 mod messages;
@@ -326,7 +322,6 @@ impl SimpleComponent for BrowseTab {
             })
             .unwrap_or_default();
 
-        let suppress_combo_emit = Rc::new(std::cell::Cell::new(true));
         let grid_holder = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .vexpand(true)
@@ -675,7 +670,6 @@ impl SimpleComponent for BrowseTab {
             pending_label: pending.pending_label,
             grid_sender,
             rejected_edit_revision: Default::default(),
-            suppress_combo_emit,
         };
         model.refresh_crud_buttons();
         model.refresh_pending_bar(0);
@@ -845,7 +839,7 @@ impl SimpleComponent for BrowseTab {
                 self.prev_button.set_sensitive(false);
                 self.next_button.set_sensitive(false);
                 self.last_button.set_sensitive(false);
-                self.show_error_inner(&message);
+                self.show_error_inner(&message, &sender);
                 self.inner_stack.set_visible_child_name("error");
             }
             BrowseTabInput::Refresh => {
@@ -854,8 +848,7 @@ impl SimpleComponent for BrowseTab {
                     &crate::tr!("Loading…"),
                     &crate::tr!("Fetching rows from {table}").replace("{table}", &self.table_label()),
                 );
-                self.emit_fetch_page(&sender);
-                let _ = sender.output(BrowseTabOutput::FetchRowCount);
+                self.emit_fetch_page_and_count(&sender);
             }
             BrowseTabInput::ClearSelection => {
                 let Some(sel) = self.current_selection.as_ref() else {
@@ -961,7 +954,7 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::StateChanged);
             }
             BrowseTabInput::PageSizeChanged(size) => {
-                if self.suppress_combo_emit.get() || self.page_size == size {
+                if self.page_size == size {
                     return;
                 }
                 self.page_size = size;
@@ -1022,7 +1015,7 @@ impl SimpleComponent for BrowseTab {
                     "Some row values were not fetched. Show hidden columns and reload before copying or exporting."
                 )));
             }
-            BrowseTabInput::ProjectionFailure => self.show_projection_error(),
+            BrowseTabInput::ProjectionFailure => self.show_projection_error(&sender),
             BrowseTabInput::GridShowRowAsJson(text) => {
                 let _ = sender.output(BrowseTabOutput::ShowRowAsJson(text));
             }

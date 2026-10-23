@@ -926,6 +926,31 @@
       "tablepro-app",
       "--lib",
       "ui::grid::dialog_focus::tests::virtualized_rows_keep_the_focused_cells_identity_when_revealed"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::chrome_tests::a_row_count_queued_before_refresh_is_not_shown"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::chrome_tests::page_size_changes_apply_after_a_failed_first_load"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::chrome_tests::read_only_selection_does_not_offer_delete"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::chrome_tests::load_error_page_retries_the_fetch"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::browse_tab::chrome_tests::paginator_controls_have_accessible_names"
     ]
   ],
   "keyring": [

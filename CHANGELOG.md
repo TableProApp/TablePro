@@ -48,6 +48,11 @@
 
 ### Fixed
 
+- In a table tab, the total row count no longer briefly shows the count from before a filter change or refresh.
+- The Rows per page choice in a table tab works after the first page failed to load.
+- The "Couldn't load rows" page in a table tab has a Retry button.
+- The multi-row selection badge no longer suggests pressing Delete on read-only connections or tables without a primary key.
+- Screen readers name the page navigation and export buttons of a table tab and read the Rows label with the page-size choice.
 - When a connection had more than 32 open tabs, the table tabs left out on the next start are now reported in a notice instead of disappearing silently. Query editor tabs are always kept.
 - Query cursor cleanup warnings use diagnostic codes without including database error payloads.
 
