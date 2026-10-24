@@ -1,0 +1,103 @@
+{
+  "package": {
+    "name": "bookie",
+    "version": "0.2.0-1",
+    "archive": "bookie-0.2.0-1-x86_64.pkg.tar.zst",
+    "archive_sha256": "c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd",
+    "installed_size_mib": 72.61,
+    "installed_file_count": 28,
+    "missing_files": 0,
+    "installed_binary_sha256": "b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971",
+    "package_binary_sha256": "b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971"
+  },
+  "environment": {
+    "os": "Omarchy Arch Linux with Hyprland Wayland",
+    "database": "SQLite 3.54.0",
+    "fixture_bytes": 8192,
+    "profile_directories_before_query_bytes": {
+      "config": 157091,
+      "share": 889510,
+      "cache": 4732
+    },
+    "profile_directories_after_query_bytes": {
+      "config": 223011,
+      "share": 891433,
+      "cache": 4732
+    },
+    "fixture_bytes_after_query": 8192
+  },
+  "startup_settling_sample": {
+    "pid": 348935,
+    "duration_seconds": 31.003436,
+    "start_utc": "2026-10-24T09:35:36.142936Z",
+    "end_utc": "2026-10-24T09:36:07.146372Z",
+    "start": {
+      "rss_kib": 112528,
+      "pss_kib": 95804,
+      "private_dirty_kib": 28504,
+      "swap_kib": 0,
+      "cpu_ticks": 36,
+      "read_bytes": 16629760,
+      "write_bytes": 2891776
+    },
+    "end": {
+      "rss_kib": 152236,
+      "pss_kib": 128069,
+      "private_dirty_kib": 49208,
+      "swap_kib": 0,
+      "cpu_ticks": 173,
+      "read_bytes": 17379328,
+      "write_bytes": 6029312
+    },
+    "deltas": {
+      "cpu_ticks": 137,
+      "read_bytes": 749568,
+      "write_bytes": 3137536
+    },
+    "interpretation": "First idle interval after launch; startup work was still settling."
+  },
+  "query": {
+    "sql": "WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 100000) SELECT n FROM numbers;",
+    "sqlite_cli_count": 100000,
+    "bookie_elapsed_ms": 84,
+    "errors": 0,
+    "first_visible_row": 1,
+    "last_reachable_row": 100000,
+    "navigation": "Continuous grid scrolling",
+    "mutated_data": false
+  },
+  "post_query_idle_sample": {
+    "pid": 348935,
+    "duration_seconds": 31.004633,
+    "start_utc": "2026-10-24T09:37:58.459675Z",
+    "end_utc": "2026-10-24T09:38:29.464308Z",
+    "start": {
+      "rss_kib": 169504,
+      "pss_kib": 145257,
+      "private_dirty_kib": 64020,
+      "swap_kib": 0,
+      "cpu_ticks": 314,
+      "read_bytes": 17395712,
+      "write_bytes": 6811648
+    },
+    "end": {
+      "rss_kib": 168540,
+      "pss_kib": 144293,
+      "private_dirty_kib": 64008,
+      "swap_kib": 0,
+      "cpu_ticks": 316,
+      "read_bytes": 17395712,
+      "write_bytes": 6811648
+    },
+    "deltas": {
+      "cpu_ticks": 2,
+      "read_bytes": 0,
+      "write_bytes": 0
+    }
+  },
+  "ui_checks": {
+    "split_clicks": "First click opened two panes; second click returned to one pane.",
+    "sidebar": "Hiding and restoring the sidebar left the 100,000-row result visible.",
+    "type_label": "The expression column displayed a NULL type label although its cells were integers; not classified as a decoding defect."
+  }
+}

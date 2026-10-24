@@ -99,7 +99,7 @@ After switching through all ten profiles, I sampled the same process for another
 
 ## Local storage footprint
 
-After the ten-profile UI sweep, `du -sb` reported 125,812 bytes in `~/.config/tablepro`, 597,504 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. The share directory contained a 596,935-byte audit journal; the config directory contained a 5,121-byte connection file and SQLite query-history database/WAL/SHM files. The earlier capture before the full sweep was 282,903 bytes in config and 540,234 bytes in share. SQLite history files can change size as the WAL is checkpointed. These figures cover this machine's saved profiles and app data; they exclude the Docker database volumes. The current Arch package is 29,886,373 bytes compressed, the extracted application binary is 42,385,896 bytes, and package metadata reports 72.61 MiB installed size. Installation is still pending, so the new package's actual installed footprint has not been measured with pacman.
+After the ten-profile UI sweep, `du -sb` reported 125,812 bytes in `~/.config/tablepro`, 597,504 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. The share directory contained a 596,935-byte audit journal; the config directory contained a 5,121-byte connection file and SQLite query-history database/WAL/SHM files. The earlier capture before the full sweep was 282,903 bytes in config and 540,234 bytes in share. SQLite history files can change size as the WAL is checkpointed. These figures cover this machine's saved profiles and app data; they exclude the Docker database volumes. The Arch package is 29,886,373 bytes compressed and its metadata reports 72.61 MiB installed size. A later pacman installation and binary verification are recorded below.
 
 ## Product finding
 
@@ -107,7 +107,7 @@ The installed 0.2.0 build retains four pages. PR #1568 removes that page-count c
 
 ## Native PR #1568 follow-up
 
-On 2026-10-24, the Arch package built from PR #1568 head `748c75c0f904e6c53f41236b1a3d36668bd079b5` was extracted and run on the Omarchy Wayland desktop. The installed package remained the older `0.2.0-1`; installation of the candidate package is still pending local administrator authentication. Package SHA-256: `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. Extracted `bookie` SHA-256: `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`.
+On 2026-10-24, the Arch package built from PR #1568 head `748c75c0f904e6c53f41236b1a3d36668bd079b5` was first extracted and run on the Omarchy Wayland desktop. At that stage, the package had not yet been installed. Package SHA-256: `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. Extracted `bookie` SHA-256: `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the same hash was verified after installation.
 
 On PostgreSQL 17.11, `SELECT generate_series(1, 100000) AS n;` completed in 160 ms and returned 100,000 rows across 20 pages. The UI navigated from the last page back to rows 1–5,000. This confirms PR #1568 removes the installed build's four-page limit for this result. It does not test results that exceed the 64 MiB estimated in-memory page budget.
 
@@ -154,7 +154,7 @@ The desktop captures include a notification reporting a `ydotool` helper crash. 
 
 With the SQLite table open and no input, a 31.005-second process sample recorded RSS at 310,489,088 bytes (296.1 MiB), PSS at 279,380,992 bytes (266.4 MiB), and private dirty memory at 224,063,488 bytes (213.7 MiB). The values stayed constant at the reported precision; CPU increased by 0.01 seconds and process block reads and writes did not change. `/proc` reported 125,095,936 bytes (119.3 MiB) of BookiE pages in swap. The host had 7.8 GiB available RAM, 4.9 GiB used in zram, and zero average memory-pressure stalls at capture time. This does not identify when or why BookiE pages entered swap. The process had been running during prior multi-engine and 100,000-row tests, so this is a cumulative warm-process state, not a fresh SQLite baseline.
 
-At the same time, the existing user profile directories measured 126,020 bytes in config, 884,110 bytes in share, and 4,732 bytes in cache. The extracted candidate package tree occupied 76,183,256 bytes; this is not the installed package size. Pacman still reported `bookie 0.2.0-1`, so the candidate remains extracted and running rather than installed. The sample records persistent profile totals after this UI test, not bytes attributable to SQLite or `SELECT 1;`.
+At the same time, the existing user profile directories measured 126,020 bytes in config, 884,110 bytes in share, and 4,732 bytes in cache. The extracted candidate package tree occupied 76,183,256 bytes; this is not the installed package size. Pacman still reported `bookie 0.2.0-1`, so at this capture the candidate was extracted rather than installed. The sample records persistent profile totals after this UI test, not bytes attributable to SQLite or `SELECT 1;`.
 
 - [31-second idle process samples](native-pr1568-sqlite-table-idle-31s.json)
 
@@ -168,7 +168,23 @@ On the same SQLite connection, I opened the editor's Session mode, ran the exist
 - [SELECT 1 succeeds after Session is toggled off](native-pr1568-session-close-query-success.png)
 - [31-second process sample while the closing status remained visible](native-pr1568-session-close-status-31s.json)
 
-After closing the extracted candidate, the existing profile directories measured 158,980 bytes in config, 886,809 bytes in share and 4,732 bytes in cache. The SQLite fixture remained 8,192 bytes. The extracted candidate package tree occupied 76,183,256 bytes. These are cumulative profile and package-tree sizes, not storage attributable to the session test. At capture time pacman still reported the installed package as 0.2.0-1; installed-package verification is pending authentication for the PR package.
+After closing the extracted candidate, the existing profile directories measured 158,980 bytes in config, 886,809 bytes in share and 4,732 bytes in cache. The SQLite fixture remained 8,192 bytes. The extracted candidate package tree occupied 76,183,256 bytes. These are cumulative profile and package-tree sizes, not storage attributable to the session test. At capture time pacman still reported 0.2.0-1 and the PR package installation was waiting for authentication; the later installed-package verification is below.
+
+## Installed PR #1568 package and 100,000-row SQLite run
+
+The package `bookie-0.2.0-1-x86_64.pkg.tar.zst` was installed through the desktop PolicyKit authorization at 2026-10-24 09:34 UTC. Pacman reports version `0.2.0-1` and installed size 72.61 MiB. `pacman -Qk bookie` found all 28 package files present. SHA-256 of `/usr/bin/bookie` and `usr/bin/bookie` inside the package both equals `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`. The installed app launched from the desktop entry on workspace 3 and was moved to workspace 4 for the remaining checks.
+
+After launch, `SELECT 1;` completed with no errors. A 31.003-second startup-settling sample recorded RSS rising from 112,528 to 152,236 KiB, PSS from 95,804 to 128,069 KiB, and private dirty memory from 28,504 to 49,208 KiB; swap stayed at zero. CPU rose by 137 ticks (about 1.37 seconds), process reads by 749,568 bytes and writes by 3,137,536 bytes. This is the first idle interval after launch and includes startup work; it is not a steady-state idle baseline.
+
+On the same installed process, the SQLite CLI confirmed that a recursive CTE generated 100,000 rows. BookiE ran the query in 84 ms and displayed `Errors (0)`. The grid scrolled from row 1 through row 100,000, so the last row was reachable. The grid uses continuous scrolling here; it does not show the 20-page pager seen in the PostgreSQL test. The result column type label showed `NULL` while its cells contained integers; this capture does not establish whether that label is intended for an expression without a declared SQLite type. Screenshots record the first and last rows. The query was read-only and the 8,192-byte fixture was unchanged.
+
+A 31.005-second idle sample after the query recorded RSS from 169,504 to 168,540 KiB, PSS from 145,257 to 144,293 KiB and private dirty memory from 64,020 to 64,008 KiB. Swap stayed at zero, CPU rose by two ticks (about 0.02 seconds), and process block reads and writes did not change. Whole profile directories measured 223,011 bytes in config, 891,433 bytes in share and 4,732 bytes in cache after this query; these totals include the pre-existing profile, history and audit data. The fixture remained 8,192 bytes.
+
+- [Installed SQLite result at row 1](native-pr1568-installed-sqlite-100k-first.png)
+- [Installed SQLite result at row 100,000](native-pr1568-installed-sqlite-100k-last.png)
+- [Installed Split on](native-pr1568-installed-split-on.png) and [Split off after the second click](native-pr1568-installed-split-off.png)
+- [Installed result with sidebar hidden](native-pr1568-installed-sidebar-hidden.png) and [restored](native-pr1568-installed-sidebar-restored.png); the result remained visible in both states.
+- [Installed startup and post-query process samples](native-pr1568-installed-100k-process-samples.json)
 
 ## GTK safety rerun
 
