@@ -106,4 +106,68 @@ pub async fn assert_time_contract(connection: &dyn Connection) {
             .unwrap();
         assert_eq!(restored.rows, vec![vec![Value::Text(input.into())]]);
     }
+
+    assert_naive_timestamptz_csv_uses_the_server_session_zone(connection).await;
+}
+
+async fn assert_naive_timestamptz_csv_uses_the_server_session_zone(connection: &dyn Connection) {
+    let control = OperationControl::new(CancellationToken::new(), None);
+    let mut session = connection.open_session().await.unwrap();
+    session
+        .query_params_controlled(
+            "CREATE TEMP TABLE naive_timestamptz_csv (value timestamptz)",
+            &[],
+            &control,
+        )
+        .await
+        .unwrap();
+    let columns = session
+        .query_params_controlled("SELECT NULL::timestamptz AS value WHERE false", &[], &control)
+        .await
+        .unwrap()
+        .columns;
+    let options = tablepro_core::import::CsvImportOptions::default();
+    let mapping = [Some(0)];
+
+    for (zone, input) in [
+        ("Asia/Kathmandu", "2024-01-02 03:04:05.123456"),
+        ("America/New_York", "2024-11-03 01:30:00"),
+        ("America/New_York", "2024-03-10 02:30:00"),
+    ] {
+        session
+            .query_params_controlled(&format!("SET TIME ZONE '{zone}'"), &[], &control)
+            .await
+            .unwrap();
+        session
+            .query_params_controlled("TRUNCATE naive_timestamptz_csv", &[], &control)
+            .await
+            .unwrap();
+        let csv = format!("value\n{input}\n");
+        let sheet = tablepro_core::import::read_csv(csv.as_bytes(), &options, None).unwrap();
+        let plan = tablepro_core::import::build_insert_plan(
+            &tablepro_core::import::ImportTarget {
+                driver_id: "postgres",
+                schema: None,
+                table: "naive_timestamptz_csv",
+                columns: &columns,
+                mapping: &mapping,
+            },
+            &sheet,
+            &options,
+        )
+        .unwrap();
+        let expected = session
+            .query_params_controlled("SELECT $1::text::timestamptz", &[Value::Text(input.into())], &control)
+            .await
+            .unwrap();
+        session
+            .query_params_controlled(&plan.statement, &plan.rows[0], &control)
+            .await
+            .unwrap();
+        let actual = session
+            .query_params_controlled("SELECT value FROM naive_timestamptz_csv", &[], &control)
+            .await
+            .unwrap();
+        assert_eq!(actual.rows, expected.rows, "{zone}: {input}");
+    }
 }

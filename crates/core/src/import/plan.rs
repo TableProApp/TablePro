@@ -604,6 +604,22 @@ mod tests {
     }
 
     #[test]
+    fn postgres_naive_timestamptz_csv_values_keep_server_session_zone_semantics() {
+        let columns = vec![column("happened_at", "timestamptz")];
+        let mapping = vec![Some(0)];
+        let input = "2024-01-02 03:04:05.123456";
+        let rows = sheet(&[&[input]], &["happened_at"]);
+
+        let plan = build_insert_plan(&target(&columns, &mapping), &rows, &CsvImportOptions::default()).expect("plan");
+
+        assert_eq!(
+            plan.statement,
+            "INSERT INTO \"people\" (\"happened_at\") VALUES ($1::text::pg_catalog.timestamptz)"
+        );
+        assert_eq!(plan.rows, vec![vec![Value::Text(input.into())]]);
+    }
+
+    #[test]
     fn value_contract_postgres_array_csv_insert_uses_allowlisted_native_cast() {
         let columns = vec![column("id", "integer"), column("value", "double precision[]")];
         let mapping = vec![Some(0), Some(1)];

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Utc};
 use rust_decimal::Decimal;
 use thiserror::Error;
 use uuid::Uuid;
@@ -358,19 +358,6 @@ fn parse_non_null_cell(text: &str, column: &ColumnInfo, kind: ColumnKind, driver
     {
         return Ok(Value::Text(value.to_owned()));
     }
-    if driver_id == "postgres"
-        && let Some(value) = postgres_temporal::parse_extended(text, &column.data_type)
-    {
-        return Ok(Value::Text(value));
-    }
-    if driver_id == "postgres"
-        && let Some(value) = postgres_text_temporal(text, &column.data_type)
-    {
-        // PostgreSQL's infinities, timetz offsets and 24:00 value are
-        // exact text in the driver contract. Restore the CSV formula
-        // marker only for recognized native sentinels.
-        return Ok(Value::Text(value.to_owned()));
-    }
     if driver_id == "duckdb"
         && let Some(value) = duckdb_formula_safe_interval(text, &column.data_type)
     {
@@ -394,11 +381,16 @@ fn parse_non_null_cell(text: &str, column: &ColumnInfo, kind: ColumnKind, driver
     if driver_id == "mysql" && mysql_calendar::invalid_text(text, &column.data_type) {
         return Ok(Value::Text(text.to_owned()));
     }
+    if driver_id == "postgres"
+        && let Some(value) = postgres_temporal::import_override(text, &column.data_type, kind)
+    {
+        return Ok(value);
+    }
     match parse_cell(text, kind) {
         Ok(Value::TimestampTz(value)) if driver_id == "duckdb" && value.timestamp_subsec_nanos() % 1_000 != 0 => {
             Err(CellError::NotATimestamp)
         }
-        Ok(value) if driver_id == "postgres" && postgres_temporal_needs_text(&value) => {
+        Ok(value) if driver_id == "postgres" && postgres_temporal::needs_text(&value) => {
             match crate::sql_literal::postgres_temporal_text(&value) {
                 Some(text) => Ok(Value::Text(text)),
                 None => Ok(value),
@@ -470,36 +462,6 @@ fn duckdb_extended_calendar_text<'a>(text: &'a str, data_type: &str) -> Option<&
         return None;
     };
     duckdb_extended_date(date_text).then_some(text)
-}
-
-fn postgres_temporal_needs_text(value: &Value) -> bool {
-    let year = match value {
-        Value::Date(value) => value.year(),
-        Value::DateTime(value) => value.year(),
-        Value::TimestampTz(value) => value.year(),
-        _ => return false,
-    };
-    !(1..=9999).contains(&year)
-}
-
-fn postgres_text_temporal<'a>(text: &'a str, data_type: &str) -> Option<&'a str> {
-    let kind = data_type.trim().to_ascii_lowercase();
-    if matches!(kind.as_str(), "timetz" | "time with time zone") {
-        return Some(text);
-    }
-    if kind == "time" || kind == "time without time zone" {
-        return (text == "24:00:00" || text.starts_with("24:00:00.")).then_some(text);
-    }
-    if matches!(
-        kind.as_str(),
-        "date" | "timestamp" | "timestamp without time zone" | "timestamptz" | "timestamp with time zone"
-    ) {
-        let value = text.strip_prefix('\'').unwrap_or(text);
-        if matches!(value, "infinity" | "+infinity" | "-infinity") {
-            return Some(value);
-        }
-    }
-    None
 }
 
 fn duckdb_formula_safe_interval<'a>(text: &'a str, data_type: &str) -> Option<&'a str> {

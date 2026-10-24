@@ -1,6 +1,53 @@
-use chrono::{NaiveTime, Timelike};
+use chrono::{DateTime, Datelike, NaiveTime, Timelike, Utc};
 
-use super::{duckdb_extended_date, duckdb_extended_timestamptz_nanos};
+use super::{ColumnKind, Value, duckdb_extended_date, duckdb_extended_timestamptz_nanos, parse_datetime};
+
+pub(super) fn import_override(text: &str, data_type: &str, kind: ColumnKind) -> Option<Value> {
+    if let Some(value) = parse_extended(text, data_type) {
+        return Some(Value::Text(value));
+    }
+    if let Some(value) = text_temporal(text, data_type) {
+        return Some(Value::Text(value.to_owned()));
+    }
+    if kind != ColumnKind::TimestampTz {
+        return None;
+    }
+    let text = text.trim();
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(text) {
+        return Some(Value::TimestampTz(parsed.with_timezone(&Utc)));
+    }
+    parse_datetime(text).ok().map(|_| Value::Text(text.to_owned()))
+}
+
+pub(super) fn needs_text(value: &Value) -> bool {
+    let year = match value {
+        Value::Date(value) => value.year(),
+        Value::DateTime(value) => value.year(),
+        Value::TimestampTz(value) => value.year(),
+        _ => return false,
+    };
+    !(1..=9999).contains(&year)
+}
+
+fn text_temporal<'a>(text: &'a str, data_type: &str) -> Option<&'a str> {
+    let kind = data_type.trim().to_ascii_lowercase();
+    if matches!(kind.as_str(), "timetz" | "time with time zone") {
+        return Some(text);
+    }
+    if kind == "time" || kind == "time without time zone" {
+        return (text == "24:00:00" || text.starts_with("24:00:00.")).then_some(text);
+    }
+    if matches!(
+        kind.as_str(),
+        "date" | "timestamp" | "timestamp without time zone" | "timestamptz" | "timestamp with time zone"
+    ) {
+        let value = text.strip_prefix('\'').unwrap_or(text);
+        if matches!(value, "infinity" | "+infinity" | "-infinity") {
+            return Some(value);
+        }
+    }
+    None
+}
 
 pub(super) fn parse_extended(text: &str, data_type: &str) -> Option<String> {
     let kind = data_type.trim().to_ascii_lowercase();

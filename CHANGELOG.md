@@ -61,6 +61,7 @@
 
 ### Fixed
 
+- PostgreSQL CSV imports preserve the session time zone when a `timestamptz` value has no explicit offset.
 - SQL editor results keep every streamed page within the estimated memory budget, so users can navigate back through completed PostgreSQL results that fit the budget.
 - The tab overview no longer shows a duplicate window-close button beside its tab cards.
 
