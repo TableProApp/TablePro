@@ -1,3 +1,7 @@
 # cargo vendor ships each crate whole. These are the Windows test fixtures
 # of libloading, which the Linux build never reads.
 source-contains-prebuilt-windows-binary [vendor/libloading-*/tests/nagisa*.dll]
+
+# moka's NOTICE names the two of its files that are Apache-2.0 only and
+# carries no attribution; debian/copyright gives moka that license.
+missing-notice-file-for-apache-license [vendor/moka-*/NOTICE]
