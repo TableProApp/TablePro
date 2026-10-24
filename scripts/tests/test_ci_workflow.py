@@ -23,6 +23,13 @@ port_spec.loader.exec_module(port_helper)
 
 
 class CiWorkflowTests(unittest.TestCase):
+    def test_cargo_path_covers_runner_service_homes(self):
+        for name in ("ci", "nightly"):
+            workflow = (ROOT / f".forgejo/workflows/{name}.yml").read_text()
+            cargo_path = re.search(r"(?m)^  PATH: (.+)$", workflow).group(1)
+            self.assertIn("/home/runner/.cargo/bin", cargo_path, name)
+            self.assertIn("/home/ubuntu/.cargo/bin", cargo_path, name)
+
     def test_ubuntu_canary_runs_only_headless_driver_tls_job(self):
         workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
         jobs = workflow.split("\njobs:\n", 1)[1]

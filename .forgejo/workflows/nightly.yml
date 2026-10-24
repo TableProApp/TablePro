@@ -16,7 +16,7 @@ env:
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: "0"
   GITHUB_STEP_SUMMARY: /dev/null
-  PATH: /home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+  PATH: /home/runner/.cargo/bin:/home/ubuntu/.cargo/bin:/usr/local/bin:/usr/bin:/bin
   RUSTC_WRAPPER: sccache
   SCCACHE_DIR: /var/cache/ci/sccache
   SCCACHE_CACHE_SIZE: 40G
