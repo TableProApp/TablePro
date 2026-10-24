@@ -238,14 +238,12 @@ services:
   mysql-mtls:
     build:
       context: .
-      dockerfile: mysql/Dockerfile
+      dockerfile: mysql-mtls/Dockerfile
     environment:
       MYSQL_ROOT_PASSWORD: tablepro
       MYSQL_DATABASE: tablepro
       MYSQL_USER: tablepro_mtls
       MYSQL_PASSWORD: tablepro
-    volumes:
-      - ./mysql-mtls/require-client-cert.sql:/docker-entrypoint-initdb.d/10-require-client-cert.sql:ro
     command:
       - mysqld
       - --require_secure_transport=ON
@@ -275,14 +273,12 @@ services:
   mysql-mtls-ssh:
     build:
       context: .
-      dockerfile: mysql/Dockerfile
+      dockerfile: mysql-mtls/Dockerfile
     environment:
       MYSQL_ROOT_PASSWORD: tablepro
       MYSQL_DATABASE: tablepro
       MYSQL_USER: tablepro_mtls
       MYSQL_PASSWORD: tablepro
-    volumes:
-      - ./mysql-mtls/require-client-cert.sql:/docker-entrypoint-initdb.d/10-require-client-cert.sql:ro
     command:
       - mysqld
       - --require_secure_transport=ON

@@ -5,6 +5,6 @@ COPY materials/server.key /certs/server.key
 COPY materials/ca.crt /certs/ca.crt
 COPY clickhouse/tls.xml /etc/clickhouse-server/config.d/tls.xml
 
-RUN chown -R clickhouse:clickhouse /certs \
+RUN chown -R clickhouse:clickhouse /certs /etc/clickhouse-server/config.d/tls.xml \
     && chmod 600 /certs/server.key \
-    && chmod 644 /certs/server.crt /certs/ca.crt
+    && chmod 644 /certs/server.crt /certs/ca.crt /etc/clickhouse-server/config.d/tls.xml
