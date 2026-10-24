@@ -1,6 +1,6 @@
 # Code and UI audit: BookiE and peer clients
 
-Reviewed 2026-10-18. This is a bounded source audit and improvement proposal. No application was built or launched, no database probe was run, and no current screenshots or measured contrast ratios were collected. Source findings below do not qualify the installed package or change [0.2.0 scope](../0.2.0-scope.md).
+Reviewed 2026-10-18. This is a bounded source audit and improvement proposal. No application was built or launched, no database probe was run, and no current screenshots or measured contrast ratios were collected. Source findings below do not qualify the installed package or change [0.2.0 scope](../bookie-0.2-sprint.md#delivery-boundary).
 
 ## Baseline and method
 
@@ -47,7 +47,7 @@ TablePro main's inspected delta is largely plugin/build/release maintenance plus
 ## Proposed audit sequence
 
 1. **Reconcile first, UX.** Use the source pin, open PR file lists, [#1026](https://github.com/cozyGarage/BookiE/issues/1026), [#561](https://github.com/cozyGarage/BookiE/issues/561), APP-MOD and existing B3/B4 issues. For each candidate record existing coverage, missing consumer and one failing user case. This review creates no second status ledger.
-2. **Reproduce visual gaps, UX with maintainer desktop acceptance.** Follow the [visual checklist](../manual-verification-0.2-features.md#visual-audit-matrix). Start with pending changes, high contrast and narrow layouts. Make one patch per observed defect. Acceptance needs widget behavior plus installed Arch/Hyprland screenshots; use the existing Forgejo gate for code changes.
+2. **Reproduce visual gaps, UX with maintainer desktop acceptance.** Follow the [visual checklist](../manual-verification-app.md#visual-audit-matrix). Start with pending changes, high contrast and narrow layouts. Make one patch per observed defect. Acceptance needs widget behavior plus installed Arch/Hyprland screenshots; use the existing Forgejo gate for code changes.
 3. **Measure responsiveness, UX.** Profile loaded-row search, statement bands, completion, lazy restore and large JSON views. Record input bytes/rows, main-context stall, peak memory and cancellation latency. Agree a budget from measurements, then add a failing regression. A new async path must discard obsolete results and release owned work on close.
 4. **Probe data and session edges, B3/B4.** B3 owns the MySQL default/DST oracle and page-boundary/export matrices. B4 reviews session retirement, cancellation, policy and terminal audit outcomes where a change touches them. Use unit/sandbox for pure logic and real-engine driver tests for stored values and server state. Record cross-lane handoff before edits.
 5. **Select small UX additions.** Dialect type completion is the smallest candidate. Responsive overflow follows observed layout failures. Bounded NOTICE/PRINT output follows the existing backend-then-GTK sequence. Keep ER diagrams, comparison tools and trigger toggles in the existing candidate inventory until a user need, owner and acceptance are selected.

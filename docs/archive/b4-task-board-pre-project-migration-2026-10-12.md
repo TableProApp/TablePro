@@ -8,7 +8,7 @@ Base scope: `aeac107a4`, branch `linux`, reviewed 2026-10-03. The active B4 inte
 
 ### Finite code finish and candidate handoff
 
-The [0.2.0 scope](../0.2.0-scope.md) owns blockers. The three demonstrated implementation defects below are merged; this closeout records regression coverage, candidate commands and the remaining acceptance boundary. Broader features remain in the backlog.
+The [0.2.0 scope](../bookie-0.2-sprint.md#delivery-boundary) owns blockers. The three demonstrated implementation defects below are merged; this closeout records regression coverage, candidate commands and the remaining acceptance boundary. Broader features remain in the backlog.
 
 | Work | Implementation | Exit before candidate freeze |
 | --- | --- | --- |

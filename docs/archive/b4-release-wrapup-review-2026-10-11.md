@@ -15,7 +15,7 @@ MySQL lock-release and session-variable rollback contracts are merged
 (#522, #525, #526). There is no reason to merge these old branches again.
 
 The remaining B4 work falls into correctness fixes, candidate acceptance and
-later features. The new [0.2.0 scope](../0.2.0-scope.md) narrows delivery to an
+later features. The new [0.2.0 scope](../bookie-0.2-sprint.md#delivery-boundary) narrows delivery to an
 Arch/Hyprland development release. It does not require completing every old B4
 checkbox or every engine configuration before the release.
 

@@ -39,7 +39,7 @@ Test install, upgrade, downgrade, and removal. Package operations must leave the
 
 For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md).
 
-The Debian builder and validator use the workspace release version with Debian revision `-1` by default. `DEB_VERSION` can select another packaging revision. The commands below build and install a local package from the current workspace; they do not establish Debian desktop acceptance, which remains tracked under [PKG-2](../../../docs/0.2.0-scope.md#delivery-boundary).
+The Debian builder and validator use the workspace release version with Debian revision `-1` by default. `DEB_VERSION` can select another packaging revision. The commands below build and install a local package from the current workspace; they do not establish Debian desktop acceptance, which remains tracked under [PKG-2](../../../docs/bookie-0.2-sprint.md#delivery-boundary).
 
 ```bash
 DEB_VERSION=0.2.0-1 ./scripts/build-deb.sh

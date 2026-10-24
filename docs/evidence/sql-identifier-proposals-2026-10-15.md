@@ -16,7 +16,7 @@ The final isolated widget tier passed all 52 registered tests, including the thr
 
 The native PostgreSQL `completion_metadata_preserves_exact_postgresql_catalog_names` fixture passed locally. Its six relation identities are the same matrix asserted by the widget activation test. Native SELECT metadata identifies each intended relation separately, including `Users` and `users`. This composes the exact inserted-reference assertion with the server identity check; it is not a combined installed-UI/server scenario.
 
-Keyboard popup selection, undo and screen reader checks are recorded in [manual verification](../manual-verification-0.2-features.md#exact-sql-completion). No screen reader result is claimed.
+Keyboard popup selection, undo and screen reader checks are recorded in [manual verification](../manual-verification-editor.md#exact-sql-completion). No screen reader result is claimed.
 
 GtkSourceView retains its native popup and keyboard bindings. Upstream [completion list bindings](https://github.com/GNOME/gtksourceview/blob/master/gtksourceview/gtksourcecompletionlistbox.c) route Return and Tab through proposal activation. The [completion dispatcher](https://github.com/GNOME/gtksourceview/blob/master/gtksourceview/gtksourcecompletion.c) calls the provider activation method. This source review does not replace the pending desktop keyboard and screen reader checks.
 

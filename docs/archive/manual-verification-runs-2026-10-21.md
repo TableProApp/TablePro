@@ -1,0 +1,39 @@
+# Manual verification run records, 2026-10-12 and 2026-10-21
+
+Dated installed and AppImage run results moved from the [manual verification checklist](../manual-verification-0.2-features.md). They prove only their recorded source, package and desktop; recheck current behaviour before relying on them.
+
+## Installed run on 2026-10-12
+
+Package `bookie 0.2.0-1`, built 2026-10-12 from the UX worktree at `d3202c17c` (BookiE `linux` `6cc8bd732` plus the [#618](https://github.com/cozyGarage/BookiE/pull/618) branch). `/usr/bin/bookie` SHA-256 `b2a8431bba1f4eddf4cc28a83110f789d38af75b16681152e2a5e837a35c3e87`. Arch Linux, Hyprland 0.56.2, native Wayland, GTK 4.22.4, libadwaita 1.9.3, GtkSourceView 5.20.0, scale 1, dark theme only. Databases: PostgreSQL 17 and MariaDB 11 in local containers. The UI was driven through AT-SPI, a virtual pointer and keyboard input; screenshots were kept locally and not committed.
+
+The maintainer checked the same build by hand on 2026-10-12: dark and light themes both render, and the app follows the system theme when it changes. Results are written beside each item as "2026-10-12 Hyprland dark". Boxes stay unticked because the per-item light-theme pass, GNOME and narrow-width checks were not run. Items without a 2026-10-12 note were not run. Defects found in this run are [#648](https://github.com/cozyGarage/BookiE/issues/648) to [#660](https://github.com/cozyGarage/BookiE/issues/660) and [#662](https://github.com/cozyGarage/BookiE/issues/662); the editor close defect was fixed in [#667](https://github.com/cozyGarage/BookiE/pull/667) and the shortcut window was updated in [#725](https://github.com/cozyGarage/BookiE/pull/725). Treat these run notes as historical; current retest status is written beside each item.
+
+Build first:
+
+```bash
+cargo build -p tablepro-app
+```
+
+## AppImage run on 2026-10-21
+
+Test artifact: the CI-built `BookiE-0.2.0-x86_64.AppImage` from [#1264](https://github.com/cozyGarage/BookiE/pull/1264) run 39586177455 (commit `8fdc5c384`), SHA-256 `f34dd1f3f8bf509310f53927b2c59102b49d91b6aac739fd83f08a7da82f9b0f`. It differs from the published asset, built by tag run 39671354230 from `linux-v0.2.0` commit `bd31a1d8b3dc83200c324b9f37fa83f3660d8aab`, whose asset digest and `SHA256SUMS` record SHA-256 `42583551f61b022773c498cdd6e938b3caa51919f2c29fd807b98666f360287d`. Arch Linux / Omarchy, Hyprland 0.56.2, display scale 1.25, bundled GTK from Debian testing (exact GTK and libadwaita versions not recorded). PostgreSQL 16.15 in Docker with synthetic data (250 customers, 600 orders, a 16-column table; NULL, empty, long and multiline values). The test instance ran with its own config, data, runtime directory and message bus, so it did not touch a real profile.
+
+The PR-run artifact launched under **XWayland** with `GDK_BACKEND=x11`. The checks below ran on a copy of that artifact with the launch hook changed to `wayland,x11` (Hyprland reported `xwayland: False`). The published AppImage's `AppRun` sources a GTK hook that defaults to `wayland,x11`, but this run did not launch that exact asset; its live Wayland behavior and UI remain unverified. The dark theme was forced with `ADW_DEBUG_COLOR_SCHEME=prefer-dark` because the isolated bus had no theme portal. Input was by keyboard only (no pointer tool), so everything below is keyboard-reachable behavior.
+
+- [ ] Welcome screen and connection list render. **2026-10-21 Hyprland native Wayland, light and dark:** passed. The two text lines of a connection row sit very close together.
+- [ ] Tab order on the welcome screen reaches every control and shows focus. **2026-10-21 Hyprland dark and light:** passed. Order: header buttons, filter, export, add, the connection row, then the row's buttons.
+- [ ] A saved connection opens and the header shows the server version. **2026-10-21 Hyprland dark:** passed (`UX test shop · Local · PostgreSQL 16.15`). The first connect showed a system keyring prompt to create a keyring; that came from the isolated message bus, not from the app. **2026-10-22 installed 0.2.0 native Wayland, SQL Server:** the saved read-only profile connected to the disposable fixture and opened `dbo.people` with both expected rows. The header showed `tablepro_ro@127.0.0.1 · Local · SQL Server` without a server version, so the version part remains unverified for SQL Server. The original fixture was stopped; see [the installed Wayland evidence](../evidence/installed-wayland-0.2.0-2026-10-22/README.md).
+- [ ] Grid distinguishes NULL, empty text and Boolean states; multiline and long values. **2026-10-21 Hyprland dark:** passed. NULL shows `<NULL>`, empty text is blank, Boolean shows checked, unchecked and a dash for NULL, multiline text wraps and grows the row, long text is cut with an ellipsis, the primary key column carries a key icon. **2026-10-22 installed 0.2.0 native Wayland, dark, SQLite:** the SQL result grid showed `<NULL>` separately from empty text, Boolean checkboxes, `12.345`, the exact integer `9007199254740993`, wrapped multiline text and an ellipsis for a 112-character value. In the browse grid, an edit showed one unsaved change; Save persisted it, and Discard left the second row unchanged. Add row created a draft with NULL values, accepted a label, and Save stored it with an automatically assigned integer key. Delete marked only the selected row, and Save removed it. SQLite verified both changes. Failed cell state and light theme remain untested. See [the installed Wayland evidence](../evidence/installed-wayland-0.2.0-2026-10-22/README.md).
+- [x] Filter bar opens with Ctrl+F. **2026-10-21 Hyprland dark:** inconclusive because focus may not have been in the grid. **2026-10-22 installed 0.2.0 native Wayland, dark, SQLite:** Ctrl+F opened the filter strip; `label = 'alpha-ui-edited'` narrowed the grid to one row, and Clear all restored both rows. Rule-editor controls were not tested. **2026-10-24 installed 0.2.0 native Wayland, PostgreSQL:** the browse Filter control opened the SQL `WHERE` editor and the separate rule editor. No condition was applied. See [filter capture](../evidence/installed-arch-profile-2026-10-24/native-postgres-filter.png).
+- [ ] SQL editor opens, highlights SQL and runs a statement. **2026-10-21 Hyprland dark:** editor opened and highlighted correctly; a run that the policy could not parse asked for approval, and Deny produced "Statement 1 failed" with a Copy error button. A successful run and its result pane were not seen: part of the typed text was lost to a focus problem in the test input (see below), so the statement was truncated.
+- [ ] Narrow window, 2x scale, high contrast, enlarged text, Orca. **Not run.**
+- [ ] Cell edit, paste, export, import, SSH, structure tab and the other sections below. **Not run** on the AppImage.
+
+Defects found. Screenshots are kept by the tester, not in the repository.
+
+- **AppImage acceptance is incomplete.** This run tested a PR artifact and its modified Wayland copy, not the published asset. The published hook prefers Wayland when available, but exact-asset launch and UI behavior have not been observed.
+- **Approval dialog overlay is not opaque.** With a failed result behind it, the earlier "failed" text shows through beside the Deny and Approve buttons, and the heading is wider than the body text. Owner: UX.
+- **The approval title says "Approve write" for an unparseable statement** that may be a read. Owner: UX and policy.
+- **The Group and tags dialog is flush against the list above it,** with Cancel and Save touching the rows. Owner: UX.
+- **Unexplained:** the tab overview opened during scripted input and received typed text. Not reproduced; most likely a test-input focus problem, but not confirmed.
+- **Benign:** a second instance logs `MCP HTTP server stopped: Address already in use` because port 17432 is taken by the first.

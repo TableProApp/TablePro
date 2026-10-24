@@ -10,7 +10,7 @@ This page is a pointer. The pre-migration board (release wrap-up, TEST-15 accept
 | --- | --- |
 | Open B4 issues and status | [Project #3](https://github.com/users/cozyGarage/projects/3) filtered by Lane B4 |
 | Ledger ID to issue map | [known-issues.md](known-issues.md) |
-| Post-release scope and selected work order | [Backlog](backlog.md), [0.2.0 scope](0.2.0-scope.md) |
+| Post-release scope and selected work order | [Backlog](backlog.md), [0.2.0 delivery boundary](bookie-0.2-sprint.md#delivery-boundary) |
 | Frozen-candidate TEST-15 selectors | [Archived board](archive/b4-task-board-pre-project-migration-2026-10-12.md#test-15-release-acceptance-list) |
 | Earlier B4 local recheck at `472a50be` | [2026-10-13 results](evidence/b4-current-linux-472a50be-2026-10-13/README.md) |
 | PostgreSQL, SSH and audit release checks at `1ff2ff9c` | [2026-10-13 results](evidence/b4-current-linux-1ff2ff9c-2026-10-13/README.md) |

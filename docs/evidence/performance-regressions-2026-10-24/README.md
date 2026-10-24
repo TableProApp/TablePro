@@ -1,6 +1,6 @@
 # Performance regression contracts
 
-This change adds twelve tests that pin the merged performance behavior. It builds on the existing grid-sharing, lazy-proposal, preview and byte-retention tests. The [testing guide](../../testing.md#performance-regression-contracts) owns the contract matrix and commands.
+This change adds twelve tests that pin the merged performance behavior. It builds on the existing grid-sharing, lazy-proposal, preview and byte-retention tests. The [testing guide](../../testing-quality-and-performance.md#performance-regression-contracts) owns the contract matrix and commands.
 
 ## Added coverage
 

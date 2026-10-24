@@ -58,9 +58,9 @@ Approved 2026-09-16. Delivery branch: `linux`; source version 0.1.6-dev (0.1.5 i
 
 ## 0.2.0 readiness (reviewed 2026-10-18 against `6e4edf5d0`)
 
-The maintainer's current delivery target is the Arch/Hyprland development release in [0.2.0 scope](../0.2.0-scope.md). That page owns the blocker list. Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue after 0.2.0 in the [backlog](../backlog.md). Historical acceptance gaps below stay open without becoming additional release blockers.
+The maintainer's current delivery target is the Arch/Hyprland development release in [0.2.0 scope](../bookie-0.2-sprint.md#delivery-boundary). That page owns the blocker list. Broader engine matrices, Debian/GNOME desktop acceptance and Flatpak continue after 0.2.0 in the [backlog](../backlog.md). Historical acceptance gaps below stay open without becoming additional release blockers.
 
-No 0.2 release is approved. The [0.2.0 scope](../0.2.0-scope.md) is the sole source for blockers and their exit criteria. Current lane status is summarized below; Project #3 and the owning boards hold the active work.
+No 0.2 release is approved. The [0.2.0 scope](../bookie-0.2-sprint.md#delivery-boundary) is the sole source for blockers and their exit criteria. Current lane status is summarized below; Project #3 and the owning boards hold the active work.
 
 ## Current continuation
 
