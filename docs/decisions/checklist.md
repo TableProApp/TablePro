@@ -50,11 +50,11 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 
 | Fork | Status | Where it lives |
 | --- | --- | --- |
-| Branching & release strategy | Decided | Work on `linux`. Maintainer cuts releases. Changelog under `[Unreleased]` in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
+| Branching & release strategy | Decided | Work on `linux`. Maintainer cuts releases. Release notes from commit trailers ([ADR 0022](0022-release-notes-from-merge-commits.md)). [AGENTS](../../AGENTS.md). |
 | Integration method & history shape | Decided | Squash-merge on GitHub; Forgejo is the acceptance gate, not the merge target. [AGENTS](../../AGENTS.md#workflow). |
 | CI/CD & environments | Decided | GitHub cheap tier; Forgejo merge tiers. [AGENTS](../../AGENTS.md), [validation playbook](../validation-playbook.md#ci-tiers). |
 | Feature-flagging & rollout | Decided | No account, license or remote entitlement flags. [AGENTS](../../AGENTS.md), [PRODUCT.md](../../PRODUCT.md). |
-| Changelog & release notes | Decided | Keep a Changelog 1.1.0 in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
+| Changelog & release notes | Decided | `Release-Note:` trailers on squash commits, assembled at release. [ADR 0022](0022-release-notes-from-merge-commits.md). |
 | Externally-owned release gate | Undecided | See the open fork below; distribution work remains in the [backlog](../backlog.md). |
 | Native library floors | Decided | One floor: GTK 4.24, libadwaita 1.10, GtkSourceView 5.22. [ADR 0021](0021-toolkit-floor.md), [platforms](../platforms.md). |
 

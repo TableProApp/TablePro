@@ -9,7 +9,7 @@ These rules apply to every coding agent and every contributor. `CLAUDE.md` point
 - The rename covers the display name, packaging install names (`bookie`, `bookie-agentd`, with `tablepro*` aliases) and branding assets only. Cargo package and binary names stay `tablepro-app` / `tablepro-agentd`. App ID, config and data paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Crate names stay `tablepro-*`. Check the sprint before renaming any of them.
 - The UI uses GTK4, libadwaita, GtkSourceView and Relm4. Database drivers are static workspace crates registered at compile time. No cross-platform UI layers, web views or source for another operating system.
 - Every shipped feature works without an account, license key, subscription, paid tier or remote entitlement check.
-- The root [LICENSE](LICENSE) applies. User-facing changes go in [CHANGELOG.md](CHANGELOG.md).
+- The root [LICENSE](LICENSE) applies. User-facing changes carry a `Release-Note:` line ([changelog and commits](#changelog-and-commits)).
 
 ## Where to start
 
@@ -169,8 +169,8 @@ Driver integration tests need Docker. If a prerequisite is missing, say which ch
 
 ## Changelog and commits
 
-- [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) in `CHANGELOG.md` under `[Unreleased]`: one line per user-facing change, describing user impact, with no paths, type or function names. Test coverage, evidence runs and audits are not changelog entries; record them on the owning board or in `docs/evidence/`. Do not add `Fixed` for a defect introduced and fixed before release.
-- Conventional Commits with a single-line subject and no body. Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`, `security`. Scopes such as `app`, `core`, `policy`, `mcp`, `agentd`, `storage`, `ssh`, `drivers`, `driver-postgres`.
+- Release notes ([ADR 0022](docs/decisions/0022-release-notes-from-merge-commits.md)): do not edit `CHANGELOG.md`. Put one `Release-Note: <Category>: <text>` line per user-facing change (or `Release-Note: none`) in the PR body and merge with `gh pr merge --squash --body-file <file>` where the file is `python3 scripts/release-notes.py trailers` run on the PR body, so only those lines reach the commit. Categories follow [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Each line describes user impact, with no paths, type or function names. Test coverage, evidence runs and audits are not changelog entries; record them on the owning board or in `docs/evidence/`. Do not add `Fixed` for a defect introduced and fixed before release.
+- Conventional Commits with a single-line subject and no body except `Release-Note:` trailers. Types: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`, `security`. Scopes such as `app`, `core`, `policy`, `mcp`, `agentd`, `storage`, `ssh`, `drivers`, `driver-postgres`.
 - A public API change updates every caller and test in the same commit.
 
 ## Documentation rules

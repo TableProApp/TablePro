@@ -1,5 +1,7 @@
 # Changelog fragment evaluation, 2026-10-19
 
+> Superseded on 2026-10-24 by [ADR 0022](../decisions/0022-release-notes-from-merge-commits.md): the revisit trigger below was met (284 of 1,071 commits touched `CHANGELOG.md`).
+
 ## Decision
 
 Keep the current Keep a Changelog workflow. Do not add Towncrier fragments yet. Reconsider after a release cycle if maintainers can point to actual merge conflicts or duplicate user-facing entries caused by concurrent edits.

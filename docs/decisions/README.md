@@ -58,6 +58,7 @@ Other options and why they were rejected.
 | [0019](0019-database-tooling-without-sidecars.md) | Database tooling without sidecars | Accepted; partial implementation | DuckDB for file conversion, `refinery` behind `PolicyGuard` for migrations, supervised vendor dump tools for backup; no sidecar binaries |
 | [0020](0020-aggregate-forgejo-trains.md) | Aggregate pull requests are the Forgejo gate unit | Accepted | Gate one immutable aggregate head, verify its merge tree and close constituent PRs as included |
 | [0021](0021-toolkit-floor.md) | Support only the newest GTK toolkit | Accepted | GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22 at startup, build, package and CI; older distributions are unsupported |
+| [0022](0022-release-notes-from-merge-commits.md) | Release notes come from merge commits | Accepted; workflow wiring pending | A `Release-Note:` trailer on each squash commit replaces edits to `CHANGELOG.md`; notes are assembled at release. |
 
 Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
 

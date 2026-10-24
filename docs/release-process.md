@@ -21,10 +21,10 @@ Every file also has build provenance recorded by GitHub (`gh attestation verify 
 
 ## Cutting a release
 
-1. On a branch from `linux`, move the `[Unreleased]` entries under the new version: `python3 scripts/release-notes.py cut X.Y.Z YYYY-MM-DD`. Check that the workspace version in `Cargo.toml`, `meson.build` and the newest `<release>` in `apps/linux/flatpak/com.tablepro.linux.metainfo.xml` all say X.Y.Z (`python3 scripts/check-release-version.py`). Merge the pull request through the normal Forgejo gate.
+1. Preview the notes with `python3 scripts/release-notes.py assemble --since <previous tag>` ([ADR 0022](decisions/0022-release-notes-from-merge-commits.md)). Until the release workflow reads trailers, the first cut after that ADR moves the `[Unreleased]` entries of `CHANGELOG.md` under the new version with `python3 scripts/release-notes.py cut X.Y.Z YYYY-MM-DD` and adds the assembled trailer notes by hand. In the same change, copy `CHANGELOG.md` unchanged to `docs/archive/changelog-through-X.Y.Z-YYYY-MM-DD.md`, then remove `CHANGELOG.md` and repoint the references that `scripts/check-doc-links.py` and `scripts/check-moved-paths.py` report. Check that the workspace version in `Cargo.toml`, `meson.build` and the newest `<release>` in `apps/linux/flatpak/com.tablepro.linux.metainfo.xml` all say X.Y.Z (`python3 scripts/check-release-version.py`). Merge the pull request through the normal Forgejo gate.
 2. Tag the merged commit and push the tag from a checkout of `linux`:
    `git tag -a linux-vX.Y.Z -m "BookiE X.Y.Z" && git push origin linux-vX.Y.Z`.
-3. Wait for the Release workflow. It refuses a tag that differs from the source version or a version with no changelog section. The release notes are the version's `CHANGELOG.md` section.
+3. Wait for the Release workflow. It refuses a tag that differs from the source version or a version with no changelog section. The release notes are the version's `CHANGELOG.md` section until the workflow is switched to `assemble`.
 4. Open the draft release on GitHub, confirm the pre-release flag, verify every asset against `SHA256SUMS` and the tag-run provenance, install at least one package, then press Publish. Do not substitute artifacts from a pull-request dry run for assets from the tag run.
 
 A change to the workflow or the AppImage script builds all packages on the pull request without publishing, so packaging breakage shows up before a tag.
