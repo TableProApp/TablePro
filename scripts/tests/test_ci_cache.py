@@ -281,7 +281,11 @@ class CiCacheTests(unittest.TestCase):
             workflow = (ROOT / '.forgejo/workflows' / filename).read_text()
             self.assertIn('defaults:\n  run:\n    shell: /usr/local/libexec/bookie-ci-cache run {0}\n', workflow)
             self.assertEqual(workflow.count('shell: /usr/local/libexec/bookie-ci-cache run {0}'), 1)
-            self.assertNotIn('uses:', workflow)
+            for step in workflow.split('      - name: ')[1:]:
+                if 'uses:' in step:
+                    self.assertIn('          path: gtk-artifact/\n', step)
+                    self.assertNotIn('path: /var/cache/', step)
+                    self.assertNotIn('path: ${{ env.CARGO_TARGET_DIR }}', step)
 
     def test_every_forgejo_checkout_recovers_cache_before_writing_workspace(self):
         for filename in ('ci.yml', 'nightly.yml'):

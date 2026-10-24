@@ -58,6 +58,44 @@ jobs:
           python3 scripts/check-comment-lines.py
           cargo fmt --all -- --check
 
+  gtk-build:
+    runs-on: any-host
+    needs: [guards]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 20
+    env:
+      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-build
+      TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+    steps:
+      - name: Check out
+        shell: /usr/local/libexec/bookie-ci-cache checkout {0}
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          rm -rf src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
+          git -C src checkout --quiet "${{ github.sha }}"
+      - name: Prepare artifact runtime
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Build the shared GTK binary
+        run: |
+          cd src
+          cargo build --profile ci --locked -p tablepro-app --bin tablepro-app
+          python3 scripts/ci-gtk-artifact.py create "$CARGO_TARGET_DIR/ci/tablepro-app" "$GITHUB_WORKSPACE/gtk-artifact" "${{ github.sha }}"
+      - name: Upload the source-pinned GTK binary
+        uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: gtk-ci-${{ github.run_id }}-${{ github.sha }}
+          path: gtk-artifact/
+          if-no-files-found: error
+          retention-days: 2
+
   clippy:
     runs-on: any-host
     timeout-minutes: 90
@@ -250,11 +288,11 @@ jobs:
 
   e2e:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox, widgets, gtk-build]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     env:
-      CARGO_TARGET_DIR: /var/cache/ci/target/e2e-${{ matrix.server }}
+      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-build
     strategy:
       fail-fast: false
       matrix:
@@ -278,6 +316,19 @@ jobs:
             git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
           unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
+      - name: Prepare artifact runtime
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Download the shared GTK binary
+        uses: https://code.forgejo.org/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        with:
+          name: gtk-ci-${{ github.run_id }}-${{ github.sha }}
+          path: gtk-artifact/
+      - name: Verify the shared GTK binary
+        run: |
+          binary=$(python3 src/scripts/ci-gtk-artifact.py verify "$GITHUB_WORKSPACE/gtk-artifact" "${{ github.sha }}")
+          printf 'TABLEPRO_GTK_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
       - name: Docker Hub login
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -329,11 +380,11 @@ jobs:
 
   gtk:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox, widgets, gtk-build]
     if: github.event_name != 'pull_request'
     timeout-minutes: 60
     env:
-      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-${{ matrix.shard }}
+      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-build
     strategy:
       fail-fast: false
       matrix:
@@ -353,6 +404,19 @@ jobs:
             git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
           unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
+      - name: Prepare artifact runtime
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Download the shared GTK binary
+        uses: https://code.forgejo.org/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        with:
+          name: gtk-ci-${{ github.run_id }}-${{ github.sha }}
+          path: gtk-artifact/
+      - name: Verify the shared GTK binary
+        run: |
+          binary=$(python3 src/scripts/ci-gtk-artifact.py verify "$GITHUB_WORKSPACE/gtk-artifact" "${{ github.sha }}")
+          printf 'TABLEPRO_GTK_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
       - name: Docker Hub login
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -495,11 +559,11 @@ jobs:
 
   gtk-server:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox, widgets, gtk-build]
     if: github.event_name != 'pull_request'
     timeout-minutes: 60
     env:
-      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-server-${{ matrix.server }}
+      CARGO_TARGET_DIR: /var/cache/ci/target/gtk-build
     strategy:
       fail-fast: false
       matrix:
@@ -525,6 +589,19 @@ jobs:
             git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
           unset TOKEN auth
           git -C src checkout --quiet "${{ github.sha }}"
+      - name: Prepare artifact runtime
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Download the shared GTK binary
+        uses: https://code.forgejo.org/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        with:
+          name: gtk-ci-${{ github.run_id }}-${{ github.sha }}
+          path: gtk-artifact/
+      - name: Verify the shared GTK binary
+        run: |
+          binary=$(python3 src/scripts/ci-gtk-artifact.py verify "$GITHUB_WORKSPACE/gtk-artifact" "${{ github.sha }}")
+          printf 'TABLEPRO_GTK_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
       - name: Docker Hub login
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

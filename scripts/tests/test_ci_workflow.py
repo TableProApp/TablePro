@@ -505,9 +505,19 @@ class CiWorkflowTests(unittest.TestCase):
         soak = nightly.split("\n  gtk-soak:\n", 1)[1].split("\n  arch-package:\n", 1)[0]
         self.assertIn('binary="$PWD/target-soak-${{ matrix.run }}/usr/bin/tablepro"', soak)
 
-    def test_forgejo_workflows_use_no_node_actions_on_host_executors(self):
+    def test_forgejo_artifact_actions_are_pinned_and_bootstrap_their_runtime(self):
+        allowed = {
+            "https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5",
+            "https://code.forgejo.org/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a",
+        }
         for workflow in (ROOT / ".forgejo/workflows").glob("*.yml"):
-            self.assertNotIn("uses:", workflow.read_text(), workflow.name)
+            for job in re.split(r"(?m)^  [a-z0-9-]+:\n", workflow.read_text().split("jobs:\n", 1)[1]):
+                actions = re.findall(r"(?m)^        uses: (\S+)$", job)
+                if not actions:
+                    continue
+                self.assertTrue(set(actions) <= allowed, workflow.name)
+                self.assertLess(job.index("ensure-node.sh"), job.index("uses:"), workflow.name)
+                self.assertIn('>> "$GITHUB_PATH"', job)
 
     def test_forgejo_distro_floor_reuses_one_package_across_bases(self):
         workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
