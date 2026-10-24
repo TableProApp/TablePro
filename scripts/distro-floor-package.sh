@@ -25,7 +25,8 @@ if [ -z "$package" ]; then
   rm -rf "$staging"
   mkdir -p "$staging"
   docker run --rm -e "HOST_IDS=$(id -u):$(id -g)" -e "BOOKIE_BUILD_PROFILE=${BOOKIE_BUILD_PROFILE:-release}" -v "$root:/src:ro" -v "$staging:/out" \
-    -v bookie-floor-build-target:/target "$image" bash -ceu '
+    -v bookie-floor-build-target:/target -v bookie-floor-build-cargo:/opt/cargo/registry \
+    -v bookie-floor-build-git:/opt/cargo/git "$image" bash -ceu '
       trap "chown -R \"$HOST_IDS\" /out" EXIT
       apt-get update -qq
       apt-get install -y -qq --no-install-recommends desktop-file-utils >/dev/null
