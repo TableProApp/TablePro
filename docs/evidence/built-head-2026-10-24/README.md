@@ -56,6 +56,10 @@ With the saved Manual Lab SQL Server connection open and its schema metadata loa
 
 - [SQL Server idle process samples](native-current-head-mssql-idle-31s.json)
 
+## Local storage footprint
+
+After the PostgreSQL, MySQL and SQL Server sessions, BookiE's user directories occupied 282,903 bytes in `~/.config/tablepro`, 540,234 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. These include this machine's saved profiles and application data; they do not include the Docker database volumes. The current Arch package is 29,886,373 bytes compressed, the extracted application binary is 42,385,896 bytes, and the package metadata reports 72.61 MiB installed size. The package is awaiting installation, so its installed footprint has not been measured from pacman's post-install state.
+
 ## Product finding
 
 The four-page cache and forward-only cursor are operating as designed under [ADR 0011](../../decisions/0011-paged-query-results.md), but a completed query can report all rows while making the earlier rows unavailable in the grid. This is a usability limitation, not a paging-control defect. Keep the memory bound while evaluating a way to revisit results, such as a scrollable cursor under the same guarded snapshot or a bounded disk-backed page spool. Any design must preserve the existing query policy, audit, cancellation, timeout, value-preservation and cleanup contracts. Broader large-result acceptance remains tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554).
