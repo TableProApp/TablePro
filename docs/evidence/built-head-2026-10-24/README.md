@@ -36,6 +36,20 @@ After the package-build tests, the extracted binary from the package built at `c
 - [Current-head window screenshot](native-current-head-postgres-open.png)
 - [Current-head idle process samples](native-current-head-postgres-idle-31s.json)
 
+The same current-head process then ran `SELECT generate_series(1, 100000) AS n;` on the native desktop. The UI reported 98 ms, 100,000 received rows and 20 pages. The result retained rows 80,001–100,000. I navigated Previous to rows 80,001–85,000; Previous disabled there, while Next returned to the next retained page. This reproduces the documented forward-only retention boundary on the current source head.
+
+A 31.015-second sample began after the query had completed, with the grid on the newest retained page and no input. RSS stayed at 125.1 MiB, PSS varied by 13 KiB, Private Dirty decreased by 12 KiB, process CPU advanced by 0.02 seconds, and block-read/write counters did not change. This measures the retained-result idle state, not query execution or socket traffic. The earlier 30-second sample above covers a separate run that included query and UI work; the samples are not a controlled comparison.
+
+- [Current-head oldest-retained-page screenshot](native-current-head-100k-oldest-retained.png)
+- [Current-head completed-result process samples](native-current-head-postgres-100k-31s.json)
+
+## Current linux-head MySQL browse capture
+
+The same extracted binary opened the saved Manual Lab MySQL connection and loaded the `people` table (2 rows). During a 31.238-second idle sample, RSS stayed at 124.2 MiB, PSS varied by 6 KiB, Private Dirty stayed at 36.0 MiB, CPU advanced by 0.02 seconds, and process block-read/write counters did not change. This is a small-table browse sample, not a cross-engine benchmark; the app binary was extracted from the Arch package and was not installed.
+
+- [MySQL people table screenshot](native-current-head-mysql-people.png)
+- [MySQL browse process samples](native-current-head-mysql-people-31s.json)
+
 ## Product finding
 
 The four-page cache and forward-only cursor are operating as designed under [ADR 0011](../../decisions/0011-paged-query-results.md), but a completed query can report all rows while making the earlier rows unavailable in the grid. This is a usability limitation, not a paging-control defect. Keep the memory bound while evaluating a way to revisit results, such as a scrollable cursor under the same guarded snapshot or a bounded disk-backed page spool. Any design must preserve the existing query policy, audit, cancellation, timeout, value-preservation and cleanup contracts. Broader large-result acceptance remains tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554).
