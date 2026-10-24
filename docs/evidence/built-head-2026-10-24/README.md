@@ -103,7 +103,7 @@ After the ten-profile UI sweep, `du -sb` reported 125,812 bytes in `~/.config/ta
 
 ## Product finding
 
-The installed 0.2.0 build retains four pages. PR #1568 removes that page-count cap, but its candidate still evicts old pages after the estimated row cache exceeds 64 MiB. A 100,000-row narrow result kept all 20 pages; a 100,000-row result with 2 KiB text values retained only rows 70,001–100,000. The earliest available page was rows 70,001–75,000, with Previous disabled. The completed query still reported all 100,000 rows. This makes fetched data inaccessible in the grid and remains a product gap. Large-result acceptance is tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554). Evaluate a scrollable guarded cursor or disk-backed page storage while preserving query policy, audit, cancellation, timeout, value preservation and cleanup contracts.
+Before PR #1568 was installed, the original 0.2.0 binary retained four pages. PR #1568 removes that page-count cap, but its candidate still evicts old pages after the estimated row cache exceeds 64 MiB. A 100,000-row narrow result kept all 20 pages; a 100,000-row result with 2 KiB text values retained only rows 70,001–100,000. The earliest available page was rows 70,001–75,000, with Previous disabled. The completed query still reported all 100,000 rows. This makes fetched data inaccessible in the grid and remains a product gap. Large-result acceptance is tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554). Evaluate a scrollable guarded cursor or disk-backed page storage while preserving query policy, audit, cancellation, timeout, value preservation and cleanup contracts.
 
 ## Native PR #1568 follow-up
 
@@ -172,7 +172,7 @@ After closing the extracted candidate, the existing profile directories measured
 
 ## Installed PR #1568 package and 100,000-row SQLite run
 
-The package `bookie-0.2.0-1-x86_64.pkg.tar.zst` was installed through the desktop PolicyKit authorization at 2026-10-24 09:34 UTC. Pacman reports version `0.2.0-1` and installed size 72.61 MiB. `pacman -Qk bookie` found all 28 package files present. SHA-256 of `/usr/bin/bookie` and `usr/bin/bookie` inside the package both equals `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`. The installed app launched from the desktop entry on workspace 3 and was moved to workspace 4 for the remaining checks.
+The package `bookie-0.2.0-1-x86_64.pkg.tar.zst` was installed through the desktop PolicyKit authorization at 2026-10-24 09:34 UTC. Pacman reports version `0.2.0-1` and installed size 72.61 MiB. `pacman -Qk bookie` found all 28 package files present. SHA-256 of `/usr/bin/bookie` and `usr/bin/bookie` inside the package both equals `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`. The installed `/usr/bin/bookie` binary launched on workspace 3 and was moved to workspace 4 for the remaining checks.
 
 After launch, `SELECT 1;` completed with no errors. A 31.003-second startup-settling sample recorded RSS rising from 112,528 to 152,236 KiB, PSS from 95,804 to 128,069 KiB, and private dirty memory from 28,504 to 49,208 KiB; swap stayed at zero. CPU rose by 137 ticks (about 1.37 seconds), process reads by 749,568 bytes and writes by 3,137,536 bytes. This is the first idle interval after launch and includes startup work; it is not a steady-state idle baseline.
 
