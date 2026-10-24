@@ -30,9 +30,9 @@
     "format_and_diff_checks": "cargo fmt --all -- --check and git diff --check passed"
   },
   "log_sha256": {
-    "parameter-lists.txt": "82ead2bbab995feadfb8d65e3c57824d5bac18f00cb5205806abe08da303c0f2",
+    "parameter-lists.txt": "60fae7f111068de30b1dfaa703ef13aa77eda58734a97068758086a0879a9394",
     "domain-suite.txt": "1711899dbb5f050b646aaf7623742d643e47a766bd5eefcf37e798d25c2e1c11",
-    "clippy.txt": "db18cc96eab1969c83c008fac0742e479ddc2729c3aaf2b0ea84d64a4086235a"
+    "clippy.txt": "832330e0d8e910fbea59e3c41af27e7ebf913618b1de319602195d1b597db7e5"
   },
   "remaining": [
     "Other direct query contexts, parameter list sizes, session/search_path combinations and other domain/base types remain open.",

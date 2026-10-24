@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/postgres-macaddr-array-roundtrip",
+  "source_commit": "b2ddc6274bb41377990252e92d9a4b91a06016ff",
+  "source_sha256": {
+    "crates/drivers/postgres/src/array.rs": "7932b03895c1bd0ab77e2cf3d11bef223512a680f4655f0ea5fca139a68eaf2c",
+    "crates/drivers/postgres/src/params.rs": "d0dd7b775f4d058dbcd4730cb386009aa70d1162468fa05da906a6feec0093cf",
+    "crates/drivers/postgres/tests/support/array_contract.rs": "6ba4b43fe8247dde9267ae2bf5600ebd50071444a6545a16e56a27d0cc29e53d",
+    "crates/drivers/postgres/tests/support/array_contract_parts/result_consumers_temporal.rs": "8b64c61ccc22cb9c9fdd571e49dd098e653fff4c43c4ab8f0a6e43d8ff4d3b45"
+  },
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "built-in macaddr[] binary result, inferred bind, keyed edit, CSV restore and invalid-input refusal",
+  "tests": [
+    "array_contract::value_contract_macaddr_array_binding_and_keyed_edit_preserve_native_bytes",
+    "value_contracts::value_contract_arrays_preserve_elements_dimensions_and_exports",
+    "array_contract::value_contract_builtin_array_oid_census_matches_decode_allowlist",
+    "array::tests::value_contract_macaddr_arrays_decode_binary_elements_and_sql_null",
+    "params::tests::value_contract_macaddr_array_elements_encode_six_octets_and_refuse_malformed_text"
+  ],
+  "contract": [
+    "Binary macaddr[] results preserve canonical six-octet values, SQL NULL and non-default lower bounds using the native element OID 829.",
+    "Assignment-inferred array parameters encode each valid six-octet element in PostgreSQL binary form; native array_send bytes match after direct and keyed updates.",
+    "Typed CSV import restores macaddr[] alongside the existing PostgreSQL array families.",
+    "Malformed element lengths and non-hexadecimal octets are refused; the target and sibling rows remain unchanged.",
+    "The built-in OID census includes macaddr[] and continues to require explicit refusal for unlisted built-in arrays."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_macaddr_array_binding_and_keyed_edit_preserve_native_bytes -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "macaddr-focused.txt"
+    },
+    "postgres_array_contract": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_arrays_preserve_elements_dimensions_and_exports -- --ignored --nocapture",
+      "result": "1 passed, 0 failed; includes typed CSV array restore",
+      "log": "postgres-array-contract.txt"
+    },
+    "builtin_oid_census": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_builtin_array_oid_census_matches_decode_allowlist -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "oid-census.txt"
+    },
+    "postgres_full_integration": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration -- --include-ignored --test-threads=1",
+      "result": "190 passed, 0 failed",
+      "duration_seconds": 434,
+      "log": "postgres-full-integration.txt"
+    },
+    "driver_unit": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --lib macaddr",
+      "result": "4 passed, 0 failed",
+      "log": "driver-unit.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy -p tablepro-driver-postgres --tests -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "format.txt"
+    },
+    "local_harness": {
+      "command": "rtk proxy bash scripts/test-harness.sh",
+      "result": "70 Python checks, ignored-test inventory, package validation and function-size checks passed",
+      "log": "harness.txt"
+    },
+    "postgres_full_integration_after_merge": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration -- --include-ignored --test-threads=1",
+      "result": "190 passed, 0 failed",
+      "duration_seconds": 432,
+      "log": "postgres-full-integration-after-merge.txt"
+    },
+    "local_harness_after_merge": {
+      "command": "rtk proxy bash scripts/test-harness.sh",
+      "result": "86 Python checks, ignored-test inventory, package validation and function-size checks passed",
+      "log": "harness-after-merge.txt"
+    }
+  },
+  "log_sha256": {
+    "clippy.txt": "f591e097f22f91dd5c31fbbf7e587d80c0a4e0ed594f9c9012a544f38c52d926",
+    "driver-unit.txt": "876d8f452d08feabb2a1d4cfcca3bb060544a62125b96d93e4bbce3f4799bdc2",
+    "format.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "harness.txt": "d1915fdc3c409f418cacda693eb74556ba0e0b99b51e3f58c2a4dcc0b425c5b1",
+    "macaddr-focused.txt": "ac891781801b080b490eb144ae80e7a5323b4e093e06126b683b7e143213669a",
+    "oid-census.txt": "b362bacae90dc2994b18894b9b8721ce2dca4d3ce2277eb88b5582c0868c2feb",
+    "postgres-array-contract.txt": "21bad671bbe1f58336c815fdd12463da10e43c831c1df17f07b8b623a688d07a",
+    "postgres-full-integration.txt": "45e2c4ee54288a243e2387bdd2e0ed458c074c1fc7266344a08afdb0ea95e3ee",
+    "postgres-full-integration-after-merge.txt": "8672548ccba65347e5a473b6fbcf972944dee9d01a88d21444581ae8ded4954c",
+    "harness-after-merge.txt": "20a0e7fbfb63daa8625f0aec5ec0095eae766d5d11c8d3356c5e7bea00256545"
+  },
+  "remaining": [
+    "Other unlisted PostgreSQL built-in and custom array families remain open; macaddr8[], inet[] and cidr[] still refuse visibly.",
+    "The broader B3 engine, type, consumer and configuration matrix remains open."
+  ]
+}

@@ -22,7 +22,13 @@ The shared byte/cell/row limits and all production paths are unchanged. The new 
 - MySQL existing wide-payload transactional byte-budget case passed and retained transaction usability.
 - All 41 DuckDB integration tests passed after the support-module split.
 - All 38 Docker-selected ClickHouse cases passed before the support-module split; both moved budget cases then passed again under their final module-qualified names. The remaining non-ignored connection-refusal case is covered by preflight.
-- Full preflight and strict affected-driver Clippy passed. The first preflight exposed file-size violations; splitting into existing support-module structure corrected them without raising baselines. Exact-head Forgejo acceptance is pending.
+- Full preflight and strict affected-driver Clippy passed. The first preflight exposed file-size violations; splitting into existing support-module structure corrected them without raising baselines. Exact-head Forgejo acceptance was pending when this local evidence was recorded.
 - Function/comment guards, ignored-test inventory and ledger format passed.
 
-The current baseline gate is red. Do not infer merge acceptance from these focused passes.
+The baseline gate was red at this evidence checkpoint. Do not infer merge acceptance from these focused passes.
+
+## Subsequent status
+
+GitHub PR [#1473](https://github.com/cozyGarage/BookiE/pull/1473) merged at head `21e02cff6b30b9c60531514875e87be8edcf02b0` on 2026-10-23, and GitHub closed issue [#1469](https://github.com/cozyGarage/BookiE/issues/1469). The merged source is an ancestor of the current Linux tree. This packet does not identify the exact-head Forgejo run, so the local results and GitHub merge do not independently establish Forgejo acceptance.
+
+The current ClickHouse, DuckDB and MySQL tests retain separate wide-payload byte-budget cases and narrow row-cap cases. Their source is present in the current tree; this audit did not rerun the Docker-backed driver tier.

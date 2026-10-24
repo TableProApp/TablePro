@@ -1,6 +1,6 @@
 # SSH transport
 
-This specification describes the SSH transport contract. Source and tests are authoritative for implementation details; the active sprint and B4 issues own acceptance status.
+This specification describes the SSH transport contract. Source and tests are authoritative for implementation details; the completion page and B4 issues record release and acceptance status.
 
 **Spec tier:** buildable **Serves:** `Local DBA` **Implementation:** in use; route acceptance tracked separately **Specification:** draft, needs review **Success metric:** A tunnel opens only after the host key is trusted or explicitly learned; TLS still verifies the saved database hostname, not loopback.
 
@@ -173,4 +173,4 @@ Each line names the tip proof. When the proof is code only, that is marked.
 
 ## Open questions
 
-No additional transport behavior question was identified in this source review. Jump-chain editing is tracked under [#548](https://github.com/cozyGarage/BookiE/issues/548); installed acceptance is tracked by the active sprint.
+No additional transport behavior question was identified in this source review. Jump-chain editing is tracked under [#548](https://github.com/cozyGarage/BookiE/issues/548); installed acceptance is tracked on the B4 board.

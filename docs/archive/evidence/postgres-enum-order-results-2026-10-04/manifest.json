@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "c9e4952bf00794f4a93fe39861c319e886f82116",
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "Custom enum ORDER BY follows declared catalog order, not lexical text order",
+  "test": "enum_contract::value_contract_custom_enum_order_uses_declared_catalog_order",
+  "contract": [
+    "A custom enum declared in zulu, alpha, middle order yields that same order from pg_enum.enumsortorder as the native ordering oracle.",
+    "A shuffled, duplicate and SQL NULL input result ordered by the enum column preserves PostgreSQL's declared enum order, duplicate rows and explicit NULLS LAST behavior.",
+    "pg_typeof and column metadata confirm every non-NULL sorted result remains the declared custom enum type."
+  ],
+  "validation": {
+    "native_contract": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml -p tablepro-driver-postgres value_contract_custom_enum_order_uses_declared_catalog_order -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "postgres-enum-order.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path linux/Cargo.toml -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "postgres-enum-order.txt": "4c491dac59a35e80b5a57442fdbbb7e219f299d865a42416c32316bbdd9c31a8",
+    "clippy.txt": "cf075ce87fc4280f93fc4b62713a6b495afd1a47a1c00d8f897d9024302f4483",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Other enum operators, consumer formats and session/search_path combinations remain open."
+  ]
+}

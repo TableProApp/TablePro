@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/sqlite-abs-any-csv",
+  "source_commit": "482a4a5d05801b7c0d0eea0dcc29e8c09e9df268",
+  "source_sha256": {
+    "crates/app/tests/support/sqlite_any_contract/computed_csv.rs": "08cbaad1b8c38f186613714f0d215446e0c9db65b6993da099565c7a8c134ce8"
+  },
+  "engine": "SQLite, in-memory, STRICT ANY",
+  "case": "Computed abs() results preserve native runtime storage classes through typed CSV",
+  "test": "ui::browse_tab::value_parse::sqlite_any_contract::sqlite_abs_any_csv_round_trip_preserves_runtime_storage_classes",
+  "contract": [
+    "The native typeof() oracle covers negative INTEGER and REAL values, numeric and nonnumeric TEXT, empty TEXT, numeric and nonnumeric BLOB, SQL NULL, and the i64::MIN boundary.",
+    "abs() retains INTEGER for integer input, REAL for real/text/blob input, and NULL for SQL NULL; SQLite refuses abs(i64::MIN) with integer overflow.",
+    "BookiE's typed CSV encoding is restored into another STRICT ANY table; persisted native typeof() and values match the computed result for every non-overflowing input."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --manifest-path Cargo.toml -p tablepro-app --all-features --lib ui::browse_tab::value_parse::sqlite_any_contract::sqlite_abs_any_csv_round_trip_preserves_runtime_storage_classes -- --exact --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "focused.txt"
+    },
+    "app_library_suite": {
+      "command": "rtk proxy cargo test --manifest-path Cargo.toml -p tablepro-app --all-features --lib",
+      "result": "479 passed, 0 failed, 32 ignored",
+      "log": "app-lib.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path Cargo.toml -p tablepro-app --all-features --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk proxy git diff --check passed"
+  },
+  "log_sha256": {
+    "focused.txt": "1bab5a863eb29d953cbd7d265be6dff31bcd7653f9b3afb0a3aa445be1de6471",
+    "app-lib.txt": "d8a5b742b25129223d1e984869551629ef2c8cc575e9337f60f021e8f233c1bf",
+    "clippy.txt": "3061fd0e5536faa884925dfa8ab412ea7754536f977dcaa48c34b677837b3a45",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Other computed-expression shapes, additional storage-class and affinity mixtures, spreadsheet-app re-import beyond the tested Calc workbook shapes, and installed editing remain open; this case does not close B3 or qualify 0.2.0."
+  ]
+}

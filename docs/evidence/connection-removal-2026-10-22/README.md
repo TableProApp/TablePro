@@ -18,6 +18,10 @@ The shared row now emits the deletion request directly. Both welcome and workspa
 - Welcome-list installed regression passed with the same record and database preservation assertions.
 - Full local preflight and application all-target Clippy passed.
 - Secret Service credential deletion is not independently verified by the SQLite fixture. The existing storage and application deletion paths remain unchanged.
-- Native Wayland and Forgejo acceptance are pending.
+- At this evidence checkpoint, native Wayland and Forgejo acceptance remained pending.
 
-Raw local results are retained under `~/bookie-test/connection-removal-*`. All application interaction uses isolated Xvfb displays and session buses.
+Raw local results are outside the repository. All application interaction uses isolated Xvfb displays and session buses.
+
+## Subsequent status
+
+GitHub PR [#1340](https://github.com/cozyGarage/BookiE/pull/1340) merged on 2026-10-22 at head `48b2d08e1b5f0bcb37c6dd4527b649ee644b9625`, and issue [#1337](https://github.com/cozyGarage/BookiE/issues/1337) closed. Its merge commit is in the current Linux tree. This evidence does not record the exact-head Forgejo run; [#1543](https://github.com/cozyGarage/BookiE/issues/1543) tracks the merge-order and gate-evidence audit. Native Wayland and independent Secret Service deletion verification remain unproven.

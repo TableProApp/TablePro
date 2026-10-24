@@ -2,7 +2,7 @@
   "pid": 1736072,
   "source_commit": "7c2371837c4cc1b3a3fbbea014e0a7336a190ff1",
   "package_file": "target/packages-linux-7c237/bookie-0.2.0-1-x86_64.pkg.tar.zst",
-  "executable": "/home/trung/Projects/bookie/target/bookie-7c237/usr/bin/bookie",
+  "executable": "$HOME/Projects/bookie/target/bookie-7c237/usr/bin/bookie",
   "started_utc": "2026-10-24T00:36:03.229401+00:00",
   "ended_utc": "2026-10-24T00:36:33.232932+00:00",
   "duration_seconds": 30.004,

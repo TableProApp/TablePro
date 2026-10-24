@@ -32,7 +32,7 @@
   },
   "log_sha256": {
     "app-sqlite-any.txt": "05d05d076c46e336af63df56b45a82e599f8e2bf5f036111ed3bfd228206ac17",
-    "clippy.txt": "11c00a937796a3c1e404d2955c376d847f57dff10e9555708abbafdd62473533",
+    "clippy.txt": "62a63e780621ef4171f6889590212f8bb3945219268c40d5b73ec55dcac2314a",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

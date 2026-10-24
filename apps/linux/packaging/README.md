@@ -1,6 +1,6 @@
 # Packaging
 
-See [platforms](../../../docs/platforms.md) for released artifacts, native requirements and package support. This guide covers package builds and validation. BookiE keeps the existing repository and application ID. Portal permissions and the public update channel still need release review.
+See [platforms](../../../docs/platforms.md) for released artifacts, native requirements and package support. This guide covers package builds and validation. BookiE keeps the existing repository and application ID. The 0.2.0 release includes a Flatpak bundle but is not listed on Flathub; portal permissions and public update-channel behavior remain part of the PKG-8 review before Flathub submission.
 
 ## Arch package candidate
 
@@ -37,20 +37,20 @@ Test install, upgrade, downgrade, and removal. Package operations must leave the
 
 ## Debian / Ubuntu package
 
-For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md). Use `apps/linux/flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak. Flatpak/Flathub are left out of 0.2.0.
+For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md). Use `apps/linux/flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak. The published 0.2.0 release also includes a GNOME 50 Flatpak bundle; there is no Flathub listing, and the current branch manifest targets GNOME 51.
 
-The Debian builder and validator use the workspace release version with Debian revision `-1` by default. `DEB_VERSION` can select another packaging revision. The commands below build and install a 0.2.0 candidate; they do not establish Debian desktop acceptance, which remains later work under [PKG-2](../../../docs/0.2.0-scope.md#delivery-boundary).
+The Debian builder and validator use the workspace release version with Debian revision `-1` by default. `DEB_VERSION` can select another packaging revision. The commands below build and install a local package from the current workspace; they do not establish Debian desktop acceptance, which remains tracked under [PKG-2](../../../docs/0.2.0-scope.md#delivery-boundary).
 
 ```bash
 DEB_VERSION=0.2.0-1 ./scripts/build-deb.sh
 sudo apt install ./apps/linux/packaging/out/bookie_0.2.0-1_amd64.deb
 ```
 
-The package name stays `tablepro`. It installs `/usr/bin/bookie`, `/usr/bin/bookie-agentd`, and `/usr/bin/tablepro-askpass`, with legacy `tablepro` / `tablepro-agentd` aliases. It does not install or enable a user service.
+The package name is `bookie`. It installs `/usr/bin/bookie`, `/usr/bin/bookie-agentd`, and `/usr/bin/tablepro-askpass`, with legacy `tablepro` / `tablepro-agentd` aliases. It does not install or enable a user service.
 
 ## Flatpak development build
 
-The Flatpak manifest remains a non-release CI build. From the repository root:
+The current branch Flatpak manifest is a non-release CI build; it targets GNOME 51. The published 0.2.0 bundle uses GNOME 50. From the repository root:
 
 ```bash
 ./scripts/build-flatpak.sh
@@ -60,6 +60,6 @@ It still needs offline Cargo sources, portal work, and a filesystem-permission r
 
 ## Release versions
 
-`[workspace.package].version` in the root `Cargo.toml` is the BookiE release version. Every workspace crate inherits it. For a release or hotfix, update that value, the Meson version and the newest AppStream entry together, then regenerate `Cargo.lock`. Keep older AppStream entries and published upgrade fixtures intact. The unpublished 0.2.0 entry has `type="development"` and records the preparation date required by AppStream. Set the publication date when publishing the release.
+`[workspace.package].version` in the root `Cargo.toml` is the BookiE release version. Every workspace crate inherits it. For a release or hotfix, update that value, the Meson version and the newest AppStream entry together, then regenerate `Cargo.lock`. Keep older AppStream entries and published upgrade fixtures intact. The published 0.2.0 entry remains `type="development"` and records its preparation date, 2026-10-21; this type does not mean the release is unpublished.
 
 Run `python3 scripts/check-release-version.py` to check consistency; the script harness also runs it. `--print` returns the source version for packaging. Translation generation resolves the inherited version, and MCP advertises its compiled crate version. These version declarations do not change compatibility identifiers, create a tag or publish artifacts.

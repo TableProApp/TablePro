@@ -1,6 +1,6 @@
 # 0019: Database tooling without sidecars
 
-- **Status**: Accepted; PostgreSQL backup and restore are wired into the app. Their cancellation and unknown-outcome hardening is tracked by [#1043](https://github.com/cozyGarage/BookiE/issues/1043). File conversion, schema migrations and backup/restore for other engines remain planned after 0.2.0.
+- **Status**: Accepted; PostgreSQL backup and restore are wired into the app. Their cancellation and unknown-outcome review was tracked in the now-closed [#1043](https://github.com/cozyGarage/BookiE/issues/1043). An unknown restore outcome still blocks governed writes until reconciled; the app has no in-app reconciliation action yet ([#947](https://github.com/cozyGarage/BookiE/issues/947)). File conversion, schema migrations and backup/restore for other engines remain post-0.2.0 work.
 - **Date**: 2026-10-16
 
 ### Clarification (2026-10-20)

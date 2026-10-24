@@ -21,7 +21,7 @@ The most valuable lessons are specific contracts and reproductions. A wholesale 
 | Main immediately before merge | `dabe00beae720725a10d0905193b69e2856c4f7e` |
 | BookiE local and GitHub Linux at snapshot | `8626129e60c8f62661cf6d64a70067a6cbfbe654` |
 | Upstream source checkout | `/tmp/tablepro-upstream-audit-20261018` |
-| Evidence | [Source pins and public observations](../evidence/upstream-linux-audit-2026-10-18/source-pins.json); raw API responses were retained in the temporary audit directory |
+| Evidence | [Source pins and public observations](evidence/upstream-linux-audit-2026-10-18/source-pins.json); raw API responses were retained in the temporary audit directory |
 | Previous local review used for reconciliation | `docs/archive/code-and-ui-audit-2026-10-18.md` at the BookiE pin |
 
 GitHub PRs, issue comments, workflows, rulesets and source files were inspected. Source comparison covered the workspace architecture, value and binding contracts, owned calls, write outcomes, PostgreSQL cancellation and pooler tests, MySQL time-zone writes, paging, export encoders and file replacement, GTK startup/lifecycle, and conformance infrastructure. BookiE counterparts were read before proposing gaps.

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Keep exact-tree evidence for local and hosted runs; never retry failures."""
 import datetime
 import json
 from pathlib import Path

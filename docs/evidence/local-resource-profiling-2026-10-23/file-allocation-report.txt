@@ -1,5 +1,5 @@
 reading file "target/local-profile/heap-files-complete/files-1.zst" - please wait, this might take some time...
-Debuggee command was: /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+Debuggee command was: $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 finished reading file, now analyzing data:
 
 MOST CALLS TO ALLOCATION FUNCTIONS
@@ -22,19 +22,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 3634059 calls with 216B peak consumption from:
     impl_regex_match_full
       in /usr/lib/libgtksourceview-5.so.0
@@ -51,19 +51,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 47026901 from 105024 other places
 
 35512173 calls to allocation functions with 10.61K peak consumption from
@@ -85,19 +85,19 @@ pcre2_match_data_create_8
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 3634059 calls with 424B peak consumption from:
     impl_regex_match_full
       in /usr/lib/libgtksourceview-5.so.0
@@ -114,19 +114,19 @@ pcre2_match_data_create_8
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 1687470 from 36 other places
 
 7654229 calls to allocation functions with 2.00M peak consumption from
@@ -180,19 +180,19 @@ g_realloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 935515 calls with 640B peak consumption from:
     pango_glyph_string_set_size
       in /usr/lib/libpango-1.0.so.0
@@ -241,19 +241,19 @@ g_realloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 5783199 from 38036 other places
 
 5152171 calls to allocation functions with 15.34M peak consumption from
@@ -293,19 +293,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 935348 calls with 176B peak consumption from:
     0x7fd49d317cd5
       in /usr/lib/libglib-2.0.so.0
@@ -340,19 +340,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 3088997 from 57445 other places
 
 1540593 calls to allocation functions with 453.59K peak consumption from
@@ -406,19 +406,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 559367 calls with 24B peak consumption from:
     hb_shape_plan_execute
       in /usr/lib/libharfbuzz.so.0
@@ -469,19 +469,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 45711 from 3832 other places
 
 1122622 calls to allocation functions with 16B peak consumption from
@@ -533,19 +533,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 559367 calls with 8B peak consumption from:
     0x7fd49de0db24
       in /usr/lib/libpango-1.0.so.0
@@ -592,19 +592,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 3888 from 412 other places
 
 124991 calls to allocation functions with 1.04M peak consumption from
@@ -718,19 +718,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 2298 calls with 0B peak consumption from:
     0x7fd49b613fc7
       in /usr/lib/libcairo.so.2
@@ -841,19 +841,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 119906 from 1889 other places
 
 78432 calls to allocation functions with 16.09K peak consumption from
@@ -883,17 +883,17 @@ hb_font_create_sub_font
     gtk_source_style_scheme_manager_get_scheme
       in /usr/lib/libgtksourceview-5.so.0
     _RNvMNtNtCscX8VrnmRvZG_11sourceview54auto20style_scheme_managerNtB2_18StyleSchemeManager6scheme
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtCs2uZsNF3uPgU_12tablepro_app2ui5theme13editor_scheme.llvm.16766366248656902784
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtCs2uZsNF3uPgU_12tablepro_app2ui5theme5apply
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB5_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channelB1m_.llvm.3596484693351909811
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNvNtNtNtCs4ozqcKqpdyP_3gio4auto11application14ApplicationExt15connect_startup18startup_trampolineNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNCINvMNtCs4X6TIaiW0uL_5relm43appINtB2B_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtB3k_3AppE0EB3o_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     g_closure_invoke
       in /usr/lib/libgobject-2.0.so.0
     0x7fd49d7cecfa
@@ -911,19 +911,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 2523 calls with 0B peak consumption from:
     xmlSAX2StartElementNs
       in /usr/lib/libxml2.so.16
@@ -946,17 +946,17 @@ hb_font_create_sub_font
     gtk_source_style_scheme_manager_get_scheme
       in /usr/lib/libgtksourceview-5.so.0
     _RNvMNtNtCscX8VrnmRvZG_11sourceview54auto20style_scheme_managerNtB2_18StyleSchemeManager6scheme
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtCs2uZsNF3uPgU_12tablepro_app2ui5theme13editor_scheme.llvm.16766366248656902784
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtCs2uZsNF3uPgU_12tablepro_app2ui5theme5apply
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB5_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channelB1m_.llvm.3596484693351909811
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNvNtNtNtCs4ozqcKqpdyP_3gio4auto11application14ApplicationExt15connect_startup18startup_trampolineNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNCINvMNtCs4X6TIaiW0uL_5relm43appINtB2B_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtB3k_3AppE0EB3o_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     g_closure_invoke
       in /usr/lib/libgobject-2.0.so.0
     0x7fd49d7cecfa
@@ -974,19 +974,19 @@ hb_font_create_sub_font
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 73386 from 2810 other places
 
 
@@ -1012,19 +1012,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 22.36M consumed over 279543 calls from:
     0x7fd49d4840d1
       in /usr/lib/libgtksourceview-5.so.0
@@ -1043,19 +1043,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 102.67M from 105024 other places
 
 25.20M peak memory consumed over 6814 calls from
@@ -1113,17 +1113,17 @@ g_malloc
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 525.06K consumed over 16 calls from:
     0x7fd480dd0ae2
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -1176,27 +1176,27 @@ g_malloc
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 24.15M from 1076 other places
 
 25.17M peak memory consumed over 635 calls from
 _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Clone5clone
-  in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+  in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M consumed over 2 calls from:
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app17workspace_persist26do_persist_workspace_state
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtCsi3kp0qidvbM_4glib6source16trampoline_localNCINvB2_28fnmut_callback_wrapper_localNCNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app17workspace_persistNtB1v_3App23persist_workspace_state0E0EB1z_.llvm.3793684412715191900
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d304053
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d2fc75d
@@ -1208,32 +1208,32 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M consumed over 2 calls from:
     _RNvXsa_NtCs6i54tJFfzR_5alloc3vecINtB5_3VecNtNtCs9H9gkK2Gggk_21tablepro_app_services15workspace_state18WorkspaceTabRecordENtNtCsgxBkk5gSRhY_4core5clone5Clone5cloneBI_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXsg_NtCs9H9gkK2Gggk_21tablepro_app_services15workspace_stateNtB5_24ConnectionWorkspaceStateNtNtCsgxBkk5gSRhY_4core5clone5Clone5clone
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs0_NtCs9H9gkK2Gggk_21tablepro_app_services15workspace_stateNtB5_14WorkspaceStore15save_connection
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs0_NtCs9H9gkK2Gggk_21tablepro_app_services15workspace_stateNtB5_14WorkspaceStore13save_database
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app17workspace_persist26do_persist_workspace_state
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtCsi3kp0qidvbM_4glib6source16trampoline_localNCINvB2_28fnmut_callback_wrapper_localNCNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app17workspace_persistNtB1v_3App23persist_workspace_state0E0EB1z_.llvm.3793684412715191900
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d304053
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d2fc75d
@@ -1245,19 +1245,19 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 8.39M from 249 other places
 
 15.34M peak memory consumed over 5152171 calls from
@@ -1281,25 +1281,25 @@ g_malloc0
     gtk_text_buffer_set_text
       in /usr/lib/libgtk-4.so.1
     _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB5_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE6launchB1m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app14workspace_tabsNtB4_3App19append_editor_draft
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App35finish_activate_prepared_connection
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App26continue_connection_switch
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App22on_connection_prepared
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d2fc75d
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d305c4f
@@ -1309,19 +1309,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 176.35K consumed over 66 calls from:
     g_type_create_instance
       in /usr/lib/libgobject-2.0.so.0
@@ -1363,16 +1363,16 @@ g_malloc0
 
 8.40M peak memory consumed over 249 calls from
 _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs2uZsNF3uPgU_12tablepro_app.llvm.8199119953725226010
-  in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+  in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M consumed over 1 calls from:
     _RINvNvMs2_NtCs6i54tJFfzR_5alloc7raw_vecINtB8_11RawVecInnerpE7reserve21do_reserve_and_handleNtNtBa_5alloc6GlobalECs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXsZ_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core3fmt5Write9write_str
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor13query_changes7install0B9_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNvNtNtNtCsidnKJ2lfOir_4gtk44auto11text_buffer13TextBufferExt23connect_end_user_action26end_user_action_trampolineNtB6_10TextBufferNCNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor13query_changes7installs0_0EB2i_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d7d1019
       in /usr/lib/libgobject-2.0.so.0
     g_signal_emit_valist
@@ -1456,36 +1456,36 @@ _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs2uZsNF3uPg
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 1.79K consumed over 1 calls from:
     _RNvMs4_NtCs6i54tJFfzR_5alloc7raw_vecINtB5_6RawVecNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_view16WelcomeViewInputE8grow_oneBR_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs3_NtNtCs6i54tJFfzR_5alloc11collections9vec_dequeINtB5_8VecDequeNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_view16WelcomeViewInputE4growB1a_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMsp_Cs97fkRXtAb6T_5flumeINtB5_6SenderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_view16WelcomeViewInputE4sendBI_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app12organizationNtB4_3App33on_connection_organization_loaded
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d2fc75d
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d305c4f
@@ -1495,86 +1495,86 @@ _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCs2uZsNF3uPg
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 9.06K from 156 other places
 
 8.39M peak memory consumed over 799 calls from
 _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growB7_
-  in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+  in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M consumed over 2 calls from:
     _RNvMNtCs6i54tJFfzR_5alloc6stringNtB2_6String17try_reserve_exact
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNvNtCs9k3SxhrAWiO_3std2fs14read_to_string5inner
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9H9gkK2Gggk_21tablepro_app_services14workspace_disk4load
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9H9gkK2Gggk_21tablepro_app_services15workspace_state11load_locked
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9H9gkK2Gggk_21tablepro_app_services15workspace_state10run_writer
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvMs0_NtCs9H9gkK2Gggk_21tablepro_app_services15workspace_stateNtB1f_14WorkspaceStore3new0uEB1h_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvMs0_NtCs9H9gkK2Gggk_21tablepro_app_services15workspace_stateNtB1b_14WorkspaceStore3new0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB1d_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49bc98041
       in /usr/lib/libc.so.6
     0x7fd49bd2072b
       in /usr/lib/libc.so.6
 68B consumed over 1 calls from:
     _RNvMs_NtNtCs6i54tJFfzR_5alloc3ffi5c_strNtB4_7CString19__from_vec_unchecked
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtCs2x38STRGjkJ_11sqlx_sqlite10connection9establishNtB2_15EstablishParams12from_options
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs_NtNtCs6DUqgHgJhOU_5tokio4time7timeoutINtB4_7TimeoutNCNvXNtNtCs2x38STRGjkJ_11sqlx_sqlite7options7connectNtB10_20SqliteConnectOptionsNtNtCsfMYD8jYhgeZ_9sqlx_core10connection14ConnectOptions7connect0ENtNtNtCsgxBkk5gSRhY_4core6future6future6Future4pollCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCNvMNtNtCsfMYD8jYhgeZ_9sqlx_core4pool5innerINtB4_9PoolInnerNtNtCs2x38STRGjkJ_11sqlx_sqlite8database6SqliteE7connect0Cs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs_NtNtCs6DUqgHgJhOU_5tokio4time7timeoutINtB4_7TimeoutNCNCNvMNtNtCsfMYD8jYhgeZ_9sqlx_core4pool5innerINtB10_9PoolInnerNtNtCs2x38STRGjkJ_11sqlx_sqlite8database6SqliteE7acquire00ENtNtNtCsgxBkk5gSRhY_4core6future6future6Future4pollCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCNvMNtNtCsfMYD8jYhgeZ_9sqlx_core4pool5innerINtB4_9PoolInnerNtNtCs2x38STRGjkJ_11sqlx_sqlite8database6SqliteE7acquire0Cs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCNCNvCs2uZsNF3uPgU_12tablepro_app3run00B5_.llvm.3555146127590057462
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs4_NtNtNtCs6DUqgHgJhOU_5tokio7runtime4task4coreINtB5_4CoreNCNCNvCs2uZsNF3uPgU_12tablepro_app3run00INtNtCs6i54tJFfzR_5alloc4sync3ArcNtNtNtB9_9scheduler14current_thread6HandleEE4pollB14_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs0_NtNtNtCs6DUqgHgJhOU_5tokio7runtime4task7harnessINtB5_7HarnessNCNCNvCs2uZsNF3uPgU_12tablepro_app3run00INtNtCs6i54tJFfzR_5alloc4sync3ArcNtNtNtNtB9_9scheduler12multi_thread6handle6HandleEE4pollB1a_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs_NtNtNtNtCs6DUqgHgJhOU_5tokio7runtime9scheduler12multi_thread6workerNtB4_7Context8run_task
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtNtNtCs6DUqgHgJhOU_5tokio7runtime7context6scopedINtB3_6ScopedNtNtB7_9scheduler7ContextE3setNCNCNvNtNtB15_12multi_thread6worker3run00uEB9_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtNtCs6DUqgHgJhOU_5tokio7runtime7context7runtime13enter_runtimeNCNvNtNtNtB6_9scheduler12multi_thread6worker3run0uEB8_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtNtNtCs6DUqgHgJhOU_5tokio7runtime9scheduler12multi_thread6worker3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs0_NtNtNtCs6DUqgHgJhOU_5tokio7runtime8blocking4taskINtB5_12BlockingTaskNCNvMNtNtNtB9_9scheduler12multi_thread6workerNtB1g_6Launch6launch0ENtNtNtCsgxBkk5gSRhY_4core6future6future6Future4pollBb_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs4_NtNtNtCs6DUqgHgJhOU_5tokio7runtime4task4coreINtB5_4CoreINtNtNtB9_8blocking4task12BlockingTaskNCNvMNtNtNtB9_9scheduler12multi_thread6workerNtB1F_6Launch6launch0ENtNtB13_8schedule16BlockingScheduleE4pollBb_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs0_NtNtNtCs6DUqgHgJhOU_5tokio7runtime4task7harnessINtB5_7HarnessINtNtNtB9_8blocking4task12BlockingTaskNCNvMNtNtNtB9_9scheduler12multi_thread6workerNtB1L_6Launch6launch0ENtNtB19_8schedule16BlockingScheduleE4pollBb_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs5_NtNtNtCs6DUqgHgJhOU_5tokio7runtime8blocking4poolNtB5_5Inner3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvMs4_NtNtNtCs6DUqgHgJhOU_5tokio7runtime8blocking4poolNtB1f_7Spawner12spawn_thread0uEB1l_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvMs4_NtNtNtCs6DUqgHgJhOU_5tokio7runtime8blocking4poolNtB1b_7Spawner12spawn_thread0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB1h_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49bc98041
       in /usr/lib/libc.so.6
     0x7fd49bd2072b
@@ -1583,20 +1583,20 @@ _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growB7_
 
 8.39M peak memory consumed over 53 calls from
 _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsgBFDQpxZAe9_13tablepro_core.llvm.16268926270658707478
-  in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+  in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M consumed over 18 calls from:
     _RINvNtCs9k3SxhrAWiO_3std2io19default_read_to_endINtNtNtCsgxBkk5gSRhY_4core2io4util4TakeNtNtB4_2fs4FileEECsgBFDQpxZAe9_13tablepro_core
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCsgBFDQpxZAe9_13tablepro_core9text_file14read_text_file
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9open_file13read_sql_file
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceNCNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app12editor_filesNtB1e_3App19restore_editor_file0uEB1i_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNSNvYNCINvNtNtCs9k3SxhrAWiO_3std6thread9lifecycle15spawn_uncheckedNCNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app12editor_filesNtB1a_3App19restore_editor_file0uEs_0INtNtNtCsgxBkk5gSRhY_4core3ops8function6FnOnceuE9call_once6vtableB1e_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNvMs0_NtNtNtCs9k3SxhrAWiO_3std3sys6thread4unixNtB7_6Thread3new12thread_start
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49bc98041
       in /usr/lib/libc.so.6
     0x7fd49bd2072b
@@ -1632,17 +1632,17 @@ _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsgBFDQpxZAe
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 302.86K consumed over 1 calls from:
     0x7fd48096130e
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -1669,17 +1669,17 @@ _RNvMs5_NtCs6i54tJFfzR_5alloc7raw_vecNtB5_11RawVecInner11finish_growCsgBFDQpxZAe
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 3.33M from 1055 other places
 
 
@@ -1705,19 +1705,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 22.36M leaked over 279543 calls from:
     0x7fd49d4840d1
       in /usr/lib/libgtksourceview-5.so.0
@@ -1736,19 +1736,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 103.04M from 105024 other places
 
 25.20M leaked over 6814 calls from
@@ -1806,17 +1806,17 @@ g_malloc
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 525.06K leaked over 16 calls from:
     0x7fd480dd0ae2
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -1869,17 +1869,17 @@ g_malloc
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 24.15M from 1076 other places
 
 16.39M leaked over 5152171 calls from
@@ -1903,25 +1903,25 @@ g_malloc0
     gtk_text_buffer_set_text
       in /usr/lib/libgtk-4.so.1
     _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB5_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE6launchB1m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app14workspace_tabsNtB4_3App19append_editor_draft
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App35finish_activate_prepared_connection
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App26continue_connection_switch
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app10connectionNtB4_3App22on_connection_prepared
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d2fc75d
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d305c4f
@@ -1931,19 +1931,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 176.35K leaked over 66 calls from:
     g_type_create_instance
       in /usr/lib/libgobject-2.0.so.0
@@ -1985,22 +1985,22 @@ g_malloc0
 
 8.39M leaked over 635 calls from
 _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Clone5clone
-  in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+  in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 8.39M leaked over 1 calls from:
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app14workspace_tabs19describe_closed_tab
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app14workspace_tabsNtB4_3App30finish_close_workspace_tab_now
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app16session_teardownNtB4_3App29on_session_teardown_completed
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXs3_NtNtCs2uZsNF3uPgU_12tablepro_app2ui3appNtB5_3AppNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3AppE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d2fc75d
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d305c4f
@@ -2010,32 +2010,32 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 172B leaked over 12 calls from:
     _RNvXs2_NtCs5mYmVPWFGr3_16tablepro_storage11connectionsNtB5_15SavedConnectionNtNtCsgxBkk5gSRhY_4core5clone5Clone5clone.llvm.15265508640396109000
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs_NtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_viewNtB4_11WelcomeView12rebuild_rows
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvXNtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_viewNtB2_11WelcomeViewNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui12welcome_view11WelcomeViewE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     0x7fd49d2fc75d
       in /usr/lib/libglib-2.0.so.0
     0x7fd49d305c4f
@@ -2045,19 +2045,19 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 1.31K from 249 other places
 
 4.48M leaked over 25449 calls from
@@ -2089,17 +2089,17 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 302.86K leaked over 1 calls from:
     0x7fd48096130e
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -2126,17 +2126,17 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 3.33M from 1055 other places
 
 3.77M leaked over 124991 calls from
@@ -2254,17 +2254,17 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 463.68K leaked over 60 calls from:
     0x7fd49b64c0a4
       in /usr/lib/libcairo.so.2
@@ -2365,19 +2365,19 @@ _RNvXs4_NtCs6i54tJFfzR_5alloc6stringNtB5_6StringNtNtCsgxBkk5gSRhY_4core5clone5Cl
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 2.75M from 1889 other places
 
 2.16M leaked over 7654229 calls from
@@ -2405,19 +2405,19 @@ g_realloc
     adw_init
       in /usr/lib/libadwaita-1.so.0
     _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs4X6TIaiW0uL_5relm44init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 262.14K leaked over 13 calls from:
     0x7fd49d2bf840
       in /usr/lib/libglib-2.0.so.0
@@ -2444,19 +2444,19 @@ g_realloc
     adw_init
       in /usr/lib/libadwaita-1.so.0
     _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs4X6TIaiW0uL_5relm44init
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 1.50M from 38036 other places
 
 1.70M leaked over 18205 calls from
@@ -2566,19 +2566,19 @@ g_realloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
 341.09K leaked over 1292 calls from:
     0x7fd49b61c080
       in /usr/lib/libcairo.so.2
@@ -2691,17 +2691,17 @@ g_realloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-local-profiling/target/local-profile/baseline/usr/bin/tablepro
   and 967.26K from 392 other places
 
 

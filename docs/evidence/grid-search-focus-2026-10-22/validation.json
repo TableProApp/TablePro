@@ -2,7 +2,7 @@
   "source_commit": "0ad984fb89a27f7d24f80a20275eabe697a9e9b7",
   "linux_head_merged": "662ed2f76f88ffd8cf9577d046b02226ca9b33ab",
   "binary_sha256": "aee9b831b7c70cda6bb7880eaa8d564b5447da1bc416f064c15a10a0e1135938",
-  "binary_path_for_local_run": "/home/trung/Projects/bookie/target/keyboard-acceptance/tablepro-app-grid-merged-candidate",
+  "binary_path_for_local_run": "target/keyboard-acceptance/tablepro-app-grid-merged-candidate",
   "source_sha256": {
     "apps/linux/app/src/ui/grid/column.rs": "b39155b57eaf451a07b327f5eced89188efc04c4a66ff0c5cab6a72bb9a11e5c",
     "apps/linux/app/src/ui/grid/column_jump.rs": "d54a238fed61491519552532d6e291e53d5c7689864a297a8fa72f341880337f",

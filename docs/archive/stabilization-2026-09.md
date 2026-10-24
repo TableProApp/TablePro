@@ -45,7 +45,7 @@ Toolchain: Rust/Cargo 1.93.1; GTK 4.22.4, libadwaita 1.9.3, GtkSourceView 5.20.0
 | Full Docker/TLS/SSH matrix on this working tree | Not rerun: Docker socket permission denied even outside sandbox; sudo requires a password. The local PostgreSQL alternative covers SQL/TLS-to-localhost behavior, not the bastion/Toxiproxy/other-engine fixtures |
 | RC soak / installed Arch package | Not performed; no candidate tag, publication or 30-attempt soak credit |
 
-The [validation manifest](../evidence/2026-09-stabilization/validation.json) records commands, saved-log hashes and source hashes for the locally tested tree, now mapped to the committed candidate. The temporary PostgreSQL server was confirmed stopped during finalization. Prior process handles expired between sessions, so finalization verified saved completion output rather than recovering process exit codes.
+The [validation manifest](evidence/2026-09-stabilization/validation.json) records commands, saved-log hashes and source hashes for the locally tested tree, now mapped to the committed candidate. The temporary PostgreSQL server was confirmed stopped during finalization. Prior process handles expired between sessions, so finalization verified saved completion output rather than recovering process exit codes.
 
 The [generated ignored-test ledger](../../scripts/inventory-ignored-tests.py) lists exact tests and their activation requirements. Subprocess helpers are counted separately. Test counts are evidence inventory, not proof of defect absence.
 

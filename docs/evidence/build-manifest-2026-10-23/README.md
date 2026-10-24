@@ -1,6 +1,6 @@
 # Build-script manifest ownership, October 23
 
-Status: focused regressions, real resource build, preflight, strict app Clippy and documentation checks pass locally. Hosted acceptance remains pending. Refs [#1470](https://github.com/cozyGarage/BookiE/issues/1470).
+At the local evidence checkpoint, focused regressions, a real resource build, preflight, strict app Clippy and documentation checks passed. Hosted acceptance was pending then. Refs [#1470](https://github.com/cozyGarage/BookiE/issues/1470).
 
 The GUI build script captured its manifest directory when compiled. Reusing that executable in another checkout could compile the earlier checkout’s schemas, or fail after that checkout was removed. This occurred after completed worktree cleanup on Linux `1a8ec3247`.
 
@@ -13,3 +13,7 @@ The script harness discovers these tests automatically. Review is a separate sel
 Preflight passed 386 harness tests, 2,070 unit tests, 2,082 sandbox tests and the Redis cancellation test. See the [validation record](validation.json) and [compressed preflight log](preflight.log.gz).
 
 [Strict app Clippy](clippy.txt) passed with warnings denied. Runtime widget behavior and resource contents are unchanged; the widget suite was not rerun for this build-script-only change. No dependency changed.
+
+## Subsequent status
+
+GitHub PR [#1471](https://github.com/cozyGarage/BookiE/pull/1471) merged on 2026-10-23 at tested head `eefcd8351b6b4d0f0c8f6030f551f6fdedfb7651`, and issue [#1470](https://github.com/cozyGarage/BookiE/issues/1470) closed. The merge commit is in the current Linux tree. This packet does not record an exact-head Forgejo run, so it does not independently establish Forgejo acceptance.

@@ -1,5 +1,5 @@
 reading file "target/stream-realization/heap-five/interpreted.zst" - please wait, this might take some time...
-Debuggee command was: /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+Debuggee command was: $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 finished reading file, now analyzing data:
 
 MEMORY LEAKS
@@ -58,17 +58,17 @@ MEMORY LEAKS
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 525.06K leaked over 16 calls from:
     0x7fa39cdd0ae2
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -121,17 +121,17 @@ MEMORY LEAKS
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
   and 24.15M from 7485 other places
 
 8.04M leaked over 82711086 calls from
@@ -165,17 +165,17 @@ g_malloc
     gtk_label_new
       in /usr/lib/libgtk-4.so.1
     _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     0x7fa3b3b1975d
       in /usr/lib/libglib-2.0.so.0
     0x7fa3b3b22c4f
@@ -185,19 +185,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 39.20K leaked over 245 calls from:
     0x7fa3b3ea9e06
       in /usr/lib/libgtk-4.so.1
@@ -226,17 +226,17 @@ g_malloc
     gtk_label_new
       in /usr/lib/libgtk-4.so.1
     _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     0x7fa3b3b1975d
       in /usr/lib/libglib-2.0.so.0
     0x7fa3b3b22c4f
@@ -246,19 +246,19 @@ g_malloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
   and 7.95M from 114682 other places
 
 6.13M leaked over 32887538 calls from
@@ -313,17 +313,17 @@ g_malloc0
     gtk_label_new
       in /usr/lib/libgtk-4.so.1
     _RNvMNtNtCsidnKJ2lfOir_4gtk44auto5labelNtB2_5Label3new
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor11stream_view18update_live_stream
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvXsf_NtNtCs2uZsNF3uPgU_12tablepro_app2ui6editorNtB5_9SqlEditorNtNtNtNtCs4X6TIaiW0uL_5relm49component4sync6traits15SimpleComponent6update
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvMsl_NtCsi3kp0qidvbM_4glib20main_context_futuresNtNtNtBa_4auto12main_context11MainContext25spawn_local_with_priorityuNCNvMs3_NtNtNtCs4X6TIaiW0uL_5relm49component4sync7builderINtB24_16ComponentBuilderNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui6editor9SqlEditorE25launch_with_input_channel0E0B3m_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCsi3kp0qidvbM_4glib12main_contextNtNtNtB5_4auto12main_context11MainContext19with_thread_defaultINtNtNtCsgxBkk5gSRhY_4core4task4poll4PolluENCNvMs7_NtB5_20main_context_futuresNtB2r_10TaskSource4poll0EB5_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvMs1_NtCsi3kp0qidvbM_4glib20main_context_futuresNtB5_10TaskSource8dispatch.llvm.3271952888637823995
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     0x7fa3b3b1975d
       in /usr/lib/libglib-2.0.so.0
     0x7fa3b3b22c4f
@@ -333,19 +333,19 @@ g_malloc0
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
   and 5.86M from 60572 other places
 
 4.48M leaked over 25469 calls from
@@ -377,17 +377,17 @@ g_malloc0
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 302.86K leaked over 1 calls from:
     0x7fa39c96130e
       in /usr/lib/libgallium-26.2.5-arch1.1.so
@@ -414,17 +414,17 @@ g_malloc0
     gtk_init_check
       in /usr/lib/libgtk-4.so.1
     _RNvNtCsidnKJ2lfOir_4gtk42rt4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
   and 3.33M from 1062 other places
 
 3.21M leaked over 27912479 calls from
@@ -452,19 +452,19 @@ g_realloc
     adw_init
       in /usr/lib/libadwaita-1.so.0
     _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs4X6TIaiW0uL_5relm44init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 262.14K leaked over 13 calls from:
     0x7fa3b3adc840
       in /usr/lib/libglib-2.0.so.0
@@ -491,19 +491,19 @@ g_realloc
     adw_init
       in /usr/lib/libadwaita-1.so.0
     _RNvNtCs3yp7OyiWNN8_10libadwaita9functions4init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs4X6TIaiW0uL_5relm44init
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
   and 2.55M from 39867 other places
 
 2.24M leaked over 106025 calls from
@@ -565,19 +565,19 @@ g_realloc
     g_application_run
       in /usr/lib/libgio-2.0.so.0
     _RNvYNtNtNtCsidnKJ2lfOir_4gtk44auto11application11ApplicationNtNtCs4ozqcKqpdyP_3gio11application20ApplicationExtManual3runCs2uZsNF3uPgU_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvMNtCs4X6TIaiW0uL_5relm43appINtB3_7RelmAppNtNtNtNtCs2uZsNF3uPgU_12tablepro_app2ui3app3msg6AppMsgE3runNtBL_3AppEBP_
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvCs2uZsNF3uPgU_12tablepro_app3run
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RINvNtNtCs9k3SxhrAWiO_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNCINvNtCs9k3SxhrAWiO_3std2rt10lang_startuE0Cs9CK1s3htDmy_12tablepro_app
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     _RNvNtCs9k3SxhrAWiO_3std2rt19lang_start_internal
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
     main
-      in /home/trung/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
+      in $HOME/Projects/bookie-ux-stream-realization/target/stream-realization/usr/bin/tablepro
 120.96K leaked over 280 calls from:
     0x7fa3b2ceb094
       in /usr/lib/libcairo.so.2

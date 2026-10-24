@@ -32,4 +32,4 @@ non-snapshot limits above. See the
 [current regression evidence](../evidence/mongodb-current-census-results-2026-10-04/manifest.json).
 
 The app-server tests, driver timing test, and retained output are listed in the
-[MongoDB census evidence manifest](../evidence/mongodb-census-results-2026-10-03/manifest.json).
+[MongoDB census evidence manifest](evidence/mongodb-census-results-2026-10-03/manifest.json).

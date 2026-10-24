@@ -1,6 +1,6 @@
 # Editor error navigation, October 22, 2026
 
-Status: implementation and local/native acceptance complete at `219d2bd1d`. GitHub delivery and maintainer Forgejo acceptance are tracked on [#552](https://github.com/cozyGarage/BookiE/issues/552).
+Status: implementation and local/native acceptance completed at `219d2bd1d`; GitHub delivery merged in [#1390](https://github.com/cozyGarage/BookiE/pull/1390). This source-built packet does not establish Forgejo, release-package, distro-floor or Orca acceptance.
 
 ## Behavior and boundaries
 

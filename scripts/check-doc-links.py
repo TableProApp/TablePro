@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 FENCE = re.compile(r"^\s*(```|~~~)")
 GENERATED = re.compile(r"(^|/)target/")
 
@@ -17,8 +16,35 @@ def targets(text):
             continue
         if in_fence:
             continue
-        for match in LINK.finditer(line):
-            yield match.group(1)
+        offset = 0
+        while (opening := line.find("[", offset)) >= 0:
+            if opening and line[opening - 1] == "!":
+                offset = opening + 1
+                continue
+            depth = 0
+            cursor = opening
+            while cursor < len(line):
+                if line[cursor] == "\\":
+                    cursor += 2
+                    continue
+                if line[cursor] == "[":
+                    depth += 1
+                elif line[cursor] == "]":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                cursor += 1
+            if depth or cursor + 1 >= len(line) or line[cursor + 1] != "(":
+                offset = opening + 1
+                continue
+            end = line.find(")", cursor + 2)
+            if end < 0:
+                offset = opening + 1
+                continue
+            destination = line[cursor + 2:end].split(maxsplit=1)
+            if destination:
+                yield destination[0]
+            offset = end + 1
 
 
 def file_part(target):
@@ -30,16 +56,65 @@ def file_part(target):
     return path
 
 
+def fragment_part(target):
+    if urlparse(target).scheme:
+        return None
+    fragment = target.partition("#")[2]
+    return unquote(fragment.split("?", 1)[0]) if fragment else None
+
+
+def markdown_anchors(path):
+    anchors = set()
+    counts = {}
+    in_fence = False
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        for anchor in re.findall(r"<a\s+[^>]*id=[\"']([^\"']+)", line, re.IGNORECASE):
+            anchors.add(anchor)
+        heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if not heading:
+            continue
+        title = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", heading.group(1))
+        title = re.sub(r"<[^>]*>|[`*~]", "", title).lower()
+        slug = "".join(char for char in title if char.isalnum() or char.isspace() or char in "-_")
+        slug = re.sub(r"\s+", "-", slug).strip("-")
+        duplicate = counts.get(slug, 0)
+        counts[slug] = duplicate + 1
+        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
+    return anchors
+
+
 def broken_links(root, files):
     found = []
+    anchor_cache = {}
     for source in files:
         for target in targets(source.read_text(encoding="utf-8", errors="replace")):
             path = file_part(target)
+            fragment = fragment_part(target)
             if path is None:
+                if target.startswith("#") and fragment:
+                    anchors = anchor_cache.get(source)
+                    if anchors is None:
+                        anchors = markdown_anchors(source)
+                        anchor_cache[source] = anchors
+                    if fragment not in anchors:
+                        found.append((source, target))
                 continue
             resolved = (root / path.lstrip("/")) if path.startswith("/") else (source.parent / path)
             if not resolved.exists():
                 found.append((source, path))
+                continue
+            if fragment and resolved.suffix.lower() == ".md":
+                anchors = anchor_cache.get(resolved)
+                if anchors is None:
+                    anchors = markdown_anchors(resolved)
+                    anchor_cache[resolved] = anchors
+                if fragment not in anchors:
+                    found.append((source, target))
     return found
 
 

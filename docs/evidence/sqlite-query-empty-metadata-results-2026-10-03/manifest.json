@@ -43,11 +43,11 @@
     "format_and_diff_checks": "cargo fmt --all -- --check and git diff --check passed"
   },
   "log_sha256": {
-    "focused-driver.txt": "9c9ed6f4e7dddf1fc02f19564ab9be8b2b63a632dcea61aae626f6ae8ec09992",
-    "sqlite-driver.txt": "b0130bbc6eaa2122912fab9f43e8a58c3fd144f7d3e89a4b105c58d02321cf86",
-    "app-focused.txt": "5cb661c3967f35e7947641f17ba9396b6e2a057247b393ef54640f8bf5e1b6ee",
+    "focused-driver.txt": "983b31bb39ae0d53b61db9eb27992d67a07eb2553ba35d3a02ed5048c399e30d",
+    "sqlite-driver.txt": "d8ebdf684398c52619ed34b056dc7591e258d2f7a7fe20a7331480cb1395ac7d",
+    "app-focused.txt": "4035702693ccc306a3731cf3d1be7cc7542e73476688669b5aba7d0d6867dc20",
     "app-full.txt": "7978c4b305723e17b9deb6c328f16214f4db0f33d6c7c05ab254e35679a98400",
-    "clippy.txt": "a67e4a1526744a9936c0c7f8440bff92f7f2fb824294e9e2deac83b2f0de9d08"
+    "clippy.txt": "d336000ba02d4648e818bf35c3e8b42112b815d3b42389b490b44c535077d715"
   },
   "remaining": [
     "Computed expressions without a reportable declared type and attached-schema origins remain untyped where source metadata cannot be resolved safely.",

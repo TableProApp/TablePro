@@ -491,7 +491,7 @@ Upstream force-pushed its `linux` branch after this table was written, so the
 Upstream Linux pin no longer resolves and `807d28094` is no longer an ancestor of
 `origin/linux`. That pin's commit is now `f3cbf7361 fix(linux): rebuild the
 GSettings schema when it changes and cover SQLite in dev-env`. The
-[2026-09-19 re-survey](../upstream-sync.md) re-establishes the boundary and lists
+[2026-09-19 re-survey](upstream-sync-history-2026-10-22.md#2026-09-19-re-survey-after-upstream-rewrote-its-linux-branch) re-establishes the boundary and lists
 what is genuinely new.
 
 [Build Linux](https://github.com/cozyGarage/TablePro/actions/runs/34802088529)
@@ -560,7 +560,7 @@ client panics and parser DoS need 0.62.4 or newer.
 
 ## Upstream feature adoption, September 2026
 
-Eleven of the thirteen features the [2026-09-19 re-survey](../upstream-sync.md) found
+Eleven of the thirteen features the [2026-09-19 re-survey](upstream-sync-history-2026-10-22.md#2026-09-19-re-survey-after-upstream-rewrote-its-linux-branch) found
 missing are merged; the other two already existed here in a different shape. The work
 ran as five parallel worktree branches and is recorded in `CHANGELOG.md` under
 `[Unreleased]`.
@@ -2473,9 +2473,9 @@ distribution-package installation or native Wayland session.
 | B4-7, B4-16 | Keep UNVERIFIED. Local SSH/GTK trust, audit and tunnel-loss scenarios passed on `c3122d9`; hosted PostgreSQL release and driver/SSH integration passed in #37797466945 and #37806196821. Frozen-candidate and installed-package/native Wayland acceptance remain open. |
 | B4-9 | The full local driver TLS matrix passed twice on `a47b1fb` (48/48); see [the PR evidence comment](https://github.com/cozyGarage/BookiE/pull/329#issuecomment-6052925352). Hosted Driver TLS passed on `c3122d9` in #37797466945 and `896f1b3` in #37806196821. The earlier MongoDB `ConnectionRefused` failures on `98134709` did not recur; cause remains unknown. Frozen-candidate and installed-package/native Wayland acceptance remain open. |
 | B4-22 | Keep UNVERIFIED. Five bundle/export GTK scenarios passed locally with a staged `a7f14fa` binary. Build Linux #37806196821 passed a generic installed GTK safety smoke on `896f1b3`, not the bundle flow. Obtain frozen-candidate bundle acceptance and installed-package/native Wayland evidence. |
-| B4-12 | DONE for the scoped frozen-candidate rollback acceptance: the backend-termination selector passed on candidate source `a7f14fa` (1 test) and in hosted B4 rollback jobs #37797466945 and #37806196821. It verifies `TransactionRollbackFailed`, the failing statement index and disconnect errors, absent transactional row/trigger effects after reconnect, and expected sequence advancement. Full-candidate and package qualification remain separate; see [candidate evidence](../evidence/b4-rollback-frozen-candidate-2026-10-08/manifest.json). |
+| B4-12 | DONE for the scoped frozen-candidate rollback acceptance: the backend-termination selector passed on candidate source `a7f14fa` (1 test) and in hosted B4 rollback jobs #37797466945 and #37806196821. It verifies `TransactionRollbackFailed`, the failing statement index and disconnect errors, absent transactional row/trigger effects after reconnect, and expected sequence advancement. Full-candidate and package qualification remain separate; see [candidate evidence](evidence/b4-rollback-frozen-candidate-2026-10-08/manifest.json). |
 | B4-11 | Existing direct failed-batch coverage includes INSERTs on InnoDB, MyISAM, MEMORY, CSV and ARCHIVE ([PR #337](https://github.com/cozyGarage/BookiE/pull/337#issuecomment-6053382536)); UPDATE and DELETE on InnoDB, MyISAM, MEMORY and CSV ([PR #353](https://github.com/cozyGarage/BookiE/pull/353)); and Aria direct DML and trigger effects. PR #408 adds a BLACKHOLE trigger sink; after rebasing onto `e697824`, the full `mysql_atomic` selector passed locally (13 passed, 66 filtered, 143.42 s) on test tree `e267ba0`. Its hosted checks remain in progress and the PR-event Docker rollback job was skipped. Other storage engines and side-effect patterns remain open; see [PR #408](https://github.com/cozyGarage/BookiE/pull/408). |
-| B4-17 | Existing `ssh-gtk-*` artifacts show both-hop trust prompts, routed query, second-hop decline without learning, changed-key refusal and terminal audit outcomes using staged release binaries under Xvfb/AT-SPI. Build Linux #37806196821 passed the PostgreSQL release and driver/SSH integration jobs on `896f1b3`; the installed GTK safety smoke is not native SSH trust acceptance. A staged-candidate Wayland probe did not establish host-key refusal; see [probe evidence](../evidence/b4-ssh-native-wayland-2026-10-08/manifest.json). Close only after selected-candidate and installed-package/native Wayland trust flow. |
+| B4-17 | Existing `ssh-gtk-*` artifacts show both-hop trust prompts, routed query, second-hop decline without learning, changed-key refusal and terminal audit outcomes using staged release binaries under Xvfb/AT-SPI. Build Linux #37806196821 passed the PostgreSQL release and driver/SSH integration jobs on `896f1b3`; the installed GTK safety smoke is not native SSH trust acceptance. A staged-candidate Wayland probe did not establish host-key refusal; see [probe evidence](evidence/b4-ssh-native-wayland-2026-10-08/manifest.json). Close only after selected-candidate and installed-package/native Wayland trust flow. |
 | B4-21 | Keep Windows AD interoperability open. Samba AD Kerberos+TLS fixtures are useful local coverage but do not establish interoperability with Windows AD; candidate and distribution-package acceptance are also outstanding. |
 | UI-1b | Keep refusing edits to saved SSH jump chains. Implement the per-hop secret editor design across persistence, transport identity, bundle compatibility and GTK before enabling chain editing. |
 

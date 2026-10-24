@@ -4,7 +4,7 @@
 running 10 tests
 test a_changed_key_on_the_second_hop_is_reported_as_a_host_key_mismatch ... ok
 test a_key_not_in_authorized_keys_is_rejected ... ok
-test a_paused_bastion_is_reported_closed_through_keepalive_instead_of_hanging_forever ... Identity added: /tmp/.tmpv0Cl8C/id_ed25519 (trung@trung)
+test a_paused_bastion_is_reported_closed_through_keepalive_instead_of_hanging_forever ... Identity added: /tmp/.tmpv0Cl8C/id_ed25519 (test-user)
 ok
 test a_two_hop_chain_reaches_the_final_host ... ok
 test a_wrong_password_is_refused ... ok
@@ -12,7 +12,7 @@ test an_encrypted_private_key_authenticates_with_its_passphrase ... ok
 test cancelling_while_trusting_the_second_hop_does_not_learn_its_host_key ... ok
 test declining_a_built_in_host_key_does_not_learn_it ... ok
 test password_authentication_succeeds_with_the_correct_password ... ok
-test the_built_in_client_authenticates_with_a_key_held_by_ssh_agent ... Identity added: /tmp/.tmpKOHmzw/id_ed25519 (trung@trung)
+test the_built_in_client_authenticates_with_a_key_held_by_ssh_agent ... Identity added: /tmp/.tmpKOHmzw/id_ed25519 (test-user)
 ok
 
 test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 101.98s
@@ -22,7 +22,7 @@ test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 running 12 tests
 test openssh_a_changed_host_key_is_reported_as_host_key_changed ... ok
 test openssh_a_proxyjump_line_in_the_ssh_config_reaches_the_target ... ok
-test openssh_authenticates_with_a_key_held_by_ssh_agent ... Identity added: /tmp/.tmpI8uJ83/id_ed25519 (trung@trung)
+test openssh_authenticates_with_a_key_held_by_ssh_agent ... Identity added: /tmp/.tmpI8uJ83/id_ed25519 (test-user)
 ok
 test openssh_authenticates_with_a_passphrase_protected_private_key ... ok
 test openssh_authenticates_with_an_unencrypted_private_key ... ok

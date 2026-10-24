@@ -1,6 +1,6 @@
 # Editor bottom panel desktop acceptance, October 22, 2026
 
-Status: the recorded source-built panel passed the focused native desktop matrix. This is not release-package, distro-floor or Forgejo acceptance. Structured clickable error navigation and server NOTICE/PRINT delivery are separate work.
+Status: the recorded source-built panel passed the focused native desktop matrix; GitHub delivery merged in [#1374](https://github.com/cozyGarage/BookiE/pull/1374). This is not release-package, distro-floor or Forgejo acceptance. Structured clickable error navigation and server NOTICE/PRINT delivery are separate work.
 
 ## Checks and findings
 

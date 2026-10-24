@@ -1,0 +1,1392 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "artifacts": [
+    {
+      "path": "docs/archive/evidence-branch-audit-2026-10-24.md",
+      "original_sha256": "579ec57dc96b799d81e5d70f905fe86298e394d38e223b62e319e210e23d1569",
+      "redacted_sha256": "8b0a3f1dc87942819e8604336889a064c0fbc6db5161189e12f614a4eefaf34d",
+      "redaction": "Replaced a local home-directory name with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/aud9-explain-plan-mask-2026-10-10/policy-suite.log",
+      "original_sha256": "0c361eb229d34bd19506ad57fa504a11abcd22c44398322fc5d8a81d2ddf74cc",
+      "redacted_sha256": "04ec3bdfc80ef812fbc7f5800e5d0b20efb43590943c41b98eea0b7b0578a697",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/aud9-explain-plan-mask-2026-10-10/postgres-release.log",
+      "original_sha256": "8f009b107452af26dca457016cec55a86a470fdac16a05c6306ec31fe08b40af",
+      "redacted_sha256": "eea86f53654a3404cf0c139783689d038d3c60c61c5d2355b8a28887022b48a8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/aud9-explain-plan-mask-2026-10-10/preflight.log",
+      "original_sha256": "b9e5011739bfb4967601e31d5a35555b252ce44983653654c2cfa87c44bc0140",
+      "redacted_sha256": "4b0b5769c65ab775d957e14810051653a30a52c60a8fefad64bf81cf41dad4a8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-arch-package-wayland-2026-10-09/run.log",
+      "original_sha256": "54b7cc932e421c5223c2232bdbcb565deae2454e49e2e3e2692dcf6f9df49416",
+      "redacted_sha256": "7c8da4f714cc93181b1c6094e9b89e407662c2a5a849813e0d9ff18d1c3e745b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-aud2-repeat-2026-10-09/attempt-1.log",
+      "original_sha256": "c510f3f46a594db7d3b40a2a387b980c6f911ff7f4661c4122da4b182368e422",
+      "redacted_sha256": "24d55820249626d28d2f55cfee77cf69040a4e4610b8bbbd63c96d21b0c4a926",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-aud2-repeat-2026-10-09/attempt-2.log",
+      "original_sha256": "4fb4751045429296fc9afd8efa2cacddb72295a9945413267537c50e228c0d25",
+      "redacted_sha256": "3cfe4a19a4d9ce262bfdb080606ca1dcf4ef657d7d49757b2ec6c08427357447",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-aud2-repeat-2026-10-09/attempt-3.log",
+      "original_sha256": "2fa7f0049d43ced209ff226f47315d1dca2a87efd1a4dfba92bf055c7878a007",
+      "redacted_sha256": "f33441080760989567ac601971690c8941b448338d5d8e372ac7dd395e4c3039",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-connection-cancel-switch-2026-10-07/cancel-then-switch.txt",
+      "original_sha256": "dca11916e0eeedc769150d9bbe6fffb120fe370f47f4c032d53acb4ac6145dc1",
+      "redacted_sha256": "47fea632004c1038f28eac73fc9604d164f1df2dfe1ff58edbd18df5d7222b7d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-connection-cancel-switch-2026-10-07/window-ownership.txt",
+      "original_sha256": "7a2c0876395a92098d4f9adbf68ac11a52c3fa5d91307599962f5b68f426cfba",
+      "redacted_sha256": "283770fe5207aedcb9a6854b50f7a99861a1c49beeac936804465477892eda36",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-linux-tip-2026-10-09/gtk-safety.log",
+      "original_sha256": "c34cf1114aa76a86e2659e42a8bd0edfab5cd67976c4ec53b57953787bafc506",
+      "redacted_sha256": "f04a080a8f1cbbc45fae332c86342505bf671a2df2312723de2e3bda2a04c974",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-linux-tip-2026-10-09/mysql-approval.log",
+      "original_sha256": "a15d90e58eb1817cd1c5af5a365e5be2842b41e8f49c7b0f3916fd2eb934a8ee",
+      "redacted_sha256": "164c2720d803175194844abd8ec36469ca6c130877ad6cb34d10410412be8fab",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-linux-tip-2026-10-09/postgres-release.log",
+      "original_sha256": "6beafeced80f9464515631d2206ea8a9901da6139e28a7af5541f507263a85cf",
+      "redacted_sha256": "db744c8f8734ad3d79c4bf9cd9a22fae9c88cd80785402923afee752c684d161",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-linux-tip-2026-10-09/wayland-smoke.log",
+      "original_sha256": "3a148dc8163a704a2301af24ef6c7f502289dae14968ef4a001b45bbd944153a",
+      "redacted_sha256": "a4b4209427ab6637ca721078e5c41abd6bef631e2ef50abd48048b42fb8acf67",
+      "redaction": "Replaced local home and session runtime-directory prefixes with $HOME and $XDG_RUNTIME_DIR; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-postgres-release-2026-10-10/run.log",
+      "original_sha256": "60f476cfb66675bb59abd36e73eb244ca4392ffd78d7fdac50b43f05c216dff0",
+      "redacted_sha256": "382f610c35f4755c253fb6241d70c1bcf8b2910a931154682ca64bc6ac34c789",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-postgres-release-227d846b-2026-10-10/run.log",
+      "original_sha256": "976202180d50286cad5480a48dd6ad2786bd9013d122e642ec4dab138c014eea",
+      "redacted_sha256": "5b4400cac0922f835cd9e122891dfc81eb236ef39eb46b479ec69639edd0b96a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-postgres-release-50a4dc140-2026-10-10/verified-run.log",
+      "original_sha256": "7078211d9b0c7678e869294efb9f6c25119836882fde9b3dc1048a53997742b1",
+      "redacted_sha256": "ae992b79f2988ae3e189ff97ebf3120e1ff6c76a28b62d9b98ef61d506e80987",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-current-postgres-release-d9d476f-2026-10-10/run.log",
+      "original_sha256": "92ff959e728e75dd23150ab6a052b30b020ca2b1cf109f81bff22cb0958637af",
+      "redacted_sha256": "11e32c14b5a89df836904063b63a8879d3b9709640c6d2bf5f196ce1445b35b9",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/b4-ssh-installed-linux-tip-b4ee-2026-10-09/run.log",
+      "original_sha256": "0c5989cd5cb5f05f30aa1abb182a4ad59aff5e1721dbb5e3e7320227cbaa4935",
+      "redacted_sha256": "0c7f29025d07e1b53d64c0b5bcb0fd07ab2c26e2cff0d5bac7ef8b2b33e912d3",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/clickhouse-nested-xlsx-consumers-2026-10-06/clippy.txt",
+      "original_sha256": "0341effd2d3012eae547c13a070595b43a2daebe8901f1a09da1aa3f27eb5dd4",
+      "redacted_sha256": "5caa0637d714a84d30f4766e68a5f135eb7bc022765ff369ebf467a53759a9d6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/duckdb-nanosecond-parameter-dml-results-2026-10-06/clippy.txt",
+      "original_sha256": "63f38210e12d180b4e260f2cc1858053020620bcff54cd13fe1a4da91bfd73ea",
+      "redacted_sha256": "fd0e4ec4b12a31724b21fe2ef2367424ece2475d26c41a101ac531e6983a882a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/duckdb-nanosecond-parameter-dml-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "22ae082b9a9fbbaea1880856efc8a91d3b35288236c9eb013f30a07d42425ca0",
+      "redacted_sha256": "7525fb9b67cdb45c1beedad1a8b648b4fd7f60d0bfed4d7d96e54e7c5764a8bc",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/gpui-client-review-2026-10-22/README.md",
+      "original_sha256": "d69948087c6e11e3db61691d4d8ac748c24ad6dcac2284a630b059a52855e4c0",
+      "redacted_sha256": "4446a3ace82afcd5531c8180cc93fccfd5733769a25175e7955e11c40c4825d5",
+      "redaction": "Repaired a relative link after archival relocation; remaining content is unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/gtk-mysql-approval-linux-b4ee-2026-10-09/run1/run.log",
+      "original_sha256": "db735cce1c6aeba183e8e0851578d3f6653ede043df276fb7ebe4c53587fb987",
+      "redacted_sha256": "afecedb4e700b34d5280abec6e58f237e9f65b5c679eb8182c0dbe5bdad31d12",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/gtk-mysql-approval-linux-b4ee-2026-10-09/run2/run.log",
+      "original_sha256": "405db3b2058944a74afae7d49f3bc6c430c6e98ac5234c3c29e888fafe05a0a7",
+      "redacted_sha256": "ded5dcfa7eda8839f809e0f5dda9317673fb7cb8614a2265d82c23b65c57be52",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/gtk-postgres-session-confirmation-2026-10-07/session-transaction-ui.txt",
+      "original_sha256": "d218f892b2edf6f9b2c5fb149698461c57b6f9a536f6e06957d5abb671aab019",
+      "redacted_sha256": "7adcfb75d3bc21738a668b1c58f641a147841fd742d92611a571c04538ea9b66",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/gtk-ui-workflows-installed-linux-b4ee-2026-10-09/run.log",
+      "original_sha256": "b35909145e8009039cc6712ec9605908e02de7bc4d0a541a7bf2c731991c54a3",
+      "redacted_sha256": "aaeae218f0720b9b52fbe6d4f444a27f47b839cf242f1def603a3580e49f0b22",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mariadb-empty-enum-empty-string-is-null-results-2026-10-05/clippy.txt",
+      "original_sha256": "dc7c50d84e87d551a565dd4ec819d7f80e247011a651d501523f0f461945125a",
+      "redacted_sha256": "721fe27e444c6fea8ee631dc0c1913ca03749da40bcc8933cd388bcf32ee5262",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mariadb-empty-enum-empty-string-is-null-results-2026-10-05/postgres-value-contracts.txt",
+      "original_sha256": "8e0eb890fd01a7537b370ae7b4170fc35c4ac9719ce4422b574a951024c1e2d3",
+      "redacted_sha256": "42ad8a911469754bffb80359b3762a4b672d18361d22f34bcc137ea1673c4eea",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mssql-kerberos-2026-10-07/focused.txt",
+      "original_sha256": "465ac7ddacdfd07eb5418035fdd26346f0d1b16a815689e2d041d4c29df50036",
+      "redacted_sha256": "821ab5186ea5e1f2ee7eec847eb7b11e914fb511fc02036511fc2f208282bd5e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mssql-malformed-go-tail-results-2026-10-04/clippy.txt",
+      "original_sha256": "b0bf5571ba34ecd25101d816bf784818f7ff57de852e69b43d350d12c17e8f3c",
+      "redacted_sha256": "f5e96422428a22f1ea87213f370b16c06fda87688b9d846ba48a683a422a9738",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mssql-malformed-go-tail-results-2026-10-04/strict-unit/compile.log",
+      "original_sha256": "5d146c27e314864d74bfaee56845a90bdeb837ff02aff0fafe379e4d63a14b86",
+      "redacted_sha256": "cc390e04c7d112fb52f448b3543178c874f2cbd3edc28a9c2fae10b8e71b071c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mssql-malformed-go-tail-results-2026-10-04/strict-unit/report.json",
+      "original_sha256": "443202d0e43645ba9c851c739e1108f2e9fd1454834c55524b504ef6fdbd3f32",
+      "redacted_sha256": "f301d172089ff810f123cad8170f6763530fec8f760214e52c9f1d5292bfe221",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-approval-current-linux-2026-10-09/run.log",
+      "original_sha256": "f8090ce8e2ed41c56e872b2a5f19e1593078ca2ac5daa44345b6d38d7700fd56",
+      "redacted_sha256": "671f757ba91ad2779914ab26a07a923b17906dd7e6617612a7640bc519cd2a91",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-archive-rollback-effects-2026-10-07/focused.txt",
+      "original_sha256": "77c1e190b0457173f65fd121626cfaad30a138d3c18e55ca0f9fb545904eb970",
+      "redacted_sha256": "e8c922ca9e832a9b216777120e6caac515fb0573a0418276bf04f4f5767c39f7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-atomic-linux-c2f3f78-2026-10-09/mysql-atomic.txt",
+      "original_sha256": "e1c09bfd6c9afc1d2d1da4b1b6eb8e97e873d48a464f46d942df459e25b67efd",
+      "redacted_sha256": "659c1cb0c973c26c26b3905e13a9e7580603e06713cea3a37bf2e3756aeb7a43",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-direct-update-delete-nontransactional-2026-10-08/focused.txt",
+      "original_sha256": "7e30b2cbce8498cffc08cea424906aa35062c1dcbf43e32f8d74d56a8328fce1",
+      "redacted_sha256": "6fcdb4cf3a68feb8e9a99685b78e34ac3d2a405d820568ba8e4465db451a112c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-executable-comment-policy-results-2026-10-05/clippy.txt",
+      "original_sha256": "c59a4e970acecaef57b6dcf5879e4d88c75ae5af848dc0b1656ac099d1cff44c",
+      "redacted_sha256": "d0acb510eb8f96f405ab14f669cbcd13b59756e1dbf719e69248be823fe26976",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-executable-comment-policy-results-2026-10-05/focused-test.txt",
+      "original_sha256": "2fec6f4c175e0d91a2d62ab445251c8e6acc1220d61fd28c42b85722ea6e9a96",
+      "redacted_sha256": "9dde5844d5c69ed15a8f7cb01882e1e441f3876b5f7f447ddbb080700189f203",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-rollback-linux-0f130bcc-2026-10-07/focused.txt",
+      "original_sha256": "edc4e28a92d827989eb2e5b8e2eb254b8b187fe63d81a2d5c57650cd767096e5",
+      "redacted_sha256": "34ff35bc58dfdb84bcf70abf4a1948076e633e60d4f7442359740994d4544833",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/mysql-update-delete-rollback-effects-2026-10-07/focused.txt",
+      "original_sha256": "06ea4fe094b843722534717281ddad1173a65faa180d4af3068945cf4cd4a77a",
+      "redacted_sha256": "afc14af7126ae82fd5ddccf805585a7123344b9f834342dc824292f11f485964",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-array-filewriter-results-2026-10-04/clippy.txt",
+      "original_sha256": "11a61deda0a6fbd3f6b8132f2c0f30e2e44b66cbd38f5553ab0c2d081c535eb8",
+      "redacted_sha256": "e67239ee8513ea85141d56535ec7ebaf1f0d80d4a27f30d5632e48faada2742c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-deep-domain-results-2026-10-04/clippy.txt",
+      "original_sha256": "76fbb696c67683d8ec8b24c094f09186dec3151bded3d42f36741dbeaed2283a",
+      "redacted_sha256": "1ffd292a506b1c004633f1690efe4d4cb3be75b5a24596a682c9feed98356173",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-array-filewriter-results-2026-10-04/test.txt",
+      "original_sha256": "3cde9df2bac0f381eafc3ebd07dc35889500f447562a7586d0f87e0f867ed45a",
+      "redacted_sha256": "861ae8b4e998cf537f0ea5d76c18be808a6b0ab9d06bb297f26e9e05e64bec1d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-cross-session-type-move-results-2026-10-05/clippy.txt",
+      "original_sha256": "9f450b50930099e1687386b377b72ad3eafab23a18949054a1b291f7e834f41d",
+      "redacted_sha256": "e6ba269b7a7a7a02e9b710cc9379c96c713883b3d026d5e50a0971326c4f8ed7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-cross-session-type-move-results-2026-10-05/focused-test.txt",
+      "original_sha256": "d2097886bb8f3a0e27871c81e544875f3cf711e646e1e4d597acdc87dc0008b9",
+      "redacted_sha256": "87fe0a320834b50b03b68edce6003772ab850c3460f60da257e473f914d97ccc",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-csv-quoted-lines-results-2026-10-04/clippy.txt",
+      "original_sha256": "88ba813889b48319ea9f006c638e5c19800d5edc24ecd621477ff28c74431727",
+      "redacted_sha256": "1bff19f16cc032077f14f640e1896ab37d13bbeed089325aec7c2422b1aea057",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-csv-shadow-search-path-results-2026-10-05/clippy.txt",
+      "original_sha256": "bec66f3451ddae74a7eb40cb65c71914f0b7f22d835c52f75633be10860e3724",
+      "redacted_sha256": "236db6896849dd72c6c78bfbef1475eed52d6c3c9dccd8047726c93b080c089c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-label-byte-boundary-results-2026-10-04/clippy.txt",
+      "original_sha256": "6781451e40ebf835639a8aff652adfd1d0b1f537b3970f39cf700d7228f42278",
+      "redacted_sha256": "476ec02eb99b366bc31bf21498034d162632c78ccd84cb007491f40de06dd09c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-mixed-case-identifiers-results-2026-10-07/clippy.txt",
+      "original_sha256": "a166664ede7e1b9f6d3dc7543b44e3a174f10b1b8c71091e5bdde602a0b3a6e8",
+      "redacted_sha256": "70e8ff9d21f45eb64865f6ed0344a50139c45c105651a0c79963f0b7c6c0723e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-mixed-case-identifiers-results-2026-10-07/focused.txt",
+      "original_sha256": "0a5290ef731910745d786f6b54b25da3816bef52703fe63e69b9d87356c3054f",
+      "redacted_sha256": "48e1da648531ea0f31e0bcb63975f50aa110893028b0aef7d1497b81bf70b05a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-order-results-2026-10-04/clippy.txt",
+      "original_sha256": "1f1fe690dc2cedb4a1890650cb6a4170cd308a6942a65267f2d7155a409066fd",
+      "redacted_sha256": "cf075ce87fc4280f93fc4b62713a6b495afd1a47a1c00d8f897d9024302f4483",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-overlength-refusal-results-2026-10-04/clippy.txt",
+      "original_sha256": "ec3c3f7609c01d01c6692aa03548d4d62b257eca4df1410e9624d785e7ab8392",
+      "redacted_sha256": "b493a61a46d68da11ee395931598cc57e6c1159df1f9ea1ae7d8dfa84a0cc5e4",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-role-default-search-path-results-2026-10-06/clippy.txt",
+      "original_sha256": "02cc8269e78a34a895d8bd484d49c6af5901b4db339793cff8790ae272bfe7f0",
+      "redacted_sha256": "38466ed2e172b40d753f959bd725c5ecd83e5dbc4aa7f9c60710d5f282574653",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-role-default-search-path-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "a69a19e5385798b84df4e0cd3180cb5080b99905da1c8fff15604d67948dee94",
+      "redacted_sha256": "f1c047c2526c1e544ecfb4cc03016d37256f4d3d50ce51956ba9091c0ec53ad3",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-scalar-csv-whitespace-2026-10-06/clippy.txt",
+      "original_sha256": "8782f5beca5ae9aa7dc4288206ab77037b3b73307b401cdc2b23b723e3e9ed5f",
+      "redacted_sha256": "1971b622199b4a2249eeffa09632fa7968761445fae8df2eff135ea34d38153f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-scalar-csv-whitespace-2026-10-06/postgres-enum-scalar-csv-whitespace.txt",
+      "original_sha256": "84039c9236f74298b7a0712f00a45a42589a8ab7374a53dd1becbcb57b58a1a9",
+      "redacted_sha256": "964a06aea1215aa38629babf9a2d9bbaee1989f6495e7e1225235e9a22f04cfe",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-session-search-path-results-2026-10-04/clippy.txt",
+      "original_sha256": "25684e9665a15a09a4d13b453333ea2b6f1f73e96f782e4f62d810f4d912a26f",
+      "redacted_sha256": "78a691e11117071cec8ee5defb5314c0e34d0b408394288e4b75f0cd90d088c2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-session-search-path-results-2026-10-04/postgres-enum-session-search-path.txt",
+      "original_sha256": "567c2219b72a1b48c186db78b9c53fcec19e61f2918e9f816d71602d65fbbe2f",
+      "redacted_sha256": "9ac60b3a01aa608c83441c58030bcd317401a7ebf2f1928b45376e99116bdedf",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-set-role-shadow-results-2026-10-06/clippy.txt",
+      "original_sha256": "cb515ca5d8507c3fff5e4213e7ae36859d97ff4b6640d6174747c7f2fa8501e1",
+      "redacted_sha256": "f43da9c1e12baa691b5902539ce249322185f74b1b564ed5920b96b5c1f80d53",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-set-role-shadow-results-2026-10-06/focused.txt",
+      "original_sha256": "95f9c28e0645a9254e482254655d7eff7b2e06acba0556ee10a9e95888a3e154",
+      "redacted_sha256": "830bb403fe75dc08ff77c04dddbadca7d5c4f2e716e94b95123865358e287f84",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-set-role-shadow-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "707235aade5e397ea4d020ff2a9b45d47a610a86863273ae309d15aabf2997f7",
+      "redacted_sha256": "7fae41effab7974f171817e92def7f7bade68a8725183de0173433401da1c852",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-full-results-2026-10-05/clippy.txt",
+      "original_sha256": "ae86c75d6c4c27a69323ff6e048cb92c2ac33650ec883ce669149de31729471f",
+      "redacted_sha256": "7c93556cf4b4aa54e82ac87a1ae2cc3b3a516bc14a7efb6732d600ba24d5707c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/app-tests.txt",
+      "original_sha256": "3aeace9ac9a5342068cdd52b1b22585464d5df19ce0a10d5202337827d185e16",
+      "redacted_sha256": "44d57894f9d8f95401300de70d41383d5758e4d9e64b8d9bcfe34e58e1387ff2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/clippy-core.txt",
+      "original_sha256": "17eab95b05afc2a902b6e6adef2fbf2c7550d4b713c84fe08c5972fbe46ede79",
+      "redacted_sha256": "26be888a30e76f139c25d6ef3f488cf71a3d6457158ea8fcb7bfad255e8dfa2f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/clippy-postgres.txt",
+      "original_sha256": "03364add5b1f59ba2a0267ee0f15196b3e8cca57094e794d5069c0edb6346a57",
+      "redacted_sha256": "502fbd8f7c46195ac0b16374b28e0db47626e26e3747ca1e6ead78ffe7e1cea0",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/core-tests.txt",
+      "original_sha256": "abedd9ee7d3a0439d15eb42f9396f987c439d448ca3c59a2b000d43ad783fa96",
+      "redacted_sha256": "72e1e30fff5dce259905a44f9d2e17ab6ad1ca2e64b17eb4a3c0e3b738f0b944",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-sql-literal-session-modes-results-2026-10-04/existing-enum-replay.txt",
+      "original_sha256": "5c30499a2802817377c958506f634c0c0a43c6f94c921106e8ae40805d0f8ea6",
+      "redacted_sha256": "78d06c4c01dbd2f14992fea3153bc1dfd690e814410d9bc4758c638117e74523",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-unicode-csv-import-results-2026-10-05/clippy.txt",
+      "original_sha256": "7880217662bd1741c204f0cea6f188d5bb1d068eb537cce9706fceb50220743f",
+      "redacted_sha256": "f0d009d71772858f9a95e146efa1a589766b26b2d6af80872bb7c5ae26e4dc26",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-unicode-identifiers-results-2026-10-05/clippy.txt",
+      "original_sha256": "99c3d90eef7923d2a0f799a9f9f10638ee3e64db327885a29b1f2a9e0a6f4dcb",
+      "redacted_sha256": "960f36551342a636b57a35a56275da31859509969c7191e759afde38d958fa8b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-enum-union-values-inference-results-2026-10-05/clippy.txt",
+      "original_sha256": "76fbb696c67683d8ec8b24c094f09186dec3151bded3d42f36741dbeaed2283a",
+      "redacted_sha256": "1ffd292a506b1c004633f1690efe4d4cb3be75b5a24596a682c9feed98356173",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-integer-array-grid-edit-results-2026-10-05/app-grid-edit-test.txt",
+      "original_sha256": "39a512c090c548be32eadbff37db1bd6bd6e05669690a674e161398ff874b0d3",
+      "redacted_sha256": "3354fd2c19a1a03e1dc28111013c3272eb91b753c0ca26b58ed26d9e7b0c6a46",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-integer-array-grid-edit-results-2026-10-05/clippy.txt",
+      "original_sha256": "c85279bb54879b7fb3c0196b4c193a0707081ef48eba4fd539521120654a3fa7",
+      "redacted_sha256": "39e0ed94108c02a4e68025ad93af45051db49b100d04f245d7af8d449d515593",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-macaddr-array-roundtrip-results-2026-10-06/postgres-full-integration-after-merge.txt",
+      "original_sha256": "c50f6d3ee05849cc88157748028cc003282226aa98c89cdb5e55365251c0bd18",
+      "redacted_sha256": "8672548ccba65347e5a473b6fbcf972944dee9d01a88d21444581ae8ded4954c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-macaddr8-array-roundtrip-results-2026-10-06/clippy.txt",
+      "original_sha256": "15b057e201dd28a96b73b67e683c16d494e9d8bcb7b314e79c7fa329af68fb4f",
+      "redacted_sha256": "f267330fd313053907d322646b232857749e33ff6c6787335b3b0d4c83cf93a2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-macaddr8-array-roundtrip-results-2026-10-06/macaddr8-focused.txt",
+      "original_sha256": "6bf6db38d5b7e9e4766ee2264c4b90588ac013f4705315dab83337650c269ca4",
+      "redacted_sha256": "aa93aec52d0250437e6165d62c94ab75b160a40d9d377551d9aa442690d062b3",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-network-array-roundtrip-results-2026-10-06/clippy.txt",
+      "original_sha256": "159728bf9b607d746ab84105c384eb1dde63a66d9fe421b87fb1d86c323ee32d",
+      "redacted_sha256": "26746d3606c25bb9df79503eddf32f676f262d1f326e81d413cd6519d9ceb15b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-network-array-roundtrip-results-2026-10-06/driver-unit.txt",
+      "original_sha256": "d9863ea6909a18bd86fb1376f287b8711b9f7c68c5d2bdbf36d829e44f90500e",
+      "redacted_sha256": "b767f4881c6edc439e57d26ba39693c77a94fd27a6e2f07474f884604a4d374f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-network-array-roundtrip-results-2026-10-06/network-arrays-focused.txt",
+      "original_sha256": "28e1dd631b2c1838f5ed332fe261899632a4d8e62052581cd15052306c2f857e",
+      "redacted_sha256": "f6e84eac0150dc1e4f2d7ef22fe1867a195acc6b1871b98c9d70761a22779376",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-network-array-roundtrip-results-2026-10-06/preflight-quick.txt",
+      "original_sha256": "6bfa42e9d60ff9a7bbe60d1f724a653a88e1e179bc25c891d0dc5bcd549ab86d",
+      "redacted_sha256": "d2be30dece7af262cf27104cf664e2c26c661810d0236033b32575e7e1d6a991",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-numeric-array-filewriter-results-2026-10-04/clippy.txt",
+      "original_sha256": "e2b368b88374da16e72bb96e0ff68ee7dfb7d49836b63692563151ffa88285ad",
+      "redacted_sha256": "72ae944ca54d4b032dc97e2d1cd9180f383649c8250e34e8053e78a4f43b06f9",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-pg-lsn-array-results-2026-10-06/driver-unit.txt",
+      "original_sha256": "8d4ab6e2d62762b39a88c4df508bbd2e44aecf275cc25c829b76503c9c2e754d",
+      "redacted_sha256": "a5a260659aa52f97f673d524a11a569084156dace0796b99dc897307fd1f65f8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-pg-lsn-array-results-2026-10-06/postgres-array-suite.txt",
+      "original_sha256": "fc9c1aa5ff292d6dae0397914ec3fad1e81d4ddfa59d045a5599dd2dd37cbbf6",
+      "redacted_sha256": "778a20fb4b61984196af195aa58f0db2ef8e24a27ed9af72df95340b885a02ae",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-release-relay-no-expose-2026-10-07/focused.txt",
+      "original_sha256": "b650ae48d6957c5595937ab6687934232320ccacc3a9571a54a14af3aec0ab3d",
+      "redacted_sha256": "d4af80901fe80c5312bfd9523d825070202036f5c7cd3d2c874b4cbcc7039b2b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-rollback-current-branch-2026-10-07/focused.txt",
+      "original_sha256": "d1b43ad9b79189bfc2fce851cb26038ca608fdb8282b3dd85c730c0d1264351a",
+      "redacted_sha256": "9978cb9a3ec81c6fb1efd07c33aeacde3f294942d60c6ba50b5672be9c2c7000",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-rollback-failure-results-2026-10-07/focused.txt",
+      "original_sha256": "51dfe43f67fb36fb0bf6eca49b76483af99f7936b93724cfc6c9727ccd4f550a",
+      "redacted_sha256": "353cd84da83c7973f6bde307f728d63cec4d4943d85776be14dd4a8ee87fb782",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-rollback-linux-fb82ea1-2026-10-07/focused.txt",
+      "original_sha256": "37baf8b656e1720983fce6e6964280444d8013fb473a02ddc5fa08c9195f843a",
+      "redacted_sha256": "abb0fa2c4bcc0d16061646dbe8695c4d3a50bbcd0311b0649cc97845f87d452c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-rollback-sequence-side-effect-2026-10-07/focused.txt",
+      "original_sha256": "c4d2c31c940186bb94b72afce69c38336dc7cf57ef45659474c27b3d1f19825f",
+      "redacted_sha256": "7214f55c9f9a92890195b339c9d992803b9408ca5db17bc3375c96c8994fcc6f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-seven-domain-results-2026-10-04/clippy.txt",
+      "original_sha256": "fd9450633ecb0c2bd1d26149b8513c39e8a06070af5ffa5a367e4731f75a8113",
+      "redacted_sha256": "c5fd078bf26bb6d8b5c2cb306705595997d625f420f6b55182c08aa815f2977a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-text-array-grid-edit-results-2026-10-05/app-grid-edit-test.txt",
+      "original_sha256": "1cb980fb0ba04600e3e6bf3d985a2dcea46b70c6cbf4d41d73346300bbdbb0c0",
+      "redacted_sha256": "7d2fff7ad791dace4711acc73a9e8a71b9a363faf2e3fffadb863177d664985b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-text-array-grid-edit-results-2026-10-05/clippy.txt",
+      "original_sha256": "0b96965a47bcab38ad23a1d678503df092c9cf40fff57ffa16dee0c8dd8f9406",
+      "redacted_sha256": "2a8b6803cdb44e8e978faa8241ddf1db7a3c83f5d55d9a41abdeace54baed757",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-timestamptz-array-non-utc-session-results-2026-10-05/clippy.txt",
+      "original_sha256": "b8a796603f7ee653ff5977bbf30234d79b3d159e78058907ad8b209887f4c86b",
+      "redacted_sha256": "072b3fe81bf9fe2c1d9525a34aefd7052a5149d4a3b800300c0d998fac3500b8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/postgres-timestamptz-array-non-utc-session-results-2026-10-05/native-postgres.txt",
+      "original_sha256": "c60435ab413d036aaa12497a6be8f4796d85a94cf989c0a447f21a8c1a138e5f",
+      "redacted_sha256": "2f010e0a906c1abdc257da816d5346c9ee3ed5485b0d552796f3b3960bc6c303",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-abs-any-csv-results-2026-10-06/clippy.txt",
+      "original_sha256": "8219c081848637f496ff66d215f0898e77a0a92f80c43e3b0b2137bd10cf8c0f",
+      "redacted_sha256": "3061fd0e5536faa884925dfa8ab412ea7754536f977dcaa48c34b677837b3a45",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-abs-any-csv-results-2026-10-06/focused.txt",
+      "original_sha256": "c76b430e867b6944883bb5f170a49fe965bde2ebbb6b8b1d3cec69deb2c61884",
+      "redacted_sha256": "1bab5a863eb29d953cbd7d265be6dff31bcd7653f9b3afb0a3aa445be1de6471",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-case-any-csv-roundtrip-results-2026-10-04/app-sqlite-any-csv.txt",
+      "original_sha256": "de8da7aa4293dc7e74ad43c0807ad9381aee8f72fc57068516ef699e055dd8cf",
+      "redacted_sha256": "e3976af66e736dfed466b40f41b99bf0f7850fcb32d3ee517b290de3debfe9e6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-case-any-csv-roundtrip-results-2026-10-04/clippy.txt",
+      "original_sha256": "9917ec25e0ac24c946dd28783fd2f16ab787cdc539326d8e2fc07119b028ced6",
+      "redacted_sha256": "f2f097ed0def813877fe8e16d41431b26cee3e920217acd1b06049db9f7f2e18",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-case-any-xlsx-refusal-results-2026-10-04/clippy.txt",
+      "original_sha256": "b00b832f15355e653b3119b8bf39763bc13a81b2bed01a57163523956460d713",
+      "redacted_sha256": "4318f4d71ba7123cb9c15ecdc60ccef311e475e16a3b9234fbc8c73c9a3baae4",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-coalesce-any-csv-roundtrip-results-2026-10-04/clippy.txt",
+      "original_sha256": "8f3e3daee1c1d69723596e03fb8000485409bc7dee92a143889e14a03ed9cdbd",
+      "redacted_sha256": "4de6d550e4a0d8f451301a08dc2b50d312fa1f2d49d99a5191f032d2b8c73713",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-coalesce-any-xlsx-results-2026-10-04/clippy.txt",
+      "original_sha256": "5990d6a107c8664f681388363e6f49ad082da9796aab1640d731a836b1593577",
+      "redacted_sha256": "032bc5009aae46ba99e54872e9d51a10209519e2327ead37321ccc2b8ce7060a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-instr-any-csv-results-2026-10-06/clippy.txt",
+      "original_sha256": "d277f65eb6fac8ebf1bd5cf3d7b3a376782ba323116badc832497d6ac784fc02",
+      "redacted_sha256": "9243347e2656b93a00533792976c409af449760d69078245d0707149d2eb4918",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-instr-any-csv-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "29048ffabb2222bba8739e9c755f19befd5add7487006dab3f004822630a6928",
+      "redacted_sha256": "2256f9aaf1e9bb26c2b2b05f2f6ed48f53e6f25ca2206d45ccc605c229903522",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-length-any-csv-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "c9e1df152632b15801f607cef7b74e227a49f19d8e9bfbcee35419c5a492179e",
+      "redacted_sha256": "e5397eeaad74a2e59ccb9a708da9add0ffbd2a7b04fbca73d973e50b21ccad66",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-quote-any-csv-results-2026-10-06/clippy.txt",
+      "original_sha256": "bbe58243857de43f67b9f1ee6c4371c1e247150f996d660652ef23df133e6594",
+      "redacted_sha256": "27fcd9aed9cf2b7c1c46b63ec07add0584a3cd9f25ba4db6053dd620795031b6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/archive/evidence/sqlite-quote-any-csv-results-2026-10-06/quick-gate.txt",
+      "original_sha256": "da3b5caf92808581b4f7f21d934a1756830947ba15e79b700fa0b6e12e01f066",
+      "redacted_sha256": "abe06bb6b5480959bf18b7abdf19b5e4828e6f1ebbc57ca842b7e6f5a7f42dd2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/arch-wrapper-date-2026-10-22/acceptance.sh",
+      "original_sha256": "4dd091617bde3333b1e0a8a23339dc20e6d317165047d8ae712bf87b71018e48",
+      "redacted_sha256": "18729e86a1c62e36994ffa47000b977cd3fd89d4f07d7563344609bf4c9a7a6c",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/b4-aud2-gtk-rerun-2026-10-09/gtk-mysql-approval.log",
+      "original_sha256": "da27c8dab5f4002502a9912acba9291b7c14848265a659ff52baaf301ab002f4",
+      "redacted_sha256": "8ab411ddb76e5ac939a0b6bb15b54b01e1f16b06ad36598a3957df74a451ba7b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/b4-hosted-linux-tip-2026-10-09/mysql-atomic.log",
+      "original_sha256": "8348592eeb429cae557615e92ec1e6f7fcc71964417068f7a5cc4f8cbe632de3",
+      "redacted_sha256": "b6b2bbaf59a4b736a29e31356194988daa113a68ecf5c09a62ed5bf3bcf7a2d1",
+      "redaction": "Exact GitHub artifact log verified against the manifest digest. Replaced the standard runner workspace path with [workspace]; test names and outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/b4-hosted-linux-tip-2026-10-09/postgres-rollback.log",
+      "original_sha256": "5c2e0ef6e2eae97248bf3a50f12df517b84019180b5fa6442b4ce6668217eeab",
+      "redacted_sha256": "365a7a71043e6dff3a35cff005aa3b44113428dacf0dee72ffad6bdf399746e9",
+      "redaction": "Exact GitHub artifact log verified against the manifest digest. Replaced the standard runner workspace path with [workspace]; test names and outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/b4-mssql-kerberos-current-2026-10-09/kerberos.log",
+      "original_sha256": "acc4ce5583035d12205792c79951d36650f2967a28e0e1c8014c90e189677858",
+      "redacted_sha256": "2005046a7ab4978a253478313fa7602ec7807a3b81e305b408c8589b1599c0fe",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/b4-ssh-native-current-2026-10-09/ssh.log",
+      "original_sha256": "cfb93e7c31b99093d257273d7f2ae781f1bd81d9d2a77941858dde27149ee626",
+      "redacted_sha256": "fbf9bc1dd411c3a6860f63e7e532b2710c772afe04bf7e27b540be6262e5b140",
+      "redaction": "The verified original log contained a local home path and account label. The path is generalized and the account label is replaced with test-user; test names and outcomes are retained."
+    },
+    {
+      "path": "docs/evidence/b4-ssh-release-linux-tip-2026-10-09/run.log",
+      "original_sha256": "b1dea42ad6862e7ef37c75737ab3dd9683c82c6ef68e99e1fa749ff507ffec6e",
+      "redacted_sha256": "e63e05ac9a363a8be4b7d33a563c0af7edee040233419564c295df1e1df52a23",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/gtk-safety-installed-hyprland-xvfb-20261024.txt",
+      "original_sha256": "2d55cea333dd85789c5b551090e7fb5748246ffc14f4d5732c25f41d0b60cc92",
+      "redacted_sha256": "d96ae1e7e9a4176c5bc6c8c565a03b4fd3a09a6248a0e269057cf1cd8215e617",
+      "redaction": "Replaced the local home-directory prefix with $HOME; test outcomes and other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/gtk-safety-xvfb-20261024.txt",
+      "original_sha256": "a81303b0b7845f26dfa3280cee478a76ae8cb3e6c31b8a29882e8992b98dcc76",
+      "redacted_sha256": "eacb10281d7fd6db1a31011b7b9561041045429c4080a61b813aa2f9b39ccae7",
+      "redaction": "Replaced home-directory prefixes with a fixed redaction marker."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-clickhouse-people-31s.json",
+      "original_sha256": "57e8adbc6684917a0c807f3f87ed4474473385178e608d95e51b1b05e84aa897",
+      "redacted_sha256": "9ddcd6769b26b8b2207f80bef8beaf6a44f953f1a1625609f7726ac0f82eda56",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-mongodb-people-31s.json",
+      "original_sha256": "eeb13b433eb660723d7ea56476c88efae9393ef6de494ae1b2b32e46b0b52b38",
+      "redacted_sha256": "57688e2b669118934ce6e3e31a6b680d8df72ef0efe80fbce0f9a926965da2ef",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-mssql-idle-31s.json",
+      "original_sha256": "eea0ba0dbc159f2307ec61f2ce598ada1cb6490564dba013a47825521c9a59ef",
+      "redacted_sha256": "c3f295d07617bd917fc9ca4b0cde74b0ef0e4512e9392992cb0c03763f8c538e",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-multi-engine-after-sweep-31s.json",
+      "original_sha256": "67279ffd562253edc2824d8bf92ab2f310f2e94a869d7a5a2f28e1beca3d70b8",
+      "redacted_sha256": "b30c9018d94188009b508b138a6a7fea39bc4a652e5155f16bdf682ff008790c",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-mysql-people-31s.json",
+      "original_sha256": "44805cf8993203ea743961623d3da08845fd94d68aa76b638e4dc6f0d432c239",
+      "redacted_sha256": "14a6953a9b62ae4d9c05b133fea722214948120b7fa1a967705ddfc747e2ee96",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-postgres-100k-31s.json",
+      "original_sha256": "32ac7a7e93c4606b20b03942997084cc407e15aaab1e94413322e56c4c5da545",
+      "redacted_sha256": "23f76743d702540232286ef3150d730ccdae9271e2a59be39d66239c56aaadb1",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-postgres-idle-31s.json",
+      "original_sha256": "c00d1be69722ca3d53d363b05ef8de8d71d09d654e936118a1b048ba48c6790d",
+      "redacted_sha256": "09ff9ae674953299c5670ab28ce6b7fa2d22dafb645441cc96b44fc3595f7409",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other artifact bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-redis-db0-31s.json",
+      "original_sha256": "8ecbd16b06d848dc0ac459d87229384749ed756352d37870d671e7fe455ed6f2",
+      "redacted_sha256": "e17326746f8de0d9a64788b1f5b2d80f00a4c157167961a3207b7dc0e4f4e241",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-current-head-sqlite-people-31s.json",
+      "original_sha256": "ae3aacada55eadc8ebd013f6b8b92033ec7b43c6257b9f2603c7576545f689b7",
+      "redacted_sha256": "ab68fc9cc5b0570147953272cb11450efb38fc8966ab0cf34d439745f38d0d37",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-postgres-select1-31s.json",
+      "original_sha256": "3c84757e7077855e5305220f229fded7c2efe56c972fa85052fc213984d02d24",
+      "redacted_sha256": "ae70678fbe7fafae6f1a8edc22dab05c4f91c8e58a318a5c94b688deb9c4a931",
+      "redaction": "Replaced the local home-directory prefix with $HOME; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-pr1568-sidebar-closed-result-restored.png",
+      "original_sha256": "213f10fd901d85533ba4f962d5a484d876a45bee6aa67adafd6f39bbeb1ba0e5",
+      "redacted_sha256": "324dce26adbf57bb51719d355c4d6918e9b0e97f048fc3e837fcbfb7bda1cb24",
+      "redaction": "Cropped to the BookiE window, removing surrounding desktop and browser content that exposed local paths or lab addressing."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-pr1568-sidebar-open-result-hidden.png",
+      "original_sha256": "ca1ef2a83c1c36bae34c2595bfee4f09aa64bb5b5b70225d4d816062d8c97d88",
+      "redacted_sha256": "4d901fe491a39a1d854ab0638c3ca7a4ef25922b236e20e9d9e110497c71d007",
+      "redaction": "Cropped to the BookiE window, removing surrounding desktop and browser content that exposed local paths or lab addressing."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-pr1568-sqlite-select1.png",
+      "original_sha256": "11c8c1abfa2e86dff09980214baf4122fd1234b77133bd79ba530035869f0539",
+      "redacted_sha256": "c80302804c17b4af8bec0e1ca054e67a5c26b2f8b4eadd00da40998f079e3e60",
+      "redaction": "Cropped to the BookiE window, removing surrounding desktop and browser content that exposed local paths or lab addressing."
+    },
+    {
+      "path": "docs/evidence/built-head-2026-10-24/native-pr1568-sqlite-sidebar-fields-loading.png",
+      "original_sha256": "2826bc694d4a7eaa9b753979819d7a4389f31838d439cacca2aa02a0a658cc9e",
+      "redacted_sha256": "dba121a460b5288e87f70bc90e165a59851c1c954e31c0fef1665d7d722e9998",
+      "redaction": "Cropped to the BookiE window, removing surrounding desktop and browser content that exposed local paths or lab addressing."
+    },
+    {
+      "path": "docs/evidence/ci-profile-cache-cleanup-2026-10-23/runner-health.md",
+      "original_sha256": "8f64ef33b1e514b16f513a12e63d22d7023a7fe280fbfb45470a63d57b4ff8d2",
+      "redacted_sha256": "dc682b94d6e5f7e47f6d8be4bb7bde53fb277469a11a977ec9da12c121706233",
+      "redaction": "Replaced operator-specific worker labels, storage measurements, service state and run identifiers with a note that makes no acceptance claim."
+    },
+    {
+      "path": "docs/evidence/duckdb-enum-csv-roundtrip-results-2026-10-04/clippy.txt",
+      "original_sha256": "8f567aca8e02c54a84b3b337139cafa75dea0a3a54060d7cee76762fef8466f8",
+      "redacted_sha256": "6778b80c08ee6fd7f4df365a04001c9c6b5b9effc6bf990a5c91e44fd435e04d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/duckdb-enum-csv-roundtrip-results-2026-10-04/focused.txt",
+      "original_sha256": "b694da10f87ed7e7accbd6d5e9bd8c636d0634708da4a76249c612d0deb351a6",
+      "redacted_sha256": "cc84bae297a2994b7200136e775256a62ea2cbd723f6de2de10829629f1a2556",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/finite-float-consumer-results-2026-10-04/clippy.txt",
+      "original_sha256": "e9f284dd1f26735d3754865d031d25ea20f1377edf842a21781eef7b9d8a0c20",
+      "redacted_sha256": "2a804c379e4c3a41dee70693c76a0acdf4d0e92d38873b68622c41cb29cc7378",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/installed-arch-profile-2026-10-24/native-installed-postgres-100k-wide-repeat.png",
+      "original_sha256": "b9b8a882352758fc3f9854f854484e138b9a724797ddf8c3db7ca35793d2c184",
+      "redacted_sha256": "6533814b3e2bcb21296f8eb18c06e6c9fb22cf098611e090744dccac5243c49c",
+      "redaction": "Cropped to the BookiE window, removing surrounding desktop and browser content that exposed local paths or lab addressing."
+    },
+    {
+      "path": "docs/evidence/mariadb-empty-enum-set-empty-string-is-null-results-2026-10-05/baseline-set-failure.txt",
+      "original_sha256": "e3c44d06068fca997a4e517e7927b4346aafa1af876bfce0a385da9153011f55",
+      "redacted_sha256": "227097c6c318a06e6f8e7c44b45eb18dcdff14e35f8f61d68960afd18c5766a7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mariadb-empty-enum-set-empty-string-is-null-results-2026-10-05/clippy.txt",
+      "original_sha256": "98d20d3424b8adf3a1438bc58f5919f2ea35a970dbe6e6318562888c4c7eceb2",
+      "redacted_sha256": "cd33df6a36dcb339aa5515409db69bc62ac7ad9fbb2e14779502ad9787b7fb1d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mongodb-stale-grid-delete-new-field-results-2026-10-07/clippy.txt",
+      "original_sha256": "4bed78e0f4c122b3cfa37b8254ee9c781b54e58e3a6296cbc4c5a6053704a808",
+      "redacted_sha256": "fcad694701deb9a2e129fe35eaea7e83130f86affab497b3ae7d6f637376afa5",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mongodb-stale-grid-delete-new-field-results-2026-10-07/focused.txt",
+      "original_sha256": "785a9753175e7de3a2ccc87891da7604615c282e1cc24b3d50679cfc38842998",
+      "redacted_sha256": "7fbefe36f2581f71f649768af7ec0ed62009ebfe99c1806755232fd24aaae914",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mongodb-stale-grid-delete-new-field-results-2026-10-07/quick-ci.txt",
+      "original_sha256": "1a61484f4a5ef31e1240eebb6093a0fbc04297f76b167366721a8532e31f1d28",
+      "redacted_sha256": "fac905434313e8c9bae264fa076ffd19f399e00f1f039499ca5d45e80a28ecf8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-advisory-lock-rollback-2026-10-09/run.log",
+      "original_sha256": "2cf19a5109c3f074962133bf3e88d8dff4203f35210377c6a6c352315cbb9e56",
+      "redacted_sha256": "8dd493dfa180ae4d93d9b6feda5d8ba3e3e2af5e2a16a7a84a74e3040e005d5a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-datetime-timestamp-precision-matrix-results-2026-10-04/focused.txt",
+      "original_sha256": "2ad97c9586f81dfe6da92005cdd2c42eafa49a27fe5060b589619015ca5fcfa1",
+      "redacted_sha256": "178948052cf9332fcbd57cb0d97225513633cb2608f18e016779016dd3642bf9",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-enum-set-grid-edit-results-2026-10-04/clippy.txt",
+      "original_sha256": "2ae809b10cfaa3a4ddae57c445481cf0c772b8c2574bd3833f600f18ac7bf513",
+      "redacted_sha256": "7f08f139a539906a19d0f3afcfcc3e307d639933f2b17c09ca46151f4454345e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-enum-sql-mode-results-2026-10-04/clippy.txt",
+      "original_sha256": "93444c0a2b3f66d516ad6dabb9cb686ed1d88e7624386cffe55bbf4e4d4ac5c7",
+      "redacted_sha256": "a378a01498f1c36ea4c94d392817e8018f02a32ad24c897bd915ecee1b9df8f1",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-enum-sql-mode-results-2026-10-04/mysql.txt",
+      "original_sha256": "dba7b08ae113d91432211d8b807dc2d0999201750d2294105b45158198ebda8b",
+      "redacted_sha256": "a35eb4ebd47997d5e05cee37eb07c3e21b63b5f8600f3a1244c18cf82671693a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-datetime-mode-results-2026-10-04/clippy.txt",
+      "original_sha256": "710e4541818604cda47207b057feeb09e11f112a1bb014728dc25bf3e7d5d17f",
+      "redacted_sha256": "9a86c9daee3e06af346241aec37f27ef3292a05321e1f67b7819eab6a2f4b6b4",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-datetime-mode-results-2026-10-04/focused.txt",
+      "original_sha256": "23a3580daf57e98a21d1b452d88dee5c7520b0bb80706a422b62efa03b54b375",
+      "redacted_sha256": "c4804d3da8c0aeebf0419bea38b64b26af05cb583e9498633316c44ff64fe9f2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-half-boundary-matrix-results-2026-10-04/focused.txt",
+      "original_sha256": "bb330794b035069f3145f5227f3eac8b92476e9dc640683318c37d6b1ffd7c13",
+      "redacted_sha256": "1c5ef5d27dd617257b7defc4839cddeef6af89c0ecac3aca91593319ccbf00dd",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-time-mode-results-2026-10-04/clippy.txt",
+      "original_sha256": "a21145223a9e93994de7dc7088c52e3ffbb49d722b26324bfb40dc1e4c7dd4f2",
+      "redacted_sha256": "24a651fedacfc99022b6d18fa21e83ae3c21971254947bfe512f1c5f8dec13c1",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-time-mode-results-2026-10-04/value-contracts.txt",
+      "original_sha256": "f4bc23be360868438b597a2a855c8b4df2a03005867c46bde8ee8744b720b6d0",
+      "redacted_sha256": "057d8791019c0489540faea8ffe03da7596c410995b6a0887a2f14a4f0ee41ad",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-time-tie-results-2026-10-04/focused.txt",
+      "original_sha256": "86346f356abe26fe47888097297641972eaab89db1d5096b8a15ab25a494bda1",
+      "redacted_sha256": "3158cb1457a12fcf2d34325dec453ea3dc199542d2dba502712a42d19eafda05",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-timestamp-mode-results-2026-10-04/clippy.txt",
+      "original_sha256": "aaaf88128e315a41a04b84c5e65794b4c3ccc40d4e216b21e127576edaa130b6",
+      "redacted_sha256": "ae0d3743bc97afb4092b29f565cad8696b1e6f797a16b37265f011166f38b711",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-fractional-timestamp-mode-results-2026-10-04/focused.txt",
+      "original_sha256": "cc6ad2d7c10253267db557f86be1bd996905e41efeba1d1811cc919f1984e16f",
+      "redacted_sha256": "7948381b64e967d53991dbcef5f4f8892dfd22bd4849f62e005163546008dad7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-malformed-human-approval-results-2026-10-04/clippy.txt",
+      "original_sha256": "021eee006928a4e915fa9785ed4c94ec1ad8bd183492eaa604c26c7dfb780336",
+      "redacted_sha256": "25ac1967de743589b2680755558c68d5767391c3c4384511c9ecb0bf7adf7206",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-malformed-human-approval-results-2026-10-04/test.txt",
+      "original_sha256": "314d5bc93def070d9d54a2eb9e61b4b8201146f1b486239529737667f33a3c97",
+      "redacted_sha256": "83026b3a651791ee3c3960620860b22521ccd7fc2a46b176382eb50890dc16e3",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-quoted-delimiter-results-2026-10-04/clippy.txt",
+      "original_sha256": "fa21d33d1aefa8af3e32f1d2dced8c0faa50f7943dc6aabc4bbf2a621113a622",
+      "redacted_sha256": "8e0f2d012885ec609b8853a10ede99f915a1d15586ce6b8c7ec7630e90216e5f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-quoted-delimiter-results-2026-10-04/test.txt",
+      "original_sha256": "fbba4e64907427d3972d7af97ed93a864f52c6919e0d81f990c93d36df54e4be",
+      "redacted_sha256": "119bdaad522059d9aa22822aed9ccb172e59bd0b5e4acda2754b30ee354f8a6f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-strict-zero-date-results-2026-10-04/clippy.txt",
+      "original_sha256": "93444c0a2b3f66d516ad6dabb9cb686ed1d88e7624386cffe55bbf4e4d4ac5c7",
+      "redacted_sha256": "a378a01498f1c36ea4c94d392817e8018f02a32ad24c897bd915ecee1b9df8f1",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-temporal-grid-edit-results-2026-10-04/clippy.txt",
+      "original_sha256": "35548c20a09e086281bbfa727c8dc418c499e2ef5f5a083c75942907dd99a69a",
+      "redacted_sha256": "3ba0181c7f8ac3fffa22167e6efdecada55656dee5bec0a361aacc5e70d2ac79",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-time-precision-matrix-results-2026-10-04/focused.txt",
+      "original_sha256": "0d34aa89f3517df183a9f6d80c5a273e6f1059523af4e9b4e68f38a0003a9f4b",
+      "redacted_sha256": "c70acd4bef667da727f223885fe2f97df6f647c9760571037b67fbaf9e2534f5",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-word-delimiter-results-2026-10-04/clippy.txt",
+      "original_sha256": "4d50592ce4339956e2f35a599bd630e1111a6114e65b891ee741b72a04ca3c62",
+      "redacted_sha256": "1375d3a531d30f4c64b8ab973f5b5434bf3f62d1d22a78751eff42f3a7706c06",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/mysql-word-delimiter-results-2026-10-04/test.txt",
+      "original_sha256": "f5edfb676f9bf09dd7a0385ea3cac4feb0b0ab4590fea4cf94f4a1a91799c283",
+      "redacted_sha256": "872a36a1d53f21d33f0faa3719e87d8c7c8ded7107fb06632dd7d4e0b5634f69",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-boolean-array-calc-reimport-results-2026-10-05/clippy.txt",
+      "original_sha256": "c60167cda899ee3f8087468a2077a966c4a73f1b0517b7813076e83b2c07e742",
+      "redacted_sha256": "48cd66951a0971ccb48db9e8e539dab6773d8d3e76d95f314487dbd09aa55583",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-bytea-array-calc-reimport-results-2026-10-04/clippy.txt",
+      "original_sha256": "d7931bcac2e8adb44102729d4d8aa2748cacf90d9b795bf58149112b18c61550",
+      "redacted_sha256": "bce7aa3d4b401d28da633846a2b8f6aaf07720f23849d7e88980c912fa74f64c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-citext-array-roundtrip-results-2026-10-06/app-clippy.txt",
+      "original_sha256": "a606015189aa2dbffc1aa0a3615add8d98a4d9f970afdbb662ec548a92477e1e",
+      "redacted_sha256": "b9df90317cebdbbe68c86d06bac121066281a9cb76a0268c28756c80149d7bd8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-citext-array-roundtrip-results-2026-10-06/app-grid-focused.txt",
+      "original_sha256": "7f195a02b5556e54a6d23f05fbba03063c28f25f433e513bcdcd27acb44bc693",
+      "redacted_sha256": "1d7e4f6003044d5d8d2689faa8ca34ef239424170be88b8ef7b656f0b34cef3d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-citext-array-roundtrip-results-2026-10-06/domain-array-depth.txt",
+      "original_sha256": "1143319f41bcd734100749800dcd1287ebec9ea2626c9e6a627a8419f568b58f",
+      "redacted_sha256": "7305f254f6d220520c0125e2b6f21d1d245cafa90cf28717475f0995b3d4d9d4",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-citext-array-roundtrip-results-2026-10-06/driver-clippy.txt",
+      "original_sha256": "c70d9a0f5288a626ef2ae6722e2dc315c380cc93d649bed95a96ec15171578d9",
+      "redacted_sha256": "4b5a6f0ae3b0fdcb1d823dcadd5cf9b1efbbf330a384afd87331805f06fc221e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-date-array-calc-reimport-results-2026-10-05/bookiee-export-test.txt",
+      "original_sha256": "7b1352dd2c66e3e4439e9edd627cf09da6cfe73ea04c1703f332cdaa17e68826",
+      "redacted_sha256": "d323d8b9e7b992e61ce46e75039ea5fca6757b604f0a494c070060b3d662b89a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-deep-domain-followup-results-2026-10-04/clippy.txt",
+      "original_sha256": "112c4fc18fd67098b878d3b26b103538c8d25f65619c4a5fd9c697ec5c7b323b",
+      "redacted_sha256": "6a3e5f51fa6b66698e006572c3195ee95e99a395091a33d2e35910d8c00a9b1d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-enum-array-calc-reimport-results-2026-10-04/clippy.txt",
+      "original_sha256": "2463f964b0bff47f57419363f284f0e54dc2c600792d5b8354370812f10f2184",
+      "redacted_sha256": "a8bc75976b18f0cec7bf0d840e89e596a5a85835715020cc2749cf6c8aa078ff",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-enum-param-list-results-2026-10-03/clippy.txt",
+      "original_sha256": "db18cc96eab1969c83c008fac0742e479ddc2729c3aaf2b0ea84d64a4086235a",
+      "redacted_sha256": "832330e0d8e910fbea59e3c41af27e7ebf913618b1de319602195d1b597db7e5",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-enum-param-list-results-2026-10-03/parameter-lists.txt",
+      "original_sha256": "82ead2bbab995feadfb8d65e3c57824d5bac18f00cb5205806abe08da303c0f2",
+      "redacted_sha256": "60fae7f111068de30b1dfaa703ef13aa77eda58734a97068758086a0879a9394",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-enum-param-operator-results-2026-10-03/clippy.txt",
+      "original_sha256": "25684e9665a15a09a4d13b453333ea2b6f1f73e96f782e4f62d810f4d912a26f",
+      "redacted_sha256": "78a691e11117071cec8ee5defb5314c0e34d0b408394288e4b75f0cd90d088c2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-enum-param-operator-results-2026-10-03/parameter-operators.txt",
+      "original_sha256": "b115d25ab93f8448fbf30256d0dafc2cb922647bad364183357d9b7b1dca0c44",
+      "redacted_sha256": "e281e08cd67a4c37cdc6c2a4558e470d1980f0535b63dba8988b6f8f38b768d1",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-domain-nullif-parameter-results-2026-10-04/clippy.txt",
+      "original_sha256": "a01830f27fafd45b4332be0715c65e935b198f4409b51bb63b59cb8fb0d8b2ff",
+      "redacted_sha256": "1c2a007e6783678deb4a827f4f9c4952993a34626f675a9bb1f1028b9bf2599b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-array-agg-results-2026-10-05/clippy.txt",
+      "original_sha256": "fa9c83e817f9db42344f14faf695fc9176a1bba44284d753308e85861df58785",
+      "redacted_sha256": "41814c52bfce8c26e3c5b1ad61a91b1c9fe28332c922e8668d3b561ad8409bc7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-array-agg-results-2026-10-05/focused-test.txt",
+      "original_sha256": "46c2db2ad70585a96fe9cc40a20a09601efbff46222ac120570189c86a3b0672",
+      "redacted_sha256": "06c42dda3f761b8ce7079c5ff6f32857d048520f0d9d9b95b7ed16bb85e4fde8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-array-calc-reimport-results-2026-10-04/bookiee-export-test.txt",
+      "original_sha256": "aba6dc0a2c530cde95d08287c221188c5f1711b10c87967f0cf4fe650d34efe5",
+      "redacted_sha256": "219fc340a08d01e04d128158526c247f166a288a2b4374d808d7904e8717d507",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-clipboard-csv-results-2026-10-04/app-lib-suite.txt",
+      "original_sha256": "68e3ff941b2493f21efc96fd43365c3f9c2adfa78f9e5ad5b5f5a56f41c040f2",
+      "redacted_sha256": "fc3dcb9f17e6d2b80c16e2f6d48d7583e2bf139e4cea1f9fe38e3bff6423b478",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-filter-matrix-results-2026-10-03/clippy.txt",
+      "original_sha256": "12dbc982bd4d5dded0c10b0ef720ab54e0ae8dee0ed49abcf9d7f49150082910",
+      "redacted_sha256": "23218289a5230f1cd35e14d5c62541abd9676b518381e9f0c7d8514bb053903f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-filter-matrix-results-2026-10-03/ordinary-filter.txt",
+      "original_sha256": "25e6931b06bde24a135ba9f0c1679e44f900db2666d3472a2d694c51c834e992",
+      "redacted_sha256": "5e8bbb3ada9d9a865cf561411deb8cf887dddbe0d5a7026ca86442c7f1a7e442",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-nullif-parameter-results-2026-10-04/clippy.txt",
+      "original_sha256": "db18cc96eab1969c83c008fac0742e479ddc2729c3aaf2b0ea84d64a4086235a",
+      "redacted_sha256": "832330e0d8e910fbea59e3c41af27e7ebf913618b1de319602195d1b597db7e5",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-nullif-parameter-results-2026-10-04/test.txt",
+      "original_sha256": "4dadb200cf49dcf40d9d6867f7e89e16e6a915568808c664c800232bc6cd659f",
+      "redacted_sha256": "0b3d2f08b88999d103ee36249bc6742d730ccd32253cedeb707a3826a7f1b104",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-results-2026-10-03/enum-csv-filewriter-gtk.txt",
+      "original_sha256": "357a4e2e189c3eb996ae1023593d8582de8eb4fca105af0e36adfd4ab4d5b798",
+      "redacted_sha256": "b903cdb07c0307502fdddceb11d236f36c7ffa1cc8b4b46358481b006d72abef",
+      "redaction": "Replaced the session runtime-directory prefix with $XDG_RUNTIME_DIR; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-results-2026-10-03/enum-csv-formula-safe-gtk.txt",
+      "original_sha256": "f93765c4a6d0bb11ecc8d67f017616e369b4c7950d2bdc874aafdcd638d529a6",
+      "redacted_sha256": "e4edebbc69d30ea81136287433cb5d101fd5f6eec2efe60305c1a4384f583e23",
+      "redaction": "Replaced the session runtime-directory prefix with $XDG_RUNTIME_DIR; all other bytes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-scalar-calc-reimport-results-2026-10-04/clippy.txt",
+      "original_sha256": "ab6a8136e95b0e77c885d04c12367b40aeaeb0e3eca010a4298664b5df56869e",
+      "redacted_sha256": "82281f9e09474094aeaf4a4b02d806209336e4be72c36123b0e9c98e1bfe7af4",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-enum-scalar-whitespace-reimport-results-2026-10-06/bookiee-export-test.txt",
+      "original_sha256": "2777d5fc4293da2b77cd4a3dc83d098ebfef735575f873bccbda896b0b209efe",
+      "redacted_sha256": "90c2ee794575de44745a99094001c5f2fbc861bfa002f06ddf6e5702e5b3e0d8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-five-level-domain-results-2026-10-04/clippy.txt",
+      "original_sha256": "abedc017ad45f28472197629bb61fc3db2cb5fad488bf9ec346f1de9d8ee8453",
+      "redacted_sha256": "4613ce762b6f8bb439c3b120690bfa02898d8189d71fc1c2376c348c547ef1bf",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-float8-array-calc-reimport-results-2026-10-04/clippy.txt",
+      "original_sha256": "03364add5b1f59ba2a0267ee0f15196b3e8cca57094e794d5069c0edb6346a57",
+      "redacted_sha256": "502fbd8f7c46195ac0b16374b28e0db47626e26e3747ca1e6ead78ffe7e1cea0",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-float8-array-calc-reimport-results-2026-10-04/strict-values/report.json",
+      "original_sha256": "f1259d964d1d85ea92d14c438026a5556953ffb54cc1efa7ac03bb24183fb842",
+      "redacted_sha256": "ddd94e83d1aabf44da4db1ebfb6d21a67a5b3840cc632530dc9c8a661489b313",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-four-level-domain-results-2026-10-04/clippy.txt",
+      "original_sha256": "88df934953f494a4c4861871c404f0544c51da634d1776574f188255bebf630c",
+      "redacted_sha256": "743188626af792c779f9e8df95e2ac5ce306e45b3477103303ec6e08637c4bd6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-int8-array-calc-reimport-results-2026-10-05/clippy.txt",
+      "original_sha256": "b8a796603f7ee653ff5977bbf30234d79b3d159e78058907ad8b209887f4c86b",
+      "redacted_sha256": "072b3fe81bf9fe2c1d9525a34aefd7052a5149d4a3b800300c0d998fac3500b8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-numeric-array-calc-reimport-results-2026-10-04/clippy.txt",
+      "original_sha256": "cd90ae10fbf33fb2af81be7dda77ebfa68804b434d0b1869897335eb05900334",
+      "redacted_sha256": "bc7d51a1482c1112a3642bca658a2ee47e3d1e3fdbdc60676115c81606c0fcc2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-shadowed-enum-filter-matrix-results-2026-10-03/clippy.txt",
+      "original_sha256": "a3f66266dc30cee1081fdcbf4685d0d30ebc43cdcce14d0a3c4c8227a9350810",
+      "redacted_sha256": "187a5597d472fb9e047598bd0d9e22cca3ced4217c5a762c243c45acab4f23a6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-shadowed-enum-filter-matrix-results-2026-10-03/shadowed-filter.txt",
+      "original_sha256": "f2600435a6b1d7f635c5ddd40ad85e46f932e026764e73080fb96b8c2ac0590a",
+      "redacted_sha256": "911cc85f88b398ae8448249252baa80412a0ada1b3766fa9177e218f548f1ce8",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-six-level-domain-results-2026-10-04/clippy.txt",
+      "original_sha256": "25684e9665a15a09a4d13b453333ea2b6f1f73e96f782e4f62d810f4d912a26f",
+      "redacted_sha256": "78a691e11117071cec8ee5defb5314c0e34d0b408394288e4b75f0cd90d088c2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-time-array-calc-reimport-results-2026-10-05/clippy.txt",
+      "original_sha256": "cf3f6a9c04b089b800f4c52b2ce477d40c698f3e22204815a6d31361c671bc41",
+      "redacted_sha256": "1e8d82375f25a87282fc616ddf8d9a26b7808c2cbcc27d734b3004babd41b6e0",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-timestamp-array-calc-reimport-results-2026-10-05/clippy.txt",
+      "original_sha256": "cf3f6a9c04b089b800f4c52b2ce477d40c698f3e22204815a6d31361c671bc41",
+      "redacted_sha256": "1e8d82375f25a87282fc616ddf8d9a26b7808c2cbcc27d734b3004babd41b6e0",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-timestamptz-array-non-utc-calc-results-2026-10-05/bookiee-export-test.txt",
+      "original_sha256": "3817aef26d4555149ae64b975f633273e1d3b7e47729e3f03bf83ff6c9fa4f5b",
+      "redacted_sha256": "e3cdaf27d520ebafb17524449f03bc4ba08c47256614b0a7b00cec3dc871b15f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-timestamptz-array-non-utc-calc-results-2026-10-05/clippy.txt",
+      "original_sha256": "1e2b3f019d78f9f6f50a02ad022a82fe9d3d4de5adc180e566174417e2b07aa8",
+      "redacted_sha256": "4ad6cd83f9d75677607ef19666c0adfd97b9bbd5964e24b61782e4bdde3b3414",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-timetz-array-calc-reimport-results-2026-10-05/clippy.txt",
+      "original_sha256": "90d9722e064bd8f8bec995b08884a9aefe543c821ed1c220fb4d3a765631d482",
+      "redacted_sha256": "a461fd2833215ce9a86187da8c26f25bea16746cf67af8ff91594e2c4c87ae86",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/postgres-uuid-array-calc-reimport-results-2026-10-05/bookiee-export-test.txt",
+      "original_sha256": "17ada895fd95452bd9e28fd972e3f0f8e352fbb9a22e540186df7ed248e12ca6",
+      "redacted_sha256": "b1d03e629c65bb945888c1751304834d94c40f8a70f900ee4079fb4f607d2949",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-arithmetic-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "4740d584f4a4b2382dec2ee1080cb592f037d742f30e2804775e11b0a7948a9d",
+      "redacted_sha256": "390f60a411bfe13d0480b8f4b9627d745dce83ef8d3f30d401e2320b3e0778e7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-arithmetic-any-results-2026-10-04/test.txt",
+      "original_sha256": "d0150a90bac9d2feb602436bb6698e5e92d035193ab4d2898cc3cbc63f24c03b",
+      "redacted_sha256": "d893ac989fca3ffbadd12d53fbf7ef3fe989cf9dea3bd8cce27f6b7870ca4788",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-attached-any-metadata-results-2026-10-03/app-focused.txt",
+      "original_sha256": "e3280a657c45107ac2f6ac5529f5e506b6c207da58f89ae7a04bfd8232bce08c",
+      "redacted_sha256": "52d184b577316b1f8ee93786459047587448c086c9bf920e163b9cc90ef8505b",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-attached-any-metadata-results-2026-10-03/clippy.txt",
+      "original_sha256": "b37308a2c5073c705c6db2d536c0ca28c6ec0d4c81acc5610609d1dbcdd83c1e",
+      "redacted_sha256": "4562b3c0c6a7058a8f3b6e58c781557ade9c19a76f6419e6224c84df49c41c0c",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-attached-any-metadata-results-2026-10-03/focused.txt",
+      "original_sha256": "a5baa72ae96cea32ee3a006d5df8b75651dc843e19d557484170f94394740d4b",
+      "redacted_sha256": "bf2b53a0063569eb558ad3c998e537d4ac734048c4c67d6cbd054907fc41c35e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-attached-any-metadata-results-2026-10-03/sqlite-driver.txt",
+      "original_sha256": "96fd77ebaf2d3ae34b7679a70942722e0775ea673189c389494045112d375469",
+      "redacted_sha256": "673f6605833dfdf656147357bcba6e1c098e02d2ab376bcb56b285eba5bdff0f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-cast-blob-any-csv-results-2026-10-04/clippy.txt",
+      "original_sha256": "b0178550b5cd46817d1d67dbcefcba240c030f283a36e20239869e965d920c11",
+      "redacted_sha256": "d9cea9e27370d9036ad7735768617204450b9e8455039a9cfb3c0623b48beca2",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-coalesce-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "1f22649c061859814ee4e146f200737ec43e9b086488b95b8cfc126d86d6cd2e",
+      "redacted_sha256": "2c1dceeb03aee2a50ac1e89dbffe3bc1083ae8b3392a5c27fde1b851c6677142",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-computed-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "f61d810162b134b17693bfa0a75dcfaab88ee4ba8264950208a6ba17f758d49d",
+      "redacted_sha256": "b825975ede1ec727f66137c0dad855715d406e6becbf34efc68a30f5b7458ba7",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-group-concat-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "98b25fc570acbbd251ccd6462d78687faf79a9e8fd5c311abb63dc1058864479",
+      "redacted_sha256": "cc982cf93d00d5630c9926b721ef71a01dcf587de1583b7a018b2c6301e87328",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-min-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "6f23d00fdcd853e4c6442a625b9ae5b7a7cb6b0f4c1d22ffe6ef4c6342868f00",
+      "redacted_sha256": "d6e3ff7a7f4e55ad052356b490b05f89f5cea889b5b6068bd459b5aa31284096",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-nullif-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "fcdff4c35df4d00fc14865b746265f82241443f450bec00d08a865b1cbaf4d82",
+      "redacted_sha256": "a9554ddc9cc2432ae6febdd73ab28c20a70ac3171e0d8212435481691c166adb",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-nullif-any-results-2026-10-04/test.txt",
+      "original_sha256": "e30062af85baf169013b13487b9de5b4082ae5fbb81a2f3e042398fca58e64f6",
+      "redacted_sha256": "1e569d89b64f65bbd8f17437316914f4ab305e213ca582c94bed8370482b62a6",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-query-empty-metadata-results-2026-10-03/app-focused.txt",
+      "original_sha256": "5cb661c3967f35e7947641f17ba9396b6e2a057247b393ef54640f8bf5e1b6ee",
+      "redacted_sha256": "4035702693ccc306a3731cf3d1be7cc7542e73476688669b5aba7d0d6867dc20",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-query-empty-metadata-results-2026-10-03/clippy.txt",
+      "original_sha256": "a67e4a1526744a9936c0c7f8440bff92f7f2fb824294e9e2deac83b2f0de9d08",
+      "redacted_sha256": "d336000ba02d4648e818bf35c3e8b42112b815d3b42389b490b44c535077d715",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-query-empty-metadata-results-2026-10-03/focused-driver.txt",
+      "original_sha256": "9c9ed6f4e7dddf1fc02f19564ab9be8b2b63a632dcea61aae626f6ae8ec09992",
+      "redacted_sha256": "983b31bb39ae0d53b61db9eb27992d67a07eb2553ba35d3a02ed5048c399e30d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-query-empty-metadata-results-2026-10-03/sqlite-driver.txt",
+      "original_sha256": "b0130bbc6eaa2122912fab9f43e8a58c3fd144f7d3e89a4b105c58d02321cf86",
+      "redacted_sha256": "d8ebdf684398c52619ed34b056dc7591e258d2f7a7fe20a7331480cb1395ac7d",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-strict-any-query-csv-results-2026-10-03/app-focused.txt",
+      "original_sha256": "e1952a7552060a5f81f7b6fb7c30459b9c89ced0f21eb80edcc7a1619367b14d",
+      "redacted_sha256": "6e413b83c6c6b31a97c2e59bc1aba9dfa03cf46de239d0c1b213f5c55de86a19",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-strict-any-query-csv-results-2026-10-03/clippy.txt",
+      "original_sha256": "7dc3269cbf154b76d9113d757d020c8ed55de7c6698464c8e7541d04711e8e9e",
+      "redacted_sha256": "579a14e5b5a4c41f45fde28ce71df233de68386aeba7a2e42f15fc40c0c42731",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-strict-any-query-csv-results-2026-10-03/sqlite-driver.txt",
+      "original_sha256": "297e8acdeded23bcfdf1abefc79b420a1583e39d1ef94f75d753dd141def4cfa",
+      "redacted_sha256": "bb497916eb1a4c5c467ff64ef233cb616dc23cba8fca9c403ec0d1e32f74aa90",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-total-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "c85279bb54879b7fb3c0196b4c193a0707081ef48eba4fd539521120654a3fa7",
+      "redacted_sha256": "39e0ed94108c02a4e68025ad93af45051db49b100d04f245d7af8d449d515593",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/app-sqlite-any-csv.txt",
+      "original_sha256": "e43458bef274eef17e055fc45f45e962344ab52518fd9cc66a03ab6aa69c8729",
+      "redacted_sha256": "5a29181cebfe2dd39833f076b25697dd7190bbbe4b60048fc4ce9d9a3bbeecb3",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/clippy.txt",
+      "original_sha256": "dd8af3ff82ff323f9724709f141165e557337e8c552bb214d03f462d94c1b672",
+      "redacted_sha256": "9fb3c2facdfdb8836e1eb2fd734f5d2ae53af6383d5114737c9ff05a7fad8370",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-csv-roundtrip-results-2026-10-04/sqlite-driver.txt",
+      "original_sha256": "a141e5f5fd26d4408508f1c815fdcc528cc8bce040eee5e7eb5dc4db0e1a1222",
+      "redacted_sha256": "3f0045253463f90f984819da24994f177bcf66a1adc485ed86a263556a75307e",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-export-results-2026-10-04/clippy.txt",
+      "original_sha256": "11c00a937796a3c1e404d2955c376d847f57dff10e9555708abbafdd62473533",
+      "redacted_sha256": "62a63e780621ef4171f6889590212f8bb3945219268c40d5b73ec55dcac2314a",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-results-2026-10-04/app-sqlite-any.txt",
+      "original_sha256": "963eb3bc7ac9bac21a05e1b793b3199d8dacfefeb3b2e87d4967c0f28bb2eed6",
+      "redacted_sha256": "92cf76ab55409b4f07035716f75b06b351c533fc7a0012133fcbbbd337d68c77",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-results-2026-10-04/clippy.txt",
+      "original_sha256": "0dac9b1dfc40ee509e03d3c57664be8ba7419b08e0b186e871b98cee05710e55",
+      "redacted_sha256": "2c85da605136696dd23a551b40ba8197005c20b18793117b95afb6dd0bda9653",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-union-any-results-2026-10-04/sqlite-suite.txt",
+      "original_sha256": "38b55c36fd58a7973c0b073264741d65acc1b9804741d35268caea9a31ded72b",
+      "redacted_sha256": "f5e656c1a7339f938b1eddc9ed7df51b7c56a7b706bf4bb356c5bceea78de92f",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/bookiee-export-test.txt",
+      "original_sha256": "2f510673407c639e5e06ff154b3c88ff77dd52ad397cdbee59db149bcc234ee8",
+      "redacted_sha256": "d79b9235c54e1a9f1500f83dd666acfe2e92caeff4f9830ac4eadb6d945fc084",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    },
+    {
+      "path": "docs/evidence/sqlite-xlsx-calc-formula-text-results-2026-10-04/clippy.txt",
+      "original_sha256": "ce188a9fcbda62092659663228be09d6297535e7f327c0cefb019b0fa4f2a470",
+      "redacted_sha256": "142292b7da8afc422e8f2df6a2f30f2dfabf606dd12b51af5149cbf5902e9333",
+      "redaction": "Normalized the local home-directory path in the 2026-10-14 evidence cleanup; other line content and test outcomes are unchanged."
+    }
+  ]
+}

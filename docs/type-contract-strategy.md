@@ -1,6 +1,6 @@
 # B3 type and consumer work board
 
-The shared technical standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). Open B3 work lives on [Bookie Project #3](https://github.com/users/cozyGarage/projects/3) with **Lane = B3** (label `lane:b3`). The [sprint](bookie-0.2-sprint.md) owns order and acceptance. Case proof lookup is [value-contracts.md](value-contracts.md).
+The shared technical standard is [ADR 0007](decisions/0007-type-and-value-preservation.md). Open B3 work lives on [Bookie Project #3](https://github.com/users/cozyGarage/projects/3) with **Lane = B3** (label `lane:b3`). The [post-release backlog](backlog.md) owns selected work order; Project #3 owns status and lane, and each issue owns acceptance. Case proof lookup is [value-contracts.md](value-contracts.md).
 
 This page keeps the accepted-refusal list and the bounded case record. Task status and retest signals are on the project. The pre-migration board (retest table, engine remaining-scope matrix and long evidence narrative) is in [archive/type-contract-strategy-pre-project-migration-2026-10-12.md](archive/type-contract-strategy-pre-project-migration-2026-10-12.md). Earlier narrative is in [archive/type-contract-history.md](archive/type-contract-history.md).
 

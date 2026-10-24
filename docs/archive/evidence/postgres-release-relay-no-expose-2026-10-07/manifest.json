@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-reconciled",
+  "source_commit": "ccdfcb0852be5031e91858c52059726d4c2cabba",
+  "source_sha256": {
+    "tests/fixtures/postgres-release/relay/Dockerfile": "457da582fc875a207440d355c3c8821f9686594cb470da50f09f0db6324f57e6",
+    "tests/fixtures/postgres-release/docker-compose.yml": "a78ce1e163c46329cad505f11fdab0ab1e241acdf3d732827bea0db65c5dad9e",
+    "scripts/test-postgres-release.sh": "1c067e429e64e0c143999a35cafeefa8ad3fec3a158e451963582448574144af",
+    "crates/app/tests/gtk_safety.py": "03f1e8a4fd25e9bc78fc8efda690d016156ce8a43442436e5baec5d9fe09fe91",
+    "crates/app/tests/gtk_ux.py": "5782950623c4f15c98d31369a365ec519f7c02adc812ab46957a006d24ccb00b"
+  },
+  "purpose": "Verify PostgreSQL release harness connectivity after removing relay EXPOSE metadata flagged by SonarCloud.",
+  "command": "TMPDIR=[user-home]/t CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target bash scripts/test-postgres-release.sh",
+  "result": "passed; process exit 0",
+  "gtk_scenarios": [
+    "postgres_saved_mtls_connection_authenticates_and_queries",
+    "postgres_ssh_unknown_host_key_decline_is_durably_audited",
+    "postgres_ssh_multihop_trusts_both_hops_and_queries",
+    "postgres_ssh_second_hop_decline_does_not_learn_key",
+    "postgres_ssh_changed_second_hop_key_is_refused"
+  ],
+  "remaining": [
+    "This is local pre-merge evidence; hosted checks, frozen candidate, and installed package/Wayland acceptance remain separate."
+  ],
+  "log_sha256": {
+    "focused.txt": "d4af80901fe80c5312bfd9523d825070202036f5c7cd3d2c874b4cbcc7039b2b"
+  }
+}

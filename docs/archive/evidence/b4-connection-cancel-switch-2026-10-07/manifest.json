@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-ssh-audit",
+  "source_commit": "7f4cc592caa4e97ef9243354a8c811cf9b7092cd",
+  "source_sha256": {
+    "crates/app/tests/gtk_ux.py": "d843594f0b877a627881ea22b1fd8ccf9d5577960ae3fc60d82a610f4d6a4d45"
+  },
+  "engine": "GTK app with isolated SQLite fixtures and a local hanging TCP listener",
+  "case": "A cancelled connection attempt is followed by a saved database switch, without misrouting writes or stealing another window's connection",
+  "scenarios": [
+    {
+      "selector": "connect_dialog_cancel_stops_a_hanging_connection",
+      "command": "TABLEPRO_GTK_SCENARIO=connect_dialog_cancel_stops_a_hanging_connection bash scripts/test-gtk-safety.sh",
+      "result": "passed; process exit 0",
+      "log": "cancel-then-switch.txt"
+    },
+    {
+      "selector": "switching_one_window_leaves_the_other_windows_edits",
+      "command": "TABLEPRO_GTK_SCENARIO=switching_one_window_leaves_the_other_windows_edits bash scripts/test-gtk-safety.sh",
+      "result": "passed; process exit 0",
+      "log": "window-ownership.txt"
+    }
+  ],
+  "contract": [
+    "The first scenario cancels a hanging connection attempt, closes the form, switches from the original SQLite workspace to saved connection B, writes a row, and verifies the original database stayed unchanged while B received the row.",
+    "The second scenario switches one window while a second window owns a pending edit, then verifies that edit is still saved only to its own database.",
+    "The scripts emitted an 'A connection to the bus can't be made' teardown line after their passed selector; both process exit codes were 0."
+  ],
+  "remaining": [
+    "This verifies local GTK/SQLite ownership paths; it is not an installed package or hosted CI result."
+  ],
+  "log_sha256": {
+    "cancel-then-switch.txt": "47fea632004c1038f28eac73fc9604d164f1df2dfe1ff58edbd18df5d7222b7d",
+    "window-ownership.txt": "283770fe5207aedcb9a6854b50f7a99861a1c49beeac936804465477892eda36"
+  }
+}

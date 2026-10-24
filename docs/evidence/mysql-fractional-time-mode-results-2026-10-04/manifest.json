@@ -42,8 +42,8 @@
     "diff_check": "git diff --check passed"
   },
   "log_sha256": {
-    "value-contracts.txt": "f4bc23be360868438b597a2a855c8b4df2a03005867c46bde8ee8744b720b6d0",
-    "clippy.txt": "a21145223a9e93994de7dc7088c52e3ffbb49d722b26324bfb40dc1e4c7dd4f2",
+    "value-contracts.txt": "057d8791019c0489540faea8ffe03da7596c410995b6a0887a2f14a4f0ee41ad",
+    "clippy.txt": "24a651fedacfc99022b6d18fa21e83ae3c21971254947bfe512f1c5f8dec13c1",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

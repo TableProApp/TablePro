@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/pg-enum-set-role-shadow-search-path",
+  "source_commit": "317ce36f7cc4d41c13c515758d5cf4619d5d42ba",
+  "working_tree_note": "The tested source files match source_commit; evidence, strategy and changelog updates were generated afterward.",
+  "case": "PostgreSQL enum parameter inference after SET ROLE with a same-named shadow enum in search_path",
+  "test": "enum_role_context_contract::value_contract_enum_parameter_stays_with_target_type_after_set_role",
+  "source_sha256": {
+    "crates/drivers/postgres/tests/integration.rs": "010710e6d0691fcb6758fa86f4829805a0e3ce4a041e408e3495bd97332b9696",
+    "crates/drivers/postgres/tests/support/enum_role_context_contract.rs": "0188ae5ad9070f2121e35d662e2f03d0f18d6d11cd90b53dab69c53050b7a36b"
+  },
+  "engine": "PostgreSQL 16 Docker integration fixture",
+  "contract": [
+    "A restricted role runs on one dedicated session while search_path places a same-named shadow enum first; target-only and SQL NULL parameters retain the explicitly qualified target column's type.",
+    "The bound target-only query matches a native typed-literal oracle and reports the target enum through pg_typeof().",
+    "A shadow-only label is refused with PostgreSQL SQLSTATE 22P02, matching the native target-enum cast; target and shadow rows and sibling fields remain unchanged."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --locked --test integration -p tablepro-driver-postgres enum_role_context_contract::value_contract_enum_parameter_stays_with_target_type_after_set_role -- --exact --ignored --test-threads=1",
+      "result": "1 passed, 0 failed, 0 ignored",
+      "log": "focused.txt"
+    },
+    "postgres_driver_suite": {
+      "command": "rtk proxy cargo test --locked -p tablepro-driver-postgres",
+      "result": "44 unit tests passed; 0 failed; Docker integration tests remain ignored in this non-Docker suite",
+      "log": "driver-tests.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --locked -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": {
+      "command": "rtk proxy git diff --check",
+      "result": "passed",
+      "log": "diff-check.txt"
+    },
+    "local_quick_gate": {
+      "command": "rtk proxy bash scripts/ci-local.sh quick",
+      "result": "Preflight passed; all quick checks passed",
+      "log": "quick-gate.txt"
+    }
+  },
+  "log_sha256": {
+    "focused.txt": "830bb403fe75dc08ff77c04dddbadca7d5c4f2e716e94b95123865358e287f84",
+    "driver-tests.txt": "11e0931c599808f14023950c57d3a60b56513739dc71d0e37cd422a35d176546",
+    "clippy.txt": "f43da9c1e12baa691b5902539ce249322185f74b1b564ed5920b96b5c1f80d53",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "quick-gate.txt": "7fae41effab7974f171817e92def7f7bade68a8725183de0173433401da1c852"
+  },
+  "remaining": [
+    "Other PostgreSQL enum role/session combinations and the wider B3 engine/type/consumer/configuration matrix remain open."
+  ]
+}

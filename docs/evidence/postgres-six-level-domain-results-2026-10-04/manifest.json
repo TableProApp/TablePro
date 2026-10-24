@@ -42,7 +42,7 @@
   "log_sha256": {
     "focused.txt": "11c7041123834bcbdc775299d4518bcaadfe0365a9371bbc4a0a09cff3375473",
     "domain-tests.txt": "cae65dc5e45c5738ed75d1daf4c70c8f8cc5c0007f403645cb78b254bec5de6c",
-    "clippy.txt": "25684e9665a15a09a4d13b453333ea2b6f1f73e96f782e4f62d810f4d912a26f",
+    "clippy.txt": "78a691e11117071cec8ee5defb5314c0e34d0b408394288e4b75f0cd90d088c2",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

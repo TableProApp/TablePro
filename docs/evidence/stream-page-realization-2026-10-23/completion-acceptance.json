@@ -3,7 +3,7 @@
     "input": "stream-2m-baseline.json",
     "exit_code": 1,
     "stdout": "",
-    "stderr": "Traceback (most recent call last):\n  File \"/home/trung/Projects/bookie-ux-stream-realization/docs/evidence/stream-page-realization-2026-10-23/check-completion.py\", line 9, in <module>\n    assert cycle[\"terminal_status\"] == \"complete\", f\"cycle {cycle['cycle']} did not complete\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: cycle 1 did not complete\n"
+    "stderr": "Traceback (most recent call last):\n  File \"$HOME/Projects/bookie-ux-stream-realization/docs/evidence/stream-page-realization-2026-10-23/check-completion.py\", line 9, in <module>\n    assert cycle[\"terminal_status\"] == \"complete\", f\"cycle {cycle['cycle']} did not complete\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: cycle 1 did not complete\n"
   },
   {
     "input": "stream-2m-realization-pager.json",

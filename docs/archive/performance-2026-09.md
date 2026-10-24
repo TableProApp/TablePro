@@ -10,7 +10,7 @@ The baseline binary was rebuilt with the PostgreSQL driver source from `7d828813
 
 A separate connection samples server activity every 5 ms and continues until the tagged statement is inactive. `sampled_active_ms` is an approximate observed span including transfer/backpressure, not the engine's reported execution time; null means the query was not sampled. VmHWM is process high-water RSS, including fixture setup and the warm-up. It does not reset between attempts; compare the scenario peak, not per-attempt memory deltas.
 
-Final comparison ran after builds finished. Normal desktop background processes remained. Absolute sub-millisecond differences are not meaningful. Raw samples: [before](../evidence/2026-09-stabilization/postgres-before.jsonl), [after](../evidence/2026-09-stabilization/postgres-after.jsonl).
+Final comparison ran after builds finished. Normal desktop background processes remained. Absolute sub-millisecond differences are not meaningful. Raw samples: [before](evidence/2026-09-stabilization/postgres-before.jsonl), [after](evidence/2026-09-stabilization/postgres-after.jsonl).
 
 | Scenario | Before median ms | Before peak MiB | After median ms | After peak MiB |
 |---|---:|---:|---:|---:|

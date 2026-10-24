@@ -4,7 +4,7 @@ Status: proposal, not scheduled. Source: TablePro PR 3743 (update, upsert and in
 
 ## Today
 
-CSV and `.xlsx` import (`ui/import_dialog.rs`, `crates/core/src/import/plan.rs`) has two modes, `ExistingTable` and `NewTable`. Both only insert. `build_insert_plan` returns one `InsertPlan`: a single INSERT statement shape plus every row's bound values, so one approval covers the whole file. A key that already exists makes the database refuse the row, and the transaction rolls back.
+CSV and `.xlsx` import ([dialog](../../apps/linux/app/src/ui/import_dialog.rs), [planner](../../crates/core/src/import/plan.rs)) has two modes, `ExistingTable` and `NewTable`. Both only insert. `build_insert_plan` returns one `InsertPlan`: a single INSERT statement shape plus every row's bound values, so one approval covers the whole file. A key that already exists makes the database refuse the row, and the transaction rolls back.
 
 ## The gap
 
@@ -24,7 +24,7 @@ Someone reloading a corrected export, or syncing a lookup table, has to delete f
 3. **Statement shape differs per engine**, and each needs a failing-before test against a real server:
    - PostgreSQL and SQLite: `ON CONFLICT (<key>) DO UPDATE SET ... / DO NOTHING`.
    - MySQL and MariaDB: `ON DUPLICATE KEY UPDATE ...` and `INSERT IGNORE` (which also hides unrelated errors; prefer a no-op update of the key column for skip).
-   - SQL Server: no single-statement equivalent short of `MERGE`. The policy proposal notes MERGE has had classification gaps, so SQL Server should stay out of the first version.
+   - SQL Server: no single-statement equivalent short of `MERGE`. The current classifier keeps `MERGE` on its fail-closed unknown-write path ([regression](../../crates/policy/src/classify/tests.rs)); confirm its approval and audit behavior before considering SQL Server support.
    - ClickHouse, MongoDB, Redis, DuckDB: not assumed; each would need its own check. First version should list supported engines explicitly and refuse the rest.
 4. **Policy and audit.** The statement class changes (an upsert is both insert and update). `PolicyGuard` must classify it as the stricter of the two, show it in the approval dialog, and write one audit entry. Confirm this against `crates/policy` before building; do not assume.
 5. **Values keep their contract.** Bound values, the MySQL empty-string handling and `OVERRIDING SYSTEM VALUE` for identity columns already live in `build_insert_plan`. The new modes must reuse that binding, not fork it (ADR 0007).

@@ -70,4 +70,4 @@ The previous review already closed MongoDB collection drop, generated/identity e
 5. Complete object administration, then streaming export/import and snapshot semantics. Validate engine quoting, cyclic dependencies, progress and partial failure before advanced format options.
 6. Cross-connection transfer and engine-native backup/restore become independent projects. New drivers follow existing-driver release evidence.
 
-No feature in this list bypasses the safety layers. [Upstream sync](../upstream-sync.md) records actual behavioral ports; this matrix records gaps without implying they have shipped.
+No feature in this list bypasses the safety layers. The [dated upstream history](upstream-sync-history-2026-10-22.md) records actual behavioral ports; this matrix records gaps without implying they have shipped.

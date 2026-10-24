@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "B4-11 MySQL and MariaDB failed-batch rollback effects on the current merged Linux tip",
+  "source_commit": "c2f3f78b954ef0c7cb7d8956f035aa08edc71c7f",
+  "source_sha256": {
+    "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "11fd671e4e36849fd3ab8e61f7fcf8b7ddf492c0ffad3ca1729b256b24fb9244",
+    "crates/drivers/mysql/tests/shared/mysql_atomic_parts/advisory_lock.rs": "1709621fa0836cd7fc975bfc394d39543c23e798704d28a16bc0087995b7851a"
+  },
+  "test": "mysql_atomic::",
+  "command": "rtk proxy env CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target TABLEPRO_TEST_RUN_ID=b4-mysql-atomic-c2f3-capture-20261009 cargo test --locked --test integration -p tablepro-driver-mysql mysql_atomic:: -- --include-ignored --test-threads=1",
+  "runtime": "Local Linux host with Docker 29.7.2 and the repository MySQL/MariaDB fixtures",
+  "result": "18 passed; 0 failed; 0 ignored; 72 filtered out; 123.93 seconds; exit code 0",
+  "coverage": [
+    "InnoDB rollback and direct effects on MyISAM, MEMORY, CSV, ARCHIVE and BLACKHOLE",
+    "MySQL and MariaDB advisory locks, including lock release when the owning pool closes",
+    "LAST_INSERT_ID, trigger session variables, auto-increment allocation and multi-row insert trigger effects",
+    "Rollback failure after connection loss and bounded result behavior"
+  ],
+  "not_established": [
+    "Optional/vendor MySQL engines such as NDB",
+    "Side-effect classes beyond those named in this test group",
+    "Frozen-candidate, hosted, distribution-package or installed acceptance"
+  ],
+  "latest_validation": {
+    "date": "2026-10-10",
+    "source_commit": "ca1080a55c9a47fb0d241d92395820864836491f",
+    "code_tip": "c2f3f78b954ef0c7cb7d8956f035aa08edc71c7f",
+    "source_sha256": {
+      "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "11fd671e4e36849fd3ab8e61f7fcf8b7ddf492c0ffad3ca1729b256b24fb9244",
+      "crates/drivers/mysql/tests/shared/mysql_atomic_parts/advisory_lock.rs": "1709621fa0836cd7fc975bfc394d39543c23e798704d28a16bc0087995b7851a",
+      "crates/drivers/mysql/tests/integration.rs": "e67c543f33e87cbe3c9f29ddef74f23a3ca07f4573671266c5f7ac8c65c3a636"
+    },
+    "command": "CARGO_TARGET_DIR=[user-home]/Projects/tablepro/linux/target rtk cargo test --locked -p tablepro-driver-mysql --test integration mysql_atomic -- --include-ignored --test-threads=1",
+    "runtime": "Local Linux host with Docker MySQL and MariaDB fixtures",
+    "result": "18 passed; 0 failed; 0 ignored; 72 filtered out; 125.51 seconds; exit code 0",
+    "limitation": "The source tree tip is two documentation commits after the nearest code tip; the test source hashes match the code-tip run above. This does not establish optional/vendor engines, other effect classes, frozen-candidate, hosted, package-installed or native acceptance."
+  },
+  "log_sha256": {
+    "mysql-atomic.txt": "659c1cb0c973c26c26b3905e13a9e7580603e06713cea3a37bf2e3756aeb7a43"
+  }
+}

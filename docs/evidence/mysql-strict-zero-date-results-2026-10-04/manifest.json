@@ -44,7 +44,7 @@
   },
   "log_sha256": {
     "value-contracts.txt": "9734b4b6c98b65352b8d10dad0ae0978e8af0fb90754a7dffab5f012f6822cef",
-    "clippy.txt": "93444c0a2b3f66d516ad6dabb9cb686ed1d88e7624386cffe55bbf4e4d4ac5c7",
+    "clippy.txt": "a378a01498f1c36ea4c94d392817e8018f02a32ad24c897bd915ecee1b9df8f1",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

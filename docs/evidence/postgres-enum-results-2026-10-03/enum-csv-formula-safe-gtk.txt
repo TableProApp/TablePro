@@ -5,7 +5,7 @@ dbus-daemon[2630924]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
-fusermount3: failed to access mountpoint /run/user/1000/gvfs: Permission denied
+fusermount3: failed to access mountpoint $XDG_RUNTIME_DIR/gvfs: Permission denied
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.6' (uid=1000 pid=2630932 comm="[user-home]/Projects/tablepro/linux/target/release")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Activating service name='org.freedesktop.impl.portal.PermissionStore' requested by ':1.8' (uid=1000 pid=2631005 comm="/usr/lib/xdg-desktop-portal")
 dbus-daemon[2630872]: [session uid=1000 pid=2630872 pidfd=5] Successfully activated service 'org.freedesktop.impl.portal.PermissionStore'

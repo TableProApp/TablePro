@@ -12,7 +12,7 @@ try:
     prefs=json.loads(preferences.read_text());prefs['color_scheme']=os.environ.get('BOOKIE_PANEL_THEME','dark')
     prefs['editor_font_size']=int(os.environ.get('BOOKIE_PANEL_FONT','12'));prefs['query_timeout_secs']=1;preferences.write_text(json.dumps(prefs))
     environment.update(GDK_BACKEND='wayland',GTK_A11Y='atspi',GIO_USE_VFS='local')
-    process=ui.start_application('/home/trung/Projects/bookie/target/debug/tablepro-app',environment)
+    process=ui.start_application(os.environ.get('BOOKIE_APP_BINARY','target/debug/tablepro-app'),environment)
     clients=json.loads(subprocess.check_output(['hyprctl','clients','-j']))
     own=next(c for c in clients if c['pid']==process.pid)
     address='address:'+own['address']

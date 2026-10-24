@@ -58,7 +58,7 @@
     "gnumeric-roundtrip.xlsx": "2e9d590da18db60c622de39ca6d3fe506283d01ebdbb83e5c839bf00ee426e32"
   },
   "log_sha256": {
-    "bookiee-export-test.txt": "2777d5fc4293da2b77cd4a3dc83d098ebfef735575f873bccbda896b0b209efe",
+    "bookiee-export-test.txt": "90c2ee794575de44745a99094001c5f2fbc861bfa002f06ddf6e5702e5b3e0d8",
     "calc-roundtrip.txt": "3e78b26037cd1b124c32dd802e4f26ffd9deb67b8f25d8f8dd0fc2289af4e4ab",
     "gnumeric-run.txt": "8b9aa02b198ec49c21c8af5cf1782d3b2a85e55d47c5699b08dbc7d6f4c504a8",
     "consumer-check.txt": "0d80c7d20e1556abda197a0a0260dee3165195b752d0bfa9735999b3b32bc15b"

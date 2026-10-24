@@ -73,7 +73,7 @@
     "calc-roundtrip.xlsx": "606a9a0fa88686706891bea12cf805bff40457c28344b63e94124f5744918591"
   },
   "log_sha256": {
-    "bookiee-export-test.txt": "7b1352dd2c66e3e4439e9edd627cf09da6cfe73ea04c1703f332cdaa17e68826",
+    "bookiee-export-test.txt": "d323d8b9e7b992e61ce46e75039ea5fca6757b604f0a494c070060b3d662b89a",
     "postgres-value-contracts.txt": "db60e82391db88fcaec64d6a815eba9b87197922790947f2515c1b37b1294698",
     "calc-version.txt": "141d62e73b80f274423dfdc659267ae120bfade9db2030c025646aff8919a44e",
     "libreoffice-roundtrip.txt": "727452b13c67af14fe76c2b542c25a4062871bcf6bae5f7d07a7a87360e0a9ac",

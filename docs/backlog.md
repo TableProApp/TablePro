@@ -1,21 +1,17 @@
 # Backlog after 0.2.0
 
-BookiE 0.2.0 was published on 2026-10-23. The 0.2.0 delivery sprint is closed; remaining work from that period stays in the existing issue backlog below. This page orders post-0.2.0 work and candidates for 0.2.1. The exact 0.2.1 scope is not committed here: Project #3 and the owning issues keep status and acceptance, and a release scope should be set from selected issues before release qualification. The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the former release checklist.
+The [0.2.0 sprint and publication are complete](bookie-0.2-sprint.md); remaining work from that period stays in the existing issue backlog below. This page orders post-0.2.0 work and holds candidates for future releases. Neither the 0.2.1 nor 0.3 scope is committed here: Project #3 and the owning issues keep status and acceptance, and each release scope should be set from selected issues before qualification. The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the former release checklist.
 
 The [capability review](capability-review.md) records general evaluation
 criteria and current technical boundaries. An item becomes backlog work only
 after selection; add an owner, acceptance layer and GitHub issue when promoting
 it. Do not treat a capability gap as a release commitment.
 
-## Completed Linux code-adoption packets
-
-The nine selected packets under [#1149](https://github.com/cozyGarage/BookiE/issues/1149), [#1140](https://github.com/cozyGarage/BookiE/issues/1140) through [#1148](https://github.com/cozyGarage/BookiE/issues/1148), are closed. Their native-driver investigations, conformance, paging, lifecycle checks, notices, release-input checks and tooling evaluations are completed packets, not the active queue. The [dated review](archive/upstream-linux-adoption-2026-10-18.md) preserves the selection rationale. Their completion does not publish a release or close separate qualification issues.
-
 ## Current development order
 
-Finish existing pull requests first, then address destructive operations [#1176](https://github.com/cozyGarage/BookiE/issues/1176) and [#1175](https://github.com/cozyGarage/BookiE/issues/1175), value preservation [#1177](https://github.com/cozyGarage/BookiE/issues/1177), and the security findings and 0.2.0 acceptance follow-ups below. Reproduce each report before changing behavior. Keep one lane-owned fix and one serialized Forgejo gate at a time.
+Check Project #3 for the live issue order and lane before starting work; issue bodies own acceptance. Reconcile open pull requests before taking the next eligible issue. The review findings below are candidates, not a priority order. Reproduce each report before changing behavior. Keep one lane-owned fix and one serialized Forgejo gate at a time.
 
-## Remaining 0.2.0 acceptance follow-ups
+## Post-release acceptance follow-ups
 
 These rows remained open after the 0.2.0 delivery decision and are now part of the post-release backlog. They do not reopen the 0.2.0 milestone or define the final 0.2.1 scope. Project #3 and the linked issues own current status and acceptance.
 
@@ -24,6 +20,8 @@ These rows remained open after the 0.2.0 delivery decision and are now part of t
 | AUD-2 | [#598](https://github.com/cozyGarage/BookiE/issues/598) | B4 | Bound GUI approval waits and agent SQL previews |
 | AUD-9 | [#600](https://github.com/cozyGarage/BookiE/issues/600) | B4 | Prevent agent masking leaks through hidden SQL lineage |
 | TEST-15 | [#593](https://github.com/cozyGarage/BookiE/issues/593) | B4 | Verify lost-ack writes are not replayed after reconnect |
+| TEST-25 | [#1545](https://github.com/cozyGarage/BookiE/issues/1545) | B3 | Decide SQLite runtime policy and verify empty-key JSON aggregates on affected and fixed versions |
+| UI-35 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | UX | Complete native Linux acceptance against a local MySQL or MariaDB service and record the app build and socket path |
 | B4-7, B4-16, B4-22 | [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 | Finish installed acceptance for tunnel audit, session invalidation, and bundle audit |
 | TEST-31 | [#556](https://github.com/cozyGarage/BookiE/issues/556) | UX | Triage intermittent installed GTK runs and gather the required full-run evidence |
 | TEST-32 | [#594](https://github.com/cozyGarage/BookiE/issues/594) | UX | Review test-oracle provenance independently of production code |
@@ -32,9 +30,9 @@ These rows remained open after the 0.2.0 delivery decision and are now part of t
 
 Continue existing dependency chains after those fixes: object write capabilities #1065 before shared grid guards #1031, and bounded server messages #1033 before the GTK consumer #1034. Edit ownership #1029 and stream budgets #1032 retain their acceptance. New features remain selected separately; issue status and lane belong to Project #3.
 
-## TablePro and dbx review defects
+## Upstream-client review defects
 
-The [October 20 TablePro and dbx review](archive/tablepro-dbx-review-2026-10-20/README.md) found these through upstream fixes. Each is source reading only: start with the failing regression test, and close the issue with that test as evidence if current code already passes. Two further findings went to existing issues: the ClickHouse `readonly=1` connect path to [#983](https://github.com/cozyGarage/BookiE/issues/983) and the version mismatch to [#1146](https://github.com/cozyGarage/BookiE/issues/1146). The review's feature waves stay candidates in the [feature comparison](0.2-feature-comparison.md).
+The [October 20 TablePro and dbx review](archive/tablepro-dbx-review-2026-10-20/README.md) found these through upstream fixes. Each is source reading only: start with the failing regression test, and close the issue with that test as evidence if current code already passes. Two further findings went to existing issues: the ClickHouse `readonly=1` connect path is tracked in [#983](https://github.com/cozyGarage/BookiE/issues/983); the version mismatch was tracked in [#1146](https://github.com/cozyGarage/BookiE/issues/1146), which is closed. The review's unselected feature waves are listed in [feature candidates](0.2-feature-comparison.md).
 
 | ID / issue | Defect | Lane | Acceptance focus |
 |---|---|---|---|
@@ -62,11 +60,11 @@ From the 2026-10-22 dbflux review and the audit of closed issues. Each is an iss
 | B4-24 / [#1365](https://github.com/cozyGarage/BookiE/issues/1365) | Decide the TLS fingerprint pin | B4 |
 | UI-43 / [#1366](https://github.com/cozyGarage/BookiE/issues/1366) | Completion through the session search_path | UX |
 
-The [#1327](https://github.com/cozyGarage/BookiE/issues/1327) keyring prompt, [#1333](https://github.com/cozyGarage/BookiE/issues/1333) close handling, [#1180](https://github.com/cozyGarage/BookiE/issues/1180) and [#1251](https://github.com/cozyGarage/BookiE/issues/1251) carry the dbflux design notes as comments. Vendored dependency patches: see [upstream patches](proposals/upstream-patches.md); `mongodb` SCRAM hunk can be dropped after the release containing [mongo-rust-driver#1833](https://github.com/mongodb/mongo-rust-driver/pull/1833).
+The keyring prompt in [#1327](https://github.com/cozyGarage/BookiE/issues/1327) is closed. Open issues [#1333](https://github.com/cozyGarage/BookiE/issues/1333), [#1180](https://github.com/cozyGarage/BookiE/issues/1180) and [#1251](https://github.com/cozyGarage/BookiE/issues/1251) retain related dbflux design notes in their comments. Vendored dependency patches: see [upstream patches](proposals/upstream-patches.md); `mongodb` SCRAM hunk can be dropped after the release containing [mongo-rust-driver#1833](https://github.com/mongodb/mongo-rust-driver/pull/1833).
 
-## 0.2.x features
+## Feature candidates
 
-The approved native workflow improvements are tracked by [UI-44 / #1349](https://github.com/cozyGarage/BookiE/issues/1349): session transaction actions, visible run scopes, bounded sidebar fields and resizing, exact header metadata and scope-first export. The [workspace spec](../specs/database-workspace/spec.md) owns behavior; the issue and PR own implementation and acceptance. This does not duplicate the pending sidebar-overlay fix #1346.
+The native workflow improvements are tracked by [UI-44 / #1349](https://github.com/cozyGarage/BookiE/issues/1349): session transaction actions, visible run scopes, bounded sidebar fields and resizing, exact header metadata and scope-first export. The [workspace spec](../specs/database-workspace/spec.md) owns behavior; the issue and PR own implementation and acceptance. These candidates are not assigned to a release. The related narrow-window sidebar fix landed in [#1346](https://github.com/cozyGarage/BookiE/pull/1346).
 
 | Row | What | Notes |
 |---|---|---|
@@ -75,18 +73,17 @@ The approved native workflow improvements are tracked by [UI-44 / #1349](https:/
 | UI-19 | Foreign key value picker, estimated counts | FK navigation, paste TSV and the ENUM and SET pickers (PostgreSQL, MySQL, MariaDB) landed |
 | UI-39 | Pending grid edit cues that work without color and are announced to assistive technology | Modified, inserted and deleted rows need persistent visible state cues, accessible descriptions, and coverage for revert and widget recycling ([#1126](https://github.com/cozyGarage/BookiE/issues/1126)) |
 | UI-20 | Server output (NOTICE, PRINT) and a timing breakdown | with PERF-4 |
-| UI-22, UI-23, UI-26 | Multi-cursor editing, typed PostgreSQL activity console, reusable SSH profiles | accepted for later; preview tabs, split panes, SQL code folding and the docked query history panel have landed (#618, #630, #754, #619); PostgreSQL catalog objects are already built (UI-23) |
+| UI-22, UI-23, UI-26 | Multi-cursor editing, typed PostgreSQL activity console, reusable SSH profiles | deferred with no release target; #552 tracks these items. Preview tabs, split panes, SQL code folding and the docked query history panel have landed (#618, #630, #754, #619); PostgreSQL catalog objects are already built (UI-23) |
 | PKG-2 | Debian and GNOME desktop pass (UI-D1 to D4; [#557](https://github.com/cozyGarage/BookiE/issues/557)) | the packages keep building and passing the distro floor in CI; this is the desktop acceptance |
-| PKG-4, PKG-8 | Flatpak Flathub submission and screenshots, and the file-access decision ([#558](https://github.com/cozyGarage/BookiE/issues/558); `--filesystem=home` or portal only) | A Debian 13 guest build/install/launch check is recorded in [platforms](platforms.md#flathub); it does not qualify current source. Not part of 0.2.0; decide PKG-8 before PKG-4 |
+| PKG-4, PKG-8 | Flathub submission and screenshots, and the file-access decision ([#558](https://github.com/cozyGarage/BookiE/issues/558); `--filesystem=home` or portal only) | 0.2.0 includes a GNOME 50 Flatpak bundle but no Flathub listing; the current branch targets GNOME 51. A Debian 13 guest build/install/launch check is recorded in [platforms](platforms.md#flathub), but it does not qualify current source. Decide PKG-8 before PKG-4 |
 
 ## Performance
 
 | Row | What |
 |---|---|
 | PERF-2, PERF-7, PERF-8 | A native 100,000-row PostgreSQL query now retains all 20 pages within the estimated-byte budget and can navigate back to rows 1–5,000. #1032 tracks broader ownership and memory-budget acceptance; #554 tracks access to results that exceed the in-memory budget. Other engines and comparable memory profiling still need qualification. |
-| PERF-3 | MongoDB browse on large collections | Compatible `_id` keyset seek landed in #493; supported server-side sorting landed in #837. Other sorted pages and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
+| PERF-3 | MongoDB browse on large collections | Compatible `_id` forward keyset seek landed in #493; supported server-side sorting landed in #837. Reverse and last-page navigation, explicitly sorted pages, and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
-| PERF-5, PERF-6 | Idle memory and binary size, accepted for now |
 
 ## Quality and tooling
 
@@ -94,11 +91,10 @@ The approved native workflow improvements are tracked by [UI-44 / #1349](https:/
 |---|---|
 | TEST-2 | Maintain the selected-package mutation audit in the [Forgejo nightly workflow](../.forgejo/workflows/nightly.yml) and triage survivors under [#559](https://github.com/cozyGarage/BookiE/issues/559). Expected-value provenance is tracked separately by [TEST-32 / #594](https://github.com/cozyGarage/BookiE/issues/594) and [oracle-review](oracle-review.md); dated package results remain in [evidence](evidence/test-quality-2026-10-11/). |
 | AUD-11 consolidation | Finish the single AST walk for classification, masking and blast-radius planning. Behavioural fixes are closed on the current policy suite; shared analysis landed in #506. Structural consolidation follows 0.2.0. |
-| TEST-12 | Verify sample and page-observed type union, plus acceptance evidence, against the bounded 128-document non-snapshot contract in [ADR 0007](decisions/0007-type-and-value-preservation.md) |
+| TEST-12 | Verify sample and page-observed type union, plus acceptance evidence, against the bounded 128-document non-snapshot contract in [ADR 0007](decisions/0007-type-and-value-preservation.md). The [MongoDB census manifest](evidence/mongodb-current-census-results-2026-10-04/manifest.json) pins an earlier collection-wide implementation and app regression run; it is not evidence for the current contract or the driver integration test's Docker result. The current driver regression is `bounded_metadata_sample_merges_types_from_the_requested_page` in `crates/drivers/mongodb/tests/integration.rs`; exact-source Docker acceptance remains open. |
 | APP-MOD | Keep the app layer thin: finish the staged moves of [ADR 0018](decisions/0018-headless-app-services-crate.md) (completion, workspace and browse/edit models, scoped filter and mapping stores, preference data, quick-switcher ranking and retry decisions are now headless; translated errors and the TabView handshake stay in app adapters; continue the remaining service moves), and replace hard-coded driver-name branches in the app layer with driver capabilities, starting with `browse_tab/value_parse.rs` |
 | UI-21, TEST-28 | Fake connection for the GTK tier, native Ubuntu AT-SPI menu reachability ([#560](https://github.com/cozyGarage/BookiE/issues/560)) |
 | TEST-30 | Triage remaining SonarCloud and CodeQL findings; close confirmed false positives with a reason |
-| TEST-36 | Record duration for each installed GTK scenario and retry so suite growth can be measured before changing timeouts or shard layout (origin [#1075](https://github.com/cozyGarage/BookiE/issues/1075) is closed and no open issue owns this row; open one before selecting it); retain current limits until there is measurement evidence |
 | AUD-5 | Move nonessential Rust comments into documentation under the repository comment-line rule ([#563](https://github.com/cozyGarage/BookiE/issues/563)) |
 | DOC-3, DOC-5 | Orca, keyboard-only and high-contrast acceptance; verify typed values and pending edits remain understandable across display and interaction paths ([#561](https://github.com/cozyGarage/BookiE/issues/561)). The [visual matrix](manual-verification-0.2-features.md#visual-audit-matrix) records the proposed acceptance recipe. |
 | PEER-2 | One per-dialect lexer profile (backslash escapes, `E''` strings, `--` rule, quote characters) shared by statement splitting, classification and export quoting, so those paths cannot interpret the same SQL differently |

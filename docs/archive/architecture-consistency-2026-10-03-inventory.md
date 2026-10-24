@@ -7,7 +7,7 @@ items live in the [ledger](../known-issues.md), not here.
 Starting source: `4b7814f5e1f586c3761c1454e66d3394ad2c9609`. Reviewed 2026-10-03.
 
 Every row received the consistency screen described in the review.
-Baseline/current digests and exact checks are in [the manifest](../evidence/architecture-review-2026-10-03/manifest.json).
+Baseline/current digests and exact checks are in [the manifest](evidence/architecture-review-2026-10-03/manifest.json).
 A screened row is not exhaustive semantic certification or a runtime pass.
 
 ## All tracked Markdown at baseline
@@ -33,7 +33,7 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 | [linux/docs/b3-test-scenario-survey.md](b3-test-scenario-survey.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/b4-task-board.md](../b4-task-board.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/baseline-review-2026-09-17.md](baseline-review-2026-09-17.md) | dated evidence/planning record | Screened; retain recorded revision and limits |
-| `linux/docs/bookie-0.1.1-plan.md` (retired after this inventory) | dated plan | Superseded by the active 0.2 sprint; see the [changelog history index](../../CHANGELOG.md#engineering-history-index) |
+| `linux/docs/bookie-0.1.1-plan.md` (retired after this inventory) | dated plan | Superseded by the active 0.2 sprint; see the [archived changelog history](changelog-history-0.1.x-2026-10-23.md#bookie-01x-implementation-history) |
 | [linux/docs/bookie-0.2-sprint.md](../bookie-0.2-sprint.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
 | [linux/docs/bug-consistency-2026-09.md](bug-consistency-2026-09.md) | reference/guide | Screened; retain stated scope, no exhaustive claim |
 | [linux/docs/capability-evidence.md](capability-evidence-2026-09-07.md) | current guide or mixed historical ledger | Corrected authority, source drift or evidence qualification |
@@ -91,22 +91,22 @@ A screened row is not exhaustive semantic certification or a runtime pass.
 
 | Path | Structural check | Attribution |
 | --- | --- | --- |
-| [linux/docs/evidence/2026-09-29-regression-audit/binary-before.txt](../evidence/2026-09-29-regression-audit/binary-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-29-regression-audit/change-contracts-before.txt](../evidence/2026-09-29-regression-audit/change-contracts-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-29-regression-audit/decimal-before.txt](../evidence/2026-09-29-regression-audit/decimal-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-29-regression-audit/isolated-before.txt](../evidence/2026-09-29-regression-audit/isolated-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-29-regression-audit/validation.json](../evidence/2026-09-29-regression-audit/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-bug-consistency/validation.json](../evidence/2026-09-bug-consistency/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-stabilization/postgres-after.jsonl](../evidence/2026-09-stabilization/postgres-after.jsonl) | valid-jsonl | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-stabilization/postgres-before.jsonl](../evidence/2026-09-stabilization/postgres-before.jsonl) | valid-jsonl | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/2026-09-stabilization/validation.json](../evidence/2026-09-stabilization/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-29-regression-audit/binary-before.txt](evidence/2026-09-29-regression-audit/binary-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-29-regression-audit/change-contracts-before.txt](evidence/2026-09-29-regression-audit/change-contracts-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-29-regression-audit/decimal-before.txt](evidence/2026-09-29-regression-audit/decimal-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-29-regression-audit/isolated-before.txt](evidence/2026-09-29-regression-audit/isolated-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-29-regression-audit/validation.json](evidence/2026-09-29-regression-audit/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-bug-consistency/validation.json](evidence/2026-09-bug-consistency/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-stabilization/postgres-after.jsonl](evidence/2026-09-stabilization/postgres-after.jsonl) | valid-jsonl | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-stabilization/postgres-before.jsonl](evidence/2026-09-stabilization/postgres-before.jsonl) | valid-jsonl | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/2026-09-stabilization/validation.json](evidence/2026-09-stabilization/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
 | [linux/docs/evidence/b3-review-2026-10-01/manifest.json](../evidence/b3-review-2026-10-01/manifest.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
 | [linux/docs/evidence/b3-review-2026-10-01/probe.rs](../evidence/b3-review-2026-10-01/probe.rs) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
 | [linux/docs/evidence/b3-review-2026-10-01/probe.txt](../evidence/b3-review-2026-10-01/probe.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
 | [linux/docs/evidence/b3-review-2026-10-01/xlsx-float-precision.txt](../evidence/b3-review-2026-10-01/xlsx-float-precision.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/upstream-u1-2026-10-03/native-after.txt](../evidence/upstream-u1-2026-10-03/native-after.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/upstream-u1-2026-10-03/native-before.txt](../evidence/upstream-u1-2026-10-03/native-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
-| [linux/docs/evidence/upstream-u1-2026-10-03/validation.json](../evidence/upstream-u1-2026-10-03/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/upstream-u1-2026-10-03/native-after.txt](evidence/upstream-u1-2026-10-03/native-after.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/upstream-u1-2026-10-03/native-before.txt](evidence/upstream-u1-2026-10-03/native-before.txt) | utf8-text | Dated source/fixture scope; current and candidate digest results in manifest |
+| [linux/docs/evidence/upstream-u1-2026-10-03/validation.json](evidence/upstream-u1-2026-10-03/validation.json) | valid-json | Dated source/fixture scope; current and candidate digest results in manifest |
 
 ## Unavailable local references
 

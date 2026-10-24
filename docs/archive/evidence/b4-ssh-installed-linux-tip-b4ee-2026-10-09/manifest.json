@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "B4 post-PR-427 GTK SSH and PostgreSQL flows on fork/linux",
+  "source_commit": "b4ee463a2603e7b1a28ebc4cef4a751d5aeab5fb",
+  "binary_path": "[user-home]/.local/opt/bookie-main-b4ee/bookie",
+  "binary_sha256": "7838f7c24bee6e18b4bce969a61766bd5c2967d86578f65b421952bd6d7c0d2d",
+  "binary_build": "cargo build --locked --release -p tablepro-app --bin tablepro-app",
+  "runtime": "User-local release executable; Xvfb X11, private D-Bus, GTK AT-SPI automation; Docker PostgreSQL and SSH fixtures",
+  "command": "bash scripts/test-postgres-release.sh with TABLEPRO_GTK_BINARY set to the release executable",
+  "result": "passed; release layers and 7 GTK scenarios",
+  "scenarios": [
+    "postgres_saved_mtls_connection_authenticates_and_queries",
+    "postgres_ssh_changed_second_hop_key_is_refused",
+    "postgres_ssh_multihop_trusts_both_hops_and_queries",
+    "postgres_ssh_second_hop_decline_does_not_learn_key",
+    "postgres_ssh_setup_failure_is_durably_audited",
+    "postgres_ssh_tunnel_loss_retires_session_and_reconnects",
+    "postgres_ssh_unknown_host_key_decline_is_durably_audited"
+  ],
+  "not_established": [
+    "Distro package acceptance",
+    "Native Wayland acceptance",
+    "Hosted candidate acceptance"
+  ],
+  "log_sha256": {
+    "run.log": "0c7f29025d07e1b53d64c0b5bcb0fd07ab2c26e2cff0d5bac7ef8b2b33e912d3",
+    "results.json": "e39c5a567a6cc0a7f7bdb6a72dc1940212854f56cd9004221c4803551fa3bf25"
+  }
+}

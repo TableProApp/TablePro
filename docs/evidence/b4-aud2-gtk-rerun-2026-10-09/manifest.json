@@ -10,7 +10,7 @@
   "command": "bash scripts/test-gtk-mysql-approval.sh",
   "harness": "The GTK safety harness ran the named scenario against the installed development binary. Runtime profile, D-Bus session, and XDG directories were isolated under /tmp.",
   "log_sha256": {
-    "gtk-mysql-approval.log": "da27c8dab5f4002502a9912acba9291b7c14848265a659ff52baaf301ab002f4"
+    "gtk-mysql-approval.log": "8ab411ddb76e5ac939a0b6bb15b54b01e1f16b06ad36598a3957df74a451ba7b"
   },
   "observations": [
     "The named scenario found and denied the unparseable CREATE PROCEDURE approval request, verified the denied routine was absent, then approved a second request and verified that routine existed.",

@@ -38,7 +38,7 @@
   "log_sha256": {
     "focused.txt": "e50affc0137169831bf44cddb6b8a6c29db2a59edb05014e1ff39a915fe113cc",
     "app-lib.txt": "29bfdccdc3d35d0e9d9191957e60b3580a802db6ecb231fb4ffad4e3098be92a",
-    "clippy.txt": "b0178550b5cd46817d1d67dbcefcba240c030f283a36e20239869e965d920c11",
+    "clippy.txt": "d9cea9e27370d9036ad7735768617204450b9e8455039a9cfb3c0623b48beca2",
     "fmt.txt": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
   },
   "remaining": [

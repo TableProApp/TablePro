@@ -33,7 +33,7 @@
   },
   "log_sha256": {
     "test.txt": "9055f55b4b55c52f31debb29827db6ab694fe2169594afbf17e33661bcc5c6ea",
-    "clippy.txt": "112c4fc18fd67098b878d3b26b103538c8d25f65619c4a5fd9c697ec5c7b323b"
+    "clippy.txt": "6a3e5f51fa6b66698e006572c3195ee95e99a395091a33d2e35910d8c00a9b1d"
   },
   "source_fingerprints_sha256": {
     "linux/crates/drivers/postgres/tests/support/domain_contract.rs": "4463ad9d73311bbba4301961869107ab86130ac4315a69d0c5cb3ba7f79e1d43"

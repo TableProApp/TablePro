@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "branch": "linux",
+  "baseline_commit": "0e12832ea127227bd101771592c942ac9825ff7a",
+  "case": "PostgreSQL integer array app parser and keyed grid edit",
+  "test": "ui::browse_tab::value_parse::postgres_array_contract::value_contract_postgres_integer_array_grid_edits_preserve_width_and_siblings",
+  "sources": [
+    {
+      "path": "crates/app/tests/support/postgres_array_contract.rs",
+      "sha256": "577468b22df5bcaf9853de26803d26f43d416e4fd90c6ac5ee024f0637f8e7f5"
+    },
+    {
+      "path": "scripts/isolated-tests.json",
+      "sha256": "503fdf48d1bef128cb4d3db736e2c8b86413a34c1e7832f93da3f9dc810139a1"
+    }
+  ],
+  "engine": "PostgreSQL 16 Alpine through testcontainers",
+  "contract": [
+    "The app parser and keyed-update builder round-trip smallint[], integer[] and bigint[] with explicit catalog casts.",
+    "Inputs check signed minimum/maximum values, SQL NULL and non-default lower bounds -1, 2 and 0. bigint[] preserves 9007199254740993 exactly.",
+    "For each type, PostgreSQL pg_typeof, array text, array_to_json and array_send bytes from the edited row match an independent native cast oracle; a sibling row is unchanged.",
+    "smallint[] input 32768 is refused with PostgreSQL SQLSTATE 22003; full target and sibling row snapshots, including wire bytes, remain unchanged."
+  ],
+  "validation": {
+    "native_app_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib ui::browse_tab::value_parse::postgres_array_contract::value_contract_postgres_integer_array_grid_edits_preserve_width_and_siblings -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "app-grid-edit-test.txt"
+    },
+    "app_lib_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib",
+      "result": "467 passed, 29 ignored",
+      "log": "app-lib-test.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --locked -p tablepro-app --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": "fmt.txt passed",
+    "ignored_test_inventory": "ignored-inventory.txt passed",
+    "diff_check": "diff-check.txt passed"
+  },
+  "remaining": [
+    "Other PostgreSQL array types and consumers, additional integer/session combinations, and the broader B3 matrix remain open."
+  ],
+  "log_sha256": {
+    "app-grid-edit-test.txt": "3354fd2c19a1a03e1dc28111013c3272eb91b753c0ca26b58ed26d9e7b0c6a46",
+    "app-lib-test.txt": "0aa429f9dec931f76aa00abaf8c6d4abb544e0ccbcdfbc8178c80fd8148daf11",
+    "clippy.txt": "39e0ed94108c02a4e68025ad93af45051db49b100d04f245d7af8d449d515593",
+    "diff-check.txt": "31cbc7f6640f67db087c6e5aa939e60853dca2e6f513aa512be87c2347b865e9",
+    "fmt.txt": "e9487ab36096d3fd32d475613abccda45c38206cb795e57d66f4f5dd71d0d920",
+    "ignored-inventory.txt": "a838fb732deaa504c898f2d9d00642e6d7c354035b1857ba10e7110bbcaccbe7"
+  }
+}

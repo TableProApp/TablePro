@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "3874dfc5e1a1aded3157009060418b53e767eda2",
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "Shadowed-search-path enum writes through six and seven nested domains",
+  "test": "domain_contract::value_contract_six_and_seven_domain_levels_over_enum_ignore_shadowed_search_path",
+  "contract": [
+    "The six- and seven-domain chains both resolve catalog enum-leaf metadata while a same-named enum with a narrower label set shadows the domain schema in search_path.",
+    "Both depths preserve the outer domain through a keyed update, draft insert, SQL NULL draft insert and typed equality filter.",
+    "An invalid enum label is refused with SQLSTATE 22P02; native pg_typeof/status checks verify the outer domain and unchanged neighboring rows, including SQL NULL.",
+    "This closes the specifically listed domain-depth gap through seven levels; deeper chains and other enum/session configurations remain open."
+  ],
+  "validation": {
+    "native_contract": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml -p tablepro-driver-postgres value_contract_six_and_seven_domain_levels_over_enum_ignore_shadowed_search_path -- --ignored --nocapture",
+      "result": "1 passed, 0 failed; the test exercises both six- and seven-level chains",
+      "log": "postgres-seven-domain.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path linux/Cargo.toml -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "postgres-seven-domain.txt": "06fbd6f274dbe2a8c7f7f0519b1c329085f5fcee5a1d76697024a5d43e218053",
+    "clippy.txt": "c5fd078bf26bb6d8b5c2cb306705595997d625f420f6b55182c08aa815f2977a",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Domain chains deeper than seven levels and additional enum/session configurations remain untested."
+  ]
+}

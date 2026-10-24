@@ -34,8 +34,8 @@
   ],
   "log_sha256": {
     "mysql-postgres-rollback-report.json": "8bc42257dc469d5d531693779775678ef984698b9c385952d3e2424a0a1cca1b",
-    "mysql-atomic.log": "8348592eeb429cae557615e92ec1e6f7fcc71964417068f7a5cc4f8cbe632de3",
-    "postgres-rollback.log": "5c2e0ef6e2eae97248bf3a50f12df517b84019180b5fa6442b4ce6668217eeab",
+    "mysql-atomic.log": "b6b2bbaf59a4b736a29e31356194988daa113a68ecf5c09a62ed5bf3bcf7a2d1",
+    "postgres-rollback.log": "365a7a71043e6dff3a35cff005aa3b44113428dacf0dee72ffad6bdf399746e9",
     "postgres-release-report.json": "9f30a6fb7587cc6bd1a0b271be43ec769152a72885bc3b60c524ad4957116733",
     "postgres-release.log": "41511497e5cdf275d80db45a3ae6677fec571b9402d9ab41331c722a8a439cec",
     "installed-gtk-report.json": "a7e6de087e2c5c18b39baf470e42e84a014a47ed5a24d36d3ac87a0da227e405",

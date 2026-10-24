@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "AUD-2 repeated MySQL approval dialog UI acceptance",
+  "source_commit": "97e5f55bddacdfef427c51f162917fedcace3a9f",
+  "source_sha256": {
+    "crates/app/src/services/gtk_approval.rs": "a1b360df3b04a457520d8014cbf99f9b59606f3cb00c4cc58fc238ac112d023a",
+    "scripts/test-gtk-mysql-approval.sh": "27ffda727809f426c64d4493c09c44b4d8a980255678e495f211858302b477a9",
+    "crates/app/tests/gtk_safety.py": "2ffbc8c802c22c74e39aea88ecac56a87a9bc7c2219d316dc414ec02ab3aaf5c"
+  },
+  "product_binary_sha256": "3ec8076570742b953b450f30f97b7fe8207f53e7817f48f336f76f986131fe57",
+  "install_kind": "Per-user source build in a package-layout directory; no system package manager install",
+  "runtime": "Local Linux host; MySQL 8.0 Docker fixture; isolated D-Bus, Xvfb and AT-SPI",
+  "scenario": "mysql_unparseable_routine_dialog_denial_preserves_database",
+  "command": "TABLEPRO_GTK_BINARY=<installed test-root>/usr/bin/tablepro GSETTINGS_SCHEMA_DIR=<installed schemas> TMPDIR=/tmp bash scripts/test-gtk-mysql-approval.sh",
+  "result": "3 consecutive runs passed; each denied the first routine creation and approved the second",
+  "log_sha256": {
+    "attempt-1.log": "24d55820249626d28d2f55cfee77cf69040a4e4610b8bbbd63c96d21b0c4a926",
+    "attempt-2.log": "3cfe4a19a4d9ce262bfdb080606ca1dcf4ef657d7d49757b2ec6c08427357447",
+    "attempt-3.log": "f33441080760989567ac601971690c8941b448338d5d8e372ac7dd395e4c3039"
+  },
+  "not_established": [
+    "Root cause of gtk-server runs 55 and 56",
+    "That the intermittent empty-dialog failure is fixed",
+    "Distribution-package or native Wayland acceptance"
+  ]
+}

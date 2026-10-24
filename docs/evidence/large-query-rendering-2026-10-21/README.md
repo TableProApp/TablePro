@@ -1,6 +1,6 @@
 # Large-query rendering investigation, October 21
 
-Source base: `9f5dbd47e`. Owner: [#1272](https://github.com/cozyGarage/BookiE/issues/1272). This follows the [grid ownership investigation](../grid-lifetime-2026-10-21/README.md); it does not replace its pinned heap profiles.
+Source base: `9f5dbd47e`. Owner: [#1272](https://github.com/cozyGarage/BookiE/issues/1272). This follows the archived [grid ownership investigation](../../archive/evidence/grid-lifetime-2026-10-21/README.md); it does not replace its pinned heap profiles.
 
 ## Reproduced cause and change
 

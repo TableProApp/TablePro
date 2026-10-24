@@ -33,7 +33,7 @@
   },
   "log_sha256": {
     "test.txt": "d582fc22665d7034b967a765c0874d6346879434184148b3eb90ef2a7d03b854",
-    "clippy.txt": "6f23d00fdcd853e4c6442a625b9ae5b7a7cb6b0f4c1d22ffe6ef4c6342868f00",
+    "clippy.txt": "d6e3ff7a7f4e55ad052356b490b05f89f5cea889b5b6068bd459b5aa31284096",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

@@ -1,0 +1,23 @@
+{
+  "baseline": {
+    "commit": "aebdadea6cf2ebbf7179286d7d61ed4bccdff023",
+    "binary": "target/debug/tablepro-app",
+    "sha256": "15acd92f33cacfdf17781ae80b88a0fcf38317005713a26b9f0d75ef35912783"
+  },
+  "measurement_status": "Both six-cycle runs completed successfully; candidate CPU regression requires investigation",
+  "candidate": {
+    "commit": "6ae02dccc651ba195339a1b7c523c5887b537d7d",
+    "binary": "target/debug/tablepro-app",
+    "sha256": "ab3c6d9f05475da81b1a5d49840d67ab21489affb854f8df020365910c15caf4"
+  },
+  "order": [
+    "candidate",
+    "baseline"
+  ],
+  "environment": {
+    "database": "PostgreSQL 17.11",
+    "display": "private D-Bus/Xvfb 1280x1024",
+    "renderer": "cairo",
+    "local_builds_during_capture": false
+  }
+}

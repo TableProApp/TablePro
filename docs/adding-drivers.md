@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [active sprint](bookie-0.2-sprint.md) owns engine scope and sequencing. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup. Recheck the current traits and implementations before using this checklist; the workspace manifests are authoritative for dependency versions.
+Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions/0001-no-plugin-system.md). The [0.2.0 completion page](bookie-0.2-sprint.md) records delivered engine scope; the [backlog](backlog.md) and owning boards set post-release sequencing and acceptance. Use [ADR 0007](decisions/0007-type-and-value-preservation.md) as the common type/value and native proof standard. The [documentation entry point](README.md) identifies the owning boards and selective evidence lookup. Recheck the current traits and implementations before using this checklist; the workspace manifests are authoritative for dependency versions.
 
 ## Contracts and crate boundaries
 
@@ -59,7 +59,7 @@ Return an exact SHA, commands, report paths, retained sanitized evidence and unr
 
 ## Driver maturity
 
-Every registered driver reports a `DriverMaturity` (`Stable` or `Experimental`). The Connect dialog shows Experimental as a subtitle so users are not surprised by missing write or transaction paths. These are driver declarations, not release approval; see [current acceptance](bookie-0.2-sprint.md).
+Every registered driver reports a `DriverMaturity` (`Stable` or `Experimental`). The Connect dialog shows Experimental as a subtitle so users are not surprised by missing write or transaction paths. These are driver declarations, not release approval; see the [post-release backlog](backlog.md) and issue-owned acceptance criteria.
 
 | Driver | Maturity | Connect | Browse | Query | Writes | Params | `begin` / MCP preview | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -68,7 +68,7 @@ Every registered driver reports a `DriverMaturity` (`Stable` or `Experimental`).
 | SQLite | Stable | yes | yes | SQL | yes | yes | yes | File-based |
 | SQL Server | Stable | yes | yes | SQL | yes | yes | no interactive begin | Tiberius; custom CA implemented; driver TLS fixture; Verify CA and Verify Full are identical; server cancellation unsupported |
 | ClickHouse | Stable | yes | yes | SQL | yes | yes | no | Waits for asynchronous mutations to finish; no row counts; driver TLS fixture |
-| Redis | Experimental | yes | DBs / SCAN | Redis CLI | via query | no | no | Single host/port endpoint only; Sentinel and Cluster topologies are unsupported; driver TLS fixture; Verify Ca behaves as Verify Full |
+| Redis | Experimental | yes | DBs / SCAN | Redis CLI | via query | no | no | See [known limitations](known-limitations.md#editing-and-connections) for topology support; driver TLS fixture; Verify CA behaves as Verify Full |
 | MongoDB | Experimental | yes | collections | find / aggregate | insertOne / deleteMany / drop; keyed grid edits use bound values | no | no | TLS fixture coverage; Verify CA behaves as Verify Full; integration coverage includes browse, find, aggregate, stale-edit and stale-delete checks |
 | DuckDB | Experimental | yes | yes | SQL | yes | yes | no | Cargo feature `duckdb`; CSV/TSV/JSON/Parquet files; bundled JSON/Parquet; explicit optional CI |
 

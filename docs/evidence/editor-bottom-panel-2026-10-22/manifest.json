@@ -92,7 +92,7 @@
     "apps/linux/app/tests/gtk_safety.py": "a4c80bf912b8ac5820515b32ba49bfb8a3f83db4fef4bcd79c188d681c137294",
     "crates/app-services/src/editor_panel.rs": "132e7cb8673dd6d69212728912ee7e52789074654f878d9116c50ec00ed8d062",
     "crates/app-services/src/lib.rs": "9b1896cb4c3ca444b3f07dae8e026df610076b060f418f4d2db06abcfb5ff118",
-    "scripts/isolated-tests.json": "2da20e1c883ac6378d4d4e2db85617b6cd3c6f316edfb1b39aa0a5c5fabe585c"
+    "scripts/isolated-tests.json": "32239910a163d64bffc7ecf07ec241f6999b0b8c82c421660a9075afc5beee0b"
   },
   "final_integration_commit": "4a787270c26f5a0ceab7b641defe31a70d24e340",
   "final_checks": {

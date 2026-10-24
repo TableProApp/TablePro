@@ -151,7 +151,7 @@ original SHA and limitations. Do not bring back their old ledger edits.
 Unmodified source passed 219 policy unit tests, 6 AUD-11 integration tests and
 4 guard-transparency tests. The three added review reproductions failed as
 recorded above. Their patch and logs are saved in
-[review evidence](../evidence/b4-release-review-2026-10-11/manifest.json);
+[archived review evidence](evidence/b4-release-review-2026-10-11/manifest.json);
 the failing test edits were removed from product test files after reproduction.
 No full preflight, Docker driver, Forgejo, installed GTK or native Wayland run
 was performed by this review. Existing green tests do not establish the missing

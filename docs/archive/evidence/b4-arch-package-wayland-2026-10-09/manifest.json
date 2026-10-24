@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "B4-17 partial GTK acceptance using a local Arch package candidate built from fork/linux source snapshot 8fdbed84",
+  "source_commit": "8fdbed84b37373b2ea45af14103e03795f72c9c5",
+  "branch_reconciliation": "The candidate was built from fetched linux head 8fdbed84b. Product source later advanced to 395bc1826 through PR #432; docs-only PR #437 and test-only PR #424 then moved the branch tip to 5540db7e. This package run does not qualify either the newer product-source snapshot or the current branch tree.",
+  "source_sha256": {
+    "scripts/test-postgres-release.sh": "f1b865d96403ec596514e0edb2480ad0be3b906e4ab1523289e32621abd30b45",
+    "scripts/test-gtk-safety.sh": "adec0b08de0d0d0d9545a868e858c667259b67eee78417b066f7b33ec0e528d7",
+    "scripts/test-gtk-mysql-approval.sh": "27ffda727809f426c64d4493c09c44b4d8a980255678e495f211858302b477a9",
+    "crates/app/tests/gtk_safety.py": "2ffbc8c802c22c74e39aea88ecac56a87a9bc7c2219d316dc414ec02ab3aaf5c"
+  },
+  "package_candidate": {
+    "name": "bookie 0.1.7-1",
+    "kind": "local internal Arch candidate",
+    "archive_sha256": "8ba32c6641ca9ffebacdcbdacbba75572d8892f51681e3274f58f71eee9a6c36",
+    "binary_sha256": "18f398fbb79fa241392bb99b7a66e9db20ca0994a691b8fcd57585f588cc8144",
+    "tested_form": "package archive extracted to a user-local prefix; not installed by pacman",
+    "pacman_version_before_and_after": "bookie 0.1.5-1"
+  },
+  "build_and_validation": {
+    "command": "makepkg --cleanbuild --clean --nodeps --noconfirm",
+    "reason_for_nodeps": "Rust 1.98.1 is installed through rustup and pacman does not recognize the declared rust build dependency; runtime and native build dependencies were already installed",
+    "result": "release build and PKGBUILD check passed; validate-arch-package.sh passed",
+    "archive": "[user-home]/.cache/bookie-ui-main/linux/packaging/arch/bookie-0.1.7-1-x86_64.pkg.tar.zst"
+  },
+  "runtime": "Arch Linux on the active Hyprland Wayland session; GTK AT-SPI, private D-Bus, PostgreSQL 16 and SSH release fixtures in Docker Compose",
+  "result": "passed",
+  "xvfb_gtk_scenarios": [
+    "jump_to_column_keyboard_search",
+    "committed_editor_ddl_refreshes_sidebar",
+    "new_connection_form_keeps_title_and_help_text_visible",
+    "sql_character_warnings_leave_query_unchanged",
+    "malformed_sql_is_blocked_before_approval",
+    "dismissed_approval_denies",
+    "named_parameter_binds_a_value",
+    "favorite_round_trips_through_open_quickly",
+    "current_page_csv_export_is_pk_ordered",
+    "current_page_json_export_preserves_values",
+    "mysql_unparseable_routine_dialog_denial_preserves_database"
+  ],
+  "wayland_release_tests": [
+    "g5_system_openssh: passed",
+    "mTLS integration: 3 passed",
+    "PostgreSQL release integration suite: passed",
+    "postgres_ssh_unknown_host_key_decline_is_durably_audited: passed"
+  ],
+  "ui_result_files": [
+    "ui-results/jump_to_column_keyboard_search-result.json",
+    "ui-results/committed_editor_ddl_refreshes_sidebar-result.json",
+    "ui-results/new_connection_form_keeps_title_and_help_text_visible-result.json",
+    "ui-results/sql_character_warnings_leave_query_unchanged-result.json",
+    "ui-results/malformed_sql_is_blocked_before_approval-result.json",
+    "ui-results/dismissed_approval_denies-result.json",
+    "ui-results/named_parameter_binds_a_value-result.json",
+    "ui-results/favorite_round_trips_through_open_quickly-result.json",
+    "ui-results/current_page_csv_export_is_pk_ordered-result.json",
+    "ui-results/current_page_json_export_preserves_values-result.json",
+    "ui-results/mysql_unparseable_routine_dialog_denial_preserves_database-result.json",
+    "ui-results/postgres_ssh_unknown_host_key_decline_is_durably_audited-result.json"
+  ],
+  "not_established": [
+    "pacman installation, package hooks, upgrade or rollback; sudo required a password",
+    "package-installed multi-hop SSH trust and reconnect flows",
+    "the full B4 frozen-candidate acceptance matrix",
+    "Forgejo merge-tier acceptance; the configured lab endpoint timed out from this host",
+    "Windows Active Directory interoperability"
+  ],
+  "log_sha256": {
+    "run.log": "7c8da4f714cc93181b1c6094e9b89e407662c2a5a849813e0d9ff18d1c3e745b"
+  },
+  "log_normalization": "Trailing spaces from Docker Compose progress lines were removed; other log content is unchanged."
+}

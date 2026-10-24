@@ -17,7 +17,7 @@ Fetched BookiE and both TablePro branches without changing the shared checkout. 
 
 Inspected BookiE manifests, guards, streaming, editing, ordering, MongoDB metadata and PostgreSQL cancellation paths. Read selected upstream PR explanations and source patches, the newest TablePro Linux grid and dependency diffs, and pinned dbx architecture, manifests, dependency guard, issue form and query-message buffer. PR-reported test results remain their authors' evidence. The isolated boundary-check probe below was executed locally; no reference-project was built or benchmarked.
 
-The [October 15 dbx review](2026-10-15-dbx-review.md), [PostgreSQL research](2026-10-15-postgresql-client-research/review.md), [upstream intake](../upstream-sync.md) and [#983](https://github.com/cozyGarage/BookiE/issues/983) already own substantial overlap. Keep their dated findings intact and update current owners instead of rewriting historical evidence.
+The [October 15 dbx review](2026-10-15-dbx-review.md), [PostgreSQL research](2026-10-15-postgresql-client-research/review.md), [upstream intake](upstream-sync-history-2026-10-22.md) and [#983](https://github.com/cozyGarage/BookiE/issues/983) already own substantial overlap. Keep their dated findings intact and update current owners instead of rewriting historical evidence.
 
 ## Findings in current BookiE
 

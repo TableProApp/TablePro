@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/sqlite-length-any-csv-contract",
+  "source_commit": "a346b41a711246209672a307bd306d5cc879a3d1",
+  "working_tree_note": "The tested source file matches source_commit; this evidence packet was added afterward.",
+  "case": "SQLite length(value) over STRICT ANY preserves integer and NULL result kinds through typed CSV restore",
+  "test": "sqlite_length_any_csv_round_trip_preserves_integer_and_null_results",
+  "source_sha256": {
+    "crates/app/tests/support/sqlite_any_contract/length_csv.rs": "fb660b131a43de02a4d19da50bae5d391870b65617e5ff30394f2e7aa221a402"
+  },
+  "engine": "SQLite in-memory STRICT ANY table",
+  "contract": [
+    "Numeric inputs coerce to text; Unicode text counts code points; BLOB values count bytes including embedded NUL, while TEXT length stops at embedded NUL.",
+    "Native typeof() and hex() assertions verify INTEGER results and SQL NULL separately, including formula-shaped text.",
+    "Typed CSV export/import restores computed lengths as INTEGER and SQL NULL as NULL in a STRICT ANY destination."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib sqlite_length_any_csv_round_trip_preserves_integer_and_null_results -- --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "focused.txt"
+    },
+    "app_unit_suite": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib -- --test-threads=1",
+      "result": "478 passed, 32 ignored, 0 failed",
+      "log": "app-tests.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --locked -p tablepro-app --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": {
+      "command": "rtk proxy git diff --check",
+      "result": "passed",
+      "log": "diff-check.txt"
+    },
+    "local_quick_gate": {
+      "command": "rtk proxy bash scripts/ci-local.sh quick",
+      "result": "Preflight passed",
+      "log": "quick-gate.txt"
+    }
+  },
+  "log_sha256": {
+    "focused.txt": "1267747ac18b24d89d79b02a3a1f3e4b615fa63e2e517f6fbe86045ef44d44cd",
+    "app-tests.txt": "3c574ea278fa8002d9b52821d47f5b681d1141f7dfab36694509539a8222bda9",
+    "clippy.txt": "b2c020f27a01faabb96e5d55c11fd219cf7c484c9cf34b3342bfc8444d934c89",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "quick-gate.txt": "e5397eeaad74a2e59ccb9a708da9add0ffbd2a7b04fbca73d973e50b21ccad66"
+  },
+  "remaining": [
+    "Other SQLite computed expressions, storage-class/affinity mixtures, spreadsheet re-import beyond tested workbook shapes and installed editing remain open."
+  ]
+}

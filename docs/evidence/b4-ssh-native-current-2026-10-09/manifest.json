@@ -5,7 +5,7 @@
   "test_command": "bash scripts/test-ssh.sh",
   "environment": "Local Linux host with Docker-backed SSH fixtures",
   "log_sha256": {
-    "ssh.log": "cfb93e7c31b99093d257273d7f2ae781f1bd81d9d2a77941858dde27149ee626"
+    "ssh.log": "fbf9bc1dd411c3a6860f63e7e532b2710c772afe04bf7e27b540be6262e5b140"
   },
   "results": [
     {

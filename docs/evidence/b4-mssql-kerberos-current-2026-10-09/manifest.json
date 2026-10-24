@@ -5,7 +5,7 @@
   "test_command": "bash scripts/test-mssql-kerberos.sh",
   "environment": "Local Docker fixture with Samba AD DC and SQL Server 2022",
   "log_sha256": {
-    "kerberos.log": "acc4ce5583035d12205792c79951d36650f2967a28e0e1c8014c90e189677858"
+    "kerberos.log": "2005046a7ab4978a253478313fa7602ec7807a3b81e305b408c8589b1599c0fe"
   },
   "result": "2 passed, 0 failed",
   "tests": [

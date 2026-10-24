@@ -67,14 +67,14 @@
     "Other spreadsheet applications, temporal-array session combinations and the broader B3 matrix remain open."
   ],
   "log_sha256": {
-    "bookiee-export-test.txt": "3817aef26d4555149ae64b975f633273e1d3b7e47729e3f03bf83ff6c9fa4f5b",
+    "bookiee-export-test.txt": "e3cdaf27d520ebafb17524449f03bc4ba08c47256614b0a7b00cec3dc871b15f",
     "calc-version.txt": "8d65d53d9fc8f6caaeaa16013977052dc4bda05564f797a246690fe81f3d00c7",
     "libreoffice-run.txt": "de31bac68e78c48e09b442a61da2587b775c3f46ffef8c27b9ae34e79df12760",
     "consumer-check.txt": "8fe323af43ccc132069c9cc1aceebee9958f2dd098754714a24fb6e04d7d3af9",
     "verify_roundtrip.py": "cffcb3b0bb7810bfa106268b66af7444664871301ed448a57e9c56f324ad92eb",
     "gnumeric-version.txt": "bac72f73bd90c57996fd8c2b2b206629064c7d804a284511adbac2776ae6c5e6",
     "gnumeric-run.txt": "4a81d1d52534330b9e5db1ccfee0f827e58968c83077613ea4c272a393f7d1ed",
-    "clippy.txt": "1e2b3f019d78f9f6f50a02ad022a82fe9d3d4de5adc180e566174417e2b07aa8",
+    "clippy.txt": "4ad6cd83f9d75677607ef19666c0adfd97b9bbd5964e24b61782e4bdde3b3414",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "ignored-inventory.txt": "a838fb732deaa504c898f2d9d00642e6d7c354035b1857ba10e7110bbcaccbe7",
     "diff-check.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

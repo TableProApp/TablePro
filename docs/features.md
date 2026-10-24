@@ -1,6 +1,6 @@
-# BookiE features
+# BookiE features on `linux`
 
-This page lists what BookiE 0.2.0 does, grouped by task. Steps and shortcuts are in the [user guide](user-guide.md). Limits are in [known limitations](known-limitations.md). Per-engine capabilities are in the [driver maturity table](adding-drivers.md#driver-maturity).
+This page describes current behavior on the `linux` branch, including changes made after 0.2.0 was published. It does not certify that every listed feature is present in the [0.2.0 release assets](platforms.md#published-020-release). Steps and shortcuts are in the [user guide](user-guide.md). Limits are in [known limitations](known-limitations.md). Per-engine capabilities are in the [driver maturity table](adding-drivers.md#driver-maturity).
 
 ## Databases
 
@@ -34,15 +34,15 @@ Drivers are linked at build time. There is no plugin system ([ADR 0001](decision
 ![Browsing a table in the light theme](images/browse-light.png)
 
 - Click a table to open it in a preview tab. Edit or keep the tab to make it permanent.
-- Tables are read in bounded pages. Tables with a primary key use keyset seeks for the previous page and the last page.
+- Tables are read in bounded pages. Deep forward navigation uses primary-key seeks where supported; previous-page, last-page and explicitly sorted paths may use offsets on some engines. See [known limitations](known-limitations.md#data-and-values).
 - Edit a cell with a double-click, F2 or Enter. Edits stay pending, with a dot on the tab, until Ctrl+S. Undo and redo apply to pending edits.
 - Insert rows, delete rows and set a cell to NULL. Changes are saved in one transaction where the engine supports it.
 - NULL, empty text and unsupported values look different. Booleans show a check box with a third state for NULL.
 - The header shows each column's type. Primary key columns have a key mark, foreign key columns a link mark, and a column comment appears under the name.
 - Filter with the filter bar, and save filters by name per table. Sort by clicking a header.
 - Hide and reorder columns, and reset dragged column widths. The choice is remembered per table.
-- Long values show a preview and their size. View Value, Copy Value and Edit Full Value work on the whole value.
-- The row inspector shows every column of the selected row. Selection statistics show count, sum, average, minimum and maximum.
+- Long cells in query results and keyed browse rows show a preview and byte count. View Value and Copy Value use the full value, including pending edits and drafts; eligible text/JSON cells can be edited in the full-value dialog up to 1 MiB. See [known limitations](known-limitations.md#data-and-values) for keyless-table behavior.
+- The row inspector lists every column and its type. Values omitted from the fetched page show as Not fetched. Selection statistics show count, sum, average, minimum and maximum.
 
 ## Write SQL
 
@@ -52,7 +52,7 @@ Drivers are linked at build time. There is no plugin system ([ADR 0001](decision
 - Syntax highlighting, code folding and a side-by-side split of the same query.
 - Completion offers keywords, tables after `FROM` and `JOIN`, and the columns of the tables named in the statement. `alias.` and `table.` narrow the list. Chosen names are inserted quoted for the engine.
 - Write `:name` where a value belongs. BookiE asks for each value and sends it as a bound parameter. Each value has a type choice: `Auto`, `Text`, `Integer`, `Decimal`, `Boolean` or `Null`. Placeholders inside string literals, quoted identifiers, comments, dollar-quoted bodies, PostgreSQL `::` casts and existing `$1` or `?` placeholders are left alone.
-- Results load in pages. PostgreSQL single-statement `SELECT` queries stream through a window of four pages. Each statement in a script has its own result view. Pin results to keep them above the next run.
+- Results load in pages. PostgreSQL single-statement `SELECT` queries stream within an estimated 64 MiB row-storage budget. When retained pages exceed the budget, earlier pages leave the grid; the newest page remains even if it alone exceeds the estimate. Each statement in a script has its own result view. Pin results to keep them above the next run.
 - Sorting and filtering a result are local and do not run the SQL again.
 - Session keeps one connection for the tab, so settings, temporary tables and transactions carry over. While a transaction is open the button says so and, after a minute, how long it has been open.
 - Explain shows the plan. PostgreSQL and SQLite plans open as a tree with the share of estimated cost per step.
@@ -87,7 +87,7 @@ The sidebar table menu has Edit Structure, Show CREATE TABLE, Import CSV, Rename
 
 - Every statement is checked before it runs. Writes on a read-only connection are refused.
 - Depending on the environment and policy, risky statements ask for approval first.
-- Governed operations are written to a local audit journal. Denied, failed, cancelled and timed-out work still gets a recorded outcome.
+- Governed operations record terminal outcomes in a local audit journal. Operations that require audit persistence are refused when it is unavailable; an explicit Local/Dev policy can allow a human write after audit-intent failure, so that write may not be recorded.
 - Values are never silently changed. An unsupported value stays visible as unsupported ([ADR 0007](decisions/0007-type-and-value-preservation.md)).
 
 ## PostgreSQL backup and restore
@@ -102,7 +102,7 @@ BookiE can let an AI assistant use saved connections through the Model Context P
 
 - No account, hosted service or paid tier.
 - No browser interface and no runtime driver plugins.
-- No database snapshots. The design is accepted in [ADR 0015](decisions/0015-database-snapshots.md) and the work is planned after 0.2.0.
+- No database snapshots. [ADR 0015](decisions/0015-database-snapshots.md) records the accepted design; implementation is in the [post-0.2.0 backlog](backlog.md) with no release target.
 - Linux only ([platforms](platforms.md)).
 
 ## Workspace controls

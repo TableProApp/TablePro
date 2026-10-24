@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-ssh-audit",
+  "source_commit": "ba2148ee86d8bd473cc63885274657a1978eef54",
+  "source_sha256": {
+    "crates/drivers/postgres/tests/integration.rs": "b88e27e94deb29853a37458dba2311b6c8d306e4adc11acb88fbe5211cb97325"
+  },
+  "engine": "PostgreSQL 16, ephemeral Docker fixture",
+  "case": "A terminated transaction backend rolls back table data but not an identity sequence increment",
+  "test": "a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+  "contract": [
+    "The batch inserts a row using a PostgreSQL identity column, then blocks in SELECT pg_sleep(60) inside the same transaction.",
+    "A separate monitor identifies and terminates the active PostgreSQL backend.",
+    "The driver reports TransactionRollbackFailed at statement index 1, with the statement and rollback failures classified as disconnected.",
+    "A fresh query confirms the row was rolled back after backend termination.",
+    "A fresh query confirms last_value is 1 and is_called is true on the identity sequence, documenting PostgreSQL's non-transactional sequence side effect."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-driver-postgres --test integration a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1",
+      "result": "1 passed, 196 filtered out",
+      "log": "focused.txt"
+    },
+    "format_and_diff": {
+      "command": "rtk cargo fmt --all -- --check; rtk git diff --check",
+      "result": "passed before commit"
+    }
+  },
+  "remaining": [
+    "Re-run on the frozen B3+B4 candidate SHA and hosted CI.",
+    "This proves one PostgreSQL identity-sequence side effect only; it does not cover all trigger, extension, or external effects."
+  ],
+  "log_sha256": {
+    "focused.txt": "7214f55c9f9a92890195b339c9d992803b9408ca5db17bc3375c96c8994fcc6f"
+  }
+}

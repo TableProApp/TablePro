@@ -30,9 +30,9 @@
     "format_and_diff_checks": "cargo fmt --all -- --check and git diff --check passed"
   },
   "log_sha256": {
-    "shadowed-filter.txt": "f2600435a6b1d7f635c5ddd40ad85e46f932e026764e73080fb96b8c2ac0590a",
+    "shadowed-filter.txt": "911cc85f88b398ae8448249252baa80412a0ada1b3766fa9177e218f548f1ce8",
     "enum-suite.txt": "6b5d9af371d5bafc0c8a560884e83cc5355d6a41711bd26b21c3aa19219c3614",
-    "clippy.txt": "a3f66266dc30cee1081fdcbf4685d0d30ebc43cdcce14d0a3c4c8227a9350810"
+    "clippy.txt": "187a5597d472fb9e047598bd0d9e22cca3ced4217c5a762c243c45acab4f23a6"
   },
   "remaining": [
     "Other session/search_path configurations and combinations with the rest of the enum/operator matrix remain open.",

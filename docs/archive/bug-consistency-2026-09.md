@@ -10,7 +10,7 @@ Retain the current Linux implementation with the focused corrections below. No r
 
 The starting commit's [Build Linux run](https://github.com/cozyGarage/TablePro/actions/runs/34272811689) passed preflight, GTK fast checks, installed GTK smoke, driver integration, driver TLS, PostgreSQL release, and supply-chain checks. Optional DuckDB failed at `git rev-parse HEAD` with dubious repository ownership, before compilation. [Flatpak built successfully](https://github.com/cozyGarage/TablePro/actions/runs/34272811661). These hosted results apply only to the starting commit; the corrected workflow needs a new hosted run.
 
-The [validation manifest](../evidence/2026-09-bug-consistency/validation.json) records commands, results, local log hashes, and the exact implementation/test source hashes. Tests were run during this session, not inferred from the old audit. Temporary logs are local evidence, not permanent hosted artifacts.
+The [validation manifest](evidence/2026-09-bug-consistency/validation.json) records commands, results, local log hashes, and the exact implementation/test source hashes. Tests were run during this session, not inferred from the old audit. Temporary logs are local evidence, not permanent hosted artifacts.
 
 ## Confirmed defects and resolutions
 

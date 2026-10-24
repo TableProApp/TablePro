@@ -40,11 +40,11 @@
     "format_and_diff_checks": "cargo fmt --all -- --check and git diff --check passed"
   },
   "log_sha256": {
-    "ordinary-filter.txt": "25e6931b06bde24a135ba9f0c1679e44f900db2666d3472a2d694c51c834e992",
+    "ordinary-filter.txt": "5e8bbb3ada9d9a865cf561411deb8cf887dddbe0d5a7026ca86442c7f1a7e442",
     "domain-filter.txt": "2594f0bc42e8644d9376cb56556d38f6bfce5c696966dc4d8c0a9004853a610a",
     "enum-suite.txt": "5210f90b2441705354c6a9426b9781fec67a985e48204ee37ca92bd38392e8c9",
     "domain-suite.txt": "a11652df27bd33364ba738e9460a4a85fab20795bf3c224bf9acbb3c0e897b91",
-    "clippy.txt": "12dbc982bd4d5dded0c10b0ef720ab54e0ae8dee0ed49abcf9d7f49150082910"
+    "clippy.txt": "23218289a5230f1cd35e14d5c62541abd9676b518381e9f0c7d8514bb053903f"
   },
   "remaining": [
     "Other direct query-parameter operator contexts, session/search_path combinations, deeper domain chains and other native types remain open.",

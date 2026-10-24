@@ -113,7 +113,7 @@ Lanes follow `AGENTS.md`: B3 = values, drivers, result paths. B4 = transport, TL
 | Logout and suspend inhibit | `workspace/window_inhibitor.rs`, `inhibit_reason.rs`: hold logout with unsaved edits; hold suspend while a save or export writes | Absent. No `inhibit` call in `apps/` | Adopt | UX | S | P2, logout during a save loses work; GTK gives this for free |
 | Process hold while closing | `runtime/gio_process_hold.rs` keeps the app alive until connections close | Absent (no `hold()` use) | Adopt | UX | S | P3, clean audit terminal states on last-window close |
 | Background-tab notifications | `ui/session_window/work_notifier.rs`: saves, exports, queries; withdrawn when the tab is viewed | Partial. Query finish only (`ui/editor/finish_notice.rs:23`) | Adapt | UX | S | P3 |
-| Shortcuts and About | Shortcuts dialog; About with third-party licenses and debug info (`application/legal_section.rs`, `debug_info.rs`, `runtime_versions.rs`) | Partial. Shortcuts present (`ui/app/shortcuts.rs`). About has no licenses or debug info (`ui/app/status_pages.rs:124-142`). Diagnostics already proposed in `docs/proposals/devops-feedback-loop.md:68` | Adapt | UX | S | P3 |
+| Shortcuts and About | Shortcuts dialog; About with third-party licenses and debug info (`application/legal_section.rs`, `debug_info.rs`, `runtime_versions.rs`) | Partial. Shortcuts present (`ui/app/shortcuts.rs`). About has no licenses or debug info (`ui/app/status_pages.rs:124-142`). Diagnostics already proposed in `docs/archive/devops-feedback-loop-2026-10-23.md:68` | Adapt | UX | S | P3 |
 | Crash report | `crash_report.rs` | Already recorded (`upstream-linux-movement-2026-10-18.md` §7) | Already recorded | UX | - | - |
 | JSON logs | `logging.rs` | Present. `apps/linux/app/src/logging.rs:22-53` | Already have | - | - | - |
 
@@ -244,7 +244,7 @@ Lanes follow `AGENTS.md`: B3 = values, drivers, result paths. B4 = transport, TL
 12. **SQLite table rebuild** for changes ALTER cannot do. B3, L, P2.
 13. **History recording off switch** and delete-history option on connection delete. UX, S, P3.
 14. **Redo action, Set Empty, fuzzy completion.** Small UX gaps where the core already supports the behaviour. UX, S, P3.
-15. **About: third-party licenses and Copy debug info**, following `docs/proposals/devops-feedback-loop.md`. UX, S, P3.
+15. **About: third-party licenses and Copy debug info**, following the dated [development feedback-loop proposal](../devops-feedback-loop-2026-10-23.md). UX, S, P3.
 
 ## Limits
 

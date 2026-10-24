@@ -75,7 +75,7 @@
   ],
   "artifacts_sha256": {
     "README.md": "efc9bf1d398d6b54fae4cbac5e1182cc9a402f3304d3ad22410cdfe54d9a8f2e",
-    "acceptance.sh": "4dd091617bde3333b1e0a8a23339dc20e6d317165047d8ae712bf87b71018e48",
+    "acceptance.sh": "18729e86a1c62e36994ffa47000b977cd3fd89d4f07d7563344609bf4c9a7a6c",
     "bash-syntax.log.gz": "ac73670af3abed54ac6fb4695131f4099be9fbe39d6076c5d0264a6bbdae9d83",
     "before.log.gz": "c73ccb7ace49c5eedc3eb33e7808a07af49b28d62f5563204d6a8d8ee2d06a28",
     "container-cleanup.json": "ce7f3634643f4df66036a2b52dead05b1dc51460b878d36dba964f47597e17d9",

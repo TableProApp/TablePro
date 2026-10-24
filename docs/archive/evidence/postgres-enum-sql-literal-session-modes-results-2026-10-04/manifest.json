@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "2d2c0e4e2",
+  "engine": "PostgreSQL 16 (16-alpine) in Docker via testcontainers",
+  "case": "Custom enum SQL-file replay with both standard_conforming_strings settings",
+  "values": [
+    "enum label containing literal backslash+n and an apostrophe"
+  ],
+  "contract": [
+    "SQL file output renders backslash-bearing PostgreSQL values as E strings with doubled backslashes, independent of standard_conforming_strings.",
+    "The same generated INSERT replays with (standard_conforming_strings=on, backslash_quote=safe_encoding) and (standard_conforming_strings=off, backslash_quote=off).",
+    "Both replays preserve exact enum text and pg_typeof; each transaction rolls back after verification.",
+    "The core literal decoder test verifies escape-string parsing, and existing PostgreSQL enum SQL-file replay remains unchanged for ordinary, empty, Unicode, NULL and injection-shaped labels."
+  ],
+  "validation": {
+    "core_tests": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml --package tablepro-core",
+      "result": "519 unit tests and 10 query-pipeline tests passed",
+      "log": "core-tests.txt"
+    },
+    "app_tests": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml --package tablepro-app --lib",
+      "result": "460 passed, 23 ignored",
+      "log": "app-tests.txt"
+    },
+    "existing_enum_sql_replay": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml --package tablepro-driver-postgres --test integration enum_contract::value_contract_custom_enum_sql_file_export_restores_labels_and_native_type -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "existing-enum-replay.txt"
+    },
+    "session_mode_sql_replay": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml --package tablepro-driver-postgres --test integration enum_contract::value_contract_custom_enum_sql_file_replay_preserves_backslash_across_string_modes -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed across both session-setting combinations",
+      "log": "session-mode-replay.txt"
+    },
+    "clippy": {
+      "commands": [
+        "rtk proxy cargo clippy --manifest-path linux/Cargo.toml --package tablepro-core --all-targets -- -D warnings",
+        "rtk proxy cargo clippy --manifest-path linux/Cargo.toml --package tablepro-driver-postgres --all-targets -- -D warnings"
+      ],
+      "result": "both passed",
+      "logs": [
+        "clippy-core.txt",
+        "clippy-postgres.txt"
+      ]
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk proxy git diff --check passed"
+  },
+  "remaining": [
+    "Other PostgreSQL enum session settings and SQL literal edge cases remain open in B3."
+  ],
+  "log_sha256": {
+    "core-tests.txt": "72e1e30fff5dce259905a44f9d2e17ab6ad1ca2e64b17eb4a3c0e3b738f0b944",
+    "app-tests.txt": "44d57894f9d8f95401300de70d41383d5758e4d9e64b8d9bcfe34e58e1387ff2",
+    "existing-enum-replay.txt": "78d06c4c01dbd2f14992fea3153bc1dfd690e814410d9bc4758c638117e74523",
+    "session-mode-replay.txt": "d8adcf44ccb9659c15dd38cc6d934e25627394dd0027f060105f8b019db63a33",
+    "clippy-core.txt": "26be888a30e76f139c25d6ef3f488cf71a3d6457158ea8fcb7bfad255e8dfa2f",
+    "clippy-postgres.txt": "502fbd8f7c46195ac0b16374b28e0db47626e26e3747ca1e6ead78ffe7e1cea0",
+    "fmt.txt": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  }
+}

@@ -60,7 +60,7 @@ compatibility labels were removed from the README and packaging guide.
 ## Verification
 
 Execution results and source hashes are recorded in
-[evidence/2026-09-29-regression-audit/validation.json](../evidence/2026-09-29-regression-audit/validation.json).
+[evidence/2026-09-29-regression-audit/validation.json](evidence/2026-09-29-regression-audit/validation.json).
 Reports under `target/quality/` describe this dirty working tree, not a published
 commit or hosted CI result. Failed initial checks remain in that directory.
 
@@ -123,10 +123,10 @@ Mutation measurements use scratch copies and separate target directories; they
 never alter the working checkout or share the fixture builds’ target directory.
 
 Before-fix reproductions are retained beside the validation manifest:
-[decimal](../evidence/2026-09-29-regression-audit/decimal-before.txt),
-[binary CSV](../evidence/2026-09-29-regression-audit/binary-before.txt),
-[isolated runner](../evidence/2026-09-29-regression-audit/isolated-before.txt), and
-[change-contract runner](../evidence/2026-09-29-regression-audit/change-contracts-before.txt).
+[decimal](evidence/2026-09-29-regression-audit/decimal-before.txt),
+[binary CSV](evidence/2026-09-29-regression-audit/binary-before.txt),
+[isolated runner](evidence/2026-09-29-regression-audit/isolated-before.txt), and
+[change-contract runner](evidence/2026-09-29-regression-audit/change-contracts-before.txt).
 
 ## Remaining coverage and acceptance
 

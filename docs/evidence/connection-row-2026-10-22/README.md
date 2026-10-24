@@ -28,6 +28,10 @@ Removal was also exercised without deleting any fixture data. It displayed `Remo
 - Preflight: passed; the distro package check reported that `dpkg-deb` is unavailable locally.
 - Refreshed onto Linux `6caa27f18` after #1331 and #1324. Final preflight, 713 application unit tests and application all-target Clippy passed.
 - The merge changed no application Rust code, crate source or isolated-test registrations relative to the widget-tested candidate. This was checked with `git diff 86a6d7681 HEAD -- apps/linux/app crates scripts/isolated-tests.json`.
-- [Manifest](manifest.json) records the saved binary checksum and installed case results. Forgejo acceptance remains pending.
+- [Manifest](manifest.json) records the saved binary checksum and installed case results. Forgejo acceptance was pending at this evidence checkpoint.
 
-Raw local logs are retained under `~/bookie-test/connection-row-*`. Checks use isolated X11 displays and session buses. The native Wayland desktop, screen-reader narration, light theme and high contrast have not yet been verified for this change.
+Raw local logs are outside the repository. Checks use isolated X11 displays and session buses. The native Wayland desktop, screen-reader narration, light theme and high contrast have not yet been verified for this change.
+
+## Subsequent status
+
+GitHub PR [#1338](https://github.com/cozyGarage/BookiE/pull/1338) merged on 2026-10-22 at head `8aa41c861d7273aa1a0c0225fbd96e5df871eeda`, and issue [#1328](https://github.com/cozyGarage/BookiE/issues/1328) closed. Its merge commit is in the current Linux tree. The PR's GitHub checks included failures before merge, and this packet does not identify the exact-head Forgejo run; [#1543](https://github.com/cozyGarage/BookiE/issues/1543) tracks the merge-order and gate-evidence audit. Native Wayland and accessibility acceptance listed above remain unverified.

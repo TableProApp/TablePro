@@ -47,7 +47,7 @@
     "diff_check": "rtk git diff --check passed"
   },
   "log_sha256": {
-    "focused.txt": "2ad97c9586f81dfe6da92005cdd2c42eafa49a27fe5060b589619015ca5fcfa1",
+    "focused.txt": "178948052cf9332fcbd57cb0d97225513633cb2608f18e016779016dd3642bf9",
     "value-contracts.txt": "27c3c7a06a6f08660ad6ce0493db93564304b39cb003211b03212ecf4dbab5bb",
     "clippy.txt": "2bc683fb4e4f4f21ee9ee39e2b8ecce2efe20d3b1be57bda5316aa519ab3d30a",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

@@ -59,11 +59,11 @@
     "table-calc-roundtrip.xlsx": "bd9a5155d7b06f2f6cdda1c6d597ae9ccbab643dd4b5bdf7af336f5fd90768e5"
   },
   "log_sha256": {
-    "bookiee-export-test.txt": "2f510673407c639e5e06ff154b3c88ff77dd52ad397cdbee59db149bcc234ee8",
+    "bookiee-export-test.txt": "d79b9235c54e1a9f1500f83dd666acfe2e92caeff4f9830ac4eadb6d945fc084",
     "libreoffice-roundtrip.txt": "1fcbfb70f772f2566b85f8a0675360a9f2c195a3b443316bec03cadb7bb013d2",
     "table-libreoffice-roundtrip.txt": "5796c42b0750e82ac5e3b2dea54716b53a81e9fd2b6d68958a536ae2eed20443",
     "consumer-check.txt": "cb7d4d6f4fe073504cbcc733221c2ebbabdfd036fb670eb8a393eaf05f67dc8f",
-    "clippy.txt": "ce188a9fcbda62092659663228be09d6297535e7f327c0cefb019b0fa4f2a470",
+    "clippy.txt": "142292b7da8afc422e8f2df6a2f30f2dfabf606dd12b51af5149cbf5902e9333",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

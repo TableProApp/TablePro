@@ -44,11 +44,11 @@
     "diff_check": "rtk proxy git diff --check passed"
   },
   "log_sha256": {
-    "focused.txt": "785a9753175e7de3a2ccc87891da7604615c282e1cc24b3d50679cfc38842998",
+    "focused.txt": "7fbefe36f2581f71f649768af7ec0ed62009ebfe99c1806755232fd24aaae914",
     "core-test.txt": "3c14a4c286d072f3122087d641ffd51d3738cab31d2d6c76db68378b4e5bda1f",
-    "clippy.txt": "4bed78e0f4c122b3cfa37b8254ee9c781b54e58e3a6296cbc4c5a6053704a808",
+    "clippy.txt": "fcad694701deb9a2e129fe35eaea7e83130f86affab497b3ae7d6f637376afa5",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "quick-ci.txt": "1a61484f4a5ef31e1240eebb6093a0fbc04297f76b167366721a8532e31f1d28"
+    "quick-ci.txt": "fac905434313e8c9bae264fa076ffd19f399e00f1f039499ca5d45e80a28ecf8"
   },
   "remaining": [
     "ABA edits/deletes, larger-scale MongoDB full-scan performance budgets, off-page run_find type changes after census, other consumers and installed editing remain open; this focused case does not close B3."

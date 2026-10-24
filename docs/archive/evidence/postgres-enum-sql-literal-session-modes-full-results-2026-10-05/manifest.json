@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "branch": "linux",
+  "source_commit": "32689a3c1",
+  "case": "PostgreSQL enum SQL-file replay across the complete string-setting matrix",
+  "test": "enum_contract::value_contract_custom_enum_sql_file_replay_preserves_backslash_across_string_modes",
+  "engine": "PostgreSQL Docker integration fixture",
+  "value": "enum label containing literal backslash+n and apostrophe: back\\nslash'quote",
+  "contract": [
+    "SQL-file output encodes the backslash-bearing value with an E string and doubled backslash, independent of session string settings.",
+    "The same generated SQL replays successfully under all four combinations of standard_conforming_strings and backslash_quote: on/safe_encoding, on/off, off/off, off/on.",
+    "Each replay preserves exact enum text and pg_typeof; each transaction rolls back after verification."
+  ],
+  "validation": {
+    "focused_replay": {
+      "command": "cargo test -p tablepro-driver-postgres --test integration enum_contract::value_contract_custom_enum_sql_file_replay_preserves_backslash_across_string_modes -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed; four session-setting combinations exercised",
+      "log": "session-mode-replay.txt"
+    },
+    "enum_contract_suite": {
+      "command": "cargo test -p tablepro-driver-postgres --test integration enum_contract -- --include-ignored --test-threads=1",
+      "passed": 17,
+      "failed": 0,
+      "filtered": 124,
+      "duration_seconds": 34.01,
+      "log": "enum-contract-suite.txt"
+    },
+    "clippy": {
+      "command": "cargo clippy --locked -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "ignored_test_inventory": {
+      "command": "python3 scripts/inventory-ignored-tests.py --check",
+      "result": "passed",
+      "log": "ignored-inventory.txt"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "result": "passed",
+      "log": "diff-check.txt"
+    }
+  },
+  "log_sha256": {
+    "session-mode-replay.txt": "9407b363305b7274f2a711944283eea5b9d0b55437061a0c2984d4d291ac1b63",
+    "enum-contract-suite.txt": "e7aca352e4317e1e6476543834e689587749eca829ca4fe3456da2c743ab647f",
+    "clippy.txt": "7c93556cf4b4aa54e82ac87a1ae2cc3b3a516bc14a7efb6732d600ba24d5707c",
+    "fmt.txt": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+    "ignored-inventory.txt": "a838fb732deaa504c898f2d9d00642e6d7c354035b1857ba10e7110bbcaccbe7",
+    "diff-check.txt": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  }
+}

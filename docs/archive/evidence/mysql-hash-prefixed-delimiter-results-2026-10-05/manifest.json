@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "branch": "b3/mysql-hash-prefixed-delimiter",
+  "source_commit": "8cbc69801f1e2d1f9f918ee9444094649dc94110",
+  "engine": "MySQL script grammar",
+  "case": "punctuation delimiter preserves hash comments and statement identity",
+  "test": "ui::editor::statement_cursor::tests::mysql_punctuation_delimiter_preserves_hash_comments",
+  "contract": [
+    "A DELIMITER #! routine contains a MySQL # line comment and a string containing the active delimiter text.",
+    "Planning and named-parameter extraction keep the routine as one statement and the trailing SELECT as the second statement; placeholders in the comment and string do not escape.",
+    "Formatting and replanning preserve the comment and the statement boundary."
+  ],
+  "validation": {
+    "statement_cursor_tests": {
+      "command": "rtk cargo test --offline --locked -p tablepro-app ui::editor::statement_cursor::tests",
+      "result": "21 passed, 482 filtered out (3 suites)",
+      "log": "statement-cursor-tests.txt"
+    },
+    "format": {
+      "command": "rtk cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": {
+      "command": "rtk git diff --check",
+      "result": "passed",
+      "log": "diff-check.txt"
+    }
+  },
+  "remaining": [
+    "Other punctuation delimiter tokens and dialect-specific script boundaries remain open."
+  ],
+  "log_sha256": {
+    "statement-cursor-tests.txt": "544db0a3ec9fc6fdd2293c52f7278e0e598e7e1669c083495c8f3f750c246ae7",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "diff-check.txt": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  }
+}

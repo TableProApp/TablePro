@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-09",
+  "scope": "BookiE GTK UI workflows on the exact post-PR-427 fork/linux release build",
+  "source_commit": "b4ee463a2603e7b1a28ebc4cef4a751d5aeab5fb",
+  "binary_path": "[user-home]/.local/opt/bookie-main-b4ee/bookie",
+  "binary_sha256": "7838f7c24bee6e18b4bce969a61766bd5c2967d86578f65b421952bd6d7c0d2d",
+  "binary_build": "cargo build --locked --release -p tablepro-app --bin tablepro-app",
+  "runtime": "User-local release executable; Xvfb 1280x1024 X11, private D-Bus, GTK AT-SPI automation",
+  "command": "TABLEPRO_GTK_BINARY=[user-home]/.local/opt/bookie-main-b4ee/usr/bin/tablepro bash scripts/test-gtk-safety.sh",
+  "result": "passed; 53 GTK scenarios",
+  "coverage": [
+    "SQL editor and approval/denial",
+    "approval cancellation and request disconnect paths",
+    "audit failure and journal loss fail closed",
+    "connection editing and switching",
+    "session and process restart",
+    "query cancellation",
+    "CSV, JSON and workbook export",
+    "parameter binding",
+    "XML import/export",
+    "grid editing and inspection",
+    "accessibility names and keyboard navigation",
+    "bundle import/export and credential restoration"
+  ],
+  "not_established": [
+    "MySQL approval scenario, covered separately",
+    "Distro package acceptance",
+    "Native Wayland acceptance",
+    "Manual visual inspection through the native computer-use surface"
+  ],
+  "log_sha256": {
+    "run.log": "aaeae218f0720b9b52fbe6d4f444a27f47b839cf242f1def603a3580e49f0b22",
+    "results.json": "f9e616565d21d718004cd450168b9cd6c69bf0c0a58c517004a772fcbf4cdb6a"
+  }
+}

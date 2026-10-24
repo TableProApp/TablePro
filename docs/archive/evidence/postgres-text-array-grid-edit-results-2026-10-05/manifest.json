@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-05",
+  "branch": "linux",
+  "baseline_commit": "b3f41f75d7963b66d691a497fc646fbce94d5eed",
+  "case": "PostgreSQL text[] app parser and keyed grid edit",
+  "test": "ui::browse_tab::value_parse::postgres_array_contract::value_contract_postgres_text_array_grid_edit_preserves_escaped_values_and_siblings",
+  "sources": [
+    {
+      "path": "crates/app/tests/support/postgres_array_contract.rs",
+      "sha256": "1b871d28951cdb1e9e07302dbd70a42e5e5bca974c656af4b2330234e86a3d74"
+    },
+    {
+      "path": "scripts/isolated-tests.json",
+      "sha256": "02c97f232c2423e0c98e29160c7dc1ec1eb4cb8085c02f7f859fe69a99a78187"
+    }
+  ],
+  "engine": "PostgreSQL 16 Alpine through testcontainers",
+  "expected_array_literal": "[0:8]={NULL,\"NULL\",\"\",\"a,b\",\"a\\\"b\",\"a\\\\b\",\"東京\",\"<tag>&\",\"=1+1\"}",
+  "contract": [
+    "The app parser and keyed-update builder preserve a text[] value with lower bound zero, SQL NULL, literal NULL, empty text, comma, quote, backslash, Unicode, markup and formula-shaped text.",
+    "PostgreSQL native type, canonical array text, array_to_json semantics and array_send bytes match the keyed grid result.",
+    "Malformed array syntax is rejected with SQLSTATE 22P02 and the full target and sibling snapshots remain unchanged."
+  ],
+  "validation": {
+    "native_app_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib ui::browse_tab::value_parse::postgres_array_contract::value_contract_postgres_text_array_grid_edit_preserves_escaped_values_and_siblings -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "app-grid-edit-test.txt"
+    },
+    "app_lib_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --lib",
+      "result": "467 passed, 30 ignored",
+      "log": "app-lib-test.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --locked -p tablepro-app --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": "fmt.txt passed",
+    "ignored_test_inventory": "ignored-inventory.txt passed",
+    "diff_check": "diff-check.txt passed"
+  },
+  "remaining": [
+    "Other PostgreSQL array families and consumer/configuration combinations, and the broader B3 matrix remain open."
+  ],
+  "log_sha256": {
+    "app-grid-edit-test.txt": "7d2fff7ad791dace4711acc73a9e8a71b9a363faf2e3fffadb863177d664985b",
+    "app-lib-test.txt": "3fbff68c882168d1945e6cd4a6ec791a9df8c581b96cf27d934a4206182e9004",
+    "clippy.txt": "2a8b6803cdb44e8e978faa8241ddf1db7a3c83f5d55d9a41abdeace54baed757",
+    "diff-check.txt": "31cbc7f6640f67db087c6e5aa939e60853dca2e6f513aa512be87c2347b865e9",
+    "fmt.txt": "e9487ab36096d3fd32d475613abccda45c38206cb795e57d66f4f5dd71d0d920",
+    "ignored-inventory.txt": "a838fb732deaa504c898f2d9d00642e6d7c354035b1857ba10e7110bbcaccbe7"
+  }
+}

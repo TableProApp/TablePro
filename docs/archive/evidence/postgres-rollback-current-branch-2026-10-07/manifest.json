@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-ssh-audit",
+  "source_commit": "83df8dc7f58a921bc30aff66aba1301235427966",
+  "source_sha256": {
+    "crates/drivers/postgres/tests/integration.rs": "b88e27e94deb29853a37458dba2311b6c8d306e4adc11acb88fbe5211cb97325"
+  },
+  "engine": "PostgreSQL 16-alpine testcontainers fixture",
+  "case": "Current B4 branch rerun: a terminated transaction backend rolls back table data but not its identity sequence increment.",
+  "test": "a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+  "contract": [
+    "The transaction inserts a row using an identity column, then blocks inside SELECT pg_sleep(60).",
+    "A monitor terminates the active PostgreSQL backend.",
+    "The driver returns TransactionRollbackFailed at statement index 1, with disconnected statement and rollback errors.",
+    "A fresh query confirms the row is absent.",
+    "A fresh sequence query confirms last_value is 1 and is_called is true."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-driver-postgres --test integration a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed, 0 ignored; 196 filtered out",
+      "log": "focused.txt"
+    }
+  },
+  "remaining": [
+    "Frozen B3+B4 candidate rerun and hosted acceptance remain.",
+    "This documents the identity-sequence side effect only, not all PostgreSQL trigger, extension, or external effects."
+  ],
+  "log_sha256": {
+    "focused.txt": "9978cb9a3ec81c6fb1efd07c33aeacde3f294942d60c6ba50b5672be9c2c7000"
+  }
+}

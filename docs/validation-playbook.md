@@ -1,6 +1,6 @@
 # Validation playbook
 
-Use this page to select checks, hand off work, and review evidence. The executable catalog is [test-layers.json](../scripts/test-layers.json). [Testing](testing.md) describes fixtures; [the sprint plan](bookie-0.2-sprint.md) owns milestone order and acceptance. A green layer certifies only its named scope.
+Use this page to select checks, hand off work, and review evidence. The executable catalog is [test-layers.json](../scripts/test-layers.json). [Testing](testing.md) describes fixtures; the [completion page](bookie-0.2-sprint.md) records 0.2.0, while the [backlog](backlog.md) and owning issues set subsequent order and acceptance. A green layer certifies only its named scope.
 
 ## Current desktop target
 
@@ -12,15 +12,27 @@ Run commands from the repository root with the toolchain required by the reposit
 
 ### Local pre-push gate
 
+For a single broad release-style run, use:
+
+```bash
+bash scripts/ci-local.sh release
+```
+
+It runs the fast workspace checks, GTK widgets, Docker driver and socket fixtures, SSH, app-server tests, TLS, keyring, PostgreSQL release checks, installed GTK safety flows, the ClickHouse/MySQL/MongoDB GTK fixtures, DuckDB and dependency checks. It does not run the `values` or `b4-rollback` layers, distro-floor and package-upgrade checks, nightly mutation/coverage/soak, or opt-in Kerberos tests. Use the named-layer command below when those contract layers are needed; the two paths overlap and do not need to be run together for every change.
+
 On a local machine with Docker and the required native libraries, run a broad local regression pass before pushing:
 
 ```bash
+set -e
 python3 scripts/run-test-layer.py full app-server values drivers b4-rollback tls \
-  postgres-release keyring security-policy supply-chain widgets ui \
+  postgres-release ssh keyring security-policy supply-chain widgets ui \
   workflow-lint harness packaging-contracts change-contracts
+bash scripts/test-pg-dump.sh
 ```
 
-This runs the fast workspace gate, app-server and cross-driver value contracts, Docker driver/rollback/TLS/PostgreSQL/SSH fixtures, keyring and dependency policy checks. It does not replace nightly coverage, mutation, soak or installed-package acceptance. Specialized local fixtures are listed below. The runner saves a commit-pinned report and logs under `target/quality/`. Current milestone acceptance is in the [active sprint](bookie-0.2-sprint.md) and owning boards. Dated release audits and validation history are source-pinned records, not current status.
+This covers the fast workspace gate, app-server and cross-driver value contracts, Docker driver/rollback/TLS/PostgreSQL/SSH fixtures, keyring and dependency policy checks, plus the PostgreSQL dump/restore fixture. The named layers run sequentially and save the source revision, worktree state, tracked-diff digest and logs under `target/quality/`; `test-pg-dump.sh` runs separately. This does not cover the distro-floor matrix, installed-package upgrade/rollback, nightly mutation or soak runs, or the opt-in Kerberos and specialized GTK database fixtures. Those remain separate acceptance checks. The [completion page](bookie-0.2-sprint.md) records 0.2.0 status; current work and acceptance criteria live on the owning boards. Dated release audits and validation history are source-pinned records, not current status.
+
+Before opening a pull request, also run `bash scripts/preflight.sh` as required by `AGENTS.md`. It repeats unit and sandbox tests but adds the crate-boundary and comment-line checks that `ci-local.sh full` does not run.
 
 Run `quick` for a short edit loop. Run the pre-push gate after changes that touch shared core/value paths or before handing a B3 slice to review. Keep the hosted workflow as the recorded platform/packaging check.
 
@@ -99,8 +111,8 @@ Build/package, mutation, coverage and acceptance retain their existing entrypoin
 | Coverage | Linux test quality; [local instructions](testing.md#coverage) | LCOV, exclusions and summary; this report has no threshold. Forgejo nightly separately enforces the unit-tier and per-crate floors. |
 | Flatpak | Flatpak Linux (packaging only) | Pull requests build the default profile; push and `workflow_dispatch` also build development; not regression acceptance |
 | Arch / Debian candidate | [Packaging guide](../apps/linux/packaging/README.md) and packaging scripts | Immutable SHA, package checksum, validator output |
-| GTK soak | GTK Safety Soak | Five independent retry-free attempts per run at one resolved SHA; 0.2.0 qualification requires 30 consecutive attempts across at least six runs at that SHA |
-| Installed acceptance | [Manual feature checklist](manual-verification-0.2-features.md) and sprint gates | VM/desktop version, Wayland session, package checksum, steps, result and screenshots |
+| GTK soak | GTK Safety Soak | Five independent retry-free attempts per run at one resolved SHA. The 30-attempt/six-run threshold is in the [archived 0.2.0 handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md), not a default for future releases; current follow-ups are TEST-31 ([#556](https://github.com/cozyGarage/BookiE/issues/556)) and PKG-1 ([#574](https://github.com/cozyGarage/BookiE/issues/574)). |
+| Installed acceptance | [Manual feature checklist](manual-verification-0.2-features.md) and issue acceptance criteria | VM/desktop version, Wayland session, package checksum, steps, result and screenshots |
 
 ## Hosted checks
 
@@ -128,7 +140,7 @@ Copy this and fill in every field:
 
 ```text
 Repository and branch: <name>; expected full SHA: <sha>
-Goal: <one invariant or failure>; sprint scope: B3 / B4–B6 acceptance
+Goal: <one invariant or failure>; issue and lane: <issue id> / <lane>
 Allowed edits: <paths>; other agent-owned paths: <paths>
 Run layers: <catalog names>; narrow reproducer: <exact command>
 Available test prerequisites: <relevant tools or fixtures>
@@ -151,7 +163,7 @@ An agent must read `AGENTS.md`, inspect status and confirm the SHA before editin
 5. Add real-server or UI evidence where pure tests cannot prove the behavior. Assert database state and returned values, not merely absence of an error.
 6. Register ignored GTK/keyring tests in `isolated-tests.json`; regenerate the ignored-test ledger. New tiers need a catalog entry, local runner and hosted gate.
 7. Run focused mutation checks with a nonzero selected count and independent expected values. Document each equivalent survivor with a concrete argument; leave unresolved survivors/timeouts open.
-8. Update scenario evidence and the owning sprint task. Keep the test with the fix.
+8. Update scenario evidence and the owning issue or board. Keep the test with the fix.
 
 Use [value contracts](value-contracts.md) and the B3 board as the current case backlog. The [scenario survey](archive/b3-test-scenario-survey.md) records dated research patterns and source provenance. Current examples:
 
@@ -167,9 +179,9 @@ Use [value contracts](value-contracts.md) and the B3 board as the current case b
 
 Secure connection coverage is engine-specific. Track valid auth, rejected auth, wrong CA/hostname, no plaintext fallback, cancellation during connect/read/write, disconnect/reconnect, pool reuse, partial streams, malformed lengths, NULL/empty distinctions, Unicode/binary boundaries and authorization on every consumer. An unchecked scenario is a backlog item, not an implied capability or a pass.
 
-## Release decision
+## Release qualification
 
-B3 requires closed correctness findings and their regressions. B4–B6 additionally require the planned installed-package, Wayland, upgrade/rollback and candidate soak evidence. Docker supplies deterministic servers and Xvfb supplies automated GTK interaction. Current installed acceptance uses Arch/Omarchy under native Wayland, on the host or an Arch VM with Hyprland. GNOME/Debian VM qualification is the required next phase after Arch. Xvfb and widget passes cannot certify either native Wayland target. No workflow here automatically publishes a release or waives an acceptance gate.
+For a future candidate, B3 requires closed correctness findings and their regressions. B4–B6 also require the planned installed-package, Wayland, upgrade/rollback and candidate soak evidence. Docker supplies deterministic servers and Xvfb supplies automated GTK interaction. The 0.2.0 release is already published; these criteria do not reopen that milestone. Arch/Omarchy under native Wayland is the selected 0.2.0 desktop target. Debian/GNOME VM qualification remains post-release backlog work. Xvfb and widget passes cannot certify a native Wayland target. No workflow here automatically publishes a release or waives an acceptance gate.
 
 ## Static-analysis triage
 

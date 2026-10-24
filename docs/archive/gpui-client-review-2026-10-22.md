@@ -8,7 +8,7 @@ Status: research complete and archived. Implementation and runtime acceptance re
 
 Source inspection of eight suggested repositories found useful rendering, scheduling and PostgreSQL regression patterns. These patterns can be implemented within the existing GTK architecture. Framework selection alone does not establish bounded memory, correct cancellation or low CPU usage. No framework change is proposed.
 
-The [source manifest](../evidence/gpui-client-review-2026-10-22/manifest.json) pins commits and observed licenses. This is a focused initial review, not a whole-codebase audit or a performance comparison. No third-party application was built or benchmarked. Findings describe inspected paths, not every path in a repository.
+The [source manifest](evidence/gpui-client-review-2026-10-22/manifest.json) pins commits and observed licenses. This is a focused initial review, not a whole-codebase audit or a performance comparison. No third-party application was built or benchmarked. Findings describe inspected paths, not every path in a repository.
 
 ## Source findings
 

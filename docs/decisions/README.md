@@ -47,7 +47,7 @@ Other options and why they were rejected.
 | [0008](0008-connection-and-session-ownership.md) | Connection/session ownership and trust | Accepted | Distinct live identities, no pool/replay/security fallback, and scoped uncertainty with durable audit obligations. |
 | [0009](0009-persistence-and-identity-compatibility.md) | Durable identity and recoverable state | Accepted | Stable identifiers, compatible adapters, recoverable migrations and distinct persistence writer contracts. |
 | [0010](0010-administrative-action-audit.md) | Audit confirmed bundle administration | Accepted | Bundle import/export use durable, paired aggregate audit records and fail closed before side effects. |
-| [0011](0011-paged-query-results.md) | Page large editor results through a cursor | Accepted | Supported single-statement PostgreSQL editor SELECTs stream through a four-page window; other paths keep their caps, and broader memory acceptance remains open. |
+| [0011](0011-paged-query-results.md) | Page large editor results through a cursor | Accepted | Supported single-statement PostgreSQL editor SELECTs stream within an estimated 64 MiB row-storage budget; other paths keep their caps, and broader memory acceptance remains open. |
 | [0012](0012-sidebar-object-tree.md) | Show database objects in a collapsible sidebar tree | Accepted | Collapsible Tables and Views groups use the existing `GtkListBox`; `GtkTreeListModel` migration and lazy catalog groups remain open. |
 | [0013](0013-multiple-query-result-sets.md) | Preserve every result set from a query | Accepted | Ordered result batches keep SQL Server's later sets under one shared budget; the editor uses a result-set dropdown, MCP preserves sets, and GUI export handles one set |
 | [0014](0014-full-table-export-snapshot.md) | Full table exports use one read snapshot | Accepted | Paged exports must read one guarded database snapshot or refuse before publishing a file |
@@ -61,7 +61,7 @@ Other options and why they were rejected.
 
 Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
 
-Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted means the architecture choice is recorded; implementation and runtime acceptance remain on the [active sprint](../bookie-0.2-sprint.md) and owning boards.
+Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepted means the architecture choice is recorded; implementation and runtime acceptance remain on the relevant milestone records and owning boards.
 
 ## Adding a decision
 

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-23",
+  "artifacts": [
+    {
+      "path": "docs/evidence/bounded-preview-layout-2026-10-22/preview-manifest.json",
+      "original_sha256": "5aadc375507f14dcca12fee62035f10141ab8337a649149e71e0e7d36e72b327",
+      "redacted_sha256": "ec9522ff3021b17608b3d8adf285c51eeff911b0b9b9adae7be0fad6362bd8ea",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/archive/evidence/connection-url-tls-2026-10-20/README.md",
+      "original_sha256": "9cd55f368901fa0dee0153488367033179ded7ce76dee7531718ac39040353c9",
+      "redacted_sha256": "86e60a48b96dab6f98263420cdc5adbc015b65c66ad03f8f610f206727cfbe1f",
+      "redaction": "private local Forgejo URL removed; run number retained"
+    },
+    {
+      "path": "docs/evidence/editor-bottom-panel-2026-10-22/native-acceptance.py",
+      "original_sha256": "70eb4101e4d5b95a84ed1941af9b48366daed3b91389d8c88002593c6a0dedad",
+      "redacted_sha256": "858930ed322efba3b620e179abf4afdf9e65cc99acb0adf508f81c9902438343",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/editor-error-navigation-2026-10-22/native-acceptance.py",
+      "original_sha256": "ae38046c0b0ce5ba9b42bed142310a7a7166850149d089ac54c99ebbdd258e7b",
+      "redacted_sha256": "ef4853c98d644b39e30addf5d692ea417734e0350b9e1901407e9cf6b621ef77",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/archive/evidence/editor-run-admission-2026-10-20/README.md",
+      "original_sha256": "493556f4f84f3164ec4e3127501ae7c181c0e1caf42a8fc266ede7558c7839ec",
+      "redacted_sha256": "d0e99a7399d780537d178572acd0c1ea0d111948881356222d5a3cd2d767be1f",
+      "redaction": "private local Forgejo URL removed; run number retained"
+    },
+    {
+      "path": "docs/archive/evidence/gpui-client-review-2026-10-22/README.md",
+      "original_sha256": "2b24dcedaf6d1b57f4ddc24b7f0f5391225487d163b9098a5b610a964ac5182d",
+      "redacted_sha256": "d69948087c6e11e3db61691d4d8ac748c24ad6dcac2284a630b059a52855e4c0",
+      "redaction": "local home-directory path removed; pinned public links retained"
+    },
+    {
+      "path": "docs/evidence/grid-search-focus-2026-10-22/validation.json",
+      "original_sha256": "c8287b405d05514e102631d1b582521e5e846ed30652f048b485b584b624827d",
+      "redacted_sha256": "0e6cafc6817a76610e7aef7999f721d866907c5abcb61dba365feff90f7f32c0",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/gtk-stderr-capture-2026-10-22/README.md",
+      "original_sha256": "9cf97f8199a9607e3934385847206351236b0b4b655afdceebc4a3405d4c696c",
+      "redacted_sha256": "1c9535befbbabadc49ca36972bf733e12d29eae484a8ea1c83189bd25aca1a22",
+      "redaction": "local home-directory path removed; pinned public links retained"
+    },
+    {
+      "path": "docs/evidence/local-resource-profiling-2026-10-23/file-allocation-report.txt",
+      "original_sha256": "f8fdc277e7b451c4b40ad1d66ecb10c511e10a125bd74543c8e2f729d08b6ebf",
+      "redacted_sha256": "0006c9e6990a9e27f2a3df50d8f8c6a6e1fbb3576586f9ff5627bfad8b3c8e4b",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/local-resource-profiling-2026-10-23/shutdown-regression.json",
+      "original_sha256": "5e06875f31185900bf1386b5ab64e3bbccac96aac209ee17f433aed941ea44ed",
+      "redacted_sha256": "06b66fe1b72b4595f5e11c70e09586bfdcb253b36d045809212de40d38cda3c2",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/postgres-optimized-stream-2026-10-23/initial-failure.log",
+      "original_sha256": "b4fb8ecb8887075ce3bc3a915fbf5c0480fc5da54501f639da9a36a7a7745599",
+      "redacted_sha256": "7eaef4b1792422468a59e8ac4d3bf705f56fbb21f536b93b0e1fd0454bca3b8d",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/postgres-optimized-stream-2026-10-23/low-poll-run.log",
+      "original_sha256": "a3b66416fb3933a93d1dcbb7e1434d57f70fefcd55922dd206b95123399d9f93",
+      "redacted_sha256": "8349428f50063bbe65b8b35d040699d4ca68fdcc0c1e68102a15a0b316e35ba3",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/archive/evidence/stream-byte-budget-2026-10-22/manifest.json",
+      "original_sha256": "5bf67cfba00267fc0c3df2cf2adc9af34761878e1df4ec393912191887d93ee8",
+      "redacted_sha256": "fcdded38d1c344df8be46384aeea8ee080526e50efdfde6dc73f57b9e2d2b8df",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/stream-page-realization-2026-10-23/completion-acceptance.json",
+      "original_sha256": "c76a48223c7752840a446a1ada57fa824c78718edadd46c3636d12e23bdacf27",
+      "redacted_sha256": "5269f1add387e9bd95cc2598448d7efa3f643d92e6a07180edfee75498943d4e",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/stream-page-realization-2026-10-23/heap-five-allocations.txt",
+      "original_sha256": "cccf57c7b18117a11ec9e3ef88f43de073d90a82838667554a57d1dcc2270720",
+      "redacted_sha256": "cb249b6bced03782dfe3352e8ca0378ecf4599f0da39be497cb3de33989831c5",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/stream-page-realization-2026-10-23/heap-five-outstanding.txt",
+      "original_sha256": "0887f2ecf753f62a294f5d1d9e0bb6ddf03f45bb9eed320c59c332fb468567c8",
+      "redacted_sha256": "c2de5949521e74ee7e5bee97b44ccfc087548a239a4f9ff7fcf7bf1df5aa3864",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/tab-cycles-2026-10-22/reproduce.py",
+      "original_sha256": "e133059ff63fb3c7df6775ab4e0e1b117eb5e0b3878b0e85cfa5584edc45838e",
+      "redacted_sha256": "32bf2b1d36a0f2cca4758d69958c718e7f0cff163d9c879d75d1d728bf6c724f",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/toolkit-startup-2026-10-23/after.log",
+      "original_sha256": "8036b4272277ecf0623235181fbac74051833ef9b58dd0f8587fb9590e567abf",
+      "redacted_sha256": "d5682a0de4401049be4e7b04fb56908086573a7b604fd87aa321513d874e85b8",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/toolkit-startup-2026-10-23/before.log",
+      "original_sha256": "45b91755a881034a02a61602a0e3851d8a28167b139056e3b9cf6a82d7f1bed1",
+      "redacted_sha256": "a3fed88d22522b33e09910976ac777126442785cefbcd5c9dedbe9946dd72d08",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    },
+    {
+      "path": "docs/evidence/toolkit-startup-2026-10-23/widget-failure.log",
+      "original_sha256": "a84d8f12bac2a0d39a7ce0cb543fc78378c9a2ea5a6041c05c5844a6ea52f9fe",
+      "redacted_sha256": "800cbe9e5f4e9848d7ada78e52e3dabc21e94535043ab383c3f02bc5b9574e64",
+      "redaction": "local home-directory prefix replaced with $HOME"
+    }
+  ],
+  "unredacted_linux_artifacts_present_in_pr_1532_head": [
+    "docs/evidence/local-resource-profiling-2026-10-23/file-allocation-report.txt",
+    "docs/evidence/local-resource-profiling-2026-10-23/shutdown-regression.json",
+    "docs/evidence/stream-page-realization-2026-10-23/completion-acceptance.json",
+    "docs/evidence/stream-page-realization-2026-10-23/heap-five-allocations.txt",
+    "docs/evidence/stream-page-realization-2026-10-23/heap-five-outstanding.txt"
+  ]
+}

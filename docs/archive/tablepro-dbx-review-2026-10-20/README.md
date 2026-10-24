@@ -12,7 +12,7 @@ Dated review. It proves only the source pins below. It does not select work, cha
 
 Upstream trees were read as untrusted data. Nothing upstream was built or run. No BookiE test, database, Docker or GTK run backs these verdicts. The only executed checks were scratch-crate probes that called BookiE's `sql_lex::split_statements`, `transaction_control` and `classify`. Every "likely bug" below needs its failing regression test before an issue calls it confirmed.
 
-Items already owned by an earlier archive, the feature comparison or a backlog row appear once in the detail files as "already recorded". This review does not repeat the October 15 to October 20 reviews listed in the [documentation map](../../README.md#client-research-october-2026).
+Items already owned by an earlier archive, the feature comparison or a backlog row appear once in the detail files as "already recorded". This review does not repeat the October 15 to October 20 reviews listed in the [documentation map](../../README.md#engineering-review-records).
 
 ## Detail files
 
@@ -171,7 +171,7 @@ Ranked by daily value for the [personas](../../personas.md), fit with the govern
 
 ## Stale text found during the review
 
-`docs/upstream-sync.md` says BookiE has no askpass bridge, but `crates/transport/src/route.rs:159` defines `tablepro-askpass`. The owning lane should correct that line.
+The [upstream history](../upstream-sync-history-2026-10-22.md#2026-09-19-re-survey-after-upstream-rewrote-its-linux-branch) records the earlier no-askpass finding and its correction. Commit `8ed7647c4` reconciled the wording against the current source; this dated review note is retained as the original observation.
 
 ## Suggested promotion order
 

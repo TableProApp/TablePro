@@ -17,11 +17,11 @@ Source pin: TablePro `main` 3222542a4. BookiE `linux` 7c4cb3929cf23c7c0fd591fcf7
 
 ## Already recorded (skipped)
 
-- #3455, #3451, #3449, #3448, #3438, #3423 and #3398: already recorded in `docs/archive/linux-peer-review-2026-10-16.md` and `docs/upstream-sync.md`.
+- #3455, #3451, #3449, #3448, #3438, #3423 and #3398: already recorded in `docs/archive/linux-peer-review-2026-10-16.md` and the [upstream history](../upstream-sync-history-2026-10-22.md).
 - #3564 (reconnect replay) and #3585 (SQLite locked vs busy): already recorded in `docs/archive/upstream-main-analysis-2026-10-20.md`.
-- `3bcd8df75` (column rename) and `55528b854` (OpenSSH 9 fingerprint): already recorded in `docs/upstream-sync.md`.
-  - `upstream-sync.md:187` says BookiE has no askpass bridge. `crates/transport/src/route.rs:159` now defines `tablepro-askpass`, so that line looks stale.
-- `92aea7112` (export at the declared precision) was open in `docs/upstream-sync.md:189`. It is now decided.
+- `3bcd8df75` (column rename) and `55528b854` (OpenSSH 9 fingerprint): already recorded in the [upstream history](../upstream-sync-history-2026-10-22.md).
+  - The earlier no-askpass observation was corrected in commit `8ed7647c4`; the [upstream history](../upstream-sync-history-2026-10-22.md#2026-09-19-re-survey-after-upstream-rewrote-its-linux-branch) preserves both the finding and correction.
+- `92aea7112` (export at the declared precision) was open in the upstream history. It is now decided.
   - JSON numbers and decimal scale are covered.
   - Timestamp fraction padding differs, but the difference is cosmetic.
 - Apple #3305, #3295, #3292, #3347, #3153, #3109 and #3005: already recorded in `docs/0.2-feature-comparison.md`.

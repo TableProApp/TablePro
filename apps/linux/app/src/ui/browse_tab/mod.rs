@@ -18,8 +18,6 @@ const DEFAULT_PAGE_SIZE: u64 = 1_000;
 /// "Delete N items?" pattern.
 const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
 
-/// MongoDB is schemaless: page metadata carries the collection-wide BSON kind
-/// census. Use it for rendering and edits so mixed columns stay read-only.
 pub(super) fn columns_for_browse_page(
     driver_id: &str,
     loaded_columns: &[ColumnInfo],

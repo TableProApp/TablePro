@@ -16,7 +16,7 @@ test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 956 filtered out
 
 
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
-     Running unittests src/lib.rs (/home/trung/Projects/bookie/target/debug/deps/tablepro_app-0697f3ed2e86ab6c)
+     Running unittests src/lib.rs ($HOME/Projects/bookie/target/debug/deps/tablepro_app-0697f3ed2e86ab6c)
 MESA-EGL: warning: DRI3 error: Could not get DRI3 device
 MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
 

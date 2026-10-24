@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/postgres-enum-scalar-csv-whitespace",
+  "source_commit": "bb67ece25b9f0443fa2821e2826951b6399b7bc3",
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "Scalar custom-enum CSV export and typed restore preserve boundary whitespace",
+  "test": "enum_contract::value_contract_custom_enum_csv_round_trip_preserves_labels_and_sql_null",
+  "contract": [
+    "CSV export and parser retain the leading space in the enum label ' leading'.",
+    "CSV export and parser retain the trailing space in the enum label 'trailing '.",
+    "Typed CSV restore stores both labels exactly and reports the qualified PostgreSQL enum type.",
+    "Blank CSV cells remain ambiguous between an empty enum label and SQL NULL unless an explicit NULL marker is set."
+  ],
+  "validation": {
+    "native_contract": {
+      "command": "rtk proxy cargo test --offline --locked -p tablepro-driver-postgres --test integration enum_contract::value_contract_custom_enum_csv_round_trip_preserves_labels_and_sql_null -- --include-ignored --exact --test-threads=1",
+      "result": "1 passed, 0 failed",
+      "log": "postgres-enum-scalar-csv-whitespace.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --offline --locked -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "postgres-enum-scalar-csv-whitespace.txt": "964a06aea1215aa38629babf9a2d9bbaee1989f6495e7e1225235e9a22f04cfe",
+    "clippy.txt": "1971b622199b4a2249eeffa09632fa7968761445fae8df2eff135ea34d38153f",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Other PostgreSQL enum CSV quoting, search_path, session mode, and broader B3 combinations remain tracked separately."
+  ]
+}

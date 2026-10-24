@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-ssh-audit",
+  "source_commit": "5b639a6735b352fd9c1538216a6ea144499b130f",
+  "source_sha256": {
+    "crates/drivers/postgres/tests/integration.rs": "54fc2f2f6e4f6d2940a4d3fd8a82be666db39fbfdfd47c0d4c39822920cd8dc8"
+  },
+  "engine": "PostgreSQL 16, ephemeral Docker fixture",
+  "case": "A statement failure after an earlier write cannot complete explicit rollback when its backend is terminated",
+  "test": "a_batch_reports_rollback_failure_after_postgres_terminates_its_backend",
+  "contract": [
+    "The batch inserts one row, then blocks in SELECT pg_sleep(60) inside the same transaction.",
+    "A separate monitor identifies and terminates that active PostgreSQL backend.",
+    "The driver reports TransactionRollbackFailed at statement index 1, with the statement and rollback failures classified as disconnected.",
+    "A fresh query confirms PostgreSQL did not retain the earlier uncommitted insert after backend termination."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-driver-postgres --test integration a_batch_reports_rollback_failure_after_postgres_terminates_its_backend -- --ignored --exact --test-threads=1",
+      "result": "1 passed, 196 filtered out",
+      "log": "focused.txt"
+    },
+    "clippy": {
+      "command": "rtk cargo clippy --locked -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed before commit; no lint warnings"
+    },
+    "format_and_diff": {
+      "command": "rtk cargo fmt --all -- --check; rtk git diff --check",
+      "result": "passed before commit"
+    }
+  },
+  "remaining": [
+    "Re-run the focused case on the frozen B3+B4 candidate SHA and hosted CI.",
+    "Broader PostgreSQL side-effect patterns and other engines remain outside this case."
+  ],
+  "log_sha256": {
+    "focused.txt": "353cd84da83c7973f6bde307f728d63cec4d4943d85776be14dd4a8ee87fb782"
+  }
+}

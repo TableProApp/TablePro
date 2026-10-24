@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-06",
+  "branch": "b3/postgres-macaddr8-array-roundtrip",
+  "source_commit": "0d32256b616bfe0d65ffc70880d0fdb793e10c98",
+  "source_sha256": {
+    "crates/drivers/postgres/src/array.rs": "53538d1ee024ad30527e5178c9aaad28d251a8c72225e1c9b018c40cf9c6723b",
+    "crates/drivers/postgres/src/params.rs": "37c9af2fc7ab41e64eb72683d6d5fd0e48c1a8ced9231e80484dacf042b5f7ac",
+    "crates/drivers/postgres/tests/support/array_contract.rs": "5b7af2e272cf5fd4cf39cbe3bc7f32a5a50f500fe68fa909e0b8852dc15816a8",
+    "crates/drivers/postgres/tests/support/array_contract_parts/result_consumers_temporal.rs": "40463b9096872b4d227b9c50bb484d6ff6a98d9783cc735c78cda53b5609809c"
+  },
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "built-in macaddr8[] binary result, inferred bind, keyed edit, CSV restore and invalid-input refusal",
+  "tests": [
+    "array_contract::value_contract_macaddr8_array_binding_and_keyed_edit_preserve_native_bytes",
+    "value_contracts::value_contract_arrays_preserve_elements_dimensions_and_exports",
+    "array_contract::value_contract_builtin_array_oid_census_matches_decode_allowlist",
+    "array::tests::value_contract_macaddr8_arrays_decode_eight_octets_null_and_bounds",
+    "params::tests::value_contract_macaddr8_array_elements_encode_eight_octets_and_refuse_malformed_text"
+  ],
+  "contract": [
+    "Binary macaddr8[] results preserve canonical eight-octet EUI-64 text, SQL NULL and non-default lower bounds using element OID 774.",
+    "Assignment-inferred bindings encode eight octets per element; direct and keyed updates match native array_send bytes.",
+    "Typed CSV import restores macaddr8[] through the shared built-in array consumer contract.",
+    "Malformed lengths and non-hexadecimal octets are refused without changing the target or sibling row.",
+    "The built-in OID census includes macaddr8[]; inet[] and cidr[] remain explicit refusals."
+  ],
+  "validation": {
+    "focused_test": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_macaddr8_array_binding_and_keyed_edit_preserve_native_bytes -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "macaddr8-focused.txt"
+    },
+    "postgres_array_contract": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_arrays_preserve_elements_dimensions_and_exports -- --ignored --nocapture",
+      "result": "1 passed, 0 failed; includes typed CSV array restore",
+      "log": "postgres-array-contract.txt"
+    },
+    "builtin_oid_census": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration value_contract_builtin_array_oid_census_matches_decode_allowlist -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "oid-census.txt"
+    },
+    "postgres_full_integration": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --test integration -- --include-ignored --test-threads=1",
+      "result": "191 passed, 0 failed",
+      "duration_seconds": 489,
+      "log": "postgres-full-integration.txt"
+    },
+    "driver_unit": {
+      "command": "rtk proxy cargo test -p tablepro-driver-postgres --lib macaddr8",
+      "result": "3 passed, 0 failed",
+      "log": "driver-unit.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy -p tablepro-driver-postgres --tests -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "format.txt"
+    },
+    "local_harness": {
+      "command": "rtk proxy bash scripts/test-harness.sh",
+      "result": "86 Python checks, ignored-test inventory, documentation and packaging checks passed",
+      "log": "harness.txt"
+    }
+  },
+  "log_sha256": {
+    "macaddr8-focused.txt": "aa93aec52d0250437e6165d62c94ab75b160a40d9d377551d9aa442690d062b3",
+    "postgres-array-contract.txt": "0cd0b6755f48978b3ce36fc53450422e18ec538add09ed762ab1193a55f11e3b",
+    "oid-census.txt": "b51ec2a6e8a415f0bab6ba37cf9d1295e83aa11fa00a4d5b550a3195e917c922",
+    "postgres-full-integration.txt": "6c4a0ff70ee6b9eb4d71d757ed19f94d865c2a88500fd17271a389d646048d84",
+    "driver-unit.txt": "a017f2bc66b65edcc78eaac7c6eaee7821ec3fc75f1844c13dcae1e8c03eb75e",
+    "clippy.txt": "f267330fd313053907d322646b232857749e33ff6c6787335b3b0d4c83cf93a2",
+    "format.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "harness.txt": "733ed586b8b761405692641c266d2d227c5fb13367bff2a666bcb519f0886128"
+  },
+  "remaining": [
+    "PostgreSQL inet[] and cidr[] remain explicit refusals; other unlisted built-in and custom arrays remain open.",
+    "The broader B3 engine, type, consumer and configuration matrix remains open."
+  ]
+}

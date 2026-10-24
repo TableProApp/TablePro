@@ -44,8 +44,8 @@
     }
   },
   "log_sha256": {
-    "focused-test.txt": "46c2db2ad70585a96fe9cc40a20a09601efbff46222ac120570189c86a3b0672",
-    "clippy.txt": "fa9c83e817f9db42344f14faf695fc9176a1bba44284d753308e85861df58785",
+    "focused-test.txt": "06c42dda3f761b8ce7079c5ff6f32857d048520f0d9d9b95b7ed16bb85e4fde8",
+    "clippy.txt": "41814c52bfce8c26e3c5b1ad61a91b1c9fe28332c922e8668d3b561ad8409bc7",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "ignored-inventory.txt": "36b084f4c3cb457337afb8a22c9b2c19c942b13cb56a0e7557701fd245d2dcfc",
     "diff-check.txt": "83079924b46ef266548bb992c708cd3e9f03dd322f27a29b0f38302e4cbc641c"

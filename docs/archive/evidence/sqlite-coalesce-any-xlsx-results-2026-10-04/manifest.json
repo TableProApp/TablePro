@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "42f376f78d91cb32366cd9ed421d471d88384168",
+  "engine": "SQLite in-memory STRICT ANY fixture",
+  "case": "JSON and XLSX serialization of computed COALESCE results over STRICT ANY",
+  "test": "sqlite_coalesce_any_csv_round_trip_preserves_runtime_storage_classes",
+  "contract": [
+    "The computed COALESCE result retains conservative fallback metadata while native typeof() confirms INTEGER, REAL, fallback TEXT, stored TEXT, BLOB and tag-prefix-shaped TEXT rows.",
+    "The result-file writer stores INTEGER and REAL results as numeric XLSX cells and fallback/stored/tag-prefix text and BLOB's \\x00ff representation as shared strings.",
+    "JSON result-file output represents INTEGER/REAL as JSON numbers, fallback/stored/tag-prefix text and BLOB encoding as JSON strings, and includes the runtime storage-class text.",
+    "The workbook has no formula cells; source SQL NULL produces the explicit fallback TEXT cell, while the existing CSV import path verifies native destination storage classes and exact BLOB bytes.",
+    "This proves computed COALESCE JSON value shapes and XLSX cell kinds; spreadsheet-application re-import, other computed-expression shapes and installed editing remain open."
+  ],
+  "validation": {
+    "app_sqlite_any_contracts": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml -p tablepro-app sqlite_any_contract:: -- --test-threads=1",
+      "result": "9 passed, 0 failed",
+      "log": "app-sqlite-any-xlsx.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path linux/Cargo.toml -p tablepro-app --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "app-sqlite-any-xlsx.txt": "5e393474842d3eeb2ee289317a2489892a1fa147055db1b0aa28836e35fb5781",
+    "clippy.txt": "032bc5009aae46ba99e54872e9d51a10209519e2327ead37321ccc2b8ce7060a",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Spreadsheet-application re-import and other expression/type/consumer combinations remain unproven."
+  ]
+}

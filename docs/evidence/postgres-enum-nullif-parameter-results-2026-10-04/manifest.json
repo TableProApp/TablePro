@@ -32,8 +32,8 @@
     "diff_check": "rtk git diff --check passed"
   },
   "log_sha256": {
-    "test.txt": "4dadb200cf49dcf40d9d6867f7e89e16e6a915568808c664c800232bc6cd659f",
-    "clippy.txt": "db18cc96eab1969c83c008fac0742e479ddc2729c3aaf2b0ea84d64a4086235a",
+    "test.txt": "0b3d2f08b88999d103ee36249bc6742d730ccd32253cedeb707a3826a7f1b104",
+    "clippy.txt": "832330e0d8e910fbea59e3c41af27e7ebf913618b1de319602195d1b597db7e5",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

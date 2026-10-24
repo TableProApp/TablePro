@@ -1,7 +1,7 @@
 {
   "pid": 2388479,
   "source_commit": "cc0f1cac1e6ccc08d752a23eb0b80ace8a6e1bf9",
-  "executable": "/home/trung/Projects/bookie/target/bookie-cc0f1cac/usr/bin/bookie",
+  "executable": "$HOME/Projects/bookie/target/bookie-cc0f1cac/usr/bin/bookie",
   "installed_package_used": false,
   "profile": "native Wayland SQL Server Manual Lab connection open with metadata loaded and no query result; no BookiE input for 31 seconds",
   "window_logical_size": "922x1150",

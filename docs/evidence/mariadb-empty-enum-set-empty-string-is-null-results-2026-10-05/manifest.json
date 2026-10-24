@@ -64,8 +64,8 @@
     }
   },
   "log_sha256": {
-    "baseline-set-failure.txt": "e3c44d06068fca997a4e517e7927b4346aafa1af876bfce0a385da9153011f55",
-    "clippy.txt": "98d20d3424b8adf3a1438bc58f5919f2ea35a970dbe6e6318562888c4c7eceb2",
+    "baseline-set-failure.txt": "227097c6c318a06e6f8e7c44b45eb18dcdff14e35f8f61d68960afd18c5766a7",
+    "clippy.txt": "cd33df6a36dcb339aa5515409db69bc62ac7ad9fbb2e14779502ad9787b7fb1d",
     "core-tests.txt": "9fc450dc3d91bc986a954d546f5c8cc418208ed2deeb6a1bc4e243cd21f7661b",
     "diff-check.txt": "42f8a0e4ffb8c838249b69708dad11c81cb7cad32dcd2907eda9512d7c12eaef",
     "enum-set-modes.txt": "389ffa8dfc1a60fd0db89bfdbffae5ba3a16a80090ecc681de4a19c29e211f26",

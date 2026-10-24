@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-10",
+  "scope": "B4-7, B4-9, B4-16 and B4-17 exact-tip PostgreSQL SSH, TLS, audit and GTK trust flow",
+  "source_commit": "d9d476f7a9e024eb133373ab4e4f7d67dedcdfb4",
+  "binary_path": "linux/target/debug/tablepro-app",
+  "binary_sha256": "1dcf6f4ed459b317d340369a33da7d150ab5727fa5c3413da977364f0f888ff5",
+  "command": "bash scripts/test-postgres-release.sh",
+  "runtime": "Local Linux host; Docker PostgreSQL and two-hop SSH fixtures; Xvfb X11, private D-Bus and GTK AT-SPI",
+  "result": "passed",
+  "native_tests": {
+    "g5_system_openssh": "1 passed",
+    "mtls": "3 passed",
+    "release_tests": "59 passed across 10 integration test binaries"
+  },
+  "gtk_scenarios": [
+    "postgres_saved_mtls_connection_authenticates_and_queries",
+    "postgres_ssh_unknown_host_key_decline_is_durably_audited",
+    "postgres_ssh_setup_failure_is_durably_audited",
+    "postgres_ssh_tunnel_loss_retires_session_and_reconnects",
+    "postgres_ssh_multihop_trusts_both_hops_and_queries",
+    "postgres_ssh_second_hop_decline_does_not_learn_key",
+    "postgres_ssh_changed_second_hop_key_is_refused"
+  ],
+  "not_established": [
+    "Frozen-candidate acceptance",
+    "Distribution-package installation and SSH trust-flow acceptance",
+    "Native Wayland trust-dialog interaction",
+    "Windows Active Directory interoperability",
+    "Hosted candidate acceptance"
+  ],
+  "log_sha256": {
+    "run.log": "11e32c14b5a89df836904063b63a8879d3b9709640c6d2bf5f196ce1445b35b9"
+  }
+}

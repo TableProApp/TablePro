@@ -2,7 +2,7 @@
 
 > [NEEDS REVIEW] Draft written on 2026-10-11 from PolicyGuard, MCP auth and ARCHITECTURE. A maintainer review is pending.
 
-**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Implementation:** in use; acceptance tracked separately **Specification:** draft, needs review **Success metric:** Every issued GUI, MCP and agent database handle is a `PolicyGuard`; denied work and cancelled approval or bulk finish still write a terminal audit state.
+**Spec tier:** buildable **Serves:** `Local DBA`, `MCP operator` **Implementation:** in use; acceptance tracked separately **Specification:** draft, needs review **Success metric:** Every issued GUI, MCP and agent database handle is a `PolicyGuard`; denied work and cancelled approval or bulk finish write a terminal audit state when audit storage is available.
 
 ## Purpose
 

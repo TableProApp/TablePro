@@ -15,7 +15,7 @@ current manifests and relevant production source. This is a consistency audit,
 not exhaustive semantic certification of every sentence or every Rust file.
 
 The [per-file inventory](architecture-consistency-2026-10-03-inventory.md) and
-[manifest](../evidence/architecture-review-2026-10-03/manifest.json) retain coverage,
+[manifest](evidence/architecture-review-2026-10-03/manifest.json) retain coverage,
 source fingerprints, dependency edges, evidence checks and unresolved links.
 The manifest describes its mechanical checks; it does not turn a screened
 document into a runtime pass.

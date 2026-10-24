@@ -35,7 +35,7 @@
   "log_sha256": {
     "focused.txt": "6212a3de9a2acb1cfa75771e7355fdb55e6e26747369a6a8953a68f14611fc93",
     "sqlite-suite.txt": "1e6b9aaf338fcb8c7bfca55569fbee9666e0756c1b0f8ae3fbdaa40d504fff65",
-    "clippy.txt": "f61d810162b134b17693bfa0a75dcfaab88ee4ba8264950208a6ba17f758d49d",
+    "clippy.txt": "b825975ede1ec727f66137c0dad855715d406e6becbf34efc68a30f5b7458ba7",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

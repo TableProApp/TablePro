@@ -32,7 +32,7 @@
   },
   "log_sha256": {
     "sqlite-any-contract-group.txt": "9eb05921fb61f42f0170a8b78b6f390780febd682d5398454b0690ef70f5cd30",
-    "clippy.txt": "c85279bb54879b7fb3c0196b4c193a0707081ef48eba4fd539521120654a3fa7",
+    "clippy.txt": "39e0ed94108c02a4e68025ad93af45051db49b100d04f245d7af8d449d515593",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

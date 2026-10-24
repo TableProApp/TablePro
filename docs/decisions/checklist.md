@@ -2,7 +2,7 @@
 
 Which product and architecture forks BookiE has already answered, and where. Silence is not an answer: each applicable fork is a link, N/A, or an open item. No new decisions are invented here.
 
-Reviewed against the ADR index, code and living docs on 2026-10-20. Each row points to its decision owner; open product and architecture decisions remain open until their named owners resolve them.
+Last full review against the ADR index, code and living docs: 2026-10-20. The release-gate rows were refreshed on 2026-10-23 for the published 0.2.0 assets; the other statuses remain from the full review. Each row points to its decision owner; open product and architecture decisions remain open until their named owners resolve them.
 
 ## Foundation
 
@@ -55,7 +55,7 @@ Reviewed against the ADR index, code and living docs on 2026-10-20. Each row poi
 | CI/CD & environments | Decided | GitHub cheap tier; Forgejo merge tiers. [AGENTS](../../AGENTS.md), [validation playbook](../validation-playbook.md#ci-tiers). |
 | Feature-flagging & rollout | Decided | No account, license or remote entitlement flags. [AGENTS](../../AGENTS.md), [PRODUCT.md](../../PRODUCT.md). |
 | Changelog & release notes | Decided | Keep a Changelog 1.1.0 in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
-| Externally-owned release gate | Undecided | Flathub submission remains backlog work (PKG-4/PKG-8); no external distribution review is adopted as a release gate. Flatpak is left out of 0.2.0 ([PRODUCT.md](../../PRODUCT.md)). |
+| Externally-owned release gate | Undecided | 0.2.0 includes a published GNOME 50 Flatpak bundle, but no Flathub listing. Flathub submission remains backlog work (PKG-4/PKG-8); no external distribution review is adopted as a release gate. |
 | Native library floors | Decided | One floor: GTK 4.24, libadwaita 1.10, GtkSourceView 5.22. [ADR 0021](0021-toolkit-floor.md), [platforms](../platforms.md). |
 
 ## Product
@@ -97,4 +97,4 @@ Reviewed against the ADR index, code and living docs on 2026-10-20. Each row poi
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |
 | Performance budget ADR | Architect | Optional; PERF-* ledger rows may stay sufficient |
-| Flathub / distro as external release gate | Architect / packaging | Decide whether external review is a release gate before planning a Flathub or distro submission; Flatpak is out of 0.2.0 |
+| Flathub / distro as external release gate | Architect / packaging | Decide whether external review is a release gate before planning a Flathub or distro submission. The published 0.2.0 includes a GNOME 50 Flatpak bundle but has no Flathub listing. |

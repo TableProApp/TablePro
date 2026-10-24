@@ -2,15 +2,13 @@
 
 ## Delivery status
 
-The maintainer confirmed 0.2.0 delivery complete on 2026-10-18. Release `linux-v0.2.0` was published on 2026-10-23 with seven assets. Its Debian package retains the `tablepro_0.2.0-1_amd64.deb` filename because it was built from the release tag. The delivery sprint is closed; remaining work and the candidate order for 0.2.1 are in the [backlog](backlog.md).
+The maintainer confirmed 0.2.0 delivery complete on 2026-10-18. Release `linux-v0.2.0` is published and the delivery sprint is closed. The [platform guide](platforms.md#published-020-release) records its assets and package names. Remaining work and candidate order for future releases are in the [backlog](backlog.md).
 
 The [0.2.0 scope](0.2.0-scope.md) records the completed delivery boundary. The previous scope and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). Their historical open rows do not reopen 0.2.0. This status records the maintainer's decision, not a new run of the package, driver or desktop checks.
 
 ## Current continuation
 
 The [post-0.2.0 backlog](backlog.md) owns selected development order. [Project #3](https://github.com/users/cozyGarage/projects/3) owns issue status and Lane; the [ledger index](known-issues.md) maps IDs to issues. Existing open correctness, qualification and infrastructure issues keep their evidence and follow-up scope. They are not silently closed by a milestone-status change.
-
-The Linux code-adoption tracker [#1149](https://github.com/cozyGarage/BookiE/issues/1149) and its selected packets #1140 through #1148 are closed. Follow the backlog's current correctness and security order for subsequent work. The [dated audit](archive/upstream-linux-adoption-2026-10-18.md) records candidate behavior, existing coverage and choices that need a separate decision.
 
 ## Standing decisions
 
@@ -36,4 +34,4 @@ Broader type/consumer matrices, mutation triage, Debian/GNOME desktop work, Flat
 
 ## History
 
-The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the immediately preceding scope, qualification recipes and packet lists. The older [sprint history](archive/bookie-0.2-history.md) holds earlier implementation records. Read the case needed; dated plans do not override current decisions or scheduling.
+The [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md) preserves the immediately preceding scope, qualification recipes and packet lists. The [test and validation summary](archive/bookie-0.2-test-records-2026-10-23.md) collects historical coverage records. The older [sprint history](archive/bookie-0.2-history.md) holds earlier implementation records. Read the case needed; dated plans do not override current decisions or scheduling.

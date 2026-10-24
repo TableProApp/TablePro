@@ -1,7 +1,7 @@
 {
   "pid": 2388479,
   "source_commit": "cc0f1cac1e6ccc08d752a23eb0b80ace8a6e1bf9",
-  "executable": "/home/trung/Projects/bookie/target/bookie-cc0f1cac/usr/bin/bookie",
+  "executable": "$HOME/Projects/bookie/target/bookie-cc0f1cac/usr/bin/bookie",
   "installed_package_used": false,
   "profile": "native Wayland SQLite Manual Lab file open with the people table loaded (4 rows, including null and mixed-value examples); no input for 31 seconds",
   "window_logical_size": "922x1150",

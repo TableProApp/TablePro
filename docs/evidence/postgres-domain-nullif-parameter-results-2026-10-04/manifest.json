@@ -38,7 +38,7 @@
   "log_sha256": {
     "test.txt": "338878a396fa4fef014b3559d05f8a80f48f8b53657ffa7bdf51e8afa7aa6659",
     "domain-contract-group.txt": "f8507c7285f86f57dc9caa8793cdd660ecefeb2d90000c884bcdff59a6402ba4",
-    "clippy.txt": "a01830f27fafd45b4332be0715c65e935b198f4409b51bb63b59cb8fb0d8b2ff",
+    "clippy.txt": "1c2a007e6783678deb4a827f4f9c4952993a34626f675a9bb1f1028b9bf2599b",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

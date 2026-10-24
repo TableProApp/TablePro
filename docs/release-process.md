@@ -13,9 +13,11 @@ A release is a git tag named `linux-vX.Y.Z` on the `linux` branch. Pushing the t
 | `bookie.pot` | `scripts/update-translations.py` | gettext template for translators; not committed to the repository |
 | `SHA256SUMS` | the publish job | `sha256sum --check SHA256SUMS` |
 
-The `.deb`, the Arch package and the AppImage build with the `dist` Cargo profile (thin LTO, one codegen unit), which makes the installed binaries about a quarter smaller. Test jobs build packages faster with `BOOKIE_BUILD_PROFILE=release`; `build-deb.sh` and the PKGBUILD accept only `dist` or `release`. The Flatpak manifest still builds with `release`.
+The published 0.2.0 Debian package retains the legacy `tablepro` name; development-branch builds use `bookie`. The [platform guide](platforms.md#published-020-release) records the release asset names and toolkit boundary.
 
-Every file also has build provenance recorded by GitHub (`gh attestation verify <file> --repo cozyGarage/BookiE`). Releases below 1.0 are marked pre-release. The AppImage is built on Debian testing, so it needs a distribution with a comparable glibc.
+The `.deb`, the Arch package and the AppImage build with the `dist` Cargo profile (thin LTO, one codegen unit). Test package builds may set `BOOKIE_BUILD_PROFILE=release` to avoid thin LTO; `build-deb.sh` and the PKGBUILD accept only `dist` or `release`. The Flatpak manifest still builds with `release`.
+
+Every file also has build provenance recorded by GitHub (`gh attestation verify <file> --repo cozyGarage/BookiE`). The workflow marks draft releases for 0.x tags as pre-releases, but the published [`linux-v0.2.0` release](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.2.0) is marked as a normal release. For each future tag, review the draft's flag against the maintainer's release decision and change it before publishing when needed; do not assume the workflow default expresses that decision. The AppImage is built on Debian testing, so it needs a distribution with a comparable glibc.
 
 ## Cutting a release
 
@@ -23,7 +25,7 @@ Every file also has build provenance recorded by GitHub (`gh attestation verify 
 2. Tag the merged commit and push the tag from a checkout of `linux`:
    `git tag -a linux-vX.Y.Z -m "BookiE X.Y.Z" && git push origin linux-vX.Y.Z`.
 3. Wait for the Release workflow. It refuses a tag that differs from the source version or a version with no changelog section. The release notes are the version's `CHANGELOG.md` section.
-4. Open the draft release on GitHub, install at least one package, then press Publish.
+4. Open the draft release on GitHub, confirm the pre-release flag, verify every asset against `SHA256SUMS` and the tag-run provenance, install at least one package, then press Publish. Do not substitute artifacts from a pull-request dry run for assets from the tag run.
 
 A change to the workflow or the AppImage script builds all packages on the pull request without publishing, so packaging breakage shows up before a tag.
 

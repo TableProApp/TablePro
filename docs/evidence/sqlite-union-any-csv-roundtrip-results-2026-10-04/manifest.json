@@ -42,11 +42,11 @@
     "diff_check": "rtk git diff --check passed"
   },
   "log_sha256": {
-    "app-sqlite-any-csv.txt": "e43458bef274eef17e055fc45f45e962344ab52518fd9cc66a03ab6aa69c8729",
-    "clippy.txt": "dd8af3ff82ff323f9724709f141165e557337e8c552bb214d03f462d94c1b672",
+    "app-sqlite-any-csv.txt": "5a29181cebfe2dd39833f076b25697dd7190bbbe4b60048fc4ce9d9a3bbeecb3",
+    "clippy.txt": "9fb3c2facdfdb8836e1eb2fd734f5d2ae53af6383d5114737c9ff05a7fad8370",
     "core.txt": "34b5cd5daef6826f0f4fa1cf5b5b68bb74d329c2a417f2e0477f40989aa68b87",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "sqlite-driver.txt": "a141e5f5fd26d4408508f1c815fdcc528cc8bce040eee5e7eb5dc4db0e1a1222"
+    "sqlite-driver.txt": "3f0045253463f90f984819da24994f177bcf66a1adc485ed86a263556a75307e"
   },
   "remaining": [
     "Spreadsheet-application import, non-SQLite consumers, and additional computed-expression/source combinations remain unproven."

@@ -8,9 +8,11 @@ BookiE is a database client for Linux. It opens PostgreSQL, MySQL and MariaDB, S
 2. Pick the database type, then fill in host, port, database and user. For SQLite and DuckDB, choose the file.
 3. Click **Test** to check the details, then **Connect**.
 
+The form shows the test result at the top, including the number of visible tables on success. Editing a field clears the result.
+
 For MySQL and MariaDB, choose a local socket file instead of a host to connect through a Unix socket; the path is saved with the connection and exported in bundles. For PostgreSQL, the schema filter menu hides schema groups per connection and restores them. PostgreSQL login and missing-database errors stop the app's reconnect loop; the initial SQLx pool startup may retry until its connection deadline. The General preferences choose how NULL is shown in the grid (NULL, the empty-set symbol or (null)).
 
-Passwords are kept in your desktop keyring, never in BookiE's own files.
+Saved connection passwords live in your desktop keyring; the saved connection file omits them. An encrypted connection bundle can include credentials when you opt in.
 
 - **From the file manager or a terminal**: choose BookiE in **Open With** for a SQLite file, or run `bookie books.db` (SQLite or DuckDB) or `bookie postgres://user@host:5432/database`. A file must exist and be a database of the engine its extension names (`.sqlite`, `.sqlite3`, `.db`, `.db3`, `.s3db` or `.duckdb`, `.ddb`). A URL opens a dialog to confirm before it is saved and connected. If BookiE is already running, the running window handles the request. Avoid putting a password in a URL on the command line, because other users on the machine can see it in the process list.
 - **SSH**: the form configures one SSH host. The built-in transport can use saved multi-hop routes, but the form cannot edit them yet. System OpenSSH uses jump hosts from your SSH configuration. BookiE asks before trusting an unknown host key, including keys presented by a jump host.
@@ -40,7 +42,7 @@ In a focused result grid, **Ctrl+Shift+J** opens **Jump to Column** and **Ctrl+A
 
 Ctrl+E opens a SQL editor tab for the current connection.
 
-Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows within a shared 64 MiB estimated row budget, always keeping the newest page; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
+Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps pages within a shared 64 MiB estimated row budget, always keeping the newest page; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Results larger than the cache budget may lose access to earlier rows; rerun the query to retrieve them. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
 
 SQL files are limited to 8 MiB in total and 256 KiB of UTF-8 text per physical line. Files with longer lines are refused before opening to limit text-layout memory. The file on disk is unchanged; split long lines in another editor before opening it here. Dropping a file into existing SQL also checks the combined lines and total size before insertion. Existing editor contents can still be saved without truncation.
 
@@ -65,7 +67,6 @@ To collapse a multiline SQL block, place the cursor inside it and press **Ctrl+S
 - After a run, the gutter marks each statement with a tick or a cross. For supported SQL dialects, SQL text inside comments does not receive a statement mark.
 - A failed statement shows the error with **Copy error**. When the server supplies a position for the original SQL, **Go to error** in the result and **Errors** views restores the editor and places the caret there. Positions count Unicode characters and refer to the statement that failed, including when the same statement occurs twice. Editing the query, running it again, or changing its connection requires a fresh error before an old action can navigate. Errors without a usable position remain readable and copyable.
 - `:name` placeholders ask for values before the statement runs and send them as bound parameters, never pasted into the SQL.
-- Completion offers tables after `FROM` and `JOIN` and columns elsewhere.
 - **Session** keeps one connection for the tab, so settings, temporary tables and transactions carry over between runs. MySQL sessions allow locking reads, user variables, savepoints and supported `SHOW` forms inside an open transaction; raw transaction-control SQL, DDL, account statements, `LOCK TABLES` and `SET autocommit` remain refused. `ROLLBACK` does not undo user-variable assignments or release named locks acquired by functions in assignment expressions; close the session to release those locks.
 - Outside **Session**, a lone `BEGIN`, `COMMIT` or `ROLLBACK` is refused before database dispatch, including when run under the cursor. In a Session, send transaction-control statements separately so BookiE can track the transaction. `COMMIT` without an open transaction and transaction control hidden in a multi-statement script are refused.
 - **Explain** shows the plan of the selected text, or of the whole editor when nothing is selected. For PostgreSQL and SQLite the plan opens as a **Tree** (indented by nesting, with a bar for each step's share of the estimated cost; hover a bar for the numbers) and the **Text** tab keeps the raw plan. Other engines show the text plan only. The costs are the planner's estimates; nothing is executed.
@@ -113,7 +114,7 @@ Database snapshots are not available. [ADR 0015](decisions/0015-database-snapsho
 
 BookiE can let an AI assistant use your saved connections through the Model Context Protocol. Open **Preferences → MCP** to create a token, choose which connections it may use and which tools it may call. The token appears once; the dialog reports whether it was saved in the system keyring. If saving fails, copy it into your MCP client configuration before closing the dialog. Every agent statement goes through the same safety checks, and agent changes follow the approval rules of the connection's environment. `bookie-agentd` runs the same server without the window, for headless use.
 
-Every statement BookiE runs for you or for an agent is recorded in a local audit journal. Open **Audit Log** from the main menu to read it: each operation shows its connection, principal, kind, outcome, row count and duration, and expands to its operation id, policy rule, stored statement and error. Statement text appears in the redacted form the journal keeps.
+Open **Audit Log** from the main menu to review persisted operation records. Each record shows its connection, principal, kind, outcome, row count and duration, and expands to its operation id, policy rule, stored statement and error. Statement text appears in the redacted form the journal keeps. A Local or Dev policy may allow a human write to continue after audit-intent failure without a persisted record; see [Safety](#safety).
 
 MCP data responses use the versioned `bookie-tagged-v1` format. Check `value_format` and decode each cell by `$type`; values are tagged even when they fit in a JSON number. A wide integer is returned like this:
 

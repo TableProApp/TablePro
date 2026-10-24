@@ -38,13 +38,13 @@ retained in `timeout-recheck-outcomes.json`: 16 were caught and 7 timed out.
 Selecting only `scanner_progress_makes_bounded_inputs_finish` avoids running
 other scanner tests without the subprocess deadline. That exact selector caught
 all ten generated cursor-arithmetic variants in 34 seconds, with no misses or
-timeouts ([cursor mutation packet](../sql-lex-cursor-arithmetic-guard-results-2026-10-06/manifest.json)).
+timeouts ([cursor mutation packet](../../archive/evidence/sql-lex-cursor-arithmetic-guard-results-2026-10-06/manifest.json)).
 
 The five zero-length-span timeout mutants also exposed two consumers that
 trusted `skip_span` to return a positive length. The named-parameter rewriter
 and SQL diagnostics scanner now ignore zero-length spans, matching
 `statement_spans`. The focused five-mutant recheck caught all five without a
-timeout; the [zero-progress guard packet](../sql-lex-zero-progress-guards-results-2026-10-06/manifest.json)
+timeout; the [zero-progress guard packet](../../archive/evidence/sql-lex-zero-progress-guards-results-2026-10-06/manifest.json)
 records the regression and its test results.
 
 The cursor mutation packet records the tested `sql_lex.rs` SHA-256

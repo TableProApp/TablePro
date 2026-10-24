@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "a8e9ead6318141c1805e284da01f4fe5e4b245ce",
+  "engine": "PostgreSQL 16 in Docker via testcontainers",
+  "case": "PostgreSQL refuses a custom-enum label over the 63-byte limit",
+  "test": "enum_contract::value_contract_custom_enum_refuses_labels_over_byte_limit",
+  "contract": [
+    "Creating a custom enum with a 64-byte ASCII label is refused with SQLSTATE 42602.",
+    "A native to_regtype check confirms the failed DDL leaves no partially created enum type.",
+    "Together with the 63-byte boundary case, accepted and refused label lengths are pinned against PostgreSQL 16 behavior."
+  ],
+  "validation": {
+    "native_contract": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml -p tablepro-driver-postgres value_contract_custom_enum_refuses_labels_over_byte_limit -- --ignored --nocapture",
+      "result": "1 passed, 0 failed",
+      "log": "postgres-enum-overlength-refusal.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path linux/Cargo.toml -p tablepro-driver-postgres --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "postgres-enum-overlength-refusal.txt": "0a3a234470a6d0b4a8d13cc2822dcd7505060d611980fdab8f3142ac5f4fc4ec",
+    "clippy.txt": "b493a61a46d68da11ee395931598cc57e6c1159df1f9ea1ae7d8dfa84a0cc5e4",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "Other PostgreSQL enum operators, consumer formats, session/search_path combinations and the broader B3 matrix remain open."
+  ]
+}

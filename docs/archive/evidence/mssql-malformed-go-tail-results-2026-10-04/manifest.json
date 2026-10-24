@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "b0a07b266fd391c8755750cc0b01143511470501",
+  "case": "SQL Server GO script malformed quoted tail fails closed across consumers",
+  "test": "ui::editor::statement_cursor::tests::value_contract_mssql_malformed_tail_blocks_the_whole_go_script",
+  "contract": [
+    "A valid first SQL Server GO batch does not make a later script with an unterminated quoted tail executable.",
+    "The planner reports a lexical diagnostic and full-script planning refuses; named-parameter extraction retains only the earlier safe parameter and does not expose placeholders in the malformed tail.",
+    "Formatting preserves the unterminated quote and GO directives, and the formatted plan remains malformed.",
+    "Policy classifies the script as Unparseable/write and denies it to an agent under the fail-closed rule."
+  ],
+  "validation": {
+    "focused_app_test": {
+      "command": "rtk proxy cargo test --locked -p tablepro-app --features duckdb --lib value_contract_mssql_malformed_tail_blocks_the_whole_go_script",
+      "result": "1 passed, 0 failed",
+      "log": "focused-test.txt"
+    },
+    "strict_unit_values": {
+      "command": "rtk proxy bash scripts/test-value-contracts.sh --gtk --duckdb --unit-only",
+      "result": "passed",
+      "selected_contracts": 106,
+      "executed_suites": 3,
+      "workspace_suites_compiled": 11,
+      "missing_suites": [],
+      "gtk": true,
+      "duckdb": true,
+      "source_commit": "b0a07b266fd391c8755750cc0b01143511470501",
+      "report_revision_before_commit": "6d23bd22d8bd494e6c9449727a4f9aecd3b16108",
+      "report_working_tree_dirty": true,
+      "source_commit_contains_tested_change": true,
+      "compile_seconds": 5.357,
+      "fresh_artifacts": 746,
+      "rebuilt_packages": [
+        "path+file://[user-home]/Projects/tablepro/linux/crates/app#tablepro-app@0.1.5"
+      ],
+      "suites": [
+        {
+          "suite": "crates/app/Cargo.toml",
+          "tests": 47,
+          "exit_code": 0,
+          "seconds": 96.626,
+          "log": "strict-unit/crates-app.log"
+        },
+        {
+          "suite": "crates/core/Cargo.toml",
+          "tests": 58,
+          "exit_code": 0,
+          "seconds": 3.219,
+          "log": "strict-unit/crates-core.log"
+        },
+        {
+          "suite": "crates/mcp/Cargo.toml",
+          "tests": 1,
+          "exit_code": 0,
+          "seconds": 0.003,
+          "log": "strict-unit/crates-mcp.log"
+        }
+      ],
+      "report": "strict-unit/report.json"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --locked -p tablepro-app --features duckdb --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "ignored_test_inventory": "rtk proxy python3 scripts/inventory-ignored-tests.py --check passed",
+    "file_size_guard": "rtk proxy bash scripts/check-file-size.sh passed",
+    "diff_check": "rtk proxy git diff --check passed"
+  },
+  "log_sha256": {
+    "focused-test.txt": "c82c585cc281b599394ecc55e71d77eafddc2b4246279424baa641e4b45e7b2e",
+    "clippy.txt": "f5e96422428a22f1ea87213f370b16c06fda87688b9d846ba48a683a422a9738",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "strict-unit/compile.log": "cc390e04c7d112fb52f448b3543178c874f2cbd3edc28a9c2fae10b8e71b071c",
+    "strict-unit/report.json": "f301d172089ff810f123cad8170f6763530fec8f760214e52c9f1d5292bfe221",
+    "strict-unit/crates-app.log": "80768d9c197181a01149e9e44c2bc7764c365d02fff06b34aa20f5517c2ebeac",
+    "strict-unit/crates-core.log": "192a27ee418026eb9c468ca112fa9c653a83ab6542450f3a1589e2ce6d5c7f55",
+    "strict-unit/crates-mcp.log": "b0756db0628a43307ab2ff164dcc5f7634bf4e36be108db19682e4bfc0edf1d8"
+  },
+  "remaining": [
+    "Malformed-tail/executable-identity checks for other dialects, remaining MySQL delimiter forms and installed editor approval behavior remain open in B3."
+  ]
+}

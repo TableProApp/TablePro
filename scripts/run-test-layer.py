@@ -157,7 +157,9 @@ def interrupt(*_):
 
 def main():
     layers = catalog()
-    parser = argparse.ArgumentParser(description="Run named validation layers and retain logs, statuses and exact-tree evidence.")
+    parser = argparse.ArgumentParser(
+        description="Run named validation layers and retain source-state and execution evidence."
+    )
     parser.add_argument("layers", nargs="*")
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()

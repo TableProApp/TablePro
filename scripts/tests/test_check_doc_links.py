@@ -25,13 +25,38 @@ class DocLinkTests(unittest.TestCase):
     def test_a_link_to_a_missing_file_is_reported_with_its_target(self):
         self.assertEqual(self.broken({"a.md": "[b](gone.md)"}), [("a.md", "gone.md")])
 
-    def test_anchors_and_queries_are_ignored_but_the_file_must_exist(self):
-        self.assertEqual(self.broken({"a.md": "[b](b.md#top)", "b.md": "x"}), [])
+    def test_a_link_label_can_contain_nested_brackets(self):
+        files = {"a.md": "[date[] inside [label]](gone.md) [ok](ok.md)", "ok.md": "x"}
+        self.assertEqual(self.broken(files), [("a.md", "gone.md")])
+
+    def test_a_valid_heading_anchor_and_query_are_fine(self):
+        self.assertEqual(self.broken({"a.md": "[b](b.md?view=raw#top)", "b.md": "# Top"}), [])
+
+    def test_a_missing_heading_anchor_is_reported(self):
+        self.assertEqual(self.broken({"a.md": "[b](b.md#gone)", "b.md": "# Here"}), [("a.md", "b.md#gone")])
+
+    def test_duplicate_headings_get_numbered_anchors(self):
+        self.assertEqual(self.broken({"a.md": "[b](b.md#section-1)", "b.md": "# Section\n# Section"}), [])
+
+    def test_anchors_on_non_markdown_files_are_not_checked(self):
+        self.assertEqual(self.broken({"a.md": "[b](b.rs#top)", "b.rs": "fn main() {}"}), [])
+
+    def test_a_missing_heading_anchor_is_reported_even_when_the_file_exists(self):
+        self.assertEqual(self.broken({"a.md": "[b](b.md#top)", "b.md": "x"}), [("a.md", "b.md#top")])
         self.assertEqual(self.broken({"a.md": "[b](gone.md#top)"}), [("a.md", "gone.md")])
 
     def test_urls_and_pure_anchors_are_not_files(self):
-        text = "[u](https://example.com/x) [m](mailto:a@b.c) [h](#here) [t](tel:123) [f](ftp://host/file)"
+        text = "# Here\n[u](https://example.com/x) [m](mailto:a@b.c) [h](#here) [t](tel:123) [f](ftp://host/file)"
         self.assertEqual(self.broken({"a.md": text}), [])
+
+    def test_a_missing_pure_anchor_is_reported(self):
+        self.assertEqual(self.broken({"a.md": "# Here\n[missing](#gone)"}), [("a.md", "#gone")])
+
+    def test_heading_code_spelling_preserves_underscores(self):
+        self.assertEqual(
+            self.broken({"a.md": "[section](#sql-server-sql_variant-metadata-refusal)\n## SQL Server `sql_variant` metadata refusal"}),
+            [],
+        )
 
     def test_links_resolve_relative_to_the_linking_file(self):
         files = {"docs/a.md": "[b](../crates/x.rs)", "crates/x.rs": "fn main() {}"}

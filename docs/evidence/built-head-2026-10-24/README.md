@@ -1,4 +1,4 @@
-# Native PostgreSQL 100,000-row profile
+# Native PostgreSQL 100,000-row profiles before and after #1568
 
 ## Scope
 
@@ -29,7 +29,7 @@ The CPU and memory deltas cover the full 30-second sample, not just the database
 - [Raw process samples](native-postgres-100k-31s.json)
 - [Idle PostgreSQL sample](native-postgres-select1-31s.json)
 
-## Current linux-head idle capture
+## Pre-#1568 linux-head retention failure
 
 After the package-build tests, the extracted binary from the package built at `cc0f1cac1e6ccc08d752a23eb0b80ace8a6e1bf9` was launched on the native Hyprland desktop. It was not installed. The saved PostgreSQL connection was open in a 922 × 1150 window with an empty SQL editor and results pane. Over 31.219 seconds without input, RSS varied by 16 KiB, PSS by 28 KiB, process CPU increased by 0.01 seconds, and `/proc/<pid>/io` block-read and block-write counters did not change. This is an idle sample, separate from the query profile above; it does not measure a query or database socket traffic.
 
@@ -38,9 +38,9 @@ After the package-build tests, the extracted binary from the package built at `c
 
 The same current-head process then ran `SELECT generate_series(1, 100000) AS n;` on the native desktop. The UI reported 98 ms, 100,000 received rows and 20 pages. The result retained rows 80,001–100,000. I navigated Previous to rows 80,001–85,000; Previous disabled there, while Next returned to the next retained page. This reproduces the documented forward-only retention boundary on the current source head.
 
-This is a product gap for a completed result: the first 80,000 rows are not reachable after the query finishes, even though this narrow result has only 20 pages. The fixed four-page count, rather than a user-visible decision or a confirmed byte-budget exhaustion, is the observed boundary. The issue is tracked in [#1032](https://github.com/cozyGarage/BookiE/issues/1032). The capture demonstrates the regression surface; it does not establish the memory cost of retaining all 20 pages.
+On the source head tested before #1568, this was a product gap: the first 80,000 rows were not reachable after the query finished, although this narrow result had only 20 pages. The fixed four-page count, rather than confirmed byte-budget exhaustion, was the observed boundary. The capture demonstrates the pre-fix regression surface; it does not establish the memory cost of retaining all 20 pages.
 
-A 31.015-second sample began after the query had completed, with the grid on the newest retained page and no input. RSS stayed at 125.1 MiB, PSS varied by 13 KiB, Private Dirty decreased by 12 KiB, process CPU advanced by 0.02 seconds, and block-read/write counters did not change. This measures the retained-result idle state, not query execution or socket traffic. The earlier 30-second sample above covers a separate run that included query and UI work; the samples are not a controlled comparison.
+A 31.015-second sample began after the query had completed, with the grid on the newest retained page and no input. RSS stayed at 125.2 MiB, PSS varied by 13 KiB, Private Dirty decreased by 12 KiB, process CPU advanced by 0.02 seconds, and block-read/write counters did not change. This measures the retained-result idle state, not query execution or socket traffic. The earlier 30-second sample above covers a separate run that included query and UI work; the samples are not a controlled comparison.
 
 - [Current-head oldest-retained-page screenshot](native-current-head-100k-oldest-retained.png)
 - [Current-head completed-result process samples](native-current-head-postgres-100k-31s.json)
@@ -63,7 +63,7 @@ The same extracted binary opened the saved Manual Lab MySQL connection and loade
 
 ## Current linux-head SQL Server idle capture
 
-With the saved Manual Lab SQL Server connection open and its schema metadata loaded, a 31.029-second sample with no BookiE input recorded RSS at 132.8 MiB, PSS at about 106.1 MiB, CPU +0.02 seconds, and no process block I/O. This is a connected idle state with no query result displayed. The extracted package binary was used, not the installed package.
+Memory values in this section are sample-start readings rounded to one decimal MiB; CPU is the interval delta. With the saved Manual Lab SQL Server connection open and its schema metadata loaded, a 31.029-second sample with no BookiE input recorded RSS at 132.9 MiB, PSS at 106.2 MiB, CPU +0.02 seconds, and no process block I/O. This is a connected idle state with no query result displayed. The extracted package binary was used, not the installed package.
 
 - [SQL Server idle process samples](native-current-head-mssql-idle-31s.json)
 
@@ -71,12 +71,14 @@ With the saved Manual Lab SQL Server connection open and its schema metadata loa
 
 Each saved profile connected and displayed its sample data in the grid. These 31-second captures were taken sequentially in the same app process after switching profiles. RSS and PSS therefore include memory retained from earlier UI and connection work; they do not isolate per-engine cost. Each interval had no BookiE input and no process block-read or block-write delta.
 
+The table uses each profile's sample-start baseline for RSS and PSS, rounded to one decimal MiB. CPU is the last-minus-first sample delta.
+
 | Connection and view | RSS | PSS | Process CPU change | Samples |
 | --- | ---: | ---: | ---: | --- |
-| ClickHouse, `people` (2 rows) | 137.5 MiB | 111.3 MiB | +0.00 s | [Raw samples](native-current-head-clickhouse-people-31s.json) |
+| ClickHouse, `people` (2 rows) | 137.5 MiB | 111.4 MiB | +0.00 s | [Raw samples](native-current-head-clickhouse-people-31s.json) |
 | MongoDB, `people` (2 documents) | 145.3 MiB | 119.2 MiB | +0.03 s | [Raw samples](native-current-head-mongodb-people-31s.json) |
 | Redis DB 0 (5 keys) | 162.8 MiB | 135.5 MiB | +0.01 s | [Raw samples](native-current-head-redis-db0-31s.json) |
-| SQLite, `people` (4 rows, mixed and null values) | 168.9 MiB | 141.7 MiB | +0.02 s | [Raw samples](native-current-head-sqlite-people-31s.json) |
+| SQLite, `people` (4 rows, mixed and null values) | 169.0 MiB | 141.7 MiB | +0.02 s | [Raw samples](native-current-head-sqlite-people-31s.json) |
 
 The native UI sweep used the extracted package binary and the ten saved Manual Lab profiles. Each connection opened and its data view rendered successfully; no rows were changed.
 
@@ -103,13 +105,13 @@ After the ten-profile UI sweep, `du -sb` reported 125,812 bytes in `~/.config/ta
 
 ## Product finding
 
-Before PR #1568 was installed, the original 0.2.0 binary retained four pages. PR #1568 removes that page-count cap, but its candidate still evicts old pages after the estimated row cache exceeds 64 MiB. A 100,000-row narrow result kept all 20 pages; a 100,000-row result with 2 KiB text values retained only rows 70,001–100,000. The earliest available page was rows 70,001–75,000, with Previous disabled. The completed query still reported all 100,000 rows. This makes fetched data inaccessible in the grid and remains a product gap. Large-result acceptance is tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554). Evaluate a scrollable guarded cursor or disk-backed page storage while preserving query policy, audit, cancellation, timeout, value preservation and cleanup contracts.
+Before installing the PR #1568 candidate, the published 0.2.0 binary retained four pages. The candidate removed that page-count cap, but still evicts older pages when estimated retained row storage exceeds 64 MiB. A 100,000-row narrow result kept all 20 pages; a 100,000-row result with 2 KiB text values retained only rows 70,001–100,000. The earliest available page was rows 70,001–75,000, with Previous disabled. The completed query still reported all 100,000 rows. This packet records source-build, extracted-package and installed-candidate observations; it does not qualify the published release. Broader memory and result-retrieval work remains under [#1032](https://github.com/cozyGarage/BookiE/issues/1032) and [#554](https://github.com/cozyGarage/BookiE/issues/554); follow-up must preserve query policy, audit, cancellation, timeout, value preservation and cleanup contracts.
 
-## Native PR #1568 follow-up
+## Native result-cache capture from PR commit 748c75c
 
-On 2026-10-24, the Arch package built from PR #1568 head `748c75c0f904e6c53f41236b1a3d36668bd079b5` was first extracted and run on the Omarchy Wayland desktop. At that stage, the package had not yet been installed. Package SHA-256: `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. Extracted `bookie` SHA-256: `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the same hash was verified after installation.
+On 2026-10-24, an Arch package recorded as built from PR commit `748c75c0f904e6c53f41236b1a3d36668bd079b5` was first extracted and run on the Omarchy Wayland desktop. The PR later merged at `3e9f22a70d49417935e5c034753e0e02c229f7ca` from final head `bee68f0bb93e8e5295a6bcc7cfb027565f0a14c7`. At that stage, the package had not yet been installed. Package SHA-256: `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. Extracted `bookie` SHA-256: `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the same hash was verified after installation.
 
-On PostgreSQL 17.11, `SELECT generate_series(1, 100000) AS n;` completed in 160 ms and returned 100,000 rows across 20 pages. The UI navigated from the last page back to rows 1–5,000. This confirms PR #1568 removes the installed build's four-page limit for this result. It does not test results that exceed the 64 MiB estimated in-memory page budget.
+On PostgreSQL 17.11, `SELECT generate_series(1, 100000) AS n;` completed in 160 ms and returned 100,000 rows across 20 pages. The UI navigated from the last page back to rows 1–5,000. This confirms the PR #1568 source build removes the four-page behavior measured in the published 0.2.0 build for this result. It does not test results that exceed the 64 MiB estimated in-memory page budget.
 
 The app process was at 107,472 KiB RSS, 96,537 KiB PSS and 39,044 KiB private dirty before Run. After the query, navigating to the first page and then sitting idle for 31.72 seconds, it held 239,190,016 B RSS, 227,978,240 B PSS and 168,579,072 B private dirty. RSS and private dirty were unchanged across that idle sample; PSS varied by 8 KiB. CPU rose by 0.02 seconds. `/proc/<pid>/io` block-read and block-write counters did not change. The RSS increase includes fetched pages and GTK result rendering; this profile does not isolate those costs.
 
@@ -137,7 +139,7 @@ The isolated Xvfb GTK safety scenario `bundle_export_records_sanitized_audit_out
 
 ## Fresh-process idle profile
 
-I relaunched the extracted PR candidate on the native Wayland desktop with no query run. The startup log reached “main window activated” 59 ms after process start and “workspace ready” 174 ms after process start. These are internal log markers, not a measured first-frame time. GTK emitted a critical that `/run/user/1000/at-spi/bus_0` was missing, but the window and PostgreSQL workspace still loaded.
+I relaunched the extracted PR candidate on the native Wayland desktop with no query run. The startup log reached “main window activated” 59 ms after process start and “workspace ready” 174 ms after process start. These are internal log markers, not a measured first-frame time. GTK emitted a critical that the user-session accessibility bus was missing, but the window and PostgreSQL workspace still loaded.
 
 At 15 seconds, RSS was 113,916 KiB, PSS 102,359 KiB and private dirty 45,677 KiB. At 69 seconds, RSS remained 113,916 KiB, PSS was 102,396 KiB and private dirty 45,645 KiB. During the following 30-second idle sample, CPU ticks did not increase; RSS and private dirty stayed at 113,916 and 45,636 KiB. Block-read and block-write counters stayed at 770,048 and 2,043,904 bytes.
 
@@ -170,7 +172,7 @@ On the same SQLite connection, I opened the editor's Session mode, ran the exist
 
 After closing the extracted candidate, the existing profile directories measured 158,980 bytes in config, 886,809 bytes in share and 4,732 bytes in cache. The SQLite fixture remained 8,192 bytes. The extracted candidate package tree occupied 76,183,256 bytes. These are cumulative profile and package-tree sizes, not storage attributable to the session test. At capture time pacman still reported 0.2.0-1 and the PR package installation was waiting for authentication; the later installed-package verification is below.
 
-## Installed PR #1568 package and 100,000-row SQLite run
+## Installed package from PR commit 748c75c and 100,000-row SQLite run
 
 The package `bookie-0.2.0-1-x86_64.pkg.tar.zst` was installed through the desktop PolicyKit authorization at 2026-10-24 09:34 UTC. Pacman reports version `0.2.0-1` and installed size 72.61 MiB. `pacman -Qk bookie` found all 28 package files present. SHA-256 of `/usr/bin/bookie` and `usr/bin/bookie` inside the package both equals `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`. The installed `/usr/bin/bookie` binary launched on workspace 3 and was moved to workspace 4 for the remaining checks.
 
@@ -192,11 +194,15 @@ The full Xvfb/AT-SPI GTK safety suite ran against the same extracted candidate w
 
 - [GTK safety run log](gtk-safety-xvfb-20261024.txt)
 
+## Provenance note for the installed PR #1568 capture
+
+The installed-package sample records package version `0.2.0-1` but not a source commit. Its archive digest matches the extracted package recorded above, and the installed executable and package member match that package's recorded binary digest. The package record attributes the binary to PR commit `748c75c0f904e6c53f41236b1a3d36668bd079b5`, which appears in the PR history. The `stream_pages.rs` implementation and its performance tests are byte-identical between that commit and merged commit `3e9f22a70`. The archive digest differs from the published `linux-v0.2.0` Arch asset. This pins the installed capture to the earlier PR package and cache implementation, but does not qualify the final merged UI build or the published release.
+
 ## Installed package GTK rerun
 
-The installed `bookie 0.2.0-1` package was retested after PR #1568 merged. The installed executable SHA-256 was `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the package archive SHA-256 was `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. The run used `/usr/bin/bookie`, an isolated D-Bus session and Xvfb, and port 19434 for the MCP listener. All 111 GTK safety scenarios passed and the script exited 0.
+The installed `bookie 0.2.0-1` package was retested after PR #1568 merged. The installed executable SHA-256 was `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the package archive SHA-256 was `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. The run used `/usr/bin/bookie`, an isolated D-Bus session and Xvfb, and port 19434 for the MCP listener. The log records 111 passing scenarios and no failed scenarios; it does not record the script's final exit status.
 
-The default test wrapper sets `XDG_CURRENT_DESKTOP=GNOME`. On this host, the GNOME portal exposed no FileChooser interface under Xvfb, so an initial run passed 95 scenarios and could not reach file-picker dialogs in 16. A focused CSV-export scenario passed after setting `XDG_CURRENT_DESKTOP=Hyprland`; the full installed-package rerun used the same setting and passed all scenarios. This isolates the earlier failures to the portal selection in the headless test environment. The log contains D-Bus disconnect messages during teardown. Its private runtime directory was removed after the run.
+The default test wrapper sets `XDG_CURRENT_DESKTOP=GNOME`. On this host, the GNOME portal exposed no FileChooser interface under Xvfb, so an initial run passed 95 scenarios and could not reach file-picker dialogs in 16. A focused CSV-export scenario passed after setting `XDG_CURRENT_DESKTOP=Hyprland`; the full installed-package rerun used the same setting and logged 111 passing scenarios. This isolates the earlier failures to portal selection in the headless test environment. The run log ends with D-Bus disconnects and two `rm` errors while removing runtime subdirectories, so cleanup completion is unverified.
 
 - [Installed-package GTK safety run log](gtk-safety-installed-hyprland-xvfb-20261024.txt)
 

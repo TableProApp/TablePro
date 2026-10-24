@@ -63,9 +63,9 @@
     "STRICT_ALL_TABLES,ANSI_QUOTES,NO_BACKSLASH_ESCAPES"
   ],
   "log_sha256": {
-    "mysql.txt": "dba7b08ae113d91432211d8b807dc2d0999201750d2294105b45158198ebda8b",
+    "mysql.txt": "a35eb4ebd47997d5e05cee37eb07c3e21b63b5f8600f3a1244c18cf82671693a",
     "mariadb.txt": "0f510eb2f1d73cc85b033633dcbd5c6def0b4b9f0db589a00a4591fb1fb08dbc",
-    "clippy.txt": "93444c0a2b3f66d516ad6dabb9cb686ed1d88e7624386cffe55bbf4e4d4ac5c7",
+    "clippy.txt": "a378a01498f1c36ea4c94d392817e8018f02a32ad24c897bd915ecee1b9df8f1",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   }
 }

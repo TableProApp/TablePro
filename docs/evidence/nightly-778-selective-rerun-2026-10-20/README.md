@@ -31,7 +31,7 @@ Forgejo reports run #778 cancelled. At 00:51 UTC, its job list showed eight succ
 6. **Do not classify the three GTK soak attempts as nightly failures.** They were deliberately started by the maintainer and are still in progress. Record their final counts from their own logs when they finish.
 7. **Only rerun downstream package/value/GTK jobs when their required mutation and Docker prerequisites are available.** Their cancellation gives no pass or fail evidence.
 
-The local workstation plan in [workstation test reuse](../../proposals/workstation-test-reuse.md) remains the low-write path for focused checks: reuse its existing Cargo target tree and nextest artifacts, run one compile-heavy task at a time, and avoid `cargo clean`. No local or Forgejo rerun is claimed by this document.
+The archived [workstation test reuse plan](../../archive/workstation-test-reuse-2026-10-20.md) records the local low-write approach for focused checks. No local or Forgejo rerun is claimed by this document.
 
 ## Cancellation follow-up
 

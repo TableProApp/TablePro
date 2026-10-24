@@ -2,7 +2,7 @@ dbus-daemon[78538]: [session uid=1000 pid=78538 pidfd=5] Activating service name
 dbus-daemon[78538]: [session uid=1000 pid=78538 pidfd=5] Activating service name='org.gtk.vfs.Daemon' requested by ':1.2' (uid=1000 pid=78736 comm="/usr/lib/at-spi-bus-launcher")
 dbus-daemon[78538]: [session uid=1000 pid=78538 pidfd=5] Successfully activated service 'org.gtk.vfs.Daemon'
 dbus-daemon[78538]: [session uid=1000 pid=78538 pidfd=5] Successfully activated service 'org.a11y.Bus'
-dbus-daemon[78750]: Activating service name='org.a11y.atspi.Registry' requested by ':1.1' (uid=1000 pid=78772 comm="python3 -u /home/trung/Projects/bookie-ux-stream-r")
+dbus-daemon[78750]: Activating service name='org.a11y.atspi.Registry' requested by ':1.1' (uid=1000 pid=78772 comm="python3 -u <home-path-redacted>/Projects/bookie-ux-stream-r")
 dbus-daemon[78750]: Successfully activated service 'org.a11y.atspi.Registry'
 SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
 dbus-daemon[78538]: [session uid=1000 pid=78538 pidfd=5] Activating service name='org.freedesktop.portal.Desktop' requested by ':1.9' (uid=1000 pid=78773 comm="/tmp/bookie-pr1568-install.nsdUlb/usr/bin/bookie")

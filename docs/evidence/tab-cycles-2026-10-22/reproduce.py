@@ -1,4 +1,4 @@
-import json, sys, subprocess, time
+import json, os, sys, subprocess, time
 from pathlib import Path
 subprocess.run(["gdbus", "call", "--session", "--dest", "org.a11y.Bus", "--object-path", "/org/a11y/bus", "--method", "org.a11y.Bus.GetAddress"], check=True, stdout=subprocess.DEVNULL)
 sys.path.insert(0, str(Path.cwd()/"apps/linux/app/tests"))
@@ -53,4 +53,6 @@ repeated_editor_close_cycles.environment="local"
 try:
     ui.run_scenario(Path(sys.argv[1]),repeated_editor_close_cycles)
 finally:
-    Path("/home/trung/bookie-test/tab-cycle-profile/samples.json").write_text(json.dumps(samples,indent=2)+"\n")
+    output = Path(os.environ.get("BOOKIE_TAB_CYCLE_OUTPUT", "tab-cycle-profile/samples.json"))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(samples, indent=2) + "\n")

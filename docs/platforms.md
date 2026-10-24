@@ -1,29 +1,35 @@
 # Platforms, toolchains and packaging
 
-One page for what runs where. The [sprint](bookie-0.2-sprint.md) owns release approval; [packaging](../apps/linux/packaging/README.md) owns package builds.
+One page for what runs where. The [completion page](bookie-0.2-sprint.md) records 0.2.0 status; [release-process](release-process.md) owns release steps and [packaging](../apps/linux/packaging/README.md) owns package builds.
 
 ## Supported stacks
 
-BookiE supports one native-library floor, set by [ADR 0021](decisions/0021-toolkit-floor.md): GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22, with GLib 2.88. Arch Linux and Debian testing ship this stack. The root Meson project, the Debian and Arch package dependencies and a startup check enforce it; an older stack makes the application exit with a message naming the required and found versions.
+The current `linux` branch supports one native-library floor, set by [ADR 0021](decisions/0021-toolkit-floor.md): GTK 4.24, libadwaita 1.10 and GtkSourceView 5.22, with GLib 2.88. Arch Linux and Debian testing ship this stack. The root Meson project, the Debian and Arch package dependencies and a startup check enforce it; an older stack makes the application exit with a message naming the required and found versions.
 
-Ubuntu 26.04 LTS (GTK 4.22), Debian 13 (GTK 4.18) and Ubuntu 24.04 (GTK 4.14) are below the floor and unsupported. Update the distribution, or use the Flatpak build on the GNOME 51 runtime once it is offered. Fixes are not backported to older toolkits.
+Ubuntu 26.04 LTS (GTK 4.22), Debian 13 (GTK 4.18) and Ubuntu 24.04 (GTK 4.14) are below the native-library floor and unsupported for native packages. The published 0.2.0 Flatpak bundle uses GNOME 50 and does not qualify the current branch; a GNOME 51 bundle is not yet published. Fixes are not backported to older native toolkits.
 
 `scripts/test-distro-floor.sh` runs app unit and widget tests on `debian:testing`; with `DISTRO_FLOOR_INSTALLED=1`, it also runs GTK safety against a Cargo-built binary staged under the target directory. Installed-package acceptance is tracked under PKG-1; Debian GNOME desktop acceptance is tracked under PKG-2.
 
 At the 2026-10-14 review, Arch packaged Rust 1.99.0 while Debian 13 packaged Rust 1.85.1 ([Arch package](https://archlinux.org/packages/extra/x86_64/rust/), [Debian package](https://packages.debian.org/trixie/rust/rustc)). Arch's `rust` package ignores `rust-toolchain.toml`, and Debian 13 is below the workspace MSRV. Use rustup to select the repository's pinned toolchain consistently.
 
-## Released packages
+## Published 0.2.0 release
 
-The package artifacts recorded below are from [`linux-v0.1.5`](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.1.5). Check the [release page](https://github.com/cozyGarage/BookiE/releases) for the latest published artifacts; a Git tag in this checkout does not prove that packages were published. These packages do not qualify the 0.2.0 source.
+GitHub published [`linux-v0.2.0`](https://github.com/cozyGarage/BookiE/releases/tag/linux-v0.2.0) on 2026-10-23 with these installable artifacts:
 
 | Target | Architecture | Artifact | Package / launch command |
 |---|---|---|---|
-| Arch Linux / Omarchy | x86_64 | `bookie-0.1.5-1-x86_64.pkg.tar.zst` | `bookie` |
-| Debian / Ubuntu with GNOME 50 libraries (before the ADR 0021 floor) | amd64 | `tablepro_0.1.5-1_amd64.deb` | `tablepro` package, `bookie` command |
+| Arch Linux / Omarchy | x86_64 | `bookie-0.2.0-1-x86_64.pkg.tar.zst` | `bookie` |
+| Debian package | amd64 | `tablepro_0.2.0-1_amd64.deb` | `tablepro` package, `bookie` command |
+| AppImage | x86_64 | `BookiE-0.2.0-x86_64.AppImage` | Run the downloaded file |
+| Flatpak bundle | x86_64 | `bookie.flatpak` | Install the downloaded bundle |
 
-The v0.1.5 release did not publish Fedora, AUR, Flathub, 32-bit or ARM packages.
+The release also includes an Arch debug package, `bookie.pot` and `SHA256SUMS`. The Debian package keeps the `tablepro` filename because it was built from the release tag. The 0.2.0 Flatpak bundle uses GNOME 50; the current branch manifest uses GNOME 51, so the published bundle does not qualify the current toolkit floor.
 
-Builds from the `linux` branch after 0.2.0 name the Debian package `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It declares `Replaces`, `Conflicts` and `Provides` for `tablepro`, so installing it replaces an installed `tablepro` package and keeps settings and credentials. The 0.2.0 Debian package is still named `tablepro`.
+The 0.2.0 release did not publish a Fedora package, AUR package, Flathub listing, 32-bit package or ARM package. The published AppImage's `AppRun` sources a GTK hook that defaults to `GDK_BACKEND=wayland,x11`; its exact-asset Wayland behavior remains unverified because the recorded desktop run used a different PR artifact ([manual verification](manual-verification-0.2-features.md#appimage-run-on-2026-10-21)). Published artifacts prove availability, not installation or desktop acceptance on every distribution; see PKG-1 and PKG-2 below.
+
+The release tag used the GNOME 50 native-library line (GTK 4.22, GLib 2.88, libadwaita 1.9 and GtkSourceView 5.18). [ADR 0021](decisions/0021-toolkit-floor.md) raised the current branch floor after publication. Do not treat the 0.2.0 package as a build of the current `linux` tree.
+
+Builds from the `linux` branch after the 0.2.0 release name the Debian package `bookie` (`bookie_X.Y.Z-1_amd64.deb`). It declares `Replaces`, `Conflicts` and `Provides` for `tablepro`, so installing it replaces an installed `tablepro` package and keeps settings and credentials. The published 0.2.0 Debian package retains the `tablepro` name.
 
 ## Rust toolchain
 
@@ -42,7 +48,7 @@ In this repository the pin selects 1.98. Use `cargo +stable clippy ...` for the 
 
 ## Arch and Omarchy package
 
-The Arch package is an internal candidate, not an AUR or Flathub release. It installs `bookie` and `bookie-agentd`, with `tablepro` aliases. The application ID, D-Bus name, XDG paths and keyring schema stay `com.tablepro.linux` and `tablepro`.
+The published Arch package installs `bookie` and `bookie-agentd`, with `tablepro` aliases. It is not an AUR package. The application ID, D-Bus name, XDG paths and keyring schema stay `com.tablepro.linux` and `tablepro`.
 
 - Build from a clean 0.2.0 tree with `TABLEPRO_RC_VERSION=0.2.0` and an explicit `TABLEPRO_RC_DATE=YYYY-MM-DD`.
 - `scripts/build-arch-rc.sh` requires the full `HEAD` SHA or a remotely verified tag. It retains checksummed source and Cargo vendor archives plus a build-input manifest, then runs Cargo build and tests offline through `makepkg --cleanbuild`, `namcap` and package-content checks. Native Arch packages stay external inputs, and this command does not create a release tag.
@@ -52,7 +58,7 @@ The Arch package is an internal candidate, not an AUR or Flathub release. It ins
 
 ## Flathub
 
-Flatpak and Flathub are left out of 0.2.0 ([PRODUCT.md](../PRODUCT.md)). The Flatpak manifests (`apps/linux/flatpak/com.tablepro.linux*`) build, but a manifest build is not release qualification or publication. Check PKG-8's file-access decision before starting Flathub submission; the steps below do not settle it. Submission checklist for later packaging work:
+The 0.2.0 release includes a Flatpak bundle, but BookiE is not listed on Flathub. That bundle uses GNOME 50 and predates the current GNOME 51 runtime and toolkit floor. Current manifests build for GNOME 51; a manifest build is not a published artifact or runtime acceptance. Check PKG-8's file-access decision before starting Flathub submission; the steps below do not settle it. Submission checklist for later packaging work:
 
 1. Capture screenshots under `apps/linux/flatpak/screenshots/` (1280x800 or larger): welcome, browse, editor, structure; reference them from the metainfo.
 2. `flatpak-builder --user --install build-dir apps/linux/flatpak/com.tablepro.linux.json`.

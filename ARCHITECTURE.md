@@ -2,7 +2,7 @@
 
 **BookiE** is a Linux-only native database client. Two composition roots (the GTK app and the headless MCP daemon) share one governed path: resolve credentials → open a tunnel if needed → wrap the driver in `PolicyGuard` → classify and evaluate → approve when required → write required audit intent → execute → mask eligible returned results → write terminal audit → return bounded results. There is no browser UI, no runtime driver plugin ABI, and no remote entitlement gate.
 
-The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). The Cargo workspace lives at the repository root (Rust 1.98). Crate and Cargo binary names stay `tablepro-*`. Packaging and Meson install `bookie` / `bookie-agentd` and add `tablepro` / `tablepro-agentd` aliases. App ID, XDG paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Check the [active sprint](docs/bookie-0.2-sprint.md) before renaming any of them.
+The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE). The Cargo workspace lives at the repository root (Rust 1.98). Crate and Cargo binary names stay `tablepro-*`. Packaging and Meson install `bookie` / `bookie-agentd` and add `tablepro` / `tablepro-agentd` aliases. App ID, XDG paths, keyring schema, UUIDs, audit format and protocol contracts stay `tablepro` / `com.tablepro.linux`. Check the [compatibility policy](AGENTS.md#project) and accepted ADRs before renaming any of them.
 
 ![BookiE architecture overview: the desktop app and the headless MCP host reach every database through one PolicyGuard, then routing and static drivers](docs/images/architecture-overview.svg)
 
@@ -19,7 +19,7 @@ DuckDB is an optional build feature and is not shown. The diagrams below give th
 | root | `Cargo.toml` workspace, toolchain and lint config, `meson.build`, this file, `AGENTS.md`, `README.md`. |
 | `baselines/` | Ratchet ceilings for comment lines, function size, file size, panic sites, and the coverage floor. |
 
-This page is the one-page map. Accepted [ADRs](docs/decisions/README.md) constrain behaviour; [AGENTS.md](./AGENTS.md) owns contributor rules; the sprint owns sequencing. Capability behaviour extracted from code lives under [`specs/`](specs/README.md).
+This page is the one-page map. Accepted [ADRs](docs/decisions/README.md) constrain behaviour; [AGENTS.md](./AGENTS.md) owns contributor rules; the [post-release backlog](docs/backlog.md) owns sequencing. Capability behaviour extracted from code lives under [`specs/`](specs/README.md).
 
 | If you want to… | Read |
 |---|---|
@@ -73,7 +73,7 @@ Both processes register the same static drivers and must obtain a `PolicyGuard` 
 
 ## Containers (crates)
 
-Dependencies point downward. `tablepro-core` is the contract layer and depends on no other workspace crate. UI code reaches engines only through the driver registry; in production, only the two composition roots (`app` and `agentd`) depend on driver crates. Test crates may depend on drivers to verify real engine behavior.
+Production dependencies point downward. `tablepro-core` is the contract layer and depends on no other workspace crate. UI code reaches engines only through the driver registry; in production, only the two composition roots (`app` and `agentd`) depend on driver crates. Crate tests also use selected drivers to verify real engine behavior.
 
 ```mermaid
 flowchart TB
@@ -150,7 +150,7 @@ flowchart TB
 | `tablepro-app` | GTK composition root. Cargo binary `tablepro-app`; installed as `bookie`. |
 | `tablepro-agentd` | Headless MCP composition root. Cargo binary `tablepro-agentd`; installed as `bookie-agentd`. |
 | `tablepro-core` | Domain types, driver traits, values, filters, transactions, registry. No workspace dependency. |
-| `tablepro-policy` | Classify, rules, approval, masking, blast radius, audit types, `PolicyGuard`. Depends on `core` only. |
+| `tablepro-policy` | Classify, rules, approval, masking, blast radius, audit types, `PolicyGuard`. Production dependency: `core`. |
 | `tablepro-app-services` | GTK-free application state and service logic used by the desktop app. Depends on `core`, `dump`, `policy`, `storage` and `transport`. |
 | `tablepro-storage` | Saved connections, Secret Service, query history, audit journal. |
 | `tablepro-ssh` | Built-in `russh` tunnels and optional system OpenSSH backend. |
@@ -178,7 +178,7 @@ These traits are the seams that keep engines and UI replaceable. Behaviour detai
 
 Adding an engine means implementing `DatabaseDriver` + `Connection` behind those traits, not teaching the UI a new driver id ([ADR 0001](docs/decisions/0001-no-plugin-system.md)).
 
-The optional cursor path is governed by `PolicyGuard`: it accepts one read statement in a read-only session snapshot, masks and audits each fetched page under the same operation, and closes the cursor on terminal outcomes. PostgreSQL is the only driver that supports it today. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s and retains at most four pages of up to 5,000 rows. Other engines and unsupported query shapes use materialized results and their existing caps ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
+The optional cursor path is governed by `PolicyGuard`: it accepts one read statement in a read-only session snapshot, masks and audits each fetched page under the same operation, and closes the cursor on terminal outcomes. PostgreSQL is the only driver that supports it today. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s and retains pages within a 64 MiB estimated-row budget, except that the newest page remains when it alone exceeds the budget. Pinned results and overlapping snapshots can retain additional pages. Other engines and unsupported query shapes use materialized results and their existing caps ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
 
 ## Governed request pipeline
 
@@ -371,7 +371,7 @@ Each engine exports a type implementing `tablepro_core::DatabaseDriver`. Connect
 | Command scope | Component-scoped commands for tab/component lifetime. Detached Relm4 tasks only for independent persistence/cleanup. |
 | Tabs | `AdwTabView` workspaces; Relm4 controllers keyed by tab UUID. |
 | Browse grid | Bounded pages in `RowStore` (`gio::ListModel`); weakly cached `RowObject`s. |
-| SQL editor results | Supported single-statement PostgreSQL `SELECT`s stream guarded cursor pages, retaining at most four pages of up to 5,000 rows. Other engines and query shapes use capped materialization; retained-page count is not a process-memory ceiling ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
+| SQL editor results | Supported single-statement PostgreSQL `SELECT`s stream guarded cursor pages within a 64 MiB estimated-row budget; a newest page larger than the budget remains. Pins and overlapping snapshots may retain more. Other engines and query shapes use capped materialization; these estimates are not a process-memory ceiling ([ADR 0011](docs/decisions/0011-paged-query-results.md), PERF-2/PERF-8). |
 | Identity | Sidebar refresh tokens hold a weak session reference. Tab results keep their tab UUID across connection switches. |
 
 ## Persistence
@@ -390,8 +390,8 @@ Default workspace Clippy/unit checks exclude optional DuckDB. GitHub runs the ch
 | Static drivers | Compile-time registration; no plugin ABI. |
 | No embedded browser | Native GTK widgets only. |
 | No in-process user scripting | Reduces attack surface beside SQL policy. |
-| Redis single endpoint | Sentinel/Cluster deferred past 0.2.0. |
-| Packaging | Arch x86_64 is the 0.2.0 target. Debian/GNOME amd64 and Flatpak remain later backlog work; a recipe is not publication. |
+| Redis topology | Single endpoint; unsupported topologies and release status are in [known limitations](docs/known-limitations.md#editing-and-connections). |
+| Packaging | Arch/Hyprland is the 0.2.0 desktop target. The release also includes a Debian package and a GNOME 50 Flatpak bundle; Debian/GNOME desktop acceptance and Flathub publication remain post-release backlog work. The bundle does not establish support on the current GNOME 51 toolkit floor. |
 
 ## How to read this architecture map
 

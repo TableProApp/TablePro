@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-18 against TablePro `main` `0ab322ea1d7576cfd858ab5946edb9e84cba9e5b` and BookiE `linux` `8626129e60c8f62661cf6d64a70067a6cbfbe654`. The maintainer confirmed that BookiE 0.2.0 delivery work is complete and release publication is pending. The [backlog](../backlog.md) owns subsequent order; this review changes no accepted ADR and publishes no release.
 
-This extends the [movement and implementation audit](upstream-linux-movement-2026-10-18.md), with [source fingerprints and public observations](../evidence/upstream-linux-audit-2026-10-18/source-pins.json). Public issue/PR state and local source were inspected. No application, database probe, package build or performance test was run. New tasks are investigations or selected engineering improvements, not a claim that BookiE reproduces an upstream bug.
+This extends the [movement and implementation audit](upstream-linux-movement-2026-10-18.md), with [source fingerprints and public observations](evidence/upstream-linux-audit-2026-10-18/source-pins.json). Public issue/PR state and local source were inspected. No application, database probe, package build or performance test was run. New tasks are investigations or selected engineering improvements, not a claim that BookiE reproduces an upstream bug.
 
 ## What to reuse from BookiE's upstream
 

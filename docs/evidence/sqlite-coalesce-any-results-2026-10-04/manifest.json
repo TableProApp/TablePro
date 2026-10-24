@@ -36,7 +36,7 @@
   },
   "log_sha256": {
     "integration.txt": "da9c1ac81ad79e35db83fa32430f14049ae0041b92d61e64a37e4fa6c374d8a2",
-    "clippy.txt": "1f22649c061859814ee4e146f200737ec43e9b086488b95b8cfc126d86d6cd2e",
+    "clippy.txt": "2c1dceeb03aee2a50ac1e89dbffe3bc1083ae8b3392a5c27fde1b851c6677142",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

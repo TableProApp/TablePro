@@ -73,10 +73,10 @@ Validation passed on the changed production source:
 
 Local layer report:
 `target/quality/20261002T222123464575Z-layers/report.json`.
-The checked-in [validation manifest](../evidence/upstream-u1-2026-10-03/validation.json)
+The checked-in [validation manifest](evidence/upstream-u1-2026-10-03/validation.json)
 retains source/log hashes and results. The
-[failing-before log](../evidence/upstream-u1-2026-10-03/native-before.txt) and
-[passing native suite log](../evidence/upstream-u1-2026-10-03/native-after.txt)
+[failing-before log](evidence/upstream-u1-2026-10-03/native-before.txt) and
+[passing native suite log](evidence/upstream-u1-2026-10-03/native-after.txt)
 remain available after build-cache deletion. Validation ran on the dirty source
 over documentation commit `5cdb2ee`; the manifest identifies the tested Rust
 files, including the new test module. The original review did not run these

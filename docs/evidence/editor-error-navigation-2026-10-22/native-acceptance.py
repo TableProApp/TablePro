@@ -67,7 +67,7 @@ try:
     keyring.stdin.write(b"tablepro-test")
     keyring.stdin.close()
     time.sleep(.3)
-    binary = Path("/home/trung/Projects/bookie/target/debug/tablepro-app")
+    binary = Path(os.environ.get("BOOKIE_APP_BINARY", "target/debug/tablepro-app"))
     binary_sha256 = hashlib.sha256(binary.read_bytes()).hexdigest()
     process = ui.start_application(str(binary), environment)
     clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"]))

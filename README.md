@@ -19,18 +19,18 @@ BookiE is a free, open-source database client for Linux, built for data analysts
 | | |
 |---|---|
 | Platform | Linux, with a native GTK4 and libadwaita interface. |
-| Databases | PostgreSQL, MySQL and MariaDB, SQLite, SQL Server and ClickHouse. MongoDB and Redis are experimental. See the [driver maturity table](docs/adding-drivers.md#driver-maturity). |
-| Cost | Every shipped feature is free, with no account, license key, subscription or paid tier. |
+| Databases | PostgreSQL, MySQL and MariaDB, SQLite, SQL Server and ClickHouse. DuckDB is experimental and available in optional builds, not the release packages; MongoDB and Redis are experimental. See the [driver maturity table](docs/adding-drivers.md#driver-maturity). |
+| Cost | Every shipped feature is free, with no account, license key, subscription, paid tier or remote entitlement check. |
 | Credentials | Kept in the desktop keyring (Secret Service). |
-| Safety | Every statement is checked before it runs, and governed operations are recorded in a local audit journal. |
+| Safety | Database operations pass local policy checks. Audit-intent failures block writes by default; explicit Local/Dev policy can allow a human write without an audit record. |
 | AI agents | Optional Model Context Protocol access through the same checks. |
 | License | [GNU Affero General Public License v3.0 or later](LICENSE). |
 
 ## Install
 
-Each release lists a Debian package, an Arch package, a Flatpak bundle and an AppImage on the [release page](https://github.com/cozyGarage/BookiE/releases), with a `SHA256SUMS` file. The Debian and Arch packages are the main install paths. Library requirements and install acceptance are in [platforms](docs/platforms.md).
+The [release page](https://github.com/cozyGarage/BookiE/releases) lists each version's available artifacts and checksums. The published 0.2.0 release provides a Debian package, an Arch package, a Flatpak bundle and an AppImage; the Debian and Arch packages are the main install paths. Library requirements and install acceptance are in [platforms](docs/platforms.md).
 
-The AppImage is for trying BookiE without installing it. It does not bundle the GtkSourceView data, so on a system that lacks it the SQL editor has no syntax highlighting ([#1325](https://github.com/cozyGarage/BookiE/issues/1325)).
+The AppImage is for trying BookiE without installing it. The published 0.2.0 image contains GtkSourceView's SQL language and light/dark style resources, and a [package-level check](docs/evidence/appimage-resource-check-2026-10-23/README.md) resolved them from the bundled library. Editor highlighting on a clean system remains unverified ([#1325](https://github.com/cozyGarage/BookiE/issues/1325)).
 
 To build from source, see [Build and run](#build-and-run).
 
@@ -50,19 +50,13 @@ BookiE is for the people doing that work today. Its purpose is to help you under
 
 Open source made this project possible. BookiE grew from TablePro's Linux work and draws inspiration from the wider open-source database community. Building it is a way to give back through useful software, fixes, tests, documentation, and shared lessons. Contributions and credit belong alongside the code.
 
-Every shipped feature is free to use, with no account, license key, subscription, paid tier, or remote entitlement check.
-
 ## Status
 
-BookiE 0.2.0 was published on 2026-10-23. Subsequent development and 0.2.1 planning follow the [backlog](docs/backlog.md). Workflows include saved connections, SSH tunnels, browse and SQL tabs, structure editing, inline row changes, query history, policy checks, audit records, MCP access, and the headless `bookie-agentd` process. Table browsing fetches bounded pages from the database. Supported single-statement PostgreSQL `SELECT`s stream through a four-page window; other engines and query shapes keep their existing result caps. Broader streamed-result memory acceptance is tracked under PERF-2/PERF-8 ([ADR 0011](docs/decisions/0011-paged-query-results.md)).
-
-PostgreSQL has the broadest release-fixture coverage: server-confirmed cancellation, certificate hostname and authority verification, verified TLS through an SSH tunnel, read-only denial, rollback, blocking-lock reporting, and reconnect run as deterministic container checks. MySQL, SQL Server, ClickHouse, Redis, and MongoDB also have driver TLS fixture evidence; those fixtures do not establish full transport or packaging readiness. Published artifacts and source-specific package evidence remain distinct from the maintainer's delivery-completion decision. The [documentation map](docs/README.md) links to current milestone status and the detailed acceptance boards.
-
-See the [driver maturity table](docs/adding-drivers.md#driver-maturity) for current per-engine capabilities and limits, and [platforms](docs/platforms.md) for released packages, library requirements and install acceptance. The 0.1.5 packages do not qualify the 0.2.0 source.
+[BookiE 0.2.0 is published](docs/bookie-0.2-sprint.md). The [backlog](docs/backlog.md) holds post-release work; neither 0.2.1 nor 0.3 has an approved scope. Use the [driver maturity table](docs/adding-drivers.md#driver-maturity), [platform guide](docs/platforms.md), and [known limitations](docs/known-limitations.md) for current engine support, installation requirements, and unresolved behavior.
 
 ## Supported platforms
 
-BookiE targets Linux. The current 0.2.0 desktop target and package requirements are documented in [platforms](docs/platforms.md).
+BookiE targets Linux. The [platform guide](docs/platforms.md) separates the published 0.2.0 target from current source requirements.
 
 ## Architecture
 
@@ -76,7 +70,7 @@ Every database handle that the desktop app, the MCP tools and `bookie-agentd` re
 
 The product repository is [`cozyGarage/BookiE`](https://github.com/cozyGarage/BookiE), and current development is on the `linux` branch. BookiE is built with Rust, GTK4, libadwaita, GtkSourceView, and Relm4. The Cargo workspace lives at the repository root (`crates/`, `apps/linux/`, `tests/`, `scripts/`, `docs/`) and requires Rust 1.98.
 
-Start with the [documentation map](docs/README.md) and [completion and continuation](docs/bookie-0.2-sprint.md) for current scope and evidence. Release publication remains a separate decision.
+Start with the [documentation map](docs/README.md) and [completion and continuation](docs/bookie-0.2-sprint.md) for release status and acceptance owners.
 
 ### Compatibility names
 
@@ -90,7 +84,7 @@ The product name is BookiE. Installed commands are `bookie` and `bookie-agentd`,
 sudo apt install -y build-essential pkg-config libgtk-4-dev libadwaita-1-dev \
   libgtksourceview-5-dev libssl-dev libsecret-1-dev libkrb5-dev libsqlite3-dev clang
 
-# Fedora (build from source)
+# Fedora (build from source on a release that meets the toolkit floor below)
 sudo dnf install -y gcc pkg-config gtk4-devel libadwaita-devel \
   gtksourceview5-devel openssl-devel libsecret-devel krb5-devel clang
 
@@ -171,7 +165,7 @@ Start at [the documentation map](docs/README.md) for audience and ownership. Com
 |---|---|
 | Product / personas / principles | [PRODUCT.md](PRODUCT.md), [docs/personas.md](docs/personas.md), [PRINCIPLES.md](PRINCIPLES.md) |
 | Capability specs (drafts) | [specs/](specs/README.md) |
-| Active sprint | [docs/bookie-0.2-sprint.md](docs/bookie-0.2-sprint.md) |
+| Release status | [docs/bookie-0.2-sprint.md](docs/bookie-0.2-sprint.md) |
 | Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | User guide | [docs/user-guide.md](docs/user-guide.md) |
 | Feature list with screenshots | [docs/features.md](docs/features.md) |

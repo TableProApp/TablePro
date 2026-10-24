@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "branch": "linux",
+  "source_commit": "531c73f4cd0fb0f9922c514630ea5a8fa22b9e62",
+  "engine": "SQLite in-memory STRICT ANY fixture",
+  "case": "CSV export/import of a computed CASE result over STRICT ANY",
+  "test": "sqlite_case_any_csv_round_trip_preserves_runtime_storage_classes",
+  "contract": [
+    "A mixed CASE result keeps conservative fallback metadata and produces INTEGER, TEXT, SQL NULL, BLOB and tag-prefix-shaped TEXT values.",
+    "The app result-file writer and CSV importer restore these values into INTEGER, ANY and TEXT destination columns.",
+    "Native typeof() and returned values confirm the STRICT ANY destination retains each runtime storage class and exact BLOB bytes; a CASE branch can turn a source SQL NULL into TEXT while another branch remains SQL NULL.",
+    "This proves the named SQLite CASE-to-CSV-to-native-import path; COALESCE and other computed-expression consumers remain open."
+  ],
+  "validation": {
+    "app_sqlite_any_contracts": {
+      "command": "rtk proxy cargo test --manifest-path linux/Cargo.toml -p tablepro-app sqlite_any_contract:: -- --test-threads=1",
+      "result": "8 passed, 0 failed",
+      "log": "app-sqlite-any-csv.txt"
+    },
+    "clippy": {
+      "command": "rtk proxy cargo clippy --manifest-path linux/Cargo.toml -p tablepro-app --all-targets -- -D warnings",
+      "result": "passed",
+      "log": "clippy.txt"
+    },
+    "format": {
+      "command": "rtk proxy cargo fmt --manifest-path linux/Cargo.toml --all -- --check",
+      "result": "passed",
+      "log": "fmt.txt"
+    },
+    "diff_check": "rtk git diff --check passed"
+  },
+  "log_sha256": {
+    "app-sqlite-any-csv.txt": "e3976af66e736dfed466b40f41b99bf0f7850fcb32d3ee517b290de3debfe9e6",
+    "clippy.txt": "f2f097ed0def813877fe8e16d41431b26cee3e920217acd1b06049db9f7f2e18",
+    "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "remaining": [
+    "COALESCE and other computed-expression consumers, spreadsheet-application re-import, and installed editing remain unproven."
+  ]
+}

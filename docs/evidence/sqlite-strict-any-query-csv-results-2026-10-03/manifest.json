@@ -33,9 +33,9 @@
     "format_and_diff_checks": "cargo fmt --all -- --check and git diff --check passed"
   },
   "log_sha256": {
-    "app-focused.txt": "e1952a7552060a5f81f7b6fb7c30459b9c89ced0f21eb80edcc7a1619367b14d",
-    "sqlite-driver.txt": "297e8acdeded23bcfdf1abefc79b420a1583e39d1ef94f75d753dd141def4cfa",
-    "clippy.txt": "7dc3269cbf154b76d9113d757d020c8ed55de7c6698464c8e7541d04711e8e9e"
+    "app-focused.txt": "6e413b83c6c6b31a97c2e59bc1aba9dfa03cf46de239d0c1b213f5c55de86a19",
+    "sqlite-driver.txt": "bb497916eb1a4c5c467ff64ef233cb616dc23cba8fca9c403ec0d1e32f74aa90",
+    "clippy.txt": "579a14e5b5a4c41f45fde28ce71df233de68386aeba7a2e42f15fc40c0c42731"
   },
   "remaining": [
     "A zero-row SQLite result still has no column metadata in the current row-based result conversion.",

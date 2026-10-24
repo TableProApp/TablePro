@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "branch": "b4/i5-ssh-audit",
+  "source_commit": "83df8dc7f58a921bc30aff66aba1301235427966",
+  "source_sha256": {
+    "crates/driver-tls-tests/Cargo.toml": "f685fcfe0fb59300a2bd480e99ada944912c5052a07291c725d319a4480e60fe",
+    "crates/driver-tls-tests/tests/mssql_kerberos.rs": "7f0cf6f8e55f2f49d6a3a760af2efc1963f13db04ea9dbedadb00781820bee05",
+    "scripts/test-mssql-kerberos.sh": "495eafea377236b5ac7bdeed540dd9673ed3c30d56dc608c8b1337f8e63d2c21",
+    "tests/fixtures/mssql-kerberos/docker-compose.yml": "705d477325faace69bde2af6e3cb08f7c6978f986518a57fa68832d36faf7b3f",
+    "tests/fixtures/mssql-kerberos/generate-materials.sh": "7cbdc7ba491fd6d66d85dadebdab6ac95df3d08f578af93434c6b67d02ad8d00",
+    "tests/fixtures/mssql-kerberos/mssql/Dockerfile": "cabb6a69af605af7f4d279f79e3c21fa3de6bc6c584ce2934aa47b99f8c305d0",
+    "tests/fixtures/mssql-kerberos/mssql/entrypoint.sh": "d778c1962f8cfd30dd8e629ec9d05fd32201383b03297b78be47e4fcb6efaa96",
+    "tests/fixtures/mssql-kerberos/mssql/start-mssql.sh": "717fcb31c3ed98dc5e123835b4e9d7ad4b895af5b8266b114ea5b0276317079e",
+    "tests/fixtures/mssql-kerberos/mssql/setup.sql": "018c1723ea3dfd543ae0544e2388d2e7daaee4b053156048a6a26642ca1cfc98",
+    "tests/fixtures/mssql-kerberos/mssql/mssql.conf": "c32161eeed8e9e07ffd12a3523ac851682f89b7edee7866ac39716fe43af3996",
+    "tests/fixtures/mssql-kerberos/mssql/krb5.conf": "72b7288c94aa85ad51eeec5ff51fbee7af646ebdaaa2b835de0a5d4f11a2d4e5",
+    "tests/fixtures/mssql-kerberos/client/Dockerfile": "8c431be6d65e76734870c20295dcf2630731f8e336907c0ddadca41a214bac69",
+    "tests/fixtures/mssql-kerberos/client/run-tests.sh": "40a105afb5fb61106a3563c4d0f9c6a2aeb5af4f63f3023cf1dc3fa42c84fcca",
+    "scripts/inventory-ignored-tests.py": "0c74a5f43c511e3fa0c81334f9cd0372e0453202dfe8525073d6d2c5acb1e771",
+    "scripts/test-layers.json": "79c29ef1b5f586a5ca16bee8791bf46e21cb6b950847c5918a898d044e13d4c8"
+  },
+  "engine": "SQL Server 2022 Developer container with a pinned Samba AD DC test domain",
+  "test": [
+    "kerberos_ticket_connects_over_verified_tls_and_executes_query",
+    "kerberos_refuses_an_unregistered_sql_server_spn"
+  ],
+  "contract": [
+    "The client obtains a TGT for bookiekerb@DOMAIN1.SINK.TEST and confirms the service ticket matches the SQL Server service keytab.",
+    "BookiE connects with AuthMode::Kerberos and TlsMode::VerifyFull, executes SELECT SYSTEM_USER, and receives DOMAIN1\\bookiekerb.",
+    "BookiE refuses a connection when the service endpoint names an unregistered MSSQLSvc SPN.",
+    "The fixture generates an ephemeral CA and SQL Server certificate for mssql.domain1.sink.test, and removes generated keytab and certificate material by default."
+  ],
+  "validation": {
+    "format": {
+      "command": "rtk cargo fmt --all -- --check",
+      "result": "passed"
+    },
+    "focused_test": {
+      "command": "rtk bash scripts/test-mssql-kerberos.sh",
+      "result": "2 passed, 0 failed, 0 ignored",
+      "log": "focused.txt"
+    }
+  },
+  "remaining": [
+    "This deterministic fixture uses Samba AD DC; it does not establish interoperability with a Windows Server domain controller.",
+    "Frozen B3+B4 candidate, hosted CI, and installed-package acceptance remain separate gates."
+  ],
+  "log_sha256": {
+    "focused.txt": "821ab5186ea5e1f2ee7eec847eb7b11e914fb511fc02036511fc2f208282bd5e"
+  }
+}
