@@ -11,6 +11,32 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class SandboxSelectionTests(unittest.TestCase):
+    def test_empty_sandbox_selection_is_not_reported_as_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            shutil.copyfile(ROOT / "scripts/test-sandbox.sh", scripts / "test-sandbox.sh")
+            nextest = root / "nextest"
+            nextest.write_text(
+                '#!/usr/bin/env python3\nimport sys\n'
+                'sys.exit(0 if "--no-tests=pass" in sys.argv else 4)\n'
+            )
+            nextest.chmod(0o755)
+            ensure = scripts / "ensure-nextest.sh"
+            ensure.write_text(f"#!/bin/sh\nprintf '%s\\n' '{nextest}'\n")
+            ensure.chmod(0o755)
+            result = subprocess.run(
+                ["bash", str(scripts / "test-sandbox.sh")],
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 4, result.stdout + result.stderr)
+
+    def test_required_tiers_do_not_allow_empty_selections(self):
+        for path in ("scripts/preflight.sh", "scripts/ci-local.sh", ".forgejo/workflows/ci.yml"):
+            with self.subTest(path=path):
+                self.assertNotIn("--no-tests=pass", (ROOT / path).read_text())
+
     def test_unit_tier_keeps_library_and_binary_unit_targets(self):
         script = (ROOT / "scripts/preflight.sh").read_text()
         commands = [line for line in script.splitlines() if '"$NEXTEST" nextest run' in line]

@@ -53,7 +53,7 @@ run_full() {
   # beforehand doubles wall time for little signal.
   # DuckDB is optional (--features duckdb) and expensive to compile.
   NEXTEST="$("$ROOT/scripts/ensure-nextest.sh")"
-  "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile "${TABLEPRO_NEXTEST_PROFILE:-default}" --no-tests=pass
+  "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile "${TABLEPRO_NEXTEST_PROFILE:-default}" --no-tests=fail
 
   echo "==> sandbox integration tier"
   "$ROOT/scripts/test-sandbox.sh"

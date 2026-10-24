@@ -224,7 +224,7 @@ class CiWorkflowTests(unittest.TestCase):
         selection = "--workspace --exclude tablepro-driver-duckdb --lib --bins"
         self.assertIn(f"nextest run {selection}", ci)
         self.assertIn('"$ROOT/scripts/ensure-nextest.sh"', full)
-        self.assertIn(f'nextest run {selection} --profile "${{TABLEPRO_NEXTEST_PROFILE:-default}}" --no-tests=pass', full)
+        self.assertIn(f'nextest run {selection} --profile "${{TABLEPRO_NEXTEST_PROFILE:-default}}" --no-tests=fail', full)
         self.assertNotIn("cargo test --workspace", full)
 
     def test_jobs_share_an_immutable_checkout(self):

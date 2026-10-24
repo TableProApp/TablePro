@@ -35,5 +35,5 @@ done
 echo "==> sandbox tier: all integration targets"
 NEXTEST="$("$ROOT/scripts/ensure-nextest.sh")"
 PROFILE="${TABLEPRO_NEXTEST_PROFILE:-default}"
-"$NEXTEST" nextest run "${PKG_ARGS[@]}" --test '*' --profile "$PROFILE" --no-tests=pass
-"$NEXTEST" nextest run -p tablepro-driver-redis --test cancellation --profile "$PROFILE" --no-tests=pass
+"$NEXTEST" nextest run "${PKG_ARGS[@]}" --test '*' --profile "$PROFILE" --no-tests=fail
+"$NEXTEST" nextest run -p tablepro-driver-redis --test cancellation --profile "$PROFILE" --no-tests=fail

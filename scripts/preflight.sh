@@ -73,7 +73,7 @@ cargo clippy "${PKG_ARGS[@]}" --all-targets -- -D warnings
 
 echo "==> nextest --lib --bins (non-GTK crates)"
 NEXTEST="$("$ROOT/scripts/ensure-nextest.sh")"
-"$NEXTEST" nextest run "${PKG_ARGS[@]}" --lib --bins --profile "${TABLEPRO_NEXTEST_PROFILE:-default}" --no-tests=pass
+"$NEXTEST" nextest run "${PKG_ARGS[@]}" --lib --bins --profile "${TABLEPRO_NEXTEST_PROFILE:-default}" --no-tests=fail
 
 echo "==> sandbox integration tier"
 "$ROOT/scripts/test-sandbox.sh"

@@ -142,7 +142,7 @@ jobs:
         run: |
           cd src
           NEXTEST="$(bash scripts/ensure-nextest.sh)"
-          "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile ci --no-tests=pass
+          "$NEXTEST" nextest run --workspace --exclude tablepro-driver-duckdb --lib --bins --profile ci --no-tests=fail
 
   sandbox:
     runs-on: any-host
