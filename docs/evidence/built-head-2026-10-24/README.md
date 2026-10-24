@@ -50,6 +50,12 @@ The same extracted binary opened the saved Manual Lab MySQL connection and loade
 - [MySQL people table screenshot](native-current-head-mysql-people.png)
 - [MySQL browse process samples](native-current-head-mysql-people-31s.json)
 
+## Current linux-head SQL Server idle capture
+
+With the saved Manual Lab SQL Server connection open and its schema metadata loaded, a 31.029-second sample with no BookiE input recorded RSS at 132.8 MiB, PSS at about 106.1 MiB, CPU +0.02 seconds, and no process block I/O. This is a connected idle state with no query result displayed. The extracted package binary was used, not the installed package.
+
+- [SQL Server idle process samples](native-current-head-mssql-idle-31s.json)
+
 ## Product finding
 
 The four-page cache and forward-only cursor are operating as designed under [ADR 0011](../../decisions/0011-paged-query-results.md), but a completed query can report all rows while making the earlier rows unavailable in the grid. This is a usability limitation, not a paging-control defect. Keep the memory bound while evaluating a way to revisit results, such as a scrollable cursor under the same guarded snapshot or a bounded disk-backed page spool. Any design must preserve the existing query policy, audit, cancellation, timeout, value-preservation and cleanup contracts. Broader large-result acceptance remains tracked by [#554](https://github.com/cozyGarage/BookiE/issues/554).
