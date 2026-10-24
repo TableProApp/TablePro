@@ -195,6 +195,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::app::workspace_overview::tests::the_tab_overview_hides_duplicate_window_close_controls"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::save_in_flight_tests::edits_and_a_second_save_are_ignored_until_the_save_in_flight_finishes"
     ],
     [

@@ -12,6 +12,7 @@ use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabO
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
 
 use super::types::{CLOSED_TABS_CAPACITY, read_workspace_tab_id, write_workspace_tab_id};
+use super::workspace_overview::build_workspace_tab_overview;
 use super::{App, AppMsg, ClosedTabDescriptor, EditorTabSlot, WorkspaceTab};
 mod bulk_close;
 use bulk_close::{add_bulk_close_actions, bulk_close_menu_model};
@@ -142,12 +143,7 @@ impl App {
         inner.append(&tab_bar);
         inner.append(&tab_view);
 
-        let tab_overview = adw::TabOverview::builder()
-            .view(&tab_view)
-            .enable_new_tab(true) // overview "+" → editor tab
-            .enable_search(true)
-            .child(&inner)
-            .build();
+        let tab_overview = build_workspace_tab_overview(&tab_view, &inner);
         // Overview "+" button must return a real TabPage synchronously —
         // we build an SqlEditor inline, register the slot, and return
         // the page. Browse tabs aren't creatable from the overview

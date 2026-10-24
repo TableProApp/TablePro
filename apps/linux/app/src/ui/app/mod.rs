@@ -30,6 +30,7 @@ mod structure;
 mod types;
 mod workspace_chrome;
 mod workspace_close;
+mod workspace_overview;
 mod workspace_persist;
 mod workspace_preview;
 mod workspace_tabs;

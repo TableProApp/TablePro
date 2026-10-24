@@ -61,6 +61,7 @@
 ### Fixed
 
 - SQL editor results keep every streamed page within the estimated memory budget, so users can navigate back through completed PostgreSQL results that fit the budget.
+- The tab overview no longer shows a duplicate window-close button beside its tab cards.
 
 - A confirmed session rollback clears obsolete query gutter marks, including when a commit request ends in rollback.
 - SQL files with lines over 256 KiB are refused before opening to prevent excessive text-layout memory use; the original file remains unchanged.
