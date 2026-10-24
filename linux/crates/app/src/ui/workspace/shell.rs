@@ -230,6 +230,8 @@ pub(super) mod tests {
                 ..Script::default()
             },
         );
+        // GTK fits a remembered size to the monitor, and xvfb-run on Fedora gives a 640x480 one.
+        test.window.set_size_request(width, height);
         test.window
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
         test.wait_for_page("workspace");
@@ -359,7 +361,10 @@ pub(super) mod tests {
         let test = sized("Wide", 1200, 760);
         let workspace = test.workspace();
         let imp = workspace.imp();
-        wait_until(Duration::from_secs(2), || imp.breakpoint_bin.width() > 0).expect("the workspace laid out");
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint().is_none()
+        })
+        .expect("the workspace laid out with no breakpoint");
 
         assert_eq!(imp.breakpoint_bin.current_breakpoint(), None);
         assert!(imp.tab_bar.is_visible());
