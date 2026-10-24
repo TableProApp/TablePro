@@ -221,3 +221,11 @@ The installed `/usr/bin/bookie` process (PID 583534, SHA-256 `b406fd8055670abc23
 Whole BookiE profile directories measured 58,633 bytes in config, 906,861 bytes in share and 4,732 bytes in cache after the sample. These totals include pre-existing history and audit state.
 
 - [Raw background-idle process samples](native-installed-background-idle-31s.json)
+
+## Installed appearance and editor font controls
+
+In Preferences → Appearance, changing the app appearance from System to Light changed the window to a light palette; returning it to System restored the dark palette used by this desktop. The Theme value remained Default. In Preferences → Editor, the SQL editor font size changed from 12 to 13 and back to 12. The query and result remained open throughout. This verifies the preference controls and their reversible state on this display; it does not test system text scaling, high-DPI behavior or accessibility tooling.
+
+- [Light appearance selected](native-installed-preferences-light.png)
+- [Editor font size set to 13](native-installed-editor-font-13.png)
+- [Editor returned to its 12-point setting](native-installed-editor-font-restored.png)
