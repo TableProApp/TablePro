@@ -74,6 +74,7 @@ The [runner maintenance and isolation proposal](proposals/runner-maintenance-and
 - [PostgreSQL session outcome regressions, October 20](evidence/postgres-session-outcomes-375253c-2026-10-20/README.md): audit, typed commit and GTK evidence for #1186 and #1187.
 - [Performance review and first phases, October 22–23](archive/performance-review-2026-10-23.md): measured changes that landed, the remaining performance plan and follow-ups.
 - [Installed native Wayland run, October 23](evidence/installed-wayland-0.2.0-2026-10-23/README.md): oracle-checked end-to-end flows on Hyprland and the defects filed from them.
+- [Installed Arch profile, October 24](evidence/installed-arch-profile-2026-10-24/README.md): package integrity, automated test results, native PostgreSQL UI checks and resource samples.
 - [Forgejo nightly #778 selective rerun plan, October 20](evidence/nightly-778-selective-rerun-2026-10-20/README.md): preserve completed jobs and isolate OOM-interrupted shards before the next run.
 - [Capability evidence audit](archive/capability-evidence-2026-09-07.md) (historical September capability snapshot; current status is in the sprint)
 - [B3 board narrative](archive/type-contract-history.md#archived-b3-board-narrative-2026-10-09-consolidation-pass-2) and [value-contracts narrative](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2) (2026-10-09 pass 2)
