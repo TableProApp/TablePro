@@ -119,6 +119,6 @@ When a value's validity is locally provable, express that in the types or restru
 1. Who matches on failure: UI, policy, another crate, or only a log line?
 2. If anyone branches, add or reuse a `thiserror` variant in the owning crate's vocabulary.
 3. Map foreign errors at the boundary; keep `source` when possible.
-4. Ensure denied, cancelled, timed-out and unknown-outcome paths still produce their terminal audit state where policy applies.
+4. Ensure denied, cancelled, timed-out and unknown-outcome paths still produce their terminal audit state where policy applies. Check early returns above all: a refusal before dispatch (a write refused inside a read-only snapshot, an unsupported engine, hidden transaction controls, a retired session) once wrote no audit outcome, so a test expecting one Denied saw none ([B4 wrap-up review](archive/b4-release-wrapup-review-2026-10-11.md)). Do not change the refusal's semantics just to log it.
 5. Add or update the UI / MCP message mapping when a new public variant can reach a user.
 6. Add a regression that asserts the variant or observable outcome, not the Display string.

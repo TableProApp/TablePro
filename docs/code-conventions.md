@@ -113,6 +113,8 @@ Every crate boundary returns a typed `thiserror` enum. A variant names what fail
 
 `DriverError::OperationOutcomeUnknown` means an interrupted/dispatched operation whose terminal outcome cannot be confirmed. Controlled reads can return it too; only a governed write poisons write state. Pre-dispatch refusal is a known outcome, and an ambiguous write must not become a plain failure.
 
+Put a deadline around each blocking database probe, not only connection setup. A connected socket does not mean every metadata command returns (a Redis database-list probe hung this way upstream, [Linux peer review](archive/linux-peer-review-2026-10-16.md)).
+
 Never put a secret, SQL parameter, connection string, unmasked result or raw panic payload in returned errors, audit fields or logs. `tracing` at `error` does not make sensitive data safe. See [the privacy rule](error-handling.md#logging).
 
 ## Lints, unsafe and the toolchain

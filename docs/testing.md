@@ -2,6 +2,8 @@
 
 The [completion page](bookie-0.2-sprint.md) records 0.2.0 delivery status; current issue acceptance belongs to the owning boards. Start with the [validation playbook](validation-playbook.md) for the executable layer catalog, local commands, CI ownership, agent handoffs and regression intake. Dated audits in [archive](archive/) prove only their recorded source and environment.
 
+Design rules distilled from past audits (test ownership, runner parsers, oracles, changing a guard) are in [test design rules](test-design-rules.md).
+
 ## Executable gates
 
 `scripts/ci-local.sh` remains the shared local/CI entry for full, widgets and integration modes. Registrations for isolated GTK and keyring tests live in `scripts/isolated-tests.json`; zero selected tests is a failure. Each run saves its HEAD, worktree status, tracked diff digest, untracked input paths and digest, tool versions and logs under `target/quality/`. The runner hashes non-ignored untracked file paths and contents; Git-ignored build outputs are excluded. A clean tree skips the untracked scan. Reports still do not archive untracked file contents, so commit tested changes before handing them off for exact-source acceptance. Release mode does not certify package installation, Wayland, upgrade/rollback or retry-free candidate soak. See the [packaging guide](../apps/linux/packaging/README.md) and [manual checklist](manual-verification-0.2-features.md).
