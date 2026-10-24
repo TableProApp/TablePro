@@ -21,6 +21,9 @@ pub fn build_insert(
     columns: &[ColumnInfo],
     cells: &[CellInput],
 ) -> Result<Statement, BuildSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::insert(table, columns, cells);
+    }
     if cells.len() != columns.len() {
         return Err(BuildSqlError::LengthMismatch {
             expected: columns.len(),
@@ -68,6 +71,9 @@ pub fn build_multi_row_insert(
     columns: &[&ColumnInfo],
     rows: Vec<Vec<Value>>,
 ) -> Result<Statement, BuildSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::insert_many(table, columns, rows);
+    }
     if columns.is_empty() || rows.is_empty() {
         return Err(BuildSqlError::NoInsertValues);
     }

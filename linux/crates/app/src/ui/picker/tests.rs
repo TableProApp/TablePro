@@ -38,6 +38,7 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         group: group.map(|group| tablepro_storage::ConnectionGroupName::new(group).expect("a group name")),
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

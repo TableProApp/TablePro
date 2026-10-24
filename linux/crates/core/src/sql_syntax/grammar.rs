@@ -1,6 +1,7 @@
-/// The language an engine's editor takes. Every variant but `Redis` is a
-/// dialect of SQL; Redis's commands share none of their rules, and their
-/// own live in `sql_syntax::redis`.
+/// The language an engine's editor takes. Every variant but `Redis` and
+/// `Mongo` is a dialect of SQL. Redis's commands and MongoDB's shell share
+/// none of their rules: theirs live in `sql_syntax::redis` and
+/// `sql_syntax::mongo`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SqlGrammar {
     PostgreSql,
@@ -12,6 +13,7 @@ pub enum SqlGrammar {
     /// Cassandra and ScyllaDB.
     Cql,
     Redis,
+    Mongo,
 }
 
 impl SqlGrammar {
@@ -57,11 +59,11 @@ impl SqlGrammar {
             Self::ClickHouse => Some(&CLICKHOUSE),
             Self::DuckDb => Some(&DUCKDB),
             Self::Cql => Some(&GENERIC),
-            Self::Redis => None,
+            Self::Redis | Self::Mongo => None,
         }
     }
 
     pub fn is_sql(self) -> bool {
-        self != Self::Redis
+        !matches!(self, Self::Redis | Self::Mongo)
     }
 }

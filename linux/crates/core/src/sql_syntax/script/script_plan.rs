@@ -34,6 +34,7 @@ impl ScriptPlan {
     ) -> ScriptPlan {
         match rules_for(grammar) {
             Some(rules) => Builder::new(text, rules, settings, reading).run(),
+            None if grammar == SqlGrammar::Mongo => crate::sql_syntax::mongo::plan(text),
             None => crate::sql_syntax::redis::plan(text),
         }
     }

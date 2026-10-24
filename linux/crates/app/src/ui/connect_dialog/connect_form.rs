@@ -4,7 +4,8 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
     AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
-    NetworkEndpoint, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig, TlsMode, TransportClass,
+    NetworkEndpoint, NetworkOption, NetworkOptions, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig,
+    TlsMode, TransportClass,
 };
 use tablepro_session::RequestTarget;
 use tablepro_storage::{ConnectionIcon, SavedConnection, SavedSshAuth, SavedSshConfig};
@@ -134,6 +135,9 @@ pub struct ConnectForm {
     /// The ids of the tags ticked in the Appearance group.
     pub tags: Vec<Uuid>,
     pub icon: Option<ConnectionIcon>,
+    /// The engine's own options, kept across a look at another driver
+    /// and sent only where the driver offers them.
+    pub options: NetworkOptions,
 }
 
 /// A form that passed every check, ready to connect and to save.
@@ -163,6 +167,7 @@ impl ConnectForm {
             file: None,
             tags: Vec::new(),
             icon: None,
+            options: NetworkOptions::default(),
         }
     }
 
@@ -189,6 +194,7 @@ impl ConnectForm {
             }
             form.tls = TlsFormState::from_config(&saved.tls);
             form.ssh = saved.ssh.as_ref().map(SshFormState::from_saved);
+            form.options = saved.options.clone();
         }
         if saved.name != form.label(caps) {
             saved.name.clone_into(&mut form.name);
@@ -301,6 +307,11 @@ impl ConnectForm {
             None => TlsConfig::disabled(),
         };
 
+        let options = self.offered_options(caps);
+        if let Err(error) = options.validate(caps, route) {
+            errors.push(FormField::DnsSeedList, config_message(&error), false);
+        }
+
         let Some(endpoint) = endpoint.filter(|_| errors.is_empty()) else {
             return Err(errors);
         };
@@ -315,9 +326,22 @@ impl ConnectForm {
                 credentials,
                 database: Some(database.to_owned()).filter(|name| !name.is_empty()),
                 tls,
+                options,
             },
             ssh: saved_ssh,
         })
+    }
+
+    /// The options this driver reads, with the rest left at their
+    /// defaults so a look at another engine sends nothing it would refuse.
+    pub fn offered_options(&self, caps: &DriverCapabilities) -> NetworkOptions {
+        NetworkOptions {
+            dns_seed_list: self.options.dns_seed_list && caps.offers(NetworkOption::DnsSeedList),
+            auth_database: caps
+                .offers(NetworkOption::AuthDatabase)
+                .then(|| self.options.auth_database().map(str::to_owned))
+                .flatten(),
+        }
     }
 
     /// How the entry is named in the connection list: the name typed,
@@ -355,7 +379,7 @@ impl ConnectForm {
         id: Uuid,
         existing: Option<&SavedConnection>,
     ) -> SavedConnection {
-        let (host, port, database, username, tls, auth_mode) = match &valid.target {
+        let (host, port, database, username, tls, auth_mode, options) = match &valid.target {
             RequestTarget::File(endpoint) => (
                 String::new(),
                 0,
@@ -363,12 +387,14 @@ impl ConnectForm {
                 String::new(),
                 TlsConfig::disabled(),
                 AuthMode::Password,
+                NetworkOptions::default(),
             ),
             RequestTarget::Network {
                 endpoint,
                 credentials,
                 database,
                 tls,
+                options,
                 ..
             } => (
                 endpoint.host().to_owned(),
@@ -380,6 +406,7 @@ impl ConnectForm {
                 },
                 tls.clone(),
                 credentials.mode(),
+                options.clone(),
             ),
         };
         SavedConnection {
@@ -400,6 +427,7 @@ impl ConnectForm {
             group: existing.and_then(|saved| saved.group.clone()),
             tags: self.tags.clone(),
             icon: self.icon,
+            options,
         }
     }
 
@@ -663,6 +691,10 @@ mod tests {
         caps(&tablepro_driver_redis::RedisDriver)
     }
 
+    fn mongodb() -> &'static DriverCapabilities {
+        caps(&tablepro_driver_mongodb::MongoDriver)
+    }
+
     fn filled(driver_id: &str, caps: &DriverCapabilities) -> ConnectForm {
         ConnectForm {
             host: "db.example.com".to_owned(),
@@ -713,6 +745,52 @@ mod tests {
         };
         let valid = kerberos.validate(mssql()).expect("SQL Server takes Kerberos");
         assert!(matches!(network(&valid.target).1, Credentials::Integrated));
+    }
+
+    fn options_of(target: &RequestTarget) -> &NetworkOptions {
+        match target {
+            RequestTarget::Network { options, .. } => options,
+            RequestTarget::File(_) => panic!("expected a network target"),
+        }
+    }
+
+    #[test]
+    fn mongodb_options_are_sent_and_saved_and_another_engine_sends_none() {
+        let form = ConnectForm {
+            options: NetworkOptions {
+                dns_seed_list: true,
+                auth_database: Some(" admin ".to_owned()),
+            },
+            ..filled("mongodb", mongodb())
+        };
+
+        let valid = form.validate(mongodb()).expect("a seed list with a login database");
+        let saved = form.saved_connection(mongodb(), &valid, Uuid::new_v4(), None);
+        let restored = ConnectForm::from_saved(&saved, mongodb());
+
+        let sent = options_of(&valid.target);
+        assert!(sent.dns_seed_list);
+        assert_eq!(sent.auth_database.as_deref(), Some("admin"));
+        assert_eq!(&saved.options, sent);
+        assert_eq!(&restored.options, sent);
+        let elsewhere = form.validate(postgres()).expect("PostgreSQL ignores them");
+        assert!(options_of(&elsewhere.target).is_default());
+    }
+
+    #[test]
+    fn a_seed_list_through_ssh_is_refused_on_its_row() {
+        let form = ConnectForm {
+            driver_id: "mongodb".to_owned(),
+            options: NetworkOptions {
+                dns_seed_list: true,
+                ..NetworkOptions::default()
+            },
+            ..tunnelled(SshAuthChoice::Agent, "", "")
+        };
+
+        let errors = form.validate(mongodb()).err().expect("a seed list over SSH");
+
+        assert!(errors.has(FormField::DnsSeedList), "{errors:?}");
     }
 
     #[test]

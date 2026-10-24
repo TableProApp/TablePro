@@ -9,7 +9,7 @@ use super::sidebar_view::SidebarInner;
 use crate::ui::a11y::describe_icon_button;
 
 /// A schema's heading, with its ER Diagram button where the connection
-/// holds tables, and its New Table button where the connection creates
+/// holds tables in SQL, and its New Table button where the connection creates
 /// them. ClickHouse does not: a table there needs an engine and a
 /// sorting key the structure tab has no place for, so the button would
 /// only fail.
@@ -55,7 +55,10 @@ pub(super) fn header_factory(view: Weak<SidebarInner>) -> gtk::SignalListItemFac
             return;
         };
         let schema = object.schema();
-        diagram.set_visible(!view.upgrade().is_some_and(|view| view.holds_keys()));
+        diagram.set_visible(
+            view.upgrade()
+                .is_some_and(|view| view.affordances().speaks_sql && !view.holds_keys()),
+        );
         diagram.set_action_target_value(Some(&schema.to_variant()));
         let diagram_label = match schema {
             Some(_) => crate::i18n::gettext_f("Show ER Diagram of {schema}", &[("schema", &title)]),

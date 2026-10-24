@@ -80,6 +80,7 @@ mod tests {
             group: Some(ConnectionGroupName::new("Clients").expect("a group name")),
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon: None,
+            options: Default::default(),
         }
     }
 

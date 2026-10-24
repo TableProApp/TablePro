@@ -71,6 +71,7 @@ fn build_registry() -> DriverRegistry {
     r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     r.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
+    r.register(Arc::new(tablepro_driver_mongodb::MongoDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     r.register(Arc::new(tablepro_driver_postgres::PgDriver));

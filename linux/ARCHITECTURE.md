@@ -33,7 +33,8 @@ linux/
         ├── mssql/                 tiberius
         ├── clickhouse/            clickhouse over hyper
         ├── cassandra/             scylla, Cassandra and ScyllaDB
-        └── redis/                 redis-rs
+        ├── redis/                 redis-rs
+        └── mongodb/               the mongodb crate
 ```
 
 ## Dependency graph
@@ -42,7 +43,7 @@ linux/
 |---|---|
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
-| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis` | `core`, `net` |
+| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis`, `drivers/mongodb` | `core`, `net` |
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
@@ -53,7 +54,7 @@ Rules, enforced by review:
 - `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits.
 - `net`, `ssh` and `storage` depend on `core` only.
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
-- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres` and `tablepro-driver-redis` as dev-dependencies.
+- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `app` depends on all of them. It is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
@@ -152,7 +153,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md). An engine without SQL says so through `DriverCapabilities::data_model`, and the workspace lists its keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md), [MongoDB](docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0026](docs/decisions/0026-documents-in-the-table-tab.md)).
 
 ### SQL scripts
 
@@ -210,7 +211,7 @@ The cancel token is checked between stages, and a stage that finishes after a ca
 | `reroute` | A new direct transport | A new forward on the same master |
 | `explain_closed_stream` | Nothing to add | The master's exit, or the "open failed" line ssh printed |
 
-PostgreSQL, SQL Server and ClickHouse open every stream through `open()`. sqlx dials its own sockets, so the MySQL driver passes it the route instead: host and port, or the forward's socket path. Nothing relays bytes between the two. scylla dials only a TCP address, so each Cassandra session dials a relay on `127.0.0.1` that serves only this user and carries every connection it accepts over `open()` ([ADR 0023](docs/decisions/0023-loopback-relay-for-cql.md)). The socket options above apply only to streams `open()` makes, so a direct MySQL connection has no keepalive and finds a dead peer through the probe and its deadlines.
+PostgreSQL, SQL Server and ClickHouse open every stream through `open()`. sqlx dials its own sockets, so the MySQL driver passes it the route instead: host and port, or the forward's socket path. Nothing relays bytes between the two. scylla dials only a TCP address, so each Cassandra session dials a relay on `127.0.0.1` that serves only this user and carries every connection it accepts over `open()` ([ADR 0023](docs/decisions/0023-loopback-relay-for-cql.md)). The mongodb crate dials its own sockets as well, and gets the host and port on a direct route; it does no TLS over a Unix socket, so through SSH the MongoDB driver listens on a private Unix socket of its own and relays each connection the crate opens there to a stream from `open()`, with its own TLS around it. The socket options above apply only to streams `open()` makes, so a direct MySQL or MongoDB connection has no keepalive and finds a dead peer through the probe and its deadlines.
 
 SSH runs the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)): one ControlMaster (`ssh -M -N -T`) per connection, with the user's `~/.ssh/config` applied, and one `ssh -O forward` Unix socket per server it reaches. The sockets live under `$XDG_RUNTIME_DIR/app/<app id>/ssh/` in directories only the user can open, with mode 0600. Only Flatpak creates `app/<app id>`, so a host install makes the missing levels with mode 0700, each opened without following a symlink and checked to be the user's; with `XDG_RUNTIME_DIR` unset, GLib puts the same layout under the cache directory. Every prompt (host key, password, passphrase, keyboard-interactive) reaches the app through the `tablepro-askpass` helper, and the 20 s handshake timeout pauses while a prompt is open. Under Flatpak, `ssh` comes from the GNOME runtime, and a `ProxyCommand` or `Match exec` that runs a host program, the host's `/etc/ssh` and FIDO keys kept in files do not work.
 
@@ -232,13 +233,16 @@ Each engine's TLS stack takes trust in its own form, so the driver builds it:
 |---|---|---|---|
 | PostgreSQL | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
 | ClickHouse | The system store (rustls-platform-verifier), plus the CA file | Yes, as the login, with no password sent | The rustls error |
-| MySQL, MariaDB | The system store and the CA file as one PEM bundle (`tablepro_net::tls::mysql_ca_bundle_pem`), plus the Mozilla roots compiled into sqlx | Yes | The rustls error |
+| MySQL, MariaDB | The system store and the CA file as one PEM bundle (`tablepro_net::tls::ca_bundle_pem`), plus the Mozilla roots compiled into sqlx | Yes | The rustls error |
+| Redis | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
+| MongoDB, direct | The system store and the CA file as one PEM bundle (`ca_bundle_pem`), written to a private file the mongodb crate reads once as its only roots | Yes | The rustls error |
+| MongoDB, through SSH | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
 | SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
 | Cassandra, ScyllaDB | The system store (rustls-platform-verifier), plus the CA file, checked against the server name and not the relay's address (`FixedNameVerifier`) | Yes, with the password login | The rustls error |
 | SQLite | No TLS | | |
 | DuckDB | No TLS | | |
 
-PostgreSQL and ClickHouse get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`, and Cassandra from `build_client_config_checking`, which checks a name it is given in place of the one the client dials. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
+PostgreSQL, ClickHouse, Redis and MongoDB through SSH get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`, and Cassandra from `build_client_config_checking`, which checks a name it is given in place of the one the client dials. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
 
 On Linux the system store is the distribution's CA bundle. Under Flatpak it is the runtime's bundle: a CA added on the host with `update-ca-certificates` or `update-ca-trust` is not visible in the sandbox (freedesktop-sdk issue 1905).
 

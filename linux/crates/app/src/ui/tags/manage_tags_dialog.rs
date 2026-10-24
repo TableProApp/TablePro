@@ -280,6 +280,7 @@ mod tests {
             group: None,
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon: None,
+            options: Default::default(),
         }
     }
 

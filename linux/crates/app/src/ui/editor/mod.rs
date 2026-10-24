@@ -117,14 +117,11 @@ impl SqlEditor {
             close_timeout: init.close_timeout,
             snippets: init.snippets,
         });
-        let sql = editor.grammar().is_sql();
-        let sample = if sql { "SELECT 1;" } else { "PING" };
-        let initial_text = init.initial_query.unwrap_or_else(|| sample.to_owned());
-        // GtkSourceView has no language for an engine's commands, so they
-        // show as plain text rather than wrongly coloured as SQL.
-        let language = sql
-            .then(|| sourceview5::LanguageManager::default().language("sql"))
-            .flatten();
+        let grammar = editor.grammar();
+        let initial_text = init
+            .initial_query
+            .unwrap_or_else(|| sample_statement(grammar).to_owned());
+        let language = source_language(grammar).and_then(|id| sourceview5::LanguageManager::default().language(id));
         let buffer = match language {
             Some(language) => sourceview5::Buffer::with_language(&language),
             None => sourceview5::Buffer::new(None),
@@ -1103,4 +1100,24 @@ pub fn derive_tab_label(query: &str) -> String {
         return cleaned;
     }
     crate::i18n::gettext("Empty Query")
+}
+
+/// What a new editor tab opens with: a statement that only reads.
+fn sample_statement(grammar: SqlGrammar) -> &'static str {
+    match grammar {
+        SqlGrammar::Redis => "PING",
+        SqlGrammar::Mongo => "db.getCollectionNames()",
+        _ => "SELECT 1;",
+    }
+}
+
+/// The GtkSourceView language that colours the editor. MongoDB's shell
+/// is JavaScript; GtkSourceView has none for Redis's commands, which show
+/// as plain text rather than wrongly coloured as SQL.
+fn source_language(grammar: SqlGrammar) -> Option<&'static str> {
+    match grammar {
+        SqlGrammar::Redis => None,
+        SqlGrammar::Mongo => Some("js"),
+        _ => Some("sql"),
+    }
 }

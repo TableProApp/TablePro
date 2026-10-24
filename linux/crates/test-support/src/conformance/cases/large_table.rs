@@ -64,6 +64,10 @@ const SAMPLE_PAGES: usize = 100;
 const DEPTH_FACTOR: u32 = 4;
 const DEPTH_SLACK: Duration = Duration::from_millis(10);
 
+/// Skipping to the last page reads every row at the server's speed, as
+/// the export does, so on ScyllaDB the two take about as long.
+const SKIP_FACTOR: u32 = 2;
+
 /// A 1,000,000-row table pages from its first page to its end, by the
 /// browse tab's default page size and the way its pager moves on, and
 /// its last page reads straight from the end. An export of the whole
@@ -197,7 +201,7 @@ fn check_bounds(measured: &Measured) -> Result<(), ConformanceFailure> {
     // Where the server pages, the last page is reached only by reading
     // every row before it, as the export reads them all.
     let last_limit = match measured.mode {
-        PagingMode::ServerPaging => PAGE_LIMIT.max(exported.elapsed),
+        PagingMode::ServerPaging => PAGE_LIMIT.max(exported.elapsed * SKIP_FACTOR),
         PagingMode::Keyset | PagingMode::CtidWindow | PagingMode::Offset => PAGE_LIMIT,
     };
     expect(CASE, *last <= last_limit, || {

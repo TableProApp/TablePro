@@ -270,7 +270,7 @@ const DUCKDB: ScriptRules = ScriptRules {
     },
 };
 
-/// `None` for Redis, whose commands have no SQL rules.
+/// `None` for Redis and MongoDB, whose languages have no SQL rules.
 pub(crate) fn rules_for(grammar: SqlGrammar) -> Option<&'static ScriptRules> {
     match grammar {
         SqlGrammar::PostgreSql => Some(&POSTGRESQL),
@@ -280,6 +280,6 @@ pub(crate) fn rules_for(grammar: SqlGrammar) -> Option<&'static ScriptRules> {
         SqlGrammar::ClickHouse => Some(&CLICKHOUSE),
         SqlGrammar::DuckDb => Some(&DUCKDB),
         SqlGrammar::Cql => Some(&CQL),
-        SqlGrammar::Redis => None,
+        SqlGrammar::Redis | SqlGrammar::Mongo => None,
     }
 }

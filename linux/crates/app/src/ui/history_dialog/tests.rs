@@ -111,6 +111,7 @@ impl Harness {
                 group: None,
                 tags: Vec::new(),
                 icon: None,
+                options: Default::default(),
             })
             .expect("save the connection");
     }

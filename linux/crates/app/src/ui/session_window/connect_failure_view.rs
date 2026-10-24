@@ -65,6 +65,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 
@@ -81,6 +82,7 @@ mod tests {
             },
             database: Some("shop".to_owned()),
             tls: TlsConfig::verify_full(),
+            options: Default::default(),
         };
         ConnectSource::Intent(Box::new(ConnectIntent {
             key: SessionKey::Saved(connection.id),

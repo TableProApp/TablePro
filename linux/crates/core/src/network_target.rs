@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::credentials::Credentials;
+use crate::network_options::NetworkOptions;
 use crate::tls_config::TlsConfig;
 use crate::transport::Transport;
 
@@ -17,6 +18,7 @@ pub struct NetworkTarget {
     pub credentials: Credentials,
     pub database: Option<String>,
     pub tls: TlsConfig,
+    pub options: NetworkOptions,
 }
 
 impl NetworkTarget {
@@ -82,6 +84,7 @@ mod tests {
             credentials: Credentials::Integrated,
             database: None,
             tls,
+            options: Default::default(),
         })
     }
 

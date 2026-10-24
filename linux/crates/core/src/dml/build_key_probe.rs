@@ -16,6 +16,9 @@ pub fn build_key_probe(
     identity: &RowIdentity,
     key: &[Value],
 ) -> Result<Statement, BuildSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::key_probe(table, columns, identity, key);
+    }
     let components = key_components(identity, columns)?;
     let mut builder = StatementBuilder::new();
     let predicate = key_predicate(&mut builder, dialect, &components, key)?;

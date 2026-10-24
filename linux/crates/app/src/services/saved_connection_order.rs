@@ -91,6 +91,7 @@ mod tests {
             group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 

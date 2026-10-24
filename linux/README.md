@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to eight engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to nine engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB, Redis and MongoDB. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -22,6 +22,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
 | DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
+| MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.

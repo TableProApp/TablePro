@@ -126,6 +126,7 @@ mod tests {
             row_count_estimate: EstimateQuality::Unavailable,
             object_kinds: &[],
             database_required: false,
+            network_options: &[],
             statement_stop: StatementStop::Server,
         }
     }

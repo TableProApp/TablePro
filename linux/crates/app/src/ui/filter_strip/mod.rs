@@ -48,6 +48,15 @@ impl FilterStrip {
         strip
     }
 
+    /// Take the typed filter as a document, as an engine of documents
+    /// filters, rather than as a WHERE clause.
+    pub fn take_documents(&self) {
+        let imp = self.imp();
+        imp.raw_label.set_label(&crate::i18n::gettext("Filter"));
+        imp.raw_entry
+            .set_placeholder_text(Some(&crate::i18n::gettext("e.g. { qty: { $gt: 1 }, status: 'A' }")));
+    }
+
     /// Slide in, or out, as the Filter button does.
     pub fn toggle(&self) {
         match self.revealed() {

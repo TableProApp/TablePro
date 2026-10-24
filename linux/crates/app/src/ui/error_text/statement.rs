@@ -8,7 +8,7 @@ use tablepro_core::dialect::BindError;
 use tablepro_core::dml::BuildSqlError;
 
 use super::edit::edit_parse_message;
-use super::syntax::expression_syntax_message;
+use super::syntax::{expression_syntax_message, shell_syntax_message};
 use crate::i18n::{gettext, gettext_f};
 
 /// Why a value could not be sent, as the part after "cannot be saved:"
@@ -55,6 +55,17 @@ pub(super) fn filter_message(error: &BuildFilterError) -> String {
             "This SQL filter cannot be applied. {reason}",
             &[("reason", &expression_syntax_message(syntax))],
         ),
+        BuildFilterError::RawDocument(syntax) => gettext_f(
+            "This filter cannot be applied. {reason}",
+            &[("reason", &shell_syntax_message(syntax))],
+        ),
+        BuildFilterError::RawNotDocument => {
+            gettext("This filter cannot be applied. Write one document, such as { qty: { $gt: 1 } }.")
+        }
+        BuildFilterError::UnaddressableField(field) => refused(gettext_f(
+            "field {field} has a dot in its name or starts with $, so a rule cannot name it",
+            &[("field", field)],
+        )),
     }
 }
 
@@ -86,6 +97,10 @@ pub(super) fn build_reason(error: &BuildSqlError) -> String {
             &[("column", name)],
         ),
         BuildSqlError::LengthMismatch { .. } => gettext("the row key does not have one value for each key column"),
+        BuildSqlError::UnaddressableField { name } => gettext_f(
+            "field {field} has a dot in its name or starts with $, so it can only be changed in the editor",
+            &[("field", name)],
+        ),
         BuildSqlError::Bind(bind) => bind_reason(bind),
         BuildSqlError::NoRowIdentity
         | BuildSqlError::ReadOnlyRows

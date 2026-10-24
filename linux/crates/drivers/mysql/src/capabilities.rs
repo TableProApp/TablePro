@@ -39,6 +39,7 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Procedure,
     ],
     database_required: true,
+    network_options: &[],
     statement_stop: StatementStop::Server,
 };
 
