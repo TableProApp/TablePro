@@ -4,7 +4,7 @@ Describe the user-visible behavior or the issue this change addresses. Link the 
 
 ## Release note
 
-One line per user-facing change, written as user impact, or `none`. Copy these lines into the squash commit message as trailers.
+One line per user-facing change, written as user impact, or `none`. The PR body becomes the squash commit body, so these lines reach history unchanged.
 
 ```
 Release-Note: <Added|Changed|Deprecated|Removed|Fixed|Security>: <what the user sees>
