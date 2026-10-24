@@ -26,7 +26,9 @@ mod error_category;
 pub mod export;
 mod external_access;
 mod file_endpoint;
+mod file_format;
 mod file_open_mode;
+mod file_opens;
 pub mod filter;
 mod foreign_key_check;
 pub mod foreign_key_info;
@@ -109,7 +111,12 @@ pub use error::DriverError;
 pub use error_category::ErrorCategory;
 pub use external_access::{ExternalAccess, ExternalGate, ExternalRefusal};
 pub use file_endpoint::FileEndpoint;
+pub use file_format::{FileFormat, FileSignature};
 pub use file_open_mode::FileOpenMode;
+pub use file_opens::{
+    FileClaim, any_claimed_by_another, claim_file, claimed_by_another, held_by_this_process, opening_file,
+    opening_file_blocking,
+};
 pub use filter::{
     BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter, operators_for,
     validate_raw_predicate,

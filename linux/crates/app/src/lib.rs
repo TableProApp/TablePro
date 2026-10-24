@@ -70,6 +70,7 @@ fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
     r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    r.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
     r.register(Arc::new(tablepro_driver_mongodb::MongoDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
@@ -94,6 +95,36 @@ mod tests {
 
     use super::register_test_resources;
     use super::*;
+
+    /// Which engine opens a file handed over is decided by its header,
+    /// then its name, so no two file engines may claim the same bytes
+    /// or the same suffix.
+    #[test]
+    fn file_engines_claim_disjoint_signatures_and_suffixes() {
+        let registry = build_registry();
+        let formats: Vec<(&str, tablepro_core::FileFormat)> = registry
+            .iter()
+            .filter_map(|driver| driver.capabilities().file_format().map(|format| (driver.id(), *format)))
+            .collect();
+
+        assert!(formats.len() >= 2, "{formats:?}");
+        for (index, (id, format)) in formats.iter().enumerate() {
+            for (other_id, other) in &formats[index + 1..] {
+                let mut header = vec![0u8; format.signature.header_len().max(other.signature.header_len())];
+                header[format.signature.offset..format.signature.header_len()].copy_from_slice(format.signature.bytes);
+                assert!(
+                    !other.signature.matches(&header),
+                    "{id} and {other_id} share a signature"
+                );
+                for suffix in format.suffixes {
+                    assert!(
+                        !other.suffixes.contains(suffix),
+                        "{id} and {other_id} both claim .{suffix}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn resources_contain_style_css() {

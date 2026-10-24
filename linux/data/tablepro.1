@@ -6,13 +6,13 @@ tablepro \- work with your databases
 .RI [ OPTION ...]
 .RI [ FILE ...]
 .SH DESCRIPTION
-TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
+TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server and ClickHouse.
 It browses tables, edits rows in place, runs SQL with syntax highlighting,
 and reaches servers behind an SSH bastion through the system OpenSSH client.
 .PP
 Each
 .I FILE
-is a SQLite database, opened in its own window.
+is a SQLite or DuckDB database, opened in its own window.
 A running TablePro opens the files itself and the new launch exits.
 .SH OPTIONS
 .TP

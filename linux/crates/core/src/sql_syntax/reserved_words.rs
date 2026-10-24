@@ -4,8 +4,9 @@
 //! words of MySQL 8.4 and MariaDB, the T-SQL reserved keywords and all
 //! of SQLite's keywords. ClickHouse reserves nothing, so its list holds
 //! the words its parser takes as a clause, an operator or a literal
-//! wherever they stand. CQL's is `reserved_keywords.txt` from the
-//! Apache Cassandra 5.0 jar.
+//! wherever they stand. DuckDB's are the `reserved` and `type_function`
+//! words of its `duckdb_keywords()`. CQL's is `reserved_keywords.txt` from
+//! the Apache Cassandra 5.0 jar.
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::mongo;
@@ -86,6 +87,17 @@ const CLICKHOUSE: &str = "
     SETTINGS THEN TO TOP TRUE UNION USING WHEN WHERE WINDOW WITH
 ";
 
+const DUCKDB: &str = "
+    ALL ANALYSE ANALYZE AND ANTI ANY ARRAY AS ASC ASOF ASYMMETRIC AT AUTHORIZATION BINARY BOTH BY CASE CAST
+    CHECK COLLATE COLLATION COLUMN COLUMNS CONCURRENTLY CONSTRAINT CREATE CROSS DEFAULT DEFERRABLE DESC
+    DESCRIBE DISTINCT DO ELSE END EXCEPT FALSE FETCH FOR FOREIGN FREEZE FROM FULL GENERATED GLOB GROUP
+    HAVING ILIKE IN INITIALLY INNER INTERSECT INTO IS ISNULL JOIN LAMBDA LATERAL LEADING LEFT LIKE LIMIT MAP
+    NATURAL NOT NOTNULL NULL OFFSET ON ONLY OR ORDER OUTER OVERLAPS PIVOT PIVOT_LONGER PIVOT_WIDER PLACING
+    POSITIONAL PRIMARY QUALIFY REFERENCES RETURNING RIGHT SELECT SEMI SHOW SIMILAR SOME STRUCT SUMMARIZE
+    SYMMETRIC TABLE TABLESAMPLE THEN TO TRAILING TRUE TRY_CAST UNION UNIQUE UNPACK UNPIVOT USING VARIADIC
+    VERBOSE WHEN WHERE WINDOW WITH
+";
+
 const CQL: &str = "
     ADD ALLOW ALTER AND APPLY ASC AUTHORIZE BATCH BEGIN BY COLUMNFAMILY CREATE DELETE DESC DESCRIBE DROP
     ENTRIES EXECUTE FROM FULL GRANT IF IN INDEX INFINITY INSERT INTO IS KEYSPACE LIMIT MATERIALIZED MODIFY
@@ -144,6 +156,7 @@ impl SqlGrammar {
             Self::Sqlite => SQLITE,
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
+            Self::DuckDb => DUCKDB,
             Self::Cql => CQL,
             Self::Redis | Self::Mongo => "",
         }
@@ -181,6 +194,10 @@ mod tests {
         assert!(SqlGrammar::PostgreSql.is_bare_identifier("đơn_hàng"));
         assert!(SqlGrammar::MySql.is_bare_identifier("Users"));
         assert!(SqlGrammar::MsSql.is_bare_identifier("#scratch"));
+        assert!(
+            SqlGrammar::DuckDb.is_bare_identifier("Users"),
+            "DuckDB matches a name in any case"
+        );
     }
 
     #[test]
@@ -231,5 +248,7 @@ mod tests {
         }
         assert!(!SqlGrammar::Sqlite.is_bare_identifier("current_timestamp"));
         assert!(!SqlGrammar::ClickHouse.is_bare_identifier("nan"));
+        assert!(!SqlGrammar::DuckDb.is_bare_identifier("qualify"));
+        assert!(!SqlGrammar::DuckDb.is_bare_identifier("map"));
     }
 }

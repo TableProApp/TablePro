@@ -125,6 +125,14 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         }
     }
 
+    /// The table's name as text that stands outside this connection: in
+    /// an export replayed elsewhere, and in a foreign key's REFERENCES.
+    /// DuckDB names its file's catalogue in `qualify` and leaves it out
+    /// here; the other engines name the table the same in both.
+    fn portable_name(&self, table: &TableRef) -> String {
+        self.qualify(table)
+    }
+
     /// How a column is selected. A type the driver cannot decode is
     /// asked for as text instead, which is what `read_form` says.
     fn projection(&self, column: &ColumnInfo) -> String {
@@ -141,6 +149,14 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
 
     fn count_all(&self) -> &'static str {
         "COUNT(*)"
+    }
+
+    /// Whether ordering by the table's key sorts the whole table before
+    /// the first row comes back, while a plain scan returns an unchanged
+    /// table's rows in the same order every time. An export with no sort
+    /// of the user's then keeps the scan's order.
+    fn key_order_sorts_the_table(&self) -> bool {
+        false
     }
 
     /// The column as text, where it meets a LIKE pattern or text the user

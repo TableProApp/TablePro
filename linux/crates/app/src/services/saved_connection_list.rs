@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
+use tablepro_core::DriverRegistry;
 use tablepro_storage::{ConnectionGroupName, ConnectionListState, ConnectionStore, ConnectionTag, SavedConnection};
 use uuid::Uuid;
 
@@ -20,6 +21,8 @@ type StateObserver = Rc<dyn Fn(&ConnectionListState)>;
 /// delete or an edit reaches every picker without anyone asking.
 pub struct SavedConnectionList {
     store: gio::ListStore,
+    /// Says which connections open a file, which their rows name.
+    drivers: Arc<DriverRegistry>,
     /// The last list the store had ready, in display order. A list that
     /// cannot be read keeps it, as the rows do.
     connections: RefCell<Arc<[SavedConnection]>>,
@@ -39,11 +42,12 @@ impl SavedConnectionList {
     /// Follow `connections` from its list now. The watch runs on the GTK
     /// thread and polls nothing but the store's channel, and it ends
     /// with the store or with this list.
-    pub fn follow(connections: &ConnectionStore) -> Rc<Self> {
+    pub fn follow(connections: &ConnectionStore, drivers: Arc<DriverRegistry>) -> Rc<Self> {
         let mut receiver = connections.subscribe();
         let current = receiver.borrow_and_update().state.clone();
         let list = Rc::new(Self {
             store: gio::ListStore::new::<SavedConnectionObject>(),
+            drivers,
             connections: RefCell::new(Arc::from([])),
             tags: RefCell::new(Arc::from([])),
             state: RefCell::new(ConnectionListState::Loading),
@@ -128,11 +132,10 @@ impl SavedConnectionList {
             self.connections.replace(sorted.clone());
             self.tags.replace(Arc::from(tags));
             if regrouped || retagged || self.store.n_items() == 0 {
-                let objects: Vec<SavedConnectionObject> =
-                    sorted.iter().cloned().map(SavedConnectionObject::new).collect();
+                let objects: Vec<SavedConnectionObject> = sorted.iter().map(|saved| self.object(saved)).collect();
                 self.store.splice(0, self.store.n_items(), &objects);
             } else {
-                patch(&self.store, &sorted);
+                patch(&self.store, &sorted, |saved| self.object(saved));
             }
         }
         let observers: Vec<StateObserver> = self
@@ -147,9 +150,23 @@ impl SavedConnectionList {
     }
 }
 
+impl SavedConnectionList {
+    fn object(&self, saved: &SavedConnection) -> SavedConnectionObject {
+        let file_based = self
+            .drivers
+            .get(&saved.driver_id)
+            .is_some_and(|driver| driver.capabilities().is_file_based());
+        SavedConnectionObject::new(saved.clone(), file_based)
+    }
+}
+
 /// Bring `store` to `wanted`, keeping each object whose connection is
 /// unchanged where it can.
-fn patch(store: &gio::ListStore, wanted: &[SavedConnection]) {
+fn patch(
+    store: &gio::ListStore,
+    wanted: &[SavedConnection],
+    object: impl Fn(&SavedConnection) -> SavedConnectionObject,
+) {
     let mut position = 0;
     for saved in wanted {
         let kept = (position..store.n_items()).find(|&at| {
@@ -161,7 +178,7 @@ fn patch(store: &gio::ListStore, wanted: &[SavedConnection]) {
         match kept {
             Some(at) if at > position => store.splice(position, at - position, &[] as &[SavedConnectionObject]),
             Some(_) => {}
-            None => store.insert(position, &SavedConnectionObject::new(saved.clone())),
+            None => store.insert(position, &object(saved)),
         }
         position += 1;
     }
@@ -240,7 +257,7 @@ mod tests {
     fn a_write_to_the_store_reaches_the_list() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         assert!(matches!(list.state(), ConnectionListState::Loading));
         let corp = connection("Corp");
 
@@ -257,7 +274,7 @@ mod tests {
     fn unreadable_list_keeps_rows_and_reports_its_state() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         let seen = Rc::new(RefCell::new(Vec::new()));
         let sink = seen.clone();
         let observer = list.connect_state_changed(move |state| {
@@ -287,7 +304,7 @@ mod tests {
     fn a_write_keeps_the_objects_of_unchanged_connections() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         let (alpha, beta, gamma) = (connection("Alpha"), connection("Beta"), connection("Gamma"));
         list.apply(ready(&[alpha.clone(), beta.clone(), gamma.clone()]));
         let before = objects(&list);
@@ -310,7 +327,7 @@ mod tests {
     fn a_new_group_replaces_every_object() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         let (alpha, beta) = (connection("Alpha"), connection("Beta"));
         list.apply(ready(&[alpha.clone(), beta.clone()]));
         let before = objects(&list);
@@ -328,7 +345,7 @@ mod tests {
     fn a_changed_tag_replaces_every_object_and_the_tags_read_by_name() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         let (alpha, beta) = (connection("Alpha"), connection("Beta"));
         let name = |name: &str| tablepro_storage::ConnectionTagName::new(name).expect("a tag name");
         let zeta = ConnectionTag::new(name("zeta"), tablepro_storage::ConnectionColor::Red);
@@ -358,7 +375,7 @@ mod tests {
     fn a_dropped_list_stops_following() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         let model = list.model();
 
         drop(list);

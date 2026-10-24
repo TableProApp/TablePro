@@ -10,6 +10,7 @@ mod connect_flow;
 mod connecting_page;
 mod connections;
 mod crash_notice;
+mod file_location_dialog;
 mod imp;
 mod locate_file;
 mod notification_request;
@@ -23,7 +24,6 @@ mod session_restore;
 mod session_teardown;
 mod session_window_command;
 mod session_window_input;
-mod sqlite_location_dialog;
 #[cfg(test)]
 pub(crate) mod tests;
 mod window_actions;
@@ -53,12 +53,12 @@ use tablepro_storage::{CredentialDemand, SavedConnection};
 pub(super) use self::connect_failed_page::ConnectFailedPage;
 use self::connect_failure_view::ConnectFailureView;
 pub(super) use self::connecting_page::ConnectingPage;
+use self::file_location_dialog::FileCheck;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::SessionPage;
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
 pub(crate) use self::session_window_input::SessionWindowInput;
-use self::sqlite_location_dialog::FileCheck;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -780,7 +780,7 @@ impl SessionWindow {
     }
 
     /// `answer` is how the user chose to open a database file on a
-    /// filesystem whose locking SQLite cannot trust, once asked.
+    /// filesystem whose locking the engines cannot trust, once asked.
     fn start_connect(
         &self,
         claim: SessionClaim,
@@ -1159,9 +1159,25 @@ fn connect_file(
 ) -> BoxFuture<'static, Result<Connected, AttemptError>> {
     let connector = context.connector.clone();
     let interaction = context.attended();
-    let request = resolve_file_identity::file_request(identity, &context.drivers, read_only);
+    let drivers = context.drivers.clone();
+    let identity = identity.clone();
+    let path = resolve_file_identity::file_path(&identity);
+    let header_len = drivers.file_header_len();
+    // Which engine opens the file is in its first bytes, read off the
+    // GTK thread.
+    let reading = context
+        .tasks
+        .spawn_blocking_task(move || resolve_file_identity::read_header_blocking(&path, header_len));
     async move {
-        let request = request.map_err(|error| attempt_error(&error, false))?;
+        let header = cancel
+            .run_until_cancelled(reading)
+            .await
+            .ok_or(AttemptError::Cancelled)?
+            .map_err(|failure| DriverError::Protocol(format!("reading the file stopped: {failure}")))
+            .and_then(|read| read)
+            .map_err(|error| attempt_error(&ConnectError::Driver(error), false))?;
+        let request = resolve_file_identity::file_request(&identity, &drivers, &header, read_only)
+            .map_err(|error| attempt_error(&error, false))?;
         connect_flow::connect_request(&*connector, request, interaction, cancel)
             .await
             .map(unsaved)

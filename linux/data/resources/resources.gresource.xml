@@ -32,7 +32,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
-    <file compressed="true" preprocess="xml-stripblanks">ui/sqlite-file-row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/database-file-row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/ssh-section.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/structure-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/tls-section.ui</file>

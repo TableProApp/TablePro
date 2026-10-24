@@ -117,7 +117,7 @@ pub fn foreign_key_sql(dialect: &dyn SqlDialect, table: &TableRef, key: &Foreign
         "CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({})",
         dialect.quote_identifier(&key.name),
         column_list(dialect, &key.columns),
-        dialect.qualify(&referenced),
+        dialect.portable_name(&referenced),
         column_list(dialect, &key.ref_columns)
     );
     for (clause, action) in [("ON DELETE", key.on_delete), ("ON UPDATE", key.on_update)] {

@@ -88,12 +88,13 @@ impl AppServices {
         } = parts;
         let application_hold = Rc::new(GioProcessHold::default());
         let open_sessions = OpenSessions::new(storage.workspaces().clone(), application_hold.clone());
-        let saved_connections = SavedConnectionList::follow(storage.connections());
+        let drivers = Arc::new(drivers);
+        let saved_connections = SavedConnectionList::follow(storage.connections(), drivers.clone());
         let saved_connection_editor =
             SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
         let snippets = SnippetLibrary::new(storage.paths().snippets_dir());
         Self {
-            drivers: Arc::new(drivers),
+            drivers,
             connector,
             deadlines,
             liveness,

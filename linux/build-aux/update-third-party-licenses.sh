@@ -33,7 +33,8 @@ generate() {
 # A crate with no license file cargo-about can read gets the SPDX template
 # text, which names no copyright holder, and --fail lets that through.
 fallbacks="$(mktemp)"
-trap 'rm -f "$fallbacks"' EXIT
+metadata="$(mktemp)"
+trap 'rm -f "$fallbacks" "$metadata"' EXIT
 generate "$root/build-aux/about/fallbacks.hbs" "$fallbacks"
 if grep -q '[^[:space:]]' "$fallbacks"; then
     echo "update-third-party-licenses.sh: no license file read for these crates; add or fix their [<crate>.clarify] entry in about.toml:" >&2
@@ -44,6 +45,21 @@ fi
 for output in third-party.json THIRD-PARTY-NOTICE.md; do
     generate "$root/build-aux/about/$output.hbs" "$root/data/licenses/$output"
 done
+
+# cargo-about cannot read the licenses of code a crate bundles in an
+# archive, such as DuckDB's third_party in libduckdb-sys.
+python3 "$root/build-aux/packaging/bundled_licenses.py" \
+    --bundled "$root/build-aux/about/bundled" \
+    --licenses "$root/data/licenses/third-party.json" \
+    --notice "$root/data/licenses/THIRD-PARTY-NOTICE.md"
+
+# The NOTICE files the Apache License 2.0 asks to ship, which cargo-about
+# does not read.
+cargo metadata --locked --format-version 1 --manifest-path "$root/Cargo.toml" > "$metadata"
+python3 "$root/build-aux/packaging/crate_notices.py" \
+    --licenses "$root/data/licenses/third-party.json" \
+    --metadata "$metadata" \
+    --output "$root/data/licenses/NOTICE"
 
 python3 "$root/build-aux/packaging/license_metadata.py" write \
     --licenses "$root/data/licenses/third-party.json" \

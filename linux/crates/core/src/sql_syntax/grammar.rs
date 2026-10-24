@@ -9,6 +9,7 @@ pub enum SqlGrammar {
     Sqlite,
     MsSql,
     ClickHouse,
+    DuckDb,
     /// Cassandra and ScyllaDB.
     Cql,
     Redis,
@@ -17,12 +18,13 @@ pub enum SqlGrammar {
 
 impl SqlGrammar {
     /// The grammars that are SQL.
-    pub const SQL: [SqlGrammar; 6] = [
+    pub const SQL: [SqlGrammar; 7] = [
         SqlGrammar::PostgreSql,
         SqlGrammar::MySql,
         SqlGrammar::Sqlite,
         SqlGrammar::MsSql,
         SqlGrammar::ClickHouse,
+        SqlGrammar::DuckDb,
         SqlGrammar::Cql,
     ];
 }
@@ -34,7 +36,8 @@ impl SqlGrammar {
     /// `None` for a language that is not SQL.
     pub(crate) fn parser_dialect(self) -> Option<&'static dyn sqlparser::dialect::Dialect> {
         use sqlparser::dialect::{
-            ClickHouseDialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+            ClickHouseDialect, DuckDbDialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect,
+            SQLiteDialect,
         };
 
         static POSTGRES: PostgreSqlDialect = PostgreSqlDialect {};
@@ -42,6 +45,7 @@ impl SqlGrammar {
         static SQLITE: SQLiteDialect = SQLiteDialect {};
         static MSSQL: MsSqlDialect = MsSqlDialect {};
         static CLICKHOUSE: ClickHouseDialect = ClickHouseDialect {};
+        static DUCKDB: DuckDbDialect = DuckDbDialect {};
         // sqlparser has no CQL dialect. CQL's expressions are a subset of
         // what the generic one reads, and its types are parsed by the
         // driver's own dialect.
@@ -53,6 +57,7 @@ impl SqlGrammar {
             Self::Sqlite => Some(&SQLITE),
             Self::MsSql => Some(&MSSQL),
             Self::ClickHouse => Some(&CLICKHOUSE),
+            Self::DuckDb => Some(&DUCKDB),
             Self::Cql => Some(&GENERIC),
             Self::Redis | Self::Mongo => None,
         }

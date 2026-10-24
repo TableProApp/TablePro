@@ -6,6 +6,10 @@
 # module, and its unit test build passed 7 GB that way. Cargo's release
 # default of 16 splits the work, and thin LTO still optimizes across it.
 %global rustflags_codegen_units 16
+# Fedora compiles C and C++ into fat LTO objects, which double what
+# DuckDB's C++ build writes and the memory each of its translation units
+# takes; rustc links without -flto, so their GIMPLE half goes unused.
+%global _lto_cflags %{nil}
 
 %bcond check 1
 
@@ -23,11 +27,14 @@ License:        %{shrink:
     (Apache-2.0 OR BSD-2-Clause OR MIT) AND
     (Apache-2.0 OR BSL-1.0) AND
     (Apache-2.0 OR BSL-1.0 OR MIT) AND
+    (Apache-2.0 OR GPL-2.0-or-later) AND
     (Apache-2.0 OR ISC) AND
     (Apache-2.0 OR ISC OR MIT) AND
     (Apache-2.0 OR ISC OR MIT-0) AND
     (Apache-2.0 OR MIT) AND
     (Apache-2.0 OR MIT OR Zlib) AND
+    BSD-2-Clause AND
+    (BSD-2-Clause OR BSL-1.0) AND
     BSD-3-Clause AND
     BSL-1.0 AND
     CDLA-Permissive-2.0 AND
@@ -35,6 +42,7 @@ License:        %{shrink:
     MIT AND
     (MIT OR Unlicense) AND
     Unicode-3.0 AND
+    Unicode-DFS-2015 AND
     Zlib
 }
 URL:            https://tablepro.app
@@ -47,6 +55,8 @@ BuildRequires:  rust >= 1.97
 BuildRequires:  cargo-rpm-macros >= 26
 BuildRequires:  meson >= 1.4
 BuildRequires:  gcc
+# DuckDB is C++, compiled from the duckdb crate's own sources.
+BuildRequires:  gcc-c++
 BuildRequires:  clang-devel
 BuildRequires:  gettext
 BuildRequires:  desktop-file-utils
@@ -93,9 +103,9 @@ Recommends:     (gnome-keyring or kf6-kwallet or keepassxc)
 Suggests:       krb5-workstation
 
 %description
-TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse.
-Browse tables, edit rows in place, run SQL with syntax highlighting, and
-reach servers behind an SSH bastion.
+TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server and
+ClickHouse. Browse tables, edit rows in place, run SQL with syntax
+highlighting, and reach servers behind an SSH bastion.
 
 %prep
 %autosetup -n %{name}-%{version_no_tilde} -a1
@@ -141,7 +151,7 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %endif
 
 %files -f %{name}.lang
-%license LICENSE data/licenses/THIRD-PARTY-NOTICE.md
+%license LICENSE data/licenses/THIRD-PARTY-NOTICE.md data/licenses/NOTICE
 %license LICENSE.dependencies cargo-vendor.txt
 %doc CHANGELOG.md
 %{_bindir}/tablepro

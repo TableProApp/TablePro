@@ -26,6 +26,7 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 | ClickHouse | [drivers/clickhouse.md](drivers/clickhouse.md) |
 | Cassandra and ScyllaDB | [drivers/cassandra.md](drivers/cassandra.md) |
 | SQLite | [drivers/sqlite.md](drivers/sqlite.md) |
+| DuckDB | [drivers/duckdb.md](drivers/duckdb.md) |
 
 ## Decisions
 

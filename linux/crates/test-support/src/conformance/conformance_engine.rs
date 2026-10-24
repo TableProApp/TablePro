@@ -13,6 +13,11 @@ use crate::conformance::ConformanceFailure;
 /// a bad state cannot fail the next one.
 #[async_trait]
 pub trait ConformanceEngine: Send + Sync + Sized + 'static {
+    /// Whether a read-only connection opens while a writable one holds
+    /// the database. DuckDB opens a file one way at a time, in one
+    /// process as in two.
+    const READ_ONLY_BESIDE_WRITER: bool = true;
+
     fn driver() -> Arc<dyn DatabaseDriver>;
 
     /// Start a server through tablepro-test-fixtures, or a file for an

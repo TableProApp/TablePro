@@ -6,12 +6,12 @@ mod appearance;
 mod connect_dialog_mode;
 mod connect_form;
 mod connect_submission;
+mod database_file_row;
 mod form_errors;
 mod form_field;
 mod imp;
 mod pem_validation;
 mod row_problem;
-mod sqlite_file_row;
 #[cfg(test)]
 mod tests;
 mod tls_section;
@@ -39,11 +39,11 @@ pub use self::connect_dialog_mode::ConnectDialogMode;
 use self::connect_form::ValidatedForm;
 pub use self::connect_form::{ConnectForm, driver_shows_server_name};
 pub use self::connect_submission::ConnectSubmission;
+pub(crate) use self::database_file_row::{DatabaseFiles, database_file_dialog};
 pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
 use self::pem_validation::{PemState, PemValidation};
 pub use self::row_problem::show_problem;
-pub(crate) use self::sqlite_file_row::sqlite_file_dialog;
 use crate::services::saved_connection_editor::SavedConnectionEditor;
 use crate::services::secret_changes::SecretChanges;
 use crate::services::session_context::CredentialSourceFactory;
@@ -522,6 +522,7 @@ impl ConnectDialog {
         imp.seed_list_row
             .set_visible(!file_based && caps.offers(NetworkOption::DnsSeedList));
         imp.file_row.set_visible(file_based);
+        imp.file_row.set_files(DatabaseFiles::of(entry.driver.as_ref()));
         imp.auth_group.set_visible(!file_based && !caps.auth_modes.is_empty());
         imp.ssh_section.set_visible(!file_based);
         let tls = if file_based { None } else { caps.tls.as_ref() };
@@ -965,7 +966,12 @@ pub fn remedy_field(remedy: TlsRemedy) -> FormField {
 /// still has something to read.
 static NO_DRIVER: DriverCapabilities = DriverCapabilities {
     data_model: tablepro_core::DataModel::Relational,
-    endpoint: tablepro_core::EndpointKind::File,
+    endpoint: tablepro_core::EndpointKind::File(tablepro_core::FileFormat {
+        signature: tablepro_core::FileSignature { offset: 0, bytes: &[] },
+        suffixes: &[],
+        mime_types: &[],
+        empty_file_is_database: false,
+    }),
     auth_modes: &[],
     username_required: true,
     tls: None,

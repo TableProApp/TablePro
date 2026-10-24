@@ -12,6 +12,7 @@ impl LexicalSettings {
             SqlGrammar::PostgreSql
             | SqlGrammar::Sqlite
             | SqlGrammar::MsSql
+            | SqlGrammar::DuckDb
             | SqlGrammar::Cql
             | SqlGrammar::Redis
             | SqlGrammar::Mongo => false,

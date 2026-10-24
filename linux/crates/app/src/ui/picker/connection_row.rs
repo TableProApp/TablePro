@@ -14,7 +14,7 @@ use super::connection_menu::{
 };
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::file_location;
-use crate::services::saved_connection_object::{SavedConnectionObject, is_sqlite, subtitle_for};
+use crate::services::saved_connection_object::{SavedConnectionObject, subtitle_for};
 use crate::ui::a11y::describe_icon_button;
 use crate::ui::connection_appearance::{color_dot, icon_image, tag_pills, tags_description};
 
@@ -29,16 +29,16 @@ pub(crate) struct RowChoices {
 /// menu holds the rest. `tasks` reads the file a portal path stands
 /// for; `None` names the file alone.
 pub(crate) fn connection_row(object: &glib::Object, choices: &RowChoices, tasks: Option<&Tasks>) -> gtk::Widget {
-    let Some(saved) = object
-        .downcast_ref::<SavedConnectionObject>()
-        .and_then(SavedConnectionObject::saved)
-        .cloned()
-    else {
+    let Some(connection) = object.downcast_ref::<SavedConnectionObject>() else {
         return adw::ActionRow::new().upcast();
     };
+    let Some(saved) = connection.saved().cloned() else {
+        return adw::ActionRow::new().upcast();
+    };
+    let file_based = connection.file_based();
     let row = adw::ActionRow::builder()
         .title(&saved.name)
-        .subtitle(subtitle_for(&saved, None))
+        .subtitle(subtitle_for(&saved, file_based, None))
         // A name is the user's text, never markup.
         .use_markup(false)
         .activatable(true)
@@ -49,7 +49,7 @@ pub(crate) fn connection_row(object: &glib::Object, choices: &RowChoices, tasks:
     row.add_prefix(&icon_image(saved.icon));
     let carried: Vec<ConnectionTag> = carried_tags(&saved, &choices.tags).into_iter().cloned().collect();
     row.add_suffix(&tag_pills(&carried));
-    describe_row(&row, &subtitle_for(&saved, None), &carried);
+    describe_row(&row, &subtitle_for(&saved, file_based, None), &carried);
     // One menu rather than a button per action: the row gains actions as
     // the app does, and a row of icons stops reading as a row.
     let menu_button = gtk::MenuButton::builder()
@@ -68,7 +68,7 @@ pub(crate) fn connection_row(object: &glib::Object, choices: &RowChoices, tasks:
     row.add_controller(local_shortcut_controller(ShortcutOwner::PickerRow));
     row.add_controller(secondary_click(&menu_button));
     if let Some(tasks) = tasks {
-        show_host_path(&row, &saved, carried, tasks);
+        show_host_path(&row, &saved, file_based, carried, tasks);
     }
     row.upcast()
 }
@@ -165,16 +165,22 @@ fn secondary_click(menu_button: &gtk::MenuButton) -> gtk::GestureClick {
 
 /// A portal path's folder is an id, so the row names the file the
 /// portal stands for once it is read.
-fn show_host_path(row: &adw::ActionRow, saved: &SavedConnection, tags: Vec<ConnectionTag>, tasks: &Tasks) {
+fn show_host_path(
+    row: &adw::ActionRow,
+    saved: &SavedConnection,
+    file_based: bool,
+    tags: Vec<ConnectionTag>,
+    tasks: &Tasks,
+) {
     let path = PathBuf::from(&saved.database);
-    if !is_sqlite(saved) || !file_location::is_portal_path(&path) {
+    if !file_based || !file_location::is_portal_path(&path) {
         return;
     }
     let looking = tasks.spawn_blocking_task(move || file_location::portal_host_path_blocking(&path));
     let (saved, row) = (saved.clone(), row.downgrade());
     glib::spawn_future_local(async move {
         if let (Ok(Some(host)), Some(row)) = (looking.await, row.upgrade()) {
-            let subtitle = subtitle_for(&saved, Some(&host));
+            let subtitle = subtitle_for(&saved, true, Some(&host));
             row.set_subtitle(&subtitle);
             describe_row(&row, &subtitle, &tags);
         }
@@ -217,7 +223,7 @@ mod tests {
     }
 
     fn row_for(saved: SavedConnection, tags: Vec<ConnectionTag>) -> adw::ActionRow {
-        let object = SavedConnectionObject::new(saved);
+        let object = SavedConnectionObject::new(saved, false);
         let choices = RowChoices {
             groups: Vec::new(),
             tags: tags.into(),

@@ -1,6 +1,6 @@
 # MongoDB
 
-Driver id `mongodb`, crate `crates/drivers/mongodb`. It speaks the wire protocol through the mongodb crate 3.9 with its default features off, `compat-3-3-0`, `bson-3`, `rustls-tls-aws-lc` and `dns-resolver`. The integration suite runs against MongoDB 8.0, and CI runs it again on 7.0 ([supported servers](../../README.md#supported-servers)). MongoDB has no SQL: how a document engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql), and why collections open in the table tab is [ADR 0025](../decisions/0025-documents-in-the-table-tab.md).
+Driver id `mongodb`, crate `crates/drivers/mongodb`. It speaks the wire protocol through the mongodb crate 3.9 with its default features off, `compat-3-3-0`, `bson-3`, `rustls-tls-aws-lc` and `dns-resolver`. The integration suite runs against MongoDB 8.0, and CI runs it again on 7.0 ([supported servers](../../README.md#supported-servers)). MongoDB has no SQL: how a document engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql), and why collections open in the table tab is [ADR 0026](../decisions/0026-documents-in-the-table-tab.md).
 
 The default port is 27017.
 
@@ -51,7 +51,7 @@ A field's column type is its values' type: a number widens across `int`, `long`,
 
 ## Pages, filters and saves
 
-A collection opens in the table tab, and every statement the tab builds is a mongosh call ([ADR 0025](../decisions/0025-documents-in-the-table-tab.md)), so the history and the Safe Mode dialog show text the editor can run:
+A collection opens in the table tab, and every statement the tab builds is a mongosh call ([ADR 0026](../decisions/0026-documents-in-the-table-tab.md)), so the history and the Safe Mode dialog show text the editor can run:
 
 | What | Statement |
 |---|---|

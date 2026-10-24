@@ -30,6 +30,11 @@ pub enum ServerCode {
     Cql {
         code: i32,
     },
+    /// DuckDB names its errors by kind rather than number, as the
+    /// `Constraint` of "Constraint Error: ...".
+    DuckDb {
+        error_type: String,
+    },
     /// The word a Redis error reply opens with, such as `WRONGTYPE`.
     Redis {
         prefix: String,
@@ -61,6 +66,7 @@ impl fmt::Display for ServerCode {
             Self::Tds { number, .. } => write!(f, "{number}"),
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
+            Self::DuckDb { error_type } => f.write_str(error_type),
             Self::Cql { code } => write!(f, "{code:#06x}"),
             Self::Redis { prefix } => f.write_str(prefix),
             Self::Mongo { code, name: Some(name) } => write!(f, "{code} {name}"),

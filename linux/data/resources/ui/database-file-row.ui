@@ -2,7 +2,7 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
-  <template class="TableProSqliteFileRow" parent="AdwActionRow">
+  <template class="TableProDatabaseFileRow" parent="AdwActionRow">
     <property name="title" translatable="yes">Database file</property>
     <property name="subtitle" translatable="yes">No file chosen</property>
     <property name="subtitle-selectable">true</property>

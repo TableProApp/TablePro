@@ -61,19 +61,40 @@ impl SqliteConnection {
         liveness: LivenessPolicy,
     ) -> Result<Self, DriverError> {
         let path = endpoint.path().to_path_buf();
+        // Until the pool holds a descriptor on the file, a header read
+        // elsewhere in the process could close one and drop its locks.
+        let opening = tablepro_core::opening_file().await;
+        // SQLite would close a DuckDB file again on finding no database in
+        // it, which drops the locks DuckDB holds on it.
+        if tablepro_core::claimed_by_another(&path, crate::driver::ENGINE) {
+            return Err(DriverError::Busy(tablepro_core::BusyReason::FileLocked));
+        }
         if endpoint.mode() == FileOpenMode::CreateNew {
             let target = path.clone();
             tokio::task::spawn_blocking(move || create_or_replace(&target))
                 .await
                 .map_err(|error| DriverError::Protocol(format!("creating the database file stopped: {error}")))??;
         }
+        // A FIFO would hold the open, and every other engine's open behind
+        // it, until something wrote to it.
+        if std::fs::metadata(&path).is_ok_and(|metadata| !metadata.is_file()) {
+            return Err(DriverError::NotADatabase { path });
+        }
         let options = connect_options(&path, settings.read_only, settings.lock_timeout);
         let pool = SqlitePoolOptions::new()
             .max_connections(u32::try_from(WORKSPACE_POOL_MAX_SIZE).unwrap_or(1))
             .acquire_timeout(liveness.pool_wait)
+            .after_connect(|connection, _| {
+                Box::pin(async move {
+                    crate::attach_guard::install(connection)
+                        .await
+                        .map_err(|error| sqlx::Error::Protocol(error.to_string()))
+                })
+            })
             .connect_with(options)
             .await
             .map_err(|error| map_open_error(error, &path))?;
+        drop(opening);
 
         let version = match check_file(&pool, &path).await {
             Ok(version) => version,
@@ -205,7 +226,11 @@ impl SqliteConnection {
                 phase: TimeoutPhase::Statement,
                 server_cancelled: false,
             }),
-            opened = SqlxConnection::connect_with(&read_only) => opened.map_err(|error| map_open_error(error, &self.path)),
+            opened = SqlxConnection::connect_with(&read_only) => {
+                let mut connection = opened.map_err(|error| map_open_error(error, &self.path))?;
+                crate::attach_guard::install(&mut connection).await?;
+                Ok(connection)
+            }
         }
     }
 }

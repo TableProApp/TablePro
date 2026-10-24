@@ -37,6 +37,8 @@ pub enum UnsupportedFeature {
         first: i32,
         last: i32,
     },
+    /// A DuckDB `ATTACH ... (HIDDEN)`, a database DuckDB lists nowhere.
+    HiddenAttach,
     /// Pages the server keeps itself, by a paging state.
     ServerPaging,
     /// Tables, columns and SQL, on an engine that has keys instead.
@@ -69,6 +71,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::NumberWiderThan { digits } => write!(f, "a number wider than {digits} digits"),
             Self::DecimalOutOfRange { digits } => write!(f, "a decimal NaN, infinity or wider than {digits} digits"),
             Self::DateOutsideYears { first, last } => write!(f, "a date outside years {first} to {last}"),
+            Self::HiddenAttach => f.write_str("a HIDDEN attached database"),
             Self::ServerPaging => f.write_str("server-side paging"),
             Self::Tables => f.write_str("tables"),
             Self::Keys => f.write_str("keys"),

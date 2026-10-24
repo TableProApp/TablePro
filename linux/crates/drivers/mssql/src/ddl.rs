@@ -28,6 +28,7 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     drop_index: true,
     // An index key is a column; an expression needs a computed one.
     expression_index_keys: false,
+    descending_index_keys: true,
     partial_indexes: true,
     add_foreign_key: true,
     drop_foreign_key: true,

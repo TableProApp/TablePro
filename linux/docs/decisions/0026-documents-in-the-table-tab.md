@@ -1,4 +1,4 @@
-# 0025: Document collections open in the table tab, and their statements are shell calls
+# 0026: Document collections open in the table tab, and their statements are shell calls
 
 - **Status**: Accepted
 - **Date**: 2026-10-24

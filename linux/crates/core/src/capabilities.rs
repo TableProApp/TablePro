@@ -1,4 +1,5 @@
 use crate::auth_mode::AuthMode;
+use crate::file_format::FileFormat;
 use crate::meta::ObjectKind;
 use crate::network_options::NetworkOption;
 use crate::tls_capabilities::TlsCapabilities;
@@ -8,7 +9,7 @@ use crate::write_ledger::WriteAtomicity;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EndpointKind {
     Network { default_port: u16 },
-    File,
+    File(FileFormat),
 }
 
 /// How a read-only connection is held to it.
@@ -114,12 +115,20 @@ impl DriverCapabilities {
     pub fn default_port(&self) -> Option<u16> {
         match self.endpoint {
             EndpointKind::Network { default_port } => Some(default_port),
-            EndpointKind::File => None,
+            EndpointKind::File(_) => None,
         }
     }
 
     pub fn is_file_based(&self) -> bool {
-        matches!(self.endpoint, EndpointKind::File)
+        self.file_format().is_some()
+    }
+
+    /// The engine's database files, for an engine that opens one.
+    pub fn file_format(&self) -> Option<&FileFormat> {
+        match &self.endpoint {
+            EndpointKind::File(format) => Some(format),
+            EndpointKind::Network { .. } => None,
+        }
     }
 
     pub fn supports(&self, mode: AuthMode) -> bool {
@@ -142,6 +151,7 @@ impl DriverCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file_format::FileSignature;
 
     const NETWORK: DriverCapabilities = DriverCapabilities {
         data_model: DataModel::Relational,
@@ -163,14 +173,24 @@ mod tests {
 
     #[test]
     fn a_file_engine_has_no_port_to_offer() {
+        let format = FileFormat {
+            signature: FileSignature {
+                offset: 0,
+                bytes: b"SQLite format 3\0",
+            },
+            suffixes: &["sqlite3"],
+            mime_types: &[],
+            empty_file_is_database: true,
+        };
         let file = DriverCapabilities {
-            endpoint: EndpointKind::File,
+            endpoint: EndpointKind::File(format),
             auth_modes: &[],
             ..NETWORK
         };
 
         assert_eq!(file.default_port(), None);
         assert!(file.is_file_based());
+        assert_eq!(file.file_format(), Some(&format));
         assert!(!file.supports(AuthMode::Password), "a file has no login");
     }
 
@@ -178,6 +198,7 @@ mod tests {
     fn a_network_engine_offers_its_port_and_its_logins() {
         assert_eq!(NETWORK.default_port(), Some(5432));
         assert!(!NETWORK.is_file_based());
+        assert_eq!(NETWORK.file_format(), None);
         assert!(NETWORK.supports(AuthMode::Password));
         assert!(!NETWORK.supports(AuthMode::Kerberos));
     }

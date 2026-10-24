@@ -138,6 +138,33 @@ const CLICKHOUSE: &[&str] = &[
     "SAMPLE", "SETTINGS", "SHOW",
 ];
 
+const DUCKDB: &[&str] = &[
+    "ANTI",
+    "ASOF",
+    "ATTACH",
+    "CHECKPOINT",
+    "COPY",
+    "DESCRIBE",
+    "DETACH",
+    "EXCLUDE",
+    "EXPLAIN",
+    "ILIKE",
+    "LIMIT",
+    "OFFSET",
+    "PIVOT",
+    "POSITIONAL",
+    "PRAGMA",
+    "QUALIFY",
+    "REPLACE",
+    "RETURNING",
+    "SAMPLE",
+    "SEMI",
+    "SHOW",
+    "SUMMARIZE",
+    "UNPIVOT",
+    "USE",
+];
+
 const CQL: &[&str] = &[
     "ALLOW",
     "APPLY",
@@ -178,6 +205,7 @@ impl SqlGrammar {
             Self::Sqlite => (COMMON, SQLITE),
             Self::MsSql => (COMMON, MSSQL),
             Self::ClickHouse => (COMMON, CLICKHOUSE),
+            Self::DuckDb => (COMMON, DUCKDB),
             Self::Cql => (COMMON, CQL),
             Self::Redis | Self::Mongo => (&[], &[]),
         };
@@ -202,6 +230,7 @@ mod tests {
         assert!(has(SqlGrammar::MsSql, "TOP"));
         assert!(!has(SqlGrammar::MsSql, "LIMIT"));
         assert!(has(SqlGrammar::ClickHouse, "PREWHERE"));
+        assert!(has(SqlGrammar::DuckDb, "QUALIFY"));
     }
 
     #[test]

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
     AuthMode, CommitResolutionSupport, ConnectOptions, Connection, DataModel, DatabaseDriver, DriverCapabilities,
-    DriverError, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution, ServerNameOverride,
-    StatementStop, TimeoutPhase, TlsCapabilities, TlsMode, WriteAtomicity,
+    DriverError, EndpointKind, EstimateQuality, FileFormat, FileSignature, ReadOnlyEnforcement, ScriptExecution,
+    ServerNameOverride, StatementStop, TimeoutPhase, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -20,6 +20,7 @@ use crate::{ConnectionScript, FakeConnection, FakeReply, Replies, lock};
 /// did with the result, including a late connect it should have closed.
 #[derive(Debug)]
 pub struct FakeDriver {
+    id: &'static str,
     capabilities: &'static DriverCapabilities,
     connects: Mutex<Replies<FakeReply<ConnectionScript>>>,
     connections: Mutex<Vec<Arc<FakeConnection>>>,
@@ -59,11 +60,38 @@ impl FakeDriver {
         ..Self::NETWORK_CAPABILITIES
     };
 
+    /// Files named as SQLite's are, with an empty file read as an empty
+    /// database, as SQLite reads one.
     pub const FILE_CAPABILITIES: DriverCapabilities = DriverCapabilities {
-        endpoint: EndpointKind::File,
+        endpoint: EndpointKind::File(FileFormat {
+            signature: FileSignature {
+                offset: 0,
+                bytes: b"Fake format 1\0",
+            },
+            suffixes: &["sqlite3", "db"],
+            mime_types: &["application/vnd.sqlite3"],
+            empty_file_is_database: true,
+        }),
         auth_modes: &[],
         tls: None,
         ..Self::NETWORK_CAPABILITIES
+    };
+
+    /// A second file engine, whose files carry `SIGNED_FILE_SIGNATURE`
+    /// eight bytes in, as DuckDB's do, and never open empty.
+    pub const SIGNED_FILE_CAPABILITIES: DriverCapabilities = DriverCapabilities {
+        endpoint: EndpointKind::File(FileFormat {
+            signature: Self::SIGNED_FILE_SIGNATURE,
+            suffixes: &["duckdb"],
+            mime_types: &[],
+            empty_file_is_database: false,
+        }),
+        ..Self::FILE_CAPABILITIES
+    };
+
+    pub const SIGNED_FILE_SIGNATURE: FileSignature = FileSignature {
+        offset: 8,
+        bytes: b"DUCK",
     };
 
     pub fn new(
@@ -87,11 +115,18 @@ impl FakeDriver {
 
     fn with_replies(capabilities: &'static DriverCapabilities, connects: Replies<FakeReply<ConnectionScript>>) -> Self {
         Self {
+            id: "fake",
             capabilities,
             connects: Mutex::new(connects),
             connections: Mutex::new(Vec::new()),
             requests: Mutex::new(Vec::new()),
         }
+    }
+
+    /// The same driver under another id, so two fakes can share a
+    /// registry.
+    pub fn with_id(self, id: &'static str) -> Self {
+        Self { id, ..self }
     }
 
     pub fn connections(&self) -> Vec<Arc<FakeConnection>> {
@@ -106,7 +141,7 @@ impl FakeDriver {
 #[async_trait]
 impl DatabaseDriver for FakeDriver {
     fn id(&self) -> &'static str {
-        "fake"
+        self.id
     }
 
     fn display_name(&self) -> &'static str {
