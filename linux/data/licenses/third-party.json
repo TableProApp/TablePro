@@ -938,7 +938,7 @@
       "name": "MIT License",
       "text": "Copyright (c) 2021-2026 The RustCrypto Project Developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "crypto-bigint", "version": "0.7.5" } },
+        { "crate": { "name": "crypto-bigint", "version": "0.7.6" } },
         { "crate": { "name": "spki", "version": "0.8.0" } }
       ]
     },
@@ -1008,7 +1008,7 @@
       "name": "MIT License",
       "text": "Copyright (c) 2025-2026 The RustCrypto Project Developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "ctutils", "version": "0.4.4" } }
+        { "crate": { "name": "ctutils", "version": "0.4.5" } }
       ]
     },
     {
@@ -2063,13 +2063,13 @@
     { "name": "crossbeam-queue", "version": "0.3.14", "license": "MIT OR Apache-2.0" },
     { "name": "crossbeam-utils", "version": "0.8.23", "license": "MIT OR Apache-2.0" },
     { "name": "crossterm", "version": "0.28.1", "license": "MIT" },
-    { "name": "crypto-bigint", "version": "0.7.5", "license": "Apache-2.0 OR MIT" },
+    { "name": "crypto-bigint", "version": "0.7.6", "license": "Apache-2.0 OR MIT" },
     { "name": "crypto-common", "version": "0.1.7", "license": "MIT OR Apache-2.0" },
     { "name": "crypto-common", "version": "0.2.2", "license": "MIT OR Apache-2.0" },
     { "name": "crypto-primes", "version": "0.7.2", "license": "Apache-2.0 OR MIT" },
     { "name": "csv", "version": "1.4.0", "license": "Unlicense OR MIT" },
     { "name": "csv-core", "version": "0.1.13", "license": "Unlicense OR MIT" },
-    { "name": "ctutils", "version": "0.4.4", "license": "Apache-2.0 OR MIT" },
+    { "name": "ctutils", "version": "0.4.5", "license": "Apache-2.0 OR MIT" },
     { "name": "darling", "version": "0.24.1", "license": "MIT" },
     { "name": "darling_core", "version": "0.24.1", "license": "MIT" },
     { "name": "darling_macro", "version": "0.24.1", "license": "MIT" },

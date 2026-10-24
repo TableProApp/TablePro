@@ -6045,7 +6045,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- crypto-bigint 0.7.5
+- crypto-bigint 0.7.6
 - spki 0.8.0
 
 ~~~~text
@@ -6319,7 +6319,7 @@ SOFTWARE.
 
 Used by:
 
-- ctutils 0.4.4
+- ctutils 0.4.5
 
 ~~~~text
 Copyright (c) 2025-2026 The RustCrypto Project Developers
