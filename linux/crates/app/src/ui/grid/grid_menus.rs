@@ -115,7 +115,9 @@ impl MenuShape {
     };
 }
 
-fn build_cell_menu(shape: MenuShape, references: &gio::Menu) -> gio::Menu {
+/// `sorts` is off for a grid the engine reads in its own order, which
+/// no sort reaches.
+fn build_cell_menu(shape: MenuShape, references: &gio::Menu, sorts: bool) -> gio::Menu {
     let menu = gio::Menu::new();
     let edit_section = gio::Menu::new();
     let hidden_while_disabled = |label: String, action: &str| {
@@ -183,15 +185,17 @@ fn build_cell_menu(shape: MenuShape, references: &gio::Menu) -> gio::Menu {
 
     // A header's click and drag, which no key reaches.
     let column_section = gio::Menu::new();
-    column_section.append(
-        Some(&crate::i18n::gettext("Sort Ascending")),
-        Some("cell.sort-ascending"),
-    );
-    column_section.append(
-        Some(&crate::i18n::gettext("Sort Descending")),
-        Some("cell.sort-descending"),
-    );
-    column_section.append(Some(&crate::i18n::gettext("Clear Sort")), Some("cell.clear-sort"));
+    if sorts {
+        column_section.append(
+            Some(&crate::i18n::gettext("Sort Ascending")),
+            Some("cell.sort-ascending"),
+        );
+        column_section.append(
+            Some(&crate::i18n::gettext("Sort Descending")),
+            Some("cell.sort-descending"),
+        );
+        column_section.append(Some(&crate::i18n::gettext("Clear Sort")), Some("cell.clear-sort"));
+    }
     column_section.append_item(&crate::application::menu_item(
         &crate::i18n::gettext("Widen Column"),
         "cell.widen-column",
@@ -222,6 +226,7 @@ pub(super) struct GridMenuInit<'a> {
     pub(super) sink: GridSink,
     pub(super) columns: Arc<[ResultColumn]>,
     pub(super) tab_ctx: TabGridContext,
+    pub(super) sorts: bool,
 }
 
 pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
@@ -230,6 +235,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         sink,
         columns,
         tab_ctx,
+        sorts,
     } = init;
     let editable = tab_ctx.editable;
     let tab = Rc::new(tab_ctx);
@@ -262,7 +268,7 @@ pub(super) fn install_grid_context_menus(init: GridMenuInit<'_>) -> GridMenus {
         clear_sort: simple_action(&group, "clear-sort"),
     };
 
-    let (editable_popover, readonly_popover) = cell_popovers(column_view, editable, kit.references.section());
+    let (editable_popover, readonly_popover) = cell_popovers(column_view, editable, kit.references.section(), sorts);
     let reference_chooser = eager_popover(column_view, kit.references.choices());
     let mut popovers_for_destroy = vec![editable_popover.clone(), reference_chooser.clone()];
     if readonly_popover != editable_popover {
@@ -580,8 +586,9 @@ fn cell_popovers(
     column_view: &gtk::ColumnView,
     editable: bool,
     references: &gio::Menu,
+    sorts: bool,
 ) -> (gtk::PopoverMenu, gtk::PopoverMenu) {
-    let make_popover = |shape: MenuShape| eager_popover(column_view, &build_cell_menu(shape, references));
+    let make_popover = |shape: MenuShape| eager_popover(column_view, &build_cell_menu(shape, references, sorts));
     if editable {
         (make_popover(MenuShape::FULL), make_popover(MenuShape::ROW_OPS))
     } else {
@@ -675,8 +682,20 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_grid_in_the_engines_order_offers_no_sort() {
+        let sorted = build_cell_menu(MenuShape::FULL, &gio::Menu::new(), true).upcast::<gio::MenuModel>();
+        let unsorted = build_cell_menu(MenuShape::FULL, &gio::Menu::new(), false).upcast::<gio::MenuModel>();
+
+        for action in ["cell.sort-ascending", "cell.sort-descending", "cell.clear-sort"] {
+            assert!(accel_of(&sorted, action).is_some(), "{action}");
+            assert_eq!(accel_of(&unsorted, action), None, "{action}");
+        }
+        assert!(accel_of(&unsorted, "cell.edit").is_some());
+    }
+
+    #[gtk4::test]
     fn the_cell_menu_shows_the_cell_keys() {
-        let menu = build_cell_menu(MenuShape::FULL, &gio::Menu::new()).upcast::<gio::MenuModel>();
+        let menu = build_cell_menu(MenuShape::FULL, &gio::Menu::new(), true).upcast::<gio::MenuModel>();
 
         assert_eq!(
             accel_of(&menu, "cell.set-null"),

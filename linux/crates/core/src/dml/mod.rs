@@ -19,4 +19,5 @@ pub use build_insert::{build_insert, build_multi_row_insert};
 pub use build_key_probe::build_key_probe;
 pub use build_sql_error::BuildSqlError;
 pub use build_update::build_update;
+pub(crate) use build_update::sets_partition_only;
 pub use key_component::{KeyComponent, key_components};

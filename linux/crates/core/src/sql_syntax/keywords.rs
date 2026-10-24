@@ -138,6 +138,36 @@ const CLICKHOUSE: &[&str] = &[
     "SAMPLE", "SETTINGS", "SHOW",
 ];
 
+const CQL: &[&str] = &[
+    "ALLOW",
+    "APPLY",
+    "BATCH",
+    "CLUSTERING",
+    "CONTAINS",
+    "COUNTER",
+    "DESCRIBE",
+    "FILTERING",
+    "FROZEN",
+    "KEYSPACE",
+    "KEYSPACES",
+    "LIMIT",
+    "LIST",
+    "MAP",
+    "MATERIALIZED",
+    "PARTITION",
+    "PER",
+    "ROLE",
+    "STATIC",
+    "TIMESTAMP",
+    "TOKEN",
+    "TTL",
+    "TUPLE",
+    "TYPE",
+    "UNLOGGED",
+    "USE",
+    "WRITETIME",
+];
+
 impl SqlGrammar {
     /// The keywords the editor completes for this grammar, in upper case.
     /// Redis has none: its command names are not SQL keywords.
@@ -148,6 +178,7 @@ impl SqlGrammar {
             Self::Sqlite => (COMMON, SQLITE),
             Self::MsSql => (COMMON, MSSQL),
             Self::ClickHouse => (COMMON, CLICKHOUSE),
+            Self::Cql => (COMMON, CQL),
             Self::Redis => (&[], &[]),
         };
         common.iter().chain(own).copied()

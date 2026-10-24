@@ -12,7 +12,7 @@ use libadwaita::prelude::*;
 use tablepro_core::ColumnInfo;
 
 use super::filter_rule_object::FilterRuleObject;
-use super::rule_operators::{ValueShape, operators_for, placeholder_column};
+use super::rule_operators::{FilterVocabulary, ValueShape, operators_for, placeholder_column};
 use super::rule_value_editor::value_editor;
 
 mod imp {
@@ -34,6 +34,8 @@ mod imp {
         pub(super) rule: OnceCell<FilterRuleObject>,
         /// The strip's filterable columns when the row was built.
         pub(super) columns: OnceCell<Rc<[ColumnInfo]>>,
+        /// What the connection's engine evaluates.
+        pub(super) vocabulary: OnceCell<FilterVocabulary>,
         /// Set while the row fills its own dropdowns, whose `selected`
         /// notifications are then not the user's choice.
         pub(super) syncing: Cell<bool>,
@@ -99,11 +101,12 @@ impl Default for FilterRuleRow {
 }
 
 impl FilterRuleRow {
-    pub(super) fn new(rule: &FilterRuleObject, columns: Rc<[ColumnInfo]>) -> Self {
+    pub(super) fn new(rule: &FilterRuleObject, columns: Rc<[ColumnInfo]>, vocabulary: FilterVocabulary) -> Self {
         let row = Self::default();
         let imp = row.imp();
         let _ = imp.rule.set(rule.clone());
         let _ = imp.columns.set(columns);
+        let _ = imp.vocabulary.set(vocabulary);
         row.show_rule();
         row.connect_choices();
         row
@@ -121,6 +124,11 @@ impl FilterRuleRow {
 
     fn columns(&self) -> &[ColumnInfo] {
         self.imp().columns.get().map(|columns| &columns[..]).unwrap_or_default()
+    }
+
+    fn operators(&self, column: &ColumnInfo) -> Vec<super::rule_operators::OpEntry> {
+        let fallback = FilterVocabulary::default();
+        operators_for(column, self.imp().vocabulary.get().unwrap_or(&fallback))
     }
 
     fn rule_column_name(&self) -> String {
@@ -163,7 +171,7 @@ impl FilterRuleRow {
             return;
         };
         let column = self.shown_column();
-        let ops = operators_for(&column);
+        let ops = self.operators(&column);
         let labels: Vec<&str> = ops.iter().map(|entry| entry.label).collect();
         let op = rule.rule().op;
         let picked = ops.iter().position(|entry| entry.op == op).unwrap_or(0);
@@ -209,7 +217,7 @@ impl FilterRuleRow {
         let Some(column) = usize::try_from(index).ok().and_then(|index| self.columns().get(index)) else {
             return;
         };
-        let first = operators_for(column).into_iter().next();
+        let first = self.operators(column).into_iter().next();
         rule.update(|rule| {
             rule.column = column.name.clone();
             // An operator the new type lacks would build SQL the driver
@@ -227,7 +235,7 @@ impl FilterRuleRow {
             return;
         };
         let column = self.shown_column();
-        let ops = operators_for(&column);
+        let ops = self.operators(&column);
         let Some(entry) = usize::try_from(index).ok().and_then(|index| ops.get(index)) else {
             return;
         };
@@ -254,7 +262,7 @@ mod tests {
             value: Some(FilterValue::Single("1".to_owned())),
         });
         let columns: Rc<[ColumnInfo]> = columns.iter().map(|name| placeholder_column(name)).collect();
-        (FilterRuleRow::new(&rule, columns), rule)
+        (FilterRuleRow::new(&rule, columns, FilterVocabulary::default()), rule)
     }
 
     #[gtk4::test]

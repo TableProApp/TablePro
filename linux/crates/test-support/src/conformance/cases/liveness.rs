@@ -18,7 +18,7 @@ pub async fn lost_transport_reports_connection_lost<E: NetworkConformanceEngine>
     let liveness = test_liveness();
     let (options, fault) = engine.faulty_connect_options(writable(), liveness).await?;
     let connection = dial(CASE, E::driver(), options).await??;
-    let select = statement("SELECT 1");
+    let select = statement(&engine.trivial_read_sql());
     connection
         .query_bound(&select, RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE))
         .await?;

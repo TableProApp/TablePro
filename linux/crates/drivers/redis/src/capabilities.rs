@@ -1,7 +1,7 @@
 use tablepro_core::meta::{KeyKind, ObjectKind};
 use tablepro_core::{
     AuthMode, CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality,
-    ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, TlsCapabilities, TlsMode, WriteAtomicity,
+    ReadOnlyEnforcement, ScriptExecution, ServerNameOverride, StatementStop, TlsCapabilities, TlsMode, WriteAtomicity,
 };
 
 pub(crate) const DEFAULT_PORT: u16 = 6379;
@@ -40,6 +40,7 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
         ObjectKind::Key(KeyKind::Other),
     ],
     database_required: false,
+    statement_stop: StatementStop::Server,
 };
 
 #[cfg(test)]

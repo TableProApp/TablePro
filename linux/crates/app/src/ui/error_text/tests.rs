@@ -140,6 +140,7 @@ fn diagnostics_codes_rendered_per_engine() {
             "SQL Server error 2627",
         ),
         (ServerCode::ClickHouse { code: 60 }, "ClickHouse code 60"),
+        (ServerCode::Cql { code: 0x2200 }, "CQL error 0x2200"),
         (
             ServerCode::Sqlite {
                 primary: 19,

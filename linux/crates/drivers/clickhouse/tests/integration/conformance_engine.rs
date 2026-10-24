@@ -15,7 +15,7 @@ use tablepro_test_fixtures::ClickHouseFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, LargeTableEngine, NetworkConformanceEngine,
-    TypedConformanceEngine, UnsupportedTypeCase,
+    ServerStopEngine, TypedConformanceEngine, UnsupportedTypeCase,
 };
 
 use crate::support::{DATABASE, direct, options_over, password, quoted};
@@ -95,7 +95,9 @@ impl NetworkConformanceEngine for ClickHouseEngine {
         );
         Ok((options, fault))
     }
+}
 
+impl ServerStopEngine for ClickHouseEngine {
     fn running_statement_count_sql(&self, marker: &str) -> String {
         format!(
             "SELECT count() FROM system.processes \
@@ -182,6 +184,7 @@ mod suite {
         engine: ClickHouseEngine,
         docker: true,
         endpoint: network,
+        server_stop: true,
         pool: unbounded,
         editor_transactions: false,
         unsupported_types: true,

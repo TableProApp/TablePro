@@ -92,7 +92,8 @@ pub async fn a_million_row_table_pages_to_its_end_and_exports<E: LargeTableEngin
     // The first page and a small export load the code both walks run,
     // so the peak measures rows and buffers, not the binary paging in.
     let first = browsed.page(connection.as_ref(), &PagePosition::First, PAGE).await?;
-    check_rows(&first, 0)?;
+    let order = Order::of(first.mode);
+    check_rows(&first, 0, order, &mut Seen::new())?;
     let warm = ReadStatement::User(UserSql::new(engine.row_source_sql(PAGE)));
     export(connection.as_ref(), &warm, &directory.path().join("warm.csv")).await?;
 
@@ -103,15 +104,27 @@ pub async fn a_million_row_table_pages_to_its_end_and_exports<E: LargeTableEngin
         format!("the table counted {total} rows, not {ROWS}")
     })?;
 
+    let mut seen = Seen::new();
     let peak = ResidentPeak::start()?;
-    let walk = walk_to_the_end(&browsed, connection.as_ref()).await?;
+    let walk = walk_to_the_end(&browsed, connection.as_ref(), order, &mut seen).await?;
     let last_read = Instant::now();
     let last_page = browsed.last_page(connection.as_ref(), first.mode).await?;
     let last = last_read.elapsed();
     let paging_growth = peak.growth()?;
-    check_rows(&last_page, ROWS - PAGE)?;
+    check_rows(&last_page, ROWS - PAGE, order, &mut Seen::new())?;
     expect(CASE, last_page.result.rows.len() as u64 == PAGE, || {
         format!("the last page held {} rows, not {PAGE}", last_page.result.rows.len())
+    })?;
+    // In the engine's own order the last page is whatever the walk read
+    // last, which reading it again by its offset has to repeat.
+    let last_ids: Vec<Option<u64>> = last_page
+        .result
+        .rows
+        .iter()
+        .map(|row| row.first().and_then(id_of))
+        .collect();
+    expect(CASE, order == Order::Keyed || last_ids == walk.last_ids, || {
+        "the last page read by its offset holds other rows than the walk read last".to_owned()
     })?;
 
     let path = directory.path().join("export.csv");
@@ -127,7 +140,7 @@ pub async fn a_million_row_table_pages_to_its_end_and_exports<E: LargeTableEngin
     };
     report(&measured);
     check_bounds(&measured)?;
-    check_file(&path)?;
+    check_file(&path, order)?;
 
     connection.close().await?;
     Ok(())
@@ -178,11 +191,17 @@ fn check_bounds(measured: &Measured) -> Result<(), ConformanceFailure> {
     expect(CASE, walk.elapsed <= WALK_LIMIT, || {
         format!("{} pages took {:?}, past {WALK_LIMIT:?}", walk.pages, walk.elapsed)
     })?;
-    expect(CASE, walk.slowest <= PAGE_LIMIT && *last <= PAGE_LIMIT, || {
-        format!(
-            "the slowest page took {:?} and the last {last:?}, past {PAGE_LIMIT:?}",
-            walk.slowest
-        )
+    expect(CASE, walk.slowest <= PAGE_LIMIT, || {
+        format!("the slowest page took {:?}, past {PAGE_LIMIT:?}", walk.slowest)
+    })?;
+    // Where the server pages, the last page is reached only by reading
+    // every row before it, as the export reads them all.
+    let last_limit = match measured.mode {
+        PagingMode::ServerPaging => PAGE_LIMIT.max(exported.elapsed),
+        PagingMode::Keyset | PagingMode::CtidWindow | PagingMode::Offset => PAGE_LIMIT,
+    };
+    expect(CASE, *last <= last_limit, || {
+        format!("the last page took {last:?}, past {last_limit:?}")
     })?;
     if measured.mode != PagingMode::Offset {
         expect(CASE, walk.deep <= walk.early * DEPTH_FACTOR + DEPTH_SLACK, || {
@@ -252,7 +271,7 @@ impl Browsed {
     async fn last_page(&self, connection: &dyn Connection, mode: PagingMode) -> Result<PageRead, ConformanceFailure> {
         let start = (ROWS - 1) / PAGE * PAGE;
         let position = match mode {
-            PagingMode::Offset => PagePosition::Offset(start),
+            PagingMode::Offset | PagingMode::ServerPaging => PagePosition::Offset(start),
             PagingMode::Keyset | PagingMode::CtidWindow => PagePosition::Last,
         };
         self.page(connection, &position, ROWS - start).await
@@ -267,29 +286,88 @@ struct Walk {
     /// The mean time of the first and of the last full pages.
     early: Duration,
     deep: Duration,
+    /// The ids of the last full page, in the order it held them.
+    last_ids: Vec<Option<u64>>,
+}
+
+/// The order a table's rows come back in: by key, or, on an engine that
+/// pages on the server, its own, where each row has to come exactly once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Order {
+    Keyed,
+    Engine,
+}
+
+impl Order {
+    fn of(mode: PagingMode) -> Self {
+        match mode {
+            PagingMode::ServerPaging => Self::Engine,
+            PagingMode::Keyset | PagingMode::CtidWindow | PagingMode::Offset => Self::Keyed,
+        }
+    }
+}
+
+/// The ids a walk has met, one bit each.
+struct Seen {
+    bits: Vec<u64>,
+    count: u64,
+}
+
+impl Seen {
+    fn new() -> Self {
+        Self {
+            bits: vec![0; usize::try_from(ROWS / 64 + 1).unwrap_or(0)],
+            count: 0,
+        }
+    }
+
+    /// Whether `id` was new.
+    fn insert(&mut self, id: u64) -> bool {
+        let (word, bit) = (usize::try_from(id / 64).unwrap_or(usize::MAX), id % 64);
+        let Some(slot) = self.bits.get_mut(word) else {
+            return false;
+        };
+        let new = *slot & (1 << bit) == 0;
+        *slot |= 1 << bit;
+        self.count += u64::from(new);
+        new
+    }
 }
 
 /// Page forward from the first page as the pager does: past the last
 /// row's key where the page names one, by offset where it does not,
 /// until a page comes back short.
-async fn walk_to_the_end(browsed: &Browsed, connection: &dyn Connection) -> Result<Walk, ConformanceFailure> {
+async fn walk_to_the_end(
+    browsed: &Browsed,
+    connection: &dyn Connection,
+    order: Order,
+    seen: &mut Seen,
+) -> Result<Walk, ConformanceFailure> {
     let started = Instant::now();
     let mut full_pages: Vec<Duration> = Vec::new();
     let mut pages = 0;
     let mut start = 0;
     let mut position = PagePosition::First;
+    let mut last_ids = Vec::new();
     loop {
         let read_at = Instant::now();
         let read = browsed.page(connection, &position, PAGE).await?;
         let took = read_at.elapsed();
         pages += 1;
-        check_rows(&read, start)?;
+        check_rows(&read, start, order, seen)?;
         let rows = read.result.rows.len() as u64;
         start += rows;
         if rows < PAGE {
-            expect(CASE, start == ROWS, || {
-                format!("the pages ended after {start} rows, not {ROWS}")
-            })?;
+            expect(
+                CASE,
+                start == ROWS && (order == Order::Keyed || seen.count == ROWS),
+                || {
+                    format!(
+                        "the pages ended after {start} rows, {} of them apart, not {ROWS}",
+                        seen.count
+                    )
+                },
+            )?;
             let sample = SAMPLE_PAGES.min(full_pages.len());
             return Ok(Walk {
                 pages,
@@ -297,9 +375,11 @@ async fn walk_to_the_end(browsed: &Browsed, connection: &dyn Connection) -> Resu
                 slowest: full_pages.iter().copied().max().unwrap_or_default().max(took),
                 early: mean(&full_pages[..sample]),
                 deep: mean(&full_pages[full_pages.len() - sample..]),
+                last_ids,
             });
         }
         full_pages.push(took);
+        last_ids = read.result.rows.iter().map(|row| row.first().and_then(id_of)).collect();
         position = read.next.unwrap_or(PagePosition::Offset(start));
     }
 }
@@ -310,15 +390,25 @@ fn mean(times: &[Duration]) -> Duration {
 }
 
 /// The page holds the rows after the first `before`, in order, each
-/// with its label.
-fn check_rows(read: &PageRead, before: u64) -> Result<(), ConformanceFailure> {
+/// with its label. In the engine's own order it holds rows not met
+/// before, each with its label.
+fn check_rows(read: &PageRead, before: u64, order: Order, seen: &mut Seen) -> Result<(), ConformanceFailure> {
     for (index, row) in read.result.rows.iter().enumerate() {
-        let id = before + index as u64 + 1;
-        let fits = matches!(row.first(), Some(value) if id_of(value) == Some(id))
-            && matches!(row.get(1), Some(Value::Text(text)) if *text == label(id));
+        let id = match order {
+            Order::Keyed => Some(before + index as u64 + 1),
+            Order::Engine => row
+                .first()
+                .and_then(id_of)
+                .filter(|id| (1..=ROWS).contains(id) && seen.insert(*id)),
+        };
+        let fits = id.is_some_and(|id| {
+            matches!(row.first(), Some(value) if id_of(value) == Some(id))
+                && matches!(row.get(1), Some(Value::Text(text)) if *text == label(id))
+        });
         expect(CASE, fits, || {
             format!(
-                "row {id} of the table read as {:?}",
+                "row {} of the page read as {:?}",
+                before + index as u64 + 1,
                 row.iter().take(2).collect::<Vec<_>>()
             )
         })?;
@@ -338,8 +428,9 @@ fn label(id: u64) -> String {
     format!("{id:0>LABEL_WIDTH$}")
 }
 
-/// The file holds the header, then every row in key order.
-fn check_file(path: &Path) -> Result<(), ConformanceFailure> {
+/// The file holds the header, then every row in key order, or in the
+/// engine's own order each row once.
+fn check_file(path: &Path, order: Order) -> Result<(), ConformanceFailure> {
     let file = File::open(path).map_err(ConformanceFailure::setup)?;
     let mut lines = BufReader::new(file).lines();
     let mut next = || lines.next().transpose().map_err(ConformanceFailure::setup);
@@ -347,12 +438,19 @@ fn check_file(path: &Path) -> Result<(), ConformanceFailure> {
     expect(CASE, header.as_deref() == Some("\"id\",\"label\""), || {
         format!("the export started with {header:?}")
     })?;
-    for id in 1..=ROWS {
+    let mut seen = Seen::new();
+    for number in 1..=ROWS {
         let line = next()?;
-        let expected = format!("\"{id}\",\"{}\"", label(id));
-        expect(CASE, line.as_deref() == Some(expected.as_str()), || {
-            format!("line {id} of the export was {line:?}")
-        })?;
+        let id = match order {
+            Order::Keyed => Some(number),
+            Order::Engine => line
+                .as_deref()
+                .and_then(|line| line.strip_prefix('"')?.split_once('"'))
+                .and_then(|(id, _)| id.parse().ok())
+                .filter(|id| (1..=ROWS).contains(id) && seen.insert(*id)),
+        };
+        let fits = id.is_some_and(|id| line.as_deref() == Some(format!("\"{id}\",\"{}\"", label(id)).as_str()));
+        expect(CASE, fits, || format!("line {number} of the export was {line:?}"))?;
     }
     let after = next()?;
     expect(CASE, after.is_none(), || {

@@ -54,6 +54,9 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     drop_foreign_key: true,
     column_comments: false,
     drop_table_cascade: false,
+    column_defaults: true,
+    required_columns: true,
+    declared_column_order: true,
 };
 
 const TYPE_SUGGESTIONS: &[&str] = &[

@@ -38,6 +38,7 @@ pub(crate) fn column_info(row: &MssqlColumnRow) -> ColumnInfo {
         primary_key: row.primary_key,
         is_auto_increment: row.identity,
         is_generated: row.computed || server_written,
+        partition_scoped: false,
         default,
         comment: row.comment.clone(),
     }

@@ -24,6 +24,7 @@ The reference for working on the Linux app. Start with [ARCHITECTURE.md](../ARCH
 | MySQL and MariaDB | [drivers/mysql.md](drivers/mysql.md) |
 | SQL Server | [drivers/sql-server.md](drivers/sql-server.md) |
 | ClickHouse | [drivers/clickhouse.md](drivers/clickhouse.md) |
+| Cassandra and ScyllaDB | [drivers/cassandra.md](drivers/cassandra.md) |
 | SQLite | [drivers/sqlite.md](drivers/sqlite.md) |
 
 ## Decisions

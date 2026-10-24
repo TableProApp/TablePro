@@ -1,11 +1,11 @@
 use std::ops::Range;
 
 use crate::column::ColumnInfo;
-use crate::dialect::SqlDialect;
+use crate::dialect::{InsertConflict, SqlDialect};
 use crate::dml::{BuildSqlError, build_insert, build_multi_row_insert};
 use crate::edit::CellInput;
 use crate::meta::TableRef;
-use crate::statement::GuardedStatement;
+use crate::save::insert_step;
 use crate::value::Value;
 use crate::{ForeignKeyMode, WriteBatch, WriteKind};
 
@@ -27,8 +27,11 @@ pub struct ImportPlan {
 /// statement; a row whose fields left a different set of columns to the
 /// server starts a new one.
 ///
-/// Steps are unguarded, as a grid insert is: an INSERT has no row it
-/// could have missed, and SQL Server counts trigger rows in its own.
+/// Steps are guarded as a grid insert is: an INSERT has no row it could
+/// have missed, and SQL Server counts trigger rows in its own, so only
+/// an engine that skips a taken key checks the count. An engine that
+/// replaces a taken key writes a row per step, each after a probe for
+/// its key.
 pub fn plan_import(
     dialect: &dyn SqlDialect,
     table: &TableRef,
@@ -36,6 +39,10 @@ pub fn plan_import(
     rows: Vec<Vec<CellInput>>,
 ) -> Result<ImportPlan, BuildSqlError> {
     let limits = dialect.insert_batch_limits();
+    let rows_per_step = match dialect.capabilities().insert_conflict {
+        InsertConflict::Replaced => 1,
+        InsertConflict::Refused | InsertConflict::Skipped => limits.rows,
+    };
     let infos: Vec<ColumnInfo> = columns.iter().map(|column| column.info.clone()).collect();
     let mut steps = Vec::new();
     let mut step_rows = Vec::new();
@@ -45,9 +52,13 @@ pub fn plan_import(
         let width = shape.iter().filter(|written| **written).count();
         if width == 0 {
             // Nothing but defaults has no VALUES list to share.
-            steps.push(GuardedStatement::unguarded(build_insert(
-                dialect, table, &infos, &cells,
-            )?));
+            let statement = build_insert(dialect, table, &infos, &cells)?;
+            steps.push(insert_step(
+                dialect,
+                table,
+                infos.iter().zip(cells.iter().map(CellInput::value)),
+                statement,
+            )?);
             step_rows.push(first..first + 1);
             continue;
         }
@@ -55,7 +66,7 @@ pub fn plan_import(
         let mut group = vec![written_values(cells, &shape)];
         while let Some((_, next)) = rows.peek() {
             let size = row_bytes(next);
-            let fits = group.len() < limits.rows
+            let fits = group.len() < rows_per_step
                 && (group.len() + 1) * width <= limits.params
                 && bytes + size <= limits.value_bytes
                 && written_columns(&infos, next) == shape;
@@ -73,9 +84,17 @@ pub fn plan_import(
             .zip(&shape)
             .filter_map(|(column, written)| written.then_some(column))
             .collect();
-        steps.push(GuardedStatement::unguarded(build_multi_row_insert(
-            dialect, table, &written, group,
-        )?));
+        let probed_row = match dialect.capabilities().insert_conflict {
+            InsertConflict::Replaced => group.first().cloned().unwrap_or_default(),
+            InsertConflict::Refused | InsertConflict::Skipped => Vec::new(),
+        };
+        let statement = build_multi_row_insert(dialect, table, &written, group)?;
+        steps.push(insert_step(
+            dialect,
+            table,
+            written.iter().copied().zip(probed_row.iter().map(Some)),
+            statement,
+        )?);
         step_rows.push(first..first + count);
     }
     Ok(ImportPlan {
@@ -143,6 +162,7 @@ mod tests {
                 primary_key: false,
                 is_auto_increment: false,
                 is_generated: false,
+                partition_scoped: false,
                 default: ColumnDefault::None,
                 comment: None,
             },
@@ -209,6 +229,28 @@ mod tests {
             ]
         );
         assert_eq!(plan.step_rows, vec![0..2]);
+    }
+
+    #[test]
+    fn an_engine_that_replaces_a_taken_key_imports_a_row_per_probed_step() {
+        let dialect = TestDialect::default().with_insert_conflict(InsertConflict::Replaced);
+        let mut columns = columns();
+        columns[0].info.primary_key = true;
+
+        let plan = plan_import(&dialect, &table(), &columns, vec![row(1, "ada"), row(2, "grace")]).expect("the plan");
+
+        assert_eq!(plan.step_rows, vec![0..1, 1..2]);
+        let probes: Vec<_> = plan
+            .batch
+            .steps
+            .iter()
+            .map(|step| {
+                step.guard
+                    .probe()
+                    .map(|(probe, rows)| (probe.params()[0].value().clone(), rows))
+            })
+            .collect();
+        assert_eq!(probes, vec![Some((Value::Int(1), 0)), Some((Value::Int(2), 0))]);
     }
 
     #[test]

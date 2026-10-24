@@ -415,6 +415,7 @@ jobs:
           - tablepro-driver-mysql
           - tablepro-driver-mssql
           - tablepro-driver-clickhouse
+          - tablepro-driver-cassandra
           - tablepro-driver-redis
           - tablepro-ssh
           - tablepro-test-fixtures
@@ -457,6 +458,10 @@ jobs:
           - package: tablepro-driver-clickhouse
             release: clickhouse-26.3
             clickhouse: "26.3"
+          - package: tablepro-driver-cassandra
+            release: cassandra-4.0-scylla-2025.1
+            cassandra: "4.0"
+            scylla: "2025.1"
           - package: tablepro-driver-redis
             release: redis-7.4
             redis: "7.4"
@@ -494,6 +499,8 @@ jobs:
           TABLEPRO_TEST_MARIADB: ${{ matrix.mariadb }}
           TABLEPRO_TEST_MSSQL: ${{ matrix.mssql }}
           TABLEPRO_TEST_CLICKHOUSE: ${{ matrix.clickhouse }}
+          TABLEPRO_TEST_CASSANDRA: ${{ matrix.cassandra }}
+          TABLEPRO_TEST_SCYLLA: ${{ matrix.scylla }}
           TABLEPRO_TEST_REDIS: ${{ matrix.redis }}
           TABLEPRO_TEST_OPENSSH: ${{ matrix.openssh }}
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only

@@ -57,6 +57,7 @@ fn draft_problem_text(problem: &DraftProblem) -> String {
     match problem {
         DraftProblem::EmptyTableName => crate::i18n::gettext("Table name is required."),
         DraftProblem::NoColumns => crate::i18n::gettext("At least one column is required."),
+        DraftProblem::NoPrimaryKey => crate::i18n::gettext("A primary key is required."),
         DraftProblem::EmptyColumnName => crate::i18n::gettext("Every column needs a name."),
         DraftProblem::DuplicateColumnName(name) => {
             crate::i18n::gettext_f("Duplicate column name: {name}", &[("name", name)])
@@ -100,6 +101,12 @@ pub fn build_error_text(error: &BuildDdlError) -> String {
         BuildDdlError::Unsupported(DdlOperation::AddRequiredColumnWithoutDefault) => crate::i18n::gettext(
             "A NOT NULL column needs a default here, since the rows already in the table need a value.",
         ),
+        BuildDdlError::Unsupported(DdlOperation::ColumnDefault) => {
+            crate::i18n::gettext("This database has no column defaults.")
+        }
+        BuildDdlError::Unsupported(DdlOperation::RequiredColumn) => {
+            crate::i18n::gettext("This database can make only primary key columns NOT NULL.")
+        }
         BuildDdlError::Unsupported(_) => crate::i18n::gettext("This database can't make this change."),
         BuildDdlError::InvalidType { column, error } => crate::i18n::gettext_f(
             "The type of column {column} can't be used. {reason}",
