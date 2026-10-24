@@ -82,9 +82,13 @@ The native UI sweep used the extracted package binary and the ten saved Manual L
 | Redis DB 1 | Opened DB 1; 1 key rendered. |
 | SQLite | Opened `people`; 4 rows rendered, including null and mixed-value examples. |
 
+After switching through all ten profiles, I sampled the same process for another 31.162 seconds with SQL Server selected and an editor tab open. RSS held at 185.6 MiB, PSS at about 156.5 MiB, Private Dirty at 82.0 MiB, CPU increased by 0.02 seconds, and block-read/write counters did not change. This is the cumulative warm-process state after the full UI sweep, not an engine-isolated memory cost.
+
+- [Post-sweep process samples](native-current-head-multi-engine-after-sweep-31s.json)
+
 ## Local storage footprint
 
-After the PostgreSQL, MySQL and SQL Server sessions, BookiE's user directories occupied 282,903 bytes in `~/.config/tablepro`, 540,234 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. These include this machine's saved profiles and application data; they do not include the Docker database volumes. The current Arch package is 29,886,373 bytes compressed, the extracted application binary is 42,385,896 bytes, and the package metadata reports 72.61 MiB installed size. The package is awaiting installation, so its installed footprint has not been measured from pacman's post-install state.
+After the ten-profile UI sweep, `du -sb` reported 125,812 bytes in `~/.config/tablepro`, 597,504 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. The share directory contained a 596,935-byte audit journal; the config directory contained a 5,121-byte connection file and SQLite query-history database/WAL/SHM files. The earlier capture before the full sweep was 282,903 bytes in config and 540,234 bytes in share. SQLite history files can change size as the WAL is checkpointed. These figures cover this machine's saved profiles and app data; they exclude the Docker database volumes. The current Arch package is 29,886,373 bytes compressed, the extracted application binary is 42,385,896 bytes, and package metadata reports 72.61 MiB installed size. Installation is still pending, so the new package's actual installed footprint has not been measured with pacman.
 
 ## Product finding
 
