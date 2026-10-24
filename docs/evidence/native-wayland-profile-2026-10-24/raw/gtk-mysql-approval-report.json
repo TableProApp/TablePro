@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "commit": "b5dafaef164d19bf014ce5b286259ac630dfcd34",
+  "working_tree": "M docs/decisions/0011-paged-query-results.md\n M docs/known-limitations.md\n?? docs/evidence/native-wayland-profile-2026-10-24/",
+  "tracked_diff_sha256": "f327dc08fceb747917b2b6442e7204209ecee124e579c7b1c76661f750afae59",
+  "started_utc": "2026-10-24T15:50:49.942385+00:00",
+  "status": "passed",
+  "layers": {
+    "gtk-mysql-approval": {
+      "status": "passed",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-mysql-approval.sh"
+          ],
+          "timeout_seconds": 900,
+          "evidence": "exit",
+          "status": "passed",
+          "log": "gtk-mysql-approval-1.log",
+          "exit_code": 0,
+          "seconds": 19.057
+        }
+      ]
+    }
+  },
+  "finished_utc": "2026-10-24T15:51:09.000444+00:00"
+}

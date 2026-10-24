@@ -27,10 +27,13 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   1.28 GiB across four pinned results and one active stream, reaching 1,325 MiB
   RSS ([record](evidence/stream-retention-synthetic-2026-10-16/README.md)).
   Paging and ownership code changed after that run, so it is historical evidence,
-  not a current memory bound. An October 24 native run in a worktree with the
-  byte-budget change navigated all 100,000 rows and showed a 25.3 MiB peak RSS
-  increase over 31 seconds. The [capture](evidence/built-head-2026-10-24/README.md)
-  lacks the worktree commit and binary hash, so it is not exact-head acceptance.
+  not a current memory bound. An October 24 installed Omarchy profile from
+  package build source `d9b5aaca` navigated a narrow 100,000-row result back to
+  rows 1–5,000. A result with 2,048 text characters per row retained only rows
+  70,001–100,000; Previous could not reach earlier rows. Peak process RSS was
+  145,216 KiB for the narrow query and 298,024 KiB for the wide query in their
+  respective samples. The [installed profile](evidence/native-wayland-profile-2026-10-24/README.md)
+  records the binary hash, environment, page screenshots and sampling limits.
   This single-query result does not measure the pinned-stream stress case, normal
   workloads or the complete process ceiling. Other engines and unsupported
   statement shapes remain materialized. Broader resource, lifecycle and

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "commit": "b5dafaef164d19bf014ce5b286259ac630dfcd34",
+  "working_tree": "?? docs/evidence/native-wayland-profile-2026-10-24/",
+  "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "started_utc": "2026-10-24T15:44:48.649119+00:00",
+  "status": "passed",
+  "layers": {
+    "gtk-clickhouse": {
+      "status": "passed",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-gtk-clickhouse.sh"
+          ],
+          "timeout_seconds": 1500,
+          "evidence": "exit",
+          "status": "passed",
+          "log": "gtk-clickhouse-1.log",
+          "exit_code": 0,
+          "seconds": 324.718
+        }
+      ]
+    }
+  },
+  "finished_utc": "2026-10-24T15:50:13.367751+00:00"
+}

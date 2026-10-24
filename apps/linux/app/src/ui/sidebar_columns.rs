@@ -204,11 +204,7 @@ impl SidebarColumns {
         };
         self.message(&crate::tr!("Loading fields…"));
         let (info, serial, cancel) = (info.clone(), self.serial, self.cancel.clone());
-        sender.command(move |_, shutdown| {
-            shutdown
-                .register(async move { source.fetch(info, serial, cancel).await })
-                .drop_on_shutdown()
-        });
+        sender.oneshot_command(async move { source.fetch(info, serial, cancel).await });
     }
 
     pub(super) fn apply(&mut self, reply: ColumnReply) {

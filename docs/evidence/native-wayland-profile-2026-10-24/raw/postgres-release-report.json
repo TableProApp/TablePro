@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "commit": "b5dafaef164d19bf014ce5b286259ac630dfcd34",
+  "working_tree": "M docs/decisions/0011-paged-query-results.md\n M docs/known-limitations.md\n?? docs/evidence/native-wayland-profile-2026-10-24/",
+  "tracked_diff_sha256": "f327dc08fceb747917b2b6442e7204209ecee124e579c7b1c76661f750afae59",
+  "started_utc": "2026-10-24T15:56:12.078251+00:00",
+  "status": "passed",
+  "layers": {
+    "postgres-release": {
+      "status": "passed",
+      "steps": [
+        {
+          "argv": [
+            "bash",
+            "scripts/test-postgres-release.sh"
+          ],
+          "timeout_seconds": 1200,
+          "evidence": "rust-tests",
+          "status": "passed",
+          "log": "postgres-release-1.log",
+          "exit_code": 0,
+          "seconds": 167.882
+        }
+      ]
+    }
+  },
+  "finished_utc": "2026-10-24T15:58:59.960777+00:00"
+}

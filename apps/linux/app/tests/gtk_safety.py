@@ -1598,6 +1598,20 @@ def sidebar_tables_group_collapses_and_expands(database, _base):
 sidebar_tables_group_collapses_and_expands.environment = "local"
 
 
+def expanding_a_sidebar_table_loads_its_columns(database, _base):
+    wait_for_node_showing("safety_items", True)
+    row = wait_for_node(name="safety_items", role=pyatspi.ROLE_LIST_ITEM)
+    toggle = find_within(row, role=pyatspi.ROLE_TOGGLE_BUTTON)
+    if toggle is None:
+        raise AssertionError(f"the column toggle is missing from the table row:\n{accessible_snapshot()}")
+    invoke(toggle)
+    wait_within(row, name="id")
+    wait_within(row, name="note")
+
+
+expanding_a_sidebar_table_loads_its_columns.environment = "local"
+
+
 def press_x11_text(text):
     for character in text:
         name = {" ": "space", "_": "underscore", "-": "minus"}.get(character, character)
@@ -2728,6 +2742,7 @@ def main():
         skipped_restored_tabs_leave_a_usable_empty_workspace,
         switching_one_window_leaves_the_other_windows_edits,
         sidebar_tables_group_collapses_and_expands,
+        expanding_a_sidebar_table_loads_its_columns,
         restart_with_a_deleted_connection_opens_the_welcome_list,
         a_bundle_from_one_profile_imports_unchanged_into_an_empty_second_profile,
     ]
