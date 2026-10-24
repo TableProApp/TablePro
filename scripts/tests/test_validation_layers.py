@@ -19,7 +19,7 @@ class LayerRunnerTests(unittest.TestCase):
         return {"argv": [sys.executable, "-c", code], "evidence": evidence, "timeout_seconds": timeout}
 
     def execute(self, step):
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, tempfile.TemporaryDirectory() as evidence:
             return runner.execute(step, Path(temporary) / "step.log")
 
     def test_catalog_has_real_entrypoints_and_unique_steps(self):
@@ -29,6 +29,83 @@ class LayerRunnerTests(unittest.TestCase):
                 for arg in step["argv"]:
                     if arg.startswith("scripts/"):
                         self.assertTrue((ROOT / arg).exists(), arg)
+
+    def test_untracked_source_contents_change_evidence_identity_but_ignored_outputs_do_not(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            (root / ".gitignore").write_text("target/\n")
+            (root / "tracked.txt").write_text("baseline\n")
+            subprocess.run(["git", "add", ".gitignore", "tracked.txt"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "baseline"], cwd=root, check=True)
+            source = root / "crates" / "new-input.rs"
+            source.parent.mkdir()
+            source.write_text("first\n")
+            output = root / "target" / "cache.bin"
+            output.parent.mkdir()
+            output.write_bytes(b"ignored build output")
+
+            status = subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True)
+            paths, first_digest = runner.untracked_input_identity(status, root)
+            self.assertEqual(paths, ["crates/new-input.rs"])
+            self.assertIsNotNone(first_digest)
+
+            output.write_bytes(b"different ignored build output")
+            paths_after_output_change, output_digest = runner.untracked_input_identity(status, root)
+            self.assertEqual(paths_after_output_change, paths)
+            self.assertEqual(output_digest, first_digest)
+
+            source.write_text("second\n")
+            paths_after_source_change, second_digest = runner.untracked_input_identity(status, root)
+            self.assertEqual(paths_after_source_change, paths)
+            self.assertNotEqual(second_digest, first_digest)
+
+            source.chmod(0o755)
+            executable_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True)
+            executable_paths, executable_digest = runner.untracked_input_identity(executable_status, root)
+            self.assertEqual(executable_paths, paths)
+            self.assertNotEqual(executable_digest, second_digest)
+
+            moved_source = root / "crates" / "renamed-input.rs"
+            source.rename(moved_source)
+            renamed_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True)
+            renamed_paths, renamed_digest = runner.untracked_input_identity(renamed_status, root)
+            self.assertEqual(renamed_paths, ["crates/renamed-input.rs"])
+            self.assertNotEqual(renamed_digest, executable_digest)
+
+    def test_clean_tree_skips_untracked_input_scan(self):
+        with patch.object(runner.subprocess, "check_output") as check_output:
+            self.assertEqual(runner.untracked_input_identity("", ROOT), ([], None))
+        check_output.assert_not_called()
+
+    def test_report_identity_tracks_untracked_source_content(self):
+        with tempfile.TemporaryDirectory() as temporary, tempfile.TemporaryDirectory() as evidence:
+            root = Path(temporary)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+            (root / "tracked.txt").write_text("baseline\n")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "baseline"], cwd=root, check=True)
+            source = root / "new-input.rs"
+            source.write_text("first\n")
+            layers = {"fixture": {"steps": [self.step("print('ok')")]}}
+            evidence_root = Path(evidence)
+
+            with patch.object(runner, "ROOT", root):
+                first_directory = evidence_root / "first-evidence"
+                self.assertEqual(runner.run_layers(["fixture"], layers, first_directory), 0)
+                first_report = json.loads((first_directory / "report.json").read_text())
+                source.write_text("second\n")
+                second_directory = evidence_root / "second-evidence"
+                self.assertEqual(runner.run_layers(["fixture"], layers, second_directory), 0)
+                second_report = json.loads((second_directory / "report.json").read_text())
+
+            self.assertEqual(first_report["untracked_inputs"], ["new-input.rs"])
+            self.assertEqual(second_report["untracked_inputs"], ["new-input.rs"])
+            self.assertNotEqual(first_report["untracked_inputs_sha256"], second_report["untracked_inputs_sha256"])
 
     def test_nonzero_exit_cannot_be_hidden_by_success_text(self):
         result = self.execute(self.step("print('test result: ok. 1 passed; 0 failed;'); raise SystemExit(7)", "rust-tests"))
