@@ -116,6 +116,7 @@ public struct SQLContext: Sendable {
     public let prefix: String
     public private(set) var prefixRange: Range<Int>     // UTF-16 offsets into the analyzed text
     public let dotPrefix: String?          // "u" in "u.name"
+    public let isDotPrefixQuoted: Bool     // `"hr".` names the schema as written, case and all
     public private(set) var tableReferences: [TableReference]
     public let isInsideString: Bool
     public let isInsideComment: Bool
@@ -135,6 +136,7 @@ public struct SQLContext: Sendable {
         prefix: String,
         prefixRange: Range<Int>,
         dotPrefix: String?,
+        isDotPrefixQuoted: Bool = false,
         tableReferences: [TableReference],
         isInsideString: Bool,
         isInsideComment: Bool,
@@ -152,6 +154,7 @@ public struct SQLContext: Sendable {
         self.prefix = prefix
         self.prefixRange = prefixRange
         self.dotPrefix = dotPrefix
+        self.isDotPrefixQuoted = isDotPrefixQuoted
         self.tableReferences = tableReferences
         self.isInsideString = isInsideString
         self.isInsideComment = isInsideComment
@@ -332,7 +335,7 @@ public final class SQLContextAnalyzer {
             break
         }
 
-        let (prefix, prefixStart, dotPrefix) = extractPrefix(in: text, cursor: cursor, grammar: grammar)
+        let (prefix, prefixStart, dotPrefix, isDotPrefixQuoted) = extractPrefix(in: text, cursor: cursor, grammar: grammar)
 
         var tableReferences = extractTableReferences(from: text.forReferences)
 
@@ -391,6 +394,7 @@ public final class SQLContextAnalyzer {
             prefix: prefix,
             prefixRange: (statementOffset + prefixStart)..<safePosition,
             dotPrefix: isCastTarget ? nil : dotPrefix,
+            isDotPrefixQuoted: !isCastTarget && isDotPrefixQuoted,
             tableReferences: tableReferences,
             isInsideString: false,
             isInsideComment: false,
@@ -743,7 +747,7 @@ public final class SQLContextAnalyzer {
         in text: LexedStatement,
         cursor: Int,
         grammar: SQLLexicalGrammar
-    ) -> (prefix: String, start: Int, dotPrefix: String?) {
+    ) -> (prefix: String, start: Int, dotPrefix: String?, isDotPrefixQuoted: Bool) {
         let ns = text.original
         let start: Int
         let tokenStart: Int
@@ -759,23 +763,23 @@ public final class SQLContextAnalyzer {
         let prefix = SQLTokenBoundary.matchText(of: ns.substring(with: NSRange(location: start, length: cursor - start)))
 
         guard tokenStart > 0, ns.character(at: tokenStart - 1) == Self.dot else {
-            return (prefix, start, nil)
+            return (prefix, start, nil, false)
         }
         let qualifierEnd = tokenStart - 1
 
         if let quotedStart = text.quotedIdentifierStarts[qualifierEnd] {
             let raw = ns.substring(with: NSRange(location: quotedStart, length: qualifierEnd - quotedStart))
-            return (prefix, start, Self.unquoted(raw))
+            return (prefix, start, Self.unquoted(raw), true)
         }
 
         let qualifierStart = SQLTokenBoundary.segmentStart(in: ns, endingAt: qualifierEnd, grammar: grammar)
         guard qualifierStart < qualifierEnd else {
-            return (prefix, start, nil)
+            return (prefix, start, nil, false)
         }
 
         let qualifierRange = NSRange(location: qualifierStart, length: qualifierEnd - qualifierStart)
         let dotPrefix = SQLTokenBoundary.matchText(of: ns.substring(with: qualifierRange))
-        return (prefix, start, dotPrefix)
+        return (prefix, start, dotPrefix, false)
     }
 
     // MARK: - Table References

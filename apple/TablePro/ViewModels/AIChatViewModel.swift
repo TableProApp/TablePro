@@ -108,6 +108,11 @@ final class AIChatViewModel: ObservableObject {
     var inFlightColumnFetches: [String: Task<Void, Never>] = [:]
     var inFlightSchemaLoad: Task<Void, Never>?
     var relevantTableNames: [String] = []
+    var schemaRanker: @Sendable (AISchemaRankingInput) -> [String] = AISchemaContext.relevantTableNames(for:)
+    @Published var tableMentions = TableMentionIndex.empty
+    var tableMentionSource: [TableInfo] = []
+    var tableMentionBuild: Task<Void, Never>?
+    var tableMentionObservation: AnyCancellable?
     var bulkColumnReadTableCount: Int?
     var schemaCacheScope: String?
     // A custom command's message carries the schema it rendered, so its tables are ranked by the
@@ -373,6 +378,10 @@ final class AIChatViewModel: ObservableObject {
         inFlightSchemaLoad?.cancel()
         inFlightSchemaLoad = nil
         relevantTableNames = []
+        tableMentionBuild?.cancel()
+        tableMentionBuild = nil
+        tableMentionSource = []
+        tableMentions = .empty
         bulkColumnReadTableCount = nil
         schemaCacheScope = nil
         schemaQuestionOverride = nil

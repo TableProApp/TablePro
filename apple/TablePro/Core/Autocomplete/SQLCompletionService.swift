@@ -82,7 +82,8 @@ final class SQLCompletionService: QueryCompletionService {
             items: result.items,
             candidates: result.candidates,
             replacementRange: NSRange(context.prefixRange),
-            quotedName: context.quotedName
+            quotedName: context.quotedName,
+            candidatesTruncated: result.candidatesTruncated
         )
     }
 }

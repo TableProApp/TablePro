@@ -94,12 +94,9 @@ struct SidebarView: View {
             browsedSchema: coordinator?.toolbarState.currentSchema,
             searchText: searchText,
             hiddenSchemas: settingsManager.general.showSystemContainers ? [] : systemSchemas,
-            allSchemaTables: treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database),
+            listingMatches: viewModel.schemaListingMatches(database: database, searchText: searchText),
             keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: database)?
                 .union(pending),
-            covered: DatabaseTreeFilter.coveredSchemas(
-                treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: database)
-            ),
             loadedContent: { schema, listingMatches in
                 DatabaseTreeFilter.loadedObjectBuckets(
                     in: treeMetadata,

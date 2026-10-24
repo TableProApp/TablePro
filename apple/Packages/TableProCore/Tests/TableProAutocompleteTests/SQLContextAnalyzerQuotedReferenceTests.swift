@@ -106,6 +106,13 @@ struct SQLContextAnalyzerQuotedReferenceTests {
         #expect(quoted.prefix == "ord")
     }
 
+    @Test("A quoted qualifier says it was quoted, and a bare one does not")
+    func qualifierQuotingIsReported() {
+        #expect(context("SELECT * FROM \"hr\".", on: "Oracle").isDotPrefixQuoted)
+        #expect(!context("SELECT * FROM hr.", on: "Oracle").isDotPrefixQuoted)
+        #expect(context("SELECT * FROM [dbo].", on: "SQL Server").isDotPrefixQuoted)
+    }
+
     @Test("A dot inside a quoted name is no qualifier")
     func dotInsideAQuotedName() {
         let query = "SELECT * FROM \"a.b\""

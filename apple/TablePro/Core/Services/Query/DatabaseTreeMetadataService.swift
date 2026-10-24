@@ -411,6 +411,11 @@ final class DatabaseTreeMetadataService: ObservableObject, CatalogChangeTarget {
         allSchemaTablesFreshness.revision(for: DatabaseKey(connectionId: connectionId, database: database))
     }
 
+    func isAllSchemaTablesCurrent(connectionId: UUID, database: String) -> Bool {
+        isConnected(connectionId)
+            && allSchemaTablesFreshness.isCurrent(DatabaseKey(connectionId: connectionId, database: database))
+    }
+
     /// System schemas stay out, as they stay out of the tree until Show System is on.
     private func fetchAllSchemaTables(
         _ key: DatabaseKey,

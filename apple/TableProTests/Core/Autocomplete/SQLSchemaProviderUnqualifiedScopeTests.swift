@@ -80,6 +80,42 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         #expect(!bare.contains { $0.insertText.localizedCaseInsensitiveContains("timesheet") })
     }
 
+    @Test("On an engine without schemas, the scope's own database and a dot read its loaded tables")
+    func ownDatabaseQualifierReadsTheLoadedTables() async {
+        let script = ScriptedFetch<[TableInfo]>([.success([TestFixtures.makeTableInfo(name: "old_orders")])])
+        let driver = MockDatabaseDriver(connection: TestFixtures.makeConnection(type: .mysql))
+        let provider = SQLSchemaProvider(metadataSource: Self.source(script))
+        await provider.resetForDatabase(
+            "shop", tables: [TestFixtures.makeTableInfo(name: "orders")], driver: driver, connection: driver.connection
+        )
+        await provider.setNamespaces(schemas: [], databases: ["shop", "archive"])
+
+        let own = await provider.tableCompletionItems(inSchema: "SHOP").map(\.label)
+        let fetchesBeforeOther = script.calls
+        let other = await provider.tableCompletionItems(inSchema: "archive").map(\.label)
+
+        #expect(own == ["orders"])
+        #expect(fetchesBeforeOther == 0)
+        #expect(other == ["old_orders"])
+    }
+
+    @Test("Another database and a dot complete that database's tables on an engine without schemas")
+    func databaseQualifierCompletesItsTables() async {
+        let script = ScriptedFetch<[TableInfo]>([.success([TestFixtures.makeTableInfo(name: "old_orders")])])
+        let driver = MockDatabaseDriver(connection: TestFixtures.makeConnection(type: .mysql))
+        let schemaProvider = SQLSchemaProvider(metadataSource: Self.source(script))
+        await schemaProvider.resetForDatabase(
+            "shop", tables: [TestFixtures.makeTableInfo(name: "orders")], driver: driver, connection: driver.connection
+        )
+        await schemaProvider.setNamespaces(schemas: [], databases: ["shop", "archive"])
+        let completion = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: .mysql)
+
+        let text = "SELECT * FROM archive."
+        let items = await completion.getCompletions(text: text, cursorPosition: (text as NSString).length).items
+
+        #expect(items.map(\.label) == ["old_orders"])
+    }
+
     @Test("A bare name before a dot resolves only to a table the tab can name without its schema")
     func bareNameResolvesWithinTheUnqualifiedScope() async {
         let driver = Self.postgresDriver()
@@ -138,6 +174,7 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
     func emptySchemaIsFetchedOnce() async {
         let script = ScriptedFetch<[TableInfo]>([.success([])])
         let provider = SQLSchemaProvider(metadataSource: Self.source(script))
+        await provider.setNamespaces(schemas: ["archive"], databases: [])
 
         let first = await provider.tableCompletionItems(inSchema: "archive")
         let second = await provider.tableCompletionItems(inSchema: "archive")
@@ -145,6 +182,81 @@ struct SQLSchemaProviderUnqualifiedScopeTests {
         #expect(first.isEmpty)
         #expect(second.isEmpty)
         #expect(script.calls == 1)
+    }
+
+    @Test("An empty answer for a schema the catalog does not list is asked again")
+    func emptyAnswerForAnUnlistedSchemaIsAskedAgain() async {
+        let script = ScriptedFetch<[TableInfo]>([.success([]), .success([Self.timesheet])])
+        let provider = SQLSchemaProvider(metadataSource: Self.source(script))
+
+        let first = await provider.tableCompletionItems(inSchema: "attendance").map(\.label)
+        let second = await provider.tableCompletionItems(inSchema: "attendance").map(\.label)
+
+        #expect(first.isEmpty)
+        #expect(second == ["timesheet"])
+        #expect(script.calls == 2)
+    }
+
+    @Test("A schema typed in another case fetches the catalog's spelling, which either case then reads")
+    func schemaTypedInAnotherCaseFetchesTheCatalogSpelling() async {
+        let table = TestFixtures.makeTableInfo(name: "LC_T001", schema: "LC_S050")
+        let asked = SchemaSpellingLog()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            fetchSchemaTables: { schema in
+                await asked.append(schema)
+                return schema == "LC_S050" ? [table] : []
+            }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.setNamespaces(schemas: ["LC_S050"], databases: [])
+
+        let lower = await provider.tableCompletionItems(inSchema: "lc_s050").map(\.label)
+        let upper = await provider.tableCompletionItems(inSchema: "LC_S050").map(\.label)
+
+        #expect(lower == ["LC_T001"])
+        #expect(upper == ["LC_T001"])
+        #expect(await asked.spellings == ["LC_S050"])
+    }
+
+    @Test("A quoted schema in another case fetches the name as written, which the catalog does not hold")
+    func quotedSchemaKeepsItsSpelling() async {
+        let table = TestFixtures.makeTableInfo(name: "EMPLOYEES", schema: "HR")
+        let asked = SchemaSpellingLog()
+        let source = SQLSchemaProvider.ColumnMetadataSource(
+            fetchColumns: { _, _ in [] },
+            fetchAllColumns: { [:] },
+            fetchSchemaTables: { schema in
+                await asked.append(schema)
+                return schema == "HR" ? [table] : []
+            }
+        )
+        let provider = SQLSchemaProvider(metadataSource: source)
+        await provider.setNamespaces(schemas: ["HR"], databases: [])
+
+        let quoted = await provider.tableCompletionItems(inSchema: "hr", isQuoted: true).map(\.label)
+        let bare = await provider.tableCompletionItems(inSchema: "hr", isQuoted: false).map(\.label)
+
+        #expect(quoted.isEmpty)
+        #expect(bare == ["EMPLOYEES"])
+        #expect(await asked.spellings == ["hr", "HR"])
+    }
+
+    @Test("Table items are built once per table list")
+    func tableItemsAreBuiltOncePerTableList() async {
+        let provider = SQLSchemaProvider()
+        await provider.updateTables([TestFixtures.makeTableInfo(name: "orders")])
+
+        let firstIDs = await provider.tableCompletionItems().map(\.id)
+        let secondIDs = await provider.tableCompletionItems().map(\.id)
+        await provider.updateTables([TestFixtures.makeTableInfo(name: "orders"), TestFixtures.makeTableInfo(name: "users")])
+        let rewritten = await provider.tableCompletionItems()
+        let rewrittenLabels = rewritten.map(\.label)
+
+        #expect(secondIDs == firstIDs)
+        #expect(rewrittenLabels == ["orders", "users"])
+        #expect(rewritten.first?.id != firstIDs.first)
     }
 
     @Test("A failed fetch of another schema's tables is asked again")
@@ -361,5 +473,13 @@ private final class ScriptedFetch<Value: Sendable>: @unchecked Sendable {
         }
         callWaiters.append((count, continuation))
         lock.unlock()
+    }
+}
+
+private actor SchemaSpellingLog {
+    private(set) var spellings: [String] = []
+
+    func append(_ spelling: String) {
+        spellings.append(spelling)
     }
 }

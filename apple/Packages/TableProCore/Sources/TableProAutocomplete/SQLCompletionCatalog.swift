@@ -6,6 +6,7 @@ public protocol SQLCompletionCatalog: Sendable {
     func columnCompletionItems(for tableName: String, schema: String?) async -> [SQLCompletionItem]
     func tableCompletionItems() async -> [SQLCompletionItem]
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem]
+    func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem]
     func schemaCompletionItems() async -> [SQLCompletionItem]
     func namespaceCompletionItems() async -> [SQLCompletionItem]
     func isKnownSchema(_ name: String) async -> Bool
@@ -13,4 +14,10 @@ public protocol SQLCompletionCatalog: Sendable {
     func allowedValues(forColumn column: String, in references: [TableReference]) async -> [String]
     func allColumnsInScope(for references: [TableReference]) async -> [SQLCompletionItem]
     func allColumnsFromCachedTables() async -> [SQLCompletionItem]
+}
+
+public extension SQLCompletionCatalog {
+    func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem] {
+        await tableCompletionItems(inSchema: schema)
+    }
 }

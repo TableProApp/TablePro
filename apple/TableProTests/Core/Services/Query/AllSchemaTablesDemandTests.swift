@@ -114,15 +114,65 @@ struct AllSchemaTablesDemandTests {
         await disconnect(connection)
     }
 
-    @Test("Starting a new search asks again whatever was asked before")
+    @Test("Starting a new search asks again for a listing that is not current, whatever was asked before")
     func resetForgetsEarlierRequests() async {
         let connection = await connectedListing()
+        service.markAllSchemaTablesChanged([
+            DatabaseTreeMetadataService.DatabaseKey(connectionId: connection.id, database: connection.database)
+        ])
         var demand = AllSchemaTablesDemand()
         demand.noteRequested(connectionId: connection.id, database: connection.database, service: service)
+        #expect(!demand.needsRequest(connectionId: connection.id, database: connection.database, service: service))
 
         demand.reset()
 
         #expect(demand.needsRequest(connectionId: connection.id, database: connection.database, service: service))
+        await disconnect(connection)
+    }
+
+    // Open Quickly builds a fresh demand every time it opens, so it never asked for the listing it finds.
+    @Test("A current listing is not asked for by a reader that never asked")
+    func currentListingIsNotAskedForAgain() async {
+        let connection = await connectedListing()
+
+        #expect(!AllSchemaTablesDemand().needsRequest(
+            connectionId: connection.id, database: connection.database, service: service
+        ))
+        await disconnect(connection)
+    }
+
+    @Test("A listing a catalog change overtook is asked for by a reader that never asked")
+    func overtakenListingIsAskedFor() async {
+        let connection = await connectedListing()
+        service.markAllSchemaTablesChanged([
+            DatabaseTreeMetadataService.DatabaseKey(connectionId: connection.id, database: connection.database)
+        ])
+
+        #expect(AllSchemaTablesDemand().needsRequest(
+            connectionId: connection.id, database: connection.database, service: service
+        ))
+        await disconnect(connection)
+    }
+
+    @Test("A current listing that could not list a schema is still asked for, so that schema is read again")
+    func unlistedSchemaIsAskedForAgain() async throws {
+        let connection = TestFixtures.makeConnection(type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.schemasToReturn = ["public", "attendance"]
+        driver.schemaTablesToReturn = ["public": [TestFixtures.makeTableInfo(name: "users", schema: "public")]]
+        driver.schemaTablesErrors = ["attendance": NSError(domain: "test", code: 1)]
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        await service.loadAllSchemaTables(connectionId: connection.id, database: connection.database)
+        let listing = try #require(
+            service.allSchemaTablesLoadState(connectionId: connection.id, database: connection.database).value
+        )
+        #expect(listing.unlistedSchemas == ["attendance"])
+
+        #expect(AllSchemaTablesDemand().needsRequest(
+            connectionId: connection.id, database: connection.database, service: service
+        ))
         await disconnect(connection)
     }
 }

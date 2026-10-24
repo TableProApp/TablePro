@@ -62,6 +62,7 @@ public final class SuggestionController: NSWindowController {
 
         model.onApply = { [weak self] in self?.close() }
         model.onBackgroundTap = { [weak self] in self?.close() }
+        model.onRequestClose = { [weak self] in self?.close() }
 
         NotificationCenter.default.addObserver(
             self,

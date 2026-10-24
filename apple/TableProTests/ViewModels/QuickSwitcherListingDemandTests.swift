@@ -38,7 +38,7 @@ struct QuickSwitcherListingDemandTests {
     private func needsListing(recent: [String], resolved: Set<String>, limit: Int = 10) -> Bool {
         QuickSwitcherViewModel.recentNeedsListing(
             recentKeys: recent,
-            resolvedKeys: resolved,
+            isResolved: resolved.contains,
             isTableKey: { QuickSwitcherFrecencyKey.isTable($0, in: qualifier) },
             limit: limit
         )
@@ -140,6 +140,113 @@ struct QuickSwitcherListingDemandTests {
         try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
 
         #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        await disconnect(connection)
+    }
+
+    @Test("The next Open Quickly finds a current listing and neither reads it again nor rebuilds its rows")
+    func currentListingIsNotAskedForOnReopen() async throws {
+        let (connection, driver) = connect()
+        let first = makeSwitcher(connection)
+        await first.loadItems(databaseType: .pglite, browseSchema: "public")
+        first.searchText = "time"
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !first.isLoadingTables }
+
+        let second = makeSwitcher(connection)
+        await second.loadItems(databaseType: .pglite, browseSchema: "public")
+        await afterQueuedMainWork()
+        let opened = second.tableItemsBuildCount
+        second.searchText = "time"
+
+        #expect(!second.isLoadingTables)
+        await second.flushPendingFilter()
+        await afterQueuedMainWork()
+        #expect(second.tableItemsBuildCount == opened)
+        #expect(second.flatItems.contains { $0.name == "timesheet" })
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        await disconnect(connection)
+    }
+
+    // MARK: - Table rows
+
+    // Sinks deliver through `RunLoop.main.perform` and answer on the main actor; both have run once this returns.
+    private func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
+    @Test("Reopening over a loaded catalog builds the table rows once")
+    func reopenBuildsRowsOnce() async {
+        let (connection, _) = connect()
+        await makeSwitcher(connection).loadItems(databaseType: .pglite, browseSchema: "public")
+        let switcher = makeSwitcher(connection)
+
+        await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
+        await afterQueuedMainWork()
+
+        #expect(switcher.tableItemsBuildCount == 1)
+        #expect(switcher.allItems.contains { $0.name == "users" })
+        await disconnect(connection)
+    }
+
+    @Test("The listing landing rebuilds the table rows once")
+    func listingLandingRebuildsOnce() async throws {
+        let (connection, driver) = connect()
+        let switcher = makeSwitcher(connection)
+        await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
+        await afterQueuedMainWork()
+        let opened = switcher.tableItemsBuildCount
+
+        switcher.searchText = "time"
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 && !switcher.isLoadingTables }
+        await afterQueuedMainWork()
+
+        #expect(switcher.tableItemsBuildCount == opened + 1)
+        #expect(switcher.allItems.contains { $0.name == "timesheet" })
+        await disconnect(connection)
+    }
+
+    @Test("A change on another connection rebuilds none of this connection's rows")
+    func otherConnectionChangeRebuildsNothing() async {
+        let (connection, _) = connect()
+        let switcher = makeSwitcher(connection)
+        await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
+        await afterQueuedMainWork()
+        let opened = switcher.tableItemsBuildCount
+        let elsewhere = UUID()
+
+        DatabaseTreeMetadataService.shared.markAllSchemaTablesChanged([
+            DatabaseTreeMetadataService.DatabaseKey(connectionId: elsewhere, database: "shop")
+        ])
+        SchemaService.shared.forget(database: "shop", connectionId: elsewhere)
+        await afterQueuedMainWork()
+
+        #expect(switcher.tableItemsBuildCount == opened)
+        await SchemaService.shared.invalidate(connectionId: elsewhere)
+        await DatabaseTreeMetadataService.shared.handleDisconnect(connectionId: elsewhere)
+        await disconnect(connection)
+    }
+
+    @Test("A burst of changes to this connection in one turn rebuilds the rows once")
+    func burstRebuildsOnce() async {
+        let (connection, _) = connect()
+        let switcher = makeSwitcher(connection)
+        await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
+        await afterQueuedMainWork()
+        let opened = switcher.tableItemsBuildCount
+
+        SchemaService.shared.forget(database: "archive", connectionId: connection.id)
+        DatabaseTreeMetadataService.shared.markAllSchemaTablesChanged([
+            DatabaseTreeMetadataService.DatabaseKey(connectionId: connection.id, database: "shop")
+        ])
+        SchemaService.shared.forget(database: "archive", connectionId: connection.id)
+        await afterQueuedMainWork()
+
+        #expect(switcher.tableItemsBuildCount == opened + 1)
+        #expect(switcher.allItems.contains { $0.name == "users" })
         await disconnect(connection)
     }
 }

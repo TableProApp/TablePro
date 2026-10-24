@@ -44,6 +44,9 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal var childrenCache: [String: [DatabaseTreeNode]] = [:]
     internal var objectBucketsCache: [DatabaseTreeContainerKey: DatabaseTreeObjectBuckets] = [:]
     internal var listingMatchesCache: [DatabaseTreeContainerKey: DatabaseTreeFilter.SchemaListingMatches] = [:]
+    internal var bucketMemo = DatabaseTreeBucketMemo<DatabaseTreeContainerSlot>()
+    internal var loadedContentMemo = DatabaseTreeBucketMemo<String>()
+    internal var tableRowMemo: [String: DatabaseTreeTableRows] = [:]
     /// Whether a routine row shows its signature depends on the other rows in its own section, so
     /// the label is decided where the section is built and looked up here when the row draws.
     internal var routineDisplayLabels: [String: String] = [:]
@@ -80,6 +83,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private var isReloading = false
     private var hasRenderedOnce = false
     private var reconcileScheduled = false
+    private var isReconcileForced = false
+    private var renderedInputs: DatabaseTreeRenderInputs?
     private var observationGeneration = 0
     private var appearanceObservation: AnyCancellable?
     private var treeObservations: [AnyCancellable] = []
@@ -148,7 +153,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             let changed = notification.userInfo?[TableFolderStorage.connectionIdUserInfoKey] as? UUID
             MainActor.assumeIsolated {
                 guard let self, changed == self.connectionId else { return }
-                self.scheduleReconcile()
+                self.scheduleReconcile(forcing: true)
             }
         }
         favoritesObservers.withLockUnchecked { $0.append(folderObserver) }
@@ -256,77 +261,46 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     private func beginObserving() {
         observationGeneration += 1
         let generation = observationGeneration
-        /// `snapshotDependencies` read across four objects, and `objectWillChange` is per
-        /// object, so each one gets its own sink. `scheduleReconcile` already coalesces, which
-        /// is what absorbs the wider wake set.
-        let reconcile: () -> Void = { [weak self] in
+        let wake: (Bool) -> Void = { [weak self] forcing in
             guard let self, generation == self.observationGeneration else { return }
-            self.scheduleReconcile()
+            self.scheduleReconcile(forcing: forcing)
         }
         treeObservations = [
-            service.onMainActorChange(reconcile),
-            schemaService.onMainActorChange(reconcile),
-            temporaryTables.onMainActorChange(reconcile),
-            sidebarState?.onMainActorChange(reconcile),
-            sidebarState?.redisKeyTreeViewModel?.onMainActorChange(reconcile),
+            service.onMainActorChange { wake(false) },
+            schemaService.onMainActorChange { wake(false) },
+            temporaryTables.onMainActorChange { wake(false) },
+            sidebarState?.onMainActorChange { wake(false) },
+            // Its one published value is the key tree this outline draws.
+            sidebarState?.redisKeyTreeViewModel?.onMainActorChange { wake(true) },
         ].compactMap { $0 }
     }
 
-    private func scheduleReconcile() {
+    private func scheduleReconcile(forcing: Bool = false) {
+        isReconcileForced = isReconcileForced || forcing
         guard !reconcileScheduled else { return }
         reconcileScheduled = true
         Task { @MainActor in
             self.reconcileScheduled = false
-            self.refresh()
+            self.reconcile()
         }
     }
 
-    private func snapshotDependencies() {
-        _ = service.databaseListState(for: connectionId)
-        _ = sidebarState?.recentTables
-        /// Both feed `rootNodes()`: the layout picks the root's shape and the filter picks which
-        /// databases survive into it. Left unobserved, hiding a database in the filter popover
-        /// changed nothing until some other edit happened to rebuild the tree.
-        _ = sidebarState?.sidebarLayout
-        _ = sidebarState?.databaseFilterSelected
-        _ = sidebarState?.schemaFilterSelected
-        /// One token covers every table, routine and per-schema load for this connection, which is
-        /// the whole reactive surface the flat and hierarchical shapes read.
-        _ = schemaService.generationToken(for: connectionId)
-        _ = sidebarState?.redisKeyTreeViewModel?.state
-        for node in nodeCache.values {
-            switch node.kind {
-            case .database(let metadata):
-                _ = service.schemaListState(connectionId: connectionId, database: metadata.name)
-                _ = service.tablesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
-                _ = service.routinesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
-                _ = service.triggersLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
-                _ = service.typesLoadState(connectionId: connectionId, database: metadata.name, schema: nil)
-            case .schema(let database, let schema):
-                _ = service.tablesLoadState(connectionId: connectionId, database: database, schema: schema)
-                _ = service.routinesLoadState(connectionId: connectionId, database: database, schema: schema)
-                _ = service.triggersLoadState(connectionId: connectionId, database: database, schema: schema)
-                _ = service.typesLoadState(connectionId: connectionId, database: database, schema: schema)
-            case .hierarchicalSchemaSection(let schema):
-                _ = schemaService.schemaState(for: connectionId, schema: schema)
-            case .table(let ref) where ref.table.type == .partitionedTable:
-                _ = service.partitionsLoadState(
-                    connectionId: connectionId, database: ref.database ?? "", schema: ref.schema, table: ref.table.name
-                )
-            case .partition(let ref):
-                let source = ref.tableRef ?? ref.parent
-                _ = service.partitionsLoadState(
-                    connectionId: connectionId,
-                    database: source.database ?? "",
-                    schema: source.schema,
-                    table: source.table.name
-                )
-            case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
-                 .table, .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
-                 .redisKeysSection, .redisNode:
-                break
-            }
-        }
+    // A wake from a shared service rebuilds the outline only when something this connection draws moved.
+    internal func reconcile() {
+        let forced = isReconcileForced
+        isReconcileForced = false
+        guard forced || currentRenderInputs() != renderedInputs else { return }
+        refresh()
+    }
+
+    internal func currentRenderInputs() -> DatabaseTreeRenderInputs {
+        DatabaseTreeRenderInputs(
+            connectionId: connectionId,
+            treeMetadata: service,
+            schemaService: schemaService,
+            temporaryTables: temporaryTables,
+            sidebarState: sidebarState
+        )
     }
 
     internal func refresh() {
@@ -336,6 +310,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             return
         }
         isReloading = true
+        renderedInputs = currentRenderInputs()
+        dropUnusedMemos()
         childrenCache.removeAll()
         objectBucketsCache.removeAll()
         listingMatchesCache.removeAll()
@@ -348,6 +324,14 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         syncSelectionToModel()
         isReloading = false
         beginObserving()
+        endSettledInteractionTraces()
+    }
+
+    // The memos outlive a reload, but only for the parents and containers built since the last one.
+    private func dropUnusedMemos() {
+        bucketMemo.dropUnused()
+        loadedContentMemo.dropUnused()
+        tableRowMemo = tableRowMemo.filter { childrenCache[$0.key] != nil }
     }
 
     /// Coalesced with any reload already scheduled, because the edit that ended the hold usually
@@ -355,7 +339,7 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
     internal func applyDeferredReloadIfNeeded() {
         guard isReloadDeferred, !isDragging, renameSession == nil else { return }
         isReloadDeferred = false
-        scheduleReconcile()
+        scheduleReconcile(forcing: true)
     }
 
     /// A star toggling on or off changes no row and no ordering, so the rows are reconfigured in
@@ -882,6 +866,7 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
     /// there is describing the state the row is leaving.
     func outlineViewItemWillExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? DatabaseTreeNode else { return }
+        beginExpansionTrace(for: node)
         triggerLoad(for: node)
     }
 
@@ -892,8 +877,11 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
             restoreDescendantExpansion(afterExpanding: node)
         } else if !isApplyingExpansion, case .schema(let database, let schema) = node.kind {
             schemasOpenedDuringSearch.insert(DatabaseSchemaKey(database: database, schema: schema))
+        } else if !isApplyingExpansion, case .hierarchicalSchemaSection(let schema) = node.kind {
+            schemasOpenedDuringSearch.insert(Self.hierarchicalSearchKey(schema))
         }
         scheduleSelectionSync()
+        endSettledInteractionTraces()
     }
 
     private func scheduleSelectionSync(force: Bool = false) {
@@ -926,6 +914,8 @@ extension DatabaseTreeOutlineCoordinator: NSOutlineViewDelegate {
                 recordExpansion(node, expanded: false)
             } else if case .schema(let database, let schema) = node.kind {
                 schemasOpenedDuringSearch.remove(DatabaseSchemaKey(database: database, schema: schema))
+            } else if case .hierarchicalSchemaSection(let schema) = node.kind {
+                schemasOpenedDuringSearch.remove(Self.hierarchicalSearchKey(schema))
             }
         }
         scheduleSelectionSync(force: true)

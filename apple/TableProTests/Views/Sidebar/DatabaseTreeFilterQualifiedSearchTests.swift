@@ -17,6 +17,13 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         .loaded(CatalogTableListing.Result(tables: tables, unlistedSchemas: unlisted))
     }
 
+    private func listingMatches(
+        _ state: MetadataLoadState<CatalogTableListing.Result>,
+        searchText: String
+    ) -> DatabaseTreeFilter.SchemaListingMatches? {
+        state.value.map { DatabaseTreeFilter.SchemaListingMatches(listing: $0, database: "shop", searchText: searchText) }
+    }
+
     private func buckets(_ tables: [TableInfo], searchText: String) -> DatabaseTreeObjectBuckets {
         DatabaseTreeFilter.objectBuckets(tables: tables, routines: [], triggers: [], searchText: searchText, database: "shop")
     }
@@ -198,7 +205,8 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         ])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
+            hiddenSchemas: [], listingMatches: listingMatches(allSchemas, searchText: "timesheet"),
+            loadedContent: { _, _ in nil }
         )
         #expect(schemas == ["attendance", "payroll"])
     }
@@ -211,7 +219,8 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         ])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: allSchemas, keptSchemas: ["attendance", "public"],
+            hiddenSchemas: [], listingMatches: listingMatches(allSchemas, searchText: "timesheet"),
+            keptSchemas: ["attendance", "public"],
             loadedContent: { _, _ in nil }
         )
         #expect(schemas == ["attendance"])
@@ -222,7 +231,8 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         let allSchemas = listing([table("orders", schema: "timesheets")])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
+            hiddenSchemas: [], listingMatches: listingMatches(allSchemas, searchText: "timesheet"),
+            loadedContent: { _, _ in nil }
         )
         #expect(schemas.isEmpty)
     }
@@ -232,7 +242,8 @@ struct DatabaseTreeFilterQualifiedSearchTests {
         let allSchemas = listing([table("orders", schema: "attendance"), table("orders", schema: "sales")])
         let schemas = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "attendance.",
-            hiddenSchemas: [], allSchemaTables: allSchemas, loadedContent: { _, _ in nil }
+            hiddenSchemas: [], listingMatches: listingMatches(allSchemas, searchText: "attendance."),
+            loadedContent: { _, _ in nil }
         )
         #expect(schemas == ["attendance"])
     }
@@ -241,12 +252,13 @@ struct DatabaseTreeFilterQualifiedSearchTests {
     func otherSchemaMatchesWithoutListing() {
         let pending = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
-            hiddenSchemas: [], allSchemaTables: .loading, loadedContent: { _, _ in nil }
+            hiddenSchemas: [], listingMatches: listingMatches(.loading, searchText: "timesheet"),
+            loadedContent: { _, _ in nil }
         )
         let hidden = DatabaseTreeFilter.otherSchemaMatches(
             database: "shop", browsedSchema: "public", searchText: "timesheet",
             hiddenSchemas: ["attendance"],
-            allSchemaTables: listing([table("timesheet", schema: "attendance")]),
+            listingMatches: listingMatches(listing([table("timesheet", schema: "attendance")]), searchText: "timesheet"),
             loadedContent: { _, _ in nil }
         )
         #expect(pending.isEmpty)
@@ -295,11 +307,11 @@ struct DatabaseTreeFilterQualifiedSearchTests {
 
     @Test("A trailing dot shows everything in the hierarchical schema it names")
     func hierarchicalTrailingDot() {
-        let buckets = DatabaseTreeFilter.hierarchicalObjectBuckets(
+        let buckets = DatabaseTreeFilter.hierarchicalBucketSource(
             schema: "SALES",
             tables: [table("ORDERS", schema: "SALES"), table("LINES", schema: "SALES")],
             routines: [], triggers: [], userTypes: [], searchText: "SALES."
-        )
+        ).filtered()
         #expect(buckets.itemCounts[.table] == 2)
     }
 

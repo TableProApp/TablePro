@@ -26,9 +26,23 @@ enum DatabaseObjectToolEligibility {
 
         static let none = Support()
 
+        // Menu validation builds a context for every item it checks, so each driver is probed once.
+        // Its statement hooks answer the same for the life of the driver.
+        @MainActor private static let probed = NSMapTable<AnyObject, ProbedSupport>.weakToStrongObjects()
+
         @MainActor
         static func of(_ driver: DatabaseDriver?) -> Support {
             guard let driver else { return .none }
+            if let known = probed.object(forKey: driver) {
+                return known.support
+            }
+            let support = probe(driver)
+            probed.setObject(ProbedSupport(support), forKey: driver)
+            return support
+        }
+
+        @MainActor
+        private static func probe(_ driver: DatabaseDriver) -> Support {
             let kinds = UserDefinedTypeInfo.Kind.allCases
             let probe = { (kind: UserDefinedTypeInfo.Kind) in UserDefinedTypeInfo(name: "t", kind: kind, schema: "s") }
             let sequenceProbe = PluginSequenceDetails(
@@ -54,6 +68,14 @@ enum DatabaseObjectToolEligibility {
                 canSetSequenceValues: driver.sequenceNextValueStatement(for: sequenceProbe, nextValue: .value(1)) != nil,
                 canAlterSequences: driver.alterSequenceStatement(for: sequenceProbe, settings: changed) != nil
             )
+        }
+
+        private final class ProbedSupport {
+            let support: Support
+
+            init(_ support: Support) {
+                self.support = support
+            }
         }
 
         static func commentableTypes(of driver: DatabaseDriver) -> Set<TableInfo.TableType> {

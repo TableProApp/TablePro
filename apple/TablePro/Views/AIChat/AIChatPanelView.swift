@@ -67,6 +67,7 @@ struct AIChatPanelView: View {
         .environment(\.chatApprovalSessionId, viewModel.sessionId)
         .onAppear {
             viewModel.connection = connection
+            viewModel.trackTableMentions()
         }
         .onChange(of: connection.id) { _ in
             viewModel.connection = connection
@@ -393,18 +394,19 @@ struct AIChatPanelView: View {
                 .disabled(viewModel.tables.isEmpty)
 
                 Menu(String(localized: "Tables")) {
-                    let sortedTables = viewModel.tables.sorted {
-                        $0.name.localizedStandardCompare($1.name) == .orderedAscending
-                    }
-                    ForEach(sortedTables, id: \.name) { table in
+                    ForEach(viewModel.mentionMenuTableNames, id: \.self) { name in
                         Button {
-                            viewModel.attach(.table(connectionId: connectionId, name: table.name))
+                            viewModel.attach(.table(connectionId: connectionId, name: name))
                         } label: {
-                            Text(table.name)
+                            Text(name)
                         }
                     }
+                    if viewModel.hasUnlistedMentionTables {
+                        Divider()
+                        Text("Type @ in the message to find any other table")
+                    }
                 }
-                .disabled(viewModel.tables.isEmpty)
+                .disabled(viewModel.tableMentions.names.isEmpty)
 
                 Button {
                     if let query = currentQuery, !query.isEmpty {
@@ -582,13 +584,9 @@ struct AIChatPanelView: View {
         }
 
         let tableBudget = max(0, (Self.maxMentionCandidates / 2) - items.count)
-        let matchingTables = viewModel.tables
-            .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-            .prefix(tableBudget)
-        for table in matchingTables {
+        for name in viewModel.tableMentions.names(matching: query, limit: tableBudget) {
             items.append(MentionCandidate(
-                item: .table(connectionId: connectionId, name: table.name)
+                item: .table(connectionId: connectionId, name: name)
             ))
         }
 

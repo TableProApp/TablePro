@@ -32,6 +32,7 @@ extension DatabaseManager {
         }
 
         MacAnalyticsProvider.shared.markConnectionAttempted()
+        InteractionTracer.shared.begin(.sidebarListing, key: connection.id.uuidString, event: nil)
 
         let attempt = connectionAttempts.begin(for: connection.id)
         disconnectReasons[connection.id] = nil

@@ -6,6 +6,7 @@ struct CompletionContext {
     let items: [SQLCompletionItem]
     // The wider ranked pool an open popup re-ranks against as the prefix grows; `items` is the slice it shows.
     let candidates: [SQLCompletionItem]
+    let candidatesTruncated: Bool
     let replacementRange: NSRange
     let sqlContext: SQLContext
 }
@@ -92,6 +93,7 @@ final class CompletionEngine {
         return CompletionContext(
             items: context.items,
             candidates: context.candidates,
+            candidatesTruncated: context.candidatesTruncated,
             replacementRange: NSRange(sqlContext.prefixRange),
             sqlContext: sqlContext
         )
@@ -105,24 +107,25 @@ final class CompletionEngine {
         identifierCase: SQLIdentifierCase = .default,
         forcedTableReferences: [TableReference]? = nil
     ) async -> CompletionContext? {
-        let (items, candidates, context) = await provider.completionSession(
+        let session = await provider.completionSession(
             text: text,
             cursorPosition: cursorPosition,
             forcedTableReferences: forcedTableReferences
         )
-        guard !items.isEmpty else { return nil }
+        guard !session.items.isEmpty else { return nil }
 
         return CompletionContext(
             items: spelled(
-                items,
-                typedPrefix: context.prefix,
-                context: context,
+                session.items,
+                typedPrefix: session.context.prefix,
+                context: session.context,
                 keywordCase: keywordCase,
                 identifierCase: identifierCase
             ),
-            candidates: candidates,
-            replacementRange: NSRange(context.prefixRange),
-            sqlContext: context
+            candidates: session.candidates,
+            candidatesTruncated: session.candidatesTruncated,
+            replacementRange: NSRange(session.context.prefixRange),
+            sqlContext: session.context
         )
     }
 }

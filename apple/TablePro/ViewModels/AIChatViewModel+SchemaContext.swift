@@ -81,7 +81,8 @@ extension AIChatViewModel {
             if let question {
                 await self.loadEveryColumnForRanking()
                 guard !Task.isCancelled else { return }
-                self.prioritizeSchema(for: question)
+                await self.prioritizeSchema(for: question)
+                guard !Task.isCancelled else { return }
             }
             await self.runSchemaLoad()
         }
@@ -222,18 +223,20 @@ extension AIChatViewModel {
         }
     }
 
-    private func prioritizeSchema(for question: String) {
-        let ranked = AISchemaContext.relevantTableNames(
-            in: tables,
+    private func prioritizeSchema(for question: String) async {
+        let input = AISchemaRankingInput(
+            tables: tables,
             columnsByTable: columnsByTable,
             question: question,
             queryReferences: editorQueryReferences(),
             defaultSchema: connection.flatMap { defaultSchema(for: $0) },
             maxTables: services.appSettings.ai.maxSchemaTables
         )
-        if !ranked.isEmpty {
-            relevantTableNames = ranked
-        }
+        guard input.tables.count > input.maxTables else { return }
+        let scope = schemaCacheScope
+        let ranked = await AISchemaContext.rankOffMainActor(input, using: schemaRanker)
+        guard !Task.isCancelled, schemaCacheScope == scope, !ranked.isEmpty else { return }
+        relevantTableNames = ranked
     }
 
     // The editor steers the order only while the model is shown the editor's query.

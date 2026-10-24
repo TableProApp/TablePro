@@ -205,14 +205,14 @@ struct DatabaseTreeFilterTests {
         routines: [RoutineInfo] = [],
         searchText: String
     ) -> DatabaseTreeObjectBuckets {
-        DatabaseTreeFilter.hierarchicalObjectBuckets(
+        DatabaseTreeFilter.hierarchicalBucketSource(
             schema: schema,
             tables: tables,
             routines: routines,
             triggers: [],
             userTypes: [],
             searchText: searchText
-        )
+        ).filtered()
     }
 
     /// Nothing has read it and no listing has answered for it, so hiding it would hide the match.

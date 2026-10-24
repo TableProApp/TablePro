@@ -8,11 +8,12 @@
 #   mysql     database tablepro_large_catalog: 50,000 tables
 #
 # Every schema holds the same table names (lc_t001..lc_t500), as a tenant-per-schema database does,
-# so a search for lc_t250 matches once per schema.
+# so a search for lc_t250 matches once per schema. A session starts in the first schema: the database's
+# search_path on PostgreSQL, logging in as LC_S001 (password probe_pw, reads every schema) on Oracle.
 #
 # Usage:
 #   scripts/probes/build-large-catalog-fixtures.sh postgres [host] [port] [user]
-#   scripts/probes/build-large-catalog-fixtures.sh mysql [host] [port] [user]
+#   scripts/probes/build-large-catalog-fixtures.sh mysql [host|/path/to.sock] [port] [user]
 #   scripts/probes/build-large-catalog-fixtures.sh oracle [container] [system-password]
 #   scripts/probes/build-large-catalog-fixtures.sh drop-postgres|drop-mysql|drop-oracle [same arguments]
 #
@@ -75,6 +76,8 @@ postgres_fixture() {
             \$\$;" > /dev/null || exit 1
         [ $((i % 10)) -eq 0 ] && echo "postgres: $i of $SCHEMAS schemas, $(elapsed_since "$started")"
     done
+    psql_at "$DATABASE" -c "ALTER DATABASE $DATABASE SET search_path TO $(printf 'lc_s%0*d' "$SCHEMA_WIDTH" 1), public" \
+        > /dev/null || exit 1
     echo "postgres: $(psql_at "$DATABASE" -Atc "SELECT count(*) FROM pg_tables WHERE schemaname LIKE 'lc!_s%' ESCAPE '!'") tables in $DATABASE"
 }
 
@@ -84,11 +87,22 @@ postgres_drop() {
     psql -X -q -h "$host" -p "$port" -U "$user" -d postgres -c "DROP DATABASE IF EXISTS $DATABASE"
 }
 
+# A host starting with / is a socket, for a server that only lets the local user in over one.
+mysql_client() {
+    local host="$1" port="$2" user="$3"
+    shift 3
+    if [ "${host#/}" != "$host" ]; then
+        mysql --protocol=SOCKET --socket="$host" -u "$user" "$@"
+    else
+        mysql --protocol=TCP -h "$host" -P "$port" -u "$user" "$@"
+    fi
+}
+
 mysql_fixture() {
     local host="${1:-127.0.0.1}" port="${2:-3306}" user="${3:-root}" started batch i
     need mysql
     mysql_do() {
-        mysql --protocol=TCP -h "$host" -P "$port" -u "$user" "$@"
+        mysql_client "$host" "$port" "$user" "$@"
     }
     mysql_do -e "SELECT 1" > /dev/null 2>&1 || {
         echo "no MySQL at $host:$port as $user (MYSQL_PWD supplies a password)" >&2
@@ -111,7 +125,7 @@ mysql_fixture() {
 mysql_drop() {
     local host="${1:-127.0.0.1}" port="${2:-3306}" user="${3:-root}"
     need mysql
-    mysql --protocol=TCP -h "$host" -P "$port" -u "$user" -e "DROP DATABASE IF EXISTS $DATABASE"
+    mysql_client "$host" "$port" "$user" -e "DROP DATABASE IF EXISTS $DATABASE"
 }
 
 oracle_sqlplus() {
@@ -144,6 +158,9 @@ BEGIN
             EXECUTE IMMEDIATE 'CREATE USER ' || owner_name || ' IDENTIFIED BY probe_pw QUOTA UNLIMITED ON USERS';
         END IF;
         SELECT COUNT(*) INTO present FROM dba_tables WHERE owner = owner_name;
+        IF s = 1 THEN
+            EXECUTE IMMEDIATE 'GRANT CREATE SESSION, SELECT ANY TABLE TO ' || owner_name;
+        END IF;
         CONTINUE WHEN present >= $TABLES_PER_SCHEMA;
         FOR t IN 1..$TABLES_PER_SCHEMA LOOP
             BEGIN

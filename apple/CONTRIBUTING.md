@@ -98,6 +98,8 @@ xcodebuild -project TableProMobile/TableProMobile.xcodeproj -scheme TableProMobi
 
 `scripts/benchmark-app-paths.sh` times cold launch, opening a 1,000,000-row table and switching tabs, 10 runs each, and checks the median and 95th percentile against the budgets in `scripts/benchmark/app-paths/baseline.json`. Usage, permissions and the fixtures are in its header. In Instruments the same three paths are the `AppLaunch`, `TableLoad` and `TabSwitch` intervals under Points of Interest.
 
+`scripts/benchmark-large-catalog.sh` times the sidebar, Open Quickly and autocomplete on 50,000 tables (`scripts/probes/build-large-catalog-fixtures.sh` builds the fixtures) against `scripts/benchmark/large-catalog/baseline.json`, and fails any step during which the main thread stalls for more than 100 ms. `TABLEPRO_INTERACTION_TRACE=1` prints each traced step and each stall of 50 ms or more on standard error; in Instruments the steps are the `Interaction` intervals.
+
 ## Code style
 
 `.swiftlint.yml` is the source of truth. Run `swiftlint lint --strict <changed .swift files>`; CI lints all of `apple/` the same way on every pull request, and nothing lints during an Xcode build. Formatting the linter leaves to you:

@@ -58,7 +58,14 @@ internal struct AllSchemaTablesDemand {
             return false
         case .idle:
             return true
-        case .loaded, .failed:
+        case .loaded(let listing):
+            // A reader that never asked, like the next Open Quickly, would otherwise ask for rows already held.
+            if listing.unlistedSchemas.isEmpty,
+               service.isAllSchemaTablesCurrent(connectionId: connectionId, database: database) {
+                return false
+            }
+            return requested[database] != service.allSchemaTablesRevision(connectionId: connectionId, database: database)
+        case .failed:
             return requested[database] != service.allSchemaTablesRevision(connectionId: connectionId, database: database)
         }
     }

@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import AppKit
 import Combine
 import Foundation
 import os
@@ -75,6 +76,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "QuickSwitcherViewModel")
     private static let filterDebounceNanoseconds: UInt64 = 40_000_000
+    nonisolated private static let cancellationCheckStride = 1_024
 
     private let services: AppServices
     private let connectionId: UUID
@@ -99,8 +101,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
     private var baseItems: [QuickSwitcherItem]?
     private var tableItems: [QuickSwitcherItem] = []
+    private var tableItemKeys: Set<String> = []
+    private var tableInputs: TableInputs?
+    private var pendingTableBuild: (inputs: TableInputs, task: Task<Void, Never>)?
+    private(set) var tableItemsBuildCount = 0
     private var tableSource: TableSource?
     private var tableSourceObservations: [AnyCancellable] = []
+    private var isTableSourceChangeScheduled = false
+    private var pendingListingRefresh = false
+    private var pendingTableMerge = false
     private var listingDemand = AllSchemaTablesDemand()
     private var hasLoadedBrowseCatalog = false
     private var listingRequestId: UUID?
@@ -140,6 +149,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         didSet {
             guard oldValue != searchText else { return }
             pendingSelectionMoves = []
+            InteractionTracer.shared.begin(
+                .quickOpenResult, key: connectionId.uuidString, subject: trimmedSearchText
+            )
             scheduleFilter(debounced: true)
             refreshListingDemand()
         }
@@ -252,6 +264,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             grouping: services.pluginManager.databaseGroupingStrategy(for: databaseType)
         )
         self.tableSource = tableSource
+        tableInputs = nil
         observeTableSources()
         async let tablesLoaded: Void = loadTables(from: tableSource, loadId: loadId)
 
@@ -276,7 +289,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             }
             baseItems = catalog.items
         }
-        tableItems = currentTableItems()
+        await rebuildTableItemsIfNeeded()
+        // A build that finished before the catalog arrived published nothing, so this load publishes either way.
         publishItems()
         await tablesLoaded
     }
@@ -427,7 +441,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         _ = await services.schemaRefreshService.loadBrowseCatalogs(connectionIds: [connectionId])
         guard activeLoadId == loadId else { return }
         hasLoadedBrowseCatalog = true
-        mergeTableItems()
+        await rebuildTableItemsIfNeeded()
         refreshListingDemand()
     }
 
@@ -436,12 +450,15 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// while it is open asks for the listing again.
     private func observeTableSources() {
         tableSourceObservations = [
-            services.schemaService.onMainActorChange { [weak self] in self?.mergeTableItems() },
-            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in
-                self?.refreshListingDemand()
-                self?.mergeTableItems()
+            services.schemaService.onMainActorChange { [weak self] in
+                self?.noteTableSourceChange(refreshesListing: false, mergesTables: true)
             },
-            services.databaseManager.onMainActorChange { [weak self] in self?.refreshListingDemand() }
+            DatabaseTreeMetadataService.shared.onMainActorChange { [weak self] in
+                self?.noteTableSourceChange(refreshesListing: true, mergesTables: true)
+            },
+            services.databaseManager.onMainActorChange { [weak self] in
+                self?.noteTableSourceChange(refreshesListing: true, mergesTables: false)
+            }
         ]
     }
 
@@ -467,8 +484,8 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         Task { [weak self] in
             await service.loadAllSchemaTables(connectionId: connectionId, database: database, selection: selection)
             guard let self, self.listingRequestId == requestId else { return }
-            self.isListingInFlight = false
-            self.mergeTableItems()
+            await self.rebuildTableItemsIfNeeded()
+            if self.listingRequestId == requestId { self.isListingInFlight = false }
         }
     }
 
@@ -478,47 +495,12 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             database: tableSource.database,
             connectionSwitchesDatabases: tableSource.connectionSwitchesDatabases
         )
+        let baseKeys = Set((baseItems ?? []).map(\.frecencyKey))
+        let tableKeys = tableItemKeys
         return Self.recentNeedsListing(
             recentKeys: frecencyStore.recentItemIds(),
-            resolvedKeys: Set((tableItems + (baseItems ?? [])).map(\.frecencyKey)),
+            isResolved: { tableKeys.contains($0) || baseKeys.contains($0) },
             isTableKey: { QuickSwitcherFrecencyKey.isTable($0, in: qualifier) }
-        )
-    }
-
-    private func mergeTableItems() {
-        let items = currentTableItems()
-        guard items != tableItems else { return }
-        tableItems = items
-        publishItems()
-    }
-
-    private func currentTableItems() -> [QuickSwitcherItem] {
-        guard let tableSource else { return [] }
-        let listing = tableSource.database.flatMap { database -> [TableInfo]? in
-            guard tableSource.listsTablesPerSchema else { return nil }
-            return DatabaseTreeMetadataService.shared
-                .allSchemaTablesLoadState(connectionId: connectionId, database: database).value?.tables
-        }
-        let schemaService = services.schemaService
-        let loadedScope = schemaService.loadedScope(for: connectionId)
-        let tables = Self.mergedTables(
-            local: schemaService.allLoadedTables(for: connectionId),
-            loadedFrom: loadedScope?.database,
-            coveredSchemas: coveredSchemas(loadedScope: loadedScope, grouping: tableSource.grouping),
-            staleSchemas: schemaService.schemasWithLoadedTables(for: connectionId)
-                .subtracting(schemaService.schemasWithCurrentTables(for: connectionId)),
-            listing: listing,
-            browsing: tableSource.database
-        )
-        let kept = tableSource.database.flatMap {
-            SidebarSchemaFilter(databaseManager: services.databaseManager).keptSchemas(connectionId: connectionId, database: $0)
-        }
-        return Self.makeTableItems(
-            Self.tables(tables, keeping: kept),
-            database: tableSource.database,
-            connectionSwitchesDatabases: tableSource.connectionSwitchesDatabases,
-            browseSchema: tableSource.browseSchema,
-            openTables: tableSource.openTables
         )
     }
 
@@ -718,49 +700,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         )
     }
 
-    /// The schema service answers for every schema it holds a list of, because it refreshes that
-    /// list the moment the catalog changes. The all-schema listing fills in the schemas it does not
-    /// hold, and may be a read behind for those until it is next asked.
-    ///
-    /// The schema service keeps its lists until a reload replaces them, so while a database switch
-    /// settles it still holds the old database's tables, which would open against the new one.
-    /// They count only once the database they were loaded from is the one being browsed.
-    ///
-    /// `coveredSchemas` names the schemas the schema service answers for even when it found them
-    /// empty. Judged from its rows alone, a schema whose last table was dropped would have no rows,
-    /// so no say, and the listing's stale copy of that table would come back.
-    ///
-    /// The listing already honors the schema filter, but the schema service still holds every schema
-    /// the sidebar opened before the filter hid it.
-    nonisolated static func tables(_ tables: [TableInfo], keeping kept: Set<String>?) -> [TableInfo] {
-        guard let kept else { return tables }
-        return tables.filter { table in
-            guard let schema = table.schema else { return true }
-            return kept.contains(schema)
-        }
-    }
-
-    /// `staleSchemas` are the per-schema lists a catalog change has overtaken and nothing has read
-    /// again, because only an expanded tree row reads one again. The listing, which this panel asks
-    /// for again after every change, answers for them once it has arrived.
-    nonisolated static func mergedTables(
-        local loaded: [TableInfo],
-        loadedFrom loadedDatabase: String?,
-        coveredSchemas: Set<String>,
-        staleSchemas: Set<String>,
-        listing: [TableInfo]?,
-        browsing database: String?
-    ) -> [TableInfo] {
-        let isCurrent = loadedDatabase == database
-        let overtaken = listing == nil ? [] : staleSchemas
-        let local = isCurrent ? loaded.filter { !overtaken.contains($0.schema ?? "") } : []
-        let authoritative = (isCurrent ? coveredSchemas.subtracting(overtaken) : [])
-            .union(local.map { $0.schema ?? "" })
-        var seen: Set<TableIdentity> = []
-        return (local + (listing ?? []).filter { !authoritative.contains($0.schema ?? "") })
-            .filter { seen.insert(TableIdentity(schema: $0.schema ?? "", name: $0.name)).inserted }
-    }
-
     /// The schemas the schema service holds an answer for. On a schema-grouped engine its flat list
     /// is the browsed schema's; on a hierarchical one each schema keeps a list of its own, and the
     /// flat list is empty whatever the browsed schema holds.
@@ -772,94 +711,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             covered.insert(schema)
         }
         return covered
-    }
-
-    private struct TableIdentity: Hashable {
-        let schema: String
-        let name: String
-    }
-
-    /// A table outside the browsed schema names its schema, and one inside it does not, the way
-    /// SQL written against the browsed schema would spell them.
-    nonisolated static func makeTableItems(
-        _ tables: [TableInfo],
-        database: String?,
-        connectionSwitchesDatabases: Bool,
-        browseSchema: String?,
-        openTables: Set<QuickSwitcherOpenTable>
-    ) -> [QuickSwitcherItem] {
-        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
-            database: database,
-            connectionSwitchesDatabases: connectionSwitchesDatabases
-        )
-        var listedKeys: Set<String> = []
-        return tables.compactMap { table in
-            let frecencyKey = QuickSwitcherFrecencyKey.table(
-                name: table.name, schema: table.schema ?? browseSchema, in: qualifier
-            )
-            guard listedKeys.insert(frecencyKey).inserted else { return nil }
-            let presentation = tablePresentation(for: table.type)
-            let otherSchema = SchemaQualifiedName.explicitSchema(table.schema, implicitSchemaName: browseSchema)
-            let subtitle = [otherSchema, presentation.subtitle]
-                .compactMap { $0?.isEmpty == false ? $0 : nil }
-                .joined(separator: ", ")
-            return QuickSwitcherItem(
-                frecencyKey: frecencyKey,
-                name: table.name,
-                kind: presentation.kind,
-                subtitle: subtitle,
-                isOpenInTab: openTables.contains(
-                    QuickSwitcherOpenTable(
-                        database: database,
-                        schema: table.schema,
-                        name: table.name,
-                        browsingDatabase: database,
-                        browsingSchema: browseSchema
-                    )
-                ),
-                isReadOnly: !table.type.allowsRowEditing,
-                schemaName: table.schema,
-                databaseName: database,
-                tableType: table.type,
-                isOutsideBrowsedSchema: otherSchema != nil
-            )
-        }
-    }
-
-    nonisolated static func makeCrossConnectionItems(
-        tables: [TableInfo],
-        target: QuickSwitcherTarget,
-        connectionSwitchesDatabases: Bool
-    ) -> [QuickSwitcherItem] {
-        let qualifier = QuickSwitcherFrecencyKey.DatabaseQualifier(
-            database: target.databaseName,
-            connectionSwitchesDatabases: connectionSwitchesDatabases
-        )
-        var listedKeys: Set<String> = []
-        return tables.compactMap { table in
-            let resolvedTarget = QuickSwitcherTarget(
-                connectionId: target.connectionId,
-                connectionName: target.connectionName,
-                databaseName: target.databaseName,
-                schemaName: table.schema ?? target.schemaName,
-                databaseDisplayName: target.databaseDisplayName,
-                pathFieldRole: target.pathFieldRole
-            )
-            let frecencyKey = QuickSwitcherFrecencyKey.table(
-                name: table.name, schema: resolvedTarget.schemaName, in: qualifier
-            )
-            guard listedKeys.insert(frecencyKey).inserted else { return nil }
-            let presentation = tablePresentation(for: table.type)
-            return QuickSwitcherItem(
-                frecencyKey: frecencyKey,
-                name: table.name,
-                kind: presentation.kind,
-                subtitle: connectionPath(for: resolvedTarget),
-                isReadOnly: !table.type.allowsRowEditing,
-                target: resolvedTarget,
-                tableType: table.type
-            )
-        }
     }
 
     func canOpenStructure(_ item: QuickSwitcherItem) -> Bool {
@@ -932,6 +783,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             self.isFiltering = false
             self.reconcileSelection(query: query, scope: scope)
             self.applyPendingSelectionMoves()
+            self.endResultTrace(query: query, groups: groups)
         }
     }
 
@@ -941,6 +793,19 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         for delta in moves {
             moveSelection(by: delta)
         }
+    }
+
+    private func endResultTrace(query: String, groups: [Group]) {
+        let tracer = InteractionTracer.shared
+        let key = connectionId.uuidString
+        let results = groups.reduce(0) { $0 + $1.items.count }
+        guard results > 0, tracer.subject(of: .quickOpenResult, key: key) == query else { return }
+        tracer.end(
+            .quickOpenResult,
+            key: key,
+            detail: "chars=\(query.count) results=\(results) tableBuilds=\(tableItemsBuildCount)",
+            after: NSApp.keyWindow
+        )
     }
 
     /// Commits the pending refilter now instead of waiting out its debounce, so a Return typed
@@ -983,14 +848,16 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         return source.filter { includedKinds.contains($0.kind) }
     }
 
+    // A superseded pass returns empty at the next check; the caller drops it either way.
     @concurrent
-    nonisolated private static func emptyQueryGroups(
+    nonisolated static func emptyQueryGroups(
         items: [QuickSwitcherItem],
         scope: QuickSwitcherScope,
         recentKeys: [String],
         connectionId: UUID
     ) async -> [Group] {
         let recent = recentItems(in: items, keys: recentKeys, ownedBy: connectionId)
+        guard !Task.isCancelled else { return [] }
         let recentKeySet = Set(recent.map(\.frecencyKey))
         let isRecent: (QuickSwitcherItem) -> Bool = { item in
             item.belongs(to: connectionId) && recentKeySet.contains(item.frecencyKey)
@@ -1009,6 +876,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         guard scope != .all else { return result }
 
         for kind in QuickSwitcherItemKind.displayOrder {
+            guard !Task.isCancelled else { return [] }
             let kindItems = items
                 .filter { $0.kind == kind && !isRecent($0) }
                 .sorted { lhs, rhs in
@@ -1032,8 +900,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     ) -> [QuickSwitcherItem] {
         let rank = Dictionary(recentKeys.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         var rankedItems: [Int: QuickSwitcherItem] = [:]
-        for item in items where item.belongs(to: connectionId) {
-            guard let position = rank[item.frecencyKey], rankedItems[position] == nil else { continue }
+        for (index, item) in items.enumerated() {
+            if index.isMultiple(of: cancellationCheckStride), Task.isCancelled { return [] }
+            guard item.belongs(to: connectionId),
+                  let position = rank[item.frecencyKey],
+                  rankedItems[position] == nil else { continue }
             rankedItems[position] = item
         }
         return rankedItems
@@ -1050,8 +921,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             if isExcluded(item) { count += 1 }
         }
         let availableCount = max(0, QuickSwitcherRanking.maxResults - excludedCount)
-        let sortedItems = items
-            .filter { !isExcluded($0) }
+        let candidates = items.filter { !isExcluded($0) }
+        guard !Task.isCancelled else { return [] }
+        let sortedItems = candidates
             .sorted { lhs, rhs in
                 let lhsConnection = lhs.target?.connectionName ?? ""
                 let rhsConnection = rhs.target?.connectionName ?? ""
@@ -1079,8 +951,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         }
     }
 
+    // A superseded keystroke stops at the next check instead of competing with the current pass.
     @concurrent
-    nonisolated private static func filteredGroups(
+    nonisolated static func filteredGroups(
         items: [QuickSwitcherItem],
         query: String,
         frecencyScores: [String: Double],
@@ -1088,9 +961,11 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     ) async -> [Group] {
         let qualified = QualifiedSearchQuery(query)
         let prefersShorterNames = qualified.map { !$0.name.isEmpty } ?? true
-        var ranked = items.compactMap { item -> (item: QuickSwitcherItem, rank: Double)? in
+        var ranked: [(item: QuickSwitcherItem, rank: Double)] = []
+        for (index, item) in items.enumerated() {
+            if index.isMultiple(of: cancellationCheckStride), Task.isCancelled { return [] }
             guard let (matchScore, matchedIndices) = bestMatch(for: item, query: query, qualified: qualified) else {
-                return nil
+                continue
             }
             var matched = item
             matched.matchedIndices = matchedIndices
@@ -1098,8 +973,9 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             let frecency = 1 + recalled * QuickSwitcherRanking.frecencyBoost
             let openBoost = item.isOpenInTab ? QuickSwitcherRanking.openTabBoost : 1
             let location = item.isOutsideBrowsedSchema ? QuickSwitcherRanking.otherSchemaWeight : 1
-            return (matched, matchScore * item.kind.rankWeight * frecency * openBoost * location)
+            ranked.append((item: matched, rank: matchScore * item.kind.rankWeight * frecency * openBoost * location))
         }
+        guard !Task.isCancelled else { return [] }
         ranked.sort { lhs, rhs in
             if lhs.rank != rhs.rank { return lhs.rank > rhs.rank }
             let lhsOrder = QuickSwitcherItemKind.displayOrder.firstIndex(of: lhs.item.kind) ?? Int.max
@@ -1172,29 +1048,6 @@ internal final class QuickSwitcherViewModel: ObservableObject {
             return (score, [])
         case (nil, nil):
             return nil
-        }
-    }
-
-    nonisolated private static func tablePresentation(
-        for type: TableInfo.TableType
-    ) -> (kind: QuickSwitcherItemKind, subtitle: String) {
-        switch type {
-        case .table:
-            return (.table, "")
-        case .view:
-            return (.view, String(localized: "View"))
-        case .materializedView:
-            return (.view, String(localized: "Materialized View"))
-        case .foreignTable:
-            return (.table, String(localized: "Foreign Table"))
-        case .systemTable:
-            return (.systemTable, String(localized: "System"))
-        case .partitionedTable:
-            return (.table, String(localized: "Partitioned Table"))
-        case .externalTable:
-            return (.table, String(localized: "External Table"))
-        case .sequence:
-            return (.table, String(localized: "Sequence"))
         }
     }
 
@@ -1285,6 +1138,134 @@ internal final class QuickSwitcherViewModel: ObservableObject {
         guard let databaseName, !databaseName.isEmpty else { return nil }
         guard pathFieldRole == .filePath else { return databaseName }
         return (databaseName as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+// The services publish for every connection, so only a change to what these rows read rebuilds them.
+extension QuickSwitcherViewModel {
+    // An unchanged listing is the same array, which `==` answers without a scan.
+    fileprivate struct TableInputs: Equatable {
+        let schemaGeneration: Int
+        let loadedScope: DatabaseScope?
+        let listing: CatalogTableListing.Result?
+        let keptSchemas: Set<String>?
+    }
+
+    // Each service publishes once per property it writes, so one write burst lands as several wakes.
+    private func noteTableSourceChange(refreshesListing: Bool, mergesTables: Bool) {
+        pendingListingRefresh = pendingListingRefresh || refreshesListing
+        pendingTableMerge = pendingTableMerge || mergesTables
+        guard !isTableSourceChangeScheduled else { return }
+        isTableSourceChangeScheduled = true
+        Task { @MainActor [weak self] in
+            await self?.applyTableSourceChanges()
+        }
+    }
+
+    private func applyTableSourceChanges() async {
+        isTableSourceChangeScheduled = false
+        let refreshesListing = pendingListingRefresh
+        let mergesTables = pendingTableMerge
+        pendingListingRefresh = false
+        pendingTableMerge = false
+        if refreshesListing { refreshListingDemand() }
+        if mergesTables { await rebuildTableItemsIfNeeded() }
+    }
+
+    // A call that finds a build of the same inputs running waits for that one instead of starting another.
+    private func rebuildTableItemsIfNeeded() async {
+        guard let tableSource else { return }
+        let inputs = currentTableInputs(for: tableSource)
+        if let pendingTableBuild, pendingTableBuild.inputs == inputs {
+            await pendingTableBuild.task.value
+            return
+        }
+        guard inputs != tableInputs else { return }
+        tableInputs = inputs
+        tableItemsBuildCount += 1
+        let request = tableBuildRequest(from: inputs, source: tableSource)
+        let previous = tableItems
+        let task = Task { @MainActor [weak self] in
+            let built = await Self.buildTableItems(request, replacing: previous)
+            guard let self, self.tableInputs == inputs, let built else { return }
+            self.tableItems = built.items
+            self.tableItemKeys = built.keys
+            self.publishItems()
+        }
+        pendingTableBuild = (inputs, task)
+        await task.value
+        if pendingTableBuild?.inputs == inputs { pendingTableBuild = nil }
+    }
+
+    private func currentTableInputs(for source: TableSource) -> TableInputs {
+        let listing = source.database.flatMap { database -> CatalogTableListing.Result? in
+            guard source.listsTablesPerSchema else { return nil }
+            return DatabaseTreeMetadataService.shared
+                .allSchemaTablesLoadState(connectionId: connectionId, database: database).value
+        }
+        return TableInputs(
+            schemaGeneration: services.schemaService.generationToken(for: connectionId),
+            loadedScope: services.schemaService.loadedScope(for: connectionId),
+            listing: listing,
+            keptSchemas: source.database.flatMap {
+                SidebarSchemaFilter(databaseManager: services.databaseManager).keptSchemas(connectionId: connectionId, database: $0)
+            }
+        )
+    }
+
+    fileprivate struct TableBuildRequest: Sendable {
+        let local: [TableInfo]
+        let loadedFrom: String?
+        let coveredSchemas: Set<String>
+        let staleSchemas: Set<String>
+        let listing: [TableInfo]?
+        let keptSchemas: Set<String>?
+        let database: String?
+        let connectionSwitchesDatabases: Bool
+        let browseSchema: String?
+        let openTables: Set<QuickSwitcherOpenTable>
+    }
+
+    private func tableBuildRequest(from inputs: TableInputs, source: TableSource) -> TableBuildRequest {
+        let schemaService = services.schemaService
+        return TableBuildRequest(
+            local: schemaService.allLoadedTables(for: connectionId),
+            loadedFrom: inputs.loadedScope?.database,
+            coveredSchemas: coveredSchemas(loadedScope: inputs.loadedScope, grouping: source.grouping),
+            staleSchemas: schemaService.schemasWithLoadedTables(for: connectionId)
+                .subtracting(schemaService.schemasWithCurrentTables(for: connectionId)),
+            listing: inputs.listing?.tables,
+            keptSchemas: inputs.keptSchemas,
+            database: source.database,
+            connectionSwitchesDatabases: source.connectionSwitchesDatabases,
+            browseSchema: source.browseSchema,
+            openTables: source.openTables
+        )
+    }
+
+    // Tens of thousands of rows, so built off the main actor. Nil when they come out as they were.
+    @concurrent
+    nonisolated private static func buildTableItems(
+        _ request: TableBuildRequest,
+        replacing previous: [QuickSwitcherItem]
+    ) async -> (items: [QuickSwitcherItem], keys: Set<String>)? {
+        let tables = mergedTables(
+            local: request.local,
+            loadedFrom: request.loadedFrom,
+            coveredSchemas: request.coveredSchemas,
+            staleSchemas: request.staleSchemas,
+            listing: request.listing,
+            browsing: request.database
+        )
+        let items = makeTableItems(
+            Self.tables(tables, keeping: request.keptSchemas),
+            database: request.database,
+            connectionSwitchesDatabases: request.connectionSwitchesDatabases,
+            browseSchema: request.browseSchema,
+            openTables: request.openTables
+        )
+        guard items != previous else { return nil }
+        return (items, Set(items.map(\.frecencyKey)))
     }
 }
 

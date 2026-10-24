@@ -776,7 +776,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
             let admitted = try admit(role)
             let result = try await withQueryDeadline { [self] in
                 let zones = await sessionZones(on: connection)
-                return try await collectRows(statement, options: admitted.options, zones: zones, on: connection)
+                return try await collectRows(
+                    statement, options: OracleRowLimits.collecting(admitted.options), zones: zones, on: connection
+                )
             }
             await recordSuccess(of: role, on: admitted.session)
             forgetSessionZonesIfChanged(by: query)

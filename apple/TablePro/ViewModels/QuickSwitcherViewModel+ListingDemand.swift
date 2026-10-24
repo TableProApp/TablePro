@@ -24,14 +24,14 @@ internal extension QuickSwitcherViewModel {
     /// the section is full; a table key that has not resolved before that may be in the listing.
     nonisolated static func recentNeedsListing(
         recentKeys: [String],
-        resolvedKeys: Set<String>,
+        isResolved: (String) -> Bool,
         isTableKey: (String) -> Bool,
         limit: Int = QuickSwitcherRanking.recentLimit
     ) -> Bool {
         var resolved = 0
         for key in recentKeys {
             guard resolved < limit else { return false }
-            if resolvedKeys.contains(key) {
+            if isResolved(key) {
                 resolved += 1
             } else if isTableKey(key) {
                 return true

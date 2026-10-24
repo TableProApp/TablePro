@@ -11,11 +11,16 @@ import Foundation
 public struct SidebarSearch: Equatable, Sendable {
     public let text: String
     public let qualified: QualifiedSearchQuery?
+    private let textQuery: SidebarNameQuery
+    private let nameMatcher: SidebarNameQuery
 
     public init(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let qualified = QualifiedSearchQuery(trimmed)
         self.text = trimmed
-        self.qualified = QualifiedSearchQuery(trimmed)
+        self.qualified = qualified
+        self.textQuery = SidebarNameQuery(trimmed)
+        self.nameMatcher = SidebarNameQuery(qualified?.name ?? trimmed)
     }
 
     public var isEmpty: Bool {
@@ -29,14 +34,38 @@ public struct SidebarSearch: Equatable, Sendable {
     }
 
     public func matchesName(_ name: String) -> Bool {
-        SidebarNameFilter.matches(query: nameQuery, candidate: name)
+        nameMatcher.tier(of: name) != nil
     }
 
-    /// An object matches as a path, or by holding the whole text in its own name.
+    // An object matches as a path, or by holding the whole text in its own name.
     public func matchesObject(named name: String, database: String?, schema: String?) -> Bool {
-        if SidebarNameFilter.matches(query: text, candidate: name) { return true }
+        if textQuery.tier(of: name) != nil { return true }
         guard qualified != nil else { return false }
         return admits(database: database, schema: schema) && matchesName(name)
+    }
+
+    // What `matchesObject` then `SidebarNameFilter.ranked` by `nameQuery` decide, in one look at the name.
+    public func rankTier(named name: String, database: String?, schema: String?) -> SidebarNameMatchTier? {
+        guard qualified != nil else { return textQuery.tier(of: name) }
+        guard let tier = nameMatcher.tier(of: name) else { return nil }
+        if admits(database: database, schema: schema) || textQuery.tier(of: name) != nil { return tier }
+        return nil
+    }
+
+    // The matching objects, exact names first, then prefixes, then the rest, each in arrival order.
+    public func ranked<Element>(
+        _ items: [Element],
+        name: (Element) -> String,
+        database: String?,
+        schema: (Element) -> String?
+    ) -> [Element] {
+        guard !isEmpty else { return items }
+        var matches = SidebarRankedMatches<Element>()
+        for item in items {
+            guard let tier = rankTier(named: name(item), database: database, schema: schema(item)) else { continue }
+            matches.append(item, tier: tier)
+        }
+        return matches.elements
     }
 
     /// Whether a container at this location may hold a match. Every container may for a plain

@@ -21,6 +21,13 @@ public protocol CodeSuggestionDelegate: AnyObject {
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]?
 
+    // Optional. True when the items `completionOnCursorMove` gave for this position are a partial pool: the window
+    // keeps them and asks for the full answer behind them.
+    func completionNeedsFreshItems(textView: TextViewController, cursorPosition: CursorPosition) -> Bool
+
+    // Optional
+    func completionWindowDidShow(textView: TextViewController, itemCount: Int)
+
     // Optional
     func completionWindowDidClose()
 
@@ -35,6 +42,8 @@ public protocol CodeSuggestionDelegate: AnyObject {
 
 public extension CodeSuggestionDelegate {
     func completionTriggerCharacters() -> Set<String> { [] }
+    func completionNeedsFreshItems(textView: TextViewController, cursorPosition: CursorPosition) -> Bool { false }
+    func completionWindowDidShow(textView: TextViewController, itemCount: Int) { }
     func completionWindowDidClose() { }
     func completionWindowDidSelect(item: CodeSuggestionEntry) { }
 

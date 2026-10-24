@@ -1319,4 +1319,43 @@ struct QuickSwitcherViewModelTests {
         #expect(vm.selectedItem()?.name == "orders")
         #expect(vm.searchGeneration == generation + 1)
     }
+
+    // The task is main-actor isolated and cancelled before this test suspends, so it starts cancelled.
+    @Test("A search the next keystroke superseded stops ranking and returns nothing")
+    func cancelledSearchStopsRanking() async {
+        let items = tableItems((0..<5_000).map { "orders_\($0)" })
+        let full = await QuickSwitcherViewModel.filteredGroups(
+            items: items, query: "ord", frecencyScores: [:], connectionId: UUID()
+        )
+        #expect(full.first?.items.count == QuickSwitcherRanking.maxResults)
+
+        let superseded = Task { @MainActor in
+            await QuickSwitcherViewModel.filteredGroups(
+                items: items, query: "ord", frecencyScores: [:], connectionId: UUID()
+            )
+        }
+        superseded.cancel()
+        let groups = await superseded.value
+
+        #expect(groups.isEmpty)
+    }
+
+    @Test("A scope change the next one superseded stops listing and returns nothing")
+    func cancelledBrowseStopsListing() async {
+        let items = tableItems((0..<5_000).map { "orders_\($0)" })
+        let full = await QuickSwitcherViewModel.emptyQueryGroups(
+            items: items, scope: .tables, recentKeys: [], connectionId: UUID()
+        )
+        #expect(!full.isEmpty)
+
+        let superseded = Task { @MainActor in
+            await QuickSwitcherViewModel.emptyQueryGroups(
+                items: items, scope: .tables, recentKeys: [], connectionId: UUID()
+            )
+        }
+        superseded.cancel()
+        let groups = await superseded.value
+
+        #expect(groups.isEmpty)
+    }
 }

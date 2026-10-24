@@ -27,6 +27,7 @@ MainActor.assumeIsolated {
     AppActivationPolicyController.shared.applyLaunchRole()
     LaunchTracer.shared.mark(.activationRoleApplied)
 }
+MainActor.assumeIsolated { MainThreadStallMonitor.startIfRequested() }
 let delegate = MainActor.assumeIsolated { AppDelegate() }
 application.delegate = delegate
 _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)

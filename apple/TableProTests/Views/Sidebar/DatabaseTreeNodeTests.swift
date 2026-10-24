@@ -145,6 +145,14 @@ struct DatabaseTreeNodeTests {
         #expect(node.containerRef(systemSchemas: []) == nil)
     }
 
+    @Test("A schema row of a one-row-per-schema tree is selectable, so the keyboard can reach and open it")
+    func hierarchicalSchemaRowIsSelectable() {
+        let node = DatabaseTreeNode(id: "a", kind: .hierarchicalSchemaSection(schema: "HR"))
+
+        #expect(DatabaseTreeSelection.isSelectable(node.kind))
+        #expect(DatabaseTreeTypeSelect.matchString(for: node.kind) == "HR")
+    }
+
     @Test("Type-select can land on a partition by its own name")
     func partitionMatchesTypeSelect() {
         let node = DatabaseTreeNode(id: "a", kind: .partition(partitionRef("orders_2024")))

@@ -87,6 +87,9 @@ actor SQLSchemaProvider {
     private var knownSchemas: [String] = []
     private var knownDatabases: [String] = []
 
+    // Every table-slot request reads all of them, so they are built once per table list, not per keystroke.
+    private var unqualifiedTableItems: (defaultSchema: String?, items: [SQLCompletionItem])?
+
     private weak var cachedDriver: (any DatabaseDriver)?
     private let metadataSource: ColumnMetadataSource?
     private var connectionInfo: DatabaseConnection?
@@ -350,6 +353,7 @@ actor SQLSchemaProvider {
     /// waits for the next request.
     private func noteTableListWritten() {
         tableListGeneration &+= 1
+        unqualifiedTableItems = nil
         switch columnPreload {
         case .awaitingTables:
             startColumnPreloadIfStale(retryingFailure: true)
@@ -490,12 +494,12 @@ actor SQLSchemaProvider {
 
     // MARK: - Completion Items
 
-    /// Tables a statement can name without their schema.
     func tableCompletionItems() async -> [SQLCompletionItem] {
-        let tableData = tablesResolvableUnqualified.map { (name: $0.name, isView: $0.type == .view) }
-        return await MainActor.run {
-            tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
-        }
+        let defaultSchema = getDefaultSchema()
+        if let cached = unqualifiedTableItems, cached.defaultSchema == defaultSchema { return cached.items }
+        let items = tablesResolvableUnqualified.map { SQLCompletionItem.table($0.name, isView: $0.type == .view) }
+        unqualifiedTableItems = (defaultSchema, items)
+        return items
     }
 
     func setNamespaces(schemas: [String], databases: [String]) {
@@ -511,12 +515,8 @@ actor SQLSchemaProvider {
         knownDatabases.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    /// Schema names only — suggested after a database-qualified dot (e.g. "ANALYTICS_PROD.").
     func schemaCompletionItems() async -> [SQLCompletionItem] {
-        let schemas = qualifiableSchemas
-        return await MainActor.run {
-            schemas.map { SQLCompletionItem.schemaName($0) }
-        }
+        qualifiableSchemas.map { SQLCompletionItem.schemaName($0) }
     }
 
     private var qualifiableSchemas: [String] {
@@ -526,39 +526,50 @@ actor SQLSchemaProvider {
         }
     }
 
-    /// Databases + schemas — suggested alongside tables in FROM/JOIN contexts.
     func namespaceCompletionItems() async -> [SQLCompletionItem] {
-        let schemas = qualifiableSchemas
-        let databases = knownDatabases
-        return await MainActor.run {
-            databases.map { SQLCompletionItem.databaseName($0) }
-                + schemas.map { SQLCompletionItem.schemaName($0) }
-        }
+        knownDatabases.map { SQLCompletionItem.databaseName($0) }
+            + qualifiableSchemas.map { SQLCompletionItem.schemaName($0) }
     }
 
-    /// Tables of one schema — suggested after a schema-qualified dot (e.g. "DBT_MARTS.").
-    /// Falls back to fetching from the database when that schema's tables aren't loaded yet.
+    // Falls back to fetching from the database when that schema's tables aren't loaded yet.
     func tableCompletionItems(inSchema schema: String) async -> [SQLCompletionItem] {
-        let listed = await knownTables(inSchema: schema)
-        let tableData = listed.map { (name: $0.name, isView: $0.type == .view) }
-        return await MainActor.run {
-            tableData.map { SQLCompletionItem.table($0.name, isView: $0.isView) }
+        await tableCompletionItems(inSchema: schema, isQuoted: false)
+    }
+
+    func tableCompletionItems(inSchema schema: String, isQuoted: Bool) async -> [SQLCompletionItem] {
+        await knownTables(inSchema: schema, isQuoted: isQuoted).map {
+            SQLCompletionItem.table($0.name, isView: $0.type == .view)
         }
     }
 
-    private func knownTables(inSchema schema: String) async -> [TableInfo] {
-        let loaded = tables.filter { $0.schema?.caseInsensitiveCompare(schema) == .orderedSame }
-        guard loaded.isEmpty else { return loaded }
-        return await onDemandTables(inSchema: schema)
+    // Oracle compares the owner as written, so `lc_s050.` fetches `LC_S050`. A quoted name is the spelling itself,
+    // and an exact match wins either way: quoted names can differ only in case.
+    private func catalogSpelling(ofSchema typed: String, isQuoted: Bool) -> String? {
+        if knownSchemas.contains(typed) { return typed }
+        guard !isQuoted else { return nil }
+        return knownSchemas.first { $0.caseInsensitiveCompare(typed) == .orderedSame }
     }
 
-    /// Concurrent callers await the fetch already in flight, and a fetch that a reset overtook
-    /// answers its own caller without writing into the scope that replaced it. An empty schema is
-    /// an answer and is kept; a failed fetch is not, so the next keystroke asks again.
-    private func onDemandTables(inSchema schema: String) async -> [TableInfo] {
-        let key = schema.lowercased()
-        if let cached = onDemandSchemaTables[key] { return cached }
-        if let inFlight = onDemandSchemaTableTasks[key] { return await inFlight.value ?? [] }
+    private func knownTables(inSchema typed: String, isQuoted: Bool) async -> [TableInfo] {
+        let resolved = catalogSpelling(ofSchema: typed, isQuoted: isQuoted)
+        let schema = resolved ?? typed
+        let names = { (name: String?) in isQuoted ? name == schema : name?.caseInsensitiveCompare(schema) == .orderedSame }
+        let loaded = tables.filter { names($0.schema) }
+        guard loaded.isEmpty else { return loaded }
+        // An engine without schemas qualifies a table by its database, and this scope's own tables name none.
+        if knownSchemas.isEmpty, names(scopeDatabase) {
+            return tables
+        }
+        return await onDemandTables(inSchema: schema, isCatalogSpelling: resolved != nil)
+    }
+
+    // Concurrent callers await the fetch already in flight, and a fetch that a reset overtook answers its own caller
+    // without writing into the scope that replaced it. A failed fetch is never kept, and an empty one only for a
+    // schema the catalog lists: a spelling it does not know may be the wrong case, and would hide the schema until
+    // the next refresh.
+    private func onDemandTables(inSchema schema: String, isCatalogSpelling: Bool) async -> [TableInfo] {
+        if let cached = onDemandSchemaTables[schema] { return cached }
+        if let inFlight = onDemandSchemaTableTasks[schema] { return await inFlight.value ?? [] }
         guard let fetchSchemaTables = metadataSource?.fetchSchemaTables else { return [] }
 
         let task = Task<[TableInfo]?, Never> {
@@ -571,11 +582,11 @@ actor SQLSchemaProvider {
                 return nil
             }
         }
-        onDemandSchemaTableTasks[key] = task
+        onDemandSchemaTableTasks[schema] = task
         let fetched = await task.value
-        guard onDemandSchemaTableTasks[key] == task else { return fetched ?? [] }
-        onDemandSchemaTableTasks[key] = nil
-        if let fetched { onDemandSchemaTables[key] = fetched }
+        guard onDemandSchemaTableTasks[schema] == task else { return fetched ?? [] }
+        onDemandSchemaTableTasks[schema] = nil
+        if let fetched, isCatalogSpelling || !fetched.isEmpty { onDemandSchemaTables[schema] = fetched }
         return fetched ?? []
     }
 
@@ -584,22 +595,14 @@ actor SQLSchemaProvider {
         return tableSchema.caseInsensitiveCompare(schema) == .orderedSame
     }
 
-    /// Get completion items for columns of a specific table
     func columnCompletionItems(for tableName: String, schema: String? = nil) async -> [SQLCompletionItem] {
-        let columns = await getColumns(for: tableName, schema: schema)
-        let columnData = columns.map { col in
-            (name: col.name, type: col.dataType, isPK: col.isPrimaryKey,
-             isNullable: col.isNullable, defaultValue: col.defaultValue, comment: col.comment)
-        }
-        return await MainActor.run {
-            columnData.map {
-                SQLCompletionItem.column(
-                    $0.name, dataType: $0.type, tableName: tableName,
-                    isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment,
-                    identifier: .catalog($0.name)
-                )
-            }
+        await getColumns(for: tableName, schema: schema).map { column in
+            SQLCompletionItem.column(
+                column.name, dataType: column.dataType, tableName: tableName,
+                isPrimaryKey: column.isPrimaryKey, isNullable: column.isNullable,
+                defaultValue: column.defaultValue, comment: column.comment,
+                identifier: .catalog(column.name)
+            )
         }
     }
 
@@ -695,20 +698,15 @@ actor SQLSchemaProvider {
             }
         }
 
-        // Capture as immutable for Sendable compliance
-        let itemData = itemDataBuilder
-
-        return await MainActor.run {
-            itemData.map {
-                var item = SQLCompletionItem.column(
-                    $0.label, dataType: $0.type, tableName: $0.table,
-                    isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment,
-                    identifier: $0.identifier
-                )
-                item.isQualifiedReference = $0.isQualified
-                return item
-            }
+        return itemDataBuilder.map {
+            var item = SQLCompletionItem.column(
+                $0.label, dataType: $0.type, tableName: $0.table,
+                isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
+                defaultValue: $0.defaultValue, comment: $0.comment,
+                identifier: $0.identifier
+            )
+            item.isQualifiedReference = $0.isQualified
+            return item
         }
     }
 
@@ -770,20 +768,16 @@ actor SQLSchemaProvider {
             ))
         }
 
-        let itemData = itemDataBuilder
-
-        return await MainActor.run {
-            itemData.map {
-                var item = SQLCompletionItem.column(
-                    $0.label, dataType: $0.type, tableName: $0.table,
-                    isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
-                    defaultValue: $0.defaultValue, comment: $0.comment,
-                    identifier: $0.identifier
-                )
-                item.sortPriority = 150
-                item.isQualifiedReference = $0.isQualified
-                return item
-            }
+        return itemDataBuilder.map {
+            var item = SQLCompletionItem.column(
+                $0.label, dataType: $0.type, tableName: $0.table,
+                isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
+                defaultValue: $0.defaultValue, comment: $0.comment,
+                identifier: $0.identifier
+            )
+            item.sortPriority = 150
+            item.isQualifiedReference = $0.isQualified
+            return item
         }
     }
 }

@@ -90,4 +90,23 @@ struct SidebarNameFilterTests {
         let result = SidebarNameFilter.ranked(names, query: "ab", name: { $0 })
         #expect(result == ["ab_x", "ab_a", "ab_m"])
     }
+
+    @Test("A prepared query trims once and ranks like the text it was made from")
+    func preparedQueryRanksLikeText() {
+        let query = SidebarNameQuery("  user ")
+        let names = ["audit_user", "users", "user", "orders", "user_log"]
+        #expect(query.text == "user")
+        #expect(query.tier(of: "USERS") == .prefix)
+        #expect(SidebarNameFilter.ranked(names, query: query, name: { $0 })
+            == SidebarNameFilter.ranked(names, query: "  user ", name: { $0 }))
+        #expect(SidebarNameFilter.ranked(names, query: query, name: { $0 }) == ["user", "users", "user_log", "audit_user"])
+    }
+
+    @Test("An empty prepared query matches every name as exact")
+    func emptyPreparedQuery() {
+        let query = SidebarNameQuery("   ")
+        #expect(query.isEmpty)
+        #expect(query.tier(of: "anything") == .exact)
+        #expect(SidebarNameFilter.ranked(["b", "a"], query: query, name: { $0 }) == ["b", "a"])
+    }
 }

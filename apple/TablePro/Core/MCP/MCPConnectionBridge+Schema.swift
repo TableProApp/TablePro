@@ -155,28 +155,56 @@ extension MCPConnectionBridge {
             scope: scope,
             workload: table == nil ? .bulk : .interactive
         ) { driver in
-            let targets: [String]
-            if let table {
-                targets = [table]
-            } else {
-                targets = try await driver.fetchTables(schema: schema).map(\.name).sorted()
-            }
-            var entries: [JsonValue] = []
-            for target in targets {
-                let indexes = (try? await driver.fetchIndexes(table: target)) ?? []
-                guard !indexes.isEmpty else { continue }
-                entries.append(.object([
-                    "table": .string(target),
-                    "indexes": .array(indexes.map(MCPConnectionBridge.encode(index:)))
-                ]))
-            }
-            return entries
+            try await MCPConnectionBridge.indexEntries(using: driver, schema: schema, table: table)
         }
         return .object([
             "database": .string(scope.database),
             "schema": scope.schema.map(JsonValue.string) ?? JsonValue.null,
             "tables": .array(payload)
         ])
+    }
+
+    static func indexEntries(using driver: DatabaseDriver, schema: String?, table: String?) async throws -> [JsonValue] {
+        let targets: [String]
+        let bulkIndexes: [String: [IndexInfo]]?
+        if let table {
+            targets = [table]
+            bulkIndexes = nil
+        } else {
+            targets = try await driver.fetchTables(schema: schema).map(\.name).sorted()
+            bulkIndexes = try await schemaIndexes(using: driver, schema: schema)
+        }
+        var entries: [JsonValue] = []
+        for target in targets {
+            let indexes: [IndexInfo]
+            if let bulkIndexes {
+                indexes = bulkIndexes[target] ?? []
+            } else {
+                indexes = (try? await driver.fetchIndexes(table: target)) ?? []
+            }
+            guard !indexes.isEmpty else { continue }
+            entries.append(.object([
+                "table": .string(target),
+                "indexes": .array(indexes.map(MCPConnectionBridge.encode(index:)))
+            ]))
+        }
+        return entries
+    }
+
+    // Nil sends the caller to the per-table reads: the driver has no single-query form, or it failed.
+    private static func schemaIndexes(using driver: DatabaseDriver, schema: String?) async throws -> [String: [IndexInfo]]? {
+        guard let plugin = CompareMetadataService.pluginDriver(from: driver), plugin.providesBulkIndexFetch else {
+            return nil
+        }
+        do {
+            let indexes = try await plugin.fetchAllIndexes(schema: schema ?? plugin.currentSchema)
+            return indexes.mapValues { $0.map(IndexInfo.init) }
+        } catch let cancellation as CancellationError {
+            throw cancellation
+        } catch {
+            logger.warning("Bulk index fetch failed: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
     }
 
     func listForeignKeys(scope: DatabaseScope, table: String?) async throws -> JsonValue {

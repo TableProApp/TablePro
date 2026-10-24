@@ -502,18 +502,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     func fetchTables(schema: String?) async throws -> [TableInfo] {
         let resolvedSchema = schema ?? pluginDriver.currentSchema
         let pluginTables = try await pluginDriver.fetchTables(schema: resolvedSchema)
-        return pluginTables.map { mapPluginTable($0, schemaFallback: resolvedSchema) }
+        return await Self.mapPluginTables(pluginTables, schemaFallback: resolvedSchema)
     }
 
     func fetchTablesInAllSchemas() async throws -> [TableInfo]? {
         guard let pluginTables = try await pluginDriver.fetchTablesInAllSchemas() else { return nil }
-        return pluginTables.map { mapPluginTable($0, schemaFallback: nil) }
+        return await Self.mapPluginTables(pluginTables, schemaFallback: nil)
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [TableInfo]? {
         guard let pluginTables = try await pluginDriver.fetchTables(inSchemas: schemas) else { return nil }
         let schemaFallback = schemas.count == 1 ? schemas.first : nil
-        return pluginTables.map { mapPluginTable($0, schemaFallback: schemaFallback) }
+        return await Self.mapPluginTables(pluginTables, schemaFallback: schemaFallback)
     }
 
     var listsTemporaryTables: Bool {
@@ -521,7 +521,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchTemporaryTables() async throws -> [TableInfo] {
-        try await pluginDriver.fetchTemporaryTables().map { mapPluginTable($0, schemaFallback: nil, isTemporary: true) }
+        let pluginTables = try await pluginDriver.fetchTemporaryTables()
+        return await Self.mapPluginTables(pluginTables, schemaFallback: nil, isTemporary: true)
     }
 
     func fetchPartitionDetails(table: String, schema: String?) async throws -> [PartitionInfo] {
@@ -548,7 +549,21 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         PluginTableKindDecoder.decode(declaredType).kind
     }
 
-    private func mapPluginTable(_ table: PluginTableInfo, schemaFallback: String?, isTemporary: Bool = false) -> TableInfo {
+    // A listing can name every table of a large catalog, and a caller on the main actor would map it there.
+    @concurrent
+    nonisolated private static func mapPluginTables(
+        _ tables: [PluginTableInfo],
+        schemaFallback: String?,
+        isTemporary: Bool = false
+    ) async -> [TableInfo] {
+        tables.map { mapPluginTable($0, schemaFallback: schemaFallback, isTemporary: isTemporary) }
+    }
+
+    nonisolated private static func mapPluginTable(
+        _ table: PluginTableInfo,
+        schemaFallback: String?,
+        isTemporary: Bool
+    ) -> TableInfo {
         let decoded = PluginTableKindDecoder.decode(table.type)
         let tableType: TableInfo.TableType
         if let mapped = decoded.kind {

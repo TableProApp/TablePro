@@ -7,6 +7,19 @@ import AppKit
 import TableProPluginKit
 import TableProUtilities
 
+// The table rows one parent was last built with, so a reload over the same rows skips their ids.
+struct DatabaseTreeTableRows {
+    enum Schema: Equatable {
+        case own
+        case fixed(String?)
+    }
+
+    let tables: SameRows<TableInfo>
+    let database: String?
+    let schema: Schema
+    let nodes: [DatabaseTreeNode]
+}
+
 /// Turning the connection's metadata into the rows the outline draws. The three sidebar shapes
 /// differ only in what this builds at the root; everything below the root is shared.
 extension DatabaseTreeOutlineCoordinator {
@@ -261,11 +274,12 @@ extension DatabaseTreeOutlineCoordinator {
         let database = browsingDatabase
         switch kind.category {
         case .table:
-            return flatPlan().looseObjects(of: kind)
-                .map { table in
-                    let ref = DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
-                    return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
-                }
+            return tableNodes(
+                parentId: DatabaseTreeNode.objectKindSectionId(kind),
+                tables: flatPlan().looseObjects(of: kind),
+                database: database,
+                schema: .own
+            )
         case .routine:
             let routines = viewModel.filteredRoutines(of: kind, from: schemaService.routines(for: connectionId))
             return routineNodes(routines, database: database, schema: { $0.schema })
@@ -313,7 +327,8 @@ extension DatabaseTreeOutlineCoordinator {
                 connectionId: connectionId,
                 schema: schema,
                 searchText: searchText,
-                database: browsingDatabase
+                database: browsingDatabase,
+                filter: { self.loadedContentMemo.buckets(for: schema, source: $0) }
             ),
             listingMatches: schemaService.loadedScope(for: connectionId).flatMap { listingMatches(database: $0.database) },
             listingCoversSchema: !systemSchemas.contains(schema)
@@ -324,13 +339,13 @@ extension DatabaseTreeOutlineCoordinator {
     /// holds only procedures shows a Procedures group instead of reading as empty.
     private func hierarchicalSchemaNodes(schema: String) -> [DatabaseTreeNode] {
         let parentId = DatabaseTreeNode.hierarchicalSchemaSectionId(schema)
-        switch schemaService.schemaState(for: connectionId, schema: schema) {
-        case .idle, .loading:
+        let database = hierarchicalGroupDatabase
+        switch hierarchicalContentSource(schema: schema) {
+        case .pending:
             return [statusNode(parentId: parentId, status: .loading)]
         case .failed(let message):
             return [statusNode(parentId: parentId, status: .error(message))]
         case .loaded:
-            let database = hierarchicalGroupDatabase
             return groupedObjectNodes(
                 buckets: objectBuckets(database: database, schema: schema),
                 sidePhases: hierarchicalSideLoadStates(schema: schema),
@@ -338,7 +353,50 @@ extension DatabaseTreeOutlineCoordinator {
                 schema: schema,
                 parentId: parentId
             )
+        case .listing:
+            return groupedObjectNodes(
+                buckets: objectBuckets(database: database, schema: schema),
+                sidePhases: DatabaseTreeSidePhases(routines: .loaded, triggers: nil, types: nil),
+                database: database,
+                schema: schema,
+                parentId: parentId
+            )
         }
+    }
+
+    /// The tree's rule for a schema the search opened: the all-schema listing answers for it, so a
+    /// search over a hundred schemas reads only those it matched by something other than a table.
+    private func hierarchicalContentSource(schema: String) -> DatabaseTreeFilter.SchemaContentSource {
+        let tables: MetadataLoadPhase
+        switch schemaService.schemaState(for: connectionId, schema: schema) {
+        case .idle: tables = .idle
+        case .loading: tables = .loading
+        case .loaded: tables = .loaded
+        case .failed(let message): tables = .failed(message)
+        }
+        return DatabaseTreeFilter.schemaContentSource(
+            searching: !searchText.isEmpty,
+            tables: tables,
+            isTablesCurrent: schemaService.isSchemaCurrent(for: connectionId, schema: schema),
+            listingRows: hierarchicalListingRows(schema: schema)
+        )
+    }
+
+    private func hierarchicalListingRows(schema: String) -> [TableInfo]? {
+        guard let matches = hierarchicalListing(answering: schema) else { return nil }
+        return matches.rowsBySchema[schema] ?? []
+    }
+
+    internal func hierarchicalListingMatchesTable(in schema: String) -> Bool {
+        hierarchicalListing(answering: schema)?.matched.contains(schema) ?? false
+    }
+
+    private func hierarchicalListing(answering schema: String) -> DatabaseTreeFilter.SchemaListingMatches? {
+        guard !searchText.isEmpty, !systemSchemas.contains(schema),
+              let database = schemaService.loadedScope(for: connectionId)?.database,
+              let matches = listingMatches(database: database), matches.answers(for: schema)
+        else { return nil }
+        return matches
     }
 
     /// An engine grouped by hierarchical schema browses no database, so its groups are keyed by
@@ -360,13 +418,23 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
-    private func hierarchicalObjectBuckets(schema: String) -> DatabaseTreeObjectBuckets {
-        DatabaseTreeFilter.hierarchicalObjectBuckets(
+    private func hierarchicalBucketSource(schema: String) -> DatabaseTreeBucketSource {
+        var tables = schemaService.tables(for: connectionId, schema: schema)
+        if case .listing(let rows) = hierarchicalContentSource(schema: schema) {
+            tables = rows
+        }
+        // A schema the search opened without reading keeps side lists a change overtook out of it.
+        let showsOvertaken = !hierarchicalSearchSkipsRead(schema)
+            || schemaService.isSchemaCurrent(for: connectionId, schema: schema)
+        func shown<Item>(_ items: [Item]) -> [Item] {
+            showsOvertaken ? items : []
+        }
+        return DatabaseTreeFilter.hierarchicalBucketSource(
             schema: schema,
-            tables: schemaService.tables(for: connectionId, schema: schema),
-            routines: schemaService.routines(for: connectionId, schema: schema),
-            triggers: schemaService.triggers(for: connectionId, schema: schema),
-            userTypes: schemaService.userDefinedTypes(for: connectionId, schema: schema),
+            tables: tables,
+            routines: shown(schemaService.routines(for: connectionId, schema: schema)),
+            triggers: shown(schemaService.triggers(for: connectionId, schema: schema)),
+            userTypes: shown(schemaService.userDefinedTypes(for: connectionId, schema: schema)),
             searchText: searchText,
             database: browsingDatabase
         )
@@ -439,11 +507,8 @@ extension DatabaseTreeOutlineCoordinator {
             browsedSchema: activeSchema,
             searchText: searchText,
             hiddenSchemas: showSystemContainers ? [] : systemSchemas,
-            allSchemaTables: service.allSchemaTablesLoadState(connectionId: connectionId, database: database),
+            listingMatches: listingMatches(database: database),
             keptSchemas: keptSchemas(database: database),
-            covered: DatabaseTreeFilter.coveredSchemas(
-                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
-            ),
             loadedContent: { schema, _ in self.loadedObjectBuckets(database: database, schema: schema) }
         )
     }
@@ -542,43 +607,48 @@ extension DatabaseTreeOutlineCoordinator {
     internal func objectBuckets(database: String, schema: String?) -> DatabaseTreeObjectBuckets {
         let key = DatabaseTreeContainerKey(database: database, schema: schema, searchText: searchText)
         if let cached = objectBucketsCache[key] { return cached }
-        let buckets: DatabaseTreeObjectBuckets
+        let source: DatabaseTreeBucketSource
         if rootShape == .hierarchicalSchema, let schema {
-            buckets = hierarchicalObjectBuckets(schema: schema)
+            source = hierarchicalBucketSource(schema: schema)
         } else {
-            let tables: [TableInfo]
-            // A schema drawn from the listing keeps whatever side lists it has read.
-            if case .listing(let rows) = contentSource(database: database, schema: schema) {
-                tables = rows
-            } else {
-                tables = service.tables(connectionId: connectionId, database: database, schema: schema)
-            }
-            // A schema the search opened is never read, so a side list a change overtook would stay
-            // on screen with objects that no longer exist; it shows what is current only.
-            let showsOvertaken = searchText.isEmpty || schema.map { isOpenedByUser(database: database, schema: $0) } ?? true
-            func shown<Item>(_ items: [Item], isCurrent: Bool) -> [Item] {
-                showsOvertaken || isCurrent ? items : []
-            }
-            buckets = DatabaseTreeFilter.objectBuckets(
-                tables: tables,
-                routines: shown(
-                    service.routines(connectionId: connectionId, database: database, schema: schema),
-                    isCurrent: service.isRoutinesCurrent(connectionId: connectionId, database: database, schema: schema)
-                ),
-                triggers: shown(
-                    service.triggers(connectionId: connectionId, database: database, schema: schema),
-                    isCurrent: service.isTriggersCurrent(connectionId: connectionId, database: database, schema: schema)
-                ),
-                userTypes: shown(
-                    service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
-                    isCurrent: service.isTypesCurrent(connectionId: connectionId, database: database, schema: schema)
-                ),
-                searchText: searchText,
-                database: database
-            )
+            source = bucketSource(database: database, schema: schema)
         }
+        let buckets = bucketMemo.buckets(for: DatabaseTreeContainerSlot(database: database, schema: schema), source: source)
         objectBucketsCache[key] = buckets
         return buckets
+    }
+
+    private func bucketSource(database: String, schema: String?) -> DatabaseTreeBucketSource {
+        let tables: [TableInfo]
+        // A schema drawn from the listing keeps whatever side lists it has read.
+        if case .listing(let rows) = contentSource(database: database, schema: schema) {
+            tables = rows
+        } else {
+            tables = service.tables(connectionId: connectionId, database: database, schema: schema)
+        }
+        // A schema the search opened is never read, so a side list a change overtook would stay
+        // on screen with objects that no longer exist; it shows what is current only.
+        let showsOvertaken = searchText.isEmpty || schema.map { isOpenedByUser(database: database, schema: $0) } ?? true
+        func shown<Item>(_ items: [Item], isCurrent: Bool) -> [Item] {
+            showsOvertaken || isCurrent ? items : []
+        }
+        return DatabaseTreeBucketSource(
+            tables: tables,
+            routines: shown(
+                service.routines(connectionId: connectionId, database: database, schema: schema),
+                isCurrent: service.isRoutinesCurrent(connectionId: connectionId, database: database, schema: schema)
+            ),
+            triggers: shown(
+                service.triggers(connectionId: connectionId, database: database, schema: schema),
+                isCurrent: service.isTriggersCurrent(connectionId: connectionId, database: database, schema: schema)
+            ),
+            userTypes: shown(
+                service.userDefinedTypes(connectionId: connectionId, database: database, schema: schema),
+                isCurrent: service.isTypesCurrent(connectionId: connectionId, database: database, schema: schema)
+            ),
+            searchText: searchText,
+            database: database
+        )
     }
 
     internal func matchCount(in group: DatabaseTreeObjectGroup) -> Int {
@@ -669,10 +739,7 @@ extension DatabaseTreeOutlineCoordinator {
             let plan = containerPlan(database: group.database, schema: group.schema, buckets: buckets)
             let tables = plan.looseObjects(of: group.kind)
             guard !tables.isEmpty else { return placeholder }
-            return tables.map { table in
-                let ref = DatabaseTreeTableRef(database: database, schema: group.schema, table: table)
-                return node(id: DatabaseTreeNode.tableId(ref), kind: .table(ref))
-            }
+            return tableNodes(parentId: emptyId, tables: tables, database: database, schema: .fixed(group.schema))
         case .routine:
             let routines = buckets.routines[group.kind] ?? []
             guard !routines.isEmpty else { return placeholder }
@@ -690,6 +757,34 @@ extension DatabaseTreeOutlineCoordinator {
                 return node(id: DatabaseTreeNode.userTypeId(ref), kind: .userType(ref))
             }
         }
+    }
+
+    // Kinds are written again on a reused row, since another parent may have drawn the same id since.
+    private func tableNodes(
+        parentId: String,
+        tables: [TableInfo],
+        database: String?,
+        schema: DatabaseTreeTableRows.Schema
+    ) -> [DatabaseTreeNode] {
+        func ref(_ table: TableInfo) -> DatabaseTreeTableRef {
+            switch schema {
+            case .own: DatabaseTreeTableRef(database: database, schema: table.schema, table: table)
+            case .fixed(let fixed): DatabaseTreeTableRef(database: database, schema: fixed, table: table)
+            }
+        }
+        let rows = SameRows(rows: tables)
+        if let built = tableRowMemo[parentId], built.tables == rows, built.database == database, built.schema == schema {
+            for (node, table) in zip(built.nodes, tables) {
+                node.kind = .table(ref(table))
+            }
+            return built.nodes
+        }
+        let nodes = tables.map { table in
+            let tableRef = ref(table)
+            return node(id: DatabaseTreeNode.tableId(tableRef), kind: .table(tableRef))
+        }
+        tableRowMemo[parentId] = DatabaseTreeTableRows(tables: rows, database: database, schema: schema, nodes: nodes)
+        return nodes
     }
 
     /// The labels are decided over the whole section at once, because "is this name ambiguous"
@@ -746,22 +841,27 @@ extension DatabaseTreeOutlineCoordinator {
         )
     }
 
-    /// Worked out once per database per redraw, since every schema of the database is judged
-    /// against the same listing.
+    // Every schema of a database is judged against one scan, shared with the sidebar's body through the view model.
     private func listingMatches(database: String) -> DatabaseTreeFilter.SchemaListingMatches? {
         let key = DatabaseTreeContainerKey(database: database, schema: nil, searchText: searchText)
         if let cached = listingMatchesCache[key] { return cached }
-        guard let listing = service.allSchemaTablesLoadState(connectionId: connectionId, database: database).value else {
-            return nil
-        }
-        let matches = DatabaseTreeFilter.SchemaListingMatches(
-            listing: listing,
-            database: database,
-            searchText: searchText,
-            covered: DatabaseTreeFilter.coveredSchemas(
-                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+        let matches: DatabaseTreeFilter.SchemaListingMatches
+        if let viewModel {
+            guard let shared = viewModel.schemaListingMatches(database: database, searchText: searchText) else { return nil }
+            matches = shared
+        } else {
+            guard let listing = service.allSchemaTablesLoadState(connectionId: connectionId, database: database).value else {
+                return nil
+            }
+            matches = DatabaseTreeFilter.SchemaListingMatches(
+                listing: listing,
+                database: database,
+                searchText: searchText,
+                covered: DatabaseTreeFilter.coveredSchemas(
+                    service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+                )
             )
-        )
+        }
         listingMatchesCache[key] = matches
         return matches
     }

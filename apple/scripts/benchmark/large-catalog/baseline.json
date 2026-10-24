@@ -1,0 +1,201 @@
+{
+  "recorded": "2026-10-22",
+  "machine": {
+    "model": "Mac16,11",
+    "chip": "Apple M4 Pro",
+    "memoryGB": 24,
+    "macOS": "27.0.1"
+  },
+  "app": {
+    "version": "0.0.0-dev",
+    "build": "1",
+    "configuration": "Release"
+  },
+  "runs": 10,
+  "budgetRule": "1.25x the baseline median and p95, rounded up to 5 ms; no main-thread stall over 100 ms",
+  "fixtures": {
+    "postgres": {
+      "steps": {
+        "sidebar-listing": {
+          "median": 445.1,
+          "p95": 506.0,
+          "runs": 10,
+          "maxStallMs": 270.9,
+          "budgetMedian": 560,
+          "budgetP95": 635
+        },
+        "sidebar-filter": {
+          "median": 123.8,
+          "p95": 380.2,
+          "runs": 10,
+          "maxStallMs": 192.4,
+          "budgetMedian": 155,
+          "budgetP95": 480
+        },
+        "sidebar-expand": {
+          "median": 133.0,
+          "p95": 242.7,
+          "runs": 10,
+          "maxStallMs": 58.5,
+          "budgetMedian": 170,
+          "budgetP95": 305
+        },
+        "quick-open-panel": {
+          "median": 169.9,
+          "p95": 260.9,
+          "runs": 10,
+          "maxStallMs": 51.1,
+          "budgetMedian": 215,
+          "budgetP95": 330
+        },
+        "quick-open-result": {
+          "median": 236.0,
+          "p95": 369.1,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 295,
+          "budgetP95": 465
+        },
+        "complete-from": {
+          "median": 85.3,
+          "p95": 92.1,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 110,
+          "budgetP95": 120
+        },
+        "complete-schema": {
+          "median": 122.2,
+          "p95": 139.6,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 155,
+          "budgetP95": 175
+        }
+      },
+      "memoryMB": 119.1
+    },
+    "oracle": {
+      "steps": {
+        "sidebar-listing": {
+          "median": 1444.9,
+          "p95": 2185.2,
+          "runs": 10,
+          "maxStallMs": 964.3,
+          "budgetMedian": 1810,
+          "budgetP95": 2735
+        },
+        "sidebar-filter": {
+          "median": 138.3,
+          "p95": 668.1,
+          "runs": 10,
+          "maxStallMs": 195.3,
+          "budgetMedian": 175,
+          "budgetP95": 840
+        },
+        "sidebar-expand": {
+          "median": 281.9,
+          "p95": 338.4,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 355,
+          "budgetP95": 425
+        },
+        "quick-open-panel": {
+          "median": 173.2,
+          "p95": 202.9,
+          "runs": 10,
+          "maxStallMs": 59.5,
+          "budgetMedian": 220,
+          "budgetP95": 255
+        },
+        "quick-open-result": {
+          "median": 171.9,
+          "p95": 207.5,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 215,
+          "budgetP95": 260
+        },
+        "complete-from": {
+          "median": 83.9,
+          "p95": 91.0,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 105,
+          "budgetP95": 115
+        },
+        "complete-schema": {
+          "median": 499.0,
+          "p95": 539.5,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 625,
+          "budgetP95": 675
+        }
+      },
+      "memoryMB": 193.9
+    },
+    "mysql": {
+      "steps": {
+        "sidebar-listing": {
+          "median": 573.7,
+          "p95": 657.7,
+          "runs": 10,
+          "maxStallMs": 222.0,
+          "budgetMedian": 720,
+          "budgetP95": 825
+        },
+        "sidebar-filter": {
+          "median": 134.4,
+          "p95": 195.5,
+          "runs": 10,
+          "maxStallMs": 140.2,
+          "budgetMedian": 170,
+          "budgetP95": 245
+        },
+        "sidebar-expand": {
+          "median": 286.1,
+          "p95": 317.1,
+          "runs": 10,
+          "maxStallMs": 111.9,
+          "budgetMedian": 360,
+          "budgetP95": 400
+        },
+        "quick-open-panel": {
+          "median": 155.6,
+          "p95": 185.8,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 195,
+          "budgetP95": 235
+        },
+        "quick-open-result": {
+          "median": 142.4,
+          "p95": 150.1,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 180,
+          "budgetP95": 190
+        },
+        "complete-from": {
+          "median": 103.3,
+          "p95": 109.9,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 130,
+          "budgetP95": 140
+        },
+        "complete-schema": {
+          "median": 95.4,
+          "p95": 116.0,
+          "runs": 10,
+          "maxStallMs": 0.0,
+          "budgetMedian": 120,
+          "budgetP95": 145
+        }
+      },
+      "memoryMB": 772.2
+    }
+  }
+}

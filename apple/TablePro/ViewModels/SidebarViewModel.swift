@@ -109,10 +109,13 @@ final class SidebarViewModel: ObservableObject {
     @Published private(set) var filterQuery = "" {
         didSet {
             invalidateFilterCaches()
+            if filterQuery.isEmpty { listingMatchesMemo.removeAll() }
             listingDemand.reset()
             loadAllSchemaTablesForSearch()
         }
     }
+
+    private var listingMatchesMemo = DatabaseTreeFilter.SchemaListingMatchesMemo()
 
     private var listingDemand = AllSchemaTablesDemand()
     private var listingDemandObservations: [AnyCancellable] = []
@@ -528,13 +531,25 @@ final class SidebarViewModel: ObservableObject {
         return expanded[kind]
     }
 
-    /// A qualified search reaches this list only when it names the schema being browsed: the flat
-    /// list holds that schema alone, and the other schemas it names are listed below it.
+    // A qualified search reaches this list only when it names the browsed schema; other schemas are listed below it.
     private func applyQuery(_ query: String, to tables: [TableInfo]) -> [TableInfo] {
-        let search = SidebarSearch(query)
-        let database = browsedDatabase
-        let admitted = tables.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
-        return SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
+        SidebarSearch(query).ranked(tables, name: { $0.name }, database: browsedDatabase, schema: { $0.schema })
+    }
+
+    // The outline, the sidebar's body and the hierarchical tree all judge schemas against this one scan.
+    func schemaListingMatches(database: String, searchText: String) -> DatabaseTreeFilter.SchemaListingMatches? {
+        let service = DatabaseTreeMetadataService.shared
+        guard let listing = service.allSchemaTablesLoadState(connectionId: connectionId, database: database).value else {
+            return nil
+        }
+        return listingMatchesMemo.matches(
+            listing: listing,
+            database: database,
+            searchText: searchText,
+            covered: DatabaseTreeFilter.coveredSchemas(
+                service.allSchemaTablesSelection(connectionId: connectionId, database: database)
+            )
+        )
     }
 
     /// Goes through DatabaseTreeFilter so the flat root and the tree share one dedup owner. The

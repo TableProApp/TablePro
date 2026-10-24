@@ -19,6 +19,7 @@ extension MainContentCoordinator {
             quickSwitcherPanel.dismiss()
             return
         }
+        InteractionTracer.shared.begin(.quickOpenPanel, key: connectionId.uuidString)
         if #available(macOS 14.0, *) {
             FeatureTipSignals.quickSwitcherOpened()
         }
@@ -47,6 +48,9 @@ extension MainContentCoordinator {
             onDismiss: { [weak self] in self?.quickSwitcherPanel?.dismiss() }
         )
         quickSwitcherPanel.present(panelView, over: contentWindow, identity: Self.openQuicklyPanelIdentity)
+        InteractionTracer.shared.end(
+            .quickOpenPanel, key: connectionId.uuidString, after: quickSwitcherPanel.presentedWindow
+        )
     }
 
     func handleQuickSwitcherSelection(_ item: QuickSwitcherItem, intent: QuickSwitcherCommitIntent = .open) {

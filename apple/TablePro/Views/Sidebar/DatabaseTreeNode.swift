@@ -206,7 +206,46 @@ final class DatabaseTreeNode: SidebarOutlineNode {
     static func tableFolderId(_ folderId: UUID) -> String { "tablefolder\u{1}\(folderId.uuidString)" }
     static func databaseId(_ database: String) -> String { "db\u{1}\(database)" }
     static func schemaId(database: String, schema: String) -> String { "schema\u{1}\(database)\u{1}\(schema)" }
-    static func tableId(_ ref: DatabaseTreeTableRef) -> String { "table\u{1}\(ref.id)" }
+    static func tableId(_ ref: DatabaseTreeTableRef) -> String {
+        plainTableId(ref) ?? "table\u{1}\(ref.id)"
+    }
+
+    // The id `ref.id` spells, built in one buffer when no part needs `IdentityPath` escaping.
+    private static func plainTableId(_ ref: DatabaseTreeTableRef) -> String? {
+        let table = ref.table
+        let database = ref.database ?? ""
+        let schema = ref.schema ?? ""
+        let tableSchema = table.schema ?? ""
+        let type = table.type.rawValue
+        guard isPlain(database, dots: false), isPlain(schema, dots: false), isPlain(type, dots: false),
+              isPlain(tableSchema, dots: true), isPlain(table.name, dots: true)
+        else { return nil }
+        var id = "table\u{1}"
+        id.reserveCapacity(
+            id.utf8.count + database.utf8.count + schema.utf8.count + tableSchema.utf8.count
+                + table.name.utf8.count + type.utf8.count + 14
+        )
+        id += database
+        id += "|"
+        id += schema
+        id += "|"
+        if !tableSchema.isEmpty {
+            id += tableSchema
+            id += "."
+        }
+        id += table.name
+        id += "_"
+        id += type
+        if table.isTemporary { id += "_temporary" }
+        return id
+    }
+
+    private static func isPlain(_ part: String, dots: Bool) -> Bool {
+        !part.utf8.contains { byte in
+            byte == UInt8(ascii: "|") || byte == UInt8(ascii: "\\") || (dots && byte == UInt8(ascii: "."))
+        }
+    }
+
     static func partitionId(_ ref: DatabaseTreePartitionRef) -> String { "partition\u{1}\(ref.id)" }
     static func recentTableId(_ ref: DatabaseTreeTableRef) -> String { "recent\u{1}table\u{1}\(ref.id)" }
     static let temporarySectionId = "temporary-section"

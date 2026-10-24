@@ -56,24 +56,40 @@ public final class SQLCompletionProvider {
         return (session.items, session.context)
     }
 
-    // `items` is what the popup shows; `candidates` is the wider pool it re-ranks while it stays open.
     public func completionSession(
         text: String,
         cursorPosition: Int,
         forcedTableReferences: [TableReference]? = nil
-    ) async -> (items: [SQLCompletionItem], candidates: [SQLCompletionItem], context: SQLContext) {
+    ) async -> SQLCompletionSession {
         var context = contextAnalyzer.analyze(query: text, cursorPosition: cursorPosition, grammar: grammar)
         if let forcedTableReferences {
             context = context.replacingTableReferences(forcedTableReferences)
         }
 
         if context.isInsideString || context.isInsideComment {
-            return ([], [], context)
+            return SQLCompletionSession(items: [], candidates: [], context: context, candidatesTruncated: false)
         }
 
-        var candidates = await getCandidates(for: context)
+        let limit = maxSuggestions(for: context.clauseType)
+        return await Self.rankedSession(
+            await getCandidates(for: context),
+            context: context,
+            limit: limit,
+            pool: sessionPool(for: limit)
+        )
+    }
+
+    // A catalog can list tens of thousands of tables, so joining, filtering and sorting them leaves the caller's actor.
+    @concurrent
+    private static func rankedSession(
+        _ segments: [[SQLCompletionItem]],
+        context: SQLContext,
+        limit: Int,
+        pool: Int
+    ) async -> SQLCompletionSession {
+        var candidates = Array(segments.joined())
         if context.quotedName != nil {
-            candidates = candidates.filter { Self.nameKinds.contains($0.kind) }
+            candidates = candidates.filter { nameKinds.contains($0.kind) }
         }
 
         if !context.prefix.isEmpty {
@@ -82,9 +98,12 @@ public final class SQLCompletionProvider {
 
         candidates = rankResults(candidates, prefix: context.prefix, context: context)
 
-        let limit = maxSuggestions(for: context.clauseType)
-
-        return (Array(candidates.prefix(limit)), Array(candidates.prefix(sessionPool(for: limit))), context)
+        return SQLCompletionSession(
+            items: Array(candidates.prefix(limit)),
+            candidates: Array(candidates.prefix(pool)),
+            context: context,
+            candidatesTruncated: candidates.count > pool
+        )
     }
 
     // A candidate cut at the opening prefix can never lead for a longer one, and PostgreSQL declares more `T`
@@ -122,13 +141,16 @@ public final class SQLCompletionProvider {
 
     // MARK: - Candidate Generation
 
+    // In emission order. The catalog's table list stays a segment of its own, so the caller never copies it.
     private func getCandidates( // swiftlint:disable:this function_body_length
         for context: SQLContext
-    ) async -> [SQLCompletionItem] {
+    ) async -> [[SQLCompletionItem]] {
+        var segments: [[SQLCompletionItem]] = []
         var items: [SQLCompletionItem] = []
 
-        // A dot prefix is a table or alias first, then a schema (its tables) or a database (its schemas). The
-        // namespace fallback also covers an alias that resolves to a schema name parsed out of the FROM clause.
+        // A dot prefix is a table or alias first, then a schema (its tables) or a database (its schemas, or its
+        // tables on an engine with none). The namespace fallback also covers an alias that resolves to a schema
+        // name parsed out of the FROM clause.
         if let dotPrefix = context.dotPrefix {
             guard let catalog else { return [] }
             if let derived = context.tableReferences.first(where: {
@@ -136,7 +158,7 @@ public final class SQLCompletionProvider {
             }) {
                 let columns = await derivedColumns(of: derived)
                 if !columns.isEmpty {
-                    return columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }
+                    return [columns.map { SQLCompletionItem.column($0, dataType: nil, tableName: derived.identifier) }]
                 }
             }
             if let tableName = await catalog.resolveAlias(dotPrefix, in: context.tableReferences) {
@@ -147,18 +169,21 @@ public final class SQLCompletionProvider {
             }
             if items.isEmpty {
                 if await catalog.isKnownSchema(dotPrefix) {
-                    items = await catalog.tableCompletionItems(inSchema: dotPrefix)
+                    items = await catalog.tableCompletionItems(inSchema: dotPrefix, isQuoted: context.isDotPrefixQuoted)
                 } else if await catalog.isKnownDatabase(dotPrefix) {
                     items = await catalog.schemaCompletionItems()
+                    if items.isEmpty {
+                        items = await catalog.tableCompletionItems(inSchema: dotPrefix, isQuoted: context.isDotPrefixQuoted)
+                    }
                 }
             }
-            return items
+            return [items]
         }
 
         switch context.clauseType {
         case .from, .join:
-            items = await catalog?.tableCompletionItems() ?? []
-            items += await catalog?.namespaceCompletionItems() ?? []
+            segments = [await catalog?.tableCompletionItems() ?? []]
+            items = await catalog?.namespaceCompletionItems() ?? []
             items += filterKeywords([
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -168,8 +193,8 @@ public final class SQLCompletionProvider {
             ])
 
         case .into:
-            items = await catalog?.tableCompletionItems() ?? []
-            items += filterKeywords([
+            segments = [await catalog?.tableCompletionItems() ?? []]
+            items = filterKeywords([
                 "VALUES", "SELECT", "SET",
                 "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",
                 "LEFT OUTER JOIN", "RIGHT OUTER JOIN", "FULL OUTER JOIN",
@@ -424,33 +449,31 @@ public final class SQLCompletionProvider {
             ])
 
         case .dropObject:
-            items = await catalog?.tableCompletionItems() ?? []
-            items += filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
+            segments = [await catalog?.tableCompletionItems() ?? []]
+            items = filterKeywords(["IF EXISTS", "CASCADE", "RESTRICT"])
 
         case .createIndex:
             if context.tableReferences.isEmpty {
-                items = await catalog?.tableCompletionItems() ?? []
-                items += filterKeywords(["ON"])
+                segments = [await catalog?.tableCompletionItems() ?? []]
+                items = filterKeywords(["ON"])
             } else {
                 items = await columnItems(for: context.tableReferences)
                 items += filterKeywords(["USING", "BTREE", "HASH", "GIN", "GIST"])
             }
 
         case .createView:
-            items = filterKeywords(["SELECT", "AS"])
-            items += await catalog?.tableCompletionItems() ?? []
+            segments = [filterKeywords(["SELECT", "AS"]), await catalog?.tableCompletionItems() ?? []]
 
         case .castTarget:
             items = castTargetCompletionItems()
 
         case .unknown:
-            items = statementStartCompletionItems()
-            items += await catalog?.tableCompletionItems() ?? []
+            segments = [statementStartCompletionItems(), await catalog?.tableCompletionItems() ?? []]
         }
 
         items += favoriteCompletions(matching: context.prefix)
 
-        return items
+        return segments + [items]
     }
 
     private func favoriteCompletions(matching prefix: String) -> [SQLCompletionItem] {
@@ -638,13 +661,16 @@ public final class SQLCompletionProvider {
     // MARK: - Filtering
 
     public func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
-        let filtered = filterByPrefix(items, prefix: prefix)
-        return rankResults(filtered, prefix: prefix, context: context)
+        Self.rankResults(Self.filterByPrefix(items, prefix: prefix), prefix: prefix, context: context)
+    }
+
+    public func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+        Self.filterByPrefix(items, prefix: prefix)
     }
 
     // Resolves `matchedRanges` and the fuzzy-only `fuzzyPenalty` once per candidate, so ranking never matches again.
     // Both are assigned rather than accumulated, so filtering a filtered list is idempotent.
-    public func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
+    private static func filterByPrefix(_ items: [SQLCompletionItem], prefix: String) -> [SQLCompletionItem] {
         guard !prefix.isEmpty else {
             var reset = items
             for i in reset.indices {
@@ -682,13 +708,13 @@ public final class SQLCompletionProvider {
         return kept
     }
 
-    private func optionalRange(of substring: String, in target: NSString) -> Range<Int>? {
+    private static func optionalRange(of substring: String, in target: NSString) -> Range<Int>? {
         let range = target.range(of: substring)
         guard range.location != NSNotFound else { return nil }
         return range.location..<(range.location + range.length)
     }
 
-    private func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
+    private static func resolveFuzzyMatch(pattern: String, target: String) -> (penalty: Int, indices: [Int])? {
         let nsPattern = pattern as NSString
         let nsTarget = target as NSString
         let patternLen = nsPattern.length
@@ -737,10 +763,10 @@ public final class SQLCompletionProvider {
 
     // Higher is worse; nil is no match.
     public func fuzzyMatchScore(pattern: String, target: String) -> Int? {
-        resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
+        Self.resolveFuzzyMatch(pattern: pattern, target: target)?.penalty
     }
 
-    private func indicesToRanges(_ indices: [Int]) -> [Range<Int>] {
+    private static func indicesToRanges(_ indices: [Int]) -> [Range<Int>] {
         guard !indices.isEmpty else { return [] }
         var ranges: [Range<Int>] = []
         var start = indices[0]
@@ -760,9 +786,13 @@ public final class SQLCompletionProvider {
 
     // MARK: - Ranking
 
+    public func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
+        Self.rankResults(items, prefix: prefix, context: context)
+    }
+
     // Scores once per candidate rather than in the comparator. Equal scores keep the order the generator emitted,
     // which carries meaning: the standard library's sort is not stable.
-    public func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
+    private static func rankResults(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
         let lowerPrefix = prefix.lowercased()
         let scored = items.enumerated().map { position, item in
             (position: position, item: item, score: calculateScore(for: item, prefix: lowerPrefix, context: context))
@@ -773,8 +803,12 @@ public final class SQLCompletionProvider {
         }.map(\.item)
     }
 
-    // Lower is better.
     public func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
+        Self.calculateScore(for: item, prefix: prefix, context: context)
+    }
+
+    // Lower is better.
+    private static func calculateScore(for item: SQLCompletionItem, prefix: String, context: SQLContext) -> Int {
         var score = item.sortPriority + item.fuzzyPenalty
 
         if item.filterText.hasPrefix(prefix) {

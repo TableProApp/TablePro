@@ -7,6 +7,9 @@ private struct StubCatalog: SQLCompletionCatalog {
     let tables: [String]
     let columns: [String: [String]]
     var values: [String] = []
+    var databases: [String] = []
+    var schemas: [String] = []
+    var schemaTables: [String: [String]] = [:]
 
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         let name = aliasOrName.lowercased()
@@ -27,11 +30,14 @@ private struct StubCatalog: SQLCompletionCatalog {
         tables.map { SQLCompletionItem.table($0) }
     }
 
-    func tableCompletionItems(inSchema schema: String) -> [SQLCompletionItem] { [] }
-    func schemaCompletionItems() -> [SQLCompletionItem] { [] }
+    func tableCompletionItems(inSchema schema: String) -> [SQLCompletionItem] {
+        (schemaTables[schema] ?? []).map { SQLCompletionItem.table($0) }
+    }
+
+    func schemaCompletionItems() -> [SQLCompletionItem] { schemas.map { SQLCompletionItem.schemaName($0) } }
     func namespaceCompletionItems() -> [SQLCompletionItem] { [] }
-    func isKnownSchema(_ name: String) -> Bool { false }
-    func isKnownDatabase(_ name: String) -> Bool { false }
+    func isKnownSchema(_ name: String) -> Bool { schemas.contains(name) }
+    func isKnownDatabase(_ name: String) -> Bool { databases.contains(name) }
     func allowedValues(forColumn column: String, in references: [TableReference]) -> [String] { values }
 
     func allColumnsInScope(for references: [TableReference]) -> [SQLCompletionItem] {
@@ -73,6 +79,27 @@ struct SQLCompletionProviderCatalogTests {
     func aliasDotOffersColumns() async {
         let session = await provider.completionSession(text: "SELECT o. FROM orders o", cursorPosition: 9)
         #expect(Set(session.items.map(\.label)) == ["id", "total", "status"])
+    }
+
+    @Test("A database and a dot offer its schemas")
+    func databaseDotOffersSchemas() async {
+        let catalog = StubCatalog(
+            tables: [], columns: [:], databases: ["shop"], schemas: ["sales", "audit"],
+            schemaTables: ["shop": ["orders"]]
+        )
+        let provider = SQLCompletionProvider(catalog: catalog, grammar: .engine("SQLite"), vocabulary: .generic)
+        let session = await provider.completionSession(text: "SELECT * FROM shop.", cursorPosition: 19)
+        #expect(Set(session.items.map(\.label)) == ["sales", "audit"])
+    }
+
+    @Test("A database and a dot offer its tables on an engine with no schemas")
+    func databaseDotOffersTablesWithoutSchemas() async {
+        let catalog = StubCatalog(
+            tables: [], columns: [:], databases: ["shop"], schemaTables: ["shop": ["orders", "customers"]]
+        )
+        let provider = SQLCompletionProvider(catalog: catalog, grammar: .engine("SQLite"), vocabulary: .generic)
+        let session = await provider.completionSession(text: "SELECT * FROM shop.", cursorPosition: 19)
+        #expect(Set(session.items.map(\.label)) == ["orders", "customers"])
     }
 
     @Test("UPDATE offers tables")
@@ -361,5 +388,59 @@ struct SQLCompletionProviderCatalogTests {
         let global = "SELECT @@ROW"
         let globals = await sqlServer.completionSession(text: global, cursorPosition: (global as NSString).length)
         #expect(globals.items.first { $0.label == "@@ROWCOUNT" }?.insertText == "@@ROWCOUNT")
+    }
+
+    // MARK: - Large catalogs
+
+    @Test("A pool cut short of the matches says so, and one holding every match does not")
+    func cutPoolIsMarked() async {
+        let large = SQLCompletionProvider(
+            catalog: StubCatalog(tables: (0..<500).map { String(format: "t%03d", $0) }, columns: [:]),
+            grammar: .engine("MySQL"),
+            vocabulary: .generic
+        )
+
+        let cut = await large.completionSession(text: "SELECT * FROM ", cursorPosition: 14)
+        let whole = await provider.completionSession(text: "SELECT * FROM ", cursorPosition: 14)
+
+        #expect(cut.candidates.count == 400)
+        #expect(cut.candidatesTruncated)
+        #expect(!whole.candidatesTruncated)
+    }
+}
+
+@MainActor
+struct SQLCompletionProviderIsolationTests {
+    @available(macOS 15, iOS 18, *)
+    @Test("Filtering and ranking run off the caller's actor")
+    func rankingLeavesTheCallersActor() async {
+        let provider = SQLCompletionProvider(
+            catalog: StubCatalog(tables: ["customers", "orders"], columns: [:]),
+            grammar: .engine("MySQL"),
+            vocabulary: .generic
+        )
+        let executor = CountingTaskExecutor()
+
+        let session = await withTaskExecutorPreference(executor) {
+            await provider.completionSession(text: "SELECT * FROM or", cursorPosition: 16)
+        }
+
+        #expect(session.items.first?.label == "orders")
+        #expect(executor.enqueuedJobs > 0)
+    }
+}
+
+// The caller's own actor never reaches it, so a job here is work that left the caller.
+@available(macOS 15, iOS 18, *)
+private final class CountingTaskExecutor: TaskExecutor, @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var enqueuedJobs: Int { lock.withLock { count } }
+
+    func enqueue(_ job: consuming ExecutorJob) {
+        lock.withLock { count += 1 }
+        let job = UnownedJob(job)
+        DispatchQueue.global().async { job.runSynchronously(on: self.asUnownedTaskExecutor()) }
     }
 }

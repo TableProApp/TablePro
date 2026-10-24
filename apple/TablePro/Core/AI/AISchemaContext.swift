@@ -24,6 +24,15 @@ struct AISchemaTable: Sendable {
     }
 }
 
+struct AISchemaRankingInput: Sendable {
+    let tables: [TableInfo]
+    let columnsByTable: [String: [ColumnInfo]]
+    let question: String
+    let queryReferences: [TableReference]
+    let defaultSchema: String?
+    let maxTables: Int
+}
+
 struct AISchemaContext {
     static let maxQueryLength = 2_000
 
@@ -189,6 +198,26 @@ struct AISchemaContext {
             names.append(tables[offset].name)
         }
         return names
+    }
+
+    static func relevantTableNames(for input: AISchemaRankingInput) -> [String] {
+        relevantTableNames(
+            in: input.tables,
+            columnsByTable: input.columnsByTable,
+            question: input.question,
+            queryReferences: input.queryReferences,
+            defaultSchema: input.defaultSchema,
+            maxTables: input.maxTables
+        )
+    }
+
+    // Ranking a large catalog takes hundreds of milliseconds, too long for the main actor.
+    @concurrent
+    static func rankOffMainActor(
+        _ input: AISchemaRankingInput,
+        using rank: @Sendable (AISchemaRankingInput) -> [String]
+    ) async -> [String] {
+        rank(input)
     }
 
     static func carriedQuery(_ query: String) -> String {

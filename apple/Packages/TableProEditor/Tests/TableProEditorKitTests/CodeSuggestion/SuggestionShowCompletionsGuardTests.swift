@@ -31,6 +31,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
         await model.itemsRequestTask?.value
 
         XCTAssertEqual(presentationCount, 0)
+        XCTAssertEqual(delegate.shownItemCounts, [])
     }
 
     @MainActor
@@ -63,6 +64,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
 
         XCTAssertEqual(presentedWindows.count, 1)
         XCTAssertIdentical(presentedWindows.first, window)
+        XCTAssertEqual(delegate.shownItemCounts, [1])
     }
 }
 
@@ -70,6 +72,7 @@ final class SuggestionShowCompletionsGuardTests: XCTestCase {
 private final class DelayedStubDelegate: CodeSuggestionDelegate {
     let items: [CodeSuggestionEntry]
     private let fetch: AsyncGate
+    private(set) var shownItemCounts: [Int] = []
 
     init(items: [CodeSuggestionEntry], fetch: AsyncGate) {
         self.items = items
@@ -90,6 +93,10 @@ private final class DelayedStubDelegate: CodeSuggestionDelegate {
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]? {
         nil
+    }
+
+    func completionWindowDidShow(textView: TextViewController, itemCount: Int) {
+        shownItemCounts.append(itemCount)
     }
 
     func completionWindowApplyCompletion(

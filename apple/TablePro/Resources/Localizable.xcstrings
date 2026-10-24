@@ -202918,6 +202918,9 @@
         }
       }
     },
+    "Type @ in the message to find any other table" : {
+
+    },
     "Type %@ in the query to set where the cursor lands after keyword expansion." : {
       "localizations" : {
         "fr" : {

@@ -13,7 +13,12 @@ final class SuggestionViewModel: ObservableObject {
     private static let logger = Logger(subsystem: "com.TableProEditorKit", category: "SuggestionVM")
     /// The items to be displayed in the window
     @Published var items: [CodeSuggestionEntry] = []
-    @Published var selectedIndex: Int = 0
+    // A row the user picked, by arrow key or click, rather than the first row a new list starts on.
+    @Published var selectedIndex: Int = 0 {
+        didSet { selectionIsChosen = !isResettingSelection }
+    }
+    private var selectionIsChosen = false
+    private var isResettingSelection = false
 
     var itemsRequestTask: Task<Void, Never>?
     weak var activeTextView: TextViewController?
@@ -35,6 +40,9 @@ final class SuggestionViewModel: ObservableObject {
 
     private var lastDroppedMovePresents = false
 
+    private var refresh: (generation: Int, position: CursorPosition)?
+    private var isRefreshingItems: Bool { itemsRequestTask != nil && refresh?.generation == requestGeneration }
+
     weak var delegate: CodeSuggestionDelegate?
 
     /// Invoked after a successful apply so the owning controller can dismiss the
@@ -47,6 +55,9 @@ final class SuggestionViewModel: ObservableObject {
     /// padding, rounded corners, divider, preview, or the "No Completions" label).
     /// The owning controller dismisses the window so the click is not swallowed.
     var onBackgroundTap: (() -> Void)?
+
+    // Invoked when a refresh of an open window answers nothing, so the controller closes through its own close().
+    var onRequestClose: (() -> Void)?
 
     private var cursorPosition: CursorPosition?
     private var syntaxHighlightedCache: [Int: NSAttributedString] = [:]
@@ -161,7 +172,7 @@ final class SuggestionViewModel: ObservableObject {
                     )
 
                     self.items = items
-                    self.selectedIndex = 0
+                    self.resetSelection()
                     self.syntaxHighlightedCache = [:]
                     self.notifySelection()
 
@@ -171,6 +182,8 @@ final class SuggestionViewModel: ObservableObject {
 
                     showWindowOnParent(window, screenCursorRect)
                     self.isPresented = true
+                    delegate.completionWindowDidShow(textView: textView, itemCount: items.count)
+                    self.refreshIfOvertaken(response, textView: textView, delegate: delegate)
                 }
             } catch {
                 self.endSession(generation: generation)
@@ -226,7 +239,7 @@ final class SuggestionViewModel: ObservableObject {
         isPresented = false
         lastDroppedMovePresents = false
         items.removeAll()
-        selectedIndex = 0
+        resetSelection()
         syntaxHighlightedCache = [:]
         activeTextView = nil
         if let delegate {
@@ -256,18 +269,99 @@ final class SuggestionViewModel: ObservableObject {
             cursorPosition: position
         ), !newItems.isEmpty {
             items = newItems
-            selectedIndex = 0
+            resetSelection()
             syntaxHighlightedCache = [:]
             notifySelection()
+            // A deletion arrives here as a plain move, so the delegate, not the trigger, decides.
+            let isRefreshingHere = isRefreshingItems && refresh?.position == position
+            if !isRefreshingHere, delegate.completionNeedsFreshItems(textView: textView, cursorPosition: position) {
+                refreshItems(textView: textView, delegate: delegate, cursorPosition: position)
+            }
             return
         }
 
-        guard itemsRequestTask == nil else {
+        // A refresh only replaces what the window shows, so a move it cannot answer closes as if none were running.
+        guard itemsRequestTask == nil || isRefreshingItems else {
             lastDroppedMovePresents = presentIfNot
             return
         }
 
         close()
+    }
+
+    // Closing first and asking again would blank the window on every keystroke while a partial pool narrows.
+    private func refreshItems(
+        textView: TextViewController,
+        delegate: CodeSuggestionDelegate,
+        cursorPosition: CursorPosition
+    ) {
+        itemsRequestTask?.cancel()
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        refresh = (generation, cursorPosition)
+        itemsRequestTask = Task {
+            defer {
+                if self.requestGeneration == generation {
+                    self.itemsRequestTask = nil
+                }
+            }
+
+            let response = await delegate.completionSuggestionsRequested(
+                textView: textView,
+                cursorPosition: cursorPosition,
+                isManualTrigger: false
+            )
+            guard self.requestGeneration == generation, !Task.isCancelled,
+                  self.isPresented, self.activeTextView === textView else { return }
+
+            guard let response else {
+                self.onRequestClose?()
+                return
+            }
+            guard let items = self.itemsForLiveEditor(response, textView: textView, delegate: delegate),
+                  !items.isEmpty else {
+                // A key typed while this ran can leave a prefix the window still answers but this pool does not.
+                if let liveCursor = textView.cursorPositions.first,
+                   !response.prefix.isCurrent(at: liveCursor, in: textView) {
+                    self.refreshItems(textView: textView, delegate: delegate, cursorPosition: liveCursor)
+                } else {
+                    self.onRequestClose?()
+                }
+                return
+            }
+
+            let chosen = self.selectionIsChosen ? self.selectedItem : nil
+            self.items = items
+            // Entries carry no identity, so a chosen row is found again by what it shows.
+            if let chosen, let index = items.firstIndex(where: { $0.label == chosen.label && $0.detail == chosen.detail }) {
+                self.selectedIndex = index
+            } else {
+                self.resetSelection()
+            }
+            self.syntaxHighlightedCache = [:]
+            self.notifySelection()
+            delegate.completionWindowDidShow(textView: textView, itemCount: items.count)
+            self.refreshIfOvertaken(response, textView: textView, delegate: delegate)
+        }
+    }
+
+    // Text changed while a request ran, and the pool it left cannot answer what is there now.
+    private func refreshIfOvertaken(
+        _ response: CodeSuggestionResponse,
+        textView: TextViewController,
+        delegate: CodeSuggestionDelegate
+    ) {
+        guard let liveCursor = textView.cursorPositions.first,
+              !response.prefix.isCurrent(at: liveCursor, in: textView),
+              delegate.completionNeedsFreshItems(textView: textView, cursorPosition: liveCursor)
+        else { return }
+        refreshItems(textView: textView, delegate: delegate, cursorPosition: liveCursor)
+    }
+
+    private func resetSelection() {
+        isResettingSelection = true
+        selectedIndex = 0
+        isResettingSelection = false
     }
 
     func didSelect(item: CodeSuggestionEntry) {

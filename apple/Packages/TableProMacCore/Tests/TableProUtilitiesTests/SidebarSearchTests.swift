@@ -75,4 +75,49 @@ struct SidebarSearchTests {
         #expect(search.admits(database: "shop", schema: nil))
         #expect(!search.admits(database: "blog", schema: nil))
     }
+
+    private struct Row {
+        let name: String
+        let schema: String?
+
+        var path: String { "\(schema ?? "").\(name)" }
+    }
+
+    private static let rows = [
+        Row(name: "audit_user", schema: "public"),
+        Row(name: "users", schema: "public"),
+        Row(name: "user", schema: "attendance"),
+        Row(name: "user_log", schema: "attendance"),
+        Row(name: "timesheet", schema: "attendance"),
+        Row(name: "timesheet", schema: "payroll"),
+        Row(name: "audit.events", schema: "public"),
+        Row(name: "events", schema: "audit"),
+        Row(name: "café_orders", schema: nil),
+        Row(name: "orders", schema: nil)
+    ]
+
+    @Test(
+        "One pass keeps the rows and order that filtering then ranking by name gave",
+        arguments: ["", "  ", "user", " USER ", "log", "sheet", "cafe", "attendance.", "attendance.user",
+                    "tend.sheet", "shop.attendance.time", "audit.events", "shop.", "zzz"]
+    )
+    func rankedMatchesFilterThenRank(query: String) {
+        let search = SidebarSearch(query)
+        let admitted = Self.rows.filter { search.matchesObject(named: $0.name, database: "shop", schema: $0.schema) }
+        let twoPasses = SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
+        let onePass = search.ranked(Self.rows, name: { $0.name }, database: "shop", schema: { $0.schema })
+        #expect(onePass.map(\.path) == twoPasses.map(\.path))
+    }
+
+    @Test("Each name is read once per pass, matches included")
+    func rankedReadsEachNameOnce() {
+        var reads = 0
+        let readName = { (row: Row) -> String in
+            reads += 1
+            return row.name
+        }
+        let matched = SidebarSearch("user").ranked(Self.rows, name: readName, database: "shop", schema: { $0.schema })
+        #expect(matched.map(\.name) == ["user", "users", "user_log", "audit_user"])
+        #expect(reads == Self.rows.count)
+    }
 }

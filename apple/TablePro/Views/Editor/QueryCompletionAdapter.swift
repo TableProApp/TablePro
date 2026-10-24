@@ -12,6 +12,16 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         var replacementRange: NSRange
         var tokenStart: Int
         var quotedName: QuotedName?
+        var rankedPrefix: String
+        var candidatesTruncated: Bool
+
+        // The pool holds only matches for the prefix it was ranked for, so a shorter one misses `ac...` after `ab`.
+        // A cut pool holds the best of those only: `lc_t25` re-ranks to `lc_t00250` and never reaches `lc_t25000`.
+        func holdsEveryMatch(for prefix: String) -> Bool {
+            let typed = prefix.lowercased()
+            let ranked = rankedPrefix.lowercased()
+            return candidatesTruncated ? typed == ranked : typed.hasPrefix(ranked)
+        }
     }
 
     // Typing lands before a closed name's close, so the close keeps its distance from the end of the text.
@@ -95,6 +105,7 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         isManualTrigger: Bool
     ) async -> CodeSuggestionResponse? {
         guard !textView.textView.hasMarkedText() else { return nil }
+        InteractionTracer.shared.begin(.completion)
 
         do {
             try await Task.sleep(nanoseconds: debounceNanoseconds)
@@ -123,19 +134,22 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         // The analyzer reads a quoted name whole; the local walk back stops at its last space.
         let tokenStart = result.quotedName == nil ? localStart : result.replacementRange.location
         let prefixRange = NSRange(location: tokenStart, length: offset - tokenStart)
+        let prefix = text.substring(with: prefixRange)
         session = Session(
             candidates: result.candidates,
             replacementRange: result.replacementRange,
             tokenStart: tokenStart,
             quotedName: result.quotedName.map { name in
                 QuotedName(name: name, closeFromEnd: name.close.map { text.length - $0 })
-            }
+            },
+            rankedPrefix: prefix,
+            candidatesTruncated: result.candidatesTruncated
         )
 
         return CodeSuggestionResponse(
             items: result.items.map { SQLSuggestionEntry(item: $0) },
             windowPosition: liveCursorPosition,
-            prefix: CodeSuggestionPrefix(range: prefixRange, text: text.substring(with: prefixRange))
+            prefix: CodeSuggestionPrefix(range: prefixRange, text: prefix)
         )
     }
 
@@ -144,18 +158,32 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         textView: TextViewController,
         cursorPosition: CursorPosition
     ) -> [CodeSuggestionEntry]? {
-        guard let session, !textView.textView.hasMarkedText() else { return nil }
+        guard let session, !textView.textView.hasMarkedText(),
+              let prefix = typedPrefix(in: textView, at: cursorPosition, for: session) else { return nil }
 
+        let ranked = service.rank(session.candidates, prefix: prefix)
+        return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
+    }
+
+    // Every row of a cut pool's re-rank matches what was typed, so the window keeps them while it asks for the rest.
+    func completionNeedsFreshItems(textView: TextViewController, cursorPosition: CursorPosition) -> Bool {
+        guard let session, !textView.textView.hasMarkedText(),
+              let prefix = typedPrefix(in: textView, at: cursorPosition, for: session) else { return false }
+        return !session.holdsEveryMatch(for: prefix)
+    }
+
+    private func typedPrefix(in textView: TextViewController, at cursorPosition: CursorPosition, for session: Session) -> String? {
         let offset = cursorPosition.range.location
         guard let text = textView.textView.textStorage?.string as NSString?,
               offset >= 0, offset <= text.length,
               tokenStart(in: text, endingAt: offset, for: session) == session.tokenStart else { return nil }
         let length = offset - session.tokenStart
         guard length > 0, length <= maximumPrefixLength else { return nil }
+        return text.substring(with: NSRange(location: session.tokenStart, length: length))
+    }
 
-        let prefix = text.substring(with: NSRange(location: session.tokenStart, length: length))
-        let ranked = service.rank(session.candidates, prefix: prefix)
-        return ranked.isEmpty ? nil : ranked.map { SQLSuggestionEntry(item: $0) }
+    func completionWindowDidShow(textView: TextViewController, itemCount: Int) {
+        InteractionTracer.shared.end(.completion, detail: "items=\(itemCount)", after: textView.view.window)
     }
 
     func completionWindowDidClose() {

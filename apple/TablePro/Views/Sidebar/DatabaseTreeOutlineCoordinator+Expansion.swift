@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProPluginKit
+import TableProUtilities
 
 /// Which rows are disclosed, where that is remembered, and the loads a disclosure triggers.
 extension DatabaseTreeOutlineCoordinator {
@@ -282,6 +283,9 @@ extension DatabaseTreeOutlineCoordinator {
         case .partition(let ref):
             loadPartitions(ref.tableRef ?? ref.parent)
         case .hierarchicalSchemaSection(let schema):
+            guard DatabaseTreeFilter.readsOnDisclosure(origin: disclosureOrigin)
+                || !hierarchicalSearchSkipsRead(schema)
+            else { return }
             loadHierarchicalSchemaObjects(schema)
         case .recentSection, .recentTable, .temporarySection, .temporaryTable, .foldersSection, .tableFolder,
              .routine, .trigger, .userType, .status, .objectKindSection, .containerObjectKindSection,
@@ -295,6 +299,59 @@ extension DatabaseTreeOutlineCoordinator {
     internal func isOpenedByUser(database: String, schema: String) -> Bool {
         let key = DatabaseSchemaKey(database: database, schema: schema)
         return windowState?.expandedTreeDatabaseSchemas.contains(key) == true || schemasOpenedDuringSearch.contains(key)
+    }
+
+    /// The listing holds tables alone, so a search skips reading only a schema never read before, which
+    /// it found a matching table in and the user did not open or name. Until the listing lands it reads
+    /// none: both share one metadata connection, and the reads queued ahead of it held back the search's
+    /// first answer by seconds.
+    internal func hierarchicalSearchSkipsRead(_ schema: String) -> Bool {
+        guard !searchText.isEmpty,
+              !schemaService.hasLoadedContent(for: connectionId, schema: schema),
+              !isHierarchicalSchemaOpenedByUser(schema)
+        else { return false }
+        if isSearchListingPending { return true }
+        return !searchNamesSchema(schema) && hierarchicalListingMatchesTable(in: schema)
+    }
+
+    /// The databases a search reads the all-schema listing of, the ones `SidebarViewModel` asks for.
+    internal var searchListingDatabases: Set<String> {
+        SidebarViewModel.databasesListedForSearch(
+            grouping: PluginManager.shared.databaseGroupingStrategy(for: databaseType),
+            browsedDatabase: DatabaseManager.shared.browseScope(for: connectionId)?.database,
+            databasesWithSchemaLists: Set(
+                service.schemaList.compactMap { key, state in
+                    key.connectionId == connectionId && state.value != nil ? key.database : nil
+                }
+            ),
+            layout: sidebarState?.sidebarLayout ?? .flat
+        )
+    }
+
+    private var isSearchListingPending: Bool {
+        guard DatabaseManager.shared.session(for: connectionId)?.status == .connected else { return false }
+        return searchListingDatabases.contains { database in
+            switch service.allSchemaTablesLoadState(connectionId: connectionId, database: database) {
+            case .idle, .loading: return true
+            case .loaded, .failed: return false
+            }
+        }
+    }
+
+    private func searchNamesSchema(_ schema: String) -> Bool {
+        let search = SidebarSearch(searchText)
+        if search.matchesContainer(database: browsingDatabase, schema: schema) { return true }
+        return search.qualified != nil && search.admits(database: browsingDatabase, schema: schema)
+    }
+
+    internal func isHierarchicalSchemaOpenedByUser(_ schema: String) -> Bool {
+        windowState?.expandedTreeSchemas.contains(schema) == true
+            || schemasOpenedDuringSearch.contains(Self.hierarchicalSearchKey(schema))
+    }
+
+    /// A tree with one row per schema names no database, so its schemas share one key space here.
+    internal static func hierarchicalSearchKey(_ schema: String) -> DatabaseSchemaKey {
+        DatabaseSchemaKey(database: "", schema: schema)
     }
 
     /// An expanded schema is the reader a catalog change waits for: it reads a schema never read,

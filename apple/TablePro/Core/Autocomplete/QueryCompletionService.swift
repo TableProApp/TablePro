@@ -9,6 +9,8 @@ struct QueryCompletionSession {
     let replacementRange: NSRange
     // In document offsets. The re-rank and the accept read it, since a local walk back stops at a space in the name.
     var quotedName: SQLQuotedName?
+    // More matched than `candidates` holds, so only the prefix they were ranked for can be re-ranked from them.
+    var candidatesTruncated = false
 }
 
 @MainActor

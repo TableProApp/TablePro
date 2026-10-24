@@ -105,6 +105,8 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
 
     var isPresented: Bool { panel != nil }
 
+    var presentedWindow: NSWindow? { panel }
+
     /// Whether the panel on screen is the one a caller named. One controller serves Open Quickly
     /// and Jump to Column, so a command that toggles its own panel has to ask which one is up
     /// rather than whether any is, or Command Shift J would close an Open Quickly it never opened.

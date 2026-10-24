@@ -13,6 +13,80 @@ struct DatabaseTreeContainerKey: Hashable {
     let searchText: String
 }
 
+struct DatabaseTreeContainerSlot: Hashable {
+    let database: String
+    let schema: String?
+}
+
+// Equal only while both hold the same storage: `TableInfo ==` leaves out the comment and row count a row draws.
+struct SameRows<Element>: Equatable {
+    let rows: [Element]
+
+    static func == (lhs: SameRows, rhs: SameRows) -> Bool {
+        guard lhs.rows.count == rhs.rows.count else { return false }
+        guard !lhs.rows.isEmpty else { return true }
+        return lhs.rows.withUnsafeBufferPointer { left in
+            rhs.rows.withUnsafeBufferPointer { right in left.baseAddress == right.baseAddress }
+        }
+    }
+}
+
+// Everything one container's filter pass reads: a pass whose inputs have not moved is not run again.
+struct DatabaseTreeBucketSource: Equatable {
+    let tables: SameRows<TableInfo>
+    let routines: SameRows<RoutineInfo>
+    let triggers: SameRows<TriggerInfo>
+    let userTypes: SameRows<UserDefinedTypeInfo>
+    let searchText: String
+    let database: String?
+
+    init(
+        tables: [TableInfo],
+        routines: [RoutineInfo],
+        triggers: [TriggerInfo],
+        userTypes: [UserDefinedTypeInfo],
+        searchText: String,
+        database: String?
+    ) {
+        self.tables = SameRows(rows: tables)
+        self.routines = SameRows(rows: routines)
+        self.triggers = SameRows(rows: triggers)
+        self.userTypes = SameRows(rows: userTypes)
+        self.searchText = searchText
+        self.database = database
+    }
+
+    func filtered() -> DatabaseTreeObjectBuckets {
+        DatabaseTreeFilter.objectBuckets(
+            tables: tables.rows,
+            routines: routines.rows,
+            triggers: triggers.rows,
+            userTypes: userTypes.rows,
+            searchText: searchText,
+            database: database
+        )
+    }
+}
+
+// Kept across reloads; `dropUnused()` lets go of containers nobody asked for since the last call.
+struct DatabaseTreeBucketMemo<Key: Hashable> {
+    private var entries: [Key: (source: DatabaseTreeBucketSource, buckets: DatabaseTreeObjectBuckets)] = [:]
+    private var used: Set<Key> = []
+
+    mutating func buckets(for key: Key, source: DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets {
+        used.insert(key)
+        if let entry = entries[key], entry.source == source { return entry.buckets }
+        let buckets = source.filtered()
+        entries[key] = (source, buckets)
+        return buckets
+    }
+
+    mutating func dropUnused() {
+        entries = entries.filter { used.contains($0.key) }
+        used.removeAll()
+    }
+}
+
 /// One filtered pass over a container's objects, split by kind. The container row needs the counts
 /// and each group row under it needs one bucket, so both read this rather than filtering the whole
 /// list again per group.
@@ -100,9 +174,7 @@ enum DatabaseTreeFilter {
     /// `database` is where the objects live when the caller knows it. A qualified search matches
     /// each object's own schema, and the database only when the search names one.
     static func filteredTables(_ tables: [TableInfo], searchText: String, database: String? = nil) -> [TableInfo] {
-        let search = SidebarSearch(searchText)
-        let admitted = tables.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
-        let matched = SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
+        let matched = SidebarSearch(searchText).ranked(tables, name: { $0.name }, database: database, schema: { $0.schema })
         return deduplicated(matched, by: \.id)
     }
 
@@ -111,9 +183,7 @@ enum DatabaseTreeFilter {
         searchText: String,
         database: String? = nil
     ) -> [RoutineInfo] {
-        let search = SidebarSearch(searchText)
-        let admitted = routines.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
-        let matched = SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
+        let matched = SidebarSearch(searchText).ranked(routines, name: { $0.name }, database: database, schema: { $0.schema })
         return deduplicated(matched, by: \.id)
     }
 
@@ -125,8 +195,7 @@ enum DatabaseTreeFilter {
         database: String? = nil
     ) -> [TriggerInfo] {
         let search = SidebarSearch(searchText)
-        let named = triggers.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
-        let matched = SidebarNameFilter.ranked(named, query: search.nameQuery, name: { $0.name })
+        let matched = search.ranked(triggers, name: { $0.name }, database: database, schema: { $0.schema })
         let byTable = search.nameQuery.isEmpty
             ? []
             : triggers.filter { trigger in
@@ -141,9 +210,7 @@ enum DatabaseTreeFilter {
         searchText: String,
         database: String? = nil
     ) -> [UserDefinedTypeInfo] {
-        let search = SidebarSearch(searchText)
-        let admitted = types.filter { search.matchesObject(named: $0.name, database: database, schema: $0.schema) }
-        let matched = SidebarNameFilter.ranked(admitted, query: search.nameQuery, name: { $0.name })
+        let matched = SidebarSearch(searchText).ranked(types, name: { $0.name }, database: database, schema: { $0.schema })
         return deduplicated(matched, by: \.id)
     }
 
@@ -217,42 +284,21 @@ enum DatabaseTreeFilter {
         connectionId: UUID,
         schema: String,
         searchText: String,
-        database: String?
+        database: String?,
+        filter: (DatabaseTreeBucketSource) -> DatabaseTreeObjectBuckets = { $0.filtered() }
     ) -> LoadedSchemaContent? {
         guard service.hasLoadedContent(for: connectionId, schema: schema) else { return nil }
         return LoadedSchemaContent(
-            buckets: objectBuckets(
+            buckets: filter(DatabaseTreeBucketSource(
                 tables: service.tables(for: connectionId, schema: schema),
                 routines: service.routines(for: connectionId, schema: schema),
                 triggers: service.triggers(for: connectionId, schema: schema),
                 userTypes: service.userDefinedTypes(for: connectionId, schema: schema),
                 searchText: searchText,
                 database: database
-            ),
+            )),
             isSettled: service.isSchemaSettled(for: connectionId, schema: schema),
             isCurrent: service.isSchemaCurrent(for: connectionId, schema: schema)
-        )
-    }
-
-    /// The listing of the database the hierarchical tree's schemas were read from, which during a
-    /// database switch is still the one being left.
-    @MainActor
-    static func hierarchicalListingMatches(
-        in treeMetadata: DatabaseTreeMetadataService,
-        schemaService: SchemaService,
-        connectionId: UUID,
-        searchText: String
-    ) -> SchemaListingMatches? {
-        guard let database = schemaService.loadedScope(for: connectionId)?.database,
-              let listing = treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database).value
-        else { return nil }
-        return SchemaListingMatches(
-            listing: listing,
-            database: database,
-            searchText: searchText,
-            covered: coveredSchemas(
-                treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: database)
-            )
         )
     }
 
@@ -264,7 +310,7 @@ enum DatabaseTreeFilter {
 
     /// A schema the search matched by name shows everything inside it. Filtering its objects by the
     /// same query leaves the matched schema reporting no items.
-    static func hierarchicalObjectBuckets(
+    static func hierarchicalBucketSource(
         schema: String,
         tables: [TableInfo],
         routines: [RoutineInfo],
@@ -272,9 +318,9 @@ enum DatabaseTreeFilter {
         userTypes: [UserDefinedTypeInfo],
         searchText: String,
         database: String? = nil
-    ) -> DatabaseTreeObjectBuckets {
+    ) -> DatabaseTreeBucketSource {
         let matchesSchema = SidebarSearch(searchText).matchesContainer(database: database, schema: schema)
-        return objectBuckets(
+        return DatabaseTreeBucketSource(
             tables: tables,
             routines: routines,
             triggers: triggers,
@@ -368,6 +414,44 @@ enum DatabaseTreeFilter {
         }
     }
 
+    // Redraws and body evaluations share one scan per database until the listing, search or coverage moves.
+    struct SchemaListingMatchesMemo {
+        private struct Entry {
+            let tables: SameRows<TableInfo>
+            let unlisted: Set<String>
+            let searchText: String
+            let covered: Set<String>?
+            let matches: SchemaListingMatches
+        }
+
+        private var entries: [String: Entry] = [:]
+
+        mutating func matches(
+            listing: CatalogTableListing.Result,
+            database: String,
+            searchText: String,
+            covered: Set<String>?
+        ) -> SchemaListingMatches {
+            if let entry = entries[database], entry.searchText == searchText, entry.covered == covered,
+               entry.unlisted == listing.unlistedSchemas, entry.tables == SameRows(rows: listing.tables) {
+                return entry.matches
+            }
+            let matches = SchemaListingMatches(listing: listing, database: database, searchText: searchText, covered: covered)
+            entries[database] = Entry(
+                tables: SameRows(rows: listing.tables),
+                unlisted: listing.unlistedSchemas,
+                searchText: searchText,
+                covered: covered,
+                matches: matches
+            )
+            return matches
+        }
+
+        mutating func removeAll() {
+            entries.removeAll()
+        }
+    }
+
     /// The schema's own loaded lists answer first. A schema the tree has not loaded is judged from
     /// the database's all-schema listing, and is unknown while that listing is missing, failed, or
     /// says it could not read the schema, unless a qualified search names another schema: holding
@@ -435,15 +519,11 @@ enum DatabaseTreeFilter {
         browsedSchema: String?,
         searchText: String,
         hiddenSchemas: Set<String>,
-        allSchemaTables: MetadataLoadState<CatalogTableListing.Result>,
+        listingMatches: SchemaListingMatches?,
         keptSchemas: Set<String>? = nil,
-        covered: Set<String>? = nil,
         loadedContent: (String, SchemaListingMatches) -> DatabaseTreeObjectBuckets?
     ) -> [String] {
-        guard !SidebarSearch(searchText).isEmpty, let listing = allSchemaTables.value else { return [] }
-        let listingMatches = SchemaListingMatches(
-            listing: listing, database: database, searchText: searchText, covered: covered
-        )
+        guard !SidebarSearch(searchText).isEmpty, let listingMatches else { return [] }
         return listingMatches.listed
             .filter { schema in
                 guard schema != browsedSchema, !hiddenSchemas.contains(schema) else { return false }

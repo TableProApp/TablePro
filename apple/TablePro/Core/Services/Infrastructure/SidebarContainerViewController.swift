@@ -344,6 +344,7 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         guard let sidebarState else { return }
         switch sidebarState.selectedSidebarTab {
         case .tables:
+            InteractionTracer.shared.begin(.sidebarFilter, key: sidebarState.connectionId.uuidString, subject: text)
             sidebarState.searchText = text
         case .favorites:
             sidebarState.favoritesSearchText = text

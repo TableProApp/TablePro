@@ -4,6 +4,7 @@ import TableProPluginKit
 struct SidebarTreeView: View {
     @ObservedObject private var databaseManager = DatabaseManager.shared
     @ObservedObject private var schemaService = SchemaService.shared
+    // Read through the view model's listing scan; observed so a listing that lands redraws the verdicts.
     @ObservedObject private var treeMetadata = DatabaseTreeMetadataService.shared
 
     let connectionId: UUID
@@ -48,12 +49,10 @@ struct SidebarTreeView: View {
     /// whether a schema survived the filter.
     private var visibleSchemas: [String] {
         guard !searchText.isEmpty else { return schemas }
-        let listingMatches = DatabaseTreeFilter.hierarchicalListingMatches(
-            in: treeMetadata,
-            schemaService: schemaService,
-            connectionId: connectionId,
-            searchText: searchText
-        )
+        // The listing of the database the schemas were read from, which during a switch is the one being left.
+        let listingMatches = schemaService.loadedScope(for: connectionId).flatMap {
+            viewModel.schemaListingMatches(database: $0.database, searchText: searchText)
+        }
         return schemas.filter { schema in
             DatabaseTreeFilter.hierarchicalSchemaSearchVerdict(
                 schema: schema,

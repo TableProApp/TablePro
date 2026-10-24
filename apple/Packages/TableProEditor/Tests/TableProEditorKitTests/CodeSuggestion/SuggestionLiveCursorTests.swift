@@ -114,6 +114,113 @@ final class SuggestionLiveCursorTests: XCTestCase {
     }
 
     @MainActor
+    func test_showCompletions_refreshesWhenADeletionDuringTheRequestLeftAPrefixItsPoolCannotAnswer() async throws {
+        // Text after the token keeps the request's window position on the text once the deletion lands.
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab1"], "a": ["ab1", "ac1"]],
+            reranked: ["a": ["ab1"]],
+            needsFresh: ["a"]
+        )
+        let model = SuggestionViewModel()
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let request = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        editor.deleteBackward(reportingTo: model, delegate: delegate)
+        delegate.answer()
+        await request.value
+
+        XCTAssertEqual(model.items.map(\.label), ["ab1"])
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await refresh.value
+
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.items.map(\.label), ["ab1", "ac1"])
+        XCTAssertEqual(delegate.askedAt, [2, 1])
+    }
+
+    @MainActor
+    func test_refresh_asksAgainWhenAKeyTypedDuringItLeftItsPoolShort() async throws {
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab_target"], "a": ["a_b"]],
+            reranked: ["a": ["a_b"], "ab": ["ab_target"]],
+            needsFresh: ["a"]
+        )
+        let model = SuggestionViewModel()
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let first = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await first.value
+
+        editor.deleteBackward(reportingTo: model, delegate: delegate)
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        editor.type("b", reportingTo: model, delegate: delegate) {}
+        // The refresh's answer leaves a pool ranked for `a`, which cannot answer `ab`.
+        delegate.reranked["ab"] = ["a_b"]
+        delegate.needsFresh = ["ab"]
+        delegate.answer()
+        await refresh.value
+
+        let again = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await again.value
+
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.items.map(\.label), ["ab_target"])
+    }
+
+    @MainActor
+    func test_refresh_asksAgainInsteadOfClosingWhenItsAnswerCannotRankARetypedPrefix() async throws {
+        let editor = FocusedEditor(text: "ab x")
+        defer { editor.close() }
+        editor.controller.setCursorPositions([CursorPosition(range: NSRange(location: 2, length: 0))])
+        let delegate = ParkingDelegate(
+            answers: ["ab": ["ab1", "ab2"], "a": ["ac1"]],
+            reranked: ["a": ["ab1", "ab2"], "ab": ["ab1", "ab2"]],
+            needsFresh: ["a"]
+        )
+        let model = SuggestionViewModel()
+
+        model.showCompletions(textView: editor.controller, delegate: delegate, cursorPosition: editor.cursor) { _, _ in }
+        let first = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await first.value
+
+        editor.deleteBackward(reportingTo: model, delegate: delegate)
+        let refresh = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        // The first pool still ranks `ab`, so retyping starts no request of its own.
+        editor.type("b", reportingTo: model, delegate: delegate) {}
+        // The refresh leaves a pool cut for `a` that holds none of the `ab` names.
+        delegate.reranked["ab"] = []
+        delegate.answer()
+        await refresh.value
+
+        XCTAssertTrue(model.isPresented)
+        let again = try XCTUnwrap(model.itemsRequestTask)
+        await delegate.readTheEditor()
+        delegate.answer()
+        await again.value
+
+        XCTAssertTrue(model.isPresented)
+        XCTAssertEqual(model.items.map(\.label), ["ab1", "ab2"])
+        XCTAssertEqual(delegate.askedAt, [2, 1, 2])
+    }
+
+    @MainActor
     func test_showCompletions_asksAgainWhenAnAnswerOfNothingMissedAKeyTypedDuringIt() async throws {
         let editor = FocusedEditor(text: "a ")
         defer { editor.close() }
@@ -280,18 +387,25 @@ private struct FocusedEditor {
 @MainActor
 private final class ParkingDelegate: CodeSuggestionDelegate {
     private let answers: [String: [String]]
-    private let reranked: [String: [String]]
+    var reranked: [String: [String]]
     private let triggerCharacters: Set<String>
+    var needsFresh: Set<String>
     private var parked: CheckedContinuation<Void, Never>?
     private var parkingWaiter: CheckedContinuation<Void, Never>?
     private(set) var askedAt: [Int] = []
     private(set) var rerankedPrefixes: [String] = []
     private(set) var didCloseCount = 0
 
-    init(answers: [String: [String]], reranked: [String: [String]], triggerCharacters: Set<String> = []) {
+    init(
+        answers: [String: [String]],
+        reranked: [String: [String]],
+        triggerCharacters: Set<String> = [],
+        needsFresh: Set<String> = []
+    ) {
         self.answers = answers
         self.reranked = reranked
         self.triggerCharacters = triggerCharacters
+        self.needsFresh = needsFresh
     }
 
     func untilParked() async {
@@ -340,6 +454,10 @@ private final class ParkingDelegate: CodeSuggestionDelegate {
         let prefix = Self.prefix(in: textView, endingAt: cursorPosition.range.location)
         rerankedPrefixes.append(prefix.text)
         return reranked[prefix.text]?.map { StubSuggestionEntry(label: $0) }
+    }
+
+    func completionNeedsFreshItems(textView: TextViewController, cursorPosition: CursorPosition) -> Bool {
+        needsFresh.contains(Self.prefix(in: textView, endingAt: cursorPosition.range.location).text)
     }
 
     func completionWindowDidClose() {

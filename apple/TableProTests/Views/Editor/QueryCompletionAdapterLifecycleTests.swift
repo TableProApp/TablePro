@@ -233,6 +233,77 @@ extension GlobalStateSuites {
             #expect(service.rankingInputCounts == [400, 400])
         }
 
+        // The pool after `FROM ` is t000 to t399, so a re-rank for `t45` offers t045 and never reaches t450.
+        @MainActor
+        @Test("a narrowing keystroke on a cut pool keeps the re-rank and asks the whole catalog behind it")
+        func cutPoolAsksTheWholeCatalogBehindTheRerank() async {
+            let provider = await schema((0..<500).map { String(format: "t%03d", $0) })
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .mysql)
+            let opened = "SELECT * FROM "
+            let controller = EditorControllerFixture.make(string: opened)
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: opened),
+                isManualTrigger: false
+            )
+
+            let narrowed = "SELECT * FROM t45"
+            controller.textView.setText(narrowed)
+            let reranked = adapter.completionOnCursorMove(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: narrowed)
+            )?.map(\.label) ?? []
+            let narrowedNeedsFreshItems = adapter.completionNeedsFreshItems(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: narrowed)
+            )
+            let fresh = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: narrowed),
+                isManualTrigger: false
+            )?.items.map(\.label) ?? []
+            controller.textView.setText(narrowed + "0")
+            let freshNeedsFreshItems = adapter.completionNeedsFreshItems(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: narrowed + "0")
+            )
+
+            #expect(!reranked.isEmpty)
+            #expect(narrowedNeedsFreshItems)
+            #expect(fresh.first == "t450")
+            #expect(!freshNeedsFreshItems)
+        }
+
+        // A pool ranked for `ab` holds no `ac1`, so deleting back to `a` has to ask again.
+        @MainActor
+        @Test("a pool answers a prefix that extends the one it was ranked for, and asks again for a shorter one")
+        func poolAsksAgainForAShorterPrefix() async {
+            let provider = await schema(["ab1", "ab2", "ac1"])
+            let adapter = QueryCompletionAdapter(schemaProvider: provider, databaseType: .mysql)
+            let opened = "SELECT * FROM ab"
+            let controller = EditorControllerFixture.make(string: opened)
+            _ = await adapter.completionSuggestionsRequested(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: opened),
+                isManualTrigger: false
+            )
+
+            controller.textView.setText(opened + "1")
+            let longerNeedsFreshItems = adapter.completionNeedsFreshItems(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: opened + "1")
+            )
+            let shorter = "SELECT * FROM a"
+            controller.textView.setText(shorter)
+            let shorterNeedsFreshItems = adapter.completionNeedsFreshItems(
+                textView: controller,
+                cursorPosition: cursor(atEndOf: shorter)
+            )
+
+            #expect(!longerNeedsFreshItems)
+            #expect(shorterNeedsFreshItems)
+        }
+
         // MARK: - The session's token
 
         @MainActor

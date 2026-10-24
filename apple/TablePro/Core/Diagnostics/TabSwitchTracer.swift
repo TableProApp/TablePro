@@ -14,7 +14,7 @@ internal final class TabSwitchTracer {
     nonisolated private static let writesToStandardError =
         ProcessInfo.processInfo.environment["TABLEPRO_TAB_SWITCH_TRACE"] == "1"
 
-    private static let inputEventTypes: Set<NSEvent.EventType> = [
+    internal static let inputEventTypes: Set<NSEvent.EventType> = [
         .keyDown, .keyUp, .flagsChanged,
         .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp
     ]

@@ -91,11 +91,7 @@ internal enum CatalogTableListing {
             try await driver.fetchTablesInAllSchemas()
         }
         if let listed {
-            let tables = listed.filter { table in
-                guard let schema = table.schema else { return true }
-                return !excluded.contains(schema)
-            }
-            return Result(tables: tables, unlistedSchemas: [])
+            return await listing(listed, excludingSchemas: excluded)
         }
         let schemas = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
             try await driver.fetchSchemas()
@@ -129,11 +125,25 @@ internal enum CatalogTableListing {
             listed = nil
         }
         if let listed {
-            let schemas = Set(names)
-            let tables = listed.filter { table in table.schema.map { schemas.contains($0) } ?? true }
-            return Result(tables: tables, unlistedSchemas: [])
+            return await listing(listed, keepingSchemas: Set(names))
         }
         return try await tables(inSchemas: names, scope: scope, metadata: metadata)
+    }
+
+    // A set read can hold every table of a large catalog; filtering it here would hold the main actor.
+    @concurrent
+    nonisolated private static func listing(_ listed: [TableInfo], excludingSchemas excluded: Set<String>) async -> Result {
+        let tables = listed.filter { table in
+            guard let schema = table.schema else { return true }
+            return !excluded.contains(schema)
+        }
+        return Result(tables: tables, unlistedSchemas: [])
+    }
+
+    @concurrent
+    nonisolated private static func listing(_ listed: [TableInfo], keepingSchemas schemas: Set<String>) async -> Result {
+        let tables = listed.filter { table in table.schema.map { schemas.contains($0) } ?? true }
+        return Result(tables: tables, unlistedSchemas: [])
     }
 
     /// One lease per schema, so a sidebar expansion queued behind this waits for one schema, not all.
