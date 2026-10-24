@@ -80,6 +80,7 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | DBF-3 | [#1357](https://github.com/cozyGarage/BookiE/issues/1357) | B3 |
 | DBF-4 | [#1358](https://github.com/cozyGarage/BookiE/issues/1358) | B4 |
 | B4-24 | [#1365](https://github.com/cozyGarage/BookiE/issues/1365) | B4 |
+| SEC-1 | [#1570](https://github.com/cozyGarage/BookiE/issues/1570) | B4 |
 | UI-43 | [#1366](https://github.com/cozyGarage/BookiE/issues/1366) | UX |
 | PERF-11 | [#580](https://github.com/cozyGarage/BookiE/issues/580) | UX |
 | PERF-1387 | [#1387](https://github.com/cozyGarage/BookiE/issues/1387) | UX |
