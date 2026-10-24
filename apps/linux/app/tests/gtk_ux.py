@@ -355,6 +355,62 @@ def scenarios(ui):
         assert stored_notes(database) == [(1, "gamma"), (2, "beta")], stored_notes(database)
         ui.wait_for_node(name="1 unsaved change", present=False)
 
+    def closing_and_reopening_a_browse_tab_keeps_it_editable(database, base):
+        import sqlite3
+        with sqlite3.connect(database) as connection:
+            connection.executemany("INSERT INTO safety_items(id, note) VALUES (?, ?)", [(1, "alpha"), (2, "beta")])
+        ui.open_table_in_new_tab("safety_items")
+        ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL)
+        ui.invoke_accessible_action("win.close-current")
+        ui.wait_for_node(name="safety_items", role=pyatspi.ROLE_PAGE_TAB, present=False)
+        ui.press_x11_key("t", ("Control_L", "Shift_L"))
+        ui.wait_for_node(name="alpha", role=pyatspi.ROLE_LABEL)
+        click_cell("alpha", count=2)
+        for key in "gamma":
+            ui.press_x11_key(key)
+        ui.press_x11_key("Return")
+        ui.wait_for_node(name="1 unsaved change")
+        assert stored_notes(database) == [(1, "alpha"), (2, "beta")], "reopened browse edit reached the database before save"
+        ui.press_x11_key("s", ("Control_L",))
+        deadline = time.monotonic() + ui.WAIT_SECONDS
+        while time.monotonic() < deadline and stored_notes(database) != [(1, "gamma"), (2, "beta")]:
+            time.sleep(ui.POLL_SECONDS)
+        assert stored_notes(database) == [(1, "gamma"), (2, "beta")], stored_notes(database)
+        ui.wait_for_node(name="1 unsaved change", present=False)
+
+    def postgres_reopened_browse_tab_keeps_its_schema_after_switching(database, base):
+        try:
+            psql(
+                "DROP SCHEMA IF EXISTS bookie_reopen_a CASCADE; "
+                "DROP SCHEMA IF EXISTS bookie_reopen_b CASCADE; "
+                "CREATE SCHEMA bookie_reopen_a; CREATE SCHEMA bookie_reopen_b; "
+                "CREATE TABLE bookie_reopen_a.reopen_items (id integer PRIMARY KEY, note text); "
+                "CREATE TABLE bookie_reopen_b.reopen_items (id integer PRIMARY KEY, note text); "
+                "INSERT INTO bookie_reopen_a.reopen_items VALUES (1, 'schema_a'); "
+                "INSERT INTO bookie_reopen_b.reopen_items VALUES (1, 'schema_b')"
+            )
+            ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
+            ui.wait_for_frame_containing(f"{ui.POSTGRES_CONNECTION_NAME} — BookiE")
+            ui.open_table_in_new_tab("bookie_reopen_a.reopen_items")
+            ui.wait_for_node(name="schema_a", role=pyatspi.ROLE_LABEL)
+            ui.invoke_accessible_action("win.close-current")
+            ui.wait_for_node(name="bookie_reopen_a.reopen_items", role=pyatspi.ROLE_PAGE_TAB, present=False)
+            ui.open_table_in_new_tab("bookie_reopen_b.reopen_items")
+            ui.wait_for_node(name="schema_b", role=pyatspi.ROLE_LABEL)
+            ui.press_x11_key("t", ("Control_L", "Shift_L"))
+            ui.wait_for_node(name="schema_a", role=pyatspi.ROLE_LABEL)
+            click_cell("schema_a", count=2)
+            for key in "updateda":
+                ui.press_x11_key(key)
+            ui.press_x11_key("Return")
+            ui.wait_for_node(name="1 unsaved change")
+            ui.press_x11_key("s", ("Control_L",))
+            wait_for_psql("SELECT note FROM bookie_reopen_a.reopen_items WHERE id=1", "updateda")
+            assert psql("SELECT note FROM bookie_reopen_b.reopen_items WHERE id=1") == "schema_b"
+            ui.wait_for_node(name="1 unsaved change", present=False)
+        finally:
+            psql("DROP SCHEMA IF EXISTS bookie_reopen_a CASCADE; DROP SCHEMA IF EXISTS bookie_reopen_b CASCADE")
+
     def grid_paste_preserves_multiline_text_and_sibling_rows(database, base):
         import sqlite3
         with sqlite3.connect(database) as connection:
@@ -1991,6 +2047,7 @@ GLib.MainLoop().run()
         columns_dialog_hides_a_column_and_keeps_the_last_one,
         ctrl_slash_toggles_a_comment_in_the_editor,
         browse_edit_cell_and_save_persists_to_the_database,
+        closing_and_reopening_a_browse_tab_keeps_it_editable,
         grid_paste_preserves_multiline_text_and_sibling_rows,
         test_connection_reports_success_in_the_dialog,
         test_connection_reports_failure_in_the_dialog,
@@ -2036,6 +2093,7 @@ GLib.MainLoop().run()
         result.append(postgres_session_commit_distinguishes_aborted_rollback_from_recovered_commit)
         result.append(postgres_saved_connection_browses_rows_and_values)
         result.append(postgres_hidden_projection_refresh_and_edit_preserve_hidden_value)
+        result.append(postgres_reopened_browse_tab_keeps_its_schema_after_switching)
         result.append(postgres_grid_edit_and_delete_commit_to_the_server)
         result.append(postgres_enum_grid_edit_preserves_native_label_and_siblings)
         result.append(postgres_database_switcher_reconnects_to_the_chosen_database)
