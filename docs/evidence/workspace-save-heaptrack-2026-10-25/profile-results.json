@@ -1,0 +1,75 @@
+{
+  "baseline_commit": "ff47ffde452e1b0ad735f108d2974aaf191abbda",
+  "candidate_commit": "5c95fe813f1e775c57debba534718ac5cb8f487c",
+  "current_linux_head_at_recording": "04deb241e34d1746403d8e1e45a954f6a402ba81",
+  "source_diff_sha256": "029e11e48309e4e3e5a7c6157550950eabeff50085f88bf365c0a2451601a111",
+  "benchmark_source_sha256": "0614aa3f7da0036bc78c91f7edc4ae040e6cb2818c21e0ad250689b8b651f859",
+  "binaries": {
+    "before_sha256": "38cfec2b666b49fa8ffc370d2b58f6f7e9986edf30ced04eaccb7ff25a01f9aa",
+    "after_sha256": "68ce3ac4294705e463154ff91bda9bcfac78b93015e94680525af0561ab55585"
+  },
+  "environment": {
+    "os_kernel": "Linux 7.2.8-9-omarchy x86_64",
+    "cpu": "AMD Ryzen 7 7730U with Radeon Graphics",
+    "rustc": "1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "1.98.1 (797e8a9bc 2026-08-05)",
+    "heaptrack": "1.5.0",
+    "profile": "optimized bench, one fresh process per sample",
+    "connections": [1, 4],
+    "draft_bytes_each": 1245184,
+    "updates_per_run": 3,
+    "restoration": "passed for every sample"
+  },
+  "metrics": {
+    "heaptrack": {
+      "unit": "Heaptrack formatted M",
+      "before": {
+        "1": {
+          "samples": [
+            {"peak_heap": "8.80M", "peak_rss": "17.17M", "allocations": 400, "outstanding": "1.30K", "trace_sha256": "82e975e7f16ac7111293a97cad96cc6d4a79f1ddd5b1c2e0dfea64f9aadb9f27"},
+            {"peak_heap": "8.80M", "peak_rss": "17.45M", "allocations": 400, "outstanding": "1.30K", "trace_sha256": "9a08b9db2810883c01bae599eed15fc42f8eed27fb42a429a003ed4fcba6b7ed"},
+            {"peak_heap": "8.80M", "peak_rss": "17.17M", "allocations": 400, "outstanding": "1.30K", "trace_sha256": "c6e871ad3ba9b500efe22171a6b342624e7487647ee30c2b2beb49ebddd2f842"}
+          ],
+          "median_peak_heap": "8.80M"
+        },
+        "4": {
+          "samples": [
+            {"peak_heap": "18.76M", "peak_rss": "31.30M", "allocations": 972, "outstanding": "1.30K", "trace_sha256": "e284d3dcf92734c839cb35e834fa699fc746d47fc140dae564cb15519dd5a1c3"},
+            {"peak_heap": "18.76M", "peak_rss": "29.41M", "allocations": 972, "outstanding": "1.30K", "trace_sha256": "3e026b668015d49fde6a22c3a102300a6a66fbfea3d42d280e1f4b3086964583"},
+            {"peak_heap": "18.76M", "peak_rss": "26.13M", "allocations": 972, "outstanding": "1.30K", "trace_sha256": "db51ac828d80d6701b9f3f508985e1dc5fe96c2eccba344fcf72dff57b114b1c"}
+          ],
+          "median_peak_heap": "18.76M"
+        }
+      },
+      "after": {
+        "1": {
+          "samples": [
+            {"peak_heap": "7.55M", "peak_rss": "14.90M", "allocations": 362, "outstanding": "1.30K", "trace_sha256": "4abfc436f2875288d54b704e221a68ff5dc76155f4cd6685b95b3e6495151b9e"},
+            {"peak_heap": "7.55M", "peak_rss": "16.47M", "allocations": 362, "outstanding": "1.30K", "trace_sha256": "f47eebb599e0ca129447c47c919437549ddcde81d49d556e6cffb0c72c56a7d8"},
+            {"peak_heap": "7.55M", "peak_rss": "14.91M", "allocations": 362, "outstanding": "1.30K", "trace_sha256": "6bb0348def58c73545f6d85626498ec402c909f91708e176e8dc2f02a34517d1"}
+          ],
+          "median_peak_heap": "7.55M"
+        },
+        "4": {
+          "samples": [
+            {"peak_heap": "18.76M", "peak_rss": "21.13M", "allocations": 621, "outstanding": "1.30K", "trace_sha256": "71321291b36338ac5e5974ed64f319120be5145197933b7ae39483452538a1e7"},
+            {"peak_heap": "18.76M", "peak_rss": "21.83M", "allocations": 621, "outstanding": "1.30K", "trace_sha256": "e100d7cef5181d57dc2de364dcc5e70ade69392a46baa2eed72c9303a29fa830"},
+            {"peak_heap": "18.76M", "peak_rss": "21.18M", "allocations": 621, "outstanding": "1.30K", "trace_sha256": "9b94182ececf0386f409de5f839af5d061030fb107e7f6ef416225254a7ee2d8"}
+          ],
+          "median_peak_heap": "18.76M"
+        }
+      }
+    },
+    "uninstrumented": {
+      "read_write_unit": "/proc/self/io characters (bytes passed to read/write calls, not physical I/O)",
+      "before": {
+        "1": {"samples": [{"read": 3738764, "written": 3736284, "cpu_ns": 9141795, "elapsed_ns": 9071624, "peak_rss_kib": 12380}, {"read": 3738768, "written": 3736284, "cpu_ns": 11170882, "elapsed_ns": 11019320, "peak_rss_kib": 12408}, {"read": 3738766, "written": 3736284, "cpu_ns": 11000324, "elapsed_ns": 9955969, "peak_rss_kib": 12420}], "median": {"read": 3738766, "written": 3736284, "cpu_ns": 11000324, "elapsed_ns": 9955969, "peak_rss_kib": 12408}},
+        "4": {"samples": [{"read": 14949203, "written": 14944821, "cpu_ns": 24375296, "elapsed_ns": 23877732, "peak_rss_kib": 21900}, {"read": 14949205, "written": 14944821, "cpu_ns": 27326528, "elapsed_ns": 26858746, "peak_rss_kib": 22048}, {"read": 14949204, "written": 14944821, "cpu_ns": 24359518, "elapsed_ns": 24094452, "peak_rss_kib": 22116}], "median": {"read": 14949204, "written": 14944821, "cpu_ns": 24375296, "elapsed_ns": 24094452, "peak_rss_kib": 22048}}
+      },
+      "after": {
+        "1": {"samples": [{"read": 2496, "written": 3736284, "cpu_ns": 6358485, "elapsed_ns": 6293711, "peak_rss_kib": 12648}, {"read": 2497, "written": 3736284, "cpu_ns": 7314686, "elapsed_ns": 6457701, "peak_rss_kib": 12636}, {"read": 2503, "written": 3736284, "cpu_ns": 7835409, "elapsed_ns": 7553529, "peak_rss_kib": 12644}], "median": {"read": 2497, "written": 3736284, "cpu_ns": 7314686, "elapsed_ns": 6457701, "peak_rss_kib": 12644}},
+        "4": {"samples": [{"read": 4384, "written": 3738165, "cpu_ns": 7399413, "elapsed_ns": 7307334, "peak_rss_kib": 17516}, {"read": 4384, "written": 3738165, "cpu_ns": 7246189, "elapsed_ns": 7177567, "peak_rss_kib": 17516}, {"read": 4381, "written": 3738165, "cpu_ns": 8347961, "elapsed_ns": 8251116, "peak_rss_kib": 17520}], "median": {"read": 4384, "written": 3738165, "cpu_ns": 7399413, "elapsed_ns": 7307334, "peak_rss_kib": 17516}}
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "source_commit": "5c95fe813f1e775c57debba534718ac5cb8f487c",
+  "source_sha256": {
+    "crates/app-services/src/workspace_disk.rs": "6872305ce865d01408eaa743f3e1229e18aee843676b95d4b5090d4d20101e2e",
+    "crates/app-services/src/workspace_state.rs": "9259444c2ad78ef75b74b7aa3e4a665725f7f2837ac998f4de96efb47c1b7a70",
+    "crates/app-services/benches/workspace_save_io.rs": "0614aa3f7da0036bc78c91f7edc4ae040e6cb2818c21e0ad250689b8b651f859"
+  }
+}
