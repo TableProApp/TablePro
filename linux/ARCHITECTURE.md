@@ -16,6 +16,7 @@ linux/
 ├── build-aux/about/               templates that turn Cargo.lock into data/licenses
 ├── po/                            translation catalogue
 └── crates/
+    ├── ai/                        the AI assistant's providers, prompts and replies, no GUI deps
     ├── app/                       binary, the GTK application, its windows and views
     ├── core/                      domain types and the driver contract, no GUI deps
     ├── mcp/                       the MCP server: transport, token and tools, no GUI deps
@@ -47,6 +48,7 @@ linux/
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
+| `ai` | `core`, `net`, `storage` |
 | `app` | every crate above |
 
 Rules, enforced by review:
@@ -56,6 +58,7 @@ Rules, enforced by review:
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
+- `ai` depends on `core`, `net` and `storage`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `app` depends on all of them. It is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
 
@@ -337,6 +340,12 @@ A restore deletes the drafts no saved or open tab names, except while a moved-as
 The app's `McpService` (`crates/app/src/services/mcp_service.rs`) follows the `mcp-server-enabled` and `mcp-server-port` keys on the GTK thread and starts, stops and moves the server on the runtime. Every change takes one lock in turn, so a stop has freed the port before the next start binds it. Its status, a `watch` of `McpStatus`, drives the Preferences page.
 
 A tool reads the saved connections from the `ConnectionStore` on each call, so an External Clients level changed a moment ago applies, and leaves a Blocked one out as if it did not exist. It reaches a connection through `McpHost`, which the app's `GtkMcpHost` answers on the GTK thread: the `Session` the registry holds for the saved connection's key, a window opened for it the way the picker opens one, and the write approval, which `confirm_until` shows in that window with Safe Mode's dialog and takes down when the client goes away. `ExternalAccess::gate` decides each statement from the level, the session's Safe Mode level and `statement_access`. A read streams through `Connection::stream_read` on a read-only connection, cut at the row limit by the sink; a write runs on an editor session of its own, opened for the one statement. Both go into the query history through `HistoryService::record`, under the editor's rules.
+
+## AI assistant
+
+`tablepro-ai` speaks Anthropic's Messages API and OpenAI's Chat Completions protocol, which OpenAI, Ollama and other self-hosted servers speak ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). `AiClient` is one hyper client over rustls with the platform verifier from `tablepro-net`, as the drivers use; it follows no redirect, and `Endpoint::new` refuses to send a key over plain http to a host other than this computer. Replies stream as server-sent events through `sse-stream`; a reply is capped at 512 KiB and a silence of 300 seconds ends it. Keys are keyring items through `ApiKeyVault`. The prompts (`chat_system_prompt`, `action_message`, `completion_message`) take a `SchemaContext`, which names tables and columns and never holds a row; catalog names go in double quotes on one line, and the user's SQL goes in a fence no backtick run in it can close. Thinking blocks are never sent back, so an edited or retried conversation is never refused.
+
+The app's `AiService` (`crates/app/src/services/ai_service.rs`) reads the provider, model and address from GSettings and the key from the keyring, and runs every request on the runtime. Each window's `AssistantAccess` (`crates/app/src/ui/assistant/assistant_access.rs`) is the gate: it reads the connection's `AiPolicy` from the saved connections before every request, asks once under Ask Each Time, naming the provider's host, and keeps the answer until the window's session ends. The pane, the editor's Explain, Review, Optimize and Fix, and the suggestions while typing all go through it; the context comes from the session's catalog through the completion's reader (`schema_reader.rs`), so it shares the sidebar's reads.
 
 ## Build & CI
 

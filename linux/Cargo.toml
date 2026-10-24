@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/ai",
     "crates/app",
     "crates/core",
     "crates/mcp",
@@ -28,6 +29,7 @@ license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
+tablepro-ai = { path = "crates/ai" }
 tablepro-core = { path = "crates/core" }
 tablepro-driver-cassandra = { path = "crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "crates/drivers/clickhouse" }

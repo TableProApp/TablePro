@@ -2,6 +2,7 @@
 //! session, one statement or `GO` batch at a time, and every statement
 //! gets a line in the results list.
 
+mod assistant_actions;
 mod buffer_edit;
 mod completion;
 mod editor_actions;
@@ -12,6 +13,7 @@ mod find_bar;
 mod find_state;
 mod format_plan;
 mod imp;
+mod inline_suggestion;
 mod result_item;
 mod result_widgets;
 mod results_pane;
@@ -46,6 +48,7 @@ use tablepro_session::runtime::{ProcessHold, Tasks};
 use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
+pub(crate) use self::completion::{CompletionScope, read_catalog, tables_named};
 pub(crate) use self::editor_file::file_name;
 use self::editor_view::EditorView;
 use self::imp::RunningScript;
@@ -141,6 +144,7 @@ impl SqlEditor {
         editor.connect_buffer(&buffer);
         editor.follow_file_state(&buffer);
         editor.install_actions();
+        editor.extend_context_menu();
         // After the editor's own key controllers, so Vim's runs first.
         let vim = editor.follow_vim_preference(&init.settings);
         editor.imp().app_handlers.borrow_mut().push(vim);
@@ -563,6 +567,14 @@ impl SqlEditor {
         let log = imp.log.borrow();
         let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
         let (errors, exports) = (self.downgrade(), self.downgrade());
+        let fixes = self.downgrade();
+        let available = self
+            .imp()
+            .assistant
+            .borrow()
+            .is_some()
+            .then(|| imp_action(self, "ai-explain"))
+            .flatten();
         let actions = PageActions {
             go_to_error: move |position| {
                 if let Some(editor) = errors.upgrade() {
@@ -574,6 +586,14 @@ impl SqlEditor {
                     editor.offer_export(index, shown);
                 }
             },
+            fix: available.map(|available| result_widgets::FixHook {
+                run: move || {
+                    if let Some(editor) = fixes.upgrade() {
+                        editor.fix_with_assistant(index);
+                    }
+                },
+                available,
+            }),
         };
         Some(result_widgets::entry_widget(
             usize::try_from(index).ok()?,
@@ -940,6 +960,16 @@ impl SqlEditor {
             }
         });
     }
+}
+
+/// One of the tab's own actions, for a widget to follow.
+fn imp_action(editor: &SqlEditor, name: &str) -> Option<gio::SimpleAction> {
+    editor
+        .imp()
+        .actions
+        .get()?
+        .lookup_action(name)
+        .and_downcast::<gio::SimpleAction>()
 }
 
 struct RunTransaction {

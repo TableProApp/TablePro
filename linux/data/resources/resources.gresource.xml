@@ -9,6 +9,7 @@
     <file compressed="true" preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <!-- GtkApplication reads the menus from here at startup. -->
     <file compressed="true" preprocess="xml-stripblanks">gtk/menus.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/assistant-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/browse-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
@@ -28,6 +29,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-editor-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-general-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-history-group.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-ai-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-mcp-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
@@ -41,5 +43,6 @@
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/table-relation-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/statement-pending-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/document-modified-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">icons/scalable/actions/assistant-symbolic.svg</file>
   </gresource>
 </gresources>

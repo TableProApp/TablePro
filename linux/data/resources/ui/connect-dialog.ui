@@ -152,6 +152,14 @@
                         </property>
                       </object>
                     </child>
+                    <child>
+                      <object class="AdwComboRow" id="ai_policy_row">
+                        <property name="title" translatable="yes">AI Assistant</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="ai_policy_names"/>
+                        </property>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>

@@ -21,15 +21,19 @@ pub(crate) fn resolve_id(manager: &sourceview5::StyleSchemeManager, preferred: &
 }
 
 pub(crate) fn apply(view: &sourceview5::View, preferred: &str) {
-    let manager = sourceview5::StyleSchemeManager::default();
-    let dark = libadwaita::StyleManager::default().is_dark();
-    let id = resolve_id(&manager, preferred, dark);
-    let Some(scheme) = manager.scheme(&id) else {
+    let Some(scheme) = scheme(preferred) else {
         return;
     };
     if let Ok(buffer) = view.buffer().downcast::<sourceview5::Buffer>() {
         buffer.set_style_scheme(Some(&scheme));
     }
+}
+
+/// The scheme `preferred` names, in the variant for the current style.
+pub(crate) fn scheme(preferred: &str) -> Option<sourceview5::StyleScheme> {
+    let manager = sourceview5::StyleSchemeManager::default();
+    let dark = libadwaita::StyleManager::default().is_dark();
+    manager.scheme(&resolve_id(&manager, preferred, dark))
 }
 
 #[cfg(test)]

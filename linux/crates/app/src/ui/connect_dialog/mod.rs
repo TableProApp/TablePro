@@ -27,7 +27,7 @@ use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, NetworkOption,
+    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, NetworkOption,
     NetworkOptions, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -68,6 +68,9 @@ pub struct ConnectDialogInit {
     /// The tags the Appearance group offers.
     pub tags: Arc<[ConnectionTag]>,
     pub remembered_driver: String,
+    /// Whether a provider answers the AI assistant, which is when its
+    /// policy row is shown.
+    pub ai_assistant: bool,
     pub ssh_environment: SshEnvironment,
     /// What a Create opens on after a connect from it failed.
     pub prefill: Option<ConnectPrefill>,
@@ -149,6 +152,11 @@ impl ConnectDialog {
         imp.external_access_names
             .splice(0, imp.external_access_names.n_items(), &access);
         crate::ui::combo_value::show_whole_value(&imp.external_access_row);
+        let policies: Vec<String> = AiPolicy::ALL.into_iter().map(crate::ui::ai_policy::label).collect();
+        let policies: Vec<&str> = policies.iter().map(String::as_str).collect();
+        imp.ai_policy_names.splice(0, imp.ai_policy_names.n_items(), &policies);
+        crate::ui::combo_value::show_whole_value(&imp.ai_policy_row);
+        imp.ai_policy_row.set_visible(init.ai_assistant);
         imp.file_row.set_tasks(init.tasks.clone());
         let _ = imp.services.set(DialogServices {
             connector: init.connector,
@@ -322,6 +330,12 @@ impl ConnectDialog {
             }
         });
         let weak = self.downgrade();
+        imp.ai_policy_row.connect_selected_notify(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.show_ai_policy_subtitle();
+            }
+        });
+        let weak = self.downgrade();
         imp.auth_mode_row.connect_selected_notify(move |_| {
             if let Some(dialog) = weak.upgrade()
                 && !dialog.imp().updating.get()
@@ -418,6 +432,10 @@ impl ConnectDialog {
                 .get(imp.external_access_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
+            ai_policy: AiPolicy::ALL
+                .get(imp.ai_policy_row.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
             tags: self.picked_tags(),
@@ -489,6 +507,11 @@ impl ConnectDialog {
             .position(|access| *access == form.external_access)
             .unwrap_or_default();
         imp.external_access_row.set_selected(access as u32);
+        let policy = AiPolicy::ALL
+            .iter()
+            .position(|policy| *policy == form.ai_policy)
+            .unwrap_or_default();
+        imp.ai_policy_row.set_selected(policy as u32);
         if form.file.is_some() || imp.file_row.endpoint().is_some() {
             imp.file_row.set_endpoint(form.file.clone());
         }
@@ -529,6 +552,7 @@ impl ConnectDialog {
         imp.tls_section.apply(tls, self.route(), &form.tls);
         self.show_safe_mode_subtitle();
         self.show_external_access_subtitle();
+        self.show_ai_policy_subtitle();
         self.show_auth_rows();
         self.show_seed_list_rows();
         self.set_title(&if imp.mode.borrow().editing().is_some() {
@@ -554,6 +578,12 @@ impl ConnectDialog {
         self.imp()
             .external_access_row
             .set_subtitle(&crate::ui::external_access::subtitle(self.form().external_access));
+    }
+
+    fn show_ai_policy_subtitle(&self) {
+        self.imp()
+            .ai_policy_row
+            .set_subtitle(&crate::ui::ai_policy::subtitle(self.form().ai_policy));
     }
 
     fn show_auth_rows(&self) {

@@ -10,6 +10,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::WorkspaceModel;
+use crate::ui::assistant::AssistantPane;
 use crate::ui::export::ExportOperationsButton;
 
 #[derive(Default, gtk::CompositeTemplate)]
@@ -46,6 +47,10 @@ pub struct Workspace {
     #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
+    pub assistant_split: TemplateChild<adw::OverlaySplitView>,
+    #[template_child]
+    pub assistant_pane: TemplateChild<AssistantPane>,
+    #[template_child]
     pub content_root: TemplateChild<adw::ToolbarView>,
     #[template_child]
     pub content_header: TemplateChild<adw::HeaderBar>,
@@ -57,6 +62,8 @@ pub struct Workspace {
     pub window_title: TemplateChild<adw::WindowTitle>,
     #[template_child]
     pub connection_icon: TemplateChild<gtk::Image>,
+    #[template_child]
+    pub assistant_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
     pub tab_button: TemplateChild<adw::TabButton>,
     #[template_child]
@@ -94,6 +101,7 @@ impl ObjectSubclass for Workspace {
 
     fn class_init(klass: &mut Self::Class) {
         ExportOperationsButton::ensure_type();
+        AssistantPane::ensure_type();
         klass.bind_template();
     }
 

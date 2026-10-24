@@ -104,3 +104,34 @@ async fn the_mcp_token_is_replaced_and_outlives_a_connection_delete() -> TestRes
     assert_eq!(after.as_ref().map(|token| token.expose_secret()), Some("tp_second"));
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires a Secret Service"]
+async fn each_ai_key_is_its_own_item_and_outlives_a_connection_delete() -> TestResult {
+    let store = store();
+    let id = Uuid::new_v4();
+    store
+        .store(id, SecretKind::DatabasePassword, &SecretString::from("pw"), "l")
+        .await?;
+
+    let before = store.load_ai_key("anthropic").await?;
+    store
+        .store_ai_key("anthropic", &SecretString::from("sk-ant-first"), "key")
+        .await?;
+    store
+        .store_ai_key("anthropic", &SecretString::from("sk-ant-second"), "key")
+        .await?;
+    store
+        .store_ai_key("openai", &SecretString::from("sk-openai"), "key")
+        .await?;
+    store.delete_connection(id).await?;
+    let anthropic = store.load_ai_key("anthropic").await?;
+    store.delete_ai_key("openai").await?;
+    let openai = store.load_ai_key("openai").await?;
+
+    assert!(before.is_none());
+    assert_eq!(anthropic.as_ref().map(|key| key.expose_secret()), Some("sk-ant-second"));
+    assert!(openai.is_none());
+    store.delete_ai_key("anthropic").await?;
+    Ok(())
+}

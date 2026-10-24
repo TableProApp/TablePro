@@ -70,6 +70,10 @@ pub struct ConnectDialog {
     #[template_child]
     pub external_access_names: TemplateChild<gtk4::StringList>,
     #[template_child]
+    pub ai_policy_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub ai_policy_names: TemplateChild<gtk4::StringList>,
+    #[template_child]
     pub icon_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub tags_row: TemplateChild<adw::ExpanderRow>,

@@ -1,8 +1,11 @@
 //! Every icon name the app asks the icon theme for. Keeping them in
 //! one place is what lets `all_icons_resolve` prove the set is real.
 
+pub const ACTION_UNAVAILABLE: &str = "action-unavailable-symbolic";
 pub const APPLICATIONS_ENGINEERING: &str = "applications-engineering-symbolic";
 pub const APPLICATIONS_SCIENCE: &str = "applications-science-symbolic";
+/// Bundled: a speech bubble, for the AI assistant.
+pub const ASSISTANT: &str = "assistant-symbolic";
 pub const CHANGES_PREVENT: &str = "changes-prevent-symbolic";
 pub const COMPUTER: &str = "computer-symbolic";
 pub const DIALOG_ERROR: &str = "dialog-error-symbolic";
@@ -75,8 +78,10 @@ pub const ZOOM_OUT: &str = "zoom-out-symbolic";
     )
 )]
 pub const ALL: &[&str] = &[
+    ACTION_UNAVAILABLE,
     APPLICATIONS_ENGINEERING,
     APPLICATIONS_SCIENCE,
+    ASSISTANT,
     CHANGES_PREVENT,
     COMPUTER,
     DIALOG_ERROR,

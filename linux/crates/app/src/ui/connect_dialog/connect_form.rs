@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretSave};
 use tablepro_core::{
-    AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
+    AiPolicy, AuthMode, ClientIdentity, ConfigError, Credentials, DriverCapabilities, ExternalAccess, FileEndpoint,
     NetworkEndpoint, NetworkOption, NetworkOptions, SafeModeLevel, ServerNameOverride, TlsCapabilities, TlsConfig,
     TlsMode, TransportClass,
 };
@@ -130,6 +130,7 @@ pub struct ConnectForm {
     pub tls: TlsFormState,
     pub safe_mode: SafeModeLevel,
     pub external_access: ExternalAccess,
+    pub ai_policy: AiPolicy,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
     /// The ids of the tags ticked in the Appearance group.
@@ -163,6 +164,7 @@ impl ConnectForm {
             tls: TlsFormState::new(caps.tls.as_ref()),
             safe_mode: SafeModeLevel::Off,
             external_access: ExternalAccess::default(),
+            ai_policy: AiPolicy::default(),
             ssh: None,
             file: None,
             tags: Vec::new(),
@@ -179,6 +181,7 @@ impl ConnectForm {
         let mut form = Self::new(&saved.driver_id, caps);
         form.safe_mode = saved.safe_mode;
         form.external_access = saved.external_access;
+        form.ai_policy = saved.ai_policy;
         form.tags.clone_from(&saved.tags);
         form.icon = saved.icon;
         if caps.is_file_based() {
@@ -420,6 +423,7 @@ impl ConnectForm {
             tls,
             safe_mode: self.safe_mode,
             external_access: self.external_access,
+            ai_policy: self.ai_policy,
             auth_mode,
             ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),
