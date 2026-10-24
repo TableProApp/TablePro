@@ -1581,7 +1581,7 @@ limitations under the License.
 
 Packages:
 
-- `aws-lc-sys 0.45.0`
+- `aws-lc-sys 0.46.0`
 - `mongodb 3.9.1`
 - `mongodb-internal-macros 3.9.1`
 - `russh 0.64.1`
@@ -1926,7 +1926,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Packages:
 
-- `aws-lc-sys 0.45.0`
+- `aws-lc-sys 0.46.0`
 
 ```text
 Copyright (c) <year> <owner>. 
@@ -2800,8 +2800,8 @@ third-party/chromium/LICENSE.
 
 Packages:
 
-- `aws-lc-rs 1.18.1`
-- `aws-lc-sys 0.45.0`
+- `aws-lc-rs 1.18.2`
+- `aws-lc-sys 0.46.0`
 
 ```text
 ISC License:
@@ -8911,7 +8911,7 @@ SOFTWARE.
 
 Packages:
 
-- `aws-lc-sys 0.45.0`
+- `aws-lc-sys 0.46.0`
 
 ```text
 The MIT License (MIT)
