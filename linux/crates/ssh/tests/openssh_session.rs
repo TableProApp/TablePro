@@ -9,9 +9,9 @@ use secrecy::SecretString;
 use tablepro_core::credentials::{CredentialInteraction, PromptPurpose, PromptReply};
 use tablepro_core::{LivenessPolicy, NetworkEndpoint, SshFailure, TransportError, TransportRoute};
 use tablepro_ssh::{SshAuth, SshConfig, SshDestination, SshRuntimeCell, SshServices, SshSession, forget_host_key};
+use tablepro_test_fixtures::start_container;
 use tablepro_test_support::FakePrompter;
 use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
@@ -45,12 +45,13 @@ fn write_config(config: &Path, known_hosts: &Path, strict_host_key_checking: &st
 }
 
 async fn start() -> TestResult<Fixture> {
-    let container = GenericImage::new("alpine", "3.22")
-        .with_exposed_port(2222.tcp())
-        .with_wait_for(WaitFor::message_on_stderr("Server listening on"))
-        .with_cmd(["sh", "-c", SSHD_SCRIPT])
-        .start()
-        .await?;
+    let container = start_container(
+        GenericImage::new("alpine", "3.22")
+            .with_exposed_port(2222.tcp())
+            .with_wait_for(WaitFor::message_on_stderr("Server listening on"))
+            .with_cmd(["sh", "-c", SSHD_SCRIPT]),
+    )
+    .await?;
     let host = container.get_host().await?.to_string();
     let port = container.get_host_port_ipv4(2222).await?;
 

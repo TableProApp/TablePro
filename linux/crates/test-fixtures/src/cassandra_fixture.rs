@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use testcontainers::core::IntoContainerPort;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt};
 use tokio::time::Instant;
 
 use crate::container_file::with_files;
 use crate::container_report::{container_state, log_tail};
+use crate::container_start::start_container;
 use crate::{
     CassandraFlavour, CassandraTls, ContainerFile, ExecOutput, FixtureCredentials, FixtureError, PkiFile, TestNetwork,
     TestPki,
@@ -188,7 +188,7 @@ impl CassandraFixture {
             request = request.with_network(network.name()).with_container_name(alias.as_str());
         }
         let files = Self::files(flavour, server_version, tls, &pki, &password)?;
-        let container = with_files(request, files).start().await?;
+        let container = start_container(with_files(request, files)).await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(Self::CONTAINER_PORT).await?;
         let fixture = Self {

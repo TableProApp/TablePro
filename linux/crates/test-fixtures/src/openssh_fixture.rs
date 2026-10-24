@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use testcontainers::core::{IntoContainerPort, WaitFor};
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
@@ -9,6 +8,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::container_file::with_files;
+use crate::container_start::start_container;
 use crate::{
     ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HostCertificate, OpenSshOptions, OpenSshVersion,
     ServerVersion, SshAuthVariant, TestNetwork,
@@ -95,7 +95,7 @@ impl OpenSshFixture {
         if let (Some(network), Some(alias)) = (network, &network_alias) {
             request = request.with_network(network.name()).with_container_name(alias);
         }
-        let container = with_files(request, files).start().await?;
+        let container = start_container(with_files(request, files)).await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(Self::CONTAINER_PORT).await?;
         wait_for_banner(&host, port).await?;

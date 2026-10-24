@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use testcontainers::core::IntoContainerPort;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt, TestcontainersError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -9,6 +8,7 @@ use tokio::time::Instant;
 
 use crate::container_file::with_files;
 use crate::container_report::{container_state, log_tail};
+use crate::container_start::start_container;
 use crate::{
     ClickHouseVersion, ContainerFile, ExecOutput, FixtureCredentials, FixtureError, PkiFile, ServerVersion,
     TestNetwork, TestPki,
@@ -72,7 +72,7 @@ impl ClickHouseFixture {
         }
         let mut files = Self::files(&pki, &password)?;
         files.extend(extra_files);
-        let container = with_files(request, files).start().await?;
+        let container = start_container(with_files(request, files)).await?;
         let (host, http_port, https_port) = match published(&container).await {
             Ok(published) => published,
             Err(error) => {

@@ -2,12 +2,12 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use testcontainers::core::IntoContainerPort;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 use tokio::time::Instant;
 
 use crate::container_file::with_files;
+use crate::container_start::start_container;
 use crate::{
     ContainerFile, ExecOutput, FixtureCredentials, FixtureError, HbaMode, PkiAlgorithm, PkiFile, PostgresVersion,
     ServerVersion, TestNetwork, TestPki,
@@ -106,7 +106,7 @@ impl PostgresFixture {
         if let Some(host_port) = host_port {
             request = request.with_mapped_port(host_port, CONTAINER_PORT.tcp());
         }
-        let container = with_files(request, Self::files(hba, &pki)?).start().await?;
+        let container = start_container(with_files(request, Self::files(hba, &pki)?)).await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(CONTAINER_PORT).await?;
         Ok(Self {

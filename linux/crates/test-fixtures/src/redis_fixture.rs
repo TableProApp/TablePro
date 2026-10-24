@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use testcontainers::core::IntoContainerPort;
-use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ContainerRequest, GenericImage, ImageExt};
 use tokio::time::Instant;
 
 use crate::container_file::with_files;
+use crate::container_start::start_container;
 use crate::{
     ContainerFile, ExecOutput, FixtureCredentials, FixtureError, PkiFile, RedisVersion, ServerVersion, TestNetwork,
     TestPki,
@@ -74,7 +74,7 @@ impl RedisFixture {
         if let (Some(network), Some(alias)) = (network, &network_alias) {
             request = request.with_network(network.name()).with_container_name(alias);
         }
-        let container = with_files(request, Self::files(&pki, &password)?).start().await?;
+        let container = start_container(with_files(request, Self::files(&pki, &password)?)).await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(PORT).await?;
         let certificate_port = match listening {
