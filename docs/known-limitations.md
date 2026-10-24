@@ -4,7 +4,7 @@ This page records current branch behavior, including changes made after 0.2.0 wa
 
 ## Data and values
 
-- **SQL file layout is bounded per line** ([#1299](https://github.com/cozyGarage/BookiE/issues/1299)). Opening or dropping a SQL file refuses physical lines over 256 KiB of UTF-8 text, alongside the 8 MiB total file limit. Files are not truncated or rewritten. Dropped files are also checked against the complete post-insertion line and 8 MiB editor size before mutation. This boundary prevents the measured single-line file-loading allocation; it does not constrain text already in an editor, pasted text or restored drafts. Those paths and native desktop qualification remain open.
+- **SQL editor input is bounded** ([#1299](https://github.com/cozyGarage/BookiE/issues/1299)). Opening or dropping a SQL file, pasting text and restoring saved drafts enforce a 256 KiB UTF-8 physical-line limit and an 8 MiB editor limit. Inputs are refused before changing the editor. An older saved draft over either limit remains saved and opens as a read-only notice until valid SQL replaces it. These input limits prevent the measured GiB-scale layout case; they are not a process-wide memory ceiling. Repeat-cycle memory and idle-CPU behavior for accepted large inputs, and native Wayland qualification, remain open.
 
 - **Full-table export is unavailable** ([ADR 0014](decisions/0014-full-table-export-snapshot.md)). The current drivers do not have
   a verified snapshot export path, so the application refuses full-table export

@@ -29,7 +29,7 @@ Three repeated refusals passed without retries in a 14.936-second scenario. [Own
 
 ## Limits and remaining work
 
-This is a file-loading mitigation. It does not bound paste, programmatic buffer updates or restored drafts. The file-size and line checks do not claim a process-wide resource ceiling. Native Wayland, prolonged editing and general long-line editing remain unverified. Keep #1299 open for those paths.
+This evidence records the file-loading mitigation and its original acceptance boundary. At BookiE Linux `3db4bfd46`, paste and draft-restore paths also validate text before GtkSourceView receives it; a rejected restored draft remains saved and read-only. The regressions cover these paths in `overlong_pasted_sql_is_refused_without_replacing_the_editor` and `oversized_restored_sql_is_not_loaded_and_remains_saved`. These guards do not establish a process-wide resource ceiling. Repeat-cycle memory and idle-CPU behavior for accepted large inputs, and native Wayland qualification, remain unverified. Keep #1299 open for that resource and platform acceptance.
 
 Full preflight passed (2,075 unit tests, 2,088 sandbox tests and the separate Redis check), strict application Clippy passed, and all 158 isolated GTK tests passed. Remote Forgejo acceptance is pending. No resource limit or guardrail test was weakened.
 
