@@ -41,63 +41,48 @@ async fn redis_still_connects_to_a_server_without_encryption() {
 #[ignore = "requires the driver tls fixture"]
 async fn a_verifying_mongodb_client_will_not_fall_back_to_plaintext() {
     let fixture = DriverTlsFixture::from_env();
-    let mut options = fixture.mongo_plaintext();
-    options.tls.mode = TlsMode::VerifyFull;
-    let result = MongodbDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "a client asked to verify must not silently connect without encryption"
-    );
+    let accepted = fixture.mongo_plaintext();
+    let mut rejected = accepted.clone();
+    rejected.tls.mode = TlsMode::VerifyFull;
+    tablepro_driver_tls_tests::assert_connection_rejected(&MongodbDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
 #[ignore = "requires the driver tls fixture"]
 async fn a_verifying_redis_client_will_not_fall_back_to_plaintext() {
     let fixture = DriverTlsFixture::from_env();
-    let mut options = fixture.redis_plaintext();
-    options.tls.mode = TlsMode::VerifyFull;
-    let result = RedisDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "a client asked to verify must not silently connect without encryption"
-    );
+    let accepted = fixture.redis_plaintext();
+    let mut rejected = accepted.clone();
+    rejected.tls.mode = TlsMode::VerifyFull;
+    tablepro_driver_tls_tests::assert_connection_rejected(&RedisDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
 #[ignore = "requires the driver tls fixture"]
 async fn a_verifying_mysql_client_will_not_fall_back_to_plaintext() {
     let fixture = DriverTlsFixture::from_env();
-    let mut options = fixture.mysql_plaintext();
-    options.tls.mode = TlsMode::VerifyFull;
-    let result = MysqlDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "a client asked to verify must not silently connect without encryption"
-    );
+    let accepted = fixture.mysql_plaintext();
+    let mut rejected = accepted.clone();
+    rejected.tls.mode = TlsMode::VerifyFull;
+    tablepro_driver_tls_tests::assert_connection_rejected(&MysqlDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
 #[ignore = "requires the driver tls fixture"]
 async fn a_verifying_clickhouse_client_will_not_fall_back_to_plaintext() {
     let fixture = DriverTlsFixture::from_env();
-    let mut options = fixture.clickhouse_plaintext();
-    options.tls.mode = TlsMode::VerifyFull;
-    let result = ClickhouseDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "a client asked to verify must not silently connect without encryption"
-    );
+    let accepted = fixture.clickhouse_plaintext();
+    let mut rejected = accepted.clone();
+    rejected.tls.mode = TlsMode::VerifyFull;
+    tablepro_driver_tls_tests::assert_connection_rejected(&ClickhouseDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
 #[ignore = "requires the driver tls fixture"]
 async fn a_verifying_mssql_client_will_not_fall_back_to_plaintext() {
     let fixture = DriverTlsFixture::from_env();
-    let mut options = fixture.mssql_plaintext();
-    options.tls.mode = TlsMode::VerifyFull;
-    let result = MssqlDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "a client asked to verify must not silently connect without encryption"
-    );
+    let accepted = fixture.mssql_plaintext();
+    let mut rejected = accepted.clone();
+    rejected.tls.mode = TlsMode::VerifyFull;
+    tablepro_driver_tls_tests::assert_connection_rejected(&MssqlDriver, accepted, rejected).await;
 }

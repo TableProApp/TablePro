@@ -60,11 +60,7 @@ async fn an_encrypt_only_mode_connects_without_an_authority() {
 #[ignore = "requires the driver tls fixture"]
 async fn a_plaintext_mode_does_not_reach_the_https_port() {
     let fixture = DriverTlsFixture::from_env();
-    let result = ClickhouseDriver
-        .connect(fixture.clickhouse(TlsMode::Disabled, None))
-        .await;
-    assert!(
-        result.is_err(),
-        "an unencrypted request must not be accepted by the https port"
-    );
+    let accepted = fixture.clickhouse(TlsMode::VerifyFull, Some(fixture.ca_cert.clone()));
+    let rejected = fixture.clickhouse(TlsMode::Disabled, None);
+    tablepro_driver_tls_tests::assert_connection_rejected(&ClickhouseDriver, accepted, rejected).await;
 }

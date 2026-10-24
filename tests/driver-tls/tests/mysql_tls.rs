@@ -30,11 +30,9 @@ async fn verify_ca_accepts_the_fixture_authority() {
 #[ignore = "requires the driver tls fixture"]
 async fn a_plaintext_mode_is_refused_by_a_tls_only_server() {
     let fixture = DriverTlsFixture::from_env();
-    let result = MysqlDriver.connect(fixture.mysql(TlsMode::Disabled, None)).await;
-    assert!(
-        result.is_err(),
-        "a server that requires secure transport must refuse an unencrypted client"
-    );
+    let accepted = fixture.mysql(TlsMode::VerifyFull, Some(fixture.ca_cert.clone()));
+    let rejected = fixture.mysql(TlsMode::Disabled, None);
+    tablepro_driver_tls_tests::assert_connection_rejected(&MysqlDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
@@ -156,11 +154,14 @@ async fn a_tls_rejection_does_not_fall_back_to_plaintext_and_dropping_tunnel_cle
     let fixture = DriverTlsFixture::from_env();
     let tunnel = fixture.open_mysql_ssh_tunnel().await;
     let socket_dir = tunnel.socket_dir().expect("socket tunnel directory").to_path_buf();
-    let rejected = fixture.mysql_ssh("mysql-ssh.tablepro.test", &tunnel, TlsMode::Disabled, None);
-    assert!(
-        MysqlDriver.connect(rejected).await.is_err(),
-        "TLS-only MySQL must reject plaintext over the SSH forward"
+    let accepted = fixture.mysql_ssh(
+        "mysql-ssh.tablepro.test",
+        &tunnel,
+        TlsMode::VerifyFull,
+        Some(fixture.ca_cert.clone()),
     );
+    let rejected = fixture.mysql_ssh("mysql-ssh.tablepro.test", &tunnel, TlsMode::Disabled, None);
+    tablepro_driver_tls_tests::assert_connection_rejected(&MysqlDriver, accepted, rejected).await;
     drop(tunnel);
     assert!(
         !socket_dir.exists(),
@@ -188,29 +189,30 @@ async fn a_server_requiring_a_client_certificate_accepts_a_valid_identity() {
 #[ignore = "requires the driver tls fixture"]
 async fn a_server_requiring_a_client_certificate_rejects_a_missing_identity() {
     let fixture = DriverTlsFixture::from_env();
-    let result = MysqlDriver
-        .connect(fixture.mysql_mtls(TlsMode::VerifyFull, None, None))
-        .await;
-    assert!(
-        result.is_err(),
-        "the mTLS account must reject a client without a certificate"
+    let accepted = fixture.mysql_mtls(
+        TlsMode::VerifyFull,
+        Some(fixture.client_cert.clone()),
+        Some(fixture.client_key.clone()),
     );
+    let rejected = fixture.mysql_mtls(TlsMode::VerifyFull, None, None);
+    tablepro_driver_tls_tests::assert_connection_rejected(&MysqlDriver, accepted, rejected).await;
 }
 
 #[tokio::test]
 #[ignore = "requires the driver tls fixture"]
 async fn a_server_requiring_a_client_certificate_rejects_an_untrusted_identity() {
     let fixture = DriverTlsFixture::from_env();
-    let options = fixture.mysql_mtls(
+    let accepted = fixture.mysql_mtls(
+        TlsMode::VerifyFull,
+        Some(fixture.client_cert.clone()),
+        Some(fixture.client_key.clone()),
+    );
+    let rejected = fixture.mysql_mtls(
         TlsMode::VerifyFull,
         Some(fixture.wrong_client_cert.clone()),
         Some(fixture.wrong_client_key.clone()),
     );
-    let result = MysqlDriver.connect(options).await;
-    assert!(
-        result.is_err(),
-        "the server must reject a client identity signed by another CA"
-    );
+    tablepro_driver_tls_tests::assert_connection_rejected(&MysqlDriver, accepted, rejected).await;
 }
 
 #[tokio::test]

@@ -23,11 +23,9 @@ async fn a_verifying_mode_connects_with_the_fixture_authority() {
 #[ignore = "requires the driver tls fixture"]
 async fn a_plaintext_mode_is_refused_by_a_tls_only_server() {
     let fixture = DriverTlsFixture::from_env();
-    let result = MongodbDriver.connect(fixture.mongo(TlsMode::Disabled, None)).await;
-    assert!(
-        result.is_err(),
-        "a server that requires TLS must refuse an unencrypted client"
-    );
+    let accepted = fixture.mongo(TlsMode::VerifyFull, Some(fixture.ca_cert.clone()));
+    let rejected = fixture.mongo(TlsMode::Disabled, None);
+    tablepro_driver_tls_tests::assert_connection_rejected(&MongodbDriver, accepted, rejected).await;
 }
 
 #[tokio::test]

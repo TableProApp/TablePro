@@ -16,18 +16,26 @@ pub async fn assert_endpoint_identity_rejected(driver: &dyn tablepro_core::Datab
     assert_certificate_rejected(driver, options, rejected).await;
 }
 
+pub async fn assert_connection_rejected(
+    driver: &dyn tablepro_core::DatabaseDriver,
+    accepted: ConnectOptions,
+    rejected: ConnectOptions,
+) -> DriverError {
+    let connection = driver.connect(accepted).await.expect("verified control connection");
+    connection.ping().await.expect("control ping");
+    connection.close().await.expect("close control");
+    match driver.connect(rejected).await {
+        Ok(_) => panic!("invalid connection configuration was accepted"),
+        Err(error) => error,
+    }
+}
+
 pub async fn assert_certificate_rejected(
     driver: &dyn tablepro_core::DatabaseDriver,
     accepted: ConnectOptions,
     rejected: ConnectOptions,
 ) {
-    let connection = driver.connect(accepted).await.expect("verified control connection");
-    connection.ping().await.expect("control ping");
-    connection.close().await.expect("close control");
-    let error = match driver.connect(rejected).await {
-        Ok(_) => panic!("invalid certificate configuration was accepted"),
-        Err(error) => error,
-    };
+    let error = assert_connection_rejected(driver, accepted, rejected).await;
     let detail = error.to_string().to_ascii_lowercase();
     assert!(
         matches!(&error, DriverError::Tls(_))
@@ -311,7 +319,8 @@ impl DriverTlsFixture {
 
 #[cfg(test)]
 mod tests {
-    use super::{DriverTlsFixture, TlsMode};
+    use super::{ConnectOptions, DriverTlsFixture, TlsConfig, TlsMode, assert_connection_rejected};
+    use drivers_postgres::PgDriver;
 
     #[test]
     fn mongo_options_authenticate_the_fixture_admin_user_against_admin() {
@@ -332,5 +341,32 @@ mod tests {
         assert_eq!(options.port, fixture.postgres_port);
         assert_eq!(options.tls.mode, TlsMode::VerifyFull);
         assert_eq!(options.tls.root_cert, None);
+    }
+
+    #[tokio::test]
+    async fn an_unavailable_control_cannot_satisfy_a_connection_refusal() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((connection, _)) = listener.accept().await {
+                drop(connection);
+            }
+        });
+        let options = ConnectOptions {
+            host: "127.0.0.1".into(),
+            port,
+            database: "fixture".into(),
+            username: "fixture".into(),
+            tls: TlsConfig::disabled(),
+            ..Default::default()
+        };
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            tokio::spawn(async move { assert_connection_rejected(&PgDriver, options.clone(), options).await }),
+        )
+        .await;
+        server.abort();
+        let _ = server.await;
+        assert!(outcome.expect("refusal check must finish").is_err());
     }
 }
