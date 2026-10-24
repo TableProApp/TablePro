@@ -21,6 +21,7 @@
 
 ### Changed
 
+- PostgreSQL CSV imports preserve BC-era `timestamptz` values exported with a year-zero timestamp.
 - If database editor sessions cannot close, the window offers the close-anyway choice after up to five seconds instead of waiting up to twenty.
 - Large sidebar catalogs filter faster, and saved collapse state cannot hide objects under a schema heading that is no longer present.
 - SQL completion checks table names faster in large catalogs.

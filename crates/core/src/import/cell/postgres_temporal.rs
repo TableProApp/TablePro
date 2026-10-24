@@ -14,7 +14,12 @@ pub(super) fn import_override(text: &str, data_type: &str, kind: ColumnKind) -> 
     }
     let text = text.trim();
     if let Ok(parsed) = DateTime::parse_from_rfc3339(text) {
-        return Some(Value::TimestampTz(parsed.with_timezone(&Utc)));
+        let value = Value::TimestampTz(parsed.with_timezone(&Utc));
+        return if needs_text(&value) {
+            crate::sql_literal::postgres_temporal_text(&value).map(Value::Text)
+        } else {
+            Some(value)
+        };
     }
     parse_datetime(text).ok().map(|_| Value::Text(text.to_owned()))
 }

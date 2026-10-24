@@ -116,6 +116,19 @@ fn value_contract_postgres_csv_restores_chrono_year_zero_as_bc_era_text() {
     .expect("year zero is PostgreSQL 1 BC");
 
     assert_eq!(values, vec![Value::Text("0001-01-02 BC".into())]);
+
+    let timestamptz = column("value", "timestamptz");
+    let values = row_to_values_for_driver(
+        &["0000-12-31T23:59:59.999999+00:00".into()],
+        &[Some(0)],
+        &[timestamptz],
+        &CsvImportOptions::default(),
+        2,
+        "postgres",
+    )
+    .expect("year-zero timestamptz is PostgreSQL 1 BC");
+
+    assert_eq!(values, vec![Value::Text("0001-12-31 23:59:59.999999+00:00 BC".into())]);
 }
 
 #[test]
