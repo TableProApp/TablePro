@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Sandbox regression tier: every integration target that needs no Docker,
-# no database service, and no GTK display. Targets are selected with
-# `--tests` so a newly added integration file is gated the moment it lands.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,8 +32,8 @@ for c in "${CRATES[@]}"; do
   PKG_ARGS+=(-p "$c")
 done
 
-echo "==> sandbox tier: nextest --tests"
+echo "==> sandbox tier: all integration targets"
 NEXTEST="$("$ROOT/scripts/ensure-nextest.sh")"
 PROFILE="${TABLEPRO_NEXTEST_PROFILE:-default}"
-"$NEXTEST" nextest run "${PKG_ARGS[@]}" --tests --profile "$PROFILE" --no-tests=pass
+"$NEXTEST" nextest run "${PKG_ARGS[@]}" --test '*' --profile "$PROFILE" --no-tests=pass
 "$NEXTEST" nextest run -p tablepro-driver-redis --test cancellation --profile "$PROFILE" --no-tests=pass

@@ -142,7 +142,7 @@ Every test belongs to one tier with one script and one gate. Use the [validation
 
 | Tier | Contents | Script |
 |---|---|---|
-| unit | `--lib` on the non-GTK crate list in `preflight.sh` (skips `tablepro-app`), run by nextest | `scripts/preflight.sh` |
+| unit | `--lib --bins` on the non-GTK crate list in `preflight.sh` (skips `tablepro-app`), run by nextest | `scripts/preflight.sh` |
 | sandbox | integration targets needing no Docker, database or display, run by nextest | `scripts/test-sandbox.sh` |
 | driver | `crates/drivers/*/tests/integration.rs`, SSH and socket fixtures | `scripts/ci-local.sh integration` |
 | driver-tls | `tests/driver-tls` | `scripts/test-driver-tls.sh` |
