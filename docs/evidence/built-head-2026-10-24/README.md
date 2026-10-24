@@ -213,3 +213,11 @@ On the same installed `bookie 0.2.0-1` process, the `people` table showed its co
 - [Rule editor with an `id = 1` rule](native-installed-filter-rule-editor.png)
 - [Applied filter with one matching row](native-installed-filter-applied.png)
 - [Cleared filter with both rows restored](native-installed-filter-cleared.png)
+
+## Installed live-process background idle sample
+
+The installed `/usr/bin/bookie` process (PID 583534, SHA-256 `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`) remained open on the local SQLite `people` table while another workspace was focused. A 31.814-second sample at 250 ms intervals recorded RSS at 159,208 KiB and PSS at 128,913 KiB throughout. Private dirty memory stayed at 70,060 KiB, swap at zero, process CPU advanced by two ticks (0.02 seconds), and process block read/write counters did not change. The table showed two rows and the database fixture remained 8,192 bytes. This is a warm background-idle sample after earlier UI and 100,000-row checks; it does not measure first-launch or query cost, nor attribute retained memory to a specific view.
+
+Whole BookiE profile directories measured 58,633 bytes in config, 906,861 bytes in share and 4,732 bytes in cache after the sample. These totals include pre-existing history and audit state.
+
+- [Raw background-idle process samples](native-installed-background-idle-31s.json)
