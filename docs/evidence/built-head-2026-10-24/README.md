@@ -229,3 +229,12 @@ In Preferences → Appearance, changing the app appearance from System to Light 
 - [Light appearance selected](native-installed-preferences-light.png)
 - [Editor font size set to 13](native-installed-editor-font-13.png)
 - [Editor returned to its 12-point setting](native-installed-editor-font-restored.png)
+
+## Installed 600x400 native window observation
+
+On the installed `bookie 0.2.0-1` binary above, I changed the window to a 600 × 400 floating size on the 1920 × 1200 Hyprland desktop. The saved local SQLite fixture remained unchanged. A recursive CTE targeting 100,000 integers completed and the app showed `done in 82 ms` and `Errors (0)`. At this height, the result grid and row navigation were not visible in the captured state; only the Results and Errors controls remained at the bottom. This records query completion, not successful inspection or navigation of the result.
+
+The SQL editor line extended past the right edge. Run, Session, Explain and Split remained visible, while Fold block and Unfold all were absent from the toolbar. Opening the sidebar displayed it as an overlay over much of the editor; closing it restored the editor view. The toggle worked in both directions, but the overlay left little room for SQL and results at this width. This is a forced narrow-window observation, not a declared minimum-size test or a responsive-layout pass. It does not replace the separate full-width test showing row 100,000 reachable in SQLite.
+
+- [600 × 400 window after the 100,000-row query](native-installed-narrow-600x400-100k.png)
+- [Sidebar open at 600 × 400](native-installed-narrow-600x400-sidebar-open.png) and [closed](native-installed-narrow-600x400-sidebar-closed.png)
