@@ -21,6 +21,7 @@
 
 ### Changed
 
+- Large sidebar catalogs filter faster, and saved collapse state cannot hide objects under a schema heading that is no longer present.
 - SQL completion checks table names faster in large catalogs.
 
 - Large PostgreSQL query results stream faster while retained pages remain available through the result pager.

@@ -1,0 +1,9 @@
+Sidebar source: 351bb3c8b6a0acfe148975f037e1db7f0b41332f
+Scale test source: 646fe4b5f0f7fbb3154e2ccdec44791721888846
+Command: cargo test --locked -p tablepro-app --lib searching_a_large_catalog_keeps_every_matching_object_under_its_parents -- --nocapture
+
+running 1 test
+test services::sidebar_tree::tests::searching_a_large_catalog_keeps_every_matching_object_under_its_parents ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1008 filtered out; finished in 8.56s
+

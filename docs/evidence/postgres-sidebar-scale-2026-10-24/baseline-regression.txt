@@ -1,0 +1,21 @@
+Sidebar source: b3d892546 (byte-identical to 351bb3c8b6a0acfe148975f037e1db7f0b41332f)
+Regression test source: 646fe4b5f0f7fbb3154e2ccdec44791721888846
+Command: cargo test --locked -p tablepro-app --lib removing_other_schemas_keeps_the_remaining_catalog_visible_after_a_saved_schema_collapse -- --nocapture
+
+running 1 test
+
+thread 'services::sidebar_tree::tests::removing_other_schemas_keeps_the_remaining_catalog_visible_after_a_saved_schema_collapse' (797622) panicked at apps/linux/app/src/services/sidebar_tree.rs:563:9:
+assertion `left == right` failed
+  left: []
+ right: ["Tables", "  users", "Views", "  recent"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test services::sidebar_tree::tests::removing_other_schemas_keeps_the_remaining_catalog_visible_after_a_saved_schema_collapse ... FAILED
+
+failures:
+
+failures:
+    services::sidebar_tree::tests::removing_other_schemas_keeps_the_remaining_catalog_visible_after_a_saved_schema_collapse
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1008 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tablepro-app --lib`

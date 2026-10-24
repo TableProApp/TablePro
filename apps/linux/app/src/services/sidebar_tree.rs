@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use tablepro_core::TableInfo;
 
@@ -24,6 +24,7 @@ pub struct TreeNode {
     pub kind: NodeKind,
     pub schema: Option<String>,
     pub count: usize,
+    parent: Option<usize>,
 }
 
 impl TreeNode {
@@ -63,21 +64,21 @@ impl CollapseState {
     }
 }
 
-fn schema_names(tables: &[TableInfo], views: &[TableInfo]) -> BTreeSet<Option<String>> {
-    tables.iter().chain(views).map(|object| object.schema.clone()).collect()
-}
-
 pub fn build_nodes(tables: &[TableInfo], views: &[TableInfo]) -> Vec<TreeNode> {
-    let schemas = schema_names(tables, views);
-    let several_schemas = schemas.iter().filter(|schema| schema.is_some()).count() > 1;
+    let mut schemas = BTreeMap::<Option<String>, (Vec<&TableInfo>, Vec<&TableInfo>)>::new();
+    for table in tables {
+        schemas.entry(table.schema.clone()).or_default().0.push(table);
+    }
+    for view in views {
+        schemas.entry(view.schema.clone()).or_default().1.push(view);
+    }
+    let several_schemas = schemas.keys().filter(|schema| schema.is_some()).count() > 1;
     let mut nodes = Vec::new();
-    for schema in &schemas {
-        let in_schema = |object: &&TableInfo| &object.schema == schema;
-        let schema_tables: Vec<&TableInfo> = tables.iter().filter(in_schema).collect();
-        let schema_views: Vec<&TableInfo> = views.iter().filter(in_schema).collect();
+    for (schema, (schema_tables, schema_views)) in &schemas {
         let prefix = format!("schema:{}", key_part(schema.as_deref().unwrap_or_default()));
         let mut depth = 0;
-        if several_schemas {
+        let parent = if several_schemas {
+            let schema_index = nodes.len();
             nodes.push(TreeNode {
                 depth,
                 key: prefix.clone(),
@@ -85,16 +86,27 @@ pub fn build_nodes(tables: &[TableInfo], views: &[TableInfo]) -> Vec<TreeNode> {
                 kind: NodeKind::Schema,
                 schema: schema.clone(),
                 count: schema_tables.len() + schema_views.len(),
+                parent: None,
             });
             depth += 1;
-        }
-        push_group(&mut nodes, depth, &prefix, GroupKind::Tables, &schema_tables);
-        push_group(&mut nodes, depth, &prefix, GroupKind::Views, &schema_views);
+            Some(schema_index)
+        } else {
+            None
+        };
+        push_group(&mut nodes, depth, &prefix, GroupKind::Tables, schema_tables, parent);
+        push_group(&mut nodes, depth, &prefix, GroupKind::Views, schema_views, parent);
     }
     nodes
 }
 
-fn push_group(nodes: &mut Vec<TreeNode>, depth: u8, prefix: &str, group: GroupKind, objects: &[&TableInfo]) {
+fn push_group(
+    nodes: &mut Vec<TreeNode>,
+    depth: u8,
+    prefix: &str,
+    group: GroupKind,
+    objects: &[&TableInfo],
+    parent: Option<usize>,
+) {
     if objects.is_empty() {
         return;
     }
@@ -102,6 +114,7 @@ fn push_group(nodes: &mut Vec<TreeNode>, depth: u8, prefix: &str, group: GroupKi
         GroupKind::Tables => ("tables", crate::tr!("Tables")),
         GroupKind::Views => ("views", crate::tr!("Views")),
     };
+    let group_index = nodes.len();
     nodes.push(TreeNode {
         depth,
         key: format!("{prefix}/{suffix}"),
@@ -109,6 +122,7 @@ fn push_group(nodes: &mut Vec<TreeNode>, depth: u8, prefix: &str, group: GroupKi
         kind: NodeKind::Group(group),
         schema: objects.first().and_then(|object| object.schema.clone()),
         count: objects.len(),
+        parent,
     });
     for object in objects {
         let (schema, name) = (object.schema.clone(), object.name.clone());
@@ -122,6 +136,7 @@ fn push_group(nodes: &mut Vec<TreeNode>, depth: u8, prefix: &str, group: GroupKi
             },
             schema: object.schema.clone(),
             count: 0,
+            parent: Some(group_index),
         });
     }
 }
@@ -140,6 +155,17 @@ fn ancestor_keys(node: &TreeNode) -> Vec<String> {
     keys
 }
 
+fn has_collapsed_ancestor(node: &TreeNode, nodes: &[TreeNode], collapsed: &CollapseState) -> bool {
+    let mut parent = node.parent;
+    while let Some(index) = parent {
+        if collapsed.is_collapsed(&nodes[index].key) {
+            return true;
+        }
+        parent = nodes[index].parent;
+    }
+    false
+}
+
 #[cfg(test)]
 pub fn visible_nodes(nodes: &[TreeNode], collapsed: &CollapseState, query: &str) -> Vec<usize> {
     visible_nodes_with_hidden_schemas(nodes, collapsed, query, &HashSet::new())
@@ -155,32 +181,32 @@ pub fn visible_nodes_with_hidden_schemas(
     if query.is_empty() {
         return (0..nodes.len())
             .filter(|index| schema_is_visible(&nodes[*index], hidden_schemas))
-            .filter(|index| {
-                ancestor_keys(&nodes[*index])
-                    .iter()
-                    .all(|key| !collapsed.is_collapsed(key))
-            })
+            .filter(|index| !has_collapsed_ancestor(&nodes[*index], nodes, collapsed))
             .collect();
     }
-    let matching: Vec<usize> = (0..nodes.len())
-        .filter(|index| {
-            schema_is_visible(&nodes[*index], hidden_schemas)
-                && nodes[*index]
-                    .qualified_name()
-                    .is_some_and(|name| name.to_lowercase().contains(&query))
-        })
-        .collect();
-    let mut shown: HashSet<usize> = matching.iter().copied().collect();
-    for index in &matching {
-        for key in ancestor_keys(&nodes[*index]) {
-            if let Some(parent) = nodes.iter().position(|node| node.key == key)
-                && schema_is_visible(&nodes[parent], hidden_schemas)
-            {
-                shown.insert(parent);
+    let mut shown = vec![false; nodes.len()];
+    for (index, node) in nodes.iter().enumerate() {
+        if !schema_is_visible(node, hidden_schemas)
+            || !node
+                .qualified_name()
+                .is_some_and(|name| name.to_lowercase().contains(&query))
+        {
+            continue;
+        }
+        shown[index] = true;
+        let mut parent = node.parent;
+        while let Some(parent_index) = parent {
+            if schema_is_visible(&nodes[parent_index], hidden_schemas) {
+                shown[parent_index] = true;
             }
+            parent = nodes[parent_index].parent;
         }
     }
-    (0..nodes.len()).filter(|index| shown.contains(index)).collect()
+    shown
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, is_shown)| is_shown.then_some(index))
+        .collect()
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -271,11 +297,35 @@ mod tests {
     }
 
     #[test]
+    fn searching_a_large_catalog_keeps_every_matching_object_under_its_parents() {
+        let tables: Vec<_> = (0..50_000)
+            .map(|index| info(Some(&format!("schema_{}", index % 100)), &format!("table_{index}")))
+            .collect();
+        let nodes = build_nodes(&tables, &[]);
+
+        let visible = visible_nodes_with_hidden_schemas(&nodes, &CollapseState::default(), "table_", &HashSet::new());
+
+        assert_eq!(visible, all(&nodes));
+        assert_eq!(nodes.len(), 50_200);
+    }
+
+    #[test]
     fn a_single_schema_shows_groups_at_the_top_without_a_schema_row() {
         let nodes = build_nodes(&[info(None, "users"), info(None, "orders")], &[info(None, "recent")]);
         assert_eq!(
             labels(&nodes, &all(&nodes)),
             ["Tables", "  users", "  orders", "Views", "  recent"]
+        );
+    }
+
+    #[test]
+    fn removing_other_schemas_keeps_the_remaining_catalog_visible_after_a_saved_schema_collapse() {
+        let collapsed = CollapseState::from_keys(["schema:public".to_string()]);
+        let nodes = build_nodes(&[info(Some("public"), "users")], &[info(Some("public"), "recent")]);
+
+        assert_eq!(
+            labels(&nodes, &visible_nodes(&nodes, &collapsed, "")),
+            ["Tables", "  users", "Views", "  recent"]
         );
     }
 
