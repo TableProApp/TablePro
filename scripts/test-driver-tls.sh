@@ -35,6 +35,8 @@ teardown() {
 }
 
 bash "$FIXTURE/generate-materials.sh" --force
+chmod 0755 "$FIXTURE/seed"
+chmod 0644 "$FIXTURE/seed/01-seed.js"
 compose down --volumes --remove-orphans >/dev/null 2>&1 || true
 if compose up -d --build --wait --wait-timeout 300; then
   :
