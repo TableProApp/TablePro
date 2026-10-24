@@ -11,7 +11,7 @@ The cleanup path should:
 1. Hold a shared lock throughout each cache-using job and take an exclusive, nonblocking lock before cleanup. If the lock is busy, skip cleanup and report that state.
 2. Restrict deletion to known generated artifacts under approved cache roots. Refuse symlinks and preserve source files, logs, service data and unrelated files.
 3. Report available space before and after cleanup. If the safe cleanup cannot meet its reserve, return a failure rather than deleting active work.
-4. Protect recent targets based on recorded use, not directory modification time alone.
+4. Protect recent targets during routine cleanup based on recorded use, not directory modification time alone. If the free-space reserve is still unmet after stale-cache cleanup, evict only marked Cargo profiles in least-recently-used order while holding the exclusive lock. Preserve unmarked legacy directories and stop when the reserve is met.
 5. Test lock contention, path boundaries, symlinks, recent targets, command failures and insufficient space with disposable fixtures.
 
 The implementation is in [`scripts/ci-cache.py`](../../scripts/ci-cache.py), with workflow and service integration under [`.forgejo/workflows/`](../../.forgejo/workflows/) and [`ci/`](../../ci/). These files prove repository configuration only; they do not prove deployment on a live runner.

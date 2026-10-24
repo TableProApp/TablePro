@@ -64,13 +64,34 @@ class CiCacheTests(unittest.TestCase):
         self.assertTrue((target / 'debug/deps/artifact').exists())
         self.assertTrue((legacy / 'debug/deps/artifact').exists())
 
-    def test_pressure_prunes_only_idle_caches_and_reports_unrecovered_reserve(self):
+    def test_pressure_cleanup_evicts_the_least_recent_marked_cache_to_recover_reserve(self):
+        oldest = self.target('oldest', 0.5)
+        newest = self.target('newest', 0.1)
+        spec = importlib.util.spec_from_file_location('ci_cache', SCRIPT)
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+
+        def disk_usage(_):
+            recovered = not (oldest / 'debug').exists()
+            return SimpleNamespace(free=100 if recovered else 0)
+
+        with patch.object(helper.shutil, 'disk_usage', side_effect=disk_usage):
+            result = helper.cleanup(self.cache, 50)
+
+        self.assertEqual(result, 0)
+        self.assertFalse((oldest / 'debug').exists())
+        self.assertTrue((newest / 'debug/deps/artifact').exists())
+
+    def test_pressure_cleanup_reports_unrecovered_reserve_after_evicting_marked_caches(self):
         idle = self.target('unit', 2)
         recent = self.target('sandbox', 0)
+        legacy = self.target('legacy', 0)
+        (legacy / '.bookie-last-used').unlink()
         result = self.cleanup(10**9)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertFalse((idle / 'debug').exists())
-        self.assertTrue((recent / 'debug/deps/artifact').exists())
+        self.assertFalse((recent / 'debug').exists())
+        self.assertTrue((legacy / 'debug/deps/artifact').exists())
         self.assertIn('reserve', result.stderr)
 
     def test_pressure_cleanup_stops_after_recovering_the_reserve(self):
@@ -79,7 +100,7 @@ class CiCacheTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('ci_cache', SCRIPT)
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
-        readings = [SimpleNamespace(free=value) for value in (0, 0, 0, 100, 100)]
+        readings = [SimpleNamespace(free=value) for value in (0, 0, 0, 100, 100, 100)]
         with patch.object(helper.shutil, 'disk_usage', side_effect=readings):
             result = helper.cleanup(self.cache, 50)
         self.assertTrue((second / 'debug/deps/artifact').exists())

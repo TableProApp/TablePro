@@ -71,10 +71,27 @@ def prune_job(job, cutoff):
             print(f'removed generated {profile} artifacts', flush=True)
 
 
-def prune(root, cutoff, reserve=None):
+def prune(root, cutoff, reserve=None, least_recent_first=False):
     directory = open_directory(root)
     try:
-        for name in sorted(os.listdir(directory)):
+        names = os.listdir(directory)
+        if least_recent_first:
+            marked = []
+            for name in names:
+                entry = metadata(name, directory)
+                if entry is None or not stat.S_ISDIR(entry.st_mode):
+                    continue
+                job = open_directory(name, directory)
+                try:
+                    marker = metadata('.bookie-last-used', job)
+                    if marker is not None and stat.S_ISREG(marker.st_mode):
+                        marked.append((marker.st_mtime, name))
+                finally:
+                    os.close(job)
+            names = [name for _, name in sorted(marked)]
+        else:
+            names.sort()
+        for name in names:
             if reserve is not None and shutil.disk_usage(root).free >= reserve:
                 return
             entry = metadata(name, directory)
@@ -96,6 +113,8 @@ def cleanup(root, reserve):
     prune(root, now - 5 * 86400)
     if shutil.disk_usage(root).free < reserve:
         prune(root, now - 86400, reserve)
+    if shutil.disk_usage(root).free < reserve:
+        prune(root, float('inf'), reserve, least_recent_first=True)
     after = shutil.disk_usage(root).free
     print(f'free after cleanup: {after} bytes; required reserve: {reserve} bytes', flush=True)
     if after < reserve:
