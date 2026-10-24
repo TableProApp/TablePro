@@ -104,6 +104,8 @@ The read-modify-write under a file lock is the point: two windows save different
 - A new global singleton for state the application could own and pass in. Pass it via `Init` or parent to child `Input`. Existing `thread_local!` registries are constrained to current GTK main-context callers; they are not a precedent to extend, especially from `app-services` worker code.
 - A `Component` doing async work in its `init`. Promote to `AsyncComponent`.
 - One enormous `Input` enum with 30 variants. Split the component.
+- Seeding an edit from a widget's display label. A text or JSON cell over 40,000 bytes shows a truncated value with a "… (+N more chars)" marker, and an edit seeded from the label could persist the marker. Carry the full value in the model and never read it back from the label ([sprint history](archive/bookie-0.2-history.md)).
+- Deciding what a control does from an engine name. The Stop button reads the connection's capability, including session execution, so a new engine does not need an edit to a name list ([B4 history](archive/b4-history.md), F1).
 
 ## Testing components
 

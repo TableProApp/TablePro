@@ -4,6 +4,8 @@ The shared standard is [ADR 0007](decisions/0007-type-and-value-preservation.md)
 
 Case narratives that previously lived above and below the Scope table are in [value-contract history](archive/value-contract-history.md#archived-value-contracts-narrative-2026-10-09-consolidation-pass-2). Prefer the Scope table and evidence manifests; do not copy counts into the sprint or B3 board. Open acceptance gaps stay on [Project #3](https://github.com/users/cozyGarage/projects/3) (Lane B3); the dated retest table is in the [archived B3 board](archive/type-contract-strategy-pre-project-migration-2026-10-12.md#retest-indicators).
 
+The rules these cases protect are grouped by type in [value contract rules](value-contract-rules.md).
+
 ## Run
 
 From the repository root, use the existing value runner:

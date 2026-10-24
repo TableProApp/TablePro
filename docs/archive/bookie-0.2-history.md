@@ -15,6 +15,22 @@ Read a relevant heading only; this archive is not mandatory agent startup contex
 Approved: 2026-09-16. Status: implementation started, no release approved.
 Delivery branch: `linux`, tracked here as `fork/linux` in `cozyGarage/BookiE`. This document supersedes the 0.1.1 plan for sequencing.
 
+## Contents
+
+- [October 3 review handoff](#october-3-review-handoff)
+- [Current continuation plan: 2026-10-02](#current-continuation-plan-2026-10-02)
+- [Goal and baseline](#goal-and-baseline)
+- [Upstream disposition: all 60 Linux commits](#upstream-disposition-all-60-linux-commits)
+- [Upstream feature adoption, September 2026](#upstream-feature-adoption-september-2026)
+- [Ordered packages](#ordered-packages)
+- [Original schedule, models and verification (historical)](#original-schedule-models-and-verification-historical)
+- [Remaining-work review: 2026-09-26](#remaining-work-review-2026-09-26)
+- [Documentation and boundaries](#documentation-and-boundaries)
+- [Implementation ledger](#implementation-ledger)
+- [Current continuation: 2026-10-09](#current-continuation-2026-10-09)
+- [Historical continuation snapshot: 2026-10-08](#historical-continuation-snapshot-2026-10-08)
+- [B4 acceptance worklist (2026-10-08)](#b4-acceptance-worklist-2026-10-08)
+
 ## October 3 review handoff
 
 Source/document checkpoint: `4b7814f5e` on `linux`. The [architecture and evidence consistency review](architecture-consistency-review-2026-10-03.md) inventories all tracked Markdown/evidence and reconciles document authority. The [older app-release review](upstream-older-releases-review-2026-10-03.md) screens all 128 app releases and adds O1–O3 reproduction candidates under existing B3/B4 ownership. U1 is implemented in `6822efa42` with [native evidence](upstream-u1-sql-server-2026-10-03.md); U2–U6 remain open. The [B4 integration checkpoint](b4-history.md#october-3-integration-checkpoint) records already merged policy/editor/daemon work; source integration does not close runtime or installed acceptance. Continue B3 → B4 → Arch/Wayland → Debian/GNOME.

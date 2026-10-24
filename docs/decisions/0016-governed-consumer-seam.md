@@ -58,6 +58,8 @@ One typed handle covers every consumer. A new surface inherits classify, approva
 - Cross-surface features (GUI and agent) change the guarded path once and update both callers.
 - Performance work bounds pages and bytes through the guard. It does not remove classify or audit to go faster.
 
+- Trusted production mutations, unattended MCP writes and a public package are not approved (maintainer decision SEC-8, [pre-migration ledger](../archive/known-issues-pre-project-migration-2026-10-12.md)). Do not build them without amending this record.
+
 ## Alternatives considered
 
 - **Safety as preferences on a normal connection.** Rejected. A new path can forget a preference. The type boundary cannot.

@@ -4,6 +4,30 @@ This archive preserves dated source, release, issue and pull request snapshots. 
 
 BookiE reviews shared Rust/Linux foundations and portable behavior under the accepted decisions. The [completion page](../bookie-0.2-sprint.md) records milestone status; Apple source trees remain excluded.
 
+## Contents
+
+- [Current upstream reference and adoption](#current-upstream-reference-and-adoption)
+- [2026-10-17 07:19 UTC: dbx MySQL routine completion](#2026-10-17-0719-utc-dbx-mysql-routine-completion)
+- [2026-10-17 06:25 UTC: source refresh and exact-page regression](#2026-10-17-0625-utc-source-refresh-and-exact-page-regression)
+- [2026-10-17 05:15 UTC: live comments and reference-project refresh](#2026-10-17-0515-utc-live-comments-and-reference-project-refresh)
+- [2026-10-17 04:20 UTC: source-head follow-up](#2026-10-17-0420-utc-source-head-follow-up)
+- [2026-10-17: PR discussion and reference-project follow-up](#2026-10-17-pr-discussion-and-reference-project-follow-up)
+- [2026-10-17: second live refresh and newly landed reference-project work](#2026-10-17-second-live-refresh-and-newly-landed-reference-project-work)
+- [2026-10-16: refreshed TablePro Linux and shared-product review](#2026-10-16-refreshed-tablepro-linux-and-shared-product-review)
+- [2026-10-15: upstream Linux changelog review](#2026-10-15-upstream-linux-changelog-review)
+- [2026-10-03: macOS main applicability review](#2026-10-03-macos-main-applicability-review)
+- [2026-09-25: system OpenSSH transport](#2026-09-25-system-openssh-transport)
+- [2026-09-19: re-survey after upstream rewrote its Linux branch](#2026-09-19-re-survey-after-upstream-rewrote-its-linux-branch)
+- [2026-09-16: script planner and safe formatting](#2026-09-16-script-planner-and-safe-formatting)
+- [Rules](#rules)
+- [Good review targets](#good-review-targets)
+- [Recording a manual port](#recording-a-manual-port)
+- [2026-09-14: Linux safety and SQL character warnings](#2026-09-14-linux-safety-and-sql-character-warnings)
+- [2026-08-18: exact wide integers, export target, and unterminated SQL literals](#2026-08-18-exact-wide-integers-export-target-and-unterminated-sql-literals)
+- [2026-08-22: data-grid and result-correctness review, v0.62.0 through v0.67.1](#2026-08-22-data-grid-and-result-correctness-review-v0620-through-v0671)
+- [2026-09-07: PostgreSQL filters, metadata ownership and offline DuckDB](#2026-09-07-postgresql-filters-metadata-ownership-and-offline-duckdb)
+- [GPUI client inspection, October 22](#gpui-client-inspection-october-22)
+
 ## Current upstream reference and adoption
 
 The [October 23 database-client refresh](../archive/database-client-review-2026-10-23.md) is the newest cross-product review. It records current source/release pins, superseded pagination advice and existing BookiE issue ownership. Earlier entries below remain dated evidence.

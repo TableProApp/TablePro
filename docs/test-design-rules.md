@@ -19,6 +19,11 @@ Rules that earlier audits paid for. Each one names the failure it prevents. The 
 - **Assert concrete boundaries and both branches.** Mutation checks exposed symbolic constants in assertions and tests that exercised only one branch. Use the literal boundary value, and test the refusal as well as the accepted case ([baseline review, 2026-09-17](archive/baseline-review-2026-09-17.md)).
 - **A negative test proves a trusted control first.** For TLS and similar failures, show the same setup succeeds, then assert the specific error. `is_err()` lets an unrelated failure pass.
 
+## Escaping and decoding
+
+- **Every dialect's literal rendering needs a hostile-value test.** A rendered INSERT that escaped only quotes let a value ending in a backslash close the literal early on MySQL and ClickHouse, and MySQL evaluated the rest as SQL ([upstream sync history, 2026-08-22](archive/upstream-sync-history-2026-10-22.md)). Test backslashes, quotes and each dialect's escape modes against a real server.
+- **Fix a loss at its source, not by accepting the symptom.** Every SQLite column with no declared type once decoded as NULL, so expressions such as `count(*)` showed an empty cell (same record). Do not make a test pass by treating the empty result as expected.
+
 ## Changing a test or guard
 
 - **Do not delete a test that pins a wrong expectation.** Amend it, and say in the commit why the expectation changed. Write the failing regression first. For example, the crate-boundary check must keep permitted dev edges (driver to policy) distinct from forbidden GUI edges ([Linux peer review, 2026-10-16](archive/linux-peer-review-2026-10-16.md), finding 2).

@@ -58,3 +58,7 @@ Support is tracked by type and consumer, not a driver-wide green badge. Exact te
 - **NULL on decode failure:** disguises corruption as valid editable data.
 - **One new universal type system before fixing consumers:** adds an abstraction without proving the actual conversion paths; extend only for a concrete need.
 - **Per-driver/per-format policy:** permits contradictory conversions after the same decode. Engine-specific encodings follow this common outcome/proof rule.
+
+## Type-specific rules
+
+The per-type choices that follow from this record, with their sources, are in [value contract rules](../value-contract-rules.md). The B3 type model keeps the column collation only: a separate declared-type field waits for a consumer, and schema columns keep the declared spelling in `data_type` ([sprint history](../archive/bookie-0.2-history.md)). Upstream's schema-declared type versus classification name case (#2959) is the reason to revisit that when a consumer needs it.

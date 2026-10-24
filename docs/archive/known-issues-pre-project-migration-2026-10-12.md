@@ -13,6 +13,17 @@ Status snapshot checked 2026-10-09 against tip after PRs #441–#458 (docs tip `
 
 Retest indicators (also listed on the sprint): Forgejo run 101 PostgreSQL driver failures; `pg-release` query-plan vs fail-closed masking; Forgejo run 88 GTK waits for `open_editor` and `audit_failure_denies` (pre-#451/#452 tip); TEST-28 native Ubuntu AT-SPI; Build Linux Docker Hub rate limits near `c2f3f78b9`. Commit `b98ce22` addressed the earlier disconnect-test race from run 88; that specific race is not the open retest.
 
+## Contents
+
+- [Owners and handoff](#owners-and-handoff)
+- [UI (app layer)](#ui-app-layer)
+- [Transport, sessions, daemon (B4)](#transport-sessions-daemon-b4)
+- [Security](#security)
+- [Packaging and qualification](#packaging-and-qualification)
+- [Tests and evidence](#tests-and-evidence)
+- [Documentation and other](#documentation-and-other)
+- [Test environment](#test-environment)
+
 ## Owners and handoff
 
 Every open row has one owner. `scripts/check-known-issues.py` fails when an `OPEN` or `UNVERIFIED` row has no owner here, when a row is listed twice, or when a listed id is not in the ledger. When you move work between agents, change this table in the same commit.

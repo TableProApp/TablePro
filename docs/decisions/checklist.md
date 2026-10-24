@@ -87,6 +87,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Database clone / restore snapshots | [ADR 0015](0015-database-snapshots.md) (accepted design; implementation is post-0.2.0 backlog work, with no release target) |
 | Bundle admin audit | [ADR 0010](0010-administrative-action-audit.md) |
 | Official Rust MCP SDK behind the governed seam | [ADR 0017](0017-mcp-sdk-behind-the-governed-seam.md) (accepted direction; production remains hand-written, with an optional stdio prototype) |
+| System OpenSSH askpass and transport boundaries | [ADR 0023](0023-system-openssh-transport-boundaries.md) |
 | Headless application-services crate | [ADR 0018](0018-headless-app-services-crate.md) (accepted; staged module moves continue under APP-MOD) |
 | File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted design; implementation status varies by tool, with remaining work post-0.2.0) |
 
@@ -105,6 +106,9 @@ Recorded so a contributor does not reopen them without new evidence. Each row ci
 | `LIMIT`/`OFFSET` paging; unbounded page retention | Declined | [ADR 0011](0011-paged-query-results.md). |
 | Keyless edits through `ctid` or another physical locator | Declined | Keyless-write refusal stays; source: [dbx follow-up](../archive/dbx-follow-up-2026-10-21.md). |
 | Apple-only services, license-gated features, Sparkle or AppleScript, iCloud-synced icons | Out of scope | [PRODUCT.md](../../PRODUCT.md) for the no-license rule; the rest from [feature comparison](../0.2-feature-comparison.md#explicitly-out-of-scope-unless-product-goals-change). |
+| dbx's cell and error model: cells as `serde_json::Value`, binary as `"0x…"` text, user WHERE or edits spliced into SQL, a regex production-safety unlock, passwords as plain strings across the UI | Declined | [ADR 0007](0007-type-and-value-preservation.md) and bound values; source: [application-layer audit](../archive/app-layer-external-audit-2026-10-06.md). |
+| Trusted production mutations, unattended MCP writes, a public package | Not approved (SEC-8) | [ADR 0016](0016-governed-consumer-seam.md). |
+| A YAML driver capability manifest or runtime-loaded engine descriptors | Declined | Capabilities are compile-time Rust types on the driver contract ([ADR 0001](0001-no-plugin-system.md)); source: [dbx features review](../archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md). |
 | Result charts, facet charts, theme editor or theme sync | Out of scope | Not in product goals; source: [feature comparison history](../archive/feature-comparison-history-2026-10-23.md). |
 
 ## Open forks (do not invent answers here)

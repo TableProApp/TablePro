@@ -4,7 +4,7 @@
 
 The maintainer marked 0.2.0 delivery complete, and the release was published on 2026-10-23. The [platform guide](platforms.md#published-020-release) records its assets and package names. Remaining work and candidate order for future releases are in the [backlog](backlog.md).
 
-The previous scope, blocker table and sprint checklists are preserved in the [completion handoff](archive/bookie-0.2-completion-handoff-2026-10-18.md). They are historical checklists, not fresh test, installed-package or soak evidence, and their open rows do not reopen 0.2.0.
+The previous scope, blocker table and sprint checklists are kept in the [history](#history). They are historical checklists, not fresh test, installed-package or soak evidence, and their open rows do not reopen 0.2.0.
 
 ## Delivery boundary
 

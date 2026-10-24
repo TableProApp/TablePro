@@ -12,6 +12,31 @@ Surveyed on 2026-09-27 at `5fac54059` (source version 0.1.5). This board splits
 the open B4 work in [the 0.2 sprint](../bookie-0.2-sprint.md) into small tasks that
 separate agents can take in parallel.
 
+## Contents
+
+- [B4 continuation status (October 3)](#b4-continuation-status-october-3)
+- [October 3 integration checkpoint](#october-3-integration-checkpoint)
+- [October 2 review and dispatch plan](#october-2-review-and-dispatch-plan)
+- [September 28 continuation (historical evidence)](#september-28-continuation-historical-evidence)
+- [Rules for every task](#rules-for-every-task)
+- [Decisions](#decisions)
+- Lane A: built-in SSH — implementation delivered; A5 monitor follow-up open
+- Lane B: system OpenSSH — done (2026-09-27)
+- Lane C: TLS through the tunnel — C1-C5 done (2026-09-27), C6 open
+- Lane D: policy sessions — D1-D8 done (2026-09-28)
+- [Lane E: policy rules](#lane-e-policy-rules)
+- [Lane F: GUI](#lane-f-gui)
+- Lane G: agentd and MCP — G1/G2/G4 done (2026-09-27), G3/G5 open (need decision 7 / wave 2)
+- Lane H: driver cancellation and refusal — H1-H4 done (2026-09-27/28)
+- [Lane I: packaging and docs](#lane-i-packaging-and-docs)
+- [Remaining waves (September 28, superseded)](#remaining-waves-september-28-superseded)
+- [B4 continuation checkpoint (October 3; historical integration snapshot)](#b4-continuation-checkpoint-october-3-historical-integration-snapshot)
+- [Latest merged slices (checked 2026-10-07)](#latest-merged-slices-checked-2026-10-07)
+- [Previous merged-tip B4 checkpoint (2026-10-09; source `97e5f55`)](#previous-merged-tip-b4-checkpoint-2026-10-09-source-97e5f55)
+- [Previous pinned B4 acceptance checkpoint (2026-10-09; linux tip 4bcec064)](#previous-pinned-b4-acceptance-checkpoint-2026-10-09-linux-tip-4bcec064)
+- [Exact-SHA B4 acceptance checkpoint (2026-10-08)](#exact-sha-b4-acceptance-checkpoint-2026-10-08)
+- [Completed local slices (pre-consolidation text)](#completed-local-slices-pre-consolidation-text)
+
 ## B4 continuation status (October 3)
 
 Latest integrated base: `d1434438e` on `linux`. These B4 reports originated in

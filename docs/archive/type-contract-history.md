@@ -32,6 +32,19 @@ is a database type, its boundary cases, and each operation that consumes it.
 Keep this work inside the current eight drivers. Oracle is a later driver project,
 not a dependency of the 0.2.0 sprint.
 
+## Contents
+
+- [Required proof](#required-proof)
+- [Boundary corpus](#boundary-corpus)
+- [Current evidence and next targets](#current-evidence-and-next-targets)
+- [Consumer coverage reconciliation, 2026-09-28](#consumer-coverage-reconciliation-2026-09-28)
+- [Test workflow](#test-workflow)
+- PostgreSQL `citext[]` refusal baseline — 2026-10-06
+- PostgreSQL BIT and VARBIT arrays — 2026-10-06
+- PostgreSQL `pg_lsn[]` refusal baseline superseded — October 6
+- [Intro paragraphs (pre-section)](#intro-paragraphs-pre-section)
+- [Current evidence and next targets](#current-evidence-and-next-targets-1)
+
 ## Required proof
 
 | Layer | What to assert | Failure to prevent |
