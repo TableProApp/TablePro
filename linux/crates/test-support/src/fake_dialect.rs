@@ -1,6 +1,6 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
@@ -17,7 +17,10 @@ pub struct FakeDialect;
 
 impl SqlDialect for FakeDialect {
     fn capabilities(&self) -> DialectCapabilities {
-        DialectCapabilities { exact_row_counts: true }
+        DialectCapabilities {
+            exact_row_counts: true,
+            insert_conflict: InsertConflict::Refused,
+        }
     }
 
     fn grammar(&self) -> SqlGrammar {

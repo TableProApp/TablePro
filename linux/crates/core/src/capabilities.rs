@@ -65,6 +65,18 @@ pub enum EstimateQuality {
     Unavailable,
 }
 
+/// What stopping a statement does on the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StatementStop {
+    /// The engine has a stop of its own: a cancel request, a KILL, an
+    /// attention, an interrupt.
+    Server,
+    /// The protocol carries no stop, as CQL's does not. The driver stops
+    /// waiting and drops the request, and the server runs the statement
+    /// to its own timeout.
+    Abandon,
+}
+
 /// What a driver can do, before any connection exists.
 ///
 /// The UI reads this to decide what to offer: whether to show a
@@ -88,6 +100,7 @@ pub struct DriverCapabilities {
     pub object_kinds: &'static [ObjectKind],
     /// Whether a connection needs a database name before it can open.
     pub database_required: bool,
+    pub statement_stop: StatementStop,
 }
 
 impl DriverCapabilities {
@@ -129,6 +142,7 @@ mod tests {
         row_count_estimate: EstimateQuality::Statistics,
         object_kinds: &[ObjectKind::Table, ObjectKind::View],
         database_required: false,
+        statement_stop: StatementStop::Server,
     };
 
     #[test]

@@ -1,6 +1,7 @@
 use crate::column::ColumnInfo;
-use crate::dialect::SqlDialect;
-use crate::dml::{BuildSqlError, build_delete, build_insert, build_key_probe, build_update};
+use crate::dialect::{InsertConflict, SqlDialect};
+use crate::dml::{BuildSqlError, build_delete, build_insert, build_key_probe, build_update, sets_partition_only};
+use crate::edit::CellInput;
 use crate::foreign_key_mode::ForeignKeyMode;
 use crate::meta::{RowIdentity, TableRef};
 use crate::statement::{GuardedStatement, RowGuard, Statement};
@@ -19,7 +20,13 @@ use super::{ChangeSet, RowChange, SavePlan};
 /// - a unique key elsewhere: a probe, because SQL Server adds the rows
 ///   its triggers touch to the count;
 /// - an engine row id: the affected count, since the address is unique;
-/// - a sorting key: a probe, because it can match several rows.
+/// - a sorting key: a probe, because it can match several rows;
+/// - an update of partition-scoped columns alone (CQL static columns):
+///   a probe, because it changes the partition, not the row.
+///
+/// An insert carries the affected count where the engine skips one
+/// whose key is taken instead of refusing it, and a probe that finds no
+/// row with its key where the engine replaces that row.
 pub fn plan_save(
     dialect: &dyn SqlDialect,
     table: &TableRef,
@@ -32,10 +39,29 @@ pub fn plan_save(
 
     for (index, change) in changes.changes.iter().enumerate() {
         let step = match change {
-            RowChange::Insert { cells } => GuardedStatement::unguarded(build_insert(dialect, table, columns, cells)?),
+            RowChange::Insert { cells } => {
+                let statement = build_insert(dialect, table, columns, cells)?;
+                insert_step(
+                    dialect,
+                    table,
+                    columns.iter().zip(cells.iter().map(CellInput::value)),
+                    statement,
+                )?
+            }
             RowChange::Update(update) => {
                 let statement = build_update(dialect, table, columns, identity, &update.key, &update.assignments)?;
-                guarded(dialect, table, columns, identity, &update.key, statement)?
+                match sets_partition_only(columns, &update.assignments) {
+                    // Its count says how many partitions it reached, not
+                    // whether the row is there.
+                    true => GuardedStatement {
+                        statement,
+                        guard: RowGuard::ProbeExactly {
+                            probe: build_key_probe(dialect, table, columns, identity, &update.key)?,
+                            rows: 1,
+                        },
+                    },
+                    false => guarded(dialect, table, columns, identity, &update.key, statement)?,
+                }
             }
             RowChange::Delete { key } => {
                 let statement = build_delete(dialect, table, columns, identity, key)?;
@@ -50,6 +76,46 @@ pub fn plan_save(
         batch: WriteBatch::new(WriteKind::RowChanges, table.clone(), steps, ForeignKeyMode::Enforced),
         origins,
     })
+}
+
+/// An insert, proved by its count where a taken key is skipped rather
+/// than refused, and by a probe that finds no row with its key where a
+/// taken key is replaced. An insert that leaves a key column out is
+/// refused by the server itself, so it needs no probe.
+pub(crate) fn insert_step<'a>(
+    dialect: &dyn SqlDialect,
+    table: &TableRef,
+    row: impl Iterator<Item = (&'a ColumnInfo, Option<&'a Value>)>,
+    statement: Statement,
+) -> Result<GuardedStatement, BuildSqlError> {
+    let guard = match dialect.capabilities().insert_conflict {
+        InsertConflict::Refused => RowGuard::None,
+        InsertConflict::Skipped => RowGuard::AffectedExactly(1),
+        InsertConflict::Replaced => {
+            let keyed: Vec<(&ColumnInfo, Option<&Value>)> = row.filter(|(column, _)| column.primary_key).collect();
+            if keyed.is_empty() {
+                return Err(BuildSqlError::NoRowIdentity);
+            }
+            match keyed
+                .iter()
+                .map(|(_, value)| value.cloned())
+                .collect::<Option<Vec<Value>>>()
+            {
+                None => RowGuard::None,
+                Some(key) => {
+                    let key_columns: Vec<ColumnInfo> = keyed.iter().map(|(column, _)| (*column).clone()).collect();
+                    let identity = RowIdentity::UniqueKey {
+                        columns: key_columns.iter().map(|column| column.name.clone()).collect(),
+                    };
+                    RowGuard::ProbeExactly {
+                        probe: build_key_probe(dialect, table, &key_columns, &identity, &key)?,
+                        rows: 0,
+                    }
+                }
+            }
+        }
+    };
+    Ok(GuardedStatement { statement, guard })
 }
 
 fn guarded(
@@ -82,7 +148,6 @@ fn guarded(
 mod tests {
     use crate::column::{ColumnDefault, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, TextLength};
     use crate::dialect::TestDialect;
-    use crate::edit::CellInput;
     use crate::meta::EngineRowId;
     use crate::save::RowUpdate;
 
@@ -102,6 +167,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }
@@ -239,6 +305,91 @@ mod tests {
             r#"SELECT COUNT(*) FROM (SELECT 1 AS one FROM "users" WHERE "id" = $1 LIMIT 2) AS probe"#
         );
         assert_eq!(probe.params()[0].value(), &Value::Int(7));
+    }
+
+    fn keyed_columns() -> Vec<ColumnInfo> {
+        let mut columns = columns();
+        columns[0].primary_key = true;
+        columns
+    }
+
+    fn keyed_insert(id: i64) -> RowChange {
+        RowChange::Insert {
+            cells: vec![
+                CellInput::Value(Value::Int(id)),
+                CellInput::Value(Value::Text("a".to_owned())),
+            ],
+        }
+    }
+
+    #[test]
+    fn an_insert_is_guarded_by_what_the_engine_does_with_a_taken_key() {
+        let changes = ChangeSet {
+            changes: vec![keyed_insert(9)],
+        };
+        let guard = |conflict| {
+            let dialect = TestDialect::exact().with_insert_conflict(conflict);
+            let plan = plan_save(&dialect, &table(), &keyed_columns(), &by_id(), &changes).expect("the plan");
+            guard_kind(&plan.batch.steps[0].guard)
+        };
+
+        assert_eq!(guard(InsertConflict::Refused), "none");
+        assert_eq!(guard(InsertConflict::Skipped), "affected");
+        assert_eq!(guard(InsertConflict::Replaced), "probe-other");
+    }
+
+    #[test]
+    fn a_replacing_insert_first_proves_no_row_has_its_key() {
+        let dialect = TestDialect::exact().with_insert_conflict(InsertConflict::Replaced);
+        let changes = ChangeSet {
+            changes: vec![keyed_insert(9), insert("defaulted")],
+        };
+
+        let plan = plan_save(&dialect, &table(), &keyed_columns(), &by_id(), &changes).expect("the plan");
+
+        let Some((probe, rows)) = plan.batch.steps[0].guard.probe() else {
+            panic!("the insert has no probe");
+        };
+        assert_eq!(rows, 0);
+        assert_eq!(
+            probe.sql(),
+            r#"SELECT COUNT(*) FROM (SELECT 1 AS one FROM "users" WHERE "id" = $1 LIMIT 2) AS probe"#
+        );
+        assert_eq!(probe.params()[0].value(), &Value::Int(9));
+        assert!(
+            matches!(plan.batch.steps[1].guard, RowGuard::None),
+            "an insert that leaves its key out is the server's to refuse"
+        );
+    }
+
+    #[test]
+    fn an_update_of_a_partitions_own_columns_is_proved_by_a_probe_for_the_row() {
+        let mut columns = keyed_columns();
+        columns[0].partition_scoped = true;
+        columns[1].partition_scoped = true;
+        let changes = ChangeSet {
+            changes: vec![update(Value::Int(7), "shared")],
+        };
+
+        let plan = plan_save(&TestDialect::exact(), &table(), &columns, &by_id(), &changes).expect("the plan");
+
+        let Some((probe, rows)) = plan.batch.steps[0].guard.probe() else {
+            panic!("the update has no probe");
+        };
+        assert_eq!(rows, 1);
+        assert_eq!(probe.params()[0].value(), &Value::Int(7));
+    }
+
+    #[test]
+    fn a_replacing_insert_into_a_table_without_a_key_is_refused() {
+        let dialect = TestDialect::exact().with_insert_conflict(InsertConflict::Replaced);
+        let changes = ChangeSet {
+            changes: vec![keyed_insert(9)],
+        };
+
+        let refused = plan_save(&dialect, &table(), &columns(), &by_id(), &changes);
+
+        assert_eq!(refused.err(), Some(BuildSqlError::NoRowIdentity));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use tablepro_core::column::{ColumnInfo, ColumnKind, ColumnType, SqlExpression};
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LikeCase, LikeForm, LiteralError, Placeholder,
-    SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LikeCase, LikeForm, LiteralError,
+    Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
@@ -33,7 +33,10 @@ impl SqliteDialect {
 
 impl SqlDialect for SqliteDialect {
     fn capabilities(&self) -> DialectCapabilities {
-        DialectCapabilities { exact_row_counts: true }
+        DialectCapabilities {
+            exact_row_counts: true,
+            insert_conflict: InsertConflict::Refused,
+        }
     }
 
     fn grammar(&self) -> SqlGrammar {
@@ -271,6 +274,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

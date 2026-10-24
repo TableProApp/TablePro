@@ -9,9 +9,10 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
 }
 
 /// What the level does on this engine. Read-Only's guarantee differs by
-/// engine, so the row says which one the user is getting, and an engine
-/// of keys is told about in commands rather than statements.
-pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities) -> String {
+/// engine, so the row says which one the user is getting, naming an
+/// engine that cannot hold a connection to reads, and an engine of keys
+/// is told about in commands rather than statements.
+pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities, engine: &str) -> String {
     let keys = capabilities.data_model == DataModel::KeyValue;
     match (level, capabilities.read_only) {
         (SafeModeLevel::Off, _) if keys => {
@@ -32,8 +33,9 @@ pub(crate) fn subtitle(level: SafeModeLevel, capabilities: &DriverCapabilities) 
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::SessionDefault) => crate::i18n::gettext(
             "TablePro refuses statements that write, and the server opens each transaction read-only. Use a read-only login for a guarantee.",
         ),
-        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::LoginPrivileges) => crate::i18n::gettext(
-            "TablePro refuses statements that write, but SQL Server cannot enforce this. Use a login granted only SELECT.",
+        (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::LoginPrivileges) => crate::i18n::gettext_f(
+            "TablePro refuses statements that write, but {engine} cannot enforce this. Use a login granted only SELECT.",
+            &[("engine", engine)],
         ),
         (SafeModeLevel::ReadOnly, ReadOnlyEnforcement::ClientGuard) => crate::i18n::gettext(
             "TablePro refuses every command that writes before it is sent; the server has no read-only mode. Use an ACL user that may only read for a guarantee.",
@@ -95,6 +97,7 @@ mod tests {
                 subtitle(
                     SafeModeLevel::ReadOnly,
                     &capabilities(DataModel::Relational, enforcement),
+                    "SQL Server",
                 )
             })
             .collect();
@@ -103,13 +106,30 @@ mod tests {
         assert_eq!(
             subtitle(
                 SafeModeLevel::ConfirmWrites,
-                &capabilities(DataModel::Relational, ReadOnlyEnforcement::EngineEnforced)
+                &capabilities(DataModel::Relational, ReadOnlyEnforcement::EngineEnforced),
+                "SQLite"
             ),
             subtitle(
                 SafeModeLevel::ConfirmWrites,
-                &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges)
+                &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges),
+                "SQL Server"
             ),
         );
+    }
+
+    #[test]
+    fn a_login_the_engine_cannot_hold_to_reads_names_that_engine() {
+        let cassandra = subtitle(
+            SafeModeLevel::ReadOnly,
+            &capabilities(DataModel::Relational, ReadOnlyEnforcement::LoginPrivileges),
+            "Cassandra / ScyllaDB",
+        );
+
+        assert!(
+            cassandra.contains("Cassandra / ScyllaDB cannot enforce this"),
+            "{cassandra}"
+        );
+        assert!(!cassandra.contains("SQL Server"), "{cassandra}");
     }
 
     #[test]
@@ -118,9 +138,13 @@ mod tests {
         let tables = capabilities(DataModel::Relational, ReadOnlyEnforcement::ClientGuard);
 
         for level in [SafeModeLevel::Off, SafeModeLevel::ConfirmWrites] {
-            assert_ne!(subtitle(level, &keys), subtitle(level, &tables), "{level:?}");
-            assert!(!subtitle(level, &keys).contains("statement"), "{level:?}");
+            assert_ne!(
+                subtitle(level, &keys, "Redis"),
+                subtitle(level, &tables, "Redis"),
+                "{level:?}"
+            );
+            assert!(!subtitle(level, &keys, "Redis").contains("statement"), "{level:?}");
         }
-        assert!(subtitle(SafeModeLevel::ReadOnly, &keys).contains("before it is sent"));
+        assert!(subtitle(SafeModeLevel::ReadOnly, &keys, "Redis").contains("before it is sent"));
     }
 }

@@ -2,8 +2,8 @@
 # Translators: TablePro is the product name and is not translated.
 Name=TablePro
 GenericName=Database Client
-Comment=Browse and edit PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse databases
-Keywords=SQL;Database;PostgreSQL;MySQL;SQLite;SQL Server;ClickHouse;
+Comment=Browse and edit PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse, Cassandra and ScyllaDB databases
+Keywords=SQL;Database;PostgreSQL;MySQL;SQLite;SQL Server;ClickHouse;Cassandra;ScyllaDB;CQL;
 Exec=tablepro %U
 Icon=@app-id@
 Terminal=false

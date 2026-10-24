@@ -19,7 +19,7 @@ use super::{BrowseSqlError, PageLayout, PageRequest, PageSpec, PagingMode, RowKe
 /// past a key, inside a block window, or at an offset, under the one
 /// mode `paging_mode` picks for the table and sort.
 pub fn build_page(dialect: &dyn SqlDialect, request: &PageRequest<'_>) -> Result<PageSpec, BrowseSqlError> {
-    let mode = paging_mode(request.identity, request.sort);
+    let mode = paging_mode(dialect.table_paging(), request.identity, request.sort);
     let components = identity_components(request.identity, request.columns)?;
     let (row_key, hidden) = row_key_layout(dialect, request.identity, request.columns, &components)?;
     let layout = PageLayout::new(request.columns.len(), hidden.as_ref().map_or(0, |(count, _)| *count));
@@ -41,15 +41,27 @@ pub fn build_page(dialect: &dyn SqlDialect, request: &PageRequest<'_>) -> Result
         PagingMode::Keyset => keyset_walk(&mut builder, dialect, request, &components, &identity_sql)?,
         PagingMode::CtidWindow => ctid_walk(&mut builder, dialect, request.position)?,
         PagingMode::Offset => offset_walk(request.position, request.identity, with_tiebreak(user, &identity_sql))?,
+        PagingMode::ServerPaging => server_walk(request)?,
     };
     conditions.extend(walk.condition);
 
     let order_by = (!walk.order.is_empty()).then(|| walk.order.join(", "));
+    // The server keeps the window itself, so the statement is the same
+    // for every page and a paging state from one resumes the next.
+    let window = match mode {
+        PagingMode::ServerPaging => String::new(),
+        PagingMode::Keyset | PagingMode::CtidWindow | PagingMode::Offset => {
+            dialect.row_window(order_by.as_deref(), request.limit, walk.offset)
+        }
+    };
+    let suffix = match conditions.is_empty() {
+        true => "",
+        false => dialect.filtered_read_suffix(),
+    };
     builder.push_sql(&format!(
-        "SELECT {projection} FROM {}{}{}",
+        "SELECT {projection} FROM {}{}{window}{suffix}",
         dialect.qualify(request.table),
         where_clause(&conditions),
-        dialect.row_window(order_by.as_deref(), request.limit, walk.offset)
     ));
 
     Ok(PageSpec {
@@ -132,7 +144,7 @@ fn keyset_walk(
         }
         PagePosition::AfterKey(key) => (Some(key), KeysetDirection::After),
         PagePosition::BeforeKey(key) => (Some(key), KeysetDirection::Before),
-        PagePosition::CtidWindow(_) => {
+        PagePosition::CtidWindow(_) | PagePosition::Resume(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::Keyset,
             });
@@ -213,7 +225,7 @@ fn ctid_walk(
             });
         }
         PagePosition::CtidWindow(window) => *window,
-        PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) => {
+        PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) | PagePosition::Resume(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::CtidWindow,
             });
@@ -246,11 +258,39 @@ fn ctid_walk(
     })
 }
 
+/// A page the server resumes from its paging state, or reads past the
+/// rows an offset skips. Its order is the engine's own.
+fn server_walk(request: &PageRequest<'_>) -> Result<Walk, BrowseSqlError> {
+    if !request.sort.is_empty() {
+        return Err(BrowseSqlError::SortUnsupported);
+    }
+    let cost = match request.position {
+        PagePosition::First | PagePosition::Resume(_) | PagePosition::Offset(0) => PageCost::ServerResume,
+        PagePosition::Offset(_) => PageCost::ReadPastSkipped,
+        PagePosition::Last | PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) | PagePosition::CtidWindow(_) => {
+            return Err(BrowseSqlError::UnsupportedPosition {
+                mode: PagingMode::ServerPaging,
+            });
+        }
+    };
+    Ok(Walk {
+        condition: None,
+        order: Vec::new(),
+        offset: 0,
+        stability: PageStability::Stable,
+        cost,
+    })
+}
+
 fn offset_walk(position: &PagePosition, identity: &RowIdentity, order: Vec<String>) -> Result<Walk, BrowseSqlError> {
     let offset = match position {
         PagePosition::First => 0,
         PagePosition::Offset(offset) => *offset,
-        PagePosition::Last | PagePosition::AfterKey(_) | PagePosition::BeforeKey(_) | PagePosition::CtidWindow(_) => {
+        PagePosition::Last
+        | PagePosition::AfterKey(_)
+        | PagePosition::BeforeKey(_)
+        | PagePosition::CtidWindow(_)
+        | PagePosition::Resume(_) => {
             return Err(BrowseSqlError::UnsupportedPosition {
                 mode: PagingMode::Offset,
             });

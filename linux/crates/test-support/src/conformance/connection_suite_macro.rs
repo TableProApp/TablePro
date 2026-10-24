@@ -8,6 +8,10 @@
 /// - `endpoint: network` adds the dropped-caller, dropped-editor-run and
 ///   lost-transport cases and needs `NetworkConformanceEngine`; `file`
 ///   adds a dropped-editor-run case that checks the session instead.
+/// - `server_stop: true` on a network engine checks that a dropped
+///   caller stops the server's statement, and needs `ServerStopEngine`.
+///   `false` is an engine whose protocol carries no stop (CQL): the
+///   dropped call ends at once and the connection serves the next one.
 /// - `pool: pooled` adds the busy-pool probe and needs
 ///   `PooledConformanceEngine`; `unbounded` is an engine with no slot
 ///   limit.
@@ -17,8 +21,8 @@
 /// - `docker: true` marks every case `#[ignore = "requires docker"]`.
 ///
 /// `suite_flags_match_driver_capabilities` is always emitted and never
-/// ignored: it fails when `endpoint` or `editor_transactions` disagrees
-/// with the driver's capabilities. `pool`, `unsupported_types` and
+/// ignored: it fails when `endpoint`, `server_stop` or
+/// `editor_transactions` disagrees with the driver's capabilities. `pool`, `unsupported_types` and
 /// `bounded_ddl` have no capability to check against.
 ///
 /// A case that has not finished `CASE_LIMIT` after its engine started
@@ -39,7 +43,8 @@
 /// # };
 /// # use tablepro_test_support::conformance::{
 /// #     BoundedDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-/// #     NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+/// #     NetworkConformanceEngine, PooledConformanceEngine, ServerStopEngine, TypedConformanceEngine,
+/// #     UnsupportedTypeCase,
 /// # };
 /// # use tablepro_test_support::{ConnectionScript, FakeDriver, FaultTransport};
 /// # struct ExampleEngine;
@@ -87,6 +92,8 @@
 /// #         let fault = FaultTransport::direct(endpoint, &liveness).map_err(ConformanceFailure::setup)?;
 /// #         Ok((self.connect_options(settings, liveness), Arc::new(fault)))
 /// #     }
+/// # }
+/// # impl ServerStopEngine for ExampleEngine {
 /// #     fn running_statement_count_sql(&self, marker: &str) -> String {
 /// #         format!("SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%{marker}%'")
 /// #     }
@@ -119,6 +126,7 @@
 ///         engine: ExampleEngine,
 ///         docker: true,
 ///         endpoint: network,
+///         server_stop: true,
 ///         pool: pooled,
 ///         editor_transactions: true,
 ///         unsupported_types: true,
@@ -133,6 +141,7 @@
 ///         engine: ExampleEngine,
 ///         docker: false,
 ///         endpoint: file,
+///         server_stop: true,
 ///         pool: unbounded,
 ///         editor_transactions: false,
 ///         unsupported_types: false,
@@ -146,6 +155,7 @@ macro_rules! connection_conformance_suite {
         engine: $engine:ty,
         docker: $docker:tt,
         endpoint: $endpoint:tt,
+        server_stop: $stop:tt,
         pool: $pool:tt,
         editor_transactions: $editor:tt,
         unsupported_types: $types:tt,
@@ -217,8 +227,8 @@ macro_rules! connection_conformance_suite {
             stream_read_streams_every_row_in_bounded_batches,
             $crate::conformance::cases::streaming::stream_read_streams_every_row_in_bounded_batches::<$engine>
         }
-        $crate::__conformance_endpoint_cases! { $endpoint, $docker, $engine }
-        $crate::__conformance_pool_case! { $pool, $endpoint, $docker, $engine }
+        $crate::__conformance_endpoint_cases! { $endpoint, $stop, $docker, $engine }
+        $crate::__conformance_pool_case! { $pool, $endpoint, $stop, $docker, $engine }
         $crate::__conformance_editor_case! { $editor, $docker, $engine }
         $crate::__conformance_types_case! { $types, $docker, $engine }
         $crate::__conformance_ddl_case! { $ddl, $docker, $engine }
@@ -230,6 +240,7 @@ macro_rules! connection_conformance_suite {
                 $crate::conformance::ConnectionSuiteFlags {
                     endpoint: $crate::__conformance_endpoint!($endpoint),
                     editor_transactions: $crate::__conformance_flag!($editor),
+                    server_stop: $crate::__conformance_flag!($stop),
                 },
             )
         }
@@ -289,7 +300,7 @@ macro_rules! __conformance_endpoint {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __conformance_endpoint_cases {
-    (network, $docker:tt, $engine:ty) => {
+    (network, true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
@@ -309,7 +320,27 @@ macro_rules! __conformance_endpoint_cases {
             $crate::conformance::cases::liveness::lost_transport_reports_connection_lost::<$engine>
         }
     };
-    (file, $docker:tt, $engine:ty) => {
+    (network, false, $docker:tt, $engine:ty) => {
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            dropped_caller_leaves_the_connection_serving,
+            $crate::conformance::cases::cancellation::dropped_caller_leaves_the_connection_serving::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            dropped_editor_run_frees_the_session,
+            $crate::conformance::cases::cancellation::dropped_editor_run_frees_the_session::<$engine>
+        }
+        $crate::__conformance_case! {
+            $docker,
+            $engine as ConformanceEngine,
+            lost_transport_reports_connection_lost,
+            $crate::conformance::cases::liveness::lost_transport_reports_connection_lost::<$engine>
+        }
+    };
+    (file, true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
@@ -322,7 +353,7 @@ macro_rules! __conformance_endpoint_cases {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __conformance_pool_case {
-    (pooled, network, $docker:tt, $engine:ty) => {
+    (pooled, network, true, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
@@ -330,7 +361,7 @@ macro_rules! __conformance_pool_case {
             $crate::conformance::cases::pool::probe_succeeds_while_every_network_pool_slot_is_busy::<$engine>
         }
     };
-    (pooled, file, $docker:tt, $engine:ty) => {
+    (pooled, $endpoint:tt, $stop:tt, $docker:tt, $engine:ty) => {
         $crate::__conformance_case! {
             $docker,
             $engine as ConformanceEngine,
@@ -338,8 +369,7 @@ macro_rules! __conformance_pool_case {
             $crate::conformance::cases::pool::probe_succeeds_while_every_pool_slot_is_busy::<$engine>
         }
     };
-    (unbounded, network, $docker:tt, $engine:ty) => {};
-    (unbounded, file, $docker:tt, $engine:ty) => {};
+    (unbounded, $endpoint:tt, $stop:tt, $docker:tt, $engine:ty) => {};
 }
 
 #[doc(hidden)]

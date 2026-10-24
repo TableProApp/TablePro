@@ -18,7 +18,7 @@ use self::pending::Pending;
 
 glib::wrapper! {
     /// The SQL editor's source view, with cursors besides GTK's own on
-    /// text marks (`docs/decisions/0023-multi-cursor-on-text-marks.md`).
+    /// text marks (`docs/decisions/0024-multi-cursor-on-text-marks.md`).
     pub struct EditorView(ObjectSubclass<imp::EditorView>)
         @extends sourceview5::View, gtk::TextView, gtk::Widget,
         @implements gtk::Accessible, gtk::AccessibleText, gtk::Buildable, gtk::ConstraintTarget, gtk::Scrollable;

@@ -1,4 +1,4 @@
-# 0023: Multiple cursors on text marks, in the app
+# 0024: Multiple cursors on text marks, in the app
 
 - **Status**: Accepted
 - **Date**: 2026-10-24

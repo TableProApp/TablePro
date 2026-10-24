@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use super::table_changes::{check_actions, check_new_indexes, require};
+use super::table_changes::{check_actions, check_new_column, check_new_indexes, require};
 use super::{BuildDdlError, DdlDialect, DdlOperation, DraftColumn, DraftProblem, TableDefinition};
 use crate::foreign_key_info::ForeignKeyInfo;
 use crate::meta::{IndexInfo, TableRef};
@@ -105,6 +105,9 @@ impl TableDraft {
         self.validate()?;
         if self.columns.iter().any(|column| column.comment_text().is_some()) {
             require(capabilities.column_comments, DdlOperation::SetColumnComment)?;
+        }
+        for column in &self.columns {
+            check_new_column(capabilities, column)?;
         }
         check_new_indexes(ddl, &self.indexes)?;
         check_actions(ddl, &self.foreign_keys)

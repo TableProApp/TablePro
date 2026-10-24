@@ -53,6 +53,7 @@ pub(crate) fn integer(name: &str, primary_key: bool) -> ColumnInfo {
         primary_key,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: ColumnDefault::None,
         comment: None,
     }

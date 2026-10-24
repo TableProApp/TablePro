@@ -10,8 +10,8 @@ use crate::statement::{BoundParam, ParamType};
 use crate::value::Value;
 
 use super::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LiteralError, Placeholder,
-    SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LiteralError,
+    Placeholder, SqlDialect,
 };
 
 /// The one ANSI dialect the core builders' own tests share.
@@ -29,6 +29,7 @@ pub struct TestDialect {
     count_all: &'static str,
     grammar: SqlGrammar,
     insert_limits: InsertBatchLimits,
+    insert_conflict: InsertConflict,
     binds: Mutex<Vec<RecordedBind>>,
 }
 
@@ -67,6 +68,7 @@ impl Default for TestDialect {
             count_all: "COUNT(*)",
             grammar: SqlGrammar::PostgreSql,
             insert_limits: InsertBatchLimits::DEFAULT,
+            insert_conflict: InsertConflict::Refused,
             binds: Mutex::new(Vec::new()),
         }
     }
@@ -111,6 +113,13 @@ impl TestDialect {
         Self { insert_limits, ..self }
     }
 
+    pub fn with_insert_conflict(self, insert_conflict: InsertConflict) -> Self {
+        Self {
+            insert_conflict,
+            ..self
+        }
+    }
+
     pub fn targets(&self) -> Vec<RecordedTarget> {
         self.recorded().into_iter().map(|bind| bind.target).collect()
     }
@@ -142,6 +151,7 @@ impl SqlDialect for TestDialect {
     fn capabilities(&self) -> DialectCapabilities {
         DialectCapabilities {
             exact_row_counts: self.exact_row_counts,
+            insert_conflict: self.insert_conflict,
         }
     }
 

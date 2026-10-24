@@ -14,7 +14,8 @@ use tablepro_test_fixtures::{MysqlFixture, MysqlFlavour, MysqlOptions};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, ServerStopEngine, TypedConformanceEngine,
+    UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -136,7 +137,9 @@ impl<S: Server> NetworkConformanceEngine for MySqlEngine<S> {
         );
         Ok((options, fault))
     }
+}
 
+impl<S: Server> ServerStopEngine for MySqlEngine<S> {
     fn running_statement_count_sql(&self, marker: &str) -> String {
         format!(
             "SELECT COUNT(*) FROM information_schema.PROCESSLIST \
@@ -243,6 +246,7 @@ mod mysql_suite {
         engine: MySqlEngine<MysqlServer>,
         docker: true,
         endpoint: network,
+        server_stop: true,
         pool: pooled,
         editor_transactions: true,
         unsupported_types: true,
@@ -267,6 +271,7 @@ mod mariadb_suite {
         engine: MySqlEngine<MariadbServer>,
         docker: true,
         endpoint: network,
+        server_stop: true,
         pool: pooled,
         editor_transactions: true,
         unsupported_types: true,

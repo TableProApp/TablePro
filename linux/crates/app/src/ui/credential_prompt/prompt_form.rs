@@ -92,6 +92,11 @@ impl PromptForm {
             }
             dialog.set_extra_child(Some(&group));
         }
+        // The dialog otherwise focuses its default button, where typing
+        // the answer goes nowhere and Enter sends it empty.
+        if let Some(first) = rows.first() {
+            dialog.set_focus(Some(first.widget()));
+        }
         Self { dialog, rows, remember }
     }
 
@@ -159,6 +164,11 @@ mod tests {
         assert!(form.remember.is_some(), "a remember switch was not offered");
         assert!(form.dialog.extra_child().is_some());
         assert_eq!(form.dialog.default_response().as_deref(), Some(ACCEPT));
+        assert_eq!(
+            form.dialog.focus().as_ref(),
+            Some(form.rows[0].widget()),
+            "the password row does not take the first keystroke"
+        );
 
         let without = PromptForm::build(&password_prompt(false));
         assert!(without.remember.is_none(), "remember was offered where it cannot work");

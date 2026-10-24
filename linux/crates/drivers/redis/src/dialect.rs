@@ -1,6 +1,6 @@
 use tablepro_core::column::{ColumnType, SqlExpression};
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
@@ -15,7 +15,10 @@ pub struct RedisDialect;
 
 impl SqlDialect for RedisDialect {
     fn capabilities(&self) -> DialectCapabilities {
-        DialectCapabilities { exact_row_counts: true }
+        DialectCapabilities {
+            exact_row_counts: true,
+            insert_conflict: InsertConflict::Refused,
+        }
     }
 
     fn grammar(&self) -> SqlGrammar {

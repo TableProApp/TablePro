@@ -33,6 +33,48 @@ pub(crate) struct CompoundTracker {
     identifiers: [u8; 4],
     begin_depth: u32,
     trigger: TriggerState,
+    batch: BatchState,
+}
+
+/// Where a CQL statement stands with a batch, read as cqlsh's
+/// `cql_split_statements` reads it: a piece between two `;` that opens
+/// with BEGIN starts a batch, and the batch takes every piece up to one
+/// whose last word but one is APPLY.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct BatchState {
+    open: bool,
+    piece_tokens: usize,
+    piece_opens: bool,
+    last_apply: bool,
+    second_last_apply: bool,
+}
+
+impl BatchState {
+    fn observe(&mut self, kind: ScriptTokenKind, text: &str) {
+        let word = |expected: &str| kind == ScriptTokenKind::Word && text.eq_ignore_ascii_case(expected);
+        if self.piece_tokens == 0 {
+            self.piece_opens = word("begin");
+        }
+        self.second_last_apply = self.last_apply;
+        self.last_apply = word("apply");
+        self.piece_tokens += 1;
+    }
+
+    /// The piece ends at a `;`. Whether the statement ends with it.
+    fn piece_ends(&mut self) -> bool {
+        if self.piece_tokens >= 2 {
+            if self.second_last_apply {
+                self.open = false;
+            } else if self.piece_opens {
+                self.open = true;
+            }
+        }
+        *self = Self {
+            open: self.open,
+            ..Self::default()
+        };
+        !self.open
+    }
 }
 
 impl CompoundTracker {
@@ -45,6 +87,7 @@ impl CompoundTracker {
             identifiers: [0; 4],
             begin_depth: 0,
             trigger: TriggerState::Start,
+            batch: BatchState::default(),
         }
     }
 
@@ -62,6 +105,7 @@ impl CompoundTracker {
                 }
             }
             CompoundRule::TriggerBody => self.trigger = advance_trigger(self.trigger, classify_trigger(kind, text)),
+            CompoundRule::Batch => self.batch.observe(kind, text),
         }
     }
 
@@ -72,6 +116,7 @@ impl CompoundTracker {
                 !(self.parens_hold_semicolons && self.paren_depth > 0) && self.begin_depth == 0
             }
             CompoundRule::TriggerBody => !matches!(self.trigger, TriggerState::Trigger | TriggerState::Semi),
+            CompoundRule::Batch => self.batch.piece_ends(),
         };
         if ends {
             self.reset();
@@ -178,6 +223,28 @@ mod tests {
         let mut tracker = CompoundTracker::new(CompoundRule::RoutineBody, true);
         feed(&mut tracker, &["BEGIN"]);
         assert!(tracker.semicolon_ends_statement());
+    }
+
+    #[test]
+    fn a_batch_holds_semicolons_until_apply_batch() {
+        let mut tracker = CompoundTracker::new(CompoundRule::Batch, false);
+        feed(&mut tracker, &["BEGIN", "UNLOGGED", "BATCH", "INSERT", "INTO", "t"]);
+        assert!(!tracker.semicolon_ends_statement());
+        feed(&mut tracker, &["UPDATE", "t", "SET"]);
+        assert!(!tracker.semicolon_ends_statement());
+        feed(&mut tracker, &["APPLY", "BATCH"]);
+        assert!(tracker.semicolon_ends_statement());
+        feed(&mut tracker, &["SELECT", "x"]);
+        assert!(tracker.semicolon_ends_statement());
+    }
+
+    #[test]
+    fn a_lone_begin_is_not_a_batch() {
+        let mut tracker = CompoundTracker::new(CompoundRule::Batch, false);
+        feed(&mut tracker, &["BEGIN"]);
+        assert!(tracker.semicolon_ends_statement(), "cqlsh needs two words before the ;");
+        feed(&mut tracker, &["BEGIN", "BATCH", "APPLY", "BATCH"]);
+        assert!(tracker.semicolon_ends_statement(), "an empty batch is one statement");
     }
 
     #[test]

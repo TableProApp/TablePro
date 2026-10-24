@@ -136,6 +136,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: match default {
                 Some(text) => ColumnDefault::Expression(tablepro_core::column::SqlExpression::from_catalog_text(text)),
                 None => ColumnDefault::None,

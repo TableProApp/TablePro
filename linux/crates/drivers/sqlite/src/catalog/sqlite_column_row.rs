@@ -95,6 +95,7 @@ impl SqliteColumnRow {
             primary_key: self.pk > 0,
             is_auto_increment,
             is_generated,
+            partition_scoped: false,
             default,
             // SQLite keeps no column descriptions. A comment in the
             // CREATE TABLE text is dropped by its parser.

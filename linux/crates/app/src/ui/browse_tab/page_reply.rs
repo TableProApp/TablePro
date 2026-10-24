@@ -12,7 +12,8 @@ pub(crate) struct PageReply {
     pub result: QueryResult,
     pub layout: PageLayout,
     pub edges: PageEdges,
-    /// The table pages by key or heap address rather than by offset.
+    /// The table pages by key or heap address, so its last page reads
+    /// back from its end.
     pub seeks: bool,
 }
 
@@ -25,7 +26,8 @@ impl PageReply {
             PagePosition::Last
             | PagePosition::AfterKey(_)
             | PagePosition::BeforeKey(_)
-            | PagePosition::CtidWindow(_) => None,
+            | PagePosition::CtidWindow(_)
+            | PagePosition::Resume(_) => None,
         }
     }
 }
@@ -37,10 +39,11 @@ impl From<PageRead> for PageReply {
             result: read.result,
             layout: read.layout,
             edges: PageEdges {
+                last: read.mode == PagingMode::ServerPaging && read.next.is_none(),
                 previous: read.previous,
                 next: read.next,
             },
-            seeks: read.mode != PagingMode::Offset,
+            seeks: matches!(read.mode, PagingMode::Keyset | PagingMode::CtidWindow),
         }
     }
 }

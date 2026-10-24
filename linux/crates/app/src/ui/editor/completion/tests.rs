@@ -57,6 +57,7 @@ fn column(name: &str, data_type: &str) -> ColumnInfo {
         primary_key: false,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: tablepro_core::column::ColumnDefault::None,
         comment: None,
     }

@@ -1,3 +1,4 @@
+use crate::dialect::TablePaging;
 use crate::meta::{EngineRowId, RowIdentity};
 
 use super::SortKey;
@@ -15,15 +16,22 @@ pub enum PagingMode {
     /// Skip rows. Any order the user asks for, at a cost that grows
     /// with the offset.
     Offset,
+    /// Resume from the paging state the server handed back with the
+    /// page before, in the engine's own order.
+    ServerPaging,
 }
 
 /// The paging mode for a table and the sort the user chose.
 ///
-/// A user sort orders by columns that are not unique, which a seek
-/// cannot resume from, so it always pages by offset. A partitioned
-/// table's ctid is unique only within one partition, so it has no
-/// block window to walk.
-pub fn paging_mode(identity: &RowIdentity, sort: &[SortKey]) -> PagingMode {
+/// An engine that pages on the server pages every table that way. A
+/// user sort orders by columns that are not unique, which a seek cannot
+/// resume from, so it always pages by offset. A partitioned table's
+/// ctid is unique only within one partition, so it has no block window
+/// to walk.
+pub fn paging_mode(paging: TablePaging, identity: &RowIdentity, sort: &[SortKey]) -> PagingMode {
+    if paging == TablePaging::ServerState {
+        return PagingMode::ServerPaging;
+    }
     if !sort.is_empty() {
         return PagingMode::Offset;
     }
@@ -48,9 +56,13 @@ mod tests {
 
     #[test]
     fn a_key_with_no_user_sort_seeks() {
-        assert_eq!(paging_mode(&by_id(), &[]), PagingMode::Keyset);
+        assert_eq!(paging_mode(TablePaging::InStatement, &by_id(), &[]), PagingMode::Keyset);
         assert_eq!(
-            paging_mode(&RowIdentity::EngineRowId(EngineRowId::SqliteRowid), &[]),
+            paging_mode(
+                TablePaging::InStatement,
+                &RowIdentity::EngineRowId(EngineRowId::SqliteRowid),
+                &[]
+            ),
             PagingMode::Keyset
         );
     }
@@ -58,11 +70,19 @@ mod tests {
     #[test]
     fn a_heap_with_no_key_walks_block_windows() {
         assert_eq!(
-            paging_mode(&RowIdentity::EngineRowId(EngineRowId::PostgresCtid), &[]),
+            paging_mode(
+                TablePaging::InStatement,
+                &RowIdentity::EngineRowId(EngineRowId::PostgresCtid),
+                &[]
+            ),
             PagingMode::CtidWindow
         );
         assert_eq!(
-            paging_mode(&RowIdentity::EngineRowId(EngineRowId::PostgresTableoidCtid), &[]),
+            paging_mode(
+                TablePaging::InStatement,
+                &RowIdentity::EngineRowId(EngineRowId::PostgresTableoidCtid),
+                &[]
+            ),
             PagingMode::Offset,
             "a ctid repeats across partitions"
         );
@@ -75,11 +95,31 @@ mod tests {
             ascending: false,
         }];
 
-        assert_eq!(paging_mode(&by_id(), &sort), PagingMode::Offset);
         assert_eq!(
-            paging_mode(&RowIdentity::EngineRowId(EngineRowId::PostgresCtid), &sort),
+            paging_mode(TablePaging::InStatement, &by_id(), &sort),
             PagingMode::Offset
         );
-        assert_eq!(paging_mode(&RowIdentity::Unordered, &[]), PagingMode::Offset);
+        assert_eq!(
+            paging_mode(
+                TablePaging::InStatement,
+                &RowIdentity::EngineRowId(EngineRowId::PostgresCtid),
+                &sort
+            ),
+            PagingMode::Offset
+        );
+        assert_eq!(
+            paging_mode(TablePaging::InStatement, &RowIdentity::Unordered, &[]),
+            PagingMode::Offset
+        );
+    }
+
+    #[test]
+    fn a_server_that_pages_pages_every_table() {
+        for identity in [by_id(), RowIdentity::Unordered] {
+            assert_eq!(
+                paging_mode(TablePaging::ServerState, &identity, &[]),
+                PagingMode::ServerPaging
+            );
+        }
     }
 }

@@ -4,8 +4,8 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder, SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection, LikeCase, LikeForm,
+    LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
@@ -58,6 +58,7 @@ impl SqlDialect for ClickHouseDialect {
         // touched, so a write proves itself with a probe instead.
         DialectCapabilities {
             exact_row_counts: false,
+            insert_conflict: InsertConflict::Refused,
         }
     }
 
@@ -444,6 +445,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

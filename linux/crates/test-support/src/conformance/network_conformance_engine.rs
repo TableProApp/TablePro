@@ -6,8 +6,7 @@ use tablepro_core::{ConnectOptions, LivenessPolicy, WorkspaceSettings};
 use crate::FaultTransport;
 use crate::conformance::{ConformanceEngine, ConformanceFailure};
 
-/// An engine reached over the network, whose route a case can break and
-/// whose server can be asked what is still running.
+/// An engine reached over the network, whose route a case can break.
 #[async_trait]
 pub trait NetworkConformanceEngine: ConformanceEngine {
     /// Options whose transport is the returned `FaultTransport`, so the
@@ -17,7 +16,11 @@ pub trait NetworkConformanceEngine: ConformanceEngine {
         settings: WorkspaceSettings,
         liveness: LivenessPolicy,
     ) -> Result<(ConnectOptions, Arc<FaultTransport>), ConformanceFailure>;
+}
 
+/// A network engine with a stop of its own, whose server can be asked
+/// what is still running, so a case can see the stop reach it.
+pub trait ServerStopEngine: NetworkConformanceEngine {
     /// A query returning one integer: how many statements carrying
     /// `marker` the server is running, not counting itself.
     fn running_statement_count_sql(&self, marker: &str) -> String;

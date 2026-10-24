@@ -55,7 +55,7 @@ pub use ddl_conformance_engine::ConformanceDdlEngine;
 pub use editor_transaction_engine::EditorTransactionEngine;
 pub use keyspace_engine::KeyspaceEngine;
 pub use large_table_engine::LargeTableEngine;
-pub use network_conformance_engine::NetworkConformanceEngine;
+pub use network_conformance_engine::{NetworkConformanceEngine, ServerStopEngine};
 pub use pooled_conformance_engine::PooledConformanceEngine;
 pub use resident_peak::ResidentPeak;
 pub use run_case::{CASE_LIMIT, run_case, run_case_within};
