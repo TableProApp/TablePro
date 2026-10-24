@@ -55,6 +55,7 @@ fn connection(id: Uuid, ssh: Option<SavedSshConfig>) -> SavedConnection {
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

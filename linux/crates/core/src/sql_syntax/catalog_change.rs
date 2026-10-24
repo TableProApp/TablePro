@@ -19,8 +19,10 @@ const TRANSACTION_ENDS: [&str; 2] = ["COMMIT", "END"];
 /// are listed again after any command that writes, or that commits a
 /// transaction.
 pub fn changes_catalog(text: &str, grammar: SqlGrammar) -> bool {
-    if !grammar.is_sql() {
-        return super::redis::may_change_keys(text);
+    match grammar {
+        SqlGrammar::Redis => return super::redis::may_change_keys(text),
+        SqlGrammar::Mongo => return super::mongo::may_change_catalog(text),
+        _ => {}
     }
     ScriptPlan::server_readings(text, grammar).is_none_or(|mut plans| plans.any(|plan| plan_changes(text, &plan)))
 }

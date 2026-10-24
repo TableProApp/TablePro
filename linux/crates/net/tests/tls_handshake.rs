@@ -15,8 +15,8 @@ use rustls::sign::CertifiedKey;
 use rustls::{RootCertStore, ServerConfig};
 use tablepro_core::{CertificateFileProblem, ClientIdentity, ConfigError, TlsConfig, TlsFailure, TlsMode};
 use tablepro_net::tls::{
-    MAX_PEM_FILE_BYTES, TlsSetupError, build_client_config, build_client_config_checking, check_pem_files, classify,
-    client_identity_pem, mysql_ca_bundle_pem,
+    MAX_PEM_FILE_BYTES, TlsSetupError, build_client_config, build_client_config_checking, ca_bundle_pem,
+    check_pem_files, classify, client_identity_pem,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -315,9 +315,9 @@ async fn require_rejects_forged_handshake_signature() {
 }
 
 #[test]
-fn mysql_ca_bundle_pem_round_trips_through_root_cert_store() {
+fn ca_bundle_pem_round_trips_through_root_cert_store() {
     let pki = pki("db.internal").unwrap();
-    let bundle = mysql_ca_bundle_pem(&verify_full(Some(&pki.ca_file))).unwrap();
+    let bundle = ca_bundle_pem(&verify_full(Some(&pki.ca_file))).unwrap();
     let certificates: Vec<CertificateDer<'static>> = CertificateDer::pem_slice_iter(&bundle)
         .collect::<Result<_, _>>()
         .unwrap();

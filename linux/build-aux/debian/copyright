@@ -1004,6 +1004,7 @@ Files: vendor/async-lock-3.4.2/*
  vendor/clickhouse-0.15.2/*
  vendor/clickhouse-macros-0.3.0/*
  vendor/clickhouse-types-0.1.3/*
+ vendor/derive-syn-parse-0.2.0/*
  vendor/displaydoc-0.2.7/*
  vendor/dyn-clone-1.0.20/*
  vendor/event-listener-5.4.2/*
@@ -1021,6 +1022,7 @@ Files: vendor/async-lock-3.4.2/*
  vendor/parking-2.2.1/*
  vendor/pastey-0.2.3/*
  vendor/pin-project-lite-0.2.17/*
+ vendor/portable-atomic-1.15.0/*
  vendor/proc-macro-crate-3.5.0/*
  vendor/proc-macro2-1.0.107/*
  vendor/quote-1.0.47/*
@@ -1029,6 +1031,7 @@ Files: vendor/async-lock-3.4.2/*
  vendor/relm4-0.11.0/*
  vendor/relm4-macros-0.11.0/*
  vendor/rustversion-1.0.23/*
+ vendor/semver-1.0.28/*
  vendor/serde-1.0.229/*
  vendor/serde_bytes-0.11.19/*
  vendor/serde_core-1.0.229/*
@@ -1042,16 +1045,19 @@ Files: vendor/async-lock-3.4.2/*
  vendor/syn-3.0.5/*
  vendor/thiserror-2.0.20/*
  vendor/thiserror-impl-2.0.20/*
+ vendor/typed-builder-0.22.0/*
+ vendor/typed-builder-macro-0.22.0/*
  vendor/typed-path-0.12.3/*
 Copyright: the authors of async-lock, async-trait, clickhouse, clickhouse-macros,
- clickhouse-types, displaydoc, dyn-clone, event-listener,
- event-listener-strategy, fastrand, itoa, lexical-core,
+ clickhouse-types, derive-syn-parse, displaydoc, dyn-clone,
+ event-listener, event-listener-strategy, fastrand, itoa, lexical-core,
  lexical-parse-float, lexical-parse-integer, lexical-util,
  lexical-write-float, lexical-write-integer, once_cell, ordered-stream,
- parking, pastey, pin-project-lite, proc-macro-crate, proc-macro2, quote,
- ref-cast, ref-cast-impl, relm4, relm4-macros, rustversion, serde,
- serde_bytes, serde_core, serde_derive, serde_derive_internals,
- serde_json, serde_repr, sqlformat, syn, thiserror, thiserror-impl,
+ parking, pastey, pin-project-lite, portable-atomic, proc-macro-crate,
+ proc-macro2, quote, ref-cast, ref-cast-impl, relm4, relm4-macros,
+ rustversion, semver, serde, serde_bytes, serde_core, serde_derive,
+ serde_derive_internals, serde_json, serde_repr, sqlformat, syn,
+ thiserror, thiserror-impl, typed-builder, typed-builder-macro,
  typed-path
 License: Apache-2.0 or Expat
  Permission is hereby granted, free of charge, to any
@@ -1677,6 +1683,32 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
+Files: vendor/bitvec-1.1.1/*
+ vendor/wyz-0.5.1/*
+Copyright: 2018 myrrlyn (Alexander Payne)
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2018 myrrlyn (Alexander Payne)
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/block-buffer-0.10.4/*
  vendor/block-padding-0.3.3/*
 Copyright: 2018-2019 The RustCrypto Project Developers
@@ -1815,6 +1847,30 @@ License: Apache-2.0 or Expat
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
+
+Files: vendor/bson-3.1.0/*
+Copyright: 2015 Y. T. CHUNG <zonyitoo@gmail.com>
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2015 Y. T. CHUNG <zonyitoo@gmail.com>
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software is furnished to do so,
+ subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Files: vendor/bstr-1.13.1/*
 Copyright: 2018-2019 Andrew Gallant
@@ -2268,6 +2324,65 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
+Files: vendor/const-random-0.1.18/*
+ vendor/const-random-macro-0.1.16/*
+ vendor/hashbrown-0.14.5/*
+ vendor/hashbrown-0.15.5/*
+ vendor/hashbrown-0.16.1/*
+ vendor/hashbrown-0.17.1/*
+Copyright: 2016 Amanieu d'Antras
+License: Apache-2.0 or Expat
+ Copyright (c) 2016 Amanieu d'Antras
+ .
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
+Files: vendor/convert_case-0.10.0/*
+Copyright: 2025 rutrum
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2025 rutrum
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/core_detect-1.0.0/*
 Copyright: 2017-2020 The Rust Project Developers
 License: Apache-2.0 or Expat
@@ -2430,7 +2545,38 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/crossbeam-queue-0.3.14/*
+Files: vendor/critical-section-1.2.0/*
+Copyright: 2022 The critical-section authors
+License: Apache-2.0 or Expat
+ Copyright (c) 2022 The critical-section authors
+ .
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
+
+Files: vendor/crossbeam-channel-0.5.17/*
+ vendor/crossbeam-epoch-0.9.21/*
+ vendor/crossbeam-queue-0.3.14/*
  vendor/crossbeam-utils-0.8.23/*
 Copyright: 2019 The Crossbeam Project Developers
 License: Apache-2.0 or Expat
@@ -2468,6 +2614,31 @@ License: Expat
  MIT License
  .
  Copyright (c) 2019 Timon
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/crunchy-0.2.4/*
+Copyright: 2017-2023 Eira Fransham.
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright 2017-2023 Eira Fransham.
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -2667,6 +2838,33 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+Files: vendor/data-encoding-2.11.1/*
+Copyright: 2015-2020 Julien Cretin
+ 2017-2020 Google Inc.
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2015-2020 Julien Cretin
+ Copyright (c) 2017-2020 Google Inc.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/deadpool-0.13.1/*
  vendor/deadpool-postgres-0.14.2/*
  vendor/deadpool-runtime-0.3.1/*
@@ -2721,6 +2919,80 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
+
+Files: vendor/deranged-0.5.8/*
+Copyright: 2024 Jacob Pratt et al.
+License: Apache-2.0 or Expat
+ Copyright (c) 2024 Jacob Pratt et al.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/derive-where-1.7.0/*
+Copyright: 2021 Roland Fredenhagen
+License: Apache-2.0 or Expat
+ MIT License
+ .
+ Copyright (c) 2021 Roland Fredenhagen
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/derive_more-2.1.1/*
+ vendor/derive_more-impl-2.1.1/*
+Copyright: 2016 Jelte Fennema
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2016 Jelte Fennema
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
 
 Files: vendor/digest-0.10.7/*
  vendor/hmac-0.12.1/*
@@ -2822,6 +3094,8 @@ License: Expat
 
 Files: vendor/either-1.18.0/*
  vendor/itertools-0.15.0/*
+ vendor/serde_with-3.23.0/*
+ vendor/serde_with_macros-3.23.0/*
 Copyright: 2015
 License: Apache-2.0 or Expat
  Copyright (c) 2015
@@ -3333,6 +3607,31 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
+Files: vendor/funty-2.0.0/*
+Copyright: 2020 myrrlyn (Alexander Payne)
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2020 myrrlyn (Alexander Payne)
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/futures-0.3.34/*
  vendor/futures-channel-0.3.34/*
  vendor/futures-core-0.3.34/*
@@ -3425,6 +3724,37 @@ License: Expat
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
+
+Files: vendor/getrandom-0.2.17/*
+Copyright: 2018-2024 The rust-random Project Developers
+ 2014 The Rust Project Developers
+License: Apache-2.0 or Expat
+ Copyright (c) 2018-2024 The rust-random Project Developers
+ Copyright (c) 2014 The Rust Project Developers
+ .
+ Permission is hereby granted, free of charge, to any
+ person obtaining a copy of this software and associated
+ documentation files (the "Software"), to deal in the
+ Software without restriction, including without
+ limitation the rights to use, copy, modify, merge,
+ publish, distribute, sublicense, and/or sell copies of
+ the Software, and to permit persons to whom the Software
+ is furnished to do so, subject to the following
+ conditions:
+ .
+ The above copyright notice and this permission notice
+ shall be included in all copies or substantial portions
+ of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+ TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+ SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ DEALINGS IN THE SOFTWARE.
 
 Files: vendor/getrandom-0.3.4/*
 Copyright: 2018-2025 The rust-random Project Developers
@@ -3538,38 +3868,6 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/hashbrown-0.14.5/*
- vendor/hashbrown-0.15.5/*
- vendor/hashbrown-0.16.1/*
- vendor/hashbrown-0.17.1/*
-Copyright: 2016 Amanieu d'Antras
-License: Apache-2.0 or Expat
- Copyright (c) 2016 Amanieu d'Antras
- .
- Permission is hereby granted, free of charge, to any
- person obtaining a copy of this software and associated
- documentation files (the "Software"), to deal in the
- Software without restriction, including without
- limitation the rights to use, copy, modify, merge,
- publish, distribute, sublicense, and/or sell copies of
- the Software, and to permit persons to whom the Software
- is furnished to do so, subject to the following
- conditions:
- .
- The above copyright notice and this permission notice
- shall be included in all copies or substantial portions
- of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
- ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
- TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
- PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
- SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
- IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- DEALINGS IN THE SOFTWARE.
-
 Files: vendor/hashlink-0.10.0/*
  vendor/hashlink-0.11.1/*
 Copyright: the authors of hashlink
@@ -3607,6 +3905,7 @@ Files: vendor/heck-0.5.0/*
  vendor/unicode-properties-0.1.4/*
  vendor/unicode-segmentation-1.13.3/*
  vendor/unicode-width-0.2.2/*
+ vendor/unicode-xid-0.2.6/*
 Copyright: 2015 The Rust Project Developers
 License: Apache-2.0 or Expat
  Copyright (c) 2015 The Rust Project Developers
@@ -3641,6 +3940,33 @@ Copyright: 2013-2014 The Rust Project Developers.
 License: Apache-2.0 or Expat
  Copyright (c) 2013-2014 The Rust Project Developers.
  Copyright (c) 2015-2020 The rust-hex Developers
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/hickory-net-0.26.3/*
+ vendor/hickory-proto-0.26.3/*
+ vendor/hickory-resolver-0.26.3/*
+Copyright: 2015 The Hickory DNS Developers
+ 2017 Google LLC.
+License: Apache-2.0 or Expat
+ Copyright (c) 2015 The Hickory DNS Developers
+ Copyright (c) 2017 Google LLC.
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -4021,6 +4347,17 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
+
+Files: vendor/ipnet-2.12.2/*
+Copyright: 2017 Juniper Networks, Inc.
+License: Apache-2.0 or Expat
+ Copyright 2017 Juniper Networks, Inc.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Files: vendor/lazy_static-1.5.0/*
 Copyright: 2010 The Rust Project Developers
@@ -5155,6 +5492,7 @@ License: Expat
 Files: vendor/lock_api-0.4.14/*
  vendor/parking_lot-0.12.5/*
  vendor/parking_lot_core-0.9.12/*
+ vendor/rustc_version-0.4.1/*
  vendor/thread_local-1.1.10/*
 Copyright: 2016 The Rust Project Developers
 License: Apache-2.0 or Expat
@@ -5207,6 +5545,29 @@ License: Expat
  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Files: vendor/macro_magic-0.5.1/*
+ vendor/macro_magic_core-0.5.1/*
+ vendor/macro_magic_core_macros-0.5.1/*
+ vendor/macro_magic_macros-0.5.1/*
+Copyright: 2023 Sam Johnson
+License: Expat
+ Copyright 2023 Sam Johnson
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+ and associated documentation files (the “Software”), to deal in the Software without
+ restriction, including without limitation the rights to use, copy, modify, merge, publish,
+ distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+ Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all copies or
+ substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+ BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Files: vendor/matchers-0.2.0/*
 Copyright: 2019 Eliza Weisman
@@ -5348,6 +5709,69 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
 
+Files: vendor/moka-0.12.16/*
+Copyright: 2020 - 2026 Tatsuya Kawano
+License: Apache-2.0, and Apache-2.0 or MIT
+ On Debian systems, the complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+ .
+    APPENDIX: How to apply the Apache License to your work.
+ .
+       To apply the Apache License to your work, attach the following
+       boilerplate notice, with the fields enclosed by brackets "[]"
+       replaced with your own identifying information. (Don't include
+       the brackets!)  The text should be enclosed in the appropriate
+       comment syntax for the file format. We also recommend that a
+       file or class name and description of purpose be included on the
+       same "printed page" as the copyright notice for easier
+       identification within third-party archives.
+ .
+    Copyright 2020 - 2026 Tatsuya Kawano
+ .
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+ .
+        http://www.apache.org/licenses/LICENSE-2.0
+ .
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
+Files: vendor/mongodb-3.9.1/*
+ vendor/mongodb-internal-macros-3.9.1/*
+Copyright: 2019-2021 MongoDB, Inc.
+License: Apache-2.0
+ On Debian systems, the complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+ .
+    APPENDIX: How to apply the Apache License to your work.
+ .
+       To apply the Apache License to your work, attach the following
+       boilerplate notice, with the fields enclosed by brackets "[]"
+       replaced with your own identifying information. (Don't include
+       the brackets!)  The text should be enclosed in the appropriate
+       comment syntax for the file format. We also recommend that a
+       file or class name and description of purpose be included on the
+       same "printed page" as the copyright notice for easier
+       identification within third-party archives.
+ .
+    Copyright 2019-2021 MongoDB, Inc.
+ .
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+ .
+        http://www.apache.org/licenses/LICENSE-2.0
+ .
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+
 Files: vendor/multiversion-0.9.0/*
  vendor/multiversion-macros-0.9.0/*
 Copyright: 2019 Caleb Zulawski
@@ -5417,6 +5841,29 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+Files: vendor/num-conv-0.2.2/*
+Copyright: Jacob Pratt
+License: Apache-2.0 or Expat
+ Copyright (c) Jacob Pratt
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/oo7-0.6.0/*
 Copyright: 2022 Bilal Elmoussaoui, Sophie Herold, Maximiliano Sandoval, Dhanuka Warusadura
 License: Expat
@@ -5443,6 +5890,7 @@ License: Expat
  SOFTWARE.
 
 Files: vendor/pbkdf2-0.12.2/*
+ vendor/pbkdf2-0.13.0/*
 Copyright: 2017 Artyom Pavlov
  2018-2023 The RustCrypto Project Developers
 License: Apache-2.0 or Expat
@@ -5555,6 +6003,29 @@ License: Apache-2.0 or Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
+Files: vendor/powerfmt-0.2.0/*
+Copyright: 2023 Jacob Pratt et al.
+License: Apache-2.0 or Expat
+ Copyright (c) 2023 Jacob Pratt et al.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/ppv-lite86-0.2.21/*
 Copyright: 2019 The CryptoCorrosion Contributors
 License: Apache-2.0 or Expat
@@ -5583,6 +6054,17 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
+
+Files: vendor/prefix-trie-0.8.4/*
+Copyright: 2022 Tibor Schneider
+License: Apache-2.0 or Expat
+ Copyright 2022 Tibor Schneider
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Files: vendor/pretty-hex-0.4.2/*
 Copyright: 2018 Andrei Volnin
@@ -5633,6 +6115,31 @@ License: Expat
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
+
+Files: vendor/radium-0.7.0/*
+Copyright: 2019 kneecaw (Nika Layzell)
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2019 kneecaw (Nika Layzell)
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
 
 Files: vendor/rand-0.10.2/*
  vendor/rand-0.9.5/*
@@ -5765,6 +6272,29 @@ License: BSD-3-Clause
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+Files: vendor/resolv-conf-0.7.6/*
+Copyright: 2015-2016 The resolv-conf Developers
+License: Apache-2.0 or Expat
+ Copyright (c) 2015-2016 The resolv-conf Developers
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/rmcp-3.6.0/*
 Copyright: 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
 License: Apache-2.0 and Expat
@@ -5797,6 +6327,31 @@ License: Apache-2.0 or Expat
  MIT License
  .
  Copyright 2022-2026 John McNamara <jmcnamara@cpan.org>
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/rustc_version_runtime-0.3.0/*
+Copyright: 2015 Sebastian Waisbrot
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2015 Sebastian Waisbrot
  .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -6620,6 +7175,81 @@ License: Expat
  .
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+Files: vendor/tagptr-0.2.0/*
+Copyright: 2021 Oliver Giersch
+License: Apache-2.0 or Expat
+ MIT License
+ .
+ Copyright (c) 2021 Oliver Giersch
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/take_mut-0.2.2/*
+Copyright: 2016 Sgeo
+License: Expat
+ The MIT License (MIT)
+ .
+ Copyright (c) 2016 Sgeo
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/tap-1.0.1/*
+Copyright: 2017 Elliot Linder <darfink@gmail.com>
+License: Expat
+ MIT License
+ .
+ Copyright (c) 2017 Elliot Linder <darfink@gmail.com>
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
 Files: vendor/tempfile-3.27.0/*
 Copyright: 2015 Steven Allen
 License: Apache-2.0 or Expat
@@ -6678,6 +7308,156 @@ License: Apache-2.0 or Expat
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
+
+Files: vendor/time-0.3.55/*
+ vendor/time-core-0.1.9/*
+ vendor/time-macros-0.2.32/*
+Copyright: Jacob Pratt et al.
+License: Apache-2.0 or Expat
+ Copyright (c) Jacob Pratt et al.
+ .
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+Files: vendor/tiny-keccak-2.0.2/*
+Copyright: the authors of tiny-keccak
+License: CC0-1.0
+ Creative Commons Legal Code
+ .
+ CC0 1.0 Universal
+ .
+     CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+     LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+     ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+     INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+     REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+     PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+     THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+     HEREUNDER.
+ .
+ Statement of Purpose
+ .
+ The laws of most jurisdictions throughout the world automatically confer
+ exclusive Copyright and Related Rights (defined below) upon the creator
+ and subsequent owner(s) (each and all, an "owner") of an original work of
+ authorship and/or a database (each, a "Work").
+ .
+ Certain owners wish to permanently relinquish those rights to a Work for
+ the purpose of contributing to a commons of creative, cultural and
+ scientific works ("Commons") that the public can reliably and without fear
+ of later claims of infringement build upon, modify, incorporate in other
+ works, reuse and redistribute as freely as possible in any form whatsoever
+ and for any purposes, including without limitation commercial purposes.
+ These owners may contribute to the Commons to promote the ideal of a free
+ culture and the further production of creative, cultural and scientific
+ works, or to gain reputation or greater distribution for their Work in
+ part through the use and efforts of others.
+ .
+ For these and/or other purposes and motivations, and without any
+ expectation of additional consideration or compensation, the person
+ associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+ is an owner of Copyright and Related Rights in the Work, voluntarily
+ elects to apply CC0 to the Work and publicly distribute the Work under its
+ terms, with knowledge of his or her Copyright and Related Rights in the
+ Work and the meaning and intended legal effect of CC0 on those rights.
+ .
+ 1. Copyright and Related Rights. A Work made available under CC0 may be
+ protected by copyright and related or neighboring rights ("Copyright and
+ Related Rights"). Copyright and Related Rights include, but are not
+ limited to, the following:
+ .
+   i. the right to reproduce, adapt, distribute, perform, display,
+      communicate, and translate a Work;
+  ii. moral rights retained by the original author(s) and/or performer(s);
+ iii. publicity and privacy rights pertaining to a person's image or
+      likeness depicted in a Work;
+  iv. rights protecting against unfair competition in regards to a Work,
+      subject to the limitations in paragraph 4(a), below;
+   v. rights protecting the extraction, dissemination, use and reuse of data
+      in a Work;
+  vi. database rights (such as those arising under Directive 96/9/EC of the
+      European Parliament and of the Council of 11 March 1996 on the legal
+      protection of databases, and under any national implementation
+      thereof, including any amended or successor version of such
+      directive); and
+ vii. other similar, equivalent or corresponding rights throughout the
+      world based on applicable law or treaty, and any national
+      implementations thereof.
+ .
+ 2. Waiver. To the greatest extent permitted by, but not in contravention
+ of, applicable law, Affirmer hereby overtly, fully, permanently,
+ irrevocably and unconditionally waives, abandons, and surrenders all of
+ Affirmer's Copyright and Related Rights and associated claims and causes
+ of action, whether now known or unknown (including existing as well as
+ future claims and causes of action), in the Work (i) in all territories
+ worldwide, (ii) for the maximum duration provided by applicable law or
+ treaty (including future time extensions), (iii) in any current or future
+ medium and for any number of copies, and (iv) for any purpose whatsoever,
+ including without limitation commercial, advertising or promotional
+ purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+ member of the public at large and to the detriment of Affirmer's heirs and
+ successors, fully intending that such Waiver shall not be subject to
+ revocation, rescission, cancellation, termination, or any other legal or
+ equitable action to disrupt the quiet enjoyment of the Work by the public
+ as contemplated by Affirmer's express Statement of Purpose.
+ .
+ 3. Public License Fallback. Should any part of the Waiver for any reason
+ be judged legally invalid or ineffective under applicable law, then the
+ Waiver shall be preserved to the maximum extent permitted taking into
+ account Affirmer's express Statement of Purpose. In addition, to the
+ extent the Waiver is so judged Affirmer hereby grants to each affected
+ person a royalty-free, non transferable, non sublicensable, non exclusive,
+ irrevocable and unconditional license to exercise Affirmer's Copyright and
+ Related Rights in the Work (i) in all territories worldwide, (ii) for the
+ maximum duration provided by applicable law or treaty (including future
+ time extensions), (iii) in any current or future medium and for any number
+ of copies, and (iv) for any purpose whatsoever, including without
+ limitation commercial, advertising or promotional purposes (the
+ "License"). The License shall be deemed effective as of the date CC0 was
+ applied by Affirmer to the Work. Should any part of the License for any
+ reason be judged legally invalid or ineffective under applicable law, such
+ partial invalidity or ineffectiveness shall not invalidate the remainder
+ of the License, and in such case Affirmer hereby affirms that he or she
+ will not (i) exercise any of his or her remaining Copyright and Related
+ Rights in the Work or (ii) assert any associated claims and causes of
+ action with respect to the Work, in either case contrary to Affirmer's
+ express Statement of Purpose.
+ .
+ 4. Limitations and Disclaimers.
+ .
+  a. No trademark or patent rights held by Affirmer are waived, abandoned,
+     surrendered, licensed or otherwise affected by this document.
+  b. Affirmer offers the Work as-is and makes no representations or
+     warranties of any kind concerning the Work, express, implied,
+     statutory or otherwise, including without limitation warranties of
+     title, merchantability, fitness for a particular purpose, non
+     infringement, or the absence of latent or other defects, accuracy, or
+     the present or absence of errors, whether or not discoverable, all to
+     the greatest extent permissible under applicable law.
+  c. Affirmer disclaims responsibility for clearing rights of other persons
+     that may apply to the Work or any use thereof, including without
+     limitation any person's Copyright and Related Rights in the Work.
+     Further, Affirmer disclaims responsibility for obtaining any necessary
+     consents, permissions or other rights required for any use of the
+     Work.
+  d. Affirmer understands and acknowledges that Creative Commons is not a
+     party to this document and has no duty or obligation with respect to
+     this CC0 or use of the Work.
 
 Files: vendor/tinyvec-1.13.3/*
 Copyright: the authors of tinyvec

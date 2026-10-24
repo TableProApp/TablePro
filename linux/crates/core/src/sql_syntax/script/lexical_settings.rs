@@ -14,7 +14,8 @@ impl LexicalSettings {
             | SqlGrammar::MsSql
             | SqlGrammar::DuckDb
             | SqlGrammar::Cql
-            | SqlGrammar::Redis => false,
+            | SqlGrammar::Redis
+            | SqlGrammar::Mongo => false,
         };
         Self { backslash_escapes }
     }

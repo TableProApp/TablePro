@@ -372,6 +372,7 @@ mod tests {
             group: Some(ConnectionGroupName::new("Work").expect("a name")),
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 

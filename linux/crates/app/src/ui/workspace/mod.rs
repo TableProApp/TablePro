@@ -50,8 +50,8 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use relm4::{ComponentController, Controller};
 
-use tablepro_core::EditorSession;
 use tablepro_core::meta::SchemaInfo;
+use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
@@ -210,12 +210,12 @@ fn draft_writer(
     )
 }
 
-/// Whether the session's engine holds keys rather than tables.
-fn holds_keys(context: &SessionContext, session: &Session) -> bool {
+/// What the session's engine holds: tables, keys or collections.
+fn data_model(context: &SessionContext, session: &Session) -> DataModel {
     context
         .drivers
         .get(&session.metadata().driver_id)
-        .is_some_and(|driver| driver.capabilities().is_key_value())
+        .map_or(DataModel::Relational, |driver| driver.capabilities().data_model)
 }
 
 /// The driver's name, or its id when this build has no such driver.
@@ -658,8 +658,8 @@ impl Workspace {
         let persistence = workspace_persistence::WorkspacePersistence::new(storage.workspaces().clone());
         let exports = workspace.export_ledger(&window, &services, &context, &input);
         let imports = import_ledger::ImportLedger::new(context.hold.clone(), window_inhibitor(&window));
-        let keys = holds_keys(&context, &session);
-        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, keys);
+        let data = data_model(&context, &session);
+        let sidebar = sidebar::build(&workspace, &input, &session, &tasks, data);
         let tabs = workspace.build_tabs(
             TabsInit {
                 key: &key,
@@ -707,7 +707,7 @@ impl Workspace {
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
             catalog_banner: imp.catalog_banner.get(),
-            keys: keys.then(|| sidebar::KeySidebar::new(imp.key_limit_banner.get())),
+            keys: (data == DataModel::KeyValue).then(|| sidebar::KeySidebar::new(imp.key_limit_banner.get())),
             layout_banner: imp.layout_banner.get(),
             row_op_spinner: imp.row_op_spinner.get(),
             table_search: imp.table_search.get(),

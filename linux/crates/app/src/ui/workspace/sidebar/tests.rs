@@ -50,6 +50,7 @@ fn every_affordance() -> SidebarAffordances {
         read_only: false,
         can_create_table: true,
         can_edit_structure: true,
+        speaks_sql: true,
     }
 }
 
@@ -157,6 +158,24 @@ fn empty_filter_shows_placeholder() {
     shown.view.set_query("");
     shown.view.apply_objects(&[], &public());
     assert_eq!(placeholder(&shown.view), Some(("No Tables".to_owned(), None)));
+}
+
+#[gtk4::test]
+fn a_list_of_collections_says_so_when_it_is_empty() {
+    let shown = Shown::new(&["orders"], every_affordance());
+    shown.view.hold_collections();
+
+    shown.view.set_query("nothing like it");
+    assert_eq!(
+        placeholder(&shown.view),
+        Some((
+            "No Matching Collections".to_owned(),
+            Some("Try a different search.".to_owned())
+        ))
+    );
+    shown.view.set_query("");
+    shown.view.apply_objects(&[], &public());
+    assert_eq!(placeholder(&shown.view), Some(("No Collections".to_owned(), None)));
 }
 
 #[gtk4::test]
@@ -558,6 +577,25 @@ fn each_schema_heading_shows_its_er_diagram() {
     let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
         .expect("the ER Diagram button");
     assert!(button.is_visible());
+}
+
+#[gtk4::test]
+fn a_heading_of_collections_offers_no_er_diagram() {
+    let shown = Shown::new(
+        &["orders"],
+        SidebarAffordances {
+            can_create_table: false,
+            can_edit_structure: false,
+            speaks_sql: false,
+            ..every_affordance()
+        },
+    );
+    wait_until(WAIT, || !headers(&shown.list_view()).is_empty()).expect("a section header");
+
+    let button = crate::test_support::find_by_action_name(&shown.list_view(), "sidebar.show-schema-diagram")
+        .expect("the heading's ER Diagram button");
+
+    assert!(!button.is_visible(), "documents have no keys to draw");
 }
 
 #[gtk4::test]

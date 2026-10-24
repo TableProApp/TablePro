@@ -61,6 +61,9 @@ pub(crate) struct SidebarInner {
     /// Whether the list holds keys, which the server matched against the
     /// search, rather than tables the list filters itself.
     keys: Cell<bool>,
+    /// Whether the list holds a document engine's collections, which it
+    /// names as such.
+    collections: Cell<bool>,
     /// Whether the keys shown are those a search matched.
     searched: Cell<bool>,
 }
@@ -113,6 +116,7 @@ impl SidebarView {
             handlers: RefCell::new(Vec::new()),
             hover: RefCell::new(None),
             keys: Cell::new(false),
+            collections: Cell::new(false),
             searched: Cell::new(false),
         });
         inner
@@ -151,6 +155,15 @@ impl SidebarView {
         schemas: &[tablepro_core::meta::SchemaInfo],
     ) {
         self.show(SidebarIndex::build(objects, schemas));
+    }
+
+    /// Name what the list holds as a document engine's collections.
+    pub(crate) fn hold_collections(&self) {
+        self.inner.collections.set(true);
+        self.inner
+            .list_view
+            .update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Collections"))]);
+        self.inner.refresh_placeholder();
     }
 
     /// List a key-value engine's keys from now on. Its search goes to the
@@ -479,21 +492,22 @@ impl SidebarInner {
             return;
         }
         let keys = self.keys.get();
+        let collections = self.collections.get();
         if self.model.has_query() || (keys && self.searched.get()) {
             self.empty.set_icon_name(Some(crate::ui::icons::SYSTEM_SEARCH));
-            self.empty.set_title(&if keys {
-                crate::i18n::gettext("No Matching Keys")
-            } else {
-                crate::i18n::gettext("No Matching Tables")
+            self.empty.set_title(&match (keys, collections) {
+                (true, _) => crate::i18n::gettext("No Matching Keys"),
+                (false, true) => crate::i18n::gettext("No Matching Collections"),
+                (false, false) => crate::i18n::gettext("No Matching Tables"),
             });
             self.empty
                 .set_description(Some(&crate::i18n::gettext("Try a different search.")));
         } else {
             self.empty.set_icon_name(Some(crate::ui::icons::VIEW_GRID));
-            self.empty.set_title(&if keys {
-                crate::i18n::gettext("No Keys")
-            } else {
-                crate::i18n::gettext("No Tables")
+            self.empty.set_title(&match (keys, collections) {
+                (true, _) => crate::i18n::gettext("No Keys"),
+                (false, true) => crate::i18n::gettext("No Collections"),
+                (false, false) => crate::i18n::gettext("No Tables"),
             });
             self.empty.set_description(None);
         }

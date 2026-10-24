@@ -215,6 +215,7 @@ mod tests {
             group: None,
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon,
+            options: Default::default(),
         }
     }
 

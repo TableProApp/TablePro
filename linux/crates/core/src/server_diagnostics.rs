@@ -39,6 +39,12 @@ pub enum ServerCode {
     Redis {
         prefix: String,
     },
+    /// MongoDB's error code and the name it goes by, such as 11000 and
+    /// `DuplicateKey`.
+    Mongo {
+        code: i32,
+        name: Option<String>,
+    },
 }
 
 impl ServerCode {
@@ -63,6 +69,8 @@ impl fmt::Display for ServerCode {
             Self::DuckDb { error_type } => f.write_str(error_type),
             Self::Cql { code } => write!(f, "{code:#06x}"),
             Self::Redis { prefix } => f.write_str(prefix),
+            Self::Mongo { code, name: Some(name) } => write!(f, "{code} {name}"),
+            Self::Mongo { code, name: None } => write!(f, "{code}"),
         }
     }
 }

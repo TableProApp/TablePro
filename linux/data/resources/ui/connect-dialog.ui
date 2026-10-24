@@ -57,6 +57,14 @@
                       </object>
                     </child>
                     <child>
+                      <!-- Shown for an engine that finds its servers from
+                           a DNS seed list, as mongodb+srv:// does. -->
+                      <object class="AdwSwitchRow" id="seed_list_row">
+                        <property name="title" translatable="yes">DNS Seed List</property>
+                        <property name="subtitle" translatable="yes">Find the servers from the host’s SRV record, as mongodb+srv:// does</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSpinRow" id="port_row">
                         <property name="title" translatable="yes">Port</property>
                         <property name="adjustment">
@@ -101,6 +109,12 @@
                     <child>
                       <object class="AdwPasswordEntryRow" id="password_row">
                         <property name="title" translatable="yes">Password</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwEntryRow" id="auth_database_row">
+                        <property name="title" translatable="yes">Authentication Database (optional)</property>
                         <property name="activates-default">true</property>
                       </object>
                     </child>

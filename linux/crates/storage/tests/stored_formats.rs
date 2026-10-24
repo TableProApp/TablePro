@@ -66,6 +66,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     })
 }
 

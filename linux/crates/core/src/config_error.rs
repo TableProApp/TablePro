@@ -57,4 +57,12 @@ pub enum ConfigError {
     /// A key-value engine numbers its databases.
     #[error("the database must be a number from 0")]
     DatabaseNumber,
+
+    /// A seed list names every server of a cluster, and an SSH forward
+    /// reaches one host.
+    #[error("a DNS seed list cannot be reached through an SSH tunnel")]
+    SeedListOverSsh,
+
+    #[error("this connection option is not supported by the driver")]
+    NetworkOptionUnsupported,
 }

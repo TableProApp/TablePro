@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, SafeModeLevel, TlsConfig};
+use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -68,6 +68,11 @@ pub struct SavedConnection {
     pub tags: Vec<Uuid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<crate::ConnectionIcon>,
+    /// What the engine reads beyond host, port and database, such as a
+    /// MongoDB DNS seed list. Only the engines that offer an option set
+    /// it.
+    #[serde(default, skip_serializing_if = "NetworkOptions::is_default")]
+    pub options: NetworkOptions,
 }
 
 impl SavedConnection {
@@ -783,6 +788,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 
@@ -810,6 +816,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 

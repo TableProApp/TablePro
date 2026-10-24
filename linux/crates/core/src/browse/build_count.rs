@@ -17,6 +17,9 @@ pub fn build_count(
     columns: &[ColumnInfo],
     filter: &FilterSet,
 ) -> Result<Statement, BrowseSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::count(table, columns, filter);
+    }
     let mut builder = StatementBuilder::new();
     let mut conditions = Vec::new();
     if build_filter(&mut builder, dialect, columns, filter)? {

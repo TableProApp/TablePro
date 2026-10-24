@@ -61,6 +61,7 @@ pub fn options_over(
             credentials,
             database: Some(database.to_owned()),
             tls,
+            options: Default::default(),
         }),
         workspace_settings: settings,
         liveness,

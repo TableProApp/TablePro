@@ -118,6 +118,7 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         group: None,
         tags: Vec::new(),
         icon: None,
+        options: Default::default(),
     }
 }
 

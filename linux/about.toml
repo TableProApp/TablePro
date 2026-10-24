@@ -121,6 +121,19 @@ path = "LICENSE-MIT.txt"
 license = "MIT"
 checksum = "2e9c4e8b1bb2e73696358b5b1d74d3d56403d33da333e70aa504c9b1d7b4bdd0"
 
+# The mongodb crates package no license file; the repository's root has it.
+[mongodb.clarify]
+license = "Apache-2.0"
+[[mongodb.clarify.git]]
+path = "LICENSE"
+checksum = "0d6fc0c55c9aa03692171f5373ba6d878aca44a77438ab4fafd3e63f43b816ca"
+
+[mongodb-internal-macros.clarify]
+license = "Apache-2.0"
+[[mongodb-internal-macros.clarify.git]]
+path = "LICENSE"
+checksum = "0d6fc0c55c9aa03692171f5373ba6d878aca44a77438ab4fafd3e63f43b816ca"
+
 # The scylla crates package no license file; the repository's root has it.
 [scylla.clarify]
 license = "MIT OR Apache-2.0"

@@ -19,6 +19,9 @@ pub fn build_update(
     key: &[Value],
     assignments: &[(usize, Value)],
 ) -> Result<Statement, BuildSqlError> {
+    if crate::document::speaks_shell(dialect) {
+        return crate::document::update(table, columns, identity, key, assignments);
+    }
     if assignments.is_empty() {
         return Err(BuildSqlError::NothingToUpdate);
     }

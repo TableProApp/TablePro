@@ -15,12 +15,13 @@ use crate::config::Profile;
 /// of every statement at debug, sqlx every statement and a slow one as
 /// a warning, tiberius rows at trace and server messages as errors, the
 /// clickhouse crate exceptions that quote the query, scylla the server's
-/// error messages, which quote the statement, deadpool the errors of the
-/// connections it recycles, and sqlparser at debug the text it parses
-/// and the tokens and literals it reads. The duckdb crate logs nothing
-/// today, and is silenced so a release that starts to cannot write
-/// statements to the journal. The drivers map and log what they need
-/// from these libraries themselves.
+/// error messages, which quote the statement, the mongodb crate the
+/// commands it sends where its tracing is built in, hickory the names a
+/// DNS seed list resolves, deadpool the errors of the connections it
+/// recycles, and sqlparser at debug the text it parses and the tokens and
+/// literals it reads. The duckdb crate logs nothing today, and is silenced
+/// so a release that starts to cannot write statements to the journal.
+/// The drivers map and log what they need from these libraries themselves.
 const SILENCED_LIBRARIES: &[&str] = &[
     "tokio_postgres",
     "deadpool",
@@ -29,6 +30,10 @@ const SILENCED_LIBRARIES: &[&str] = &[
     "clickhouse",
     "scylla",
     "redis",
+    "mongodb",
+    "hickory_net",
+    "hickory_proto",
+    "hickory_resolver",
     "sqlparser",
     "duckdb",
 ];
