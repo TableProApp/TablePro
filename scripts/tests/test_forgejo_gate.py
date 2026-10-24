@@ -20,8 +20,8 @@ esac
 CURL = """import json, os, pathlib, sys
 fixture = pathlib.Path(os.environ['GATE_TEST_FIXTURE'])
 data = json.loads(fixture.read_text())
-if '/actions/tasks?' in sys.argv[-1]:
-    print(json.dumps({'workflow_runs': data['tasks']}))
+if '/actions/runs/' in sys.argv[-1] and '/jobs' in sys.argv[-1]:
+    print(json.dumps(data['tasks']))
 else:
     state = fixture.with_suffix('.polls')
     polls = int(state.read_text()) if state.exists() else 0
@@ -58,16 +58,16 @@ class ForgejoGateTests(unittest.TestCase):
         self.assertIn('927', result.stdout)
         self.assertIn('928', result.stdout)
 
-    def test_failure_reporting_excludes_another_run_and_another_revision(self):
+    def test_failure_reporting_uses_jobs_for_the_failed_run(self):
         result = gate([
-            {'run_number': 927, 'head_sha': HEAD, 'status': 'failure', 'name': 'expected-job'},
-            {'run_number': 928, 'head_sha': HEAD, 'status': 'running', 'name': 'another-run'},
-            {'run_number': 927, 'head_sha': 'b' * 40, 'status': 'running', 'name': 'another-revision'},
+            {'status': 'failure', 'name': 'expected-job'},
+            {'status': 'blocked', 'name': 'downstream-job'},
+            {'status': 'success', 'name': 'passed-job'},
         ])
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('expected-job', result.stdout)
-        self.assertNotIn('another-run', result.stdout)
-        self.assertNotIn('another-revision', result.stdout)
+        self.assertNotIn('downstream-job', result.stdout)
+        self.assertNotIn('passed-job', result.stdout)
 
 
 if __name__ == '__main__':

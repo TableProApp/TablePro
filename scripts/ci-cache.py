@@ -4,7 +4,9 @@ import fcntl
 import os
 from pathlib import Path
 import shutil
+import signal
 import stat
+import subprocess
 import sys
 import time
 
@@ -123,6 +125,28 @@ def cleanup(root, reserve):
     return 0
 
 
+def run_script(script):
+    child = subprocess.Popen(
+        ['/bin/bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', script],
+        start_new_session=True,
+    )
+
+    def forward_signal(signum, _frame):
+        try:
+            os.killpg(child.pid, signum)
+        except ProcessLookupError:
+            pass
+
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    handlers = {signum: signal.signal(signum, forward_signal) for signum in signals}
+    try:
+        returncode = child.wait()
+    finally:
+        for signum, handler in handlers.items():
+            signal.signal(signum, handler)
+    return 128 - returncode if returncode < 0 else returncode
+
+
 def main():
     parser = argparse.ArgumentParser(description='Coordinate Forgejo cache use and generated-artifact cleanup')
     parser.add_argument('--root', type=Path, default=Path('/var/cache/ci/target'))
@@ -144,8 +168,7 @@ def main():
         if args.command == 'run':
             fcntl.flock(lock, fcntl.LOCK_SH)
             mark_used(root)
-            os.set_inheritable(lock, True)
-            os.execv('/bin/bash', ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', args.script])
+            return run_script(args.script)
         if args.min_free_gib < 0:
             raise ValueError('minimum free space cannot be negative')
         if args.command == 'checkout':
@@ -155,8 +178,7 @@ def main():
                 return status
             fcntl.flock(lock, fcntl.LOCK_SH)
             mark_used(root)
-            os.set_inheritable(lock, True)
-            os.execv('/bin/bash', ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', args.script])
+            return run_script(args.script)
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

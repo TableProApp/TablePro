@@ -2,6 +2,7 @@ from pathlib import Path
 import fcntl
 import importlib.util
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -213,6 +214,50 @@ class CiCacheTests(unittest.TestCase):
         self.assertTrue((target / 'debug/deps/artifact').exists())
         with self.lock.open('r+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def test_background_descendant_does_not_keep_shared_lock_after_shell_exits(self):
+        child_pid = self.directory / 'child.pid'
+        shell = self.directory / 'step.sh'
+        shell.write_text(
+            '$PYTHON -c "import os, pathlib, time; pid=os.fork(); '
+            'pathlib.Path(os.environ[\'CHILD_PID\']).write_text(str(pid)) if pid else None; '
+            '(os.close(1), os.close(2), time.sleep(30)) if pid == 0 else None"\n'
+        )
+        env = dict(os.environ, CARGO_TARGET_DIR=str(self.cache / 'unit'), PYTHON=sys.executable, CHILD_PID=str(child_pid))
+        try:
+            result = subprocess.run(self.command + ['run', str(shell)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            with self.lock.open('r+') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            if child_pid.exists():
+                os.kill(int(child_pid.read_text()), 15)
+
+    def test_termination_reaches_the_shell_and_releases_the_shared_lock(self):
+        child_pid = self.directory / 'child.pid'
+        shell = self.directory / 'step.sh'
+        shell.write_text('echo "$$" > "$CHILD_PID"\nexec sleep 30\n')
+        env = dict(os.environ, CARGO_TARGET_DIR=str(self.cache / 'unit'), CHILD_PID=str(child_pid))
+        process = subprocess.Popen(self.command + ['run', str(shell)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            deadline = time.monotonic() + 5
+            while not child_pid.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(child_pid.exists(), 'wrapped shell did not start')
+            process.send_signal(signal.SIGTERM)
+            _stdout, stderr = process.communicate(timeout=5)
+            self.assertEqual(process.returncode, 143, stderr.decode())
+            with self.lock.open('r+') as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+            if child_pid.exists():
+                try:
+                    os.killpg(int(child_pid.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def test_shell_rejects_target_outside_cache_and_enforces_pipefail(self):
         shell = self.directory / 'step.sh'
