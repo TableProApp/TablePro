@@ -56,6 +56,32 @@ With the saved Manual Lab SQL Server connection open and its schema metadata loa
 
 - [SQL Server idle process samples](native-current-head-mssql-idle-31s.json)
 
+## Additional native engine browse captures
+
+Each saved profile connected and displayed its sample data in the grid. These 31-second captures were taken sequentially in the same app process after switching profiles. RSS and PSS therefore include memory retained from earlier UI and connection work; they do not isolate per-engine cost. Each interval had no BookiE input and no process block-read or block-write delta.
+
+| Connection and view | RSS | PSS | Process CPU change | Samples |
+| --- | ---: | ---: | ---: | --- |
+| ClickHouse, `people` (2 rows) | 137.5 MiB | 111.3 MiB | +0.00 s | [Raw samples](native-current-head-clickhouse-people-31s.json) |
+| MongoDB, `people` (2 documents) | 145.3 MiB | 119.2 MiB | +0.03 s | [Raw samples](native-current-head-mongodb-people-31s.json) |
+| Redis DB 0 (5 keys) | 162.8 MiB | 135.5 MiB | +0.01 s | [Raw samples](native-current-head-redis-db0-31s.json) |
+| SQLite, `people` (4 rows, mixed and null values) | 168.9 MiB | 141.7 MiB | +0.02 s | [Raw samples](native-current-head-sqlite-people-31s.json) |
+
+The native UI sweep used the extracted package binary and the ten saved Manual Lab profiles. Each connection opened and its data view rendered successfully; no rows were changed.
+
+| Saved profile | Native UI result |
+| --- | --- |
+| PostgreSQL | Ran the 100,000-row generator query; 100,000 rows were received and the newest retained rows rendered. |
+| PostgreSQL Extra | Opened `people`; 2 rows rendered. |
+| MySQL | Opened `people`; 2 rows rendered. |
+| MySQL Extra | Opened `people`; 2 rows rendered. |
+| SQL Server | Opened `dbo.people`; 2 rows rendered. `SELECT 1;` returned `1`. |
+| ClickHouse | Opened `people`; 2 rows rendered. |
+| MongoDB | Opened `people`; 2 documents rendered. |
+| Redis | Opened DB 0; 5 keys rendered. |
+| Redis DB 1 | Opened DB 1; 1 key rendered. |
+| SQLite | Opened `people`; 4 rows rendered, including null and mixed-value examples. |
+
 ## Local storage footprint
 
 After the PostgreSQL, MySQL and SQL Server sessions, BookiE's user directories occupied 282,903 bytes in `~/.config/tablepro`, 540,234 bytes in `~/.local/share/tablepro` and 4,732 bytes in `~/.cache/tablepro`. These include this machine's saved profiles and application data; they do not include the Docker database volumes. The current Arch package is 29,886,373 bytes compressed, the extracted application binary is 42,385,896 bytes, and the package metadata reports 72.61 MiB installed size. The package is awaiting installation, so its installed footprint has not been measured from pacman's post-install state.
