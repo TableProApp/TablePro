@@ -261,6 +261,16 @@ impl App {
     }
 }
 
+fn sidebar_group_label(node: &crate::services::sidebar_tree::TreeNode) -> String {
+    use crate::services::sidebar_tree::{GroupKind, NodeKind};
+    match &node.kind {
+        NodeKind::Schema => node.schema.clone().unwrap_or_default(),
+        NodeKind::Group(GroupKind::Tables) => crate::tr!("Tables").to_string(),
+        NodeKind::Group(GroupKind::Views) => crate::tr!("Views").to_string(),
+        NodeKind::Table { name, .. } | NodeKind::View { name, .. } => name.clone(),
+    }
+}
+
 fn row_for(
     node: &crate::services::sidebar_tree::TreeNode,
     collapsed: &crate::services::sidebar_tree::CollapseState,
@@ -278,7 +288,7 @@ fn row_for(
                 SidebarObjectKind::Group
             },
             Some(GroupInit {
-                label: node.label.clone(),
+                label: sidebar_group_label(node),
                 count: node.count,
                 collapsed: collapsed.is_collapsed(&node.key),
                 actions: matches!(node.kind, NodeKind::Group(GroupKind::Tables)),
@@ -355,5 +365,42 @@ mod explicit_reveal_tests {
         assert_eq!(generation.get(), 4);
         hide_sidebar(&split, &generation);
         assert!(!split.shows_sidebar());
+    }
+}
+
+#[cfg(test)]
+mod sidebar_label_tests {
+    use super::*;
+    use crate::services::sidebar_tree::{GroupKind, NodeKind, build_nodes};
+
+    #[test]
+    fn group_labels_are_localized_by_the_app_adapter() {
+        let nodes = build_nodes(
+            &[
+                TableInfo {
+                    schema: Some("archive".into()),
+                    name: "old_users".into(),
+                },
+                TableInfo {
+                    schema: Some("public".into()),
+                    name: "users".into(),
+                },
+            ],
+            &[TableInfo {
+                schema: Some("public".into()),
+                name: "recent_users".into(),
+            }],
+        );
+        let table_group = nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Group(GroupKind::Tables))
+            .expect("table group exists");
+        let view_group = nodes
+            .iter()
+            .find(|node| node.kind == NodeKind::Group(GroupKind::Views))
+            .expect("view group exists");
+
+        assert_eq!(sidebar_group_label(table_group), crate::tr!("Tables").to_string());
+        assert_eq!(sidebar_group_label(view_group), crate::tr!("Views").to_string());
     }
 }

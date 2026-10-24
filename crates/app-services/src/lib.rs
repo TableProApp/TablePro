@@ -31,3 +31,4 @@ pub mod named_filter_presets;
 pub mod preferences;
 pub mod quick_switcher;
 pub mod reconnect;
+pub mod sidebar_tree;

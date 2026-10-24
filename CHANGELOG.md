@@ -55,6 +55,7 @@
 - Inspecting a row with oversized cell previews avoids copying the full row contents.
 - Multi-line SQL edits update workspace query state once per undoable action, reducing repeated full-script copying.
 - Saving workspaces with large SQL drafts uses less temporary memory.
+- Oversized saved SQL drafts are kept on disk and shown as a read-only notice instead of being laid out or executed.
 
 ### Security
 

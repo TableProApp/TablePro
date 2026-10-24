@@ -1879,7 +1879,8 @@ def restart_restores_active_editor_and_connection(database, base, restart):
     wait_for_node(name="Rows 1 – 3 of 3")
     invoke_accessible_action("win.open-editor")
     wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
-    query = "/*" + "Grüße 東京🙂 " * 30000 + "*/\nINSERT INTO safety_items(id, note) VALUES (901, 'restored editor')"
+    chunk = "Grüße 東京🙂 " * 10000
+    query = "/*" + chunk + "\n" + chunk + "\n*/\nINSERT INTO safety_items(id, note) VALUES (901, 'restored editor')"
     set_editor_text(query)
     # Close immediately: the normal close path must flush pending workspace saves.
     restart()
@@ -2239,6 +2240,54 @@ skipped_restored_tabs_leave_a_usable_empty_workspace.environment = "local"
 skipped_restored_tabs_leave_a_usable_empty_workspace.needs_restart = True
 
 
+def oversized_restored_sql_is_not_loaded_and_remains_saved(database, base, restart):
+    query = "SELECT '" + "x" * (256 * 1024 + 1) + "';"
+    state_paths = []
+
+    def seed_oversized_draft(environment):
+        path = Path(environment["XDG_CONFIG_HOME"]) / storage_dir_name() / "workspace_state.json"
+        state_paths.append(path)
+        path.write_text(json.dumps({"connections": {
+            "d4f5e246-c40a-4a30-90f2-39e93e94d920": {
+                "tabs": [{"kind": "editor", "query": query, "draft_id": None}],
+                "active_idx": 0,
+            }
+        }}), encoding="utf-8")
+
+    restart(before_start=seed_oversized_draft, restored=True)
+    wait_for_node_containing("Press Ctrl+Shift+S to save the full draft")
+    invoke(wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON))
+    wait_for_node_containing("Replace the saved SQL draft before running or explaining SQL.")
+    time.sleep(SETTLE_SECONDS)
+    saved = json.loads(state_paths[0].read_text(encoding="utf-8"))
+    editor_records = []
+
+    def collect_editor_records(value):
+        if isinstance(value, dict):
+            if value.get("kind") == "editor":
+                editor_records.append(value)
+            for child in value.values():
+                collect_editor_records(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_editor_records(child)
+
+    collect_editor_records(saved)
+    assert len(editor_records) == 1, f"expected one saved editor draft, got {editor_records}"
+    draft_id = editor_records[0].get("draft_id")
+    assert draft_id, f"saved editor draft has no draft id: {editor_records[0]}"
+    draft_path = (
+        base / "data" / storage_dir_name() / "drafts" / "d4f5e246-c40a-4a30-90f2-39e93e94d920" / f"{draft_id}.sql"
+    )
+    assert draft_path.read_text(encoding="utf-8") == query, (
+        f"saved editor draft changed: {draft_path.stat().st_size} bytes"
+    )
+
+
+oversized_restored_sql_is_not_loaded_and_remains_saved.environment = "local"
+oversized_restored_sql_is_not_loaded_and_remains_saved.needs_restart = True
+
+
 def closing_a_clean_editor_tab_removes_it_and_keeps_the_other(database, base, restart):
     def seed_two_tabs(environment):
         environment["G_DEBUG"] = ""
@@ -2429,6 +2478,18 @@ def overlong_sql_files_are_refused_without_replacing_the_editor(_database, base)
 
 
 overlong_sql_files_are_refused_without_replacing_the_editor.environment = "local"
+
+
+def overlong_pasted_sql_is_refused_without_replacing_the_editor(_database, _base):
+    editor = set_editor_text("SELECT 731;")
+    editor.queryEditableText().setTextContents("--" + "x" * (256 * 1024) + "\n")
+    wait_for_node_containing("Split long lines before opening")
+    assert editor.queryText().getText(0, editor.queryText().characterCount) == "SELECT 731;"
+    run_sql("SELECT 731;")
+    wait_for_node(name="731", role=pyatspi.ROLE_TABLE_CELL)
+
+
+overlong_pasted_sql_is_refused_without_replacing_the_editor.environment = "local"
 
 
 def committed_editor_ddl_refreshes_sidebar(database, base):
@@ -2706,6 +2767,7 @@ def main():
         jump_to_column_keyboard_search,
         committed_editor_ddl_refreshes_sidebar,
         overlong_sql_files_are_refused_without_replacing_the_editor,
+        overlong_pasted_sql_is_refused_without_replacing_the_editor,
         mysql_unix_socket_endpoint_is_available_in_installed_form,
         imported_mysql_socket_urls_survive_restart,
         new_connection_form_keeps_title_and_help_text_visible,
@@ -2740,6 +2802,7 @@ def main():
         closing_a_dirty_file_with_discard_closes_without_writing,
         closing_a_clean_editor_tab_removes_it_and_keeps_the_other,
         skipped_restored_tabs_leave_a_usable_empty_workspace,
+        oversized_restored_sql_is_not_loaded_and_remains_saved,
         switching_one_window_leaves_the_other_windows_edits,
         sidebar_tables_group_collapses_and_expands,
         expanding_a_sidebar_table_loads_its_columns,

@@ -8,21 +8,75 @@ const MAX_SQL_LINE_BYTES: usize = 256 * 1024;
 
 pub(crate) fn read_sql_file(path: &std::path::Path) -> Result<TextFile, String> {
     let file = read_text_file(path, MAX_SQL_FILE_BYTES).map_err(|error| file_error_message(&error))?;
-    validate_sql_line_lengths(&file.text)?;
+    validate_sql_text(&file.text)?;
     Ok(file)
+}
+
+pub(crate) fn validate_sql_text(text: &str) -> Result<(), String> {
+    if text.len() as u64 > MAX_SQL_FILE_BYTES {
+        return Err(crate::tr!("The SQL text exceeds the editor's 8 MiB limit."));
+    }
+    validate_sql_line_lengths(text)
+}
+
+pub(super) fn validate_buffer_insert(
+    buffer: &gtk::TextBuffer,
+    location: &gtk::TextIter,
+    text: &str,
+    current_bytes: usize,
+) -> Result<(), String> {
+    if current_bytes.saturating_add(text.len()) > MAX_SQL_FILE_BYTES as usize {
+        return Err(crate::tr!("The SQL text exceeds the editor's 8 MiB limit."));
+    }
+    let mut line_start = *location;
+    line_start.set_line_offset(0);
+    let mut line_end = *location;
+    line_end.forward_to_line_end();
+    let prefix_len = buffer.text(&line_start, location, true).len();
+    let suffix_len = buffer.text(location, &line_end, true).len();
+    let first_line = location.line().max(0) as usize + 1;
+    let overlong_line = if let Some((first, rest)) = text.split_once('\n') {
+        if prefix_len.saturating_add(first.len()) > MAX_SQL_LINE_BYTES {
+            Some(first_line)
+        } else {
+            let mut lines = rest.split('\n');
+            let last = lines.next_back().unwrap_or_default();
+            let last_line = first_line + text.bytes().filter(|byte| *byte == b'\n').count();
+            if last.len().saturating_add(suffix_len) > MAX_SQL_LINE_BYTES {
+                Some(last_line)
+            } else {
+                lines
+                    .enumerate()
+                    .find(|(_, line)| line.len() > MAX_SQL_LINE_BYTES)
+                    .map(|(index, _)| first_line + index + 1)
+            }
+        }
+    } else if prefix_len.saturating_add(text.len()).saturating_add(suffix_len) > MAX_SQL_LINE_BYTES {
+        Some(first_line)
+    } else {
+        None
+    };
+    if let Some(line) = overlong_line {
+        return Err(long_line_error(line));
+    }
+    Ok(())
 }
 
 pub(super) fn validate_sql_line_lengths(text: &str) -> Result<(), String> {
     for (index, line) in text.lines().enumerate() {
         if line.len() > MAX_SQL_LINE_BYTES {
-            return Err(crate::tr!(
-                "The SQL file contains a line over {limit} KiB (line {line}). Split long lines before opening. The file has not been changed."
-            )
-            .replace("{limit}", &(MAX_SQL_LINE_BYTES / 1024).to_string())
-            .replace("{line}", &(index + 1).to_string()));
+            return Err(long_line_error(index + 1));
         }
     }
     Ok(())
+}
+
+fn long_line_error(line: usize) -> String {
+    crate::tr!(
+        "The SQL text contains a line over {limit} KiB (line {line}). Split long lines before opening. The text has not been changed."
+    )
+    .replace("{limit}", &(MAX_SQL_LINE_BYTES / 1024).to_string())
+    .replace("{line}", &line.to_string())
 }
 
 pub(super) fn validate_dropped_sql(current: &str, cursor: usize, text: &str) -> Result<(), String> {
@@ -38,14 +92,14 @@ pub(super) fn validate_dropped_sql(current: &str, cursor: usize, text: &str) -> 
         ));
     }
     if replacing {
-        return validate_sql_line_lengths(text);
+        return validate_sql_text(text);
     }
     if !current.is_char_boundary(cursor) {
         return Err(crate::tr!("The insertion position changed. Drop the SQL file again."));
     }
     let mut combined = current.to_string();
     combined.insert_str(cursor, text);
-    validate_sql_line_lengths(&combined)
+    validate_sql_text(&combined)
 }
 
 pub(crate) fn save_sql_file(

@@ -2,6 +2,7 @@ use tablepro_app_services::{completion, completion_identifiers, completion_propo
 mod bottom_panel;
 mod completion_provider;
 mod diagnostics;
+mod draft_guard;
 mod error_location;
 mod error_navigation;
 mod statement_failure;
@@ -111,6 +112,7 @@ pub struct SqlEditor {
     preferences: crate::services::preferences::PreferencesStore,
     run_generation: RunGeneration,
     drop_generation: std::rc::Rc<DropGeneration>,
+    saved_draft_blocked: bool,
     known_lexing: session_lexing::KnownLexing,
     reading_lexing: bool,
 }
@@ -482,6 +484,15 @@ impl SimpleComponent for SqlEditor {
 
         let lang_manager = sourceview5::LanguageManager::default();
         let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_string());
+        let initial_query_error = open_file::validate_sql_text(&initial_text).err();
+        let saved_draft_blocked = initial_query_error.is_some();
+        let initial_text = if initial_query_error.is_some() {
+            crate::tr!(
+                "This saved SQL draft is too large to display safely. Press Ctrl+Shift+S to save the full draft before replacing it."
+            )
+        } else {
+            initial_text
+        };
         if let Some(lang) = lang_manager.language("sql") {
             let buffer = sourceview5::Buffer::with_language(&lang);
             buffer.set_text(&initial_text);
@@ -493,6 +504,14 @@ impl SimpleComponent for SqlEditor {
         }
         let split_view =
             split_view::SplitEditorView::install(&widgets.editor_holder, &widgets.source_scroll, &widgets.source_view);
+        if let Some(error) = initial_query_error {
+            widgets.source_view.set_editable(false);
+            split_view.secondary_view().set_editable(false);
+            widgets.status.set_label(&format!(
+                "{error} {}",
+                crate::tr!("Press Ctrl+Shift+S to save the full draft before replacing it.")
+            ));
+        }
         let known_lexing = session_lexing::KnownLexing::default();
         statement_band::install(
             widgets.source_view.buffer().upcast_ref(),
@@ -574,6 +593,7 @@ impl SimpleComponent for SqlEditor {
             &widgets.source_view,
             drop_generation.clone(),
             folding.clone(),
+            widgets.status.clone(),
             sender.clone(),
             refresh_completion,
         );
@@ -644,6 +664,7 @@ impl SimpleComponent for SqlEditor {
             history: init.history,
             run_generation: RunGeneration::default(),
             drop_generation,
+            saved_draft_blocked,
             known_lexing,
             reading_lexing: false,
         };
@@ -663,6 +684,12 @@ impl SimpleComponent for SqlEditor {
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
+        if self.saved_draft_blocked && draft_guard::blocks_execution(&msg) {
+            self.status.set_label(&crate::tr!(
+                "Replace the saved SQL draft before running or explaining SQL."
+            ));
+            return;
+        }
         match msg {
             SqlEditorInput::CatalogStatementSucceeded { origin, driver, sql } => {
                 if !origin.owns_window(self.connection_id, &self.database) {
@@ -932,6 +959,14 @@ impl SimpleComponent for SqlEditor {
             }
 
             SqlEditorInput::ReplaceQuery(text) => {
+                if let Err(message) = open_file::validate_sql_text(&text) {
+                    self.status.set_label(&message);
+                    return;
+                }
+                self.source_view.set_editable(true);
+                self.split_view.secondary_view().set_editable(true);
+                self.saved_draft_blocked = false;
+                self.status.set_label("");
                 self.source_view.buffer().set_text(&text);
             }
 
