@@ -15,8 +15,9 @@ pub struct RowKeyBuilder {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum KeySource {
-    /// Positions among the visible cells, in key order.
-    Visible(Box<[usize]>),
+    /// Positions among the visible cells, in key order, each with
+    /// whether its column may hold NULL.
+    Visible(Box<[(usize, bool)]>),
     /// Positions among the identity cells the page projected after the
     /// visible ones.
     Identity(Range<usize>),
@@ -35,8 +36,9 @@ impl RowKeyBuilder {
                             .iter()
                             .position(|column| column.name == *name)
                             .filter(|position| layout.visible.contains(position))
+                            .map(|position| (position, columns[position].nullable))
                     })
-                    .collect::<Option<Box<[usize]>>>()?;
+                    .collect::<Option<Box<[(usize, bool)]>>>()?;
                 KeySource::Visible(positions)
             }
             RowIdentity::EngineRowId(_) if !layout.identity.is_empty() => KeySource::Identity(0..layout.identity.len()),
@@ -49,12 +51,18 @@ impl RowKeyBuilder {
     }
 
     /// The row's key, `None` when a cell of it could not be read and so
-    /// cannot name the row to the server again.
+    /// cannot name the row to the server again. A NULL where the column
+    /// holds none names no row either: a CQL partition with only static
+    /// values reads with its clustering columns NULL.
     pub fn key_for(&self, visible: &[Value], identity: &[Value]) -> Option<RowKey> {
         let parts = match &self.source {
             KeySource::Visible(positions) => positions
                 .iter()
-                .map(|position| visible.get(*position).filter(|value| readable(value)))
+                .map(|(position, nullable)| {
+                    visible
+                        .get(*position)
+                        .filter(|value| readable(value) && (*nullable || !value.is_null()))
+                })
                 .map(|value| value.cloned().map(KeyValue::new))
                 .collect::<Option<Vec<_>>>()?,
             // A null row address names nothing.
@@ -92,6 +100,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }
@@ -200,6 +209,25 @@ mod tests {
             builder.key_for(&[Value::Null, text("a")], &[]),
             key(&[Value::Null]),
             "a NULL key cell still names its row, as SQLite allows"
+        );
+    }
+
+    #[test]
+    fn a_null_where_the_key_column_holds_none_names_no_row() {
+        let mut columns = columns(&["team", "id", "motto"]);
+        for column in &mut columns[..2] {
+            column.nullable = false;
+        }
+        let identity = RowIdentity::UniqueKey {
+            columns: vec!["team".to_owned(), "id".to_owned()],
+        };
+        let layout = layout(&identity, &columns);
+        let builder = RowKeyBuilder::for_page(&identity, &columns, &layout).expect("a keyed page");
+
+        assert_eq!(builder.key_for(&[text("a"), Value::Null, text("shared")], &[]), None);
+        assert_eq!(
+            builder.key_for(&[text("a"), Value::Int(1), text("shared")], &[]),
+            key(&[text("a"), Value::Int(1)])
         );
     }
 

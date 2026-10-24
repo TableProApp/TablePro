@@ -12,7 +12,8 @@ use tablepro_test_fixtures::{HbaMode, PostgresFixture};
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, ServerStopEngine, TypedConformanceEngine,
+    UnsupportedTypeCase,
 };
 
 use crate::support::{direct, options_over, password};
@@ -93,7 +94,9 @@ impl NetworkConformanceEngine for PgEngine {
         );
         Ok((options, fault))
     }
+}
 
+impl ServerStopEngine for PgEngine {
     /// An editor run reads a row source through its cursor, so the server
     /// shows the FETCH, not the statement and its marker. A FETCH asleep
     /// in `pg_sleep` is the unbounded statement, since each case has the
@@ -194,6 +197,7 @@ mod suite {
         engine: PgEngine,
         docker: true,
         endpoint: network,
+        server_stop: true,
         pool: pooled,
         editor_transactions: true,
         unsupported_types: true,

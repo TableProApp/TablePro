@@ -4,9 +4,7 @@ use crate::edit::parse_filter_text;
 use crate::statement::StatementBuilder;
 use crate::value::Value;
 
-use super::{
-    BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, operators_for, validate_raw_predicate,
-};
+use super::{BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, validate_raw_predicate};
 
 /// Write the predicate for a filter set into `builder`.
 ///
@@ -24,6 +22,9 @@ pub fn build_filter(
 ) -> Result<bool, BuildFilterError> {
     if filter.is_empty() {
         return Ok(false);
+    }
+    if !dialect.filter_combinators().contains(&filter.combinator) {
+        return Err(BuildFilterError::CombinatorNotAllowed(filter.combinator));
     }
     if crate::document::speaks_shell(dialect) {
         let mut params = crate::document::ShellParams::new();
@@ -44,7 +45,7 @@ pub fn build_filter(
             .iter()
             .find(|column| column.name == rule.column)
             .ok_or_else(|| BuildFilterError::UnknownColumn(rule.column.clone()))?;
-        if !operators_for(&column.column_type.kind).contains(&rule.op) {
+        if !dialect.filter_operators(column).contains(&rule.op) {
             return Err(BuildFilterError::OperatorNotAllowed {
                 column: rule.column.clone(),
                 op: rule.op,
@@ -53,7 +54,7 @@ pub fn build_filter(
         clauses.push(rule_sql(builder, dialect, column, rule)?);
     }
     if let Some(raw) = raw {
-        clauses.push(format!("({raw})"));
+        clauses.push(dialect.raw_predicate_sql(raw));
     }
 
     let joiner = match filter.combinator {
@@ -223,6 +224,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

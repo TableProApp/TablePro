@@ -59,6 +59,7 @@ impl ClickHouseColumnRow {
             primary_key: self.in_primary_key,
             is_auto_increment: false,
             is_generated: self.is_generated(),
+            partition_scoped: false,
             default,
             // An uncommented column comes back as the empty string, so
             // the engine cannot tell "no comment" from an empty one.

@@ -35,6 +35,7 @@ mod tests {
                 primary_key: true,
                 is_auto_increment: identity != IdentityStyle::None,
                 is_generated: generated,
+                partition_scoped: false,
                 default: ColumnDefault::None,
                 comment: None,
             },

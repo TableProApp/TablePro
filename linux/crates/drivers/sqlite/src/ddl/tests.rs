@@ -28,6 +28,7 @@ fn column(name: &str, declaration: &str, primary_key: bool) -> ColumnDefinition 
             primary_key,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         },

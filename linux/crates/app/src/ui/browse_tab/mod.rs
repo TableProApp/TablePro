@@ -64,7 +64,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use tablepro_core::browse::RowReference;
-use tablepro_core::dialect::SqlDialect;
+use tablepro_core::dialect::{SqlDialect, TablePaging};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet};
 use tablepro_session::operation::DeadlinePolicy;
@@ -99,7 +99,8 @@ use self::selection_snapshot::SelectionSnapshot;
 pub(crate) use self::table_filter::TableFilter;
 use super::filter_strip::FilterStrip;
 use super::grid::{
-    ColumnWidthBinding, GridRowIndex, GridSink, KeysHandle, RowJsonRequest, RowObject, TabGridContext, present_row_json,
+    ColumnWidthBinding, GridRowIndex, GridSink, GridSorting, KeysHandle, RowJsonRequest, RowObject, TabGridContext,
+    present_row_json,
 };
 use super::tab_load::{ContentLoad, FirstLoad, start_first_load};
 use crate::runtime::{FailedRequests, RequestSequencer};
@@ -162,13 +163,15 @@ impl BrowseTab {
             },
         );
         let dialect = init.session.current_dialect();
-        let filter_strip =
-            layout::filter_strip(&tab, &initial_filter, dialect.as_ref().map(|dialect| dialect.grammar()));
+        let filter_strip = layout::filter_strip(&tab, &initial_filter, dialect.clone());
         if reveal_filter {
             filter_strip.set_revealed(true);
         }
         let actions = browse_actions::install_browse_actions(&tab, init.page_size);
         let link_generation = init.session.link_generation();
+        // A sort saved with the tab cannot reach an engine that reads
+        // in its own order.
+        let initial_sort = init.initial_sort.filter(|_| sorts_rows(dialect.as_deref()));
         let link_changes = init.session.link_changes();
         let keys = KeysHandle::new(TableRef::new(init.schema.clone(), init.table.clone()));
         let model = BrowseModel {
@@ -194,7 +197,7 @@ impl BrowseTab {
             pager: BrowsePager::new(init.page_size, init.initial_offset),
             deadlines: init.deadlines,
             settings: init.settings,
-            current_sort: init.initial_sort,
+            current_sort: initial_sort,
             current_filter: initial_filter,
             current_columns: Vec::new(),
             page: None,
@@ -663,6 +666,21 @@ impl BrowseModel {
         TableRef::new(self.schema.clone(), self.table.clone())
     }
 
+    fn sorts_rows(&self) -> bool {
+        sorts_rows(self.dialect.as_deref())
+    }
+
+    /// The server sorts the page, except on an engine that reads a table
+    /// only in its own order.
+    fn grid_sorting(&self) -> GridSorting {
+        match self.sorts_rows() {
+            true => GridSorting::Server {
+                initial: self.current_sort,
+            },
+            false => GridSorting::EngineOrder,
+        }
+    }
+
     /// The tracker context the grid renders through. Copy and export
     /// read the same context, so what leaves the tab is what the user
     /// is looking at, pending edits included.
@@ -762,6 +780,12 @@ async fn read_clipboard(clipboard: &gtk::gdk::Clipboard) -> Result<PasteSource, 
 
 /// A status page reads its description as markup, and a table's name
 /// can hold an `&` or a `<`.
+/// Whether a page of a table can be sorted on its engine. Without a
+/// connection yet, a sort is kept for when one opens.
+fn sorts_rows(dialect: Option<&dyn SqlDialect>) -> bool {
+    dialect.is_none_or(|dialect| dialect.table_paging() == TablePaging::InStatement)
+}
+
 fn loading_description(table: &str) -> glib::GString {
     glib::markup_escape_text(&crate::i18n::gettext_f(
         "Fetching rows from {table}",

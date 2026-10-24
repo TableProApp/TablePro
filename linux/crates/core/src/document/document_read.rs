@@ -2,6 +2,7 @@ use crate::browse::{
     BrowseSqlError, ExportRequest, PageLayout, PageRequest, PageSpec, PagingMode, RowKeyLayout, SortKey,
 };
 use crate::column::ColumnInfo;
+use crate::dialect::TablePaging;
 use crate::dml::BuildSqlError;
 use crate::filter::FilterSet;
 use crate::meta::{PageCost, PagePosition, PageStability, RowIdentity, TableRef};
@@ -27,11 +28,11 @@ pub(crate) fn page(request: &PageRequest<'_>) -> Result<PageSpec, BrowseSqlError
     let mut conditions: Vec<ShellValue> = filter_document(request.columns, request.filter, &mut params)?
         .into_iter()
         .collect();
-    let mode = crate::browse::paging_mode(request.identity, request.sort);
+    let mode = crate::browse::paging_mode(TablePaging::InStatement, request.identity, request.sort);
     let user = user_sort(request.columns, request.sort)?;
     let seek = match mode {
         PagingMode::Keyset => PageCost::KeySeek,
-        PagingMode::CtidWindow | PagingMode::Offset => PageCost::SortPerPage,
+        PagingMode::CtidWindow | PagingMode::Offset | PagingMode::ServerPaging => PageCost::SortPerPage,
     };
     let (backward, skip, stability, cost) = match (mode, request.position) {
         (_, PagePosition::First) => (false, 0, PageStability::Stable, seek),

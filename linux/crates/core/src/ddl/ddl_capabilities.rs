@@ -26,4 +26,12 @@ pub struct DdlCapabilities {
     /// CREATE TABLE text, so it has nowhere to keep it.
     pub column_comments: bool,
     pub drop_table_cascade: bool,
+    /// Whether a column can carry a default at all. CQL has none.
+    pub column_defaults: bool,
+    /// Whether a column outside the primary key can refuse NULL. CQL
+    /// has no NOT NULL.
+    pub required_columns: bool,
+    /// Whether a table lists its columns in the order they were declared
+    /// and added. CQL lists the key columns first and the rest by name.
+    pub declared_column_order: bool,
 }

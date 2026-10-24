@@ -114,6 +114,8 @@ Every TLS fixture has two principals:
 
 SQL Server has only the `sa` principal, because its TLS contract carries no client identity. Redis maps no certificate to a user, so `RedisFixture::start_tls` runs two servers in one container: the TLS-only one on 6379, where the ACL user `tablepro` logs in with its password, and one on 6380 with `tls-auth-clients yes`, which takes only a client with the CA's certificate, as its `default` user. `RedisFixture::start` is the plain server, with the same password on `default` and on `tablepro`. `MongoFixture::start` is a one-member replica set, `rs0`, with access control on and the root user `tablepro` in `admin`; its start script initiates the set and makes the user before the fixture is ready, so starting one runs no `docker exec`, whose result a `Send` future cannot await. `MongoFixture::start_tls` requires TLS on that member, with a client certificate optional, and runs a standalone server on 27018 with no login that takes only a client with the CA's certificate.
 
+`CassandraFixture` runs Apache Cassandra or ScyllaDB (`CassandraFlavour`) with password authentication, a `tablepro` keyspace, a `tablepro_limited` role that may only read it, user-defined functions and materialized views. `CassandraTls` picks what its port takes: `Off`, `Required`, or `ClientCertificate`, which asks every client for a certificate, since neither server can ask one role and not another; the certificate role still logs in with its password. The fixture writes its settings into the image's own configuration file before the server starts, in the spelling the release reads, gives Cassandra 4.1 and later its TLS key as PEM and builds Cassandra 4.0 a PKCS12 keystore with the JRE's JavaScript engine. `CassandraFixture::cql` runs statements through the node's own cqlsh as the image's superuser.
+
 `HbaMode` picks what the PostgreSQL fixture accepts: `Password` (the image defaults, no TLS), `HostSslOnly`, or `ClientCertificate`. Docker maps a published port anew each time a container starts, so a test that restarts the server starts it with `PostgresFixture::start_restartable`, which picks the host port itself; `stop` and `start_again` then bring it back where the session's connection points, with its data. `OpenSshFixture` takes an `SshAuthVariant`: `Password`, `PublicKey`, `UserCertificateAuthority` (only certificates that key signed log in), `KeyboardInteractive` or `HostCertificate`. `OpenSshFixture::start_with` also takes `OpenSshOptions`, which picks the release and sets sshd's `KexAlgorithms`, `MaxAuthTries` and `PubkeyAcceptedAlgorithms`. `SshKeyPair::generate_with` makes an Ed25519, RSA or ECDSA P-256 key, with a passphrase when given one, and `SshAgent` runs a private `ssh-agent` and loads a key with its passphrase. `HostKeyRevocation` builds a KRL from the running server's host key, and `ScriptedAskpass` writes a 0700 script for `SSH_ASKPASS`.
 
 ### Conformance
@@ -125,6 +127,7 @@ tablepro_test_support::connection_conformance_suite! {
     engine: PgEngine,
     docker: true,
     endpoint: network,
+    server_stop: true,
     pool: pooled,
     editor_transactions: true,
     unsupported_types: true,
@@ -138,7 +141,9 @@ Each flag adds cases and needs its engine trait:
 
 | Flag | Adds | Needs |
 |---|---|---|
-| `endpoint: network` | a dropped `query_bound` caller or editor run stops the server's statement, and the editor session then runs again or reports `Lost`; a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `endpoint: network` | a lost transport reports `ConnectionLost` | `NetworkConformanceEngine` |
+| `server_stop: true` with `endpoint: network` | a dropped `query_bound` caller or editor run stops the server's statement, and the editor session then runs again or reports `Lost` | `ServerStopEngine`, which counts the statements carrying a marker the server still runs |
+| `server_stop: false` with `endpoint: network` | a dropped caller ends at once and the connection serves the next call, and a dropped editor run frees the session: the protocol carries no stop (CQL) | `NetworkConformanceEngine` |
 | `endpoint: file` | a dropped editor run stops, and the session takes the next run within the cancel grace | `ConformanceEngine` |
 | `pool: pooled` | a probe succeeds while every pool slot is busy | `PooledConformanceEngine` |
 | `pool: unbounded` | nothing: the engine has no slot limit (ClickHouse) | `ConformanceEngine` |
@@ -146,7 +151,7 @@ Each flag adds cases and needs its engine trait:
 | `unsupported_types: true` | an unsupported type never decodes as NULL | `TypedConformanceEngine` |
 | `bounded_ddl: true` | a schema-change batch is not cut off by the statement timeout | `BoundedDdlEngine` |
 
-A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint` or `editor_transactions` disagrees with the driver's `DriverCapabilities`, so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
+A flag that is off emits no test. `suite_flags_match_driver_capabilities` is always emitted and never ignored: it fails when `endpoint`, `server_stop` or `editor_transactions` disagrees with the driver's `DriverCapabilities` (`statement_stop` for `server_stop`), so those cases cannot be skipped by declaring less. `pool`, `unsupported_types` and `bounded_ddl` have no capability behind them: they describe the server, and MySQL and MariaDB differ on `bounded_ddl` under one driver, so the adapter states them and review checks them. `docker: true` marks every other case `#[ignore = "requires docker"]`; SQLite passes `docker: false` and `endpoint: file`, so its suite runs in the unit suite.
 
 Each case starts its own engine, then has two minutes (`CASE_LIMIT`) to finish, four for the large-table case (`LARGE_TABLE_CASE_LIMIT`). A driver that ignores a deadline or a cancel fails the case with its name instead of holding the test run.
 
@@ -167,7 +172,7 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - `failed_ddl_batch_outcome_matches_ddl_atomicity` sends two plans whose second statement the server rejects, and checks the outcome against `ddl_writes`: `RolledBack` and nothing applied, or `PartiallyApplied` and the first plan applied.
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
-- `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
+- `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
 The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the MySQL target runs it on MariaDB as well. SQLite passes `docker: false`, so its cases run in the unit suite.
 
@@ -175,11 +180,11 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse and SQLite targets run it, and the
 
 `large_table_conformance_suite!` runs `a_million_row_table_pages_to_its_end_and_exports` through `LargeTableEngine`, whose statements fill the scratch table with 1,000,000 rows, about 100 MB:
 
-- It counts the table, then pages from the first page to the end by the browse tab's default page size, each page read past the edge row's key, or by offset where the engine pages that way, as `BrowsePager` moves on. The last page is then read from the end. Every row is checked.
+- It counts the table, then pages from the first page to the end by the browse tab's default page size, each page read past the edge row's key, by offset where the engine pages that way, or resumed from the server's paging state, as `BrowsePager` moves on. The last page is then read from the end, or by offset where the server pages. Every row is checked, in id order or, where the server pages a scan in its own order, once each.
 - It exports the table through the statement `build_export` writes, streamed by `stream_read` with no deadline into a CSV file in 64 KiB chunks, as the export dialog's Entire Table does. Every line of the file is checked.
-- The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `crates/test-support/src/conformance/cases/large_table.rs`.
+- The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Where the server pages, the last page is reached only by reading every row before it, so it may take as long as the export, which reads them all. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `crates/test-support/src/conformance/cases/large_table.rs`.
 
-The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server and ClickHouse targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
+The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
 SQLite passes `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
@@ -269,7 +274,7 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
+The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. An engine whose server asks every client for a certificate or none names a second engine for that case with `identity_engine:`, as the Cassandra driver does, so the other cases run against a server that asks for none. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
 
 ### Ignore reasons
 
@@ -315,13 +320,15 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MARIADB` | 10.11, 11.4, 12.3 | 11.4 |
 | `TABLEPRO_TEST_MSSQL` | 2017, 2019, 2022, 2025 | 2022 |
 | `TABLEPRO_TEST_CLICKHOUSE` | 26.3, 26.8 | 26.8 |
+| `TABLEPRO_TEST_CASSANDRA` | 4.0, 5.0 | 5.0 |
+| `TABLEPRO_TEST_SCYLLA` | 2025.1, 2026.1 | 2026.1 |
 | `TABLEPRO_TEST_REDIS` | 7.4, 8.10 | 8.10 |
 | `TABLEPRO_TEST_MONGO` | 7.0, 8.0 | 8.0 |
 | `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
-The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
+The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
 Locally, set the variables for the run:
 

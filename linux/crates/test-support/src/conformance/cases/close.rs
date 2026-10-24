@@ -22,7 +22,11 @@ pub async fn close_is_idempotent<E: ConformanceEngine>(engine: E) -> Result<(), 
     let call_bound = liveness.pool_wait + liveness.cancel_grace + SCHEDULING_SLACK;
     let after = tokio::time::timeout(
         call_bound,
-        connection.query_bound(&statement("SELECT 1"), RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE)),
+        connection.query_bound(
+            &statement(&engine.trivial_read_sql()),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL_DEADLINE),
+        ),
     )
     .await;
     expect(CASE, matches!(after, Ok(Err(_))), || {

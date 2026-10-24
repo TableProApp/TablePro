@@ -2,7 +2,7 @@ use tablepro_core::meta::RowIdentity;
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::statement::RowGuard;
 use tablepro_core::value::Value;
-use tablepro_core::{ColumnInfo, Connection, DriverError, TableRef, WriteBatch, WriteKind};
+use tablepro_core::{ColumnInfo, Connection, DriverError, TableRef, WriteAtomicity, WriteBatch, WriteKind};
 
 use crate::conformance::support::{
     CALL_DEADLINE, apply, connect, count, create_scratch_table, expect, insert_sql, statement, unexpected, within,
@@ -19,7 +19,8 @@ const MISSING_ID: i64 = 999;
 /// that is there under a guard asking for one row more, so a driver
 /// that applies the write despite its guard leaves the row changed. The
 /// saves are planned the way the grid plans one, so the kind of guard
-/// is the one the app would send to this engine.
+/// is the one the app would send to this engine. An engine with no
+/// rollback may refuse the second before sending it.
 pub async fn row_guard_mismatch_applies_nothing<E: ConformanceEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let connection = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, connection.as_ref(), "row_guard").await?;
@@ -46,7 +47,11 @@ pub async fn row_guard_mismatch_applies_nothing<E: ConformanceEngine>(engine: E)
         step.guard = one_row_more(&step.guard)?;
     }
     let outcome = connection.write_batch(&present, within(CALL_DEADLINE)).await;
-    if !matches!(outcome, Err(DriverError::RowGuardFailed { actual: 1, .. })) {
+    // An engine with no rollback cannot check a count after the write,
+    // so it refuses a guard it cannot prove before sending anything.
+    let refused_unsent = E::driver().capabilities().dml_writes == WriteAtomicity::StatementByStatement
+        && matches!(outcome, Err(DriverError::GuardUnsupported { statement_index: 0 }));
+    if !refused_unsent && !matches!(outcome, Err(DriverError::RowGuardFailed { actual: 1, .. })) {
         return Err(unexpected(
             CASE,
             format!("an update of a present row under a guard it cannot meet gave {outcome:?}"),
@@ -55,9 +60,10 @@ pub async fn row_guard_mismatch_applies_nothing<E: ConformanceEngine>(engine: E)
 
     let table_sql = dialect.qualify(&table);
     let kept = format!(
-        "SELECT {} FROM {table_sql} WHERE {} = 'kept'",
+        "SELECT {} FROM {table_sql} WHERE {} = 'kept'{}",
         dialect.count_all(),
         dialect.quote_identifier("label"),
+        dialect.filtered_read_suffix(),
     );
     let unchanged = connection.count_rows(&statement(&kept), within(CALL_DEADLINE)).await?;
     let rows = count(connection.as_ref(), &table).await?;
@@ -115,6 +121,7 @@ mod tests {
             primary_key: name == "id",
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

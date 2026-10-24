@@ -1,7 +1,9 @@
 use std::num::NonZeroU32;
 
 use proptest::prelude::*;
-use sqlparser::dialect::{ClickHouseDialect, Dialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect};
+use sqlparser::dialect::{
+    ClickHouseDialect, Dialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+};
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
 use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{
@@ -388,6 +390,93 @@ fn backslash_always_escapes() {
 }
 
 #[test]
+fn cql_batch_is_one_statement() {
+    let text = "BEGIN BATCH\n  INSERT INTO t (a) VALUES (1);\n  UPDATE t SET b = 2 WHERE a = 1;\nAPPLY BATCH;\nSELECT * FROM t;";
+    assert_eq!(
+        statements(SqlGrammar::Cql, text),
+        [
+            "BEGIN BATCH\n  INSERT INTO t (a) VALUES (1);\n  UPDATE t SET b = 2 WHERE a = 1;\nAPPLY BATCH",
+            "SELECT * FROM t"
+        ]
+    );
+}
+
+#[test]
+fn cql_unlogged_and_counter_batches_are_one_statement() {
+    let text = "begin unlogged batch insert into t (a) values (1); apply batch; BEGIN COUNTER BATCH UPDATE c SET n = n + 1 WHERE k = 1 APPLY BATCH; SELECT 1 FROM t;";
+    assert_eq!(
+        statements(SqlGrammar::Cql, text),
+        [
+            "begin unlogged batch insert into t (a) values (1); apply batch",
+            "BEGIN COUNTER BATCH UPDATE c SET n = n + 1 WHERE k = 1 APPLY BATCH",
+            "SELECT 1 FROM t"
+        ]
+    );
+}
+
+#[test]
+fn cql_lone_begin_is_its_own_statement() {
+    assert_eq!(
+        statements(SqlGrammar::Cql, "BEGIN; SELECT 1 FROM t;"),
+        ["BEGIN", "SELECT 1 FROM t"]
+    );
+}
+
+#[test]
+fn cql_double_dollar_body_hides_semicolons() {
+    let text = "CREATE FUNCTION f(x int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE java AS $$ return x; $$;\nSELECT f(a) FROM t;";
+    assert_eq!(
+        statements(SqlGrammar::Cql, text),
+        [
+            "CREATE FUNCTION f(x int) RETURNS NULL ON NULL INPUT RETURNS int LANGUAGE java AS $$ return x; $$",
+            "SELECT f(a) FROM t"
+        ]
+    );
+}
+
+#[test]
+fn cql_tagged_dollar_is_not_a_quote() {
+    assert_eq!(
+        statements(SqlGrammar::Cql, "SELECT $a$ FROM t; SELECT 2 FROM t;"),
+        ["SELECT $a$ FROM t", "SELECT 2 FROM t"]
+    );
+}
+
+#[test]
+fn cql_quotes_double_and_backslash_does_not_escape() {
+    let text = r#"SELECT "a""b;c", 'x''y;z', 'd\' FROM t; SELECT 2 FROM t;"#;
+    let plan = plan(SqlGrammar::Cql, text);
+    assert!(plan.diagnostics().is_empty(), "{:?}", plan.diagnostics());
+    assert_eq!(
+        statements(SqlGrammar::Cql, text),
+        [r#"SELECT "a""b;c", 'x''y;z', 'd\' FROM t"#, "SELECT 2 FROM t"]
+    );
+}
+
+#[test]
+fn cql_comments_end_at_a_carriage_return_and_do_not_nest() {
+    let text = "SELECT a FROM t // note;\r; SELECT /* a /* b; */ c FROM t; -- x;\rSELECT 3 FROM t;";
+    assert_eq!(
+        statements(SqlGrammar::Cql, text),
+        ["SELECT a FROM t", "SELECT /* a /* b; */ c FROM t", "SELECT 3 FROM t"]
+    );
+}
+
+#[test]
+fn cql_unterminated_double_dollar_keeps_prior_statements() {
+    let text = "SELECT 1 FROM t; SELECT $$ open";
+    let plan = plan(SqlGrammar::Cql, text);
+    assert_eq!(statements(SqlGrammar::Cql, text), ["SELECT 1 FROM t", "SELECT $$ open"]);
+    assert_eq!(
+        plan.diagnostics(),
+        [ScriptDiagnostic::Unterminated {
+            construct: OpenConstruct::DollarQuoted,
+            start: 24,
+        }]
+    );
+}
+
+#[test]
 fn statement_at_on_terminator_takes_preceding() {
     let text = "SELECT 1;SELECT 2;";
     let plan = plan(SqlGrammar::PostgreSql, text);
@@ -610,6 +699,7 @@ const AGREED_CASES: &[(SqlGrammar, &str)] = &[
     ),
     (SqlGrammar::ClickHouse, "SELECT $doc$a; b$doc$; SELECT 2;"),
     (SqlGrammar::ClickHouse, r"SELECT 'a\'; b', `c;d` FROM t; SELECT 2;"),
+    (SqlGrammar::Cql, "SELECT 'x''y;', \"a;b\" FROM t; -- c;\nSELECT 2;"),
 ];
 
 fn byte_offset(text: &str, line: u64, column: u64) -> usize {
@@ -635,6 +725,7 @@ fn sqlparser_semicolons(grammar: SqlGrammar, text: &str) -> Result<Vec<usize>, T
         SqlGrammar::Sqlite => &SQLiteDialect {},
         SqlGrammar::MsSql => &MsSqlDialect {},
         SqlGrammar::ClickHouse => &ClickHouseDialect {},
+        SqlGrammar::Cql => &GenericDialect {},
         // Commands and the shell have no SQL tokenizer to agree with, and
         // no agreed case is a Redis or a MongoDB one.
         SqlGrammar::Redis | SqlGrammar::Mongo => return Ok(Vec::new()),

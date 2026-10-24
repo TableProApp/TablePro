@@ -38,13 +38,14 @@ pub fn render_sql_insert(
 }
 
 /// What every row's statement shares: `INSERT INTO table (columns)
-/// VALUES `, and which of the result's columns it writes. An engine of
-/// documents writes `insertOne(` instead, and each value under its
-/// field's name.
+/// VALUES `, and the quoted name of each of the result's columns it
+/// writes. An engine of documents writes `insertOne(` instead, and each
+/// value under its field's name, which `names` then holds unquoted.
 pub(super) struct InsertShape {
     start: String,
-    written: Vec<bool>,
-    fields: Option<Vec<String>>,
+    table_sql: String,
+    names: Vec<Option<String>>,
+    document: bool,
 }
 
 /// The shape of every row's statement, or `None` for a result with no
@@ -55,33 +56,34 @@ pub(super) fn insert_shape(
     columns: &[ResultColumn],
     generated: &[String],
 ) -> Option<InsertShape> {
-    let written: Vec<bool> = columns.iter().map(|column| !generated.contains(&column.name)).collect();
-    let names: Vec<String> = columns
+    let document = crate::document::speaks_shell(dialect);
+    let names: Vec<Option<String>> = columns
         .iter()
-        .zip(&written)
-        .filter(|(_, written)| **written)
-        .map(|(column, _)| dialect.quote_identifier(&column.name))
+        .map(|column| {
+            (!generated.contains(&column.name)).then(|| match document {
+                true => column.name.clone(),
+                false => dialect.quote_identifier(&column.name),
+            })
+        })
         .collect();
-    if names.is_empty() {
+    let written: Vec<&str> = names.iter().flatten().map(String::as_str).collect();
+    if written.is_empty() {
         return None;
     }
-    if crate::document::speaks_shell(dialect) {
-        let fields = columns
-            .iter()
-            .zip(&written)
-            .filter(|(_, written)| **written)
-            .map(|(column, _)| column.name.clone())
-            .collect();
+    if document {
         return Some(InsertShape {
             start: crate::document::insert_start(table),
-            written,
-            fields: Some(fields),
+            table_sql: String::new(),
+            names,
+            document,
         });
     }
+    let table_sql = dialect.qualify(table);
     Some(InsertShape {
-        start: format!("INSERT INTO {} ({}) VALUES ", dialect.qualify(table), names.join(", ")),
-        written,
-        fields: None,
+        start: format!("INSERT INTO {table_sql} ({}) VALUES ", written.join(", ")),
+        table_sql,
+        names,
+        document,
     })
 }
 
@@ -93,32 +95,49 @@ pub(super) fn insert_row<'a>(
     row: impl IntoIterator<Item = &'a Value>,
 ) {
     let mut cells = row.into_iter();
-    let values: Vec<String> = columns
+    // A row shorter than its header leaves its last cells absent, which
+    // is as close to unknown as SQL has.
+    let cells: Vec<(&ResultColumn, &str, Option<&Value>)> = columns
         .iter()
-        .zip(&shape.written)
-        .filter_map(|(column, written)| {
-            let literal = match cells.next() {
-                Some(value) => literal(dialect, value, column),
-                // A row shorter than its header: the cell is absent,
-                // which is as close to unknown as SQL has.
-                None => "NULL".to_owned(),
-            };
-            written.then_some(literal)
+        .zip(&shape.names)
+        .filter_map(|(column, name)| {
+            let cell = cells.next();
+            Some((column, name.as_deref()?, cell))
         })
         .collect();
-    out.push_str(&shape.start);
-    match &shape.fields {
-        Some(fields) => {
-            let pairs: Vec<(String, String)> = fields.iter().cloned().zip(values).collect();
-            out.push_str(&crate::document::insert_document(&pairs));
-            out.push_str(");\n");
-        }
-        None => {
-            out.push('(');
-            out.push_str(&values.join(", "));
-            out.push_str(");\n");
-        }
+    let leaves_out_nulls = !dialect.insert_names_null_cells() && cells.iter().any(|(_, _, cell)| !is_null(*cell));
+    let (names, values): (Vec<&str>, Vec<String>) = cells
+        .into_iter()
+        .filter(|(_, _, cell)| !(leaves_out_nulls && is_null(*cell)))
+        .map(|(column, name, cell)| {
+            let text = cell.map_or_else(|| "NULL".to_owned(), |value| literal(dialect, value, column));
+            (name, text)
+        })
+        .unzip();
+    if shape.document {
+        let pairs: Vec<(String, String)> = names.into_iter().map(str::to_owned).zip(values).collect();
+        out.push_str(&shape.start);
+        out.push_str(&crate::document::insert_document(&pairs));
+        out.push_str(");\n");
+        return;
     }
+    match leaves_out_nulls {
+        true => {
+            out.push_str("INSERT INTO ");
+            out.push_str(&shape.table_sql);
+            out.push_str(" (");
+            out.push_str(&names.join(", "));
+            out.push_str(") VALUES ");
+        }
+        false => out.push_str(&shape.start),
+    }
+    out.push('(');
+    out.push_str(&values.join(", "));
+    out.push_str(");\n");
+}
+
+fn is_null(cell: Option<&Value>) -> bool {
+    matches!(cell, None | Some(Value::Null))
 }
 
 /// One row as an `INSERT` the user can paste and run.
@@ -143,6 +162,7 @@ pub fn render_insert(
         }
         let value = match cells.get(index) {
             Some(CellInput::Default) => continue,
+            Some(CellInput::Value(Value::Null)) | None if !dialect.insert_names_null_cells() => continue,
             Some(CellInput::Value(value)) => dialect.literal(value, &column.column_type)?,
             None => "NULL".to_owned(),
         };
@@ -314,6 +334,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: generated,
+            partition_scoped: false,
             default: crate::column::ColumnDefault::None,
             comment: None,
         }

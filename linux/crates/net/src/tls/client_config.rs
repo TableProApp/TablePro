@@ -2,27 +2,35 @@ use std::sync::Arc;
 
 use rustls::ClientConfig;
 use rustls::client::danger::ServerCertVerifier;
-use rustls::crypto::aws_lc_rs;
+use rustls::crypto::{CryptoProvider, aws_lc_rs};
+use rustls_pki_types::ServerName;
 use tablepro_core::{TlsConfig, TlsMode};
 
 use crate::tls::pem_check::{read_certificates, read_identity};
-use crate::tls::{TlsSetupError, UnverifiedServerCertVerifier};
+use crate::tls::{FixedNameVerifier, TlsSetupError, UnverifiedServerCertVerifier};
 
 pub fn build_client_config(tls: &TlsConfig) -> Result<Option<Arc<ClientConfig>>, TlsSetupError> {
+    build(tls, None)
+}
+
+/// The same config with the certificate checked against `name`, for a
+/// client library that connects under an address of its own choosing,
+/// such as a relay's, and would check the certificate against that.
+pub fn build_client_config_checking(
+    tls: &TlsConfig,
+    name: ServerName<'static>,
+) -> Result<Option<Arc<ClientConfig>>, TlsSetupError> {
+    build(tls, Some(name))
+}
+
+fn build(tls: &TlsConfig, name: Option<ServerName<'static>>) -> Result<Option<Arc<ClientConfig>>, TlsSetupError> {
     let provider = Arc::new(aws_lc_rs::default_provider());
-    let verifier: Arc<dyn ServerCertVerifier> = match tls.mode {
-        TlsMode::Disable => return Ok(None),
-        TlsMode::Require => Arc::new(UnverifiedServerCertVerifier::new(Arc::clone(&provider))),
-        TlsMode::VerifyFull => {
-            let extra_roots = match &tls.ca_file {
-                Some(path) => read_certificates(path)?,
-                None => Vec::new(),
-            };
-            Arc::new(rustls_platform_verifier::Verifier::new_with_extra_roots(
-                extra_roots,
-                Arc::clone(&provider),
-            )?)
-        }
+    let Some(verifier) = verifier(tls, &provider)? else {
+        return Ok(None);
+    };
+    let verifier: Arc<dyn ServerCertVerifier> = match name {
+        Some(name) => Arc::new(FixedNameVerifier::new(verifier, name)),
+        None => verifier,
     };
     let builder = ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(rustls::DEFAULT_VERSIONS)?
@@ -38,4 +46,24 @@ pub fn build_client_config(tls: &TlsConfig) -> Result<Option<Arc<ClientConfig>>,
         None => builder.with_no_client_auth(),
     };
     Ok(Some(Arc::new(config)))
+}
+
+fn verifier(
+    tls: &TlsConfig,
+    provider: &Arc<CryptoProvider>,
+) -> Result<Option<Arc<dyn ServerCertVerifier>>, TlsSetupError> {
+    Ok(Some(match tls.mode {
+        TlsMode::Disable => return Ok(None),
+        TlsMode::Require => Arc::new(UnverifiedServerCertVerifier::new(Arc::clone(provider))),
+        TlsMode::VerifyFull => {
+            let extra_roots = match &tls.ca_file {
+                Some(path) => read_certificates(path)?,
+                None => Vec::new(),
+            };
+            Arc::new(rustls_platform_verifier::Verifier::new_with_extra_roots(
+                extra_roots,
+                Arc::clone(provider),
+            )?)
+        }
+    }))
 }

@@ -38,4 +38,10 @@ pub trait ConformanceEngine: Send + Sync + Sized + 'static {
 
     /// A read of `rows` rows.
     fn row_source_sql(&self, rows: u64) -> String;
+
+    /// A read of one row that every connection can answer at once, to
+    /// prove a connection still works.
+    fn trivial_read_sql(&self) -> String {
+        "SELECT 1".to_owned()
+    }
 }

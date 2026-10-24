@@ -56,11 +56,7 @@ pub fn build_insert(
         return Ok(builder.finish());
     }
 
-    builder.push_sql(&format!(
-        "INSERT INTO {table_sql} ({}) VALUES ({})",
-        names.join(", "),
-        markers.join(", ")
-    ));
+    builder.push_sql(&dialect.insert_statement(&table_sql, &names.join(", "), &format!("({})", markers.join(", "))));
     Ok(builder.finish())
 }
 
@@ -100,11 +96,6 @@ pub fn build_multi_row_insert(
         .iter()
         .map(|column| dialect.quote_identifier(&column.name))
         .collect();
-    builder.push_sql(&format!(
-        "INSERT INTO {} ({}) VALUES {}",
-        dialect.qualify(table),
-        names.join(", "),
-        tuples.join(", ")
-    ));
+    builder.push_sql(&dialect.insert_statement(&dialect.qualify(table), &names.join(", "), &tuples.join(", ")));
     Ok(builder.finish())
 }

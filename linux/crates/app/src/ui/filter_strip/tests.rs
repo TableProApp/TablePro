@@ -1,3 +1,4 @@
+use tablepro_core::FilterOp;
 use tablepro_core::column::{ColumnKind, IntegerKind, IntegerWidth, TextLength};
 
 use super::rule_operators::placeholder_column;
@@ -403,6 +404,44 @@ fn set_columns_rebuilds_the_column_choices() {
     assert_eq!(strip.filter().rules, [rule("a")], "new columns changed the rule");
 }
 
+fn cql(name: &str, cql_type: &str) -> ColumnInfo {
+    let mut column = placeholder_column(name);
+    column.column_type.name = cql_type.to_owned();
+    column
+}
+
+fn operator_count(row: &FilterRuleRow) -> u32 {
+    row.imp().operator_dropdown.model().map_or(0, |model| model.n_items())
+}
+
+#[gtk4::test]
+fn a_cql_table_offers_what_the_server_filters_and_joins_rules_with_and() {
+    let strip = Hosted::new(new_strip(
+        vec![cql("id", "int"), cql("tags", "set<text>"), cql("name", "text")],
+        &FilterSet {
+            rules: vec![rule("id")],
+            ..FilterSet::default()
+        },
+    ));
+    let dialect =
+        tablepro_driver_cassandra::CqlDialect::new(&tablepro_core::ServerInfo::new("Cassandra", "5.0.9", 5, 0, 9));
+    let compared = dialect.filter_operators(&cql("id", "int")).len();
+
+    strip.set_dialect(Some(Arc::new(dialect)));
+
+    let [row] = rows(&strip).try_into().expect("one rule row");
+    assert_eq!(column_choices(&row), ["id", "name"], "CQL filters no collection");
+    assert_eq!(operator_count(&row) as usize, compared);
+    strip.imp().add_rule_button.emit_clicked();
+    assert!(!strip.imp().match_revealer.reveals_child(), "CQL has no OR");
+    strip.imp().combinator_dropdown.set_selected(1);
+    assert_eq!(strip.filter().combinator, Combinator::And);
+
+    strip.set_dialect(None);
+    let [first, _] = rows(&strip).try_into().expect("two rule rows");
+    assert_eq!(column_choices(&first), ["id", "tags", "name"]);
+}
+
 #[gtk4::test]
 fn the_match_row_shows_once_two_clauses_meet() {
     let strip = Hosted::new(strip_with(vec![rule("a")]));
@@ -473,7 +512,7 @@ fn picking_an_operator_resets_the_value_to_its_shape() {
         },
     );
     let row = rows(&strip)[0].clone();
-    let between = rule_operators::operators_for(&integer("amount"))
+    let between = rule_operators::operators_for(&integer("amount"), &rule_operators::FilterVocabulary::default())
         .iter()
         .position(|entry| entry.op == FilterOp::Between)
         .expect("an integer takes between");

@@ -58,7 +58,7 @@ mod tests {
     use crate::meta::ObjectKind;
     use crate::{
         AuthMode, CommitResolutionSupport, DataModel, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
-        ScriptExecution, WriteAtomicity,
+        ScriptExecution, StatementStop, WriteAtomicity,
     };
 
     const READS_NONE: DriverCapabilities = DriverCapabilities {
@@ -76,6 +76,7 @@ mod tests {
         object_kinds: &[ObjectKind::Table],
         database_required: false,
         network_options: &[],
+        statement_stop: StatementStop::Server,
     };
 
     const READS_BOTH: DriverCapabilities = DriverCapabilities {

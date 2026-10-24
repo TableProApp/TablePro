@@ -134,6 +134,35 @@ license = "Apache-2.0"
 path = "LICENSE"
 checksum = "0d6fc0c55c9aa03692171f5373ba6d878aca44a77438ab4fafd3e63f43b816ca"
 
+# The scylla crates package no license file; the repository's root has it.
+[scylla.clarify]
+license = "MIT OR Apache-2.0"
+[[scylla.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "d9d9a8d58adef0cf55b7ad0cd61561b17b8ada31f048118f116894aac13cb58e"
+
+[scylla-cql.clarify]
+license = "MIT OR Apache-2.0"
+[[scylla-cql.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "d9d9a8d58adef0cf55b7ad0cd61561b17b8ada31f048118f116894aac13cb58e"
+
+[scylla-cql-core.clarify]
+license = "MIT OR Apache-2.0"
+[[scylla-cql-core.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "d9d9a8d58adef0cf55b7ad0cd61561b17b8ada31f048118f116894aac13cb58e"
+
+[scylla-macros.clarify]
+license = "MIT OR Apache-2.0"
+[[scylla-macros.clarify.git]]
+path = "LICENSE-MIT"
+license = "MIT"
+checksum = "d9d9a8d58adef0cf55b7ad0cd61561b17b8ada31f048118f116894aac13cb58e"
+
 # The sqlx crates package LICENSE-MIT as a symlink to the workspace root's.
 [sqlx-core.clarify]
 license = "MIT OR Apache-2.0"

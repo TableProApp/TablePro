@@ -30,6 +30,7 @@ fn column(name: &str, type_name: &str, kind: ColumnKind) -> ColumnInfo {
         primary_key: name == "_id",
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: ColumnDefault::None,
         comment: None,
     }

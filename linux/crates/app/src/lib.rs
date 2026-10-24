@@ -68,6 +68,7 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
 
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
+    r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     r.register(Arc::new(tablepro_driver_mongodb::MongoDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));

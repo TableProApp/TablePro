@@ -31,6 +31,7 @@ linux/
         ├── sqlite/                sqlx-sqlite
         ├── mssql/                 tiberius
         ├── clickhouse/            clickhouse over hyper
+        ├── cassandra/             scylla, Cassandra and ScyllaDB
         ├── redis/                 redis-rs
         └── mongodb/               the mongodb crate
 ```
@@ -41,7 +42,7 @@ linux/
 |---|---|
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
-| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/redis`, `drivers/mongodb` | `core`, `net` |
+| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis`, `drivers/mongodb` | `core`, `net` |
 | `drivers/sqlite` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
@@ -70,6 +71,7 @@ The driver registry is built once, by `build_registry` in `crates/app/src/lib.rs
 ```rust
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
+    r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
@@ -149,7 +151,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Redis](docs/drivers/redis.md), [MongoDB](docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0023](docs/decisions/0023-documents-in-the-table-tab.md)).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md), [MongoDB](docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0024](docs/decisions/0024-documents-in-the-table-tab.md)).
 
 ### SQL scripts
 
@@ -164,6 +166,7 @@ A driver names its grammar through `SqlDialect::grammar`. The rules for each `Sq
 | SQLite | `;` | a `CREATE TRIGGER` body, as `sqlite3_complete` reads it | `[name]` and backtick names |
 | SQL Server | a `GO` line, with an optional count | the whole batch, whatever `;` it holds | `[name]` with `]]` inside, nested block comments |
 | ClickHouse | `;` | heredocs, `$tag$ ... $tag$` | backslash escapes in every quote, `//`, `# ` and `#!` comments, nested block comments |
+| CQL | `;` | `BEGIN ... APPLY BATCH`, as cqlsh keeps it, and `$$ ... $$` function bodies | `''` inside a string and no backslash escapes, `//` comments, a line comment that also ends at a carriage return |
 
 A failed statement stops the rest of a script, except on SQL Server, where each `GO` batch runs on its own as in sqlcmd (`BatchErrorPolicy::ContinueNextBatch`). The editor sends one statement, or one `GO` batch, per run; [docs/state-management.md](docs/state-management.md#the-sql-editor) has the run.
 
@@ -205,7 +208,7 @@ The cancel token is checked between stages, and a stage that finishes after a ca
 | `reroute` | A new direct transport | A new forward on the same master |
 | `explain_closed_stream` | Nothing to add | The master's exit, or the "open failed" line ssh printed |
 
-PostgreSQL, SQL Server and ClickHouse open every stream through `open()`. sqlx dials its own sockets, so the MySQL driver passes it the route instead: host and port, or the forward's socket path. Nothing relays bytes between the two. The mongodb crate dials its own sockets as well, and gets the host and port on a direct route; it does no TLS over a Unix socket, so through SSH the MongoDB driver listens on a private Unix socket of its own and relays each connection the crate opens there to a stream from `open()`, with its own TLS around it. The socket options above apply only to streams `open()` makes, so a direct MySQL or MongoDB connection has no keepalive and finds a dead peer through the probe and its deadlines.
+PostgreSQL, SQL Server and ClickHouse open every stream through `open()`. sqlx dials its own sockets, so the MySQL driver passes it the route instead: host and port, or the forward's socket path. Nothing relays bytes between the two. scylla dials only a TCP address, so each Cassandra session dials a relay on `127.0.0.1` that serves only this user and carries every connection it accepts over `open()` ([ADR 0023](docs/decisions/0023-loopback-relay-for-cql.md)). The mongodb crate dials its own sockets as well, and gets the host and port on a direct route; it does no TLS over a Unix socket, so through SSH the MongoDB driver listens on a private Unix socket of its own and relays each connection the crate opens there to a stream from `open()`, with its own TLS around it. The socket options above apply only to streams `open()` makes, so a direct MySQL or MongoDB connection has no keepalive and finds a dead peer through the probe and its deadlines.
 
 SSH runs the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)): one ControlMaster (`ssh -M -N -T`) per connection, with the user's `~/.ssh/config` applied, and one `ssh -O forward` Unix socket per server it reaches. The sockets live under `$XDG_RUNTIME_DIR/app/<app id>/ssh/` in directories only the user can open, with mode 0600. Only Flatpak creates `app/<app id>`, so a host install makes the missing levels with mode 0700, each opened without following a symlink and checked to be the user's; with `XDG_RUNTIME_DIR` unset, GLib puts the same layout under the cache directory. Every prompt (host key, password, passphrase, keyboard-interactive) reaches the app through the `tablepro-askpass` helper, and the 20 s handshake timeout pauses while a prompt is open. Under Flatpak, `ssh` comes from the GNOME runtime, and a `ProxyCommand` or `Match exec` that runs a host program, the host's `/etc/ssh` and FIDO keys kept in files do not work.
 
@@ -232,9 +235,10 @@ Each engine's TLS stack takes trust in its own form, so the driver builds it:
 | MongoDB, direct | The system store and the CA file as one PEM bundle (`ca_bundle_pem`), written to a private file the mongodb crate reads once as its only roots | Yes | The rustls error |
 | MongoDB, through SSH | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
 | SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
+| Cassandra, ScyllaDB | The system store (rustls-platform-verifier), plus the CA file, checked against the server name and not the relay's address (`FixedNameVerifier`) | Yes, with the password login | The rustls error |
 | SQLite | No TLS | | |
 
-PostgreSQL, ClickHouse, Redis and MongoDB through SSH get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
+PostgreSQL, ClickHouse, Redis and MongoDB through SSH get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`, and Cassandra from `build_client_config_checking`, which checks a name it is given in place of the one the client dials. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
 
 On Linux the system store is the distribution's CA bundle. Under Flatpak it is the runtime's bundle: a CA added on the host with `update-ca-certificates` or `update-ca-trust` is not visible in the sandbox (freedesktop-sdk issue 1905).
 

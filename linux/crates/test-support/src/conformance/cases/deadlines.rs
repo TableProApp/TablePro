@@ -40,10 +40,14 @@ pub async fn query_bound_times_out_within_deadline_plus_cancel_grace<E: Conforma
         format!("the timeout came after {elapsed:?}, past the {bound:?} bound")
     })?;
     let after = connection
-        .query_bound(&statement("SELECT 1"), RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE))
+        .query_bound(
+            &statement(&engine.trivial_read_sql()),
+            RowLimit::EDITOR_DEFAULT,
+            within(CALL_DEADLINE),
+        )
         .await;
     expect(CASE, after.is_ok(), || {
-        format!("SELECT 1 after the timeout gave {after:?}")
+        format!("a trivial read after the timeout gave {after:?}")
     })?;
 
     connection.close().await?;

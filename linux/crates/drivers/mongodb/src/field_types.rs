@@ -118,6 +118,7 @@ pub(crate) fn field_column(name: &str, aliases: &BTreeSet<&str>) -> ColumnInfo {
         primary_key: id,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: match id {
             true => ColumnDefault::Expression(SqlExpression::from_catalog_text("ObjectId()")),
             false => ColumnDefault::None,

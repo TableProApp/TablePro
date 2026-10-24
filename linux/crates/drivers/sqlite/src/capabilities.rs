@@ -1,7 +1,7 @@
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
     CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution,
-    WriteAtomicity,
+    StatementStop, WriteAtomicity,
 };
 
 /// A file with no login and no TLS. A read-only connection is opened
@@ -23,4 +23,5 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     object_kinds: &[ObjectKind::Table, ObjectKind::View],
     database_required: false,
     network_options: &[],
+    statement_stop: StatementStop::Server,
 };

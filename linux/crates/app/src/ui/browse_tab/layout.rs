@@ -1,10 +1,12 @@
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_core::FilterSet;
+use tablepro_core::dialect::SqlDialect;
 use tablepro_core::sql_syntax::SqlGrammar;
 
 use super::browse_tab_widgets::BrowseTabWidgets;
@@ -77,14 +79,15 @@ fn more_menu(page_sizes: &[u64]) -> gio::Menu {
 
 /// An inline editor that slides down above the grid. It lives in the
 /// tab so the user's in-progress rules survive a click into a cell or
-/// the SQL editor.
-/// The filter strip, whose typed filter is a query document on an engine
-/// of documents and a WHERE clause on the rest.
-pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, grammar: Option<SqlGrammar>) -> FilterStrip {
+/// the SQL editor. It offers what the connection's engine evaluates, and
+/// its typed filter is a query document on an engine of documents and a
+/// WHERE clause on the rest.
+pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, dialect: Option<Arc<dyn SqlDialect>>) -> FilterStrip {
     let strip = FilterStrip::new(Vec::new(), initial);
-    if grammar == Some(SqlGrammar::Mongo) {
+    if dialect.as_ref().map(|dialect| dialect.grammar()) == Some(SqlGrammar::Mongo) {
         strip.take_documents();
     }
+    strip.set_dialect(dialect);
     strip.connect_applied({
         let tab = tab.downgrade();
         move |_, set| {

@@ -1,4 +1,4 @@
-use crate::dialect::SqlDialect;
+use crate::dialect::{SqlDialect, TablePaging};
 use crate::filter::build_filter;
 use crate::meta::RowIdentity;
 use crate::statement::{Statement, StatementBuilder};
@@ -25,9 +25,12 @@ pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Re
     let user = user_order(dialect, request.table, request.columns, request.sort)?;
     let heap_order_only =
         user.is_empty() && matches!(request.identity, RowIdentity::EngineRowId(id) if id.is_heap_address());
-    let order = match heap_order_only {
-        true => Vec::new(),
-        false => with_tiebreak(user, &identity_order(dialect, request.table, &components)?),
+    // An engine that pages on the server reads in its own order, which is
+    // already the same for two exports of an unchanged table.
+    let order = match (dialect.table_paging(), heap_order_only) {
+        (TablePaging::ServerState, _) if !user.is_empty() => return Err(BrowseSqlError::SortUnsupported),
+        (TablePaging::ServerState, _) | (TablePaging::InStatement, true) => Vec::new(),
+        (TablePaging::InStatement, false) => with_tiebreak(user, &identity_order(dialect, request.table, &components)?),
     };
 
     let mut builder = StatementBuilder::new();
@@ -39,8 +42,12 @@ pub fn build_export(dialect: &dyn SqlDialect, request: &ExportRequest<'_>) -> Re
         true => String::new(),
         false => format!(" ORDER BY {}", order.join(", ")),
     };
+    let suffix = match conditions.is_empty() {
+        true => "",
+        false => dialect.filtered_read_suffix(),
+    };
     builder.push_sql(&format!(
-        "SELECT {projection} FROM {}{}{order_by}",
+        "SELECT {projection} FROM {}{}{order_by}{suffix}",
         dialect.qualify(request.table),
         where_clause(&conditions)
     ));

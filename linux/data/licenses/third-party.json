@@ -101,6 +101,14 @@
     {
       "id": "BSD-3-Clause",
       "name": "BSD 3-Clause \"New\" or \"Revised\" License",
+      "text": "Copyright 2011, The Snappy-Rust Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n    * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n    * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n    * Neither the name of the copyright holder nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+      "used_by": [
+        { "crate": { "name": "snap", "version": "1.1.2" } }
+      ]
+    },
+    {
+      "id": "BSD-3-Clause",
+      "name": "BSD 3-Clause \"New\" or \"Revised\" License",
       "text": "Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n1. Redistributions of source code must retain the above copyright notice, this\n   list of conditions and the following disclaimer.\n\n2. Redistributions in binary form must reproduce the above copyright notice,\n   this list of conditions and the following disclaimer in the documentation\n   and/or other materials provided with the distribution.\n\n3. Neither the name of the copyright holder nor the names of its\n   contributors may be used to endorse or promote products derived from\n   this software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\"\nAND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE\nIMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\nDISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE\nFOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL\nDAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR\nSERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER\nCAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,\nOR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
       "used_by": [
         { "crate": { "name": "encoding_rs", "version": "0.8.41" } }
@@ -333,6 +341,14 @@
     {
       "id": "MIT",
       "name": "MIT License",
+      "text": "Copyright (c) 2014-2017 Melissa O'Neill and PCG Project contributors\nCopyright 2018 Developers of the Rand project\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "rand_pcg", "version": "0.9.0" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
       "text": "Copyright (c) 2014-2026 Alex Crichton\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
         { "crate": { "name": "flate2", "version": "1.1.10" } }
@@ -352,6 +368,7 @@
       "text": "Copyright (c) 2015\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
       "used_by": [
         { "crate": { "name": "either", "version": "1.18.0" } },
+        { "crate": { "name": "itertools", "version": "0.15.0" } },
         { "crate": { "name": "serde_with", "version": "3.23.0" } },
         { "crate": { "name": "serde_with_macros", "version": "3.23.0" } }
       ]
@@ -450,6 +467,7 @@
       "used_by": [
         { "crate": { "name": "const-random-macro", "version": "0.1.16" } },
         { "crate": { "name": "const-random", "version": "0.1.18" } },
+        { "crate": { "name": "hashbrown", "version": "0.14.5" } },
         { "crate": { "name": "hashbrown", "version": "0.16.1" } },
         { "crate": { "name": "hashbrown", "version": "0.17.1" } }
       ]
@@ -575,6 +593,14 @@
       "text": "Copyright (c) 2017 The rust-stringprep Developers\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "used_by": [
         { "crate": { "name": "stringprep", "version": "0.1.5" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text": "Copyright (c) 2017 arc-swap developers\n\nPermission is hereby granted, free of charge, to any\nperson obtaining a copy of this software and associated\ndocumentation files (the \"Software\"), to deal in the\nSoftware without restriction, including without\nlimitation the rights to use, copy, modify, merge,\npublish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software\nis furnished to do so, subject to the following\nconditions:\n\nThe above copyright notice and this permission notice\nshall be included in all copies or substantial portions\nof the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF\nANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED\nTO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A\nPARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT\nSHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY\nCLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION\nOF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR\nIN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER\nDEALINGS IN THE SOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "arc-swap", "version": "1.9.3" } }
       ]
     },
     {
@@ -1136,6 +1162,17 @@
     {
       "id": "MIT",
       "name": "MIT License",
+      "text": "Copyright 2020 ScyllaDB\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "scylla-cql-core", "version": "1.9.0" } },
+        { "crate": { "name": "scylla-cql", "version": "2.0.0" } },
+        { "crate": { "name": "scylla-macros", "version": "1.9.0" } },
+        { "crate": { "name": "scylla", "version": "1.9.0" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
       "text": "Copyright 2022 Tibor Schneider\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
       "used_by": [
         { "crate": { "name": "prefix-trie", "version": "0.8.4" } }
@@ -1252,6 +1289,14 @@
       "text": "MIT License\n\nCopyright (c) 2019 - 2020 Matt Hunzinger\nCopyright (c) 2021 Max Inden\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "used_by": [
         { "crate": { "name": "asynchronous-codec", "version": "0.7.0" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text": "MIT License\n\nCopyright (c) 2019 Acrimon\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "dashmap", "version": "6.2.1" } }
       ]
     },
     {
@@ -1636,6 +1681,14 @@
     {
       "id": "MIT",
       "name": "MIT License",
+      "text": "The MIT License (MIT)\n\nCopyright (c) 2015 Jake Goulding\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "twox-hash", "version": "2.1.5" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
       "text": "The MIT License (MIT)\n\nCopyright (c) 2015 Markus Westerlind\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n\n",
       "used_by": [
         { "crate": { "name": "combine", "version": "4.6.8" } }
@@ -1728,6 +1781,14 @@
         { "crate": { "name": "crossbeam-epoch", "version": "0.9.21" } },
         { "crate": { "name": "crossbeam-queue", "version": "0.3.14" } },
         { "crate": { "name": "crossbeam-utils", "version": "0.8.23" } }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text": "The MIT License (MIT)\n\nCopyright (c) 2020 Pascal Seitz\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of\nthis software and associated documentation files (the \"Software\"), to deal in\nthe Software without restriction, including without limitation the rights to\nuse, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of\nthe Software, and to permit persons to whom the Software is furnished to do so,\nsubject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS\nFOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR\nCOPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER\nIN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN\nCONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n",
+      "used_by": [
+        { "crate": { "name": "lz4_flex", "version": "0.14.0" } }
       ]
     },
     {
@@ -1855,6 +1916,7 @@
     { "name": "ahash", "version": "0.8.12", "license": "MIT OR Apache-2.0" },
     { "name": "aho-corasick", "version": "1.1.5", "license": "Unlicense OR MIT" },
     { "name": "allocator-api2", "version": "0.2.21", "license": "MIT OR Apache-2.0" },
+    { "name": "arc-swap", "version": "1.9.3", "license": "MIT OR Apache-2.0" },
     { "name": "arcstr", "version": "1.2.0", "license": "Apache-2.0 OR MIT OR Zlib" },
     { "name": "ashpd", "version": "0.13.13", "license": "MIT" },
     { "name": "async-broadcast", "version": "0.7.2", "license": "MIT OR Apache-2.0" },
@@ -1921,6 +1983,7 @@
     { "name": "darling", "version": "0.24.1", "license": "MIT" },
     { "name": "darling_core", "version": "0.24.1", "license": "MIT" },
     { "name": "darling_macro", "version": "0.24.1", "license": "MIT" },
+    { "name": "dashmap", "version": "6.2.1", "license": "MIT" },
     { "name": "data-encoding", "version": "2.11.1", "license": "MIT" },
     { "name": "deadpool", "version": "0.13.1", "license": "MIT OR Apache-2.0" },
     { "name": "deadpool-postgres", "version": "0.14.2", "license": "MIT OR Apache-2.0" },
@@ -1996,6 +2059,7 @@
     { "name": "gtk4-macros", "version": "0.11.4", "license": "MIT" },
     { "name": "gtk4-sys", "version": "0.11.4", "license": "MIT" },
     { "name": "half", "version": "2.7.1", "license": "MIT OR Apache-2.0" },
+    { "name": "hashbrown", "version": "0.14.5", "license": "MIT OR Apache-2.0" },
     { "name": "hashbrown", "version": "0.16.1", "license": "MIT OR Apache-2.0" },
     { "name": "hashbrown", "version": "0.17.1", "license": "MIT OR Apache-2.0" },
     { "name": "hashlink", "version": "0.11.1", "license": "MIT OR Apache-2.0" },
@@ -2034,6 +2098,7 @@
     { "name": "indexmap", "version": "2.14.2", "license": "Apache-2.0 OR MIT" },
     { "name": "inout", "version": "0.1.4", "license": "MIT OR Apache-2.0" },
     { "name": "ipnet", "version": "2.12.2", "license": "MIT OR Apache-2.0" },
+    { "name": "itertools", "version": "0.15.0", "license": "MIT OR Apache-2.0" },
     { "name": "itoa", "version": "1.0.18", "license": "MIT OR Apache-2.0" },
     { "name": "lazy_static", "version": "1.5.0", "license": "MIT OR Apache-2.0" },
     { "name": "libadwaita", "version": "0.9.2", "license": "MIT" },
@@ -2048,6 +2113,7 @@
     { "name": "locale_config", "version": "0.3.0", "license": "MIT" },
     { "name": "lock_api", "version": "0.4.14", "license": "MIT OR Apache-2.0" },
     { "name": "log", "version": "0.4.34", "license": "MIT OR Apache-2.0" },
+    { "name": "lz4_flex", "version": "0.14.0", "license": "MIT" },
     { "name": "macro_magic", "version": "0.5.1", "license": "MIT" },
     { "name": "macro_magic_core", "version": "0.5.1", "license": "MIT" },
     { "name": "macro_magic_core_macros", "version": "0.5.1", "license": "MIT" },
@@ -2110,6 +2176,7 @@
     { "name": "rand_chacha", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
     { "name": "rand_core", "version": "0.9.5", "license": "MIT OR Apache-2.0" },
     { "name": "rand_core", "version": "0.10.1", "license": "MIT OR Apache-2.0" },
+    { "name": "rand_pcg", "version": "0.9.0", "license": "MIT OR Apache-2.0" },
     { "name": "redis", "version": "1.7.1", "license": "BSD-3-Clause" },
     { "name": "ref-cast", "version": "1.0.27", "license": "MIT OR Apache-2.0" },
     { "name": "ref-cast-impl", "version": "1.0.27", "license": "MIT OR Apache-2.0" },
@@ -2135,6 +2202,10 @@
     { "name": "schemars", "version": "1.2.2", "license": "MIT" },
     { "name": "schemars_derive", "version": "1.2.2", "license": "MIT" },
     { "name": "scopeguard", "version": "1.2.0", "license": "MIT OR Apache-2.0" },
+    { "name": "scylla", "version": "1.9.0", "license": "MIT OR Apache-2.0" },
+    { "name": "scylla-cql", "version": "2.0.0", "license": "MIT OR Apache-2.0" },
+    { "name": "scylla-cql-core", "version": "1.9.0", "license": "MIT OR Apache-2.0" },
+    { "name": "scylla-macros", "version": "1.9.0", "license": "MIT OR Apache-2.0" },
     { "name": "secrecy", "version": "0.10.3", "license": "Apache-2.0 OR MIT" },
     { "name": "semver", "version": "1.0.28", "license": "MIT OR Apache-2.0" },
     { "name": "serde", "version": "1.0.229", "license": "MIT OR Apache-2.0" },
@@ -2158,6 +2229,7 @@
     { "name": "siphasher", "version": "1.0.4", "license": "MIT OR Apache-2.0" },
     { "name": "slab", "version": "0.4.12", "license": "MIT" },
     { "name": "smallvec", "version": "1.16.1", "license": "MIT OR Apache-2.0" },
+    { "name": "snap", "version": "1.1.2", "license": "BSD-3-Clause" },
     { "name": "socket2", "version": "0.6.5", "license": "MIT OR Apache-2.0" },
     { "name": "sourceview5", "version": "0.11.2", "license": "MIT" },
     { "name": "sourceview5-sys", "version": "0.11.2", "license": "MIT" },
@@ -2213,6 +2285,7 @@
     { "name": "tracing-serde", "version": "0.2.0", "license": "MIT" },
     { "name": "tracing-subscriber", "version": "0.3.23", "license": "MIT" },
     { "name": "try-lock", "version": "0.2.5", "license": "MIT" },
+    { "name": "twox-hash", "version": "2.1.5", "license": "MIT" },
     { "name": "typed-builder", "version": "0.22.0", "license": "MIT OR Apache-2.0" },
     { "name": "typed-builder-macro", "version": "0.22.0", "license": "MIT OR Apache-2.0" },
     { "name": "typed-path", "version": "0.12.3", "license": "MIT OR Apache-2.0" },

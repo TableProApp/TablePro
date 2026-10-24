@@ -14,7 +14,8 @@ use tablepro_test_fixtures::MssqlFixture;
 use tablepro_test_support::FaultTransport;
 use tablepro_test_support::conformance::{
     BoundedDdlEngine, ConformanceDdlEngine, ConformanceEngine, ConformanceFailure, EditorTransactionEngine,
-    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, TypedConformanceEngine, UnsupportedTypeCase,
+    LargeTableEngine, NetworkConformanceEngine, PooledConformanceEngine, ServerStopEngine, TypedConformanceEngine,
+    UnsupportedTypeCase,
 };
 
 use crate::support::{dbo, delay, direct, options_over, password, quoted, require};
@@ -93,7 +94,9 @@ impl NetworkConformanceEngine for MssqlEngine {
         );
         Ok((options, fault))
     }
+}
 
+impl ServerStopEngine for MssqlEngine {
     fn running_statement_count_sql(&self, marker: &str) -> String {
         format!(
             "SELECT COUNT(*) FROM sys.dm_exec_requests r \
@@ -179,6 +182,7 @@ mod suite {
         engine: MssqlEngine,
         docker: true,
         endpoint: network,
+        server_stop: true,
         pool: pooled,
         editor_transactions: true,
         unsupported_types: true,

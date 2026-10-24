@@ -140,6 +140,18 @@ pub enum DriverError {
 }
 
 impl DriverError {
+    /// What stopped a save, inside the outcome it reports, or the error
+    /// itself. A lost connection under `CommitOutcomeUnknown` still says
+    /// the link may be gone.
+    pub fn cause(&self) -> &DriverError {
+        match self {
+            Self::RolledBack { source, .. }
+            | Self::CommitOutcomeUnknown { source, .. }
+            | Self::PartiallyApplied { source, .. } => source.cause(),
+            other => other,
+        }
+    }
+
     /// What kind of problem this is, which is what the app acts on.
     /// The message is for the user; the category decides which button
     /// to offer beside it.
@@ -212,6 +224,25 @@ mod tests {
             full.to_string().contains(&std::io::ErrorKind::StorageFull.to_string()),
             "{full}"
         );
+    }
+
+    #[test]
+    fn a_saves_cause_is_found_under_its_outcome() {
+        let lost = DriverError::ConnectionLost {
+            during: crate::LossPhase::Statement,
+        };
+        let unknown = DriverError::PartiallyApplied {
+            applied: 1,
+            statement_index: 1,
+            failed_outcome: crate::StatementOutcome::Unknown,
+            source: Box::new(DriverError::CommitOutcomeUnknown {
+                token: None,
+                source: Box::new(lost.clone()),
+            }),
+        };
+
+        assert_eq!(unknown.cause(), &lost);
+        assert_eq!(lost.cause(), &lost);
     }
 
     #[test]

@@ -8,9 +8,9 @@
   <summary>Work with your databases</summary>
   <description>
     <p>
-      TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server and
-      ClickHouse. Browse tables, edit rows in place, run SQL with syntax
-      highlighting, and reach servers behind an SSH bastion.
+      TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse,
+      Cassandra and ScyllaDB. Browse tables, edit rows in place, run SQL with
+      syntax highlighting, and reach servers behind an SSH bastion.
     </p>
     <p>It can:</p>
     <ul>
@@ -71,7 +71,7 @@
       <description>
         <p>The first release of TablePro for Linux.</p>
         <ul>
-          <li>Connect to PostgreSQL, MySQL, SQLite, SQL Server and ClickHouse, directly or through an SSH tunnel</li>
+          <li>Connect to PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse, Cassandra and ScyllaDB, directly or through an SSH tunnel</li>
           <li>Browse tables and edit rows in place, with undo until you save</li>
           <li>Run SQL with completion, find and replace, and a searchable query history</li>
           <li>Change a table's columns, indexes and foreign keys</li>

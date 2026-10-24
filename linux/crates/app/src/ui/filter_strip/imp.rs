@@ -45,8 +45,12 @@ pub struct FilterStrip {
 
     /// The rules being edited, one `FilterRuleObject` each.
     pub(super) rules: OnceCell<gio::ListStore>,
-    /// The columns a rule can name, blobs left out.
+    /// The columns a rule can name: those the engine filters with some
+    /// operator.
     pub(super) columns: RefCell<Rc<[ColumnInfo]>>,
+    /// Every column of the table, so a new dialect can narrow them again.
+    pub(super) all_columns: RefCell<Vec<ColumnInfo>>,
+    pub(super) vocabulary: RefCell<super::rule_operators::FilterVocabulary>,
     /// Where the focus was when it came into the strip, and goes back to
     /// when the strip closes.
     pub(super) focus_before: glib::WeakRef<gtk::Widget>,

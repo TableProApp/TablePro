@@ -133,6 +133,21 @@ const CLICKHOUSE: [BuiltinSnippet; 7] = [
     ),
 ];
 
+// CQL has no join, and nothing numbers a key, so a row's key is its own
+// uuid.
+const CQL: [BuiltinSnippet; 6] = [
+    SELECT,
+    INSERT,
+    UPDATE,
+    DELETE,
+    BuiltinSnippet::new(
+        "ctab",
+        "CREATE TABLE",
+        "CREATE TABLE ${1:table_name} (\n    id uuid PRIMARY KEY,\n    ${2:name} ${3:text}$0\n);",
+    ),
+    CREATE_INDEX,
+];
+
 /// The statements the editor offers on an engine of `grammar`. Redis and
 /// MongoDB are not SQL and have none.
 pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
@@ -142,6 +157,7 @@ pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
         SqlGrammar::Sqlite => &SQLITE,
         SqlGrammar::MsSql => &MSSQL,
         SqlGrammar::ClickHouse => &CLICKHOUSE,
+        SqlGrammar::Cql => &CQL,
         SqlGrammar::Redis | SqlGrammar::Mongo => &[],
     }
 }
@@ -153,19 +169,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_sql_engine_offers_the_same_seven_triggers_once() {
+    fn every_sql_engine_offers_the_same_triggers_once_and_cql_no_join() {
         for grammar in SqlGrammar::SQL {
             let triggers: Vec<&str> = builtin_snippets(grammar)
                 .iter()
                 .map(|snippet| snippet.trigger)
                 .collect();
             let unique: HashSet<&str> = triggers.iter().copied().collect();
+            let expected: &[&str] = match grammar {
+                SqlGrammar::Cql => &["sel", "ins", "upd", "del", "ctab", "cidx"],
+                _ => &["sel", "ins", "upd", "del", "selj", "ctab", "cidx"],
+            };
 
-            assert_eq!(
-                triggers,
-                ["sel", "ins", "upd", "del", "selj", "ctab", "cidx"],
-                "{grammar:?}"
-            );
+            assert_eq!(triggers, expected, "{grammar:?}");
             assert_eq!(unique.len(), triggers.len(), "{grammar:?} repeats a trigger");
         }
     }

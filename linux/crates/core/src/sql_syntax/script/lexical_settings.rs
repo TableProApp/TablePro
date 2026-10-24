@@ -9,9 +9,12 @@ impl LexicalSettings {
     pub fn default_for(grammar: SqlGrammar) -> Self {
         let backslash_escapes = match grammar {
             SqlGrammar::MySql | SqlGrammar::ClickHouse => true,
-            SqlGrammar::PostgreSql | SqlGrammar::Sqlite | SqlGrammar::MsSql | SqlGrammar::Redis | SqlGrammar::Mongo => {
-                false
-            }
+            SqlGrammar::PostgreSql
+            | SqlGrammar::Sqlite
+            | SqlGrammar::MsSql
+            | SqlGrammar::Cql
+            | SqlGrammar::Redis
+            | SqlGrammar::Mongo => false,
         };
         Self { backslash_escapes }
     }

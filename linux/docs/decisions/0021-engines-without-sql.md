@@ -1,6 +1,6 @@
 # 0021: Engines without SQL keep the driver contract and say what they hold
 
-- **Status**: Accepted; amended by 0023
+- **Status**: Accepted; amended by 0024
 - **Date**: 2026-10-23
 
 ## Context

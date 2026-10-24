@@ -71,6 +71,22 @@ impl FixtureImage {
         name: "clickhouse/clickhouse-server",
         tag: "26.3",
     };
+    pub const CASSANDRA: Self = Self {
+        name: "cassandra",
+        tag: "5.0",
+    };
+    pub const CASSANDRA_4_0: Self = Self {
+        name: "cassandra",
+        tag: "4.0",
+    };
+    pub const SCYLLA: Self = Self {
+        name: "scylladb/scylla",
+        tag: "2026.1",
+    };
+    pub const SCYLLA_2025_1: Self = Self {
+        name: "scylladb/scylla",
+        tag: "2025.1",
+    };
     pub const REDIS: Self = Self {
         name: "redis",
         tag: "8.10-alpine",
