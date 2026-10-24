@@ -1,5 +1,11 @@
+import contextlib
+import io
+import json
+import os
 from pathlib import Path
 import importlib.util
+import tempfile
+from unittest import mock
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,6 +85,93 @@ class ClassifyCiFailureTests(unittest.TestCase):
 
     def test_a_finished_log_with_nothing_recognised_stays_unknown(self):
         self.assertEqual(self.tag("something odd\n\U0001f3c1  Job failed"), "unknown")
+
+    def test_signatures_outside_the_log_tail_do_not_override_recent_evidence(self):
+        text = "No such image: old-image\n" + ("x" * classifier.TAIL_BYTES) + "\nnew failure\nJob failed"
+        tag, _, evidence = classifier.classify_log(text)
+        self.assertEqual(tag, "unknown")
+        self.assertEqual(evidence, "")
+
+    def test_api_base_prefers_an_explicit_repository_api(self):
+        with mock.patch.dict(os.environ, {"FORGEJO_API": "http://forgejo.example/api/v1/repos/team/app"}):
+            self.assertEqual(classifier.api_base(), "http://forgejo.example/api/v1/repos/team/app")
+
+    def test_api_base_derives_repository_path_from_remote(self):
+        result = mock.Mock(stdout="http://forgejo.example/team/app.git\n")
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(classifier.subprocess, "run", return_value=result):
+            self.assertEqual(classifier.api_base(), "http://forgejo.example/api/v1/repos/team/app")
+
+    def test_api_base_rejects_a_remote_without_a_server_and_repository(self):
+        result = mock.Mock(stdout="/local/path/app.git\n")
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(classifier.subprocess, "run", return_value=result):
+            with self.assertRaises(SystemExit):
+                classifier.api_base()
+
+    def test_classify_run_fetches_logs_only_for_failed_jobs(self):
+        jobs = [
+            {"id": 1, "name": "passed", "status": "success"},
+            {"id": 2, "name": "failed", "status": "failure"},
+        ]
+        with (
+            mock.patch.object(classifier, "read_token", return_value="secret"),
+            mock.patch.object(classifier, "api_base", return_value="http://forgejo/api"),
+            mock.patch.object(classifier, "fetch", side_effect=[json.dumps({"jobs": jobs}), "No such image: postgres"])
+                as fetch,
+        ):
+            result = classifier.classify_run(42, tail=1)
+        self.assertEqual(len(result), 1)
+        name, tag, _, evidence, tail = result[0]
+        self.assertEqual((name, tag, evidence, tail), ("failed", "infra", "No such image: postgres", ["No such image: postgres"]))
+        self.assertEqual(
+            [call.args[0] for call in fetch.call_args_list],
+            ["http://forgejo/api/actions/runs/42/jobs", "http://forgejo/api/actions/jobs/2/logs"],
+        )
+
+    def test_cli_log_prints_classification_and_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "job.log"
+            path.write_text("No such image: postgres\n")
+            output = io.StringIO()
+            with mock.patch.object(classifier.sys, "argv", ["classify", "--log", str(path)]), contextlib.redirect_stdout(output):
+                classifier.main()
+        self.assertIn("infra:", output.getvalue())
+        self.assertIn("No such image: postgres", output.getvalue())
+
+    def test_cli_lists_runs_from_a_list_shaped_api_response(self):
+        runs = [{"id": 12, "status": "success", "event": "push", "prettyref": "refs/heads/linux", "title": "check"}]
+        output = io.StringIO()
+        with (
+            mock.patch.object(classifier.sys, "argv", ["classify", "--list", "4"]),
+            mock.patch.object(classifier, "read_token", return_value="secret"),
+            mock.patch.object(classifier, "api_base", return_value="http://forgejo/api"),
+            mock.patch.object(classifier, "fetch", return_value=json.dumps(runs)),
+            contextlib.redirect_stdout(output),
+        ):
+            classifier.main()
+        self.assertIn("12", output.getvalue())
+        self.assertIn("refs/heads/linux", output.getvalue())
+
+    def test_cli_lists_jobs_and_classifies_failed_run_with_tail(self):
+        jobs_output = io.StringIO()
+        with (
+            mock.patch.object(classifier.sys, "argv", ["classify", "--jobs", "42"]),
+            mock.patch.object(classifier, "read_token", return_value="secret"),
+            mock.patch.object(classifier, "api_base", return_value="http://forgejo/api"),
+            mock.patch.object(classifier, "fetch", return_value=json.dumps([{"name": "unit", "status": "success"}])),
+            contextlib.redirect_stdout(jobs_output),
+        ):
+            classifier.main()
+        self.assertIn("success", jobs_output.getvalue())
+        self.assertIn("unit", jobs_output.getvalue())
+        run_output = io.StringIO()
+        with (
+            mock.patch.object(classifier.sys, "argv", ["classify", "--run", "42", "--tail", "1"]),
+            mock.patch.object(classifier, "classify_run", return_value=[("unit", "code", "test failed", "failed test", ["failed test"])]),
+            contextlib.redirect_stdout(run_output),
+        ):
+            classifier.main()
+        self.assertIn("summary: 1 code", run_output.getvalue())
+        self.assertIn("failed test", run_output.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,10 +1,12 @@
+import contextlib
 import hashlib
+import io
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
-
-import sys
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -114,6 +116,132 @@ class EvidenceManifestTests(unittest.TestCase):
         manifest["source_sha256"] = hashlib.sha256(b"source").hexdigest()
         path.write_text(json.dumps(manifest))
         self.assertEqual(VALIDATOR.validate_manifest(path, strict=True)[0], [])
+
+    def test_selector_extracts_the_last_positional_cargo_test_filter(self):
+        selector, exact = VALIDATOR.test_selector(
+            "cargo test --manifest-path Cargo.toml --features sqlite package::module::case -- --exact"
+        )
+        self.assertEqual((selector, exact), ("package::module::case", True))
+
+    def test_selector_returns_no_filter_for_non_test_commands(self):
+        self.assertEqual(VALIDATOR.test_selector("cargo check -p package"), (None, False))
+
+    def test_a_manifest_without_the_evidence_schema_is_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_text(json.dumps({"format": "unrelated report"}))
+            self.assertEqual(VALIDATOR.validate_manifest(path, strict=True), ([], []))
+
+    def test_missing_or_malformed_manifest_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing.json"
+            malformed = Path(directory) / "malformed.json"
+            malformed.write_text("{")
+            self.assertTrue(VALIDATOR.validate_manifest(missing, strict=True)[0])
+            self.assertTrue(VALIDATOR.validate_manifest(malformed, strict=True)[0])
+
+    def test_missing_source_identity_is_warning_or_strict_error(self):
+        path, manifest = self.fixture()
+        manifest.pop("source_commit")
+        manifest["source_sha256"] = {}
+        path.write_text(json.dumps(manifest))
+        errors, warnings = VALIDATOR.validate_manifest(path)
+        self.assertFalse(errors)
+        self.assertEqual(len(warnings), 1)
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(len(errors), 1)
+
+    def test_invalid_source_digest_is_rejected_even_without_strict_mode(self):
+        path, manifest = self.fixture()
+        manifest["source_sha256"] = {"source.rs": "bad"}
+        path.write_text(json.dumps(manifest))
+        self.assertTrue(VALIDATOR.validate_manifest(path)[0])
+
+    def test_source_drift_is_reported_without_failing_strict_validation(self):
+        path, manifest = self.fixture()
+        source = path.parent / "source.rs"
+        source.write_text("current")
+        manifest["source_sha256"] = {"source.rs": hashlib.sha256(b"previous").hexdigest()}
+        path.write_text(json.dumps(manifest))
+        with mock.patch.object(VALIDATOR, "ROOT", path.parent):
+            errors, warnings = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(errors, [])
+        self.assertTrue(warnings)
+
+    def test_invalid_or_missing_log_digest_is_warning_or_strict_error(self):
+        path, manifest = self.fixture()
+        manifest["log_sha256"] = {"focused.txt": "bad", "absent.txt": "0" * 64}
+        path.write_text(json.dumps(manifest))
+        errors, warnings = VALIDATOR.validate_manifest(path)
+        self.assertFalse(errors)
+        self.assertEqual(len(warnings), 2)
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(len(errors), 2)
+
+    def test_digest_fields_with_the_wrong_shape_are_rejected_in_strict_mode(self):
+        path, manifest = self.fixture()
+        manifest["source_sha256"] = ["bad"]
+        manifest["log_sha256"] = ["bad"]
+        path.write_text(json.dumps(manifest))
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(len(errors), 2)
+
+    def test_focused_result_requires_a_pass_count_and_matching_log_summary(self):
+        path, manifest = self.fixture()
+        manifest["validation"]["focused_test"]["result"] = "completed"
+        path.write_text(json.dumps(manifest))
+        self.assertTrue(VALIDATOR.validate_manifest(path, strict=True)[0])
+        path, manifest = self.fixture()
+        manifest["validation"]["focused_test"]["result"] = "2 passed, 0 failed"
+        path.write_text(json.dumps(manifest))
+        self.assertTrue(VALIDATOR.validate_manifest(path, strict=True)[0])
+
+    def test_focused_command_mismatch_is_a_warning_without_strict_mode(self):
+        path, manifest = self.fixture(selector="case::other")
+        path.write_text(json.dumps(manifest))
+        errors, warnings = VALIDATOR.validate_manifest(path)
+        self.assertFalse(errors)
+        self.assertTrue(warnings)
+
+    def test_cli_reports_a_malformed_manifest_as_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text("{")
+            output = io.StringIO()
+            with (
+                mock.patch.object(sys, "argv", ["validate-evidence", "--strict", str(invalid)]),
+                contextlib.redirect_stderr(output),
+            ):
+                result = VALIDATOR.main()
+            self.assertEqual(result, 1)
+            self.assertTrue(output.getvalue())
+
+    def test_manifest_paths_resolve_from_the_script_root_and_default_scan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / "evidence"
+            first = evidence / "b" / "manifest.json"
+            second = evidence / "a" / "manifest.json"
+            first.parent.mkdir(parents=True)
+            second.parent.mkdir(parents=True)
+            first.write_text('{"schema_version": 1}')
+            second.write_text('{"schema_version": 1}')
+            with mock.patch.object(VALIDATOR, "ROOT", root), mock.patch.object(VALIDATOR, "EVIDENCE", evidence):
+                self.assertEqual(VALIDATOR.manifests(["missing.json"]), [root / "missing.json"])
+                self.assertEqual(VALIDATOR.manifests([]), [second, first])
+
+    def test_cli_reports_valid_manifests_and_historical_warnings(self):
+        path, manifest = self.fixture()
+        manifest.pop("source_commit")
+        path.write_text(json.dumps(manifest))
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", ["validate-evidence", str(path)]),
+            contextlib.redirect_stdout(output),
+        ):
+            result = VALIDATOR.main()
+        self.assertEqual(result, 0)
+        self.assertIn(str(path), output.getvalue())
 
 
 if __name__ == "__main__":
