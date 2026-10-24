@@ -24,7 +24,7 @@ class GtkArtifactWorkflowTests(unittest.TestCase):
             for index, heading in enumerate(headings)
         }
         self.assertIn("gtk-build", list(jobs))
-        self.assertEqual(workflow.count("ci-gtk-artifact.py create"), 1)
+        self.assertEqual(len(re.findall(r"ci-gtk-artifact\.py create (?!--package)", workflow)), 1)
         for name in ("e2e", "gtk", "gtk-server"):
             job = jobs[name]
             self.assertRegex(job, r"needs: \[[^\]]*gtk-build[^\]]*\]")
@@ -129,6 +129,30 @@ class GtkArtifactTests(unittest.TestCase):
         manifest.symlink_to(original)
         with self.assertRaisesRegex(ValueError, "regular manifest"):
             artifact.verify(self.output, SHA)
+
+    def test_package_transfer_preserves_bytes_and_cannot_substitute_for_a_native_binary(self):
+        with patch.object(artifact, "source_identity", return_value=SHA):
+            artifact.create(self.binary, self.output, SHA, package=True)
+        package = artifact.verify(self.output, SHA, package=True)
+        self.assertEqual(package.name, "bookie.deb")
+        self.assertEqual(package.read_bytes(), self.binary.read_bytes())
+        self.assertFalse(package.stat().st_mode & 0o111)
+        with self.assertRaises(ValueError):
+            artifact.verify(self.output, SHA)
+
+    def test_packages_reject_wrong_source_corruption_and_native_binary_packets(self):
+        self.create()
+        with self.assertRaises(ValueError):
+            artifact.verify(self.output, SHA, package=True)
+        self.output.joinpath("bookie").unlink()
+        self.output.joinpath("manifest.json").unlink()
+        with patch.object(artifact, "source_identity", return_value=SHA):
+            artifact.create(self.binary, self.output, SHA, package=True)
+        with self.assertRaises(ValueError):
+            artifact.verify(self.output, "b" * 40, package=True)
+        self.output.joinpath("bookie.deb").write_bytes(b"corrupted")
+        with self.assertRaises(ValueError):
+            artifact.verify(self.output, SHA, package=True)
 
 
 if __name__ == "__main__":

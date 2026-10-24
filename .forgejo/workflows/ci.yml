@@ -228,10 +228,22 @@ jobs:
         run: cd src && python3 scripts/ci-mcp-port.py "${{ matrix.mcp_port_slot }}"
       - name: Build or reuse the distro-floor package
         run: |
-          cd src && bash scripts/distro-floor-package.sh "${{ github.sha }}" > floor-package-path
-      - name: Distro floor
+          cd src && bash scripts/distro-floor-package.sh "${{ github.sha }}" > "$GITHUB_WORKSPACE/floor-package-path"
+      - name: Prepare artifact runtime
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Prepare the shared release package
         run: |
-          cd src && package=$(cat floor-package-path) && DISTRO_FLOOR_PACKAGE="$package" bash scripts/test-distro-floor.sh ${{ matrix.base }}
+          package=$(cat "$GITHUB_WORKSPACE/floor-package-path")
+          python3 src/scripts/ci-gtk-artifact.py create --package "$package" "$GITHUB_WORKSPACE/floor-artifact" "${{ github.sha }}"
+      - name: Upload the shared release package
+        uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
+        with:
+          name: floor-package-${{ github.run_id }}-${{ github.sha }}
+          path: floor-artifact/
+          if-no-files-found: error
+          retention-days: 2
       - name: Debian package build, install, upgrade from the released package and purge
         run: |
           released=/var/cache/ci/releases/tablepro_0.1.5-1_amd64.deb
@@ -240,7 +252,57 @@ jobs:
             curl -fsSL -o "$released.part" https://github.com/cozyGarage/BookiE/releases/download/linux-v0.1.5/tablepro_0.1.5-1_amd64.deb
             mv "$released.part" "$released"
           fi
-          cd src && package=$(cat floor-package-path) && PREVIOUS_DEB="$released" PREBUILT_DEB="$package" bash scripts/test-deb-package.sh ${{ matrix.base }}
+          cd src && package=$(cat "$GITHUB_WORKSPACE/floor-package-path") && PREVIOUS_DEB="$released" PREBUILT_DEB="$package" bash scripts/test-deb-package.sh ${{ matrix.base }}
+  distro-floor-scenarios:
+    runs-on: any-host
+    needs: [distro-floor]
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 30
+    env:
+      CARGO_TARGET_DIR: /var/cache/ci/target/floor-debian:testing
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Check out
+        shell: /usr/local/libexec/bookie-ci-cache checkout {0}
+        env:
+          TOKEN: ${{ github.token }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          rm -rf src
+          auth="$(printf 'oauth2:%s' "$TOKEN" | base64 -w0)"
+          GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.${SERVER}/.extraheader" \
+            GIT_CONFIG_VALUE_0="Authorization: Basic $auth" \
+            git clone --quiet "http://${SERVER#http://}/${{ github.repository }}.git" src
+          unset TOKEN auth
+          git -C src checkout --quiet "${{ github.sha }}"
+      - name: Prepare artifact runtime
+        env:
+          TABLEPRO_TOOL_DIR: /var/cache/ci/tools
+        run: bash src/scripts/ensure-node.sh >> "$GITHUB_PATH"
+      - name: Download the shared release package
+        uses: https://code.forgejo.org/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        with:
+          name: floor-package-${{ github.run_id }}-${{ github.sha }}
+          path: floor-artifact/
+      - name: Verify the shared release package
+        run: |
+          package=$(python3 src/scripts/ci-gtk-artifact.py verify --package "$GITHUB_WORKSPACE/floor-artifact" "${{ github.sha }}")
+          printf 'DISTRO_FLOOR_PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
+      - name: Docker Hub login
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: bash src/scripts/docker-hub-login.sh
+      - name: Select isolated MCP HTTP port
+        run: cd src && python3 scripts/ci-mcp-port.py "$((10 + ${{ matrix.shard }}))"
+      - name: Distro-floor scenario shard
+        run: |
+          cd src && TABLEPRO_GTK_SHARD=${{ matrix.shard }}/3 bash scripts/test-distro-floor.sh debian:testing
+
   driver:
     runs-on: any-host
     needs: [guards, clippy, unit, sandbox, widgets]

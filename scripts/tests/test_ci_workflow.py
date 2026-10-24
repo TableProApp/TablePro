@@ -110,9 +110,12 @@ class CiWorkflowTests(unittest.TestCase):
             'scripts/ci-mcp-port.py "${{ matrix.run }}"',
         ]:
             self.assertIn(call, ci + nightly)
-        ports = [port_helper.port_for_run(137, slot) for slot in range(1, 12)]
+        ports = [port_helper.port_for_run(137, slot) for slot in range(1, 14)]
         self.assertEqual(len(ports), len(set(ports)))
         self.assertTrue(all(20000 <= port <= 59999 for port in ports))
+        for slot in (0, 14, 16):
+            with self.assertRaises(ValueError):
+                port_helper.port_for_run(137, slot)
 
     def test_forgejo_driver_jobs_reuse_and_clean_the_run_scoped_database(self):
         workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
@@ -550,6 +553,23 @@ class CiWorkflowTests(unittest.TestCase):
         self.assertIn("image=bookie-floor-package-debian-testing", builder)
         self.assertIn('docker build -q -t "$image"', builder)
         self.assertIn('"$image" bash -ceu', builder)
+
+    def test_distro_scenarios_share_the_package_and_partition_all_three_shards(self):
+        workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
+        producer = workflow.split("\n  distro-floor:\n", 1)[1].split("\n  distro-floor-scenarios:\n", 1)[0]
+        scenarios = workflow.split("\n  distro-floor-scenarios:\n", 1)[1].split("\n  driver:\n", 1)[0]
+        self.assertNotIn("scripts/test-distro-floor.sh", producer)
+        self.assertIn("scripts/test-deb-package.sh", producer)
+        self.assertIn("ci-gtk-artifact.py create --package", producer)
+        self.assertIn("needs: [distro-floor]", scenarios)
+        self.assertIn("shard: [1, 2, 3]", scenarios)
+        self.assertIn("ci-gtk-artifact.py verify --package", scenarios)
+        self.assertIn("TABLEPRO_GTK_SHARD=${{ matrix.shard }}/3", scenarios)
+        self.assertIn('scripts/ci-mcp-port.py "$((10 + ${{ matrix.shard }}))"', scenarios)
+        self.assertNotIn("scripts/distro-floor-package.sh", scenarios)
+        self.assertIn("scripts/test-distro-floor.sh debian:testing", scenarios)
+        for job in (producer, scenarios):
+            self.assertIn("name: floor-package-${{ github.run_id }}-${{ github.sha }}", job)
 
     def test_packaged_distro_smoke_does_not_mount_a_stale_build_target(self):
         with tempfile.TemporaryDirectory() as temporary:

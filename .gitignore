@@ -11,6 +11,7 @@ __pycache__/
 # Local dependency sysroot and package output
 /.local-deps/
 /packaging/out/
+/.floor-package/
 *.deb
 *.rpm
 *.AppImage

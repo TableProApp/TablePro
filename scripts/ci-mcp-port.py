@@ -5,8 +5,8 @@ from pathlib import Path
 
 
 def port_for_run(run_id, slot):
-    if not 1 <= slot <= 11:
-        raise ValueError("MCP port slot must be between 1 and 11")
+    if not 1 <= slot <= 13:
+        raise ValueError("MCP port slot must be between 1 and 13")
     return 20000 + (run_id % 2500) * 16 + slot
 
 
