@@ -81,6 +81,9 @@ impl ObjectImpl for TableProApplication {
 impl ApplicationImpl for TableProApplication {
     fn startup(&self) {
         self.parent_startup();
+        // GtkSourceView's stylesheet, icon path and translations need the
+        // display, which GTK opens in the startup above.
+        sourceview5::init();
         let app = self.obj();
         install_app_actions(&app);
         install_application_accelerators(&*app);

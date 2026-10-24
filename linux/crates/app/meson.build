@@ -101,3 +101,27 @@ test(
   is_parallel: false,
   timeout: 3600,
 )
+
+# The code that measures and places things, again at the scale a 200%
+# display gives GDK, so a size worked out in device pixels rather than
+# logical ones fails here and not only on a HiDPI screen.
+gtk_scale_env = gtk_env
+gtk_scale_env.set('GDK_SCALE', '2')
+
+test(
+  'app-scale-2',
+  gtk_program,
+  args: gtk_args + [
+    '--lib',
+    '--',
+    'ui::grid::',
+    'ui::diagram::',
+    'ui::editor::editor_view::',
+    'ui::window_geometry::',
+  ],
+  env: gtk_scale_env,
+  depends: [compiled_schemas, metainfo_file],
+  suite: 'gtk',
+  is_parallel: false,
+  timeout: 3600,
+)

@@ -165,6 +165,7 @@ Not built yet, in no order.
 - An AUR PKGBUILD, kept by the community.
 - More languages: French, Korean, Turkish, and Simplified and Traditional Chinese, which the macOS app ships.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
+- The [display scale pass](docs/testing.md#display-scales) again on a machine with a GPU and a HiDPI screen: the 2026-10-24 one ran in a container, on a software renderer.
 - Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
 - A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
 

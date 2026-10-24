@@ -199,6 +199,10 @@ impl SqlEditor {
         self.emit_by_name::<()>("undoable-toast", &[&crate::i18n::gettext("Query replaced")]);
     }
 
+    pub fn focus_text(&self) {
+        self.imp().source_view.grab_focus();
+    }
+
     /// Take back the last edit, for a toast's Undo button.
     pub fn undo(&self) {
         let buffer = self.buffer();

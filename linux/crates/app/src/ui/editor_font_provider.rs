@@ -46,7 +46,10 @@ fn editor_font_css(font: &pango::FontDescription) -> String {
     let size = font.size();
     if size > 0 {
         let unit = if font.is_size_absolute() { "px" } else { "pt" };
-        declarations.push(format!("font-size: {}{unit};", size / pango::SCALE));
+        declarations.push(format!(
+            "font-size: {}{unit};",
+            f64::from(size) / f64::from(pango::SCALE)
+        ));
     }
     if font.weight() != pango::Weight::Normal {
         declarations.push(format!("font-weight: {};", font.weight().into_glib()));
@@ -124,6 +127,13 @@ mod tests {
         let css = editor_font_css(&font);
 
         assert!(css.contains("font-family: \"Ev\\\"il\\\\Font\";"), "{css}");
+    }
+
+    #[test]
+    fn editor_font_css_keeps_a_fractional_size() {
+        let css = editor_font_css(&pango::FontDescription::from_string("Monospace 10.5"));
+
+        assert!(css.contains("font-size: 10.5pt;"), "{css}");
     }
 
     #[test]

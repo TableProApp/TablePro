@@ -177,11 +177,25 @@ impl WorkspaceModel {
     }
 
     pub(super) fn open_editor_tab(&mut self, initial_query: Option<String>) {
-        self.open_tab(TabSpec::Editor {
+        self.open_editor(TabSpec::Editor {
             initial_query,
             draft: None,
             file: None,
         });
+    }
+
+    // AdwTabView moves the focus to the page it selects only from the page
+    // that held it, so an editor opened from the sidebar, a header button
+    // or a key pressed there would leave the typing where it was.
+    fn open_editor(&mut self, spec: TabSpec) {
+        if self.open_tab(spec).is_none() {
+            return;
+        }
+        if let Some(id) = self.selected_workspace_tab_id()
+            && let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id)
+        {
+            slot.editor.focus_text();
+        }
     }
 
     /// The directory this session's editor drafts live in.
@@ -673,7 +687,7 @@ impl WorkspaceModel {
         match descriptor {
             ClosedTabDescriptor::Editor { query, file } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
-                self.open_tab(TabSpec::Editor {
+                self.open_editor(TabSpec::Editor {
                     initial_query: initial,
                     draft: None,
                     file,
@@ -805,6 +819,39 @@ mod tests {
         WidgetExt::activate_action(&test.window, "win.reset-workspace-layout", None).expect("Reset");
 
         wait_until(WAIT, || !banner.is_revealed()).expect("the banner goes once the file is moved aside");
+    }
+
+    #[gtk4::test]
+    fn a_new_editor_tab_takes_the_focus_from_outside_the_tabs() {
+        let test = TestWindow::connected("NewEditorFocus");
+        let button = test.workspace().imp().new_tab_button.get();
+        button.grab_focus();
+        assert!(button.is_focus(), "the header button holds the focus");
+
+        button.emit_clicked();
+
+        wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab");
+        let text = crate::test_support::first_descendant_of_type::<sourceview5::View>(&editors(&test.window)[0])
+            .expect("the editor's text");
+        wait_until(WAIT, || text.is_focus()).expect("the new editor's text takes the focus");
+    }
+
+    #[gtk4::test]
+    fn a_reopened_editor_tab_takes_the_focus() {
+        let test = TestWindow::connected("ReopenedEditorFocus");
+        WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
+        wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab");
+        WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
+        wait_until(WAIT, || editors(&test.window).is_empty()).expect("the tab closes");
+        let button = test.workspace().imp().new_tab_button.get();
+        button.grab_focus();
+
+        WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
+
+        wait_until(WAIT, || editors(&test.window).len() == 1).expect("the tab comes back");
+        let text = crate::test_support::first_descendant_of_type::<sourceview5::View>(&editors(&test.window)[0])
+            .expect("the editor's text");
+        wait_until(WAIT, || text.is_focus()).expect("the reopened editor's text takes the focus");
     }
 
     #[gtk4::test]

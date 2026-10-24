@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <g fill="#222222">
-    <path d="M1 2h6v1.5H1zm0 2.5h6V6H1zm0 2.5h6v1.5H1zM1 1a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zm8 6h6v1.5H9zm0 2.5h6V11H9zm0 2.5h6v1.5H9zM9 6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/>
-    <path d="M7.5 4.5h2a1 1 0 0 1 1 1v1H9v-1H7.5z"/>
+  <g fill="#222222" fill-rule="evenodd">
+    <path d="M2 1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm0 1v1h5V2zm0 2v1h5V4zm0 2v1h5V6z"/>
+    <path d="M9 8h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zm0 1v1h5V9zm0 2v1h5v-1zm0 2v1h5v-1z"/>
+    <path d="M8 4h4v4h-1V5H8z"/>
   </g>
 </svg>

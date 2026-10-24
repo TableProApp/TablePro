@@ -371,6 +371,8 @@ Helpers live in `crates/app/src/test_support`, compiled only for tests:
 
 The gtk suite sets `GTK_A11Y=test`, so results never depend on an AT-SPI bus. With `GTK_A11Y=none`, GTK records no accessible properties and `assert_labelled` returns `TestBackendMissing` instead of a wrong verdict.
 
+The suite's `app-scale-2` test runs the grid, ER diagram, editor view and window geometry tests again with `GDK_SCALE=2`, the scale a 200% display gives GDK, so a size worked out in device pixels rather than logical ones fails on CI and not only on a HiDPI screen. Fractional scales are left to the [display scale pass](#display-scales), since Xvfb has none.
+
 Two harnesses build the app's real objects over fakes:
 
 - `TestWindow` (`crates/app/src/ui/session_window/tests/mod.rs`) starts a `TableProApplication` with one window on the picker, a saved connection in its list and a `FakeConnector`. `TestWindow::connected` opens that connection and waits for its workspace. Each test registers an application id of its own, so it never meets another test, or a TablePro the developer has open, on the session bus. `test.hold` is the application's `CountingHold`.
@@ -465,6 +467,34 @@ The tests in `crates/app/src/ui/editor/script_runner.rs` drive `run_batches` und
 ### Structure review
 
 `crates/app/src/workspace/tests/structure_review.rs` saves a structure tab through `WorkspaceHandle::save` on the `workspace::test_workspace::Workspace` harness and answers the review with `workspace::answer`. A dropped column shows the review with its SQL, Cancel sends nothing, Apply runs one write batch, an additive save on an engine that applies DDL in one transaction starts without a review, a draft changed during the review is not saved, and a second save during the review opens no second one. The close guard's own tests check that its Save reviews too, and that a declined review keeps the window open with no alert and starts none of the saves after it.
+
+## Manual passes
+
+What a person checks on a desktop because no suite can, each with the date it last ran, where, and what it found. A problem a pass finds is fixed or filed, and the pass runs again when what it covers changes.
+
+### Display scales
+
+The app at 100, 125, 150, 175 and 200% on GNOME Wayland, at 200% on X11, on two monitors at different scales with the window moved from one to the other while a table, an editor and an ER diagram tab are open, on KDE Plasma Wayland at 125 and 150% with the Adwaita style, and at 150% with Large Text. At each scale: grid text, row height, header, pager and saved column widths; the focused cell ring, the selection and the pending insert, edit and delete tints; the SQL editor's text, gutter and completion list; the sidebar, the connect dialog, Preferences, the save alert, the main menu and About; the app icon and the three symbolic icons in `data/resources/icons`.
+
+#### 2026-10-24
+
+Ran in the `tablepro-linux-dev:26.04` container on an Apple silicon Mac, without a GPU: Mesa's llvmpipe drew everything in software. GTK 4.22.4, libadwaita 1.9.1, GtkSourceView 5.18.0, Adwaita Sans 11 and DejaVu Sans Mono 11, since Ubuntu ships no Adwaita Mono.
+
+| Configuration | How | Result |
+|---|---|---|
+| GNOME Wayland 100, 125, 150, 175, 200% | GNOME Shell 50.1 `--headless` with one virtual monitor, 2560×1600 (2880×1800 at 150%, 2800×1750 at 175%, where Mutter offers those scales), the scale set through Mutter's `DisplayConfig` | Drawn at the monitor's scale, never stretched. Grid text, rows, header, pager, tints and the 2 px focus ring hold at every scale; the saved widths of `status` (72) and `note` (96) show the same text at each. Dialogs, alerts and menus lay out as at 100%. The problems below |
+| X11 200% | Xvfb, with xsettingsd handing GTK `Gdk/WindowScalingFactor 2` as GNOME's settings daemon does on X11; GNOME 50 has no X11 session | As Wayland at 200% |
+| Two monitors | 1920×1080 at 100% and 2560×1600 at 200%; the window, with a table, an editor and an ER diagram tab, moved to the second and back | Each move redraws at the new monitor's scale; layout, column widths and the diagram's cards are the same on both |
+| KDE Plasma Wayland 125, 150% | KDE_RESULT_PLACEHOLDER | KDE_RESULT_PLACEHOLDER |
+| 150% with Large Text | GNOME at 150% with `text-scaling-factor` 1.25, read through the settings portal | Text a quarter larger and rows taller with it, nothing clipped; the connect dialog's title shortens to "Connect to PostgreS…" beside Test and Connect, as a header bar does |
+
+Problems it found, each fixed with it:
+
+- The app never called `gtk_source_init`, so GtkSourceView's stylesheet was missing: the completion list had no background and no gap between a name and its type, and with its rows hidden it asked for no width. GDK refuses such a popup, so once a word had no match the list never came back, at any scale and on X11 too. The application's startup now calls `sourceview5::init`.
+- `table-relation-symbolic` (Show ER Diagram) drew its rows on half pixels and `statement-pending-symbolic` (Not Run) had a 1.5 px ring and round dots, so both were soft at 100%; both are redrawn on the 16 px grid.
+- A new editor tab opened from the header button, the sidebar or Ctrl+T with the focus outside the tabs left the keyboard focus where it was, so typed SQL went to the sidebar.
+
+Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on a real driver, text on a physical panel, a touchpad's scrolling and zoom, and an X11 desktop that composites.
 
 ## CI
 

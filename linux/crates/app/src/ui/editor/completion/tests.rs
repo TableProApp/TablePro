@@ -601,6 +601,49 @@ fn typing_a_dot_after_an_alias_lists_its_columns_with_types() {
     screen.wait_for("integer").expect("the column's type beside it");
 }
 
+/// The app starts GtkSourceView, whose stylesheet gives the list its
+/// width while its rows are hidden. Without it GDK refused the list after
+/// a word with no match, and it never came back.
+#[gtk4::test]
+fn the_list_comes_back_after_a_word_with_no_match() {
+    let test = crate::ui::session_window::tests::TestWindow::connected("CompletionComesBack");
+    WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
+    let editors = || crate::ui::session_window::tests::editors(&test.window);
+    wait_until(WAIT, || editors().len() == 1).expect("an editor tab");
+    let view: sourceview5::View = editors()[0].imp().source_view.get().upcast();
+    wait_until(WAIT, || view.is_mapped() && view.has_focus()).expect("the editor's text with the focus");
+    assert!(comes_back(&view), "the list stayed off screen");
+}
+
+/// Types as keys do, one character at a time, since GtkSourceView starts a
+/// completion only for a single character typed.
+fn comes_back(view: &sourceview5::View) -> bool {
+    let buffer = view.buffer();
+    // The document's words complete whatever the catalog holds.
+    buffer.set_text("SELECT unit_price, units_sold FROM sales;\n");
+    buffer.place_cursor(&buffer.end_iter());
+    let list = || {
+        descendants(view)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::Popover>().ok())
+            .find(|popover| popover.type_().name() == "GtkSourceCompletionList")
+    };
+    let shown = || list().is_some_and(|list| list.is_mapped());
+    let type_text = |text: &str| {
+        for character in text.chars() {
+            buffer.insert_interactive_at_cursor(&character.to_string(), true);
+            crate::test_support::drain_main_context();
+        }
+    };
+
+    type_text("un");
+    wait_until(WAIT, shown).expect("the list on screen");
+    type_text("zq");
+    wait_until(WAIT, || list().is_none_or(|list| !list.is_visible())).expect("no match hides the list");
+    type_text(" un");
+    wait_until(WAIT, shown).is_ok()
+}
+
 /// A provider on a session to the engine `driver`, speaking `dialect`,
 /// with its snippets from `folder`.
 fn on_engine(
