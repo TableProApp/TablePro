@@ -290,6 +290,7 @@ mod tests {
             },
             database: Some("sales".to_owned()),
             tls: TlsConfig::verify_full(),
+            options: Default::default(),
         };
         (target, reroutes)
     }

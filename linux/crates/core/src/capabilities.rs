@@ -1,6 +1,7 @@
 use crate::auth_mode::AuthMode;
 use crate::file_format::FileFormat;
 use crate::meta::ObjectKind;
+use crate::network_options::NetworkOption;
 use crate::tls_capabilities::TlsCapabilities;
 use crate::write_ledger::WriteAtomicity;
 
@@ -35,6 +36,10 @@ pub enum DataModel {
     /// Numbered databases of keys, each holding a typed value, read and
     /// written with commands.
     KeyValue,
+    /// Databases of collections, whose documents each hold fields of
+    /// their own, read and written with the engine's shell language.
+    /// A collection opens in a table tab, its fields as columns.
+    Document,
 }
 
 /// Whether the engine runs a script as one unit.
@@ -101,6 +106,8 @@ pub struct DriverCapabilities {
     pub object_kinds: &'static [ObjectKind],
     /// Whether a connection needs a database name before it can open.
     pub database_required: bool,
+    /// The `NetworkOptions` the connect dialog offers for this engine.
+    pub network_options: &'static [NetworkOption],
     pub statement_stop: StatementStop,
 }
 
@@ -131,6 +138,14 @@ impl DriverCapabilities {
     pub fn is_key_value(&self) -> bool {
         self.data_model == DataModel::KeyValue
     }
+
+    pub fn is_document(&self) -> bool {
+        self.data_model == DataModel::Document
+    }
+
+    pub fn offers(&self, option: NetworkOption) -> bool {
+        self.network_options.contains(&option)
+    }
 }
 
 #[cfg(test)]
@@ -152,6 +167,7 @@ mod tests {
         row_count_estimate: EstimateQuality::Statistics,
         object_kinds: &[ObjectKind::Table, ObjectKind::View],
         database_required: false,
+        network_options: &[],
         statement_stop: StatementStop::Server,
     };
 

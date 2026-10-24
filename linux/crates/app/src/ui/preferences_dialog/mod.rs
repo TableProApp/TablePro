@@ -1,3 +1,4 @@
+mod ai_page;
 mod data_browser_group;
 mod editor_page;
 mod general_page;
@@ -14,6 +15,7 @@ use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::AppSettings;
 
+use crate::services::ai_service::AiService;
 use crate::services::history_service::HistoryService;
 use crate::services::mcp_service::McpService;
 use crate::ui::file_reveal::FileRevealer;
@@ -40,6 +42,7 @@ impl PreferencesDialog {
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
         mcp: Option<McpService>,
+        ai: AiService,
     ) -> Self {
         let dialog: Self = glib::Object::new();
         let imp = dialog.imp();
@@ -55,6 +58,7 @@ impl PreferencesDialog {
             },
         );
         imp.mcp_page.bind(settings, mcp);
+        imp.ai_page.bind(ai);
         let shown_in = dialog.downgrade();
         imp.general_page.history_group().connect_toast(move |_, toast| {
             if let Some(dialog) = shown_in.upgrade() {
@@ -69,6 +73,12 @@ impl PreferencesDialog {
         });
         let shown_in = dialog.downgrade();
         imp.mcp_page.connect_toast(move |_, toast| {
+            if let Some(dialog) = shown_in.upgrade() {
+                dialog.add_toast(toast.clone());
+            }
+        });
+        let shown_in = dialog.downgrade();
+        imp.ai_page.connect_toast(move |_, toast| {
             if let Some(dialog) = shown_in.upgrade() {
                 dialog.add_toast(toast.clone());
             }
@@ -125,17 +135,19 @@ mod tests {
             tasks,
             Rc::new(RecordingRevealer::succeeding()),
             None,
+            AiService::new(settings.get().clone(), tasks.clone(), None),
         )
     }
 
     /// The dialog's pages, in the order it shows them. They are not in
     /// its widget tree until it is presented, so they come from the
     /// template.
-    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 3] {
+    fn pages(dialog: &PreferencesDialog) -> [adw::PreferencesPage; 4] {
         let imp = dialog.imp();
         [
             imp.general_page.get().upcast(),
             imp.editor_page.get().upcast(),
+            imp.ai_page.get().upcast(),
             imp.mcp_page.get().upcast(),
         ]
     }
@@ -152,10 +164,11 @@ mod tests {
             test_history(&root, &runtime.tasks()),
             &runtime.tasks(),
         );
-        let [general, editor, mcp] = pages(&dialog);
+        let [general, editor, ai, mcp] = pages(&dialog);
 
         assert_eq!(general.title(), "General");
         assert_eq!(editor.title(), "Editor");
+        assert_eq!(ai.title(), "AI");
         assert_eq!(mcp.title(), "MCP");
         assert_eq!(dialog.visible_page().as_ref(), Some(&general));
         dialog.set_visible_page(&editor);

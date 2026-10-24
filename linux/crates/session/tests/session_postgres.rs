@@ -138,6 +138,7 @@ fn direct_target(fixture: &PostgresFixture) -> RequestTarget {
         credentials: password(&fixture.password_credentials()),
         database: Some(fixture.database().to_owned()),
         tls: TlsConfig::disabled(),
+        options: Default::default(),
     }
 }
 
@@ -190,6 +191,7 @@ async fn admin(fixture: &PostgresFixture) -> Arc<dyn Connection> {
             credentials: password(&fixture.password_credentials()),
             database: Some(fixture.database().to_owned()),
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         }),
         workspace_settings: WorkspaceSettings::workspace(false),
         liveness,
@@ -365,6 +367,7 @@ fn ssh_target(sshd: &OpenSshFixture, postgres: &PostgresFixture, key: &Path) -> 
         credentials: password(&postgres.password_credentials()),
         database: Some(postgres.database().to_owned()),
         tls: TlsConfig::disabled(),
+        options: Default::default(),
     }
 }
 

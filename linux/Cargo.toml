@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/ai",
     "crates/app",
     "crates/core",
     "crates/mcp",
@@ -13,6 +14,7 @@ members = [
     "crates/drivers/cassandra",
     "crates/drivers/clickhouse",
     "crates/drivers/duckdb",
+    "crates/drivers/mongodb",
     "crates/drivers/mssql",
     "crates/drivers/mysql",
     "crates/drivers/postgres",
@@ -27,10 +29,12 @@ license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
+tablepro-ai = { path = "crates/ai" }
 tablepro-core = { path = "crates/core" }
 tablepro-driver-cassandra = { path = "crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "crates/drivers/clickhouse" }
 tablepro-driver-duckdb = { path = "crates/drivers/duckdb" }
+tablepro-driver-mongodb = { path = "crates/drivers/mongodb" }
 tablepro-driver-mssql = { path = "crates/drivers/mssql" }
 tablepro-driver-mysql = { path = "crates/drivers/mysql" }
 tablepro-driver-postgres = { path = "crates/drivers/postgres" }
@@ -66,6 +70,19 @@ tiberius = { version = "0.13", default-features = false, features = ["tds73", "r
 # The driver hands redis-rs a stream it opened and wrapped in TLS itself, so
 # none of the crate's TLS features is on: rustls stays on aws-lc-rs.
 redis = { version = "1.7", default-features = false, features = ["aio", "tokio-comp"] }
+# rustls on aws-lc-rs, bson 3 and the resolver a DNS seed list needs. The
+# crate's TLS fills its roots from webpki-roots unless a CA file is given,
+# so the driver always gives it one: the system store, plus the user's CA.
+# The driver names bson's types through this, the same bson 3 the mongodb
+# crate uses, with the chrono and uuid conversions the grid's values need.
+base64 = "0.22"
+bson = { version = "3.1", default-features = false, features = ["chrono-0_4", "serde_json-1", "uuid-1"] }
+mongodb = { version = "3.9.1", default-features = false, features = [
+    "compat-3-3-0",
+    "bson-3",
+    "rustls-tls-aws-lc",
+    "dns-resolver",
+] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps

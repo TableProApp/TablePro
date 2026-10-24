@@ -417,6 +417,7 @@ jobs:
           - tablepro-driver-clickhouse
           - tablepro-driver-cassandra
           - tablepro-driver-redis
+          - tablepro-driver-mongodb
           - tablepro-ssh
           - tablepro-test-fixtures
         # Each fixture starts its engine's default release. An entry with
@@ -465,6 +466,9 @@ jobs:
           - package: tablepro-driver-redis
             release: redis-7.4
             redis: "7.4"
+          - package: tablepro-driver-mongodb
+            release: mongo-7.0
+            mongo: "7.0"
     defaults:
       run:
         working-directory: linux
@@ -502,6 +506,7 @@ jobs:
           TABLEPRO_TEST_CASSANDRA: ${{ matrix.cassandra }}
           TABLEPRO_TEST_SCYLLA: ${{ matrix.scylla }}
           TABLEPRO_TEST_REDIS: ${{ matrix.redis }}
+          TABLEPRO_TEST_MONGO: ${{ matrix.mongo }}
           TABLEPRO_TEST_OPENSSH: ${{ matrix.openssh }}
         run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
       - name: Upload JUnit report

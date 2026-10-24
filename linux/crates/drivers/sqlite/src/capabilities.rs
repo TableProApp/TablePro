@@ -35,5 +35,6 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     row_count_estimate: EstimateQuality::Statistics,
     object_kinds: &[ObjectKind::Table, ObjectKind::View],
     database_required: false,
+    network_options: &[],
     statement_stop: StatementStop::Server,
 };

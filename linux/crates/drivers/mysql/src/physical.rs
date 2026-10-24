@@ -80,7 +80,7 @@ impl MysqlEndpoint {
             // sqlx seeds its own Mozilla roots and takes any other trust
             // only as PEM, so the system store and the CA file go in as
             // one bundle: what PostgreSQL and ClickHouse trust too.
-            let roots = tablepro_net::tls::mysql_ca_bundle_pem(&target.tls)
+            let roots = tablepro_net::tls::ca_bundle_pem(&target.tls)
                 .map_err(|error| tls_setup_failed(error, tablepro_core::TlsFailure::CaFileInvalid))?;
             options = options.ssl_ca_from_pem(roots);
         }
@@ -335,6 +335,7 @@ mod tests {
                 server_name: server_name.map(str::to_owned),
                 ..TlsConfig::verify_full()
             },
+            options: Default::default(),
         };
         MysqlEndpoint::new(&target, LivenessPolicy::DESKTOP).unwrap()
     }

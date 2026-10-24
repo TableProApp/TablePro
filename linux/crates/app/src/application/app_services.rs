@@ -16,6 +16,7 @@ use tablepro_storage::{AppSettings, QueryHistory, SecretStore, StoragePaths};
 use crate::config;
 use crate::runtime::GioProcessHold;
 use crate::services::active_session::ActiveSession;
+use crate::services::ai_service::AiService;
 use crate::services::connection_deletion::ConnectionDeletion;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::services::history_service::HistoryService;
@@ -45,6 +46,8 @@ pub struct AppServices {
     pub saved_connection_editor: SavedConnectionEditor,
     /// Shows a file selected in the file manager.
     pub(crate) file_revealer: Rc<dyn FileRevealer>,
+    /// The AI provider the settings name, with its key in the keyring.
+    pub(crate) ai: AiService,
     /// The SQL editor's snippets, read from the snippets folder.
     pub snippets: Rc<SnippetLibrary>,
     /// Where each session's secrets come from.
@@ -92,6 +95,7 @@ impl AppServices {
         let saved_connections = SavedConnectionList::follow(storage.connections(), drivers.clone());
         let saved_connection_editor =
             SavedConnectionEditor::new(storage.connections().clone(), storage.secrets().clone(), tasks.clone());
+        let ai = AiService::new(settings.clone(), tasks.clone(), None);
         let snippets = SnippetLibrary::new(storage.paths().snippets_dir());
         Self {
             drivers,
@@ -106,6 +110,7 @@ impl AppServices {
             saved_connections,
             saved_connection_editor,
             file_revealer: Rc::new(FileLauncherRevealer),
+            ai,
             snippets,
             hold: application_hold.clone(),
             application_hold,
@@ -123,6 +128,7 @@ impl AppServices {
     pub fn production(drivers: DriverRegistry, settings: Rc<AppSettings>, paths: StoragePaths, tasks: Tasks) -> Self {
         let secrets = Arc::new(SecretStore::new(config::secret_schema()));
         let mcp_tokens: Arc<dyn TokenVault> = secrets.clone();
+        let ai_keys: Arc<dyn tablepro_ai::ApiKeyVault> = secrets.clone();
         let storage = AppStorage::new(paths, secrets, &tasks);
         let ssh = SshServices::system(storage.paths().runtime.clone(), Path::new(config::LIBEXECDIR));
         let liveness = LivenessPolicy::DESKTOP;
@@ -146,6 +152,7 @@ impl AppServices {
         });
         services.ssh = Some(ssh);
         services.mcp_tokens = Some(mcp_tokens);
+        services.ai = AiService::new(services.settings.clone(), services.tasks.clone(), Some(ai_keys));
         services
     }
 

@@ -1,4 +1,4 @@
-use tablepro_core::{Credentials, FileEndpoint, NetworkEndpoint, TlsConfig, TransportClass};
+use tablepro_core::{Credentials, FileEndpoint, NetworkEndpoint, NetworkOptions, TlsConfig, TransportClass};
 use tablepro_ssh::SshConfig;
 
 /// Where a connect request goes and how it logs in.
@@ -14,6 +14,7 @@ pub enum RequestTarget {
         credentials: Credentials,
         database: Option<String>,
         tls: TlsConfig,
+        options: NetworkOptions,
     },
     File(FileEndpoint),
 }

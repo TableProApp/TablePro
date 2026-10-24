@@ -2,7 +2,7 @@
 
 **Status, 2026-10-19**: every capability in the tables below is in the tree. Nothing has shipped yet: no `linux-v*` tag has been cut. The [release criteria](#release-criteria) say what has to hold first, and the [backlog](#backlog) lists what is not built.
 
-The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to eight engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md) and [Redis](docs/drivers/redis.md).
+The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) and connects to nine engines, each a crate linked in at compile time ([ADR 0001](docs/decisions/0001-no-plugin-system.md)): [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [Redis](docs/drivers/redis.md) and [MongoDB](docs/drivers/mongodb.md).
 
 ## Implemented
 
@@ -74,6 +74,14 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Key tab | A key opens by type: a string's value, a hash's fields, a list by index, a set's members, a sorted set with scores and a stream's entries, 500 at a time with Load More, under its length and expiry |
 | Commands | The editor takes Redis commands, one per line, and shows each reply as redis-cli lays it out; `MULTI` is tracked as a transaction. A waiting command stops with `CLIENT UNBLOCK`. Read-Only refuses every command that is not a read before it is sent ([redis.md](docs/drivers/redis.md)) |
 
+### Documents
+
+| Capability | Detail |
+|---|---|
+| Connecting | A MongoDB connection reaches one host directly, a replica set or cluster through its DNS seed list (`mongodb+srv://`), or one host through SSH, with an optional authentication database |
+| Collections | Databases list their collections and views. A collection opens in a table tab: its top-level fields as columns, `_id` first, nested documents and arrays as JSON. Paging, filters, the raw filter as a query document, sorting, editing a field, inserting and deleting run as mongosh calls with bound values, shown in the history and the Safe Mode review ([mongodb.md](docs/drivers/mongodb.md)) |
+| Statements | The editor takes mongosh statements (`find`, `aggregate`, the writes, `runCommand`, `use`, `show`) and shows documents one per row. A running statement stops with `killSessions`. Read-Only refuses every statement that is not a read, `$out` and `$merge` included, before it is sent |
+
 ### SQL editor
 
 | Capability | Detail |
@@ -117,8 +125,17 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
 | Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
-| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the MCP server |
+| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the AI assistant, the MCP server |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
+
+### AI assistant
+
+| Capability | Detail |
+|---|---|
+| Providers | Off until a provider is chosen in Preferences: Anthropic, OpenAI, or Ollama and other servers through the OpenAI-compatible protocol. Keys in the keyring; the model picked from the provider's list ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)) |
+| Chat | A pane beside the tabs (Ctrl+Alt+A) with streamed replies, Stop, Retry and New Conversation; code blocks with Copy and Insert. A conversation carries the editor's SQL and the structure of the tables it names, and reads no rows |
+| Editor | Explain, Review and Optimize the selection or the statement at the cursor, Fix with AI on a failed statement, and suggestions while typing (off by default) that Tab accepts |
+| AI policy | Per connection: Ask Each Time (the default) asks before the first request in a window, Allow sends without asking, Never sends nothing from the connection |
 
 ### MCP server
 
@@ -137,7 +154,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
-| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip and a copy and paste round trip, on every SQL engine, and keyspace and TLS conformance on Redis; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, Redis, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
+| Tests | Unit, gtk (with an accessibility audit of the picker, the connect pages, the workspace, the connect dialog and every preferences page), data and packaging suites; connection, DDL and TLS conformance, and a CSV and SQL INSERT export round trip and a copy and paste round trip, on every SQL engine, keyspace and TLS conformance on Redis, and document and TLS conformance on MongoDB; Docker jobs for PostgreSQL with PgBouncer, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, Redis, MongoDB, SSH, the session and the grid save ([testing.md](docs/testing.md)); every critical audit finding has named guards ([regression-tests.md](docs/regression-tests.md)) |
 
 ## Backlog
 
@@ -169,17 +186,12 @@ Not built yet, in no order.
 - Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
 - A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
 
-### AI assistant
-
-- An AI assistant, off with no provider until the user adds one: Anthropic, OpenAI, and Ollama through the OpenAI-compatible protocol, so self-hosted servers work too. Keys in the keyring, an AI policy per connection that keeps its schema and rows out of every prompt, and the Privacy section naming the provider ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)).
-
 ### More engines
 
 Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets [adding-drivers.md, The client library](docs/adding-drivers.md#1-the-client-library): maintained on crates.io, TLS through aws-lc-rs, a stream or Unix socket transport for SSH, and a way to stop a statement.
 
 | Engine | Client | Condition |
 |---|---|---|
-| MongoDB | mongodb 3.x, default features off, `rustls-tls-aws-lc` | It must use the system trust store first: it fills its roots from webpki-roots unless `ca_file_path` is set, so it needs native roots upstream or `ca_file_path` set to the platform bundle |
 | Oracle | none | Blocked. The oracle crate has one maintainer, no release since 2025-01-02, and needs the proprietary Oracle client |
 
 Microsoft's mssql-tds is checked again each release as a SQL Server client. Today its TLS on Linux goes through OpenSSL and it takes no outside pull requests, so tiberius stays.

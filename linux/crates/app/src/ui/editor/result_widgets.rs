@@ -8,31 +8,44 @@ use crate::ui::icons;
 use crate::ui::result_pane::result_set_page;
 
 /// What a page's buttons reach in the editor.
-pub struct PageActions<G, E> {
+pub struct PageActions<G, E, F> {
     /// Put the editor cursor where the server says a statement went
     /// wrong.
     pub go_to_error: G,
     /// Offer every row of a result the row limit cut short, with the
     /// rows its grid shows.
     pub export_all: E,
+    /// Ask the assistant to fix a failed statement. `None` where the tab
+    /// has no assistant.
+    pub fix: Option<FixHook<F>>,
+}
+
+/// Fix with AI on a failed statement's page. The page is built once and
+/// kept, so the button follows `available` rather than how things were
+/// when the statement failed.
+pub struct FixHook<F> {
+    pub run: F,
+    pub available: gtk4::gio::SimpleAction,
 }
 
 /// The widget the results list's `index`th line shows. `in_clause` is
 /// false where the engine has no SQL to copy rows into.
-pub fn entry_widget<G, E>(
+pub fn entry_widget<G, E, F>(
     index: usize,
     entry: &RunLogEntry,
     grid_sink: &GridSink,
     in_clause: bool,
-    actions: PageActions<G, E>,
+    actions: PageActions<G, E, F>,
 ) -> gtk4::Widget
 where
     G: Fn(usize) + 'static,
     E: Fn(ExportSource) + 'static,
+    F: Fn() + 'static,
 {
     let PageActions {
         go_to_error,
         export_all,
+        fix,
     } = actions;
     match &entry.kind {
         EntryKind::ResultSet(result) => result_set_page(
@@ -57,19 +70,7 @@ where
         EntryKind::Notice { message } => {
             status_page(&crate::i18n::gettext("Notice"), message, icons::TEXT_X_GENERIC).upcast()
         }
-        EntryKind::Failed { message, error_char } => {
-            let page = status_page(&crate::i18n::gettext("Statement Failed"), message, icons::DIALOG_ERROR);
-            if let Some(position) = *error_char {
-                let button = gtk4::Button::builder()
-                    .label(crate::i18n::gettext("Go to Error"))
-                    .halign(gtk4::Align::Center)
-                    .build();
-                button.add_css_class("pill");
-                button.connect_clicked(move |_| go_to_error(position));
-                page.set_child(Some(&button));
-            }
-            page.upcast()
-        }
+        EntryKind::Failed { message, error_char } => failed_page(message, *error_char, go_to_error, fix),
         EntryKind::ClientWarning { message } => status_page(
             &crate::i18n::gettext("Check the Script"),
             message,
@@ -108,6 +109,50 @@ where
     }
 }
 
+/// A failed statement's page: Go to Error where the server says where,
+/// and Fix with AI while the assistant may send from here.
+fn failed_page<G, F>(message: &str, error_char: Option<usize>, go_to_error: G, fix: Option<FixHook<F>>) -> gtk4::Widget
+where
+    G: Fn(usize) + 'static,
+    F: Fn() + 'static,
+{
+    let page = status_page(&crate::i18n::gettext("Statement Failed"), message, icons::DIALOG_ERROR);
+    let go = error_char.map(|position| {
+        let button = gtk4::Button::builder()
+            .label(crate::i18n::gettext("Go to Error"))
+            .halign(gtk4::Align::Center)
+            .build();
+        button.add_css_class("pill");
+        button.connect_clicked(move |_| go_to_error(position));
+        button
+    });
+    let fix = fix.map(|FixHook { run, available }| {
+        let button = gtk4::Button::builder()
+            .label(crate::i18n::gettext("Fix with AI"))
+            .halign(gtk4::Align::Center)
+            .build();
+        button.add_css_class("pill");
+        available
+            .bind_property("enabled", &button, "visible")
+            .sync_create()
+            .build();
+        button.connect_clicked(move |_| run());
+        button
+    });
+    match (go, fix) {
+        (Some(go), Some(fix)) => {
+            let buttons = gtk4::Box::new(gtk4::Orientation::Horizontal, 12);
+            buttons.set_halign(gtk4::Align::Center);
+            buttons.append(&go);
+            buttons.append(&fix);
+            page.set_child(Some(&buttons));
+        }
+        (Some(only), None) | (None, Some(only)) => page.set_child(Some(&only)),
+        (None, None) => {}
+    }
+    page.upcast()
+}
+
 /// A status page whose description is shown as written. The property
 /// takes Pango markup, so a server message with a `<` in it would be
 /// read as markup otherwise.
@@ -128,10 +173,13 @@ mod tests {
         std::rc::Rc::new(|_| {})
     }
 
-    fn actions<G: Fn(usize) + 'static>(go_to_error: G) -> PageActions<G, impl Fn(ExportSource) + 'static> {
+    fn actions<G: Fn(usize) + 'static>(
+        go_to_error: G,
+    ) -> PageActions<G, impl Fn(ExportSource) + 'static, impl Fn() + 'static> {
         PageActions {
             go_to_error,
             export_all: |_| {},
+            fix: None::<FixHook<fn()>>,
         }
     }
 
@@ -205,5 +253,52 @@ mod tests {
         button.emit_clicked();
 
         assert_eq!(reached.get(), Some(42));
+    }
+
+    #[gtk4::test]
+    fn a_failed_statement_offers_a_fix_beside_go_to_error() {
+        let entry = RunLogEntry {
+            kind: EntryKind::Failed {
+                message: "syntax error".to_owned(),
+                error_char: Some(3),
+            },
+            batch: Some(0),
+            preview: String::new(),
+        };
+        let asked = std::rc::Rc::new(std::cell::Cell::new(false));
+        let seen = asked.clone();
+        let available = gtk4::gio::SimpleAction::new("ai-explain", None);
+
+        let widget = entry_widget(
+            0,
+            &entry,
+            &sink(),
+            true,
+            PageActions {
+                go_to_error: |_| {},
+                export_all: |_| {},
+                fix: Some(FixHook {
+                    run: move || seen.set(true),
+                    available: available.clone(),
+                }),
+            },
+        );
+        let fix = crate::test_support::descendants(&widget)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+            .find(|button| button.label().as_deref() == Some("Fix with AI"))
+            .expect("Fix with AI");
+        fix.emit_clicked();
+
+        assert!(asked.get());
+        assert!(fix.is_visible());
+        available.set_enabled(false);
+        assert!(!fix.is_visible(), "Fix with AI stayed after the assistant went off");
+        assert!(
+            crate::test_support::descendants(&widget)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())
+                .any(|button| button.label().as_deref() == Some("Go to Error"))
+        );
     }
 }

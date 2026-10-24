@@ -55,6 +55,7 @@ fn saved_request(saved: &SavedConnection, drivers: &DriverRegistry) -> Result<Co
             credentials,
             database: Some(saved.database.clone()).filter(|name| !name.trim().is_empty()),
             tls: saved.tls.clone(),
+            options: saved.options.clone(),
         }
     };
     Ok(ConnectRequest {
@@ -133,6 +134,7 @@ mod tests {
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::ReadOnly,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh,
             last_opened_at: None,
@@ -140,6 +142,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 
@@ -192,6 +195,7 @@ mod tests {
             credentials: Credentials::Password { username, password },
             database,
             tls,
+            options: _,
         } = request.target
         else {
             panic!("expected a network target over ssh with a password");

@@ -34,6 +34,23 @@
     </section>
     <section>
       <item>
+        <attribute name="label" translatable="yes">Explain with AI</attribute>
+        <attribute name="action">editor.ai-explain</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Review with AI</attribute>
+        <attribute name="action">editor.ai-review</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Optimize with AI</attribute>
+        <attribute name="action">editor.ai-optimize</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
         <attribute name="label" translatable="yes">Find…</attribute>
         <attribute name="action">editor.find</attribute>
         <attribute name="accel">&lt;Primary&gt;f</attribute>
@@ -42,6 +59,26 @@
         <attribute name="label" translatable="yes">Find and Replace…</attribute>
         <attribute name="action">editor.find-replace</attribute>
         <attribute name="accel">&lt;Primary&gt;h</attribute>
+      </item>
+    </section>
+  </menu>
+  <!-- Added after the text view's own context menu items. -->
+  <menu id="assistant_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">Explain with AI</attribute>
+        <attribute name="action">editor.ai-explain</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Review with AI</attribute>
+        <attribute name="action">editor.ai-review</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Optimize with AI</attribute>
+        <attribute name="action">editor.ai-optimize</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
   </menu>

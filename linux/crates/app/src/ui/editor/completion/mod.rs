@@ -17,4 +17,6 @@ mod tests;
 #[cfg(test)]
 pub(super) use tests::accept_builtin_snippet;
 
+pub(crate) use catalog_read::read as read_catalog;
+pub(crate) use completion_scope::{CompletionScope, tables_named};
 pub use sql_completion_provider::SqlCompletionProvider;

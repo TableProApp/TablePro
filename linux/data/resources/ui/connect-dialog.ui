@@ -57,6 +57,14 @@
                       </object>
                     </child>
                     <child>
+                      <!-- Shown for an engine that finds its servers from
+                           a DNS seed list, as mongodb+srv:// does. -->
+                      <object class="AdwSwitchRow" id="seed_list_row">
+                        <property name="title" translatable="yes">DNS Seed List</property>
+                        <property name="subtitle" translatable="yes">Find the servers from the host’s SRV record, as mongodb+srv:// does</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSpinRow" id="port_row">
                         <property name="title" translatable="yes">Port</property>
                         <property name="adjustment">
@@ -105,6 +113,12 @@
                       </object>
                     </child>
                     <child>
+                      <object class="AdwEntryRow" id="auth_database_row">
+                        <property name="title" translatable="yes">Authentication Database (optional)</property>
+                        <property name="activates-default">true</property>
+                      </object>
+                    </child>
+                    <child>
                       <object class="AdwSwitchRow" id="remember_row">
                         <property name="title" translatable="yes">Remember Password</property>
                         <property name="subtitle" translatable="yes">Keep it in the keyring; otherwise it is asked for at each connect</property>
@@ -135,6 +149,14 @@
                         <property name="title" translatable="yes">External Clients</property>
                         <property name="model">
                           <object class="GtkStringList" id="external_access_names"/>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwComboRow" id="ai_policy_row">
+                        <property name="title" translatable="yes">AI Assistant</property>
+                        <property name="model">
+                          <object class="GtkStringList" id="ai_policy_names"/>
                         </property>
                       </object>
                     </child>

@@ -58,6 +58,7 @@ mod tests {
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
@@ -65,6 +66,7 @@ mod tests {
             group: None,
             tags: Vec::new(),
             icon: None,
+            options: Default::default(),
         }
     }
 
@@ -81,6 +83,7 @@ mod tests {
             },
             database: Some("shop".to_owned()),
             tls: TlsConfig::verify_full(),
+            options: Default::default(),
         };
         ConnectSource::Intent(Box::new(ConnectIntent {
             key: SessionKey::Saved(connection.id),

@@ -50,6 +50,8 @@ pub struct SqlEditor {
     pub vim_command: TemplateChild<gtk4::Label>,
     #[template_child]
     pub results: TemplateChild<ResultsPane>,
+    #[template_child]
+    pub assistant_menu: TemplateChild<gio::MenuModel>,
 
     pub(super) deps: OnceCell<EditorDeps>,
     /// This tab's own connection, which keeps its transaction and
@@ -80,6 +82,9 @@ pub struct SqlEditor {
     /// The tab's `editor` group, kept to read what it offers.
     pub(super) actions: OnceCell<gtk4::gio::SimpleActionGroup>,
     pub(super) vim: RefCell<Option<VimMode>>,
+    /// The window's assistant, once the workspace attached it.
+    pub(super) assistant: RefCell<Option<std::rc::Rc<crate::ui::assistant::AssistantAccess>>>,
+    pub(super) suggestion: RefCell<super::inline_suggestion::SuggestionState>,
     /// The Escape being handled found a popup of the view's open. The
     /// completion list closes itself on Escape before the editor's keys
     /// run, and lets the key go on.
@@ -131,11 +136,15 @@ impl ObjectImpl for SqlEditor {
                 Signal::builder("file-changed").build(),
                 // Vim's :q, which closes the tab through its close prompts.
                 Signal::builder("close-requested").build(),
+                Signal::builder("assistant-requested")
+                    .param_types([glib::BoxedAnyObject::static_type()])
+                    .build(),
             ]
         })
     }
 
     fn dispose(&self) {
+        self.obj().dismiss_suggestion();
         self.obj().shutdown();
         self.app_handlers.take();
         self.obj().detach_vim();

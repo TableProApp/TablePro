@@ -65,6 +65,7 @@ impl ClickHouseEndpoint {
             },
             database: Some("tablepro".to_owned()),
             tls: TlsConfig::disabled(),
+            options: Default::default(),
         };
         Self::new(&target, liveness, &ConnectEnvironment::new("test"), false).expect("an endpoint")
     }

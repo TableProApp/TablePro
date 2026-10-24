@@ -123,7 +123,7 @@
                       <object class="GtkBox">
                         <property name="spacing">8</property>
                         <child>
-                          <object class="GtkLabel">
+                          <object class="GtkLabel" id="raw_label">
                             <property name="label">WHERE</property>
                             <property name="mnemonic-widget">raw_entry</property>
                             <style>

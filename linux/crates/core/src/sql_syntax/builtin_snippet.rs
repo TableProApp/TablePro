@@ -164,8 +164,8 @@ const CQL: [BuiltinSnippet; 6] = [
     CREATE_INDEX,
 ];
 
-/// The statements the editor offers on an engine of `grammar`. Redis is
-/// not SQL and has none.
+/// The statements the editor offers on an engine of `grammar`. Redis and
+/// MongoDB are not SQL and have none.
 pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
     match grammar {
         SqlGrammar::PostgreSql => &POSTGRESQL,
@@ -175,7 +175,7 @@ pub fn builtin_snippets(grammar: SqlGrammar) -> &'static [BuiltinSnippet] {
         SqlGrammar::ClickHouse => &CLICKHOUSE,
         SqlGrammar::DuckDb => &DUCKDB,
         SqlGrammar::Cql => &CQL,
-        SqlGrammar::Redis => &[],
+        SqlGrammar::Redis | SqlGrammar::Mongo => &[],
     }
 }
 
@@ -206,6 +206,7 @@ mod tests {
     #[test]
     fn redis_has_no_sql_snippets() {
         assert!(builtin_snippets(SqlGrammar::Redis).is_empty());
+        assert!(builtin_snippets(SqlGrammar::Mongo).is_empty());
     }
 
     #[test]

@@ -7,11 +7,15 @@ use std::path::Path;
 use std::time::Duration;
 
 use gio::prelude::SettingsExt;
+use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 
 pub use editor_font::EditorFont;
 pub use error::SettingsError;
 pub use window_geometry::WindowGeometry;
+
+/// The provider setting's value while the assistant is off.
+pub const AI_PROVIDER_NONE: &str = "none";
 
 pub struct AppSettings {
     settings: gio::Settings,
@@ -178,6 +182,47 @@ impl AppSettings {
 
     pub fn set_mcp_server_port(&self, port: u16) -> Result<(), SettingsError> {
         self.set_uint(keys::MCP_SERVER_PORT, u32::from(port))
+    }
+
+    /// Who answers the AI assistant. `None` while it is off, which is
+    /// how it starts: nothing is sent anywhere until the user picks one.
+    pub fn ai_provider(&self) -> Option<AiProvider> {
+        AiProvider::from_id(&self.settings.string(keys::AI_PROVIDER))
+    }
+
+    pub fn set_ai_provider(&self, provider: Option<AiProvider>) -> Result<(), SettingsError> {
+        self.set_string(keys::AI_PROVIDER, provider.map_or(AI_PROVIDER_NONE, AiProvider::id))
+    }
+
+    pub fn ai_model(&self, provider: AiProvider) -> String {
+        self.settings.string(keys::ai_model(provider)).trim().to_owned()
+    }
+
+    pub fn set_ai_model(&self, provider: AiProvider, model: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::ai_model(provider), model)
+    }
+
+    /// The compatible server's address; Anthropic's and OpenAI's are
+    /// fixed.
+    pub fn ai_base_url(&self, provider: AiProvider) -> String {
+        match provider {
+            AiProvider::OpenAiCompatible => self.settings.string(keys::AI_COMPATIBLE_URL).trim().to_owned(),
+            other => other.default_base_url().to_owned(),
+        }
+    }
+
+    pub fn set_ai_compatible_url(&self, url: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::AI_COMPATIBLE_URL, url)
+    }
+
+    /// Whether the editor suggests text while the user types. Off until
+    /// turned on, since every pause sends the text around the cursor.
+    pub fn ai_inline_suggestions(&self) -> bool {
+        self.settings.boolean(keys::AI_INLINE_SUGGESTIONS)
+    }
+
+    pub fn set_ai_inline_suggestions(&self, on: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::AI_INLINE_SUGGESTIONS, on)
     }
 
     pub fn csv_options(&self) -> CsvOptions {

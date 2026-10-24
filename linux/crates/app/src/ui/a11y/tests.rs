@@ -281,3 +281,17 @@ fn a_template_is_read_as_an_object_of_its_parent_class() {
     );
     assert_eq!(plain_template("<interface/>"), None);
 }
+
+#[gtk4::test]
+fn a_shown_widget_announces_without_an_accessibility_bus() {
+    let window = gtk::Window::new();
+    let label = gtk::Label::new(Some("Saved"));
+    window.set_child(Some(&label));
+    window.present();
+    crate::test_support::after_next_frame(&label);
+
+    super::announce(&label, "Saved", gtk::AccessibleAnnouncementPriority::Medium);
+
+    assert_eq!(super::announced_in(&label).len(), 1);
+    window.destroy();
+}

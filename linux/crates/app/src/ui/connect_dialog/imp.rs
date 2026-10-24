@@ -36,6 +36,8 @@ pub struct ConnectDialog {
     #[template_child]
     pub host_row: TemplateChild<adw::EntryRow>,
     #[template_child]
+    pub seed_list_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
     pub port_row: TemplateChild<adw::SpinRow>,
     #[template_child]
     pub database_row: TemplateChild<adw::EntryRow>,
@@ -52,6 +54,8 @@ pub struct ConnectDialog {
     #[template_child]
     pub password_row: TemplateChild<adw::PasswordEntryRow>,
     #[template_child]
+    pub auth_database_row: TemplateChild<adw::EntryRow>,
+    #[template_child]
     pub remember_row: TemplateChild<adw::SwitchRow>,
     #[template_child]
     pub tls_section: TemplateChild<TlsSection>,
@@ -65,6 +69,10 @@ pub struct ConnectDialog {
     pub external_access_row: TemplateChild<adw::ComboRow>,
     #[template_child]
     pub external_access_names: TemplateChild<gtk4::StringList>,
+    #[template_child]
+    pub ai_policy_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub ai_policy_names: TemplateChild<gtk4::StringList>,
     #[template_child]
     pub icon_row: TemplateChild<adw::ComboRow>,
     #[template_child]

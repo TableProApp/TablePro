@@ -31,6 +31,7 @@ struct Options {
     prefill: Option<ConnectPrefill>,
     mode: ConnectDialogMode,
     tags: Vec<tablepro_storage::ConnectionTag>,
+    ai_assistant: bool,
 }
 
 impl Default for Options {
@@ -43,6 +44,7 @@ impl Default for Options {
             prefill: None,
             mode: ConnectDialogMode::Create,
             tags: Vec::new(),
+            ai_assistant: false,
         }
     }
 }
@@ -52,9 +54,11 @@ fn registry() -> Arc<DriverRegistry> {
     registry.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     registry.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
+    registry.register(Arc::new(tablepro_driver_mongodb::MongoDriver));
     registry.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     registry.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     registry.register(Arc::new(tablepro_driver_postgres::PgDriver));
+    registry.register(Arc::new(tablepro_driver_redis::RedisDriver));
     registry.register(Arc::new(tablepro_driver_sqlite::SqliteDriver));
     Arc::new(registry)
 }
@@ -94,6 +98,7 @@ fn open(options: Options) -> Harness {
         saved_connections: Arc::from(options.saved),
         tags: Arc::from(options.tags),
         remembered_driver: options.remembered.to_owned(),
+        ai_assistant: options.ai_assistant,
         ssh_environment: options.environment,
         prefill: options.prefill,
         mode: options.mode,
@@ -391,6 +396,27 @@ fn sqlite_shows_file_row_and_hides_security_and_ssh() {
 }
 
 #[gtk4::test]
+fn mongodb_offers_a_seed_list_that_hides_the_port_and_a_login_database() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+
+    select(&harness.dialog, "postgres");
+    assert!(!imp.seed_list_row.is_visible());
+    assert!(!imp.auth_database_row.is_visible());
+
+    select(&harness.dialog, "mongodb");
+    assert!(imp.seed_list_row.is_visible());
+    assert!(imp.auth_database_row.is_visible());
+    assert!(imp.port_row.is_visible());
+    imp.seed_list_row.set_active(true);
+    assert!(!imp.port_row.is_visible(), "the SRV records give the ports");
+
+    select(&harness.dialog, "postgres");
+    assert!(imp.port_row.is_visible());
+    assert!(!imp.seed_list_row.is_visible());
+}
+
+#[gtk4::test]
 fn file_paths_with_markup_characters_show_as_written() {
     let harness = dialog();
     let imp = harness.dialog.imp();
@@ -521,6 +547,60 @@ fn an_edit_opens_on_the_saved_external_clients_level_and_saves_it() {
     select(&harness.dialog, "mysql");
 
     assert_eq!(harness.dialog.form().external_access, ExternalAccess::ReadWrite);
+}
+
+#[gtk4::test]
+fn the_ai_policy_row_shows_only_while_a_provider_answers() {
+    let off = dialog();
+    let on = open(Options {
+        ai_assistant: true,
+        ..Options::default()
+    });
+
+    assert!(!off.dialog.imp().ai_policy_row.is_visible());
+    assert!(on.dialog.imp().ai_policy_row.is_visible());
+}
+
+#[gtk4::test]
+fn each_ai_policy_says_what_it_sends() {
+    let harness = open(Options {
+        ai_assistant: true,
+        ..Options::default()
+    });
+    let imp = harness.dialog.imp();
+
+    assert_eq!(harness.dialog.form().ai_policy, AiPolicy::Ask);
+    for (index, policy) in AiPolicy::ALL.into_iter().enumerate() {
+        imp.ai_policy_row.set_selected(index as u32);
+
+        assert_eq!(harness.dialog.form().ai_policy, policy);
+        assert_eq!(
+            imp.ai_policy_row.subtitle().map(|text| text.to_string()),
+            Some(crate::ui::ai_policy::subtitle(policy)),
+            "{policy:?}"
+        );
+    }
+}
+
+#[gtk4::test]
+fn an_edit_opens_on_the_saved_ai_policy_and_keeps_it_across_a_driver_change() {
+    let saved = SavedConnection {
+        ai_policy: AiPolicy::Never,
+        ..shop()
+    };
+    let harness = open(Options {
+        saved: vec![saved.clone()],
+        mode: ConnectDialogMode::Edit(Box::new(saved)),
+        ai_assistant: true,
+        ..Options::default()
+    });
+    let imp = harness.dialog.imp();
+
+    assert_eq!(imp.ai_policy_row.selected(), 2);
+    imp.ai_policy_row.set_selected(1);
+    select(&harness.dialog, "mysql");
+
+    assert_eq!(harness.dialog.form().ai_policy, AiPolicy::Allow);
 }
 
 #[gtk4::test]
@@ -859,6 +939,7 @@ fn every_row_has_an_accessible_name() {
         imp.remember_row.get().upcast(),
         imp.safe_mode_row.get().upcast(),
         imp.external_access_row.get().upcast(),
+        imp.ai_policy_row.get().upcast(),
         tls.encryption_row.get().upcast(),
         tls.certificates_row.get().upcast(),
         tls.ca_row.get().upcast(),

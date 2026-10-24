@@ -27,8 +27,8 @@ use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
-    AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, SafeModeLevel,
-    TlsConfig, TransportClass, WorkspaceSettings,
+    AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, NetworkOption,
+    NetworkOptions, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
@@ -68,6 +68,9 @@ pub struct ConnectDialogInit {
     /// The tags the Appearance group offers.
     pub tags: Arc<[ConnectionTag]>,
     pub remembered_driver: String,
+    /// Whether a provider answers the AI assistant, which is when its
+    /// policy row is shown.
+    pub ai_assistant: bool,
     pub ssh_environment: SshEnvironment,
     /// What a Create opens on after a connect from it failed.
     pub prefill: Option<ConnectPrefill>,
@@ -149,6 +152,11 @@ impl ConnectDialog {
         imp.external_access_names
             .splice(0, imp.external_access_names.n_items(), &access);
         crate::ui::combo_value::show_whole_value(&imp.external_access_row);
+        let policies: Vec<String> = AiPolicy::ALL.into_iter().map(crate::ui::ai_policy::label).collect();
+        let policies: Vec<&str> = policies.iter().map(String::as_str).collect();
+        imp.ai_policy_names.splice(0, imp.ai_policy_names.n_items(), &policies);
+        crate::ui::combo_value::show_whole_value(&imp.ai_policy_row);
+        imp.ai_policy_row.set_visible(init.ai_assistant);
         imp.file_row.set_tasks(init.tasks.clone());
         let _ = imp.services.set(DialogServices {
             connector: init.connector,
@@ -258,6 +266,8 @@ impl ConnectDialog {
                 FormField::File => imp.file_row.get().upcast(),
                 FormField::AuthMode => imp.auth_mode_row.get().upcast(),
                 FormField::Username => imp.username_row.get().upcast(),
+                FormField::DnsSeedList => imp.seed_list_row.get().upcast(),
+                FormField::AuthDatabase => imp.auth_database_row.get().upcast(),
                 _ => imp.host_row.get().upcast(),
             };
             row.grab_focus();
@@ -274,6 +284,18 @@ impl ConnectDialog {
 
     fn current_entry(&self) -> Option<DriverEntry> {
         self.entry_at(self.imp().driver_row.selected() as usize)
+    }
+
+    fn connect_seed_list_row(&self) {
+        let weak = self.downgrade();
+        self.imp().seed_list_row.connect_active_notify(move |_| {
+            if let Some(dialog) = weak.upgrade()
+                && !dialog.imp().updating.get()
+            {
+                dialog.show_seed_list_rows();
+                dialog.refresh();
+            }
+        });
     }
 
     fn connect_handlers(&self) {
@@ -308,6 +330,12 @@ impl ConnectDialog {
             }
         });
         let weak = self.downgrade();
+        imp.ai_policy_row.connect_selected_notify(move |_| {
+            if let Some(dialog) = weak.upgrade() {
+                dialog.show_ai_policy_subtitle();
+            }
+        });
+        let weak = self.downgrade();
         imp.auth_mode_row.connect_selected_notify(move |_| {
             if let Some(dialog) = weak.upgrade()
                 && !dialog.imp().updating.get()
@@ -316,7 +344,14 @@ impl ConnectDialog {
                 dialog.refresh();
             }
         });
-        let entries: [&adw::EntryRow; 4] = [&imp.name_row, &imp.host_row, &imp.database_row, &imp.username_row];
+        self.connect_seed_list_row();
+        let entries: [&adw::EntryRow; 5] = [
+            &imp.name_row,
+            &imp.host_row,
+            &imp.database_row,
+            &imp.username_row,
+            &imp.auth_database_row,
+        ];
         for row in entries {
             let weak = self.downgrade();
             row.connect_changed(move |_| {
@@ -397,10 +432,18 @@ impl ConnectDialog {
                 .get(imp.external_access_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
+            ai_policy: AiPolicy::ALL
+                .get(imp.ai_policy_row.selected() as usize)
+                .copied()
+                .unwrap_or_default(),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
             tags: self.picked_tags(),
             icon: self.picked_icon(),
+            options: NetworkOptions {
+                dns_seed_list: imp.seed_list_row.is_active(),
+                auth_database: Some(imp.auth_database_row.text().to_string()).filter(|name| !name.trim().is_empty()),
+            },
         }
     }
 
@@ -447,6 +490,9 @@ impl ConnectDialog {
         imp.port_edited.set(form.port_edited);
         imp.database_row.set_text(&form.database);
         imp.username_row.set_text(&form.username);
+        imp.seed_list_row.set_active(form.options.dns_seed_list);
+        imp.auth_database_row
+            .set_text(form.options.auth_database.as_deref().unwrap_or_default());
         if imp.password_row.text() != secrecy::ExposeSecret::expose_secret(&form.password) {
             imp.password_row
                 .set_text(secrecy::ExposeSecret::expose_secret(&form.password));
@@ -461,6 +507,11 @@ impl ConnectDialog {
             .position(|access| *access == form.external_access)
             .unwrap_or_default();
         imp.external_access_row.set_selected(access as u32);
+        let policy = AiPolicy::ALL
+            .iter()
+            .position(|policy| *policy == form.ai_policy)
+            .unwrap_or_default();
+        imp.ai_policy_row.set_selected(policy as u32);
         if form.file.is_some() || imp.file_row.endpoint().is_some() {
             imp.file_row.set_endpoint(form.file.clone());
         }
@@ -491,6 +542,8 @@ impl ConnectDialog {
         } else {
             crate::i18n::gettext("Username (optional)")
         });
+        imp.seed_list_row
+            .set_visible(!file_based && caps.offers(NetworkOption::DnsSeedList));
         imp.file_row.set_visible(file_based);
         imp.file_row.set_files(DatabaseFiles::of(entry.driver.as_ref()));
         imp.auth_group.set_visible(!file_based && !caps.auth_modes.is_empty());
@@ -499,7 +552,9 @@ impl ConnectDialog {
         imp.tls_section.apply(tls, self.route(), &form.tls);
         self.show_safe_mode_subtitle();
         self.show_external_access_subtitle();
+        self.show_ai_policy_subtitle();
         self.show_auth_rows();
+        self.show_seed_list_rows();
         self.set_title(&if imp.mode.borrow().editing().is_some() {
             crate::i18n::gettext("Edit Connection")
         } else {
@@ -525,6 +580,12 @@ impl ConnectDialog {
             .set_subtitle(&crate::ui::external_access::subtitle(self.form().external_access));
     }
 
+    fn show_ai_policy_subtitle(&self) {
+        self.imp()
+            .ai_policy_row
+            .set_subtitle(&crate::ui::ai_policy::subtitle(self.form().ai_policy));
+    }
+
     fn show_auth_rows(&self) {
         let imp = self.imp();
         imp.auth_mode_row.set_visible(imp.auth_modes.borrow().len() > 1);
@@ -532,6 +593,20 @@ impl ConnectDialog {
         imp.username_row.set_visible(password);
         imp.password_row.set_visible(password);
         imp.remember_row.set_visible(password);
+        let entry = self.current_entry();
+        let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
+        imp.auth_database_row
+            .set_visible(password && caps.offers(NetworkOption::AuthDatabase));
+    }
+
+    /// A seed list's SRV records give the ports, so the port row goes
+    /// while the list is on.
+    fn show_seed_list_rows(&self) {
+        let imp = self.imp();
+        let entry = self.current_entry();
+        let caps = entry.as_ref().map_or(&NO_DRIVER, DriverEntry::capabilities);
+        let seed_list = imp.seed_list_row.is_visible() && imp.seed_list_row.is_active();
+        imp.port_row.set_visible(!caps.is_file_based() && !seed_list);
     }
 
     /// The TLS settings the request would carry, for the file check.
@@ -615,6 +690,8 @@ impl ConnectDialog {
         show_problem(&*imp.file_row, shown(FormField::File));
         show_problem(&*imp.auth_mode_row, shown(FormField::AuthMode));
         show_problem(&*imp.username_row, shown(FormField::Username));
+        show_problem(&*imp.seed_list_row, shown(FormField::DnsSeedList));
+        show_problem(&*imp.auth_database_row, shown(FormField::AuthDatabase));
         let pem = imp.pem.state();
         let file_problem = match &pem {
             PemState::Invalid(error) => Some(error),
@@ -936,6 +1013,7 @@ static NO_DRIVER: DriverCapabilities = DriverCapabilities {
     row_count_estimate: tablepro_core::EstimateQuality::Unavailable,
     object_kinds: &[],
     database_required: false,
+    network_options: &[],
     statement_stop: tablepro_core::StatementStop::Server,
 };
 
