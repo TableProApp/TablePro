@@ -1,6 +1,6 @@
 # Packaging
 
-See [platforms](../../../docs/platforms.md) for released artifacts, native requirements and package support. This guide covers package builds and validation. BookiE keeps the existing repository and application ID. The 0.2.0 release includes a Flatpak bundle but is not listed on Flathub; portal permissions and public update-channel behavior remain part of the PKG-8 review before Flathub submission.
+See [platforms](../../../docs/platforms.md) for released artifacts, native requirements and package support. This guide covers package builds and validation. BookiE keeps the existing repository and application ID.
 
 ## Arch package candidate
 
@@ -37,7 +37,7 @@ Test install, upgrade, downgrade, and removal. Package operations must leave the
 
 ## Debian / Ubuntu package
 
-For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md). Use `apps/linux/flatpak/com.tablepro.linux.Devel.json` for an isolated development Flatpak. The published 0.2.0 release also includes a GNOME 50 Flatpak bundle; there is no Flathub listing, and the current branch manifest targets GNOME 51.
+For native-library and toolchain requirements, see [platforms](../../../docs/platforms.md).
 
 The Debian builder and validator use the workspace release version with Debian revision `-1` by default. `DEB_VERSION` can select another packaging revision. The commands below build and install a local package from the current workspace; they do not establish Debian desktop acceptance, which remains tracked under [PKG-2](../../../docs/0.2.0-scope.md#delivery-boundary).
 
@@ -48,15 +48,21 @@ sudo apt install ./apps/linux/packaging/out/bookie_0.2.0-1_amd64.deb
 
 The package name is `bookie`. It installs `/usr/bin/bookie`, `/usr/bin/bookie-agentd`, and `/usr/bin/tablepro-askpass`, with legacy `tablepro` / `tablepro-agentd` aliases. It does not install or enable a user service.
 
-## Flatpak development build
+## Flatpak builds
 
-The current branch Flatpak manifest is a non-release CI build; it targets GNOME 51. The published 0.2.0 bundle uses GNOME 50. From the repository root:
+The local helper builds `apps/linux/flatpak/com.tablepro.linux.json` with GNOME 51 and writes `/tmp/bookie.flatpak`. For an isolated development install, build `apps/linux/flatpak/com.tablepro.linux.Devel.json` directly. Published Flatpak and Flathub status is in [platforms](../../../docs/platforms.md#published-020-release). From the repository root:
 
 ```bash
 ./scripts/build-flatpak.sh
 ```
 
-It still needs offline Cargo sources, portal work, and a filesystem-permission review before any Flathub submission. A successful manifest build is not release evidence for the Arch RC.
+The isolated development build is:
+
+```bash
+flatpak-builder --user --install build-dir apps/linux/flatpak/com.tablepro.linux.Devel.json
+```
+
+Flathub submission still needs offline Cargo sources; portal permissions and public update-channel behavior remain under PKG-8 review. A local manifest build does not establish release or Flathub acceptance.
 
 ## Release versions
 

@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${FLATPAK_BUILD_DIR:-/tmp/tablepro-flatpak-build}"
-REPO_DIR="${FLATPAK_REPO_DIR:-/tmp/tablepro-flatpak-repo}"
+BUILD_DIR="${FLATPAK_BUILD_DIR:-/tmp/bookie-flatpak-build}"
+REPO_DIR="${FLATPAK_REPO_DIR:-/tmp/bookie-flatpak-repo}"
 
 if ! command -v flatpak-builder >/dev/null; then
   cat >&2 <<'EOF'
@@ -13,7 +13,7 @@ flatpak-builder is not installed.
 Debian / Ubuntu:
   sudo apt install -y flatpak flatpak-builder
   flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-  flatpak install -y flathub org.gnome.Sdk//50 org.gnome.Platform//50 \
+  flatpak install -y flathub org.gnome.Sdk//51 org.gnome.Platform//51 \
     org.freedesktop.Sdk.Extension.rust-stable//25.08 \
     org.freedesktop.Sdk.Extension.llvm22//25.08
 
@@ -27,6 +27,6 @@ fi
 mkdir -p "$BUILD_DIR" "$REPO_DIR"
 cd "$ROOT"
 flatpak-builder --force-clean --repo="$REPO_DIR" "$BUILD_DIR" apps/linux/flatpak/com.tablepro.linux.json
-flatpak build-bundle "$REPO_DIR" /tmp/tablepro.flatpak com.tablepro.linux
-echo "Bundle: /tmp/tablepro.flatpak"
-echo "Install: flatpak install --user /tmp/tablepro.flatpak"
+flatpak build-bundle "$REPO_DIR" /tmp/bookie.flatpak com.tablepro.linux
+echo "Bundle: /tmp/bookie.flatpak"
+echo "Install: flatpak install --user /tmp/bookie.flatpak"

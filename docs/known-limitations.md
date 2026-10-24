@@ -17,8 +17,7 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   Single-statement PostgreSQL `SELECT`s in the SQL editor stream cursor pages
   through Core and PolicyGuard, retaining them while estimated row storage stays
   within 64 MiB and always keeping the newest page, even if it alone exceeds the
-  estimate. A native 100,000-row PostgreSQL query returned 20 pages and navigated
-  back to rows 1–5,000 after completion. A wide result exceeded the budget and
+  estimate. A wide result exceeded the budget and
   evicted older pages, so results larger than the cache budget can still lose
   access to earlier rows. The received-row summary identifies the retained
   range; row ranges are positions in the result, not database row identifiers.
@@ -28,9 +27,10 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   1.28 GiB across four pinned results and one active stream, reaching 1,325 MiB
   RSS ([record](evidence/stream-retention-synthetic-2026-10-16/README.md)).
   Paging and ownership code changed after that run, so it is historical evidence,
-  not a current memory bound. The October 24 narrow-query profile kept all
-  100,000 rows navigable and showed a 25.3 MiB peak RSS increase over 31 seconds;
-  the [capture](evidence/built-head-2026-10-24/README.md) records its limits.
+  not a current memory bound. An October 24 native run in a worktree with the
+  byte-budget change navigated all 100,000 rows and showed a 25.3 MiB peak RSS
+  increase over 31 seconds. The [capture](evidence/built-head-2026-10-24/README.md)
+  lacks the worktree commit and binary hash, so it is not exact-head acceptance.
   This single-query result does not measure the pinned-stream stress case, normal
   workloads or the complete process ceiling. Other engines and unsupported
   statement shapes remain materialized. Broader resource, lifecycle and
@@ -41,8 +41,8 @@ This page records current branch behavior, including changes made after 0.2.0 wa
 - **Long cells are shown as a preview** (PERF-10). Values over 8 KiB show a typed
   preview and byte count. Oversized text and JSON previews show at most 512
   Unicode characters before their size suffix. View Value and Copy Value use the full value, including
-  pending edits and drafts. Browse-table values are refetched by primary key; a
-  table without one cannot refetch.
+  pending edits and drafts. View Value refetches a previewed persisted row by
+  primary key; keyless rows use the full value retained with the loaded result.
 - **Hidden-column projection still needs desktop acceptance** (PERF-9). Merged
   [#384](https://github.com/cozyGarage/BookiE/pull/384) projects hidden non-key
   columns out of the select and refuses full-row copy, row JSON and current-page
@@ -64,10 +64,10 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   Whether to skip this case below the fixing SQLite version or bundle SQLite
   remains undecided.
 - **SQL row export does not preserve every server-assigned value.** When column metadata marks a value as generated, SQL export and Copy as INSERT omit it. They also omit auto-increment columns for PostgreSQL and SQL Server, so replay assigns fresh values. They do not emit sequence-state restoration or remap foreign keys to those fresh values. Do not use these row statements as a relational backup. For PostgreSQL backup and restore, use the [dedicated backup tools](user-guide.md#back-up-and-restore-postgresql).
-- **SQL Server server-owned columns are omitted from row writes.** CSV import drops mapped IDENTITY, computed and rowversion fields; generated Copy as SQL and SQL export statements omit those values so the destination creates them. The Docker consumer regression checks native rows and metadata, but its grid editability assertion calls the helper directly; installed GTK interaction is not covered ([test](../apps/linux/app/tests/support/mssql_server_owned_columns.rs), [type and value contract](decisions/0007-type-and-value-preservation.md)). PostgreSQL, MySQL/MariaDB and SQLite can import explicit auto-increment values when mapped.
+- **SQL Server server-owned columns are omitted from row writes.** CSV import drops mapped IDENTITY, computed and rowversion fields; generated Copy as SQL and SQL export omit those values so the destination creates them. The Docker consumer regression runs CSV import, Copy as SQL and SQL export against native rows, and checks metadata. A driver-level Docker test also checks that generated-always temporal fields are omitted by the insert builders. The grid editability assertion calls its helper directly; installed GTK interaction is not covered ([consumer test](../apps/linux/app/tests/support/mssql_server_owned_columns.rs), [driver test](../crates/drivers/mssql/tests/support/server_owned_columns.rs), [type and value contract](decisions/0007-type-and-value-preservation.md)). PostgreSQL, MySQL/MariaDB and SQLite can import explicit auto-increment values when mapped.
 - **Unzoned PostgreSQL `timestamptz` CSV values** are currently interpreted as UTC. [PostgreSQL](https://www.postgresql.org/docs/current/datatype-datetime.html) normally interprets unzoned timestamp input in the session time zone; the import rule is tracked in [#857](https://github.com/cozyGarage/BookiE/issues/857). Include an explicit zone in the CSV to avoid ambiguity.
 - **MongoDB:** browse pages are separate observations, not one point-in-time view (TEST-12). Column types are inferred from a bounded `_id`-ordered sample of at most 128 documents and merged with the displayed page; fields or types outside both reads may remain undiscovered. A column with mixed types is read-only. Unsorted forward pages with a compatible `_id` can use keyset seeking ([#493](https://github.com/cozyGarage/BookiE/pull/493)), and supported sort requests run server-side ([#837](https://github.com/cozyGarage/BookiE/pull/837)). Reverse and last-page navigation, explicitly sorted pages, and keyless deep pages still use offset pagination. Installed and representative-network acceptance is tracked under PERF-3 / [#555](https://github.com/cozyGarage/BookiE/issues/555).
-- **MySQL failed batches do not undo every side effect** (B4-11). A failed batch rolls back InnoDB changes, but writes to nontransactional tables and some trigger or session effects can persist. Current regressions are in the [shared test matrix](../crates/drivers/mysql/tests/shared/mysql_atomic.rs) and its [focused cases](../crates/drivers/mysql/tests/shared/mysql_atomic_parts/). The [23-test Docker matrix](evidence/b4-mysql-atomic-linux-ecdc8568-2026-10-13/manifest.json) is historical evidence from MySQL 8.1 and MariaDB 11, including MyISAM, MEMORY, CSV, ARCHIVE, BLACKHOLE, Aria, MERGE and FEDERATED cases; it ran at `ecdc8568`. The current local [integration-tier run](evidence/current-audit-focused-selectors-2026-10-24/README.md#local-integration-tier) passed 619 tests on the same MySQL and Core source. Its per-test logs are not retained, so the historical matrix still provides the engine-specific detail. Optional/vendor engines and package acceptance remain open.
+- **MySQL failed batches do not undo every side effect** (B4-11). A failed batch rolls back InnoDB changes, but writes to nontransactional tables and some trigger or session effects can persist. Current regressions are in the [shared test matrix](../crates/drivers/mysql/tests/shared/mysql_atomic.rs) and its [focused cases](../crates/drivers/mysql/tests/shared/mysql_atomic_parts/). The [23-test Docker matrix](evidence/b4-mysql-atomic-linux-ecdc8568-2026-10-13/manifest.json) is historical evidence from MySQL 8.1 and MariaDB 11, including MyISAM, MEMORY, CSV, ARCHIVE, BLACKHOLE, Aria, MERGE and FEDERATED cases; it ran at `ecdc8568`. A later local [integration-tier run](evidence/current-audit-focused-selectors-2026-10-24/README.md#local-integration-tier) passed 619 tests at `2b38603`; its MySQL and Core source matches current `linux`, but its per-test logs and per-engine output are not retained, so it does not prove each historical matrix case was rerun. The older matrix retains that engine-specific detail. Optional/vendor engines and package acceptance remain open.
 
 ## Editing and connections
 
@@ -84,7 +84,7 @@ This page records current branch behavior, including changes made after 0.2.0 wa
 
 - Multi-cursor editing is not available (UI-22 / [#552](https://github.com/cozyGarage/BookiE/issues/552)). Split panes and SQL code folding are available. Vim keys are an opt-in preference; typed vim commands in a running editor are not yet covered by an installed scenario. Preview tabs are temporary and are not restored after restart; tabs you keep are restored (UI-17b). Query history now opens in a docked panel (UI-18).
 - The PostgreSQL catalog lists materialized views, routines, triggers, sequences, extensions and roles; a typed activity console is deferred and the activity dialog stays a plain result grid (UI-23).
-- Text and JSON values over the 8 KiB preview threshold can be edited in the full-value dialog up to 1 MiB. Invalid JSON cannot be staged; SQL NULL, empty text, JSON `null`, and text `null` remain separate values. View Value and Copy Value expose the full value. Values over 1 MiB remain read-only.
+- Text and JSON values over the 8 KiB preview threshold can be edited in the full-value dialog up to 1 MiB. Invalid JSON cannot be staged; SQL NULL, empty text, JSON `null`, and text `null` remain separate values. View Value shows at most 1 MiB of rendered text or 16 KiB of binary hex output; Copy Value copies the whole value. Values over 1 MiB remain read-only.
 - No server messages (NOTICE, PRINT) and no timing breakdown; timing shows elapsed time only (UI-20, PERF-4 / [#550](https://github.com/cozyGarage/BookiE/issues/550)).
 - No foreign-key value picker or estimated row counts (UI-19 / [#549](https://github.com/cozyGarage/BookiE/issues/549)). Enum and set pickers and tab-separated row paste are implemented.
 - PostgreSQL schemas can be hidden from the sidebar per connection ([#580](https://github.com/cozyGarage/BookiE/issues/580)); this display filter does not reduce catalog query work. Many-schema performance and restricted-role metadata acceptance remain with [#580](https://github.com/cozyGarage/BookiE/issues/580), reopened on 2026-10-22.

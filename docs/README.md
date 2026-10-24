@@ -24,7 +24,7 @@ Do not load archives as mandatory context. Look up the heading, test selector or
 | Planning and status | [0.2.0 completion and continuation](bookie-0.2-sprint.md), [0.2.0 scope](0.2.0-scope.md), [backlog](backlog.md), [unselected feature candidates](0.2-feature-comparison.md), [known limitations](known-limitations.md), [Project #3](https://github.com/users/cozyGarage/projects/3), [ledger index](known-issues.md), [B3 board pointer](type-contract-strategy.md), [B4 board pointer](b4-task-board.md), [value evidence index](value-contracts.md), [changelog](../CHANGELOG.md) |
 | Product context and specs | [PRODUCT.md](../PRODUCT.md), [user contexts](personas.md), [PRINCIPLES.md](../PRINCIPLES.md), [SECURITY.md](../SECURITY.md), [capability specs](../specs/README.md) (descriptive drafts until architect review; AGENTS and ADRs rank above them) |
 | Decisions | [ADRs](decisions/README.md), [decision checklist](decisions/checklist.md), [proposal index](proposals/README.md) |
-| Proof and history | [evidence](evidence/), [archive](archive/), [external code review](upstream-sync.md) |
+| Proof and history | [evidence](evidence/), [archive](archive/), [evidence branch migration proposal](proposals/evidence-branch.md), [external code review](upstream-sync.md) |
 
 ## Where each fact belongs
 

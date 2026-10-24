@@ -65,7 +65,6 @@
 
 - A confirmed session rollback clears obsolete query gutter marks, including when a commit request ends in rollback.
 - SQL files with lines over 256 KiB are refused before opening to prevent excessive text-layout memory use; the original file remains unchanged.
-- A confirmed session rollback clears obsolete query gutter marks, including when a commit request ends in rollback.
 - Streamed result summaries use singular row and page labels when each count is one.
 
 - SQL completion avoids catalog reads for incomplete table names and coalesces rapid editor changes.

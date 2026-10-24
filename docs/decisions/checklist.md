@@ -2,7 +2,7 @@
 
 Which product and architecture forks BookiE has already answered, and where. Silence is not an answer: each applicable fork is a link, N/A, or an open item. No new decisions are invented here.
 
-Last full review against the ADR index, code and living docs: 2026-10-20. The release-gate rows were refreshed on 2026-10-23 for the published 0.2.0 assets; the other statuses remain from the full review. Each row points to its decision owner; open product and architecture decisions remain open until their named owners resolve them.
+Last full review against the ADR index, code and living docs: 2026-10-20. The release-gate rows were refreshed on 2026-10-23 for the published 0.2.0 assets. An ADR-index cross-check on 2026-10-24 added missing entries for ADRs 0017 and 0018; other statuses were not re-audited. Each row points to its decision owner; open product and architecture decisions remain open until their named owners resolve them.
 
 ## Foundation
 
@@ -86,6 +86,8 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Full-table export read snapshot | [ADR 0014](0014-full-table-export-snapshot.md) (not the same as ADR 0015) |
 | Database clone / restore snapshots | [ADR 0015](0015-database-snapshots.md) (accepted design; implementation is post-0.2.0 backlog work, with no release target) |
 | Bundle admin audit | [ADR 0010](0010-administrative-action-audit.md) |
+| Official Rust MCP SDK behind the governed seam | [ADR 0017](0017-mcp-sdk-behind-the-governed-seam.md) (accepted direction; production remains hand-written, with an optional stdio prototype) |
+| Headless application-services crate | [ADR 0018](0018-headless-app-services-crate.md) (accepted; staged module moves continue under APP-MOD) |
 | File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted design; implementation status varies by tool, with remaining work post-0.2.0) |
 
 ## Open forks (do not invent answers here)

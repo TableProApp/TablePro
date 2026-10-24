@@ -16,7 +16,7 @@ The isolated GTK regression test first failed with the default setting and passe
 
 In the candidate, the extra overview-header X was absent. Both tab-card X controls remained. Pressing Escape dismissed the overview and left the application window open with both tabs. The SQLite fixture remained 8192 bytes. Screenshots show the pre-fix overview, the fixed overview, and the open window after dismissing the overview.
 
-The native candidate was built before the latest four commits on `linux` were merged into this branch; those commits did not change the overview implementation. The GTK regression and full preflight are rerun on the merged branch before publishing this change.
+The GitHub checks for [PR #1581](https://github.com/cozyGarage/BookiE/actions/runs/40091506792) evaluated tree `04942bc29dc73e8678d6279da57e872fc826218c`, matching merge commit `bd43bd0f10e0fade30d7baa4b86042e5a59d2a72` at the time. Linux has since advanced through #1582. Preflight, unit and sandbox tests, and the isolated GTK widget tier passed on that pinned tree. Installed GTK safety and Docker driver layers were skipped. The native candidate is identified by its binary hash, but this packet does not record its build-source commit; the GitHub run is source-pinned test evidence, not an installed-package test.
 
 ## Screenshots
 
