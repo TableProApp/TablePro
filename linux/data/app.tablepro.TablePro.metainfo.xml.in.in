@@ -9,9 +9,9 @@
   <description>
     <p>
       TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server,
-      ClickHouse, Cassandra, ScyllaDB and Redis. Browse tables, edit rows in
-      place, run SQL with syntax highlighting, and reach servers behind an SSH
-      bastion.
+      ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB. Browse tables, edit
+      rows in place, run SQL with syntax highlighting, and reach servers behind
+      an SSH bastion.
     </p>
     <p>It can:</p>
     <ul>
@@ -72,7 +72,7 @@
       <description>
         <p>The first release of TablePro for Linux.</p>
         <ul>
-          <li>Connect to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, Cassandra, ScyllaDB and Redis, directly or through an SSH tunnel</li>
+          <li>Connect to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, ClickHouse, Cassandra, ScyllaDB, Redis and MongoDB, directly or through an SSH tunnel</li>
           <li>Browse tables and edit rows in place, with undo until you save</li>
           <li>Run SQL with completion, find and replace, and a searchable query history</li>
           <li>Change a table's columns, indexes and foreign keys</li>
