@@ -199,3 +199,11 @@ The installed `bookie 0.2.0-1` package was retested after PR #1568 merged. The i
 The default test wrapper sets `XDG_CURRENT_DESKTOP=GNOME`. On this host, the GNOME portal exposed no FileChooser interface under Xvfb, so an initial run passed 95 scenarios and could not reach file-picker dialogs in 16. A focused CSV-export scenario passed after setting `XDG_CURRENT_DESKTOP=Hyprland`; the full installed-package rerun used the same setting and passed all scenarios. This isolates the earlier failures to the portal selection in the headless test environment. The log contains D-Bus disconnect messages during teardown. Its private runtime directory was removed after the run.
 
 - [Installed-package GTK safety run log](gtk-safety-installed-hyprland-xvfb-20261024.txt)
+
+## Installed SQLite table filter
+
+On the same installed `bookie 0.2.0-1` process, the `people` table showed its column names with SQLite type labels. I opened the filter panel, expanded the rule editor, added `id = 1`, and applied it. The grid displayed only Ada Lovelace and the footer showed one row. Clearing the filter restored both fixture rows. This read-only check did not modify the database. It confirms the basic rule-editor apply and clear path on the native desktop; it does not cover every operator, type conversion, saved-filter behavior or keyboard navigation.
+
+- [Rule editor with an `id = 1` rule](native-installed-filter-rule-editor.png)
+- [Applied filter with one matching row](native-installed-filter-applied.png)
+- [Cleared filter with both rows restored](native-installed-filter-cleared.png)
