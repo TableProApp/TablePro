@@ -52,6 +52,21 @@ class DocLinkTests(unittest.TestCase):
     def test_a_missing_pure_anchor_is_reported(self):
         self.assertEqual(self.broken({"a.md": "# Here\n[missing](#gone)"}), [("a.md", "#gone")])
 
+    def test_explicit_html_anchor_accepts_attributes_and_ignores_fenced_examples(self):
+        files = {
+            "a.md": "[manual](b.md#manual) [example](b.md#fake)",
+            "b.md": "<A class='target' title='a > b' id='manual'></A>\n```html\n<a id='fake'>\n```",
+        }
+        self.assertEqual(self.broken(files), [("a.md", "b.md#fake")])
+
+    def test_heading_level_indentation_closing_hashes_and_link_text_form_anchors(self):
+        files = {
+            "a.md": "[heading](b.md#linked-heading)",
+            "b.md": "   ### [Linked heading](other.md) ###",
+            "other.md": "# Linked heading target",
+        }
+        self.assertEqual(self.broken(files), [])
+
     def test_heading_code_spelling_preserves_underscores(self):
         self.assertEqual(
             self.broken({"a.md": "[section](#sql-server-sql_variant-metadata-refusal)\n## SQL Server `sql_variant` metadata refusal"}),

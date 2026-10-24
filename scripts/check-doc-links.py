@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 import re
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 FENCE = re.compile(r"^\s*(```|~~~)")
 GENERATED = re.compile(r"(^|/)target/")
+
+
+class AnchorParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.anchors = set()
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self.anchors.update(value for name, value in attrs if name == "id" and value)
 
 
 def targets(text):
@@ -66,6 +77,7 @@ def fragment_part(target):
 def markdown_anchors(path):
     anchors = set()
     counts = {}
+    parser = AnchorParser()
     in_fence = False
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         if FENCE.match(line):
@@ -73,18 +85,26 @@ def markdown_anchors(path):
             continue
         if in_fence:
             continue
-        for anchor in re.findall(r"<a\s+[^>]*id=[\"']([^\"']+)", line, re.IGNORECASE):
-            anchors.add(anchor)
-        heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not heading:
+        parser.feed(line)
+        text = line.lstrip()
+        if len(line) - len(text) > 3:
             continue
-        title = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", heading.group(1))
+        level = len(text) - len(text.lstrip("#"))
+        if not 1 <= level <= 6 or level == len(text) or not text[level].isspace():
+            continue
+        title = text[level:].strip()
+        while title.endswith("#"):
+            title = title[:-1].rstrip()
+        if not title:
+            continue
+        title = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", title)
         title = re.sub(r"<[^>]*>|[`*~]", "", title).lower()
         slug = "".join(char for char in title if char.isalnum() or char.isspace() or char in "-_")
         slug = re.sub(r"\s+", "-", slug).strip("-")
         duplicate = counts.get(slug, 0)
         counts[slug] = duplicate + 1
         anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
+    anchors.update(parser.anchors)
     return anchors
 
 
