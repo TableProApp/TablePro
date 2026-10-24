@@ -44,8 +44,8 @@ multiple-versions = "warn"
 wildcards = "deny"
 allow-wildcard-paths = true
 deny = [
-    { crate = "ring", wrappers = ["rustls", "rustls-webpki"], reason = "aws-lc-rs is the only crypto provider; ring comes only through ureq's default features, below (ADR 0024)" },
-    { crate = "ureq", wrappers = ["bollard-buildkit-proto", "libduckdb-sys"], reason = "libduckdb-sys builds with ureq's default features, which turn on rustls's ring in its build script, for a download the bundled build never runs (ADR 0024)" },
+    { crate = "ring", wrappers = ["rustls", "rustls-webpki"], reason = "aws-lc-rs is the only crypto provider; ring comes only through ureq's default features, below (ADR 0025)" },
+    { crate = "ureq", wrappers = ["bollard-buildkit-proto", "libduckdb-sys"], reason = "libduckdb-sys builds with ureq's default features, which turn on rustls's ring in its build script, for a download the bundled build never runs (ADR 0025)" },
     { crate = "openssl-sys", reason = "TLS goes through rustls with aws-lc-rs" },
     { crate = "native-tls", reason = "TLS goes through rustls with aws-lc-rs" },
     { crate = "rustls:<0.23", reason = "rustls before 0.23 has no pluggable provider and carries fixed advisories" },

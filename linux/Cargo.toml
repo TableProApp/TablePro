@@ -88,7 +88,7 @@ clickhouse-types = "0.1.3"
 tokio-postgres-rustls = { version = "0.14.0", default-features = false }
 libsqlite3-sys = ">=0.30.1, <0.38.0"
 # DuckDB 1.5, compiled from the sources the crate ships, since only Ubuntu
-# 26.10 packages libduckdb (docs/decisions/0024-bundled-duckdb.md). json and
+# 26.10 packages libduckdb (docs/decisions/0025-bundled-duckdb.md). json and
 # parquet are linked in, since extensions are never downloaded.
 duckdb = { version = "~1.10506", default-features = false, features = ["bundled", "json", "parquet"] }
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }

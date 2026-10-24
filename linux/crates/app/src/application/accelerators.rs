@@ -8,7 +8,7 @@ use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
     BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow, PickerPage,
-    PickerRow, SidebarList, SqlEditor, SqlEditorTab, StructureTab,
+    PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -245,6 +245,52 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Listed(ShortcutSection::SqlEditor),
     ),
     local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-next-match",
+        &["<Primary>d"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursors-all-matches",
+        &["<Primary><Shift>l"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // GNOME's window manager takes Ctrl+Alt+Up and Down, and GtkSourceView
+    // binds Alt+Up and Down to move lines. This takes its Shift+Alt+Up and
+    // Down, which scroll by one line.
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-above",
+        &["<Shift><Alt>Up"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.add-cursor-below",
+        &["<Shift><Alt>Down"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // Enabled only with more than one cursor, so otherwise Escape goes on.
+    local(
+        SqlEditorCursors,
+        CAPTURE,
+        "editor.single-cursor",
+        &["Escape"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // As Ctrl+click toggles a row in a list.
+    component(
+        SqlEditorCursors,
+        "editor.toggle-cursor",
+        &["<Primary>Pointer_Button1"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    local(
         SqlEditorTab,
         BUBBLE,
         "editor.open-file",
@@ -443,6 +489,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         GridCell => "tablepro-grid-cell-shortcuts",
         CellEditor => "tablepro-cell-editor-shortcuts",
         SqlEditor => "tablepro-sql-editor-shortcuts",
+        SqlEditorCursors => "tablepro-sql-editor-cursor-shortcuts",
         SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",

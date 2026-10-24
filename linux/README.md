@@ -20,7 +20,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
-| DuckDB | 1.5.6, compiled into the app ([ADR 0024](docs/decisions/0024-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
+| DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
@@ -317,6 +317,20 @@ added, changed or removed takes effect without a restart:
 - A snippet for the engine replaces a `sql` one with the same trigger,
   and either replaces the built-in one.
 - A file that does not parse is skipped, and GtkSourceView logs its name.
+
+## Multiple cursors
+
+The SQL editor can type, delete, paste and move at several places at once.
+
+| Keys | Does |
+|---|---|
+| Ctrl+D | Selects the word at the cursor, then adds a cursor at its next match. A word found this way matches whole words only, and a selection you made matches anywhere. Matches are case-sensitive |
+| Ctrl+Shift+L | Adds a cursor at every match of the selection or the word |
+| Shift+Alt+Up, Shift+Alt+Down | Adds a cursor on the line above or below, in the same column |
+| Ctrl+click | Adds a cursor, or takes away the one you click |
+| Escape | Returns to one cursor, keeping its selection |
+
+Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list and snippets work with one cursor, so another cursor ends the snippet being filled in, and overwrite (Insert) and Vim mode keep one cursor.
 
 ## SQL Server with Windows integrated auth
 
