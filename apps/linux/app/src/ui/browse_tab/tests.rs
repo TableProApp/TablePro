@@ -7,6 +7,49 @@ use super::{
     projection_for_loaded_page,
 };
 use relm4::{Component, ComponentController};
+use tablepro_core::EnumInputStyle;
+
+#[test]
+fn registered_drivers_declare_enum_input_style_for_grid_parsing() {
+    let registry = crate::build_registry();
+    assert_eq!(
+        registry.get("mysql").map(|driver| driver.enum_input_style()),
+        Some(EnumInputStyle::DeclaredMemberList)
+    );
+    assert_eq!(
+        registry.get("clickhouse").map(|driver| driver.enum_input_style()),
+        Some(EnumInputStyle::SqlQuotedLabel)
+    );
+    assert_eq!(
+        registry.get("postgres").map(|driver| driver.enum_input_style()),
+        Some(EnumInputStyle::RawValue)
+    );
+    #[cfg(feature = "duckdb")]
+    assert_eq!(
+        registry.get("duckdb").map(|driver| driver.enum_input_style()),
+        Some(EnumInputStyle::SqlQuotedLabel)
+    );
+}
+
+#[test]
+fn grid_and_paste_enum_parsing_use_the_registered_driver_style() {
+    let mysql_enum = column("state", "enum('ready','done')", false);
+    assert_eq!(
+        parse_grid_cell_input("ready", Some(&mysql_enum), "mysql", None),
+        Ok(Value::Text("ready".into()))
+    );
+    assert!(parse_grid_cell_input("unknown", Some(&mysql_enum), "mysql", None).is_err());
+    assert_eq!(
+        parse_pasted_cell(Some("done"), Some(&mysql_enum), "mysql", None),
+        Ok(Value::Text("done".into()))
+    );
+
+    let clickhouse_enum = column("state", r"Enum8('ready' = 1, 'it's ok' = 2)", false);
+    assert_eq!(
+        parse_grid_cell_input("'it''s ok'", Some(&clickhouse_enum), "clickhouse", None),
+        Ok(Value::Text("it's ok".into()))
+    );
+}
 
 fn browse_page(rows: usize, truncated: bool) -> QueryResult {
     QueryResult {
@@ -139,6 +182,7 @@ fn browse_page_fetch_waits_until_the_new_columns_are_applied() {
             schema: Some("public".into()),
             table: "customers".into(),
             driver_id: "postgres".into(),
+            enum_input_style: EnumInputStyle::RawValue,
             connection_id: None,
             read_only: false,
             page_size: 100,
@@ -210,6 +254,7 @@ fn deep_previous_page_uses_the_first_row_as_its_reverse_keyset_anchor() {
             schema: Some("public".into()),
             table: "items".into(),
             driver_id: "postgres".into(),
+            enum_input_style: EnumInputStyle::RawValue,
             connection_id: None,
             read_only: false,
             page_size: 100,
@@ -288,6 +333,7 @@ fn browse_next_page_is_disabled_when_known_total_matches_page_end() {
             schema: Some("main".into()),
             table: "items".into(),
             driver_id: "sqlite".into(),
+            enum_input_style: EnumInputStyle::RawValue,
             connection_id: None,
             read_only: false,
             page_size: 2,
@@ -1002,6 +1048,7 @@ fn a_closed_browse_tab_releases_its_root_widget() {
             schema: Some("public".into()),
             table: "customers".into(),
             driver_id: "postgres".into(),
+            enum_input_style: EnumInputStyle::RawValue,
             connection_id: None,
             read_only: true,
             page_size: 100,

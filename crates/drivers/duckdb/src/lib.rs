@@ -11,8 +11,8 @@ use duckdb::{
 };
 
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, DriverMaturity, ExecResult, MAX_QUERY_ROWS,
-    OperationControl, QueryResult, QueryResultBudget, TableInfo, Value, run_server_cancellable,
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, DriverMaturity, EnumInputStyle, ExecResult,
+    MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBudget, TableInfo, Value, run_server_cancellable,
 };
 use tempfile::TempDir;
 
@@ -22,6 +22,10 @@ pub struct DuckdbDriver;
 
 #[async_trait]
 impl DatabaseDriver for DuckdbDriver {
+    fn enum_input_style(&self) -> EnumInputStyle {
+        EnumInputStyle::SqlQuotedLabel
+    }
+
     fn id(&self) -> &'static str {
         "duckdb"
     }

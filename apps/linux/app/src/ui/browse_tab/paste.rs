@@ -1,7 +1,7 @@
 use relm4::ComponentSender;
 use relm4::gtk::{self, gdk, glib};
 
-use super::value_parse::parse_pasted_cell;
+use super::value_parse::parse_pasted_cell_with_style;
 use super::*;
 
 const MAX_PASTE_CELLS: usize = 5_000;
@@ -256,7 +256,14 @@ impl BrowseTab {
             );
         }
         let current = row.as_ref().map(|row| row.cell_value(cell.col));
-        parse_pasted_cell(cell.text.as_deref(), column, &self.driver_id, current.as_ref()).map_err(|message| {
+        parse_pasted_cell_with_style(
+            cell.text.as_deref(),
+            column,
+            &self.driver_id,
+            self.enum_input_style,
+            current.as_ref(),
+        )
+        .map_err(|message| {
             crate::tr!("{column} on row {row}: {message}. Nothing was pasted.")
                 .replace("{column}", name)
                 .replace("{row}", &(cell.row + 1).to_string())

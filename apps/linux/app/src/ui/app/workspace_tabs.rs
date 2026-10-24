@@ -346,6 +346,12 @@ impl App {
         };
         let tab_id = Uuid::new_v4();
         let driver_id = self.driver_id().to_string();
+        let enum_input_style = self
+            .registry
+            .get(&driver_id)
+            .map_or(tablepro_core::EnumInputStyle::RawValue, |driver| {
+                driver.enum_input_style()
+            });
         let connection_id = self.connection_id;
         let read_only = self.read_only;
 
@@ -354,6 +360,7 @@ impl App {
             schema: schema.clone(),
             table: table.clone(),
             driver_id,
+            enum_input_style,
             connection_id,
             read_only,
             page_size,

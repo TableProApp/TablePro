@@ -298,7 +298,13 @@ impl BrowseTab {
         let col = self.current_columns.get(col_index);
         let row_obj = self.row_object_at(row_position);
         let current_value = row_obj.as_ref().map(|row| row.cell_value(col_index));
-        let new = match parse_grid_cell_input(&new_value, col, &self.driver_id, current_value.as_ref()) {
+        let new = match parse_grid_cell_input_with_style(
+            &new_value,
+            col,
+            &self.driver_id,
+            self.enum_input_style,
+            current_value.as_ref(),
+        ) {
             Ok(v) => v,
             Err(message) => {
                 let _ = sender.output(BrowseTabOutput::ShowToast(message));

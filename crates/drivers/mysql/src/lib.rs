@@ -19,9 +19,9 @@ mod temporal;
 
 use tablepro_core::sql_syntax::script::LexicalSettings;
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBudget, TableInfo, Transport, Value, check_pre_dispatch,
-    run_controlled_setup, run_server_cancellable,
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, EnumInputStyle, ExecResult, ForeignKeyInfo,
+    IndexInfo, MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBudget, TableInfo, Transport, Value,
+    check_pre_dispatch, run_controlled_setup, run_server_cancellable,
 };
 
 /// Name of the SSH-forwarded rendezvous socket inside the private directory
@@ -38,6 +38,10 @@ pub struct MysqlDriver;
 
 #[async_trait]
 impl DatabaseDriver for MysqlDriver {
+    fn enum_input_style(&self) -> EnumInputStyle {
+        EnumInputStyle::DeclaredMemberList
+    }
+
     fn supports_database_listing(&self) -> bool {
         true
     }

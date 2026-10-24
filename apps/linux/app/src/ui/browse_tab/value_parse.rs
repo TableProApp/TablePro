@@ -1,5 +1,5 @@
 use chrono::{Datelike, Timelike};
-use tablepro_core::{ColumnInfo, Value};
+use tablepro_core::{ColumnInfo, EnumInputStyle, Value};
 
 pub(super) fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Result<Value, String> {
     let Some(col) = col else {
@@ -41,104 +41,55 @@ fn is_character_type(dt: &str) -> bool {
     dt.contains("char") || dt.contains("text") || dt == "string"
 }
 
-fn parse_mysql_enum_set_input(text: &str, col: Option<&ColumnInfo>) -> Option<Result<Value, String>> {
-    let column = col?;
-    let data_type = column.data_type.trim();
-    let lower = data_type.to_ascii_lowercase();
-    let is_enum = lower.starts_with("enum");
-    let is_set = lower.starts_with("set");
-    if !is_enum && !is_set {
-        return None;
-    }
-    let Some(labels) = parse_mysql_enum_set_labels(data_type) else {
-        return Some(Err(crate::tr!("Could not safely read ENUM or SET members")));
-    };
-    let valid = if is_enum {
-        labels.iter().any(|label| label == text)
-    } else if text.is_empty() {
-        true
-    } else {
-        text.split(',').all(|member| labels.iter().any(|label| label == member))
-    };
-    if valid {
-        Some(Ok(Value::Text(text.to_owned())))
-    } else {
-        Some(Err(crate::tr!("Value is not a declared ENUM or SET member")))
-    }
-}
-
 pub(crate) fn mysql_enum_set_labels(data_type: &str) -> Option<(bool, Vec<String>)> {
     let is_set = data_type.trim().to_ascii_lowercase().starts_with("set");
-    parse_mysql_enum_set_labels(data_type.trim()).map(|labels| (is_set, labels))
+    tablepro_app_services::enum_input::declared_member_labels(data_type.trim()).map(|labels| (is_set, labels))
 }
 
-fn parse_mysql_enum_set_labels(data_type: &str) -> Option<Vec<String>> {
-    let open = data_type.find('(')?;
-    let kind = data_type[..open].trim();
-    if !kind.eq_ignore_ascii_case("enum") && !kind.eq_ignore_ascii_case("set") {
-        return None;
-    }
-    let mut chars = data_type[open + 1..].strip_suffix(')')?.chars().peekable();
-    let mut labels = Vec::new();
-    loop {
-        while chars.peek().is_some_and(|ch| ch.is_whitespace()) {
-            chars.next();
-        }
-        if chars.next()? != '\'' {
-            return None;
-        }
-        let mut label = String::new();
-        loop {
-            match chars.next()? {
-                '\\' => {
-                    let escaped = chars.next()?;
-                    label.push(match escaped {
-                        '0' => '\0',
-                        'b' => '\u{0008}',
-                        'n' => '\n',
-                        'r' => '\r',
-                        't' => '\t',
-                        'Z' => '\u{001a}',
-                        other => other,
-                    });
-                }
-                '\'' if chars.peek() == Some(&'\'') => {
-                    chars.next();
-                    label.push('\'');
-                }
-                '\'' => break,
-                ch => label.push(ch),
+fn parse_enum_input(text: &str, col: Option<&ColumnInfo>, style: EnumInputStyle) -> Option<Result<Value, String>> {
+    tablepro_app_services::enum_input::parse_enum_input(text, col, style).map(|result| {
+        result.map_err(|error| match error {
+            tablepro_app_services::enum_input::EnumInputError::InvalidMemberDeclaration => {
+                crate::tr!("Could not safely read ENUM or SET members")
             }
-        }
-        labels.push(label);
-        while chars.peek().is_some_and(|ch| ch.is_whitespace()) {
-            chars.next();
-        }
-        match chars.next() {
-            None => return Some(labels),
-            Some(',') => {}
-            Some(_) => return None,
-        }
-    }
+            tablepro_app_services::enum_input::EnumInputError::UndeclaredMember => {
+                crate::tr!("Value is not a declared ENUM or SET member")
+            }
+        })
+    })
 }
 
+#[cfg(test)]
+fn registered_enum_input_style(driver_id: &str) -> EnumInputStyle {
+    use std::sync::OnceLock;
+
+    static REGISTRY: OnceLock<tablepro_core::DriverRegistry> = OnceLock::new();
+    REGISTRY
+        .get_or_init(crate::build_registry)
+        .get(driver_id)
+        .map_or(EnumInputStyle::RawValue, |driver| driver.enum_input_style())
+}
+
+#[cfg(test)]
 pub(super) fn parse_input_for_driver(text: &str, col: Option<&ColumnInfo>, driver_id: &str) -> Result<Value, String> {
-    // Keep blank input as SQL NULL, while `''` explicitly selects an empty ENUM/SET value.
-    if driver_id == "mysql"
-        && text == "''"
-        && let Some(result) = parse_mysql_enum_set_input("", col)
+    parse_input_for_driver_with_style(text, col, driver_id, registered_enum_input_style(driver_id))
+}
+
+pub(super) fn parse_input_for_driver_with_style(
+    text: &str,
+    col: Option<&ColumnInfo>,
+    driver_id: &str,
+    enum_input_style: EnumInputStyle,
+) -> Result<Value, String> {
+    if text == "''"
+        && let Some(result) = parse_enum_input(text, col, enum_input_style)
     {
         return result;
-    }
-    if driver_id == "postgres" && text == "''" && col.is_some_and(|column| column.enum_type.is_some()) {
-        return Ok(Value::Text(String::new()));
     }
     if text.is_empty() {
         return parse_input_for_column(text, col);
     }
-    if driver_id == "mysql"
-        && let Some(result) = parse_mysql_enum_set_input(text, col)
-    {
+    if let Some(result) = parse_enum_input(text, col, enum_input_style) {
         return result;
     }
     let trimmed = text.trim();
@@ -261,10 +212,11 @@ fn parse_mssql_datetimeoffset_input(
     ))
 }
 
-pub(super) fn parse_input_for_grid_cell(
+pub(super) fn parse_input_for_grid_cell_with_style(
     text: &str,
     col: Option<&ColumnInfo>,
     driver_id: &str,
+    enum_input_style: EnumInputStyle,
     current_value: Option<&Value>,
 ) -> Result<Value, String> {
     if text.is_empty()
@@ -274,19 +226,10 @@ pub(super) fn parse_input_for_grid_cell(
     {
         return Ok(Value::Text(String::new()));
     }
-    if col.is_some_and(|column| {
-        let data_type = column.data_type.trim().to_ascii_lowercase();
-        match driver_id {
-            "duckdb" => data_type.starts_with("enum"),
-            "clickhouse" => {
-                let data_type = data_type.strip_prefix("nullable(").unwrap_or(&data_type);
-                data_type.starts_with("enum8(") || data_type.starts_with("enum16(")
-            }
-            _ => false,
-        }
-    }) && let Some(label) = parse_sql_single_quoted_string(text.trim())
+    if !text.is_empty()
+        && let Some(result) = parse_enum_input(text, col, enum_input_style)
     {
-        return Ok(Value::Text(label));
+        return result;
     }
     if !text.is_empty()
         && driver_id == "sqlite"
@@ -302,22 +245,72 @@ pub(super) fn parse_input_for_grid_cell(
         // non-empty input as text instead of guessing that numeric-looking
         // text means the user intended a different storage class.
     }
-    parse_input_for_driver(text, col, driver_id)
+    parse_input_for_driver_with_style(text, col, driver_id, enum_input_style)
 }
 
+#[cfg(test)]
+pub(super) fn parse_input_for_grid_cell(
+    text: &str,
+    col: Option<&ColumnInfo>,
+    driver_id: &str,
+    current_value: Option<&Value>,
+) -> Result<Value, String> {
+    parse_input_for_grid_cell_with_style(
+        text,
+        col,
+        driver_id,
+        registered_enum_input_style(driver_id),
+        current_value,
+    )
+}
+
+#[cfg(test)]
 pub(super) fn parse_grid_cell_input(
     text: &str,
     col: Option<&ColumnInfo>,
     driver_id: &str,
     current_value: Option<&Value>,
 ) -> Result<Value, String> {
-    parse_input_for_grid_cell(text, col, driver_id, current_value)
+    parse_grid_cell_input_with_style(
+        text,
+        col,
+        driver_id,
+        registered_enum_input_style(driver_id),
+        current_value,
+    )
 }
 
+pub(super) fn parse_grid_cell_input_with_style(
+    text: &str,
+    col: Option<&ColumnInfo>,
+    driver_id: &str,
+    enum_input_style: EnumInputStyle,
+    current_value: Option<&Value>,
+) -> Result<Value, String> {
+    parse_input_for_grid_cell_with_style(text, col, driver_id, enum_input_style, current_value)
+}
+
+#[cfg(test)]
 pub(super) fn parse_pasted_cell(
     text: Option<&str>,
     col: Option<&ColumnInfo>,
     driver_id: &str,
+    current_value: Option<&Value>,
+) -> Result<Value, String> {
+    parse_pasted_cell_with_style(
+        text,
+        col,
+        driver_id,
+        registered_enum_input_style(driver_id),
+        current_value,
+    )
+}
+
+pub(super) fn parse_pasted_cell_with_style(
+    text: Option<&str>,
+    col: Option<&ColumnInfo>,
+    driver_id: &str,
+    enum_input_style: EnumInputStyle,
     current_value: Option<&Value>,
 ) -> Result<Value, String> {
     match text {
@@ -333,30 +326,10 @@ pub(super) fn parse_pasted_cell(
                 default_value: None,
                 ..column.clone()
             });
-            parse_grid_cell_input("", required.as_ref(), driver_id, current_value)
+            parse_grid_cell_input_with_style("", required.as_ref(), driver_id, enum_input_style, current_value)
         }
-        Some(text) => parse_grid_cell_input(text, col, driver_id, current_value),
+        Some(text) => parse_grid_cell_input_with_style(text, col, driver_id, enum_input_style, current_value),
     }
-}
-
-fn parse_sql_single_quoted_string(text: &str) -> Option<String> {
-    if text.len() < 2 {
-        return None;
-    }
-    let inner = text.strip_prefix('\'')?.strip_suffix('\'')?;
-    let mut label = String::with_capacity(inner.len());
-    let mut chars = inner.chars();
-    while let Some(ch) = chars.next() {
-        if ch != '\'' {
-            label.push(ch);
-            continue;
-        }
-        if chars.next()? != '\'' {
-            return None;
-        }
-        label.push('\'');
-    }
-    Some(label)
 }
 
 fn parse_postgres_extended_temporal_input(

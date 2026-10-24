@@ -4,7 +4,7 @@ use relm4::prelude::*;
 use relm4::{adw, gtk};
 use uuid::Uuid;
 
-use tablepro_core::{ColumnInfo, ForeignKeyInfo, QueryResult, Value};
+use tablepro_core::{ColumnInfo, EnumInputStyle, ForeignKeyInfo, QueryResult, Value};
 
 use crate::ui::grid::{GridMsg, TabGridContext, build_column_view};
 
@@ -55,6 +55,7 @@ pub struct BrowseTabInit {
     pub schema: Option<String>,
     pub table: String,
     pub driver_id: String,
+    pub enum_input_style: EnumInputStyle,
     pub connection_id: Option<Uuid>,
     pub read_only: bool,
     pub page_size: u64,
@@ -69,6 +70,7 @@ pub struct BrowseTab {
     schema: Option<String>,
     table: String,
     driver_id: String,
+    enum_input_style: EnumInputStyle,
     connection_id: Option<Uuid>,
     read_only: bool,
     persistence: crate::services::persistence_stores::PersistenceStores,
@@ -617,6 +619,7 @@ impl SimpleComponent for BrowseTab {
             schema: init.schema,
             table: init.table,
             driver_id: init.driver_id,
+            enum_input_style: init.enum_input_style,
             connection_id: init.connection_id,
             read_only: init.read_only,
             persistence: init.persistence,

@@ -57,6 +57,7 @@ pub(super) fn launch_with_read_only(id: Uuid, read_only: bool) -> (Controller<Br
             schema: Some("public".into()),
             table: "notes".into(),
             driver_id: "postgres".into(),
+            enum_input_style: tablepro_core::EnumInputStyle::RawValue,
             connection_id: None,
             read_only,
             page_size: 100,

@@ -25,6 +25,14 @@ impl DriverMaturity {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EnumInputStyle {
+    #[default]
+    RawValue,
+    DeclaredMemberList,
+    SqlQuotedLabel,
+}
+
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
     fn id(&self) -> &'static str;
@@ -41,6 +49,10 @@ pub trait DatabaseDriver: Send + Sync {
 
     fn maturity(&self) -> DriverMaturity {
         DriverMaturity::Stable
+    }
+
+    fn enum_input_style(&self) -> EnumInputStyle {
+        EnumInputStyle::RawValue
     }
 
     fn is_file_based(&self) -> bool {

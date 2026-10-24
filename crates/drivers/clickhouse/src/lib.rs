@@ -18,8 +18,8 @@ use tls::https_connector;
 use value_literal::literal;
 
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
-    MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBudget, TableInfo, Value, error_chain_text,
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, EnumInputStyle, ExecResult, ForeignKeyInfo,
+    IndexInfo, MAX_QUERY_ROWS, OperationControl, QueryResult, QueryResultBudget, TableInfo, Value, error_chain_text,
     looks_like_tls_failure, run_server_cancellable, sql_dialect::quote_ident,
 };
 
@@ -42,6 +42,10 @@ pub struct ClickhouseDriver;
 
 #[async_trait]
 impl DatabaseDriver for ClickhouseDriver {
+    fn enum_input_style(&self) -> EnumInputStyle {
+        EnumInputStyle::SqlQuotedLabel
+    }
+
     fn supports_database_listing(&self) -> bool {
         true
     }
