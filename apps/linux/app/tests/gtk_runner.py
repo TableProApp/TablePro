@@ -2,6 +2,8 @@ import time
 
 
 def run_scenarios(scenarios, run, retries, report=print):
+    if not scenarios or retries < 0:
+        raise ValueError("GTK execution requires scenarios and a nonnegative retry count")
     failures = []
     for scenario in scenarios:
         name = scenario.__name__

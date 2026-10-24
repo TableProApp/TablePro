@@ -38,6 +38,14 @@ class GtkRunnerTests(unittest.TestCase):
         failures = runner.run_scenarios([scenario(name) for name in names], script, retries, lines.append)
         return script, lines, failures
 
+    def test_an_empty_scenario_selection_is_not_a_success(self):
+        with self.assertRaises(ValueError):
+            self.run_all([], {})
+
+    def test_a_negative_retry_count_cannot_skip_every_requested_scenario(self):
+        with self.assertRaises(ValueError):
+            self.run_all(["a", "b"], {}, retries=-1)
+
     def test_every_passing_scenario_is_reported_and_nothing_fails(self):
         script, lines, failures = self.run_all(["a", "b"], {})
         self.assertEqual(failures, [])
