@@ -137,11 +137,15 @@ impl DriverTlsFixture {
     }
 
     pub fn mongo(&self, mode: TlsMode, root_cert: Option<PathBuf>) -> ConnectOptions {
-        self.options(self.mongo_port, mode, root_cert)
+        let mut options = self.options(self.mongo_port, mode, root_cert);
+        options.auth_source = Some("admin".into());
+        options
     }
 
     pub fn mongo_plaintext(&self) -> ConnectOptions {
-        self.options(self.mongo_plaintext_port, TlsMode::Disabled, None)
+        let mut options = self.options(self.mongo_plaintext_port, TlsMode::Disabled, None);
+        options.auth_source = Some("admin".into());
+        options
     }
 
     /// Redis takes its database as a numeric index and authenticates with a
@@ -308,6 +312,17 @@ impl DriverTlsFixture {
 #[cfg(test)]
 mod tests {
     use super::{DriverTlsFixture, TlsMode};
+
+    #[test]
+    fn mongo_options_authenticate_the_fixture_admin_user_against_admin() {
+        let fixture = DriverTlsFixture::from_env();
+
+        assert_eq!(
+            fixture.mongo(TlsMode::VerifyFull, None).auth_source.as_deref(),
+            Some("admin")
+        );
+        assert_eq!(fixture.mongo_plaintext().auth_source.as_deref(), Some("admin"));
+    }
 
     #[test]
     fn postgres_options_use_fixture_port_and_system_roots() {
