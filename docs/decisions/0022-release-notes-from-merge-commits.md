@@ -3,6 +3,7 @@
 - **Status**: Accepted
 - **Date**: 2026-10-24
 - **Supersedes**: the 2026-10-19 [changelog fragment evaluation](../archive/changelog-fragment-evaluation-2026-10-19.md), which kept a shared `CHANGELOG.md` and named its own revisit trigger.
+- **Clarified**: 2026-10-25 for implementation status. The pull-request body validation workflow has landed; the release workflow still reads `CHANGELOG.md`.
 
 ## Context
 
@@ -53,4 +54,4 @@ Gained:
 
 ## Implementation status
 
-Landed: the trailer grammar, `check`, `trailers` and `assemble` in `scripts/release-notes.py` with tests, the PR template line, and the documentation. Not landed: a required pull request check and the `release.yml` step that calls `assemble` instead of reading `CHANGELOG.md`. Both edit workflows and wait for the app-side session. Until then `release.yml` still reads `CHANGELOG.md`, so the first cut must reconcile as described in point 4.
+Landed: the trailer grammar, `check`, `trailers` and `assemble` in `scripts/release-notes.py` with tests, the PR template line, the documentation, and `.github/workflows/release-note-check.yml`, which validates pull-request bodies. Whether GitHub requires that check in the branch ruleset is not recorded here. Not landed: the `release.yml` step that calls `assemble` instead of reading `CHANGELOG.md`. Until then, the first cut must reconcile as described in point 4.
