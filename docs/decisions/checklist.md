@@ -109,7 +109,7 @@ Recorded so a contributor does not reopen them without new evidence. Each row ci
 | Apple-only services, license-gated features, Sparkle or AppleScript, iCloud-synced icons | Out of scope | [PRODUCT.md](../../PRODUCT.md) for the no-license rule; the rest from [feature comparison](../0.2-feature-comparison.md#explicitly-out-of-scope-unless-product-goals-change). |
 | dbx's cell and error model: cells as `serde_json::Value`, binary as `"0x…"` text, user WHERE or edits spliced into SQL, a regex production-safety unlock, passwords as plain strings across the UI | Declined | [ADR 0007](0007-type-and-value-preservation.md) and bound values; source: [application-layer audit](../archive/app-layer-external-audit-2026-10-06.md). |
 | Trusted production mutations, unattended MCP writes, a public package | Not approved (SEC-8) | [ADR 0016](0016-governed-consumer-seam.md). |
-| A YAML driver capability manifest or runtime-loaded engine descriptors | Declined | Capabilities are compile-time Rust types on the driver contract ([ADR 0001](0001-no-plugin-system.md)); source: [dbx features review](../archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md). |
+| A YAML driver capability manifest or runtime-loaded engine descriptors | Declined | Capabilities are compile-time Rust types on the driver contract ([ADR 0001](0001-no-plugin-system.md)); the proposed direction is one static `DriverCapabilities` struct replacing the `supports_*` methods; source: [dbx features review](../archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md). |
 | Result charts, facet charts, theme editor or theme sync | Out of scope | Not in product goals; source: [feature comparison history](../archive/feature-comparison-history-2026-10-23.md). |
 
 ## Open forks (do not invent answers here)
@@ -121,6 +121,7 @@ Recorded so a contributor does not reopen them without new evidence. Each row ci
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |
 | Timed write unlock for production connections | Architect | Needs an amendment to [ADR 0016](0016-governed-consumer-seam.md) before any work; the production marker stays a display cue |
+| SOCKS5 proxy for database connections | Product | Adapt only, low priority. Needs a threat review and a DNS-leak rule first ([dbx features review](../archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md)) |
 | SQLite loadable extensions | Architect | Security-sensitive; needs an explicit extension-loading decision before exposure ([feature comparison](../0.2-feature-comparison.md)) |
 | Multi-session strip (several live sessions in one window) | Product | Not copied from TablePro without a product decision; one active connection window today |
 | Performance budget ADR | Architect | Optional; PERF-* ledger rows may stay sufficient |

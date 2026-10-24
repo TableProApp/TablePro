@@ -58,6 +58,7 @@ One typed handle covers every consumer. A new surface inherits classify, approva
 - Cross-surface features (GUI and agent) change the guarded path once and update both callers.
 - Performance work bounds pages and bytes through the guard. It does not remove classify or audit to go faster.
 
+- An MCP request deadline bounds driver work, authorization and rollback, but not the durable audit append: abandoning it could leave an unconfirmed terminal state, so policy stays fail-closed while the request waits ([production audit](../archive/production-audit.md), known limits).
 - Trusted production mutations, unattended MCP writes and a public package are not approved (maintainer decision SEC-8, [pre-migration ledger](../archive/known-issues-pre-project-migration-2026-10-12.md)). Do not build them without amending this record.
 
 ## Alternatives considered
@@ -68,5 +69,6 @@ One typed handle covers every consumer. A new surface inherits classify, approva
 - **A second statement classifier or editor permission engine** (for example an editor "Safe Mode" classifier in `core`). Rejected. Shared lexical facts may inform the existing classifier, but one authorization path stays authoritative ([TablePro collaboration review](../archive/tablepro-collaboration-2026-10-21.md)).
 - **Treat a classification failure as a safe read.** Rejected, including the permissive direction of DBeaver #42374. An unparseable statement keeps governed approval or refusal ([Linux peer review](../archive/linux-peer-review-2026-10-16.md)).
 - **Masking by extending a list of serialization-function names.** Rejected as the only defence. Unknown source lineage is handled conservatively (redacted), with allowed simple-column cases ([B4 wrap-up review](../archive/b4-release-wrapup-review-2026-10-11.md), AUD-9).
+- **A read-only wrapper or a rollback around generated work as a policy substitute.** Rejected. It does not replace classification, approval, masking or the durable terminal audit ([upstream movement review](../archive/upstream-linux-movement-2026-10-18.md), section 7).
 - **Scripting hooks (Bash, Python, Lua) on connection lifecycle.** Declined. They would add an execution surface outside the guard ([database client review](../archive/database-client-review-2026-10-23.md)).
 - **A timed write unlock for production connections.** Not decided. The production marker is a display cue only. A timed unlock would change this safety contract, so it needs an amendment here first ([feature comparison](../0.2-feature-comparison.md)).

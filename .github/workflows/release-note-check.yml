@@ -1,0 +1,27 @@
+name: Release note
+
+on:
+  pull_request:
+    branches: [linux]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-note-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  release-note:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require a Release-Note line (ADR 0022)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s\n' "$PR_BODY" | python3 scripts/release-notes.py check -

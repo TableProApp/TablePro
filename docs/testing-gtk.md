@@ -101,3 +101,8 @@ Workflow prerequisites and runner-specific behavior live in `.forgejo/workflows/
 SQLite integration regressions also distinguish NULL from zero, false, empty text, and empty blobs in declared columns, and preserve binary values despite declared-type affinity mismatches. Export unit tests overlap writers deterministically and check that pre-existing temporary symlinks cannot redirect writes. Workspace tests preserve active-tab identity when unknown records are removed.
 
 For ordinary UI changes, test the affected flow manually and include before and after screenshots. Add deterministic automation when a regression can be reproduced without timing or desktop-session assumptions.
+
+## Lessons that shape GTK tests
+
+- **Replacing a selected model's contents in one remove-and-add notification makes GTK scan every inserted row.** Deselect, then send the removal, then the insertion. Assert the number of row objects constructed, which is deterministic, not wall-clock time ([TablePro collaboration review](archive/tablepro-collaboration-2026-10-21.md)).
+- **A scenario is promoted only after 30 consecutive attempts across at least six runs, and adding a scenario restarts that ledger** ([production audit](archive/production-audit.md)). A diagnostic probe that passes is not a product regression.

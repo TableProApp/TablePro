@@ -60,3 +60,5 @@ The sink remains opt-in through `PolicyGuard::with_fault_sink` rather than a req
 **Wrap each Relm4 command site.** Rejected. It covers only the GTK app, leaves MCP and `agentd` exposed, and relies on every future author remembering.
 
 **Mark the connection unhealthy without replacing it.** Rejected. Health is advisory in this design; nothing prevents the next statement from using a connection whose protocol state is unverified.
+
+**A crash report that includes the panic payload.** Rejected. A raw panic message can carry SQL, secrets or values. Any future diagnostic feature keeps secret and value redaction and bounded private retention ([upstream movement review](../archive/upstream-linux-movement-2026-10-18.md), section 7).

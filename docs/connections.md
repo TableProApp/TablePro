@@ -20,7 +20,7 @@ PostgreSQL's release fixture covers TLS through SSH. Driver TLS fixtures cover d
 
 Saved custom CA and client certificate/key paths are assembled through saved connections, bundles, GUI setup, and agentd transport. PostgreSQL and MySQL drivers opt in; other drivers refuse configured client identities. TLS modes that can fall back to plaintext are rejected, and missing, partial, non-file, or oversized identity material fails closed. Local PostgreSQL fixtures prove required-client-cert authentication through direct and SSH saved routes, reject missing/untrusted identities, and accept a rotated identity. MySQL's driver TLS fixture proves the same direct/SSH, missing/untrusted, and rotation cases. GTK opens and queries a saved PostgreSQL mTLS connection; agentd proves saved mTLS directly and through its saved SSH route, and rejects an untrusted identity. These are local source/test results; installed-package and hosted acceptance remain separate.
 
-PostgreSQL and MySQL Verify CA and Verify Full use the operating system trust store when no custom authority is named. A named authority is added to those roots. Verify CA checks the certificate chain; Verify Full also checks the service hostname. Do not promise certificate pinning or Kerberos qualification without their specific native evidence. Typed keyring failure propagates instead of becoming a missing password; see [storage](storage.md#secrets).
+MongoDB's TLS backend has no CA-only mode, so `VerifyCa` also verifies the hostname there (the 2026-09-07 audit records the same for Redis). PostgreSQL and MySQL Verify CA and Verify Full use the operating system trust store when no custom authority is named. A named authority is added to those roots. Verify CA checks the certificate chain; Verify Full also checks the service hostname. Do not promise certificate pinning or Kerberos qualification without their specific native evidence. Typed keyring failure propagates instead of becoming a missing password; see [storage](storage.md#secrets).
 
 ## Built-in SSH trust
 
@@ -35,3 +35,9 @@ Inside Flatpak, selecting system OpenSSH fails with an explicit message before r
 ## Remaining evidence
 
 Use the current B4 task IDs in [Project #3](https://github.com/users/cozyGarage/projects/3) for TLS, trust, audit, cache and installed-route work. Source-level and local route results do not replace hosted checks, native engine oracles, Wayland acceptance or package rollback. Preserve safe refusal for combinations without exact support.
+
+## Daemon session cache and DuckDB flat files
+
+A `bookie-agentd` session key includes the saved transport fields plus a digest of the Secret Service secret values and of the SSH key and TLS CA file contents. Rotating any of them opens a new session. Handles already issued keep the session they hold until released. If a secret or key file cannot be read, a new open is refused instead of serving the cache ([bug consistency review](archive/bug-consistency-2026-09.md)).
+
+For a DuckDB flat-file connection the driver pins the checked file before DuckDB opens it: it opens the path with `O_PATH` and `O_NOFOLLOW`, checks identity, reopens through the descriptor with `O_NONBLOCK` so a replaced FIFO cannot hang setup, makes a private same-filesystem hard link, and allows only that alias. If pinning cannot be applied, setup fails closed. This is a DuckDB-level path restriction, not an operating-system sandbox ([DuckDB read-only record](archive/duckdb-read-only-aud10-2026-10-10.md)).
