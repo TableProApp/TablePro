@@ -8,6 +8,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs/evidence"
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
 
 
 def test_selector(command):
@@ -35,6 +37,42 @@ def test_selector(command):
     return (candidates[-1] if candidates else None), exact
 
 
+def is_test_layer_report(manifest):
+    return all(
+        key in manifest
+        for key in ("commit", "working_tree", "tracked_diff_sha256", "status", "layers")
+    )
+
+
+def validate_test_layer_report(path, report):
+    errors = []
+    commit = report.get("commit")
+    if not isinstance(commit, str) or not COMMIT_PATTERN.fullmatch(commit):
+        errors.append(f"{path}: invalid test-layer report commit")
+    if not isinstance(report.get("working_tree"), str):
+        errors.append(f"{path}: test-layer report working_tree must be a string")
+    if not isinstance(report.get("layers"), dict):
+        errors.append(f"{path}: test-layer report layers must be an object")
+    status = report.get("status")
+    if not isinstance(status, str) or status not in {"running", "passed", "failed"}:
+        errors.append(f"{path}: invalid test-layer report status")
+    tracked_digest = report.get("tracked_diff_sha256")
+    if not isinstance(tracked_digest, str) or not SHA256_PATTERN.fullmatch(tracked_digest):
+        errors.append(f"{path}: invalid test-layer report tracked diff digest")
+    if "untracked_inputs" in report or "untracked_inputs_sha256" in report:
+        untracked_paths = report.get("untracked_inputs")
+        untracked_digest = report.get("untracked_inputs_sha256")
+        if not isinstance(untracked_paths, list) or not all(isinstance(item, str) for item in untracked_paths):
+            errors.append(f"{path}: test-layer report untracked_inputs must be a path list")
+        if untracked_digest is not None and (
+            not isinstance(untracked_digest, str) or not SHA256_PATTERN.fullmatch(untracked_digest)
+        ):
+            errors.append(f"{path}: invalid test-layer report untracked inputs digest")
+        if isinstance(untracked_paths, list) and untracked_paths and untracked_digest is None:
+            errors.append(f"{path}: test-layer report paths require an untracked inputs digest")
+    return errors, []
+
+
 def validate_manifest(path, strict=False):
     errors = []
     warnings = []
@@ -42,8 +80,12 @@ def validate_manifest(path, strict=False):
         manifest = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as error:
         return [f"{path}: {error}"], warnings
+    if not isinstance(manifest, dict):
+        return [f"{path}: manifest must be an object"], warnings
     if manifest.get("schema_version") != 1:
         return errors, warnings
+    if is_test_layer_report(manifest):
+        return validate_test_layer_report(path, manifest)
     if not isinstance(manifest.get("source_commit", manifest.get("base_commit")), str):
         if strict:
             errors.append(f"{path}: source_commit or base_commit is required")
@@ -56,7 +98,7 @@ def validate_manifest(path, strict=False):
         (errors if strict else warnings).append(f"{path}: source_sha256 must be a digest map or a digest with source_file")
         source_digests = {}
     for name, expected in source_digests.items():
-        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        if not isinstance(expected, str) or not SHA256_PATTERN.fullmatch(expected):
             errors.append(f"{path}: invalid source digest for {name}")
             continue
         source = ROOT / name
@@ -69,7 +111,7 @@ def validate_manifest(path, strict=False):
         (errors if strict else warnings).append(f"{path}: log_sha256 must be a digest map or a single digest")
         log_digests = {}
     for name, expected in log_digests.items():
-        if not re.fullmatch(r"[0-9a-f]{64}", expected):
+        if not isinstance(expected, str) or not SHA256_PATTERN.fullmatch(expected):
             (errors if strict else warnings).append(f"{path}: invalid log digest for {name}")
             continue
         log = path.parent / name

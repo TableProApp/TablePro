@@ -44,6 +44,24 @@ class EvidenceManifestTests(unittest.TestCase):
         path.write_text(json.dumps(manifest))
         return path, manifest
 
+    def layer_report_fixture(self, **updates):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "manifest.json"
+        report = {
+            "schema_version": 1,
+            "commit": "a" * 40,
+            "working_tree": "",
+            "tracked_diff_sha256": hashlib.sha256(b"").hexdigest(),
+            "started_utc": "2026-10-24T00:00:00+00:00",
+            "status": "passed",
+            "layers": {"quick": {"status": "passed", "steps": []}},
+            "finished_utc": "2026-10-24T00:00:01+00:00",
+        }
+        report.update(updates)
+        path.write_text(json.dumps(report))
+        return path, report
+
     def test_focused_manifest_checks_digest_selector_and_executed_count(self):
         path, _ = self.fixture()
         self.assertEqual(VALIDATOR.validate_manifest(path, strict=True)[0], [])
@@ -150,6 +168,77 @@ class EvidenceManifestTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         errors, _ = VALIDATOR.validate_manifest(path, strict=True)
         self.assertEqual(len(errors), 1)
+
+    def test_clean_test_layer_report_uses_its_commit_as_source_identity(self):
+        path, _ = self.layer_report_fixture()
+        errors, warnings = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_dirty_test_layer_report_keeps_tracked_and_untracked_source_identity(self):
+        path, report = self.layer_report_fixture(
+            working_tree=" M tracked.rs\n?? new.rs",
+            tracked_diff_sha256="b" * 64,
+            untracked_inputs=["new.rs"],
+            untracked_inputs_sha256="c" * 64,
+        )
+        errors, warnings = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(json.loads(path.read_text()), report)
+
+    def test_test_layer_report_rejects_malformed_commit_and_diff_fingerprints(self):
+        path, _ = self.layer_report_fixture(commit="not-a-commit", tracked_diff_sha256="bad")
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertTrue(any("invalid test-layer report commit" in error for error in errors))
+        self.assertTrue(any("invalid test-layer report tracked diff digest" in error for error in errors))
+
+    def test_test_layer_report_rejects_a_non_string_status_without_raising(self):
+        path, _ = self.layer_report_fixture(status=[])
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertTrue(any("invalid test-layer report status" in error for error in errors))
+
+    def test_test_layer_report_rejects_wrong_types_for_tree_and_layers(self):
+        path, _ = self.layer_report_fixture(working_tree={}, layers=[])
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertTrue(any("working_tree must be a string" in error for error in errors))
+        self.assertTrue(any("layers must be an object" in error for error in errors))
+
+    def test_test_layer_report_validates_optional_untracked_input_identity(self):
+        invalid_reports = [
+            ({"untracked_inputs": "new.rs"}, "untracked_inputs must be a path list"),
+            ({"untracked_inputs": [1]}, "untracked_inputs must be a path list"),
+            ({"untracked_inputs": ["new.rs"]}, "paths require an untracked inputs digest"),
+            (
+                {"untracked_inputs": [], "untracked_inputs_sha256": "bad"},
+                "invalid test-layer report untracked inputs digest",
+            ),
+            (
+                {"untracked_inputs": [], "untracked_inputs_sha256": 12},
+                "invalid test-layer report untracked inputs digest",
+            ),
+        ]
+        for fields, expected_error in invalid_reports:
+            with self.subTest(fields=fields):
+                path, _ = self.layer_report_fixture(**fields)
+                errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+                self.assertTrue(any(expected_error in error for error in errors))
+
+    def test_manifest_rejects_non_object_json_without_raising(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.json"
+            path.write_text("[]")
+            errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertTrue(any("manifest must be an object" in error for error in errors))
+
+    def test_manifest_rejects_non_string_source_and_log_digests_without_raising(self):
+        path, manifest = self.fixture()
+        manifest["source_sha256"] = {"source.rs": 64}
+        manifest["log_sha256"] = {"focused.txt": None}
+        path.write_text(json.dumps(manifest))
+        errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+        self.assertTrue(any("invalid source digest" in error for error in errors))
+        self.assertTrue(any("invalid log digest" in error for error in errors))
 
     def test_invalid_source_digest_is_rejected_even_without_strict_mode(self):
         path, manifest = self.fixture()

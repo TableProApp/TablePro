@@ -8,6 +8,8 @@ The [completion page](bookie-0.2-sprint.md) records 0.2.0 delivery status; curre
 
 The script harness checks selected documented Rust declarations against source and generates the gettext template in memory and fails if extraction breaks. The template (`bookie.pot`) and `POTFILES.in` are build outputs, ignored by git; run `python3 scripts/update-translations.py` to write them. The catalog check needs GNU `xgettext` and does not load GTK GIR bindings or a desktop session.
 
+`scripts/validate-evidence.py` distinguishes `run-test-layer.py` execution reports from evidence manifests. It checks a report's commit, worktree field, tracked-diff digest and any untracked-input paths and digest. It does not treat a dirty report as a clean checkout or rewrite its provenance. Durable evidence manifests keep their separate `source_commit` or `base_commit` contract.
+
 ## What a container run proves
 
 Database fixtures, the GTK scenarios and the distro-floor jobs run in containers or virtual displays. A pass there shows the code behaves as designed against a disposable database; it is not acceptance of a connection path. Unix sockets, IPv6 loopback, desktop portals and the Secret Service behave differently across containers and desktop sessions; a container run has already hidden one such difference (Docker does not publish `::1`). Acceptance for those paths is the installed package connecting to a real database in the target native desktop session, on the host or a supported VM, as recorded under PKG-1 and in the [manual checklist](manual-verification-0.2-features.md).
