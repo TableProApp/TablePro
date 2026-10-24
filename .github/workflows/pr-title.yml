@@ -1,0 +1,40 @@
+name: PR title
+
+on:
+  pull_request:
+    branches: [linux]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The checkout is the merge commit, so its first parent is the base the pull request lands on.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      # A squash merge uses the title as the commit subject (ADR 0022).
+      - name: Title is a Conventional Commits subject
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check-pr-title.py "$TITLE"
+      # Release notes come from Release-Note lines, so only a release pull request edits the frozen CHANGELOG.md.
+      - name: Only a release pull request edits CHANGELOG.md
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          case "$TITLE" in 'chore(release)'*) exit 0 ;; esac
+          if [ -n "$(git diff --no-renames --name-only HEAD^1 HEAD -- CHANGELOG.md)" ]; then
+            echo "::error title=Changelog::Only a chore(release) pull request edits CHANGELOG.md. Put a Release-Note line in the pull request body instead (ADR 0022)."
+            exit 1
+          fi

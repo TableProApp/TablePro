@@ -202,3 +202,13 @@ Disposition: confirmed framework-specific false positives from the web CSS analy
 ## CI tiers
 
 CI is split into fast feedback and slower integration or acceptance checks. Read the workflow definitions and [AGENTS.md](../AGENTS.md) for current triggers, required gates and ownership. A pull request is ready only when its required checks pass at the current head SHA. Skipped, cancelled, timed-out or unavailable checks are not passes. Scheduled runs and local results can add evidence, but do not replace a required check on the reviewed commit.
+
+### Pull request hygiene checks
+
+These small GitHub checks run on every pull request to `linux` and need no database or GTK. They make the squash commit and the workflows safe to merge; the Forgejo gate remains the acceptance record.
+
+| Check | What it enforces |
+|---|---|
+| `PR title` ([workflow](../.github/workflows/pr-title.yml), `scripts/check-pr-title.py`) | The title is a Conventional Commits subject, because it becomes the squash commit subject. Only a `chore(release)` pull request may edit the frozen `CHANGELOG.md`. |
+| `release-note` ([workflow](../.github/workflows/release-note-check.yml)) | The body has valid `Release-Note:` lines or `none` ([ADR 0022](decisions/0022-release-notes-from-merge-commits.md)). |
+| `workflow-lint` and `workflow-security` ([workflow](../.github/workflows/linux-ci-contracts.yml)) | `actionlint` and `zizmor` (offline, pinned, medium severity and confidence) over the GitHub workflows. Every checkout sets `persist-credentials: false`; a workflow value goes through `env`, not into a script. |

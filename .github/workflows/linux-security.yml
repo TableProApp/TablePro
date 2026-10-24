@@ -32,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ inputs.ref || (github.event_name == 'schedule' && 'linux') || github.sha }}
       - id: revision
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -50,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ needs.resolve-ref.outputs.commit }}
       - name: Install non-GTK build dependencies
         run: |

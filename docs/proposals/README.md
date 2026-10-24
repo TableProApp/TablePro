@@ -4,6 +4,7 @@ Proposals record designs that have not become accepted decisions. They do not se
 
 | Proposal | Current boundary |
 |---|---|
+| [CI hardening ideas from upstream](ci-hardening-from-upstream.md) | Proposed; the four low-risk items are made, five questions are open. |
 | [CI build speed](ci-build-speed.md) | UX-owned, measurement-gated; no workflow split is selected. |
 | [Evidence branch migration](evidence-branch.md) | Proposed; no branch or packet has been migrated. Retrieval and restore must pass the pilot first. |
 | [Import into existing rows](import-existing-rows.md) | Unscheduled candidate; no behavior is implemented. |

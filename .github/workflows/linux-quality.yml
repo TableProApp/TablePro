@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ inputs.ref || (github.event_name == 'schedule' && 'linux') || github.sha }}
       - name: Resolve the tested commit once
         id: revision
@@ -59,6 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ needs.resolve-ref.outputs.commit }}
       - name: Record the commit under test
         run: |
@@ -154,6 +156,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ needs.resolve-ref.outputs.commit }}
       - name: Record the commit under test
         run: |

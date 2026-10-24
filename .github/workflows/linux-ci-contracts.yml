@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
       - name: Set up Go for pinned workflow validator
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
@@ -44,12 +45,28 @@ jobs:
           name: workflow-lint-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/quality/*-layers
           if-no-files-found: error
+  workflow-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: zizmor@1.30.1
+      - name: Audit the workflows for injection, permission and credential risks
+        # Offline, so the verdict depends on these files alone. Low-confidence
+        # findings are left out to keep the check free of false positives.
+        run: zizmor --offline --format=github --min-severity=medium --min-confidence=medium .github/workflows
   harness:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
           ref: ${{ github.sha }}
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
