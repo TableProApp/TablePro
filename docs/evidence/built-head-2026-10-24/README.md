@@ -38,6 +38,8 @@ After the package-build tests, the extracted binary from the package built at `c
 
 The same current-head process then ran `SELECT generate_series(1, 100000) AS n;` on the native desktop. The UI reported 98 ms, 100,000 received rows and 20 pages. The result retained rows 80,001–100,000. I navigated Previous to rows 80,001–85,000; Previous disabled there, while Next returned to the next retained page. This reproduces the documented forward-only retention boundary on the current source head.
 
+This is a product gap for a completed result: the first 80,000 rows are not reachable after the query finishes, even though this narrow result has only 20 pages. The fixed four-page count, rather than a user-visible decision or a confirmed byte-budget exhaustion, is the observed boundary. The issue is tracked in [#1032](https://github.com/cozyGarage/BookiE/issues/1032). The capture demonstrates the regression surface; it does not establish the memory cost of retaining all 20 pages.
+
 A 31.015-second sample began after the query had completed, with the grid on the newest retained page and no input. RSS stayed at 125.1 MiB, PSS varied by 13 KiB, Private Dirty decreased by 12 KiB, process CPU advanced by 0.02 seconds, and block-read/write counters did not change. This measures the retained-result idle state, not query execution or socket traffic. The earlier 30-second sample above covers a separate run that included query and UI work; the samples are not a controlled comparison.
 
 - [Current-head oldest-retained-page screenshot](native-current-head-100k-oldest-retained.png)
