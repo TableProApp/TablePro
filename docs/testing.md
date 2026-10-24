@@ -12,6 +12,18 @@ The script harness checks selected documented Rust declarations against source a
 
 Database fixtures, the GTK scenarios and the distro-floor jobs run in containers or virtual displays. A pass there shows the code behaves as designed against a disposable database; it is not acceptance of a connection path. Unix sockets, IPv6 loopback, desktop portals and the Secret Service behave differently across containers and desktop sessions; a container run has already hidden one such difference (Docker does not publish `::1`). Acceptance for those paths is the installed package connecting to a real database in the target native desktop session, on the host or a supported VM, as recorded under PKG-1 and in the [manual checklist](manual-verification-0.2-features.md).
 
+## Remote lab and connection-fault checks
+
+Use a separate BookiE profile and disposable database or dataset when checking a workstation-to-lab connection. Route only that profile through a TCP fault proxy such as Toxiproxy to test added latency, timeouts, and dropped connections. Do not use host-wide network fault rules for this; they can disrupt unrelated SSH, CI, and development traffic. The PostgreSQL release fixture already uses Toxiproxy for deterministic proxied-path tests.
+
+A proxy fault checks BookiE's response to a broken network path; it does not test cluster election or replication. Test real failover only in an isolated cluster using its documented failover procedure. A write whose response is lost may already have committed, so verify the stored result and ensure reconnect does not replay it. Keep such checks on disposable data.
+
+## Why B3 tests values beyond the driver
+
+B3 covers the value path from the native driver through each relevant consumer, such as result display, grid editing, parameter binding, and export. Driver decoding alone cannot show that later code preserves the value. JSON or formatted text can display a value while hiding distinctions such as BSON integer width, exact decimal precision, or SQL `NULL` versus an empty value. This does not imply that another database client loses those distinctions; a correct-looking display alone does not establish round-trip fidelity.
+
+[ADR 0007](decisions/0007-type-and-value-preservation.md) defines the outcomes: exact typed support, exact text fallback, explicit refusal, or untested. B3 is a data-correctness contract, not a requirement for one universal cross-engine type system. Use the selected case and its concrete consumer to decide what must be proven.
+
 ## Test runner
 
 The unit and sandbox tiers run under [cargo-nextest](https://nexte.st), one process per test. `scripts/ensure-nextest.sh` downloads the pinned release, checks its SHA-256 and caches it under `~/.cache/bookie-tools` locally or the configured shared tools cache in CI; `.config/nextest.toml` requires that version. Both profiles keep `retries = 0`, so a flaky test fails instead of passing on a hidden retry, and stop a test that runs for five minutes. The `ci` profile also writes `target/nextest/ci/junit.xml`. The completed [#892 pilot](https://github.com/cozyGarage/BookiE/issues/892) qualified the unit and sandbox selections. Compare test names and source revisions rather than copying historical totals; parent-launched subprocess helpers can affect displayed counts. Driver, release, GTK and keyring tiers remain on `cargo test`. Moving a shared database fixture to one process per test requires separate ownership and isolation qualification; the headless pilot did not qualify that migration. `scripts/ci-local.sh full` runs its unit tier through the same nextest command as the Forgejo `unit` job, so local CI and CI use one runner. Doc tests are not part of these tiers.
