@@ -405,7 +405,7 @@ What a new engine without SQL does:
 
 ### Document engines
 
-MongoDB holds databases of collections and takes mongosh statements. A collection opens in the table tab, so every builder the tab, an export, a save and the MCP server reach (`build_page`, `build_count`, `build_export`, `plan_save`, `build_filter`, `validate_raw_predicate`, the SQL export's inserts) has a document arm, chosen by the dialect's grammar, that writes the engine's shell call with every value bound ([ADR 0024](decisions/0024-documents-in-the-table-tab.md)). What a document engine does beyond the steps above:
+MongoDB holds databases of collections and takes mongosh statements. A collection opens in the table tab, so every builder the tab, an export, a save and the MCP server reach (`build_page`, `build_count`, `build_export`, `plan_save`, `build_filter`, `validate_raw_predicate`, the SQL export's inserts) has a document arm, chosen by the dialect's grammar, that writes the engine's shell call with every value bound ([ADR 0025](decisions/0025-documents-in-the-table-tab.md)). What a document engine does beyond the steps above:
 
 1. **Capabilities.** `data_model: Document`, `object_kinds` tables and views, and `network_options` for what its connection strings carry beyond a host (MongoDB: `DnsSeedList`, `AuthDatabase`).
 2. **Catalogue.** Databases from `list_schemas`, collections and views from `list_objects`. `fetch_columns` reads the top-level fields of a bounded sample on the server, the key first, with the column kind the field's values share and JSON for nested or mixed ones. `row_identity` is the document key, `Unordered` for a view.

@@ -551,7 +551,7 @@ impl OnScreen {
     }
 
     fn view(&self) -> sourceview5::View {
-        self.editor.imp().source_view.get()
+        self.editor.imp().source_view.get().upcast()
     }
 
     /// Wait for the completion list to show `text`, and say what it

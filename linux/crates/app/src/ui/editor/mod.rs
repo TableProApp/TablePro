@@ -7,6 +7,7 @@ mod completion;
 mod editor_actions;
 mod editor_file;
 mod editor_session_slot;
+mod editor_view;
 mod find_bar;
 mod find_state;
 mod format_plan;
@@ -46,6 +47,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::buffer_edit::{CursorAnchor, replace_all_undoable};
 pub(crate) use self::editor_file::file_name;
+use self::editor_view::EditorView;
 use self::imp::RunningScript;
 use self::result_widgets::PageActions;
 use self::run_log::{EntryKind, RunEvent, RunLog};
@@ -127,7 +129,7 @@ impl SqlEditor {
         // The text the tab opens with is not an edit to take back.
         buffer.set_text(&initial_text);
         imp.source_view.set_buffer(Some(&buffer));
-        imp.find_bar.attach(&imp.source_view);
+        imp.find_bar.attach(imp.source_view.upcast_ref());
         let toasts = editor.downgrade();
         imp.find_bar.connect_toast(move |_, text| {
             if let Some(editor) = toasts.upgrade() {
@@ -189,6 +191,7 @@ impl SqlEditor {
         if buffer_text(&buffer) == text {
             return;
         }
+        self.imp().source_view.single_caret();
         replace_all_undoable(&buffer, text);
         self.emit_by_name::<()>("undoable-toast", &[&crate::i18n::gettext("Query replaced")]);
     }
@@ -286,6 +289,7 @@ impl SqlEditor {
         if formatted == text {
             return;
         }
+        self.imp().source_view.single_caret();
         let anchor = CursorAnchor::capture(&buffer);
         replace_all_undoable(&buffer, &formatted);
         anchor.restore(&buffer);
@@ -304,6 +308,7 @@ impl SqlEditor {
             }
         };
         let buffer = self.buffer();
+        self.imp().source_view.single_caret();
         if replace || buffer_text(&buffer).trim().is_empty() {
             replace_all_undoable(&buffer, &text);
             self.opened_file(file);
@@ -650,7 +655,7 @@ impl SqlEditor {
     }
 
     fn connect_theme(&self, settings: &Rc<tablepro_storage::AppSettings>) {
-        let view = self.imp().source_view.get();
+        let view = self.imp().source_view.get().upcast::<sourceview5::View>();
         view.set_monospace(true);
         crate::ui::style_scheme_resolver::apply(&view, &settings.style_scheme());
         let style_manager = adw::StyleManager::default();
@@ -729,11 +734,19 @@ impl SqlEditor {
     fn connect_buffer(&self, buffer: &sourceview5::Buffer) {
         let imp = self.imp();
         let cursor_info = imp.cursor_info.get();
-        show_cursor_position(&cursor_info, buffer);
+        let view = imp.source_view.get();
+        show_cursor_position(&cursor_info, &view);
         buffer.connect_cursor_position_notify(glib::clone!(
             #[weak]
             cursor_info,
-            move |buffer| show_cursor_position(&cursor_info, buffer)
+            #[weak]
+            view,
+            move |_| show_cursor_position(&cursor_info, &view)
+        ));
+        view.connect_carets_changed(glib::clone!(
+            #[weak]
+            cursor_info,
+            move |view| show_cursor_position(&cursor_info, view)
         ));
 
         let weak = self.downgrade();
@@ -948,15 +961,22 @@ impl RunTransaction {
     }
 }
 
-fn show_cursor_position(label: &gtk4::Label, buffer: &sourceview5::Buffer) {
+fn show_cursor_position(label: &gtk4::Label, view: &EditorView) {
+    let buffer = view.buffer();
     let iter = buffer.iter_at_mark(&buffer.get_insert());
-    label.set_label(&crate::i18n::gettext_f(
-        "Ln {line}, Col {column}",
-        &[
-            ("line", &(iter.line() + 1).to_string()),
-            ("column", &(iter.line_offset() + 1).to_string()),
-        ],
-    ));
+    let line = (iter.line() + 1).to_string();
+    let column = (iter.line_offset() + 1).to_string();
+    let count = u32::try_from(view.caret_count()).unwrap_or(u32::MAX);
+    label.set_label(&if count > 1 {
+        crate::i18n::ngettext_f(
+            "Ln {line}, Col {column}, {count} cursor",
+            "Ln {line}, Col {column}, {count} cursors",
+            count,
+            &[("line", &line), ("column", &column), ("count", &count.to_string())],
+        )
+    } else {
+        crate::i18n::gettext_f("Ln {line}, Col {column}", &[("line", &line), ("column", &column)])
+    });
 }
 
 fn label_run_button(button: &gtk4::Button, has_selection: bool) {
@@ -975,47 +995,50 @@ fn buffer_text(buffer: &impl IsA<gtk4::TextBuffer>) -> String {
     buffer.text(&start, &end, false).to_string()
 }
 
-/// Toggle SQL line-comment (`-- `) for the lines in the buffer's
-/// current selection (or the cursor's line when nothing is selected).
-/// If every non-blank line in the range is already commented, strip
-/// the prefix; otherwise prepend `-- ` after each line's leading
-/// whitespace. Blank lines are skipped in both directions so toggling
-/// twice returns the original text, and the whole edit is one undo step.
-fn toggle_line_comment(buffer: &gtk4::TextBuffer) {
-    let (sel_start, sel_end) = buffer.selection_bounds().unwrap_or_else(|| {
-        let i = buffer.iter_at_mark(&buffer.get_insert());
-        (i, i)
-    });
-    let start_line = sel_start.line();
-    let mut end_line = sel_end.line();
-    // A selection that ends at column 0 of the next line does not take
-    // that line in, as in other editors.
-    if sel_end.line_offset() == 0 && end_line > start_line {
-        end_line -= 1;
+/// The lines each caret's selection covers, or its own line. A selection
+/// that ends at column 0 of the next line does not take that line in, as
+/// in other editors.
+fn commented_lines(ranges: &[(gtk4::TextIter, gtk4::TextIter)]) -> std::collections::BTreeSet<i32> {
+    let mut lines = std::collections::BTreeSet::new();
+    for (start, end) in ranges {
+        let mut last = end.line();
+        if end.line_offset() == 0 && last > start.line() {
+            last -= 1;
+        }
+        lines.extend(start.line()..=last);
     }
+    lines
+}
 
-    let lines: Vec<String> = (start_line..=end_line)
-        .map(|l| {
+/// Toggle SQL line-comment (`-- `) for `lines`. If every non-blank line
+/// is already commented, strip the prefix; otherwise prepend `-- ` after
+/// each line's leading whitespace. Blank lines are skipped in both
+/// directions so toggling twice returns the original text, and the whole
+/// edit is one undo step.
+fn toggle_line_comment(buffer: &gtk4::TextBuffer, lines: &std::collections::BTreeSet<i32>) {
+    let lines: Vec<(i32, String)> = lines
+        .iter()
+        .map(|&l| {
             let Some(s) = buffer.iter_at_line(l) else {
-                return String::new();
+                return (l, String::new());
             };
             let mut e = s;
             e.forward_to_line_end();
-            buffer.text(&s, &e, false).to_string()
+            (l, buffer.text(&s, &e, false).to_string())
         })
         .collect();
 
     let all_commented = lines
         .iter()
-        .filter(|l| !l.trim().is_empty())
-        .all(|l| l.trim_start().starts_with("--"));
+        .filter(|(_, l)| !l.trim().is_empty())
+        .all(|(_, l)| l.trim_start().starts_with("--"));
 
     buffer.begin_user_action();
-    for (offset, original) in lines.iter().enumerate() {
+    for (line_n, original) in &lines {
+        let line_n = *line_n;
         if original.trim().is_empty() {
             continue;
         }
-        let line_n = start_line + offset as i32;
         let leading_chars: i32 = original.chars().take_while(|c| c.is_whitespace()).count() as i32;
         let Some(mut iter) = buffer.iter_at_line(line_n) else {
             continue;

@@ -342,6 +342,42 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="editor-add-cursor-next-match">
+            <property name="title" translatable="yes">Add a Cursor at the Next Match</property>
+            <property name="accelerator">&lt;Primary&gt;d</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-add-cursors-all-matches">
+            <property name="title" translatable="yes">Add a Cursor at Every Match</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;l</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-add-cursor-above">
+            <property name="title" translatable="yes">Add a Cursor on the Line Above</property>
+            <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Up</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-add-cursor-below">
+            <property name="title" translatable="yes">Add a Cursor on the Line Below</property>
+            <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Down</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-toggle-cursor">
+            <property name="title" translatable="yes">Add or Remove a Cursor</property>
+            <property name="accelerator">&lt;Primary&gt;Pointer_Button1</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="editor-single-cursor">
+            <property name="title" translatable="yes">Return to One Cursor</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="editor-open-file">
             <property name="title" translatable="yes">Open a SQL File</property>
             <property name="accelerator">&lt;Primary&gt;o</property>

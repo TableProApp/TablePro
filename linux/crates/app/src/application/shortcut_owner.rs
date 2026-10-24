@@ -9,6 +9,9 @@ pub enum ShortcutOwner {
     CellEditor,
     /// The SQL editor's source view.
     SqlEditor,
+    /// The SQL editor's other cursors. Not kept from Vim, whose mode turns
+    /// them off and has Ctrl+D of its own.
+    SqlEditorCursors,
     /// The whole SQL editor tab, its find bar included.
     SqlEditorTab,
     StructureTab,
