@@ -9,7 +9,11 @@ use crate::ui::editor::SqlEditorInput;
 
 use super::{App, AppMsg, SessionTeardownAction, WorkspaceTab};
 
+const SESSION_CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
+const WINDOW_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+
 async fn await_editor_sessions(
+    action: SessionTeardownAction,
     replies: Vec<(Uuid, tokio::sync::oneshot::Receiver<Result<(), String>>)>,
 ) -> Result<(), String> {
     let cleanup = async {
@@ -32,7 +36,11 @@ async fn await_editor_sessions(
             Err(failures.join("\n"))
         }
     };
-    match tokio::time::timeout(Duration::from_secs(20), cleanup).await {
+    let timeout = match action {
+        SessionTeardownAction::WindowClose => WINDOW_CLOSE_TIMEOUT,
+        _ => SESSION_CLOSE_TIMEOUT,
+    };
+    match tokio::time::timeout(timeout, cleanup).await {
         Err(_) => Err("Timed out waiting for editor sessions to finish cleanup.".to_string()),
         Ok(result) => result,
     }
@@ -84,7 +92,7 @@ impl App {
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let result = await_editor_sessions(replies).await;
+                    let result = await_editor_sessions(action, replies).await;
                     sender_clone.input(AppMsg::SessionTeardownCompleted { action, result });
                 })
                 .drop_on_shutdown()
@@ -192,7 +200,10 @@ mod tests {
         let second_id = Uuid::new_v4();
         let (first_reply, first) = tokio::sync::oneshot::channel();
         let (second_reply, second) = tokio::sync::oneshot::channel();
-        let cleanup = tokio::spawn(await_editor_sessions(vec![(first_id, first), (second_id, second)]));
+        let cleanup = tokio::spawn(await_editor_sessions(
+            SessionTeardownAction::Disconnect,
+            vec![(first_id, first), (second_id, second)],
+        ));
 
         first_reply.send(Ok(())).expect("first cleanup");
         tokio::task::yield_now().await;
@@ -212,12 +223,54 @@ mod tests {
             .expect("first cleanup");
         drop(second_reply);
 
-        let error = await_editor_sessions(vec![(first_id, first), (second_id, second)])
-            .await
-            .expect_err("any failed close prevents teardown");
+        let error = await_editor_sessions(
+            SessionTeardownAction::Disconnect,
+            vec![(first_id, first), (second_id, second)],
+        )
+        .await
+        .expect_err("any failed close prevents teardown");
         assert!(error.contains(&first_id.to_string()));
         assert!(error.contains("rollback timed out"));
         assert!(error.contains(&second_id.to_string()));
         assert!(error.contains("closed before cleanup completed"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_editor_session_cleanup_times_out_after_five_seconds() {
+        let (_reply, receiver) = tokio::sync::oneshot::channel();
+        let cleanup = tokio::spawn(await_editor_sessions(
+            SessionTeardownAction::WindowClose,
+            vec![(Uuid::new_v4(), receiver)],
+        ));
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(4)).await;
+        tokio::task::yield_now().await;
+        assert!(!cleanup.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert!(cleanup.is_finished());
+
+        let error = cleanup
+            .await
+            .expect("teardown task")
+            .expect_err("a stalled session must require the close-anyway choice");
+        assert_eq!(error, "Timed out waiting for editor sessions to finish cleanup.");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn other_teardown_actions_keep_their_twenty_second_timeout() {
+        let (_reply, receiver) = tokio::sync::oneshot::channel();
+        let cleanup = tokio::spawn(await_editor_sessions(
+            SessionTeardownAction::Disconnect,
+            vec![(Uuid::new_v4(), receiver)],
+        ));
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(19)).await;
+        tokio::task::yield_now().await;
+        assert!(!cleanup.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert!(cleanup.is_finished());
+        assert!(cleanup.await.expect("teardown task").is_err());
     }
 }
