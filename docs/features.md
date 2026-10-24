@@ -41,7 +41,7 @@ Drivers are linked at build time. There is no plugin system ([ADR 0001](decision
 - The header shows each column's type. Primary key columns have a key mark, foreign key columns a link mark, and a column comment appears under the name.
 - Filter with the filter bar, and save filters by name per table. Sort by clicking a header.
 - Hide and reorder columns, and reset dragged column widths. The choice is remembered per table.
-- Long cells in query results and keyed browse rows show a preview and byte count. View Value and Copy Value use the full value, including pending edits and drafts; eligible text/JSON cells can be edited in the full-value dialog up to 1 MiB. See [known limitations](known-limitations.md#data-and-values) for keyless-table behavior.
+- Long cells in query results and keyed browse rows show a preview and byte count. View Value shows a bounded rendering of the current value. Copy Value copies the complete text or JSON value, including pending edits and drafts; binary cells currently copy only a byte-count placeholder ([#1587](https://github.com/cozyGarage/BookiE/issues/1587)). Eligible text/JSON cells can be edited in the full-value dialog up to 1 MiB. See [known limitations](known-limitations.md#data-and-values) for keyless-table behavior.
 - The row inspector lists every column and its type. Values omitted from the fetched page show as Not fetched. Selection statistics show count, sum, average, minimum and maximum.
 
 ## Write SQL

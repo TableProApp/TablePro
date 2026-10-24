@@ -55,7 +55,7 @@ Gained:
 
 ## Alternatives considered
 
-**Server-side statement timeouts only** (`statement_timeout`, `MAX_EXECUTION_TIME`). Rejected as the primary mechanism: it covers the deadline but not a user pressing Stop, and it is set per session rather than per statement. Worth adding later as a second layer.
+**Server-side statement timeouts only** (PostgreSQL `statement_timeout`; MySQL `max_execution_time` or its `MAX_EXECUTION_TIME(N)` hint for supported `SELECT`s). Rejected as the primary mechanism: deadline controls do not handle a user pressing Stop, and MySQL's hint does not cover every statement type. They may still be useful as a second layer ([MySQL optimizer hints](https://dev.mysql.com/doc/refman/8.4/en/optimizer-hints.html), [MySQL system variables](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html)).
 
 **Treating a dispatched cancellation as confirmation.** Rejected. It would clear the poison flag while a write might still be running, which is the failure mode the audit rules exist to prevent.
 

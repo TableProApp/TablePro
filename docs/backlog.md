@@ -20,7 +20,8 @@ These rows remained open after the 0.2.0 delivery decision and are now part of t
 | AUD-2 | [#598](https://github.com/cozyGarage/BookiE/issues/598) | B4 | Bound GUI approval waits and agent SQL previews |
 | AUD-9 | [#600](https://github.com/cozyGarage/BookiE/issues/600) | B4 | Prevent agent masking leaks through hidden SQL lineage |
 | TEST-15 | [#593](https://github.com/cozyGarage/BookiE/issues/593) | B4 | Verify lost-ack writes are not replayed after reconnect |
-| TEST-25 | [#1545](https://github.com/cozyGarage/BookiE/issues/1545) | B3 | Decide SQLite runtime policy and verify empty-key JSON aggregates on affected and fixed versions |
+| TEST-25 | [#1545](https://github.com/cozyGarage/BookiE/issues/1545) | B3 | Decide SQLite runtime policy and verify SQL-NULL-key JSON aggregates on affected and fixed versions |
+| AppStream 0.2.0 metadata | [#1585](https://github.com/cozyGarage/BookiE/issues/1585) | UX | Reconcile the development classification and date with the published release; decide how post-release source metadata is labeled without pre-approving a 0.2.1 scope |
 | UI-35 | [#579](https://github.com/cozyGarage/BookiE/issues/579) | UX | Complete native Linux acceptance against a local MySQL or MariaDB service and record the app build and socket path |
 | B4-7, B4-16, B4-22 | [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 | Finish installed acceptance for tunnel audit, session invalidation, and bundle audit |
 | TEST-31 | [#556](https://github.com/cozyGarage/BookiE/issues/556) | UX | Triage intermittent installed GTK runs and gather the required full-run evidence |

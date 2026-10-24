@@ -6,7 +6,7 @@
 
 Forgejo Linux sync run 510 passed all 28 jobs at the merged commit.
 
-The GitHub and Forgejo PR branches and the local review branch were removed. [Regression evidence](distro-floor-diagnostics-2026-10-15.md) records the failing-first mixed success/error log.
+The GitHub and Forgejo PR branches and the local review branch were removed. [Regression evidence](../evidence/distro-floor-diagnostics-2026-10-15.md) records the failing-first mixed success/error log.
 
 ## Independent guard finding
 
@@ -20,7 +20,7 @@ The completion PR uses the existing explicit-path convention. The guard change r
 
 Forgejo run 512 passed all 28 jobs on that exact head. The latest Linux base was already included; no post-gate code change or gate-reuse exception was needed. The PR merged as `75bb47fc69348c82ea80be33872d39de707463a5` and closed #934. Its project item is Done. GitHub and Forgejo feature branches and the local branch were removed.
 
-[Local regression evidence](sql-identifier-proposals-2026-10-15.md) records the failing-first boundary cases, all 52 widget tests, eight pure proposal regressions and native PostgreSQL identity check. Desktop keyboard and screen reader checks remain manual.
+[Local regression evidence](../evidence/sql-identifier-proposals-2026-10-15.md) records the failing-first boundary cases, all 52 widget tests, eight pure proposal regressions and native PostgreSQL identity check. Desktop keyboard and screen reader checks remain manual.
 
 Forgejo Linux sync run 514 passed all 28 jobs at the immutable merged commit. The documentation-only acceptance record follows on GitHub Linux; it does not queue another Forgejo run or move its code tip.
 

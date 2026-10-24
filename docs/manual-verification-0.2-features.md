@@ -300,14 +300,16 @@ Main menu, then Catalog, on a PostgreSQL connection with a few objects of each k
 
 ## Grid previews for long values
 
-In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. SQL result grids are read-only. In an editable browse table, confirm that a long text cell opens for inline editing with the full value, not the preview. **View Value** and **Copy Value** expose the complete value. Text and JSON cells over 8 KiB can be edited in the bounded full-value dialog. Use text and JSON values just below and just above the 8 KiB threshold.
+In browse and SQL result grids, text, JSON and binary cells over 8 KiB show a typed preview with the original byte count. SQL result grids are read-only. In an editable browse table, confirm that a long text cell opens for inline editing with the full value, not the preview. **View Value** shows a bounded rendering. **Copy Value** copies complete text and JSON values; binary values currently copy only a byte-count placeholder ([#1587](https://github.com/cozyGarage/BookiE/issues/1587)). Text and JSON cells over 8 KiB and up to 1 MiB can be edited in the bounded full-value dialog. Use text and JSON values just below and just above the 8 KiB threshold, plus a value over 1 MiB for the read-only view.
 
 - [ ] A value below the threshold displays in full and remains editable where that type supports grid edits.
 - [ ] Values over the threshold show a prefix and `… (N bytes total)`; SQL result cells and binary/unsupported browse values do not offer inline editing. Editable browse text opens with the full value.
-- [ ] View Value shows the complete text or JSON, including the final characters or JSON structure.
+- [ ] View Value shows up to 1 MiB of rendered text or JSON and indicates when longer content is truncated.
 - [ ] A long unbroken value wraps without display-only hyphens; the GTK widget regression covers this rendering property ([#791](https://github.com/cozyGarage/BookiE/pull/791)); no installed retest is recorded here.
 - [ ] Copy Value copies the complete text or JSON rather than the displayed preview.
-- [ ] Repeat with a binary value over the threshold; the preview reports the original byte count and View Value exposes the full bytes.
+- [ ] Repeat with a binary value over the threshold; the preview reports the original byte count and View Value shows at most the first 16 KiB of source bytes as hex with the total byte count.
+
+Binary Copy Value currently copies only the byte-count placeholder; full binary copying is tracked in [#1587](https://github.com/cozyGarage/BookiE/issues/1587).
 
 ## Grid cell editing: long text and JSON
 

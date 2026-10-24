@@ -12,7 +12,7 @@ Run date: 2026-10-24. This is a local regression check, not CI or release accept
 
 ## Results
 
-All eight selectors below passed on that audit worktree. The malformed-tail command selected two tests; each other command selected one.
+All seven commands below passed and selected eight tests total. The malformed-tail command selected two tests; each other command selected one.
 
 ```text
 cargo test --locked -p tablepro-app malformed_tail_blocks_all_script_consumers -- --nocapture
@@ -104,3 +104,20 @@ cargo test --offline --locked -p tablepro-app --lib ui::browse_tab::value_parse:
 ```
 
 The test and driver manifest matched that commit. This verifies the fixed-version expectation and CSV preservation on SQLite 3.54.0. It does not reproduce the malformed output on SQLite 3.45.1 or 3.46.1, nor decide whether older system libraries should be skipped or SQLite bundled.
+
+## Current Linux-head rechecks, October 24
+
+Focused regressions were rerun on GitHub `linux` commit `d9b5aaca6af5889f7a67025c6a878cf732a92ac7`. The worktree had documentation-only staged changes; no app, driver, test or script source differed from that commit. The host's system SQLite reports 3.54.0 through `pkg-config --modversion sqlite3`.
+
+```text
+cargo test --offline --locked -p tablepro-app --lib ui::grid::value_viewer::tests -- --nocapture
+6 passed, 1 ignored
+cargo test --offline --locked -p tablepro-app --lib ui::browse_tab::value_parse::sqlite_any_contract::sqlite_json_group_object_any_csv_round_trip_preserves_native_text -- --exact --nocapture
+1 passed
+cargo test --offline --locked -p tablepro-driver-mongodb --test integration bounded_metadata_sample_merges_types_from_the_requested_page -- --ignored --exact --nocapture
+1 passed
+bash scripts/test-gtk-widgets.sh
+164 tests executed successfully
+```
+
+These checks confirm the bounded value-viewer rendering, SQLite's fixed-version expectation on the installed library, the MongoDB 128-document metadata sample regression, and the isolated GTK widget tier on this local source. They do not reproduce the affected older SQLite versions, qualify an installed desktop, or replace the Forgejo gate.

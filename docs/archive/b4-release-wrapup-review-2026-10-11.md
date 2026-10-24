@@ -152,7 +152,9 @@ Unmodified source passed 219 policy unit tests, 6 AUD-11 integration tests and
 4 guard-transparency tests. The three added review reproductions failed as
 recorded above. Their patch and logs are saved in
 [archived review evidence](evidence/b4-release-review-2026-10-11/manifest.json);
-the failing test edits were removed from product test files after reproduction.
+the [preservation note](evidence/b4-release-review-2026-10-11/preserved-worktree-evidence.md)
+maps the retained records to the retired worktrees. The failing test edits were
+removed from product test files after reproduction.
 No full preflight, Docker driver, Forgejo, installed GTK or native Wayland run
 was performed by this review. Existing green tests do not establish the missing
 behaviour demonstrated by the failing reproductions.

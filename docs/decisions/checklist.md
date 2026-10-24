@@ -55,7 +55,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | CI/CD & environments | Decided | GitHub cheap tier; Forgejo merge tiers. [AGENTS](../../AGENTS.md), [validation playbook](../validation-playbook.md#ci-tiers). |
 | Feature-flagging & rollout | Decided | No account, license or remote entitlement flags. [AGENTS](../../AGENTS.md), [PRODUCT.md](../../PRODUCT.md). |
 | Changelog & release notes | Decided | Keep a Changelog 1.1.0 in root `CHANGELOG.md`. [AGENTS](../../AGENTS.md). |
-| Externally-owned release gate | Undecided | 0.2.0 includes a published GNOME 50 Flatpak bundle, but no Flathub listing. Flathub submission remains backlog work (PKG-4/PKG-8); no external distribution review is adopted as a release gate. |
+| Externally-owned release gate | Undecided | See the open fork below; distribution work remains in the [backlog](../backlog.md). |
 | Native library floors | Decided | One floor: GTK 4.24, libadwaita 1.10, GtkSourceView 5.22. [ADR 0021](0021-toolkit-floor.md), [platforms](../platforms.md). |
 
 ## Product

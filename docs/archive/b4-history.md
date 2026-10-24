@@ -720,8 +720,10 @@ were cancelled, and the Linux regression gate reported those cancelled lanes
 as incomplete. This does not establish hosted installed-flow acceptance. The
 [archived October 7 candidate
 checkpoint](evidence/b4-candidate-acceptance-2026-10-07/manifest.json) retains
-the earlier candidate evidence. These runs do not establish frozen-candidate
-or installed acceptance; those gates remain open.
+the raw reports; its
+[summary](evidence/b4-candidate-acceptance-2026-10-07/summary.md) records what
+the checkpoint does and does not establish. These runs do not establish
+frozen-candidate or installed acceptance; those gates remain open.
 
 ## Previous merged-tip B4 checkpoint (2026-10-09; source `97e5f55`)
 

@@ -403,7 +403,7 @@ Source version **0.2.0** (`Cargo.toml`, inherited by every workspace crate). Thi
 - Deleting or pinning several history entries in quick succession no longer brings a deleted entry back into the list
 - Refreshing the table list and the editor's column suggestions now cancel the previous request at the database instead of letting it run on after a newer one or a connection change
 - Editing a number so that only its stored form changes (`1.5` to `1.50`, `0` to `-0`) is now saved instead of being dropped as no change
-- Copy Value preserves full previewed, pending and draft cell values; editing literal `<NULL>` text no longer turns it into an empty value.
+- Copy Value preserves full text and JSON values, including previewed, pending and draft values; binary cells currently copy a byte-count label only ([#1587](https://github.com/cozyGarage/BookiE/issues/1587)). Editing literal `<NULL>` text no longer turns it into an empty value.
 - MongoDB connections now reject malformed or URI-shaped host input before constructing the connection URI.
 - Closing a table tab, paging, or disconnecting now stops the slow read it started on the server instead of letting it run to the timeout.
 - PostgreSQL optimistic grid edits cast both new and previously read custom enum, enum-array, and domain values to qualified native types, so stale-row comparisons work across those columns.

@@ -38,7 +38,7 @@ Other options and why they were rejected.
 | # | Title | Status | Summary |
 |---|---|---|---|
 | [0001](0001-no-plugin-system.md) | Database drivers are statically linked | Accepted | Driver crates are registered at compile time. |
-| [0002](0002-rust-gtk4-libadwaita.md) | Rust, GTK4, and libadwaita | Accepted | Native Linux UI with a virtualized data grid. |
+| [0002](0002-rust-gtk4-libadwaita.md) | Rust, GTK4, and libadwaita | Accepted; toolkit floor superseded by 0021 | Native Linux UI with a virtualized data grid. |
 | [0003](0003-relm4-architecture.md) | Relm4 for application architecture | Accepted | Typed component state and async message flow. |
 | [0004](0004-libsecret-secret-storage.md) | Secret Service through oo7 | Accepted | Credentials stay in the desktop keyring. |
 | [0005](0005-server-side-cancellation.md) | Cancellation must reach the database | Accepted | Drivers report cancellation only when the engine confirms it; unsupported or unconfirmed operations remain unknown. |
