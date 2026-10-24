@@ -161,6 +161,24 @@ fn empty_filter_shows_placeholder() {
 }
 
 #[gtk4::test]
+fn a_list_of_collections_says_so_when_it_is_empty() {
+    let shown = Shown::new(&["orders"], every_affordance());
+    shown.view.hold_collections();
+
+    shown.view.set_query("nothing like it");
+    assert_eq!(
+        placeholder(&shown.view),
+        Some((
+            "No Matching Collections".to_owned(),
+            Some("Try a different search.".to_owned())
+        ))
+    );
+    shown.view.set_query("");
+    shown.view.apply_objects(&[], &public());
+    assert_eq!(placeholder(&shown.view), Some(("No Collections".to_owned(), None)));
+}
+
+#[gtk4::test]
 fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
     let shown = Shown::new(&["orders"], every_affordance());
     shown.view.set_query("zzz");

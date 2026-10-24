@@ -69,6 +69,7 @@ pub(super) fn build(
             describe_key_empty_page(workspace);
         }
         DataModel::Document => {
+            view.hold_collections();
             view.follow_search(&imp.table_search);
             describe_collections(workspace);
         }
