@@ -590,6 +590,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::grid::close_edits::tests::a_visible_editor_popover_is_refused_without_hiding_or_replacing_the_edit"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::run_lifecycle::tests::previous_results_are_dimmed_while_a_run_is_in_flight_and_cleared_with_their_replacement"
     ],
     [

@@ -84,4 +84,24 @@ mod tests {
         editor.stop_editing(false);
         window.close();
     }
+
+    #[test]
+    #[ignore = "requires isolated GTK display"]
+    fn a_visible_editor_popover_is_refused_without_hiding_or_replacing_the_edit() {
+        let (window, editor) = editor_window();
+        let popover = gtk4::Popover::new();
+        popover.set_parent(&editor);
+        POPOVER_SLOT.set(&editor, popover.clone());
+        popover.popup();
+
+        assert!(popover.is_visible());
+        assert!(!finish_active_edits(&window));
+        assert!(editor.is_editing());
+        assert_eq!(editor.text().as_str(), "after");
+
+        popover.popdown();
+        popover.unparent();
+        editor.stop_editing(false);
+        window.close();
+    }
 }
