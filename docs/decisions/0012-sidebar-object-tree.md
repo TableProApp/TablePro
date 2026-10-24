@@ -23,6 +23,12 @@ Replace the list with a `GtkListView` over a `GtkTreeListModel`.
 
 The UI-11 slice implements collapsible Tables and Views groups, per-connection collapse state, and search expansion using the existing `GtkListBox` and explicit tree-node model. It does not implement the `GtkTreeListModel` migration or lazy in-place loading of Routines, Sequences and Types. The completed UI-11 record is in the [archived pre-migration ledger](../archive/known-issues-pre-project-migration-2026-10-12.md); those partial results do not mean every part of this decision has shipped. The remaining UI-23 catalog work is tracked in [issue #552](https://github.com/cozyGarage/BookiE/issues/552).
 
+## Alternatives considered
+
+- **Keep the `GtkListBox` and hide rows with the list filter.** Rejected as the target. A header belongs to the first row below it, so filtering hides the header and its controls and groups cannot collapse (UI-11). The shipped slice keeps the `GtkListBox` with an explicit tree-node model as a step, not as the end state.
+- **Leave catalog objects only in the Catalog dialog.** Rejected. A flat list per kind makes Routines, Sequences and Types unreachable in context.
+- **A generic docking or panel framework.** Not adopted. Add one only when concrete behaviours need it ([Zed panel review](../archive/zed-editor-panel-review-2026-10-22.md)).
+
 ## Consequences
 
 - The factory, filter and selection sync are rewritten. The sidebar tests (`sync_sidebar_selection`, the search filter and the header actions) move to the new model first and fail before the swap.

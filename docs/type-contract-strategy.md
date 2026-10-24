@@ -47,4 +47,4 @@ Status: open | reproduced | fixed with named proof | blocked/unrun acceptance
 
 Use [value contracts](value-contracts.md) and the B3 board for current candidate boundaries. The [archived scenario survey](archive/b3-test-scenario-survey.md) records reusable test patterns and their source provenance. Follow the [validation playbook](validation-playbook.md#turn-every-finding-into-a-regression) for execution. A defect needs initial failure, narrow correction and valid/invalid neighbors. Native tests assert stored kind/value and unchanged siblings. Register selectors/fixture ownership and preserve sanitized evidence. Keep unavailable reports and mutation uncertainty explicit.
 
-Oracle/new engines are later driver projects. They must follow ADR 0007 with their own native semantics; another engine's fixtures are not their proof.
+New engines are later driver projects (Oracle and Cassandra are out of scope, [ADR 0001](decisions/0001-no-plugin-system.md)). They must follow ADR 0007 with their own native semantics; another engine's fixtures are not their proof.

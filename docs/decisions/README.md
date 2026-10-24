@@ -71,3 +71,5 @@ Decisions 0007–0009 extract existing approved sprint/task-board rules. Accepte
 4. Add it to the index in the same change.
 5. Update the [checklist](checklist.md) row for that fork (Decided with a link, or leave Open).
 6. Submit it through the normal review process.
+7. Record every rejected alternative with its reason under **Alternatives considered**, including options a review or comparison document turned down. A dated review that declines something is not a decision record until it is here.
+8. A limitation entry never overrides an accepted ADR. If shipped behaviour differs from an ADR, amend the ADR or fix the behaviour.

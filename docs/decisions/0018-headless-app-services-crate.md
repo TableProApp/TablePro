@@ -58,3 +58,4 @@ Gained:
 - **Leave the code where it is and add more GTK scenarios.** Scenarios are slow and flaky under load (TEST-31); they are the right net for the widget layer, not the only one for logic.
 - **Split the UI into many GTK crates instead.** Helps compile parallelism but leaves logic and widgets coupled.
 - **Move everything at once.** Rejected: it would mix a mechanical move with a behavioural refactor in one unreviewable change.
+- **Import dbx's `dbx-core` and `dbx-drivers` (or its runtime plugins and engine registry).** Rejected. They bring application state, dynamic runtimes and a different driver and result contract. `core` stays a domain and driver leaf; orchestration lives in this crate, behind the guard of [ADR 0016](0016-governed-consumer-seam.md). Ideas are adopted as behaviour and fixtures only ([dbx review](../archive/2026-10-15-dbx-review.md), "Package and code reuse decisions").

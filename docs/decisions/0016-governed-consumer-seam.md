@@ -63,3 +63,8 @@ One typed handle covers every consumer. A new surface inherits classify, approva
 - **Safety as preferences on a normal connection.** Rejected. A new path can forget a preference. The type boundary cannot.
 - **Policy only inside the GTK app.** Rejected. MCP and `bookie-agentd` would need a second implementation.
 - **Copy a plugin or agent driver host for modularity.** Rejected in [ADR 0001](0001-no-plugin-system.md). Seams are crates and traits.
+- **A second statement classifier or editor permission engine** (for example an editor "Safe Mode" classifier in `core`). Rejected. Shared lexical facts may inform the existing classifier, but one authorization path stays authoritative ([TablePro collaboration review](../archive/tablepro-collaboration-2026-10-21.md)).
+- **Treat a classification failure as a safe read.** Rejected, including the permissive direction of DBeaver #42374. An unparseable statement keeps governed approval or refusal ([Linux peer review](../archive/linux-peer-review-2026-10-16.md)).
+- **Masking by extending a list of serialization-function names.** Rejected as the only defence. Unknown source lineage is handled conservatively (redacted), with allowed simple-column cases ([B4 wrap-up review](../archive/b4-release-wrapup-review-2026-10-11.md), AUD-9).
+- **Scripting hooks (Bash, Python, Lua) on connection lifecycle.** Declined. They would add an execution surface outside the guard ([database client review](../archive/database-client-review-2026-10-23.md)).
+- **A timed write unlock for production connections.** Not decided. The production marker is a display cue only. A timed unlock would change this safety contract, so it needs an amendment here first ([feature comparison](../0.2-feature-comparison.md)).

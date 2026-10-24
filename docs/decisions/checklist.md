@@ -90,6 +90,23 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Headless application-services crate | [ADR 0018](0018-headless-app-services-crate.md) (accepted; staged module moves continue under APP-MOD) |
 | File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted design; implementation status varies by tool, with remaining work post-0.2.0) |
 
+## Declined or out-of-scope directions
+
+Recorded so a contributor does not reopen them without new evidence. Each row cites where the choice was made; the ADR column, when present, carries the reasoning.
+
+| Direction | Status | Record |
+| --- | --- | --- |
+| In-app AI client or chat | Out of scope | The governed MCP server is the agent interface ([ADR 0017](0017-mcp-sdk-behind-the-governed-seam.md), [ADR 0016](0016-governed-consumer-seam.md)); source: [feature comparison](../0.2-feature-comparison.md#explicitly-out-of-scope-unless-product-goals-change). |
+| Upstream TablePro as a merge target | Declined | Upstream is a behaviour and fixture reference; upstream compatibility is not an acceptance criterion by itself. [upstream sync](../upstream-sync.md), [capability review](../capability-review.md). |
+| Oracle, Cassandra and runtime-bridge engines | Out of scope | [ADR 0001](0001-no-plugin-system.md). |
+| Importing dbx crates | Declined | [ADR 0018](0018-headless-app-services-crate.md). |
+| Second SQL classifier, permissive fail-open classification, lifecycle scripting hooks | Declined | [ADR 0016](0016-governed-consumer-seam.md). |
+| Connection-wide commit switch; automatic retry of failed statements | Declined | [ADR 0008](0008-connection-and-session-ownership.md). |
+| `LIMIT`/`OFFSET` paging; unbounded page retention | Declined | [ADR 0011](0011-paged-query-results.md). |
+| Keyless edits through `ctid` or another physical locator | Declined | Keyless-write refusal stays; source: [dbx follow-up](../archive/dbx-follow-up-2026-10-21.md). |
+| Apple-only services, license-gated features, Sparkle or AppleScript, iCloud-synced icons | Out of scope | [PRODUCT.md](../../PRODUCT.md) for the no-license rule; the rest from [feature comparison](../0.2-feature-comparison.md#explicitly-out-of-scope-unless-product-goals-change). |
+| Result charts, facet charts, theme editor or theme sync | Out of scope | Not in product goals; source: [feature comparison history](../archive/feature-comparison-history-2026-10-23.md). |
+
 ## Open forks (do not invent answers here)
 
 | Fork | Who unblocks | Next step |
@@ -98,5 +115,8 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Security baseline ADR | Architect | Extract from AGENTS security invariants only if a contestable choice remains |
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
 | Data retention | Product | Leave open until legal or product answers |
+| Timed write unlock for production connections | Architect | Needs an amendment to [ADR 0016](0016-governed-consumer-seam.md) before any work; the production marker stays a display cue |
+| SQLite loadable extensions | Architect | Security-sensitive; needs an explicit extension-loading decision before exposure ([feature comparison](../0.2-feature-comparison.md)) |
+| Multi-session strip (several live sessions in one window) | Product | Not copied from TablePro without a product decision; one active connection window today |
 | Performance budget ADR | Architect | Optional; PERF-* ledger rows may stay sufficient |
 | Flathub / distro as external release gate | Architect / packaging | Decide whether external review is a release gate before planning a Flathub or distro submission. The published 0.2.0 includes a GNOME 50 Flatpak bundle but has no Flathub listing. |

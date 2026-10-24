@@ -32,3 +32,4 @@ Constituent PRs are closed as included rather than marked individually merged. A
 - Per-PR Forgejo gates remain correct but repeat the expensive workflow.
 - Merging constituent PRs sequentially after testing only the final combination exposes intermediate trees that were not tested. The aggregate PR avoids that sequence.
 - Overlapping lab workflows can starve fixtures and are not an accepted shortcut.
+- Copying upstream's aggregate-check selector or nightly placement is rejected: it could remove required merge-tier coverage. The GitHub cheap tier and the serialized Forgejo gate stay; version selection and process isolation may be adopted inside those tiers ([upstream main analysis](../archive/upstream-main-analysis-2026-10-20.md)).
