@@ -1,0 +1,1998 @@
+{
+  "pid": 2874681,
+  "duration_seconds": 31.254,
+  "scenario": "fresh SELECT generate_series(1, 100000) run from the SQL editor; process sampled before click and through 31 seconds",
+  "samples": [
+    {
+      "t_seconds": 0.003,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 0.257,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 0.511,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 0.764,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 1.018,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 1.272,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 1.525,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 1.779,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 2.033,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 2.286,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 2.54,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 2.794,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 3.048,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 3.301,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 3.556,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 3.81,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 4.064,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 4.318,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 4.572,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 4.826,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95655936,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 5.08,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95470592,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 5.334,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 5.587,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 45,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 5.84,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 6.094,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 6.348,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 6.601,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 6.855,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 7.109,
+      "memory_bytes": {
+        "VmHWM": 119087104,
+        "VmRSS": 119087104,
+        "RssAnon": 29495296,
+        "RssFile": 89563136,
+        "Pss": 95661056,
+        "Private_Dirty": 29495296
+      },
+      "cpu_ticks": 46,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2404352
+      }
+    },
+    {
+      "t_seconds": 7.364,
+      "memory_bytes": {
+        "VmHWM": 126627840,
+        "VmRSS": 126627840,
+        "RssAnon": 33816576,
+        "RssFile": 92782592,
+        "Pss": 103173120,
+        "Private_Dirty": 33816576
+      },
+      "cpu_ticks": 51,
+      "io_bytes": {
+        "read_bytes": 6885376,
+        "write_bytes": 2412544
+      }
+    },
+    {
+      "t_seconds": 7.617,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122108928,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 68,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 7.872,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122115072,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 8.126,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122119168,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 8.381,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122119168,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 8.635,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122119168,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 8.89,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122119168,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 9.144,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122119168,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 9.399,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122129408,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 9.652,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122005504,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 9.906,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122139648,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 10.16,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 10.414,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 10.668,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122139648,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 10.921,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122152960,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 11.176,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 11.43,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 11.684,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 11.939,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 12.194,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 12.449,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 12.702,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 12.956,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 13.211,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 69,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 13.465,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 13.718,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 13.972,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 14.225,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 14.479,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 14.732,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 14.987,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 15.241,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 15.495,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 15.75,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 16.004,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 16.259,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 16.513,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 16.767,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 17.02,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 17.275,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 17.529,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 17.782,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 18.036,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 18.291,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 18.545,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 18.799,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 19.054,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 19.308,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 19.562,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 19.816,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 20.07,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 20.324,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 20.579,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 20.833,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 21.086,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 21.341,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 21.596,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 21.85,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 22.104,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 22.358,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 22.613,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 22.867,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 23.122,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122151936,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 23.376,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 23.631,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 23.886,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 24.14,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 24.394,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 24.648,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 24.902,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 25.156,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 25.41,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 25.664,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 25.917,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 26.171,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 26.425,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 26.68,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 26.933,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 27.188,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 27.442,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 27.695,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 27.95,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 28.203,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 28.458,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 28.712,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 28.965,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 29.219,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 29.474,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 29.728,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 29.983,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 30.237,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 30.491,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 30.746,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 31.0,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    },
+    {
+      "t_seconds": 31.254,
+      "memory_bytes": {
+        "VmHWM": 145596416,
+        "VmRSS": 145596416,
+        "RssAnon": 52391936,
+        "RssFile": 93175808,
+        "Pss": 122158080,
+        "Private_Dirty": 52404224
+      },
+      "cpu_ticks": 70,
+      "io_bytes": {
+        "read_bytes": 6901760,
+        "write_bytes": 2531328
+      }
+    }
+  ],
+  "peak_rss_bytes": 145596416,
+  "peak_pss_bytes": 122158080,
+  "cpu_seconds_delta": 0.25,
+  "io_bytes_delta": {
+    "read_bytes": 16384,
+    "write_bytes": 126976
+  }
+}

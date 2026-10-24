@@ -1,0 +1,34 @@
+{
+  "process": "BookiE extracted PR #1568 candidate",
+  "pid": 3889997,
+  "state": "session close completed; toolbar still displayed Closing session…; Run was enabled",
+  "duration_seconds": 31.000577,
+  "started_at_utc": "2026-10-24T09:25:06.938964Z",
+  "ended_at_utc": "2026-10-24T09:25:37.939541Z",
+  "rss_kib": {
+    "start": 270784,
+    "end": 270784
+  },
+  "swap_kib": {
+    "start": 150424,
+    "end": 150424
+  },
+  "cpu_ticks": {
+    "start": 2508,
+    "end": 2510,
+    "delta": 2
+  },
+  "io_bytes": {
+    "read": {
+      "start": 11165696,
+      "end": 11165696,
+      "delta": 0
+    },
+    "write": {
+      "start": 16277504,
+      "end": 16277504,
+      "delta": 0
+    }
+  },
+  "verification": "A read-only SELECT 1; succeeded immediately afterward and changed the toolbar status to done in 0 ms."
+}

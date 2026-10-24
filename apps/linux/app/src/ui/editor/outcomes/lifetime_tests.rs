@@ -1,4 +1,4 @@
-use super::super::stream_pages::{MAX_RETAINED_STREAM_PAGES, StreamPageCache};
+use super::super::stream_pages::StreamPageCache;
 use super::*;
 use std::sync::Arc;
 use tablepro_core::{ColumnInfo, QueryResult, Value};
@@ -56,7 +56,7 @@ fn append_live_page(
 
 #[test]
 #[ignore = "requires an isolated GTK display"]
-fn streamed_widgets_release_evicted_pages_and_cancelled_results_on_close() {
+fn streamed_widgets_keep_small_pages_and_release_cancelled_results_on_close() {
     gtk::init().unwrap();
     let mut cache = StreamPageCache::default();
     let mut pages = Vec::new();
@@ -87,12 +87,7 @@ fn streamed_widgets_release_evicted_pages_and_cancelled_results_on_close() {
             },
         );
         drop(outcome);
-        for retired in pages.iter().take(pages.len().saturating_sub(MAX_RETAINED_STREAM_PAGES)) {
-            assert!(
-                retired.upgrade().is_none(),
-                "an evicted page remains in a retired result grid"
-            );
-        }
+        assert!(pages.iter().all(|page| page.upgrade().is_some()));
     }
     clear(&holder);
     let outcome = make_outcome(cache.snapshot(StreamTerminal::Cancelled, None));
@@ -101,7 +96,7 @@ fn streamed_widgets_release_evicted_pages_and_cancelled_results_on_close() {
     drop(cache);
     assert_eq!(
         pages.iter().filter(|page| page.upgrade().is_some()).count(),
-        MAX_RETAINED_STREAM_PAGES
+        pages.len()
     );
     clear(&holder);
     drop(holder);

@@ -83,7 +83,7 @@ The approved native workflow improvements are tracked by [UI-44 / #1349](https:/
 
 | Row | What |
 |---|---|
-| PERF-2, PERF-7, PERF-8 | Keep SQL editor results fully navigable within bounded resource use. A native 100,000-row PostgreSQL query received 20 pages but retained only the newest 4, leaving rows 1–80,000 unreachable after completion; resolve under [#1032](https://github.com/cozyGarage/BookiE/issues/1032) alongside resource profiling. Core, PostgreSQL and PolicyGuard streaming have landed; other engines and comparable memory profiling still need qualification. |
+| PERF-2, PERF-7, PERF-8 | A native 100,000-row PostgreSQL query now retains all 20 pages within the estimated-byte budget and can navigate back to rows 1–5,000. #1032 tracks broader ownership and memory-budget acceptance; #554 tracks access to results that exceed the in-memory budget. Other engines and comparable memory profiling still need qualification. |
 | PERF-3 | MongoDB browse on large collections | Compatible `_id` keyset seek landed in #493; supported server-side sorting landed in #837. Other sorted pages and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
 | PERF-5, PERF-6 | Idle memory and binary size, accepted for now |

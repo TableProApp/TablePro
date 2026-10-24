@@ -10,40 +10,41 @@ fn byte_page(bytes: usize) -> Arc<QueryResult> {
 }
 
 #[test]
-fn sustained_streams_keep_four_pages_and_release_every_eviction() {
+fn sustained_small_streams_keep_all_pages_within_the_byte_budget() {
     let mut cache = StreamPageCache::default();
     let mut retired = VecDeque::new();
     for index in 0..20_000 {
         let result = page(&["id"], &[index]);
         retired.push_back(Arc::downgrade(&result));
         cache.append(index as u64, result).unwrap();
-        assert!(cache.pages().len() <= 4);
-        if retired.len() > 4 {
-            assert!(retired.pop_front().unwrap().upgrade().is_none());
-        }
     }
     let snapshot = cache.snapshot(StreamTerminal::Complete, None);
     assert_eq!(snapshot.total_rows, 20_000);
-    assert_eq!(snapshot.page_indices, vec![19_996, 19_997, 19_998, 19_999]);
+    assert_eq!(snapshot.page_indices, (0..20_000).collect::<Vec<_>>());
+    assert!(retired.iter().all(|page| page.upgrade().is_some()));
     drop(snapshot);
     drop(cache);
     assert!(retired.iter().all(|result| result.upgrade().is_none()));
 }
 
 #[test]
-fn snapshots_share_payloads_and_release_them_after_the_last_owner() {
+fn snapshots_share_payloads_and_release_evicted_pages_after_the_last_owner() {
     let mut cache = StreamPageCache::default();
-    let result = page(&["id"], &[1]);
+    let mut wide_page = page(&["payload"], &[]).as_ref().clone();
+    wide_page.rows = vec![vec![Value::Text("x".repeat(24 * 1024 * 1024))]];
+    let result = Arc::new(wide_page);
     let weak = Arc::downgrade(&result);
     cache.append(0, result).unwrap();
     let first = cache.snapshot(StreamTerminal::Loading, None);
     let second = cache.snapshot(StreamTerminal::Complete, None);
     assert!(Arc::ptr_eq(&first.pages[0], &second.pages[0]));
     assert!(Arc::ptr_eq(&first.pages[0], &cache.pages()[0].1));
-    for index in 1..5 {
-        cache.append(index, page(&["id"], &[index as i64])).unwrap();
+    for index in 1..4 {
+        let mut next_page = page(&["payload"], &[]).as_ref().clone();
+        next_page.rows = vec![vec![Value::Text("x".repeat(24 * 1024 * 1024))]];
+        cache.append(index, Arc::new(next_page)).unwrap();
     }
-    assert_eq!(cache.first_page(), 1);
+    assert_eq!(cache.first_page(), 2);
     drop(first);
     assert!(weak.upgrade().is_some());
     drop(second);
@@ -117,7 +118,9 @@ fn terminal_snapshots_keep_only_the_retained_window_and_release_on_drop() {
     let mut cache = StreamPageCache::default();
     let mut refs = Vec::new();
     for index in 0..12 {
-        let result = page(&["id"], &[index]);
+        let mut result = page(&["payload"], &[]).as_ref().clone();
+        result.rows = vec![vec![Value::Text("x".repeat(15 * 1024 * 1024))]];
+        let result = Arc::new(result);
         refs.push(Arc::downgrade(&result));
         cache.append(index as u64, result).unwrap();
     }

@@ -84,9 +84,9 @@ fn an_evicted_stream_page_stays_alive_while_pinned_and_releases_after_unpin() {
     drop(first_page);
 
     let first_result = cache.snapshot(super::super::stream_pages::StreamTerminal::Complete, None);
-    for index in 1..=super::super::stream_pages::MAX_RETAINED_STREAM_PAGES as u64 {
-        assert!(cache.append(index, page(&[index as i64])).is_ok());
-    }
+    let mut wide_page = page(&[]).as_ref().clone();
+    wide_page.rows = vec![vec![Value::Text("x".repeat(65 * 1024 * 1024))]];
+    assert!(cache.append(1, Arc::new(wide_page)).is_ok());
     assert_eq!(cache.first_page(), 1);
     assert!(first_page_weak.upgrade().is_some());
 

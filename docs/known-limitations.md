@@ -15,23 +15,23 @@ Documented application limits, behavior differences and known defects. Entries l
 - **Large results still have materialization limits** (PERF-2, PERF-8 / [#554](https://github.com/cozyGarage/BookiE/issues/554)). Materialized
   results stop at 1 million rows, 10 million cells or 64 MiB estimated size.
   Single-statement PostgreSQL `SELECT`s in the SQL editor now stream cursor
-  pages through Core and PolicyGuard, retaining at most four pages of up to
-  5,000 rows each. Previous/Next controls navigate only retained pages. A
-  native 100,000-row PostgreSQL check received 20 pages but exposed only rows
-  80,001–100,000 after completion. The user-visible loss of the earlier rows is
-  being addressed under [#1032](https://github.com/cozyGarage/BookiE/issues/1032);
-  the current fixed page-count cap is not accepted as the final browsing
-  behavior for results that fit within the resource budget. Row ranges are
+  pages through Core and PolicyGuard, retaining pages while estimated row
+  storage stays within 64 MiB. Previous/Next controls navigate retained pages.
+  A native 100,000-row PostgreSQL check received 20 pages and navigated back to
+  rows 1–5,000 after completion. Results that exceed the cache budget can still
+  lose access to earlier pages; retrieval beyond that in-memory budget remains
+  open under [#554](https://github.com/cozyGarage/BookiE/issues/554). Row ranges are
   positions in the result, not database row identifiers.
   That cache also retains at most 64 MiB of estimated row storage, except
   that the newest page is always kept even if it alone exceeds the budget.
   Incoming decoding, concurrent snapshots, pins, widgets and allocator retention
   remain outside this cache estimate. A synthetic profile with four pinned results and one active stream
   reached 1,325 MiB RSS; see the [profile evidence](evidence/stream-retention-synthetic-2026-10-16/README.md).
-  A single local 100,000-row PostgreSQL profile retained only the latest 20,000
-  rows and showed a 24.8 MiB peak RSS increase over a 30-second sample; the
-  [capture](evidence/built-head-2026-10-24/README.md) records its limitations.
-  This does not measure normal queries or the complete process ceiling. Other
+  An earlier local 100,000-row PostgreSQL profile retained only the latest
+  20,000 rows. After the retention fix, a fresh-process native profile kept all
+  100,000 rows navigable and showed a 25.3 MiB peak RSS increase over a 31-second
+  sample; see the [capture](evidence/built-head-2026-10-24/README.md). This is one
+  narrow query, not a general workload or a process-memory ceiling. Other
   engines and unsupported statement shapes remain materialized.
   The historical grid measurement was about 2.5 times the result memory; #518
   now shares immutable values with materialized rows. Further comparable

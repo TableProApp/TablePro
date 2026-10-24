@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use tablepro_core::{ColumnInfo, MAX_QUERY_RESULT_BYTES, QueryResult};
 
-pub(super) const MAX_RETAINED_STREAM_PAGES: usize = 4;
-
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum PageAppendError {
     OutOfOrder,
@@ -65,9 +63,7 @@ impl StreamPageCache {
         self.retained_bytes = self.retained_bytes.saturating_add(bytes);
         self.pages.push_back((index, result, bytes));
         self.next_page = self.next_page.saturating_add(1);
-        while self.pages.len() > 1
-            && (self.pages.len() > MAX_RETAINED_STREAM_PAGES || self.retained_bytes > MAX_QUERY_RESULT_BYTES)
-        {
+        while self.pages.len() > 1 && self.retained_bytes > MAX_QUERY_RESULT_BYTES {
             if let Some((_, _, bytes)) = self.pages.pop_front() {
                 self.retained_bytes = self.retained_bytes.saturating_sub(bytes);
             }
@@ -142,21 +138,24 @@ mod tests {
     }
 
     #[test]
-    fn retains_a_bounded_ordered_window_and_counts_all_delivered_rows() {
+    fn retains_all_small_pages_within_the_byte_budget_and_counts_all_delivered_rows() {
         let mut cache = StreamPageCache::default();
-        for index in 0..(MAX_RETAINED_STREAM_PAGES as u64 + 1) {
+        for index in 0..20 {
             cache
                 .append(index, page(&["id"], &[index as i64]))
                 .expect("append page");
         }
 
-        assert_eq!(cache.pages().len(), MAX_RETAINED_STREAM_PAGES);
-        assert_eq!(cache.first_page(), 1);
-        assert_eq!(cache.total_rows(), (MAX_RETAINED_STREAM_PAGES + 1));
+        assert_eq!(cache.pages().len(), 20);
+        assert_eq!(cache.first_page(), 0);
+        assert_eq!(cache.total_rows(), 20);
         assert_eq!(
             cache.pages().iter().map(|(index, _, _)| *index).collect::<Vec<_>>(),
-            (1..=MAX_RETAINED_STREAM_PAGES as u64).collect::<Vec<_>>()
+            (0..20).collect::<Vec<_>>()
         );
+        let snapshot = cache.snapshot(StreamTerminal::Complete, None);
+        assert_eq!(snapshot.total_pages, 20);
+        assert_eq!(snapshot.page_indices, (0..20).collect::<Vec<_>>());
     }
 
     #[test]
@@ -242,18 +241,16 @@ mod tests {
     #[test]
     fn an_empty_page_after_the_first_ends_the_stream_without_evicting_rows() {
         let mut cache = StreamPageCache::default();
-        for index in 0..MAX_RETAINED_STREAM_PAGES as u64 {
+        for index in 0..20 {
             cache.append(index, page(&["id"], &[index as i64])).unwrap();
         }
 
-        cache
-            .append(MAX_RETAINED_STREAM_PAGES as u64, page(&["id"], &[]))
-            .unwrap();
+        cache.append(20, page(&["id"], &[])).unwrap();
 
-        assert_eq!(cache.pages().len(), MAX_RETAINED_STREAM_PAGES);
+        assert_eq!(cache.pages().len(), 20);
         assert_eq!(cache.first_page(), 0);
         let snapshot = cache.snapshot(StreamTerminal::Complete, None);
-        assert_eq!(snapshot.total_pages, MAX_RETAINED_STREAM_PAGES as u64);
+        assert_eq!(snapshot.total_pages, 20);
         assert!(snapshot.pages.iter().all(|page| !page.rows.is_empty()));
     }
 

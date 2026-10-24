@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-10-07
-- **Clarified**: 2026-10-16 for implementation status. The Decision describes the target design; the Implementation status section records shipped PostgreSQL editor integration and remaining resource acceptance.
+- **Clarified**: 2026-10-24 for implementation status. The Decision describes the target design; the Implementation status section records shipped PostgreSQL editor integration and remaining resource acceptance.
 
 ## Context
 
@@ -29,15 +29,15 @@ Add an optional driver capability that opens a forward-only cursor over a single
 
 ## Implementation status
 
-Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s, retaining at most four pages of up to 5,000 rows. Pages evicted from this forward-only window cannot be revisited in the grid. Other engines and unsupported query shapes keep the capped materialized path. Driver decoding still applies the result byte/cell budget per page; the UI cache bounds page count rather than one aggregate byte budget. A synthetic maximum-page profile reached 1,325 MiB RSS with four pinned results and one active stream ([evidence](../evidence/stream-retention-synthetic-2026-10-16/README.md)). Broader real-query memory profiling and lifecycle acceptance remain under [#554](https://github.com/cozyGarage/BookiE/issues/554). This status update does not qualify installed GTK or a release candidate.
+Core and PostgreSQL cursor support and PostgreSQL read-only snapshot sessions have landed. `PolicyGuard` now authorizes one read statement in a read-only snapshot, masks each fetched page, and records page and terminal audit outcomes. PostgreSQL is the only driver with cursor support; other drivers return `Unsupported`. The SQL editor uses this path for supported single-statement PostgreSQL `SELECT`s. Other engines and unsupported query shapes keep the capped materialized path. A synthetic maximum-page profile reached 1,325 MiB RSS with four pinned results and one active stream ([evidence](../evidence/stream-retention-synthetic-2026-10-16/README.md)). Broader real-query memory profiling and lifecycle acceptance remain under [#554](https://github.com/cozyGarage/BookiE/issues/554). This status update does not qualify installed GTK or a release candidate.
 
 ## Open questions
 
 - Whether MySQL and SQL Server can use their native streaming without holding a transaction open.
 - Whether the retained budget should be rows, bytes or both.
 
-## Clarification, October 22, 2026
+## Clarification, October 24, 2026
 
-The maintainer selected both page-count and estimated-byte retention limits. The UI stream cache retains at most four pages within the existing 64 MiB query-result estimated-row budget. The newest page is always kept, including a single oversized page. Older pages leave the forward-only window without changing their values or received-row counts; the existing pager reports the remaining range. This resolves the retained-budget open question for the active stream cache.
+The UI stream cache retains pages until its estimated row storage exceeds the existing 64 MiB query-result budget. It does not apply a separate page-count limit. The newest page is always kept, including a single oversized page. If older pages leave the cache because the byte budget is exceeded, their values remain unavailable in the grid while received-row counts stay unchanged; the pager reports the remaining range. A native 100,000-row PostgreSQL query returned 20 pages and all 20 remained navigable within the estimate. The first page showed rows 1–5,000 after navigating back from the newest page ([native evidence](../evidence/built-head-2026-10-24/README.md)).
 
-The estimate reuses core row/value accounting and excludes column metadata, widgets, incoming driver buffers, overlapping result snapshots, other tabs, pins and allocator-retained pages. It is not a process-memory ceiling. Broader ownership and profiling acceptance remain under [#1032](https://github.com/cozyGarage/BookiE/issues/1032). The earlier implementation-status paragraph describes the prior page-only implementation; this clarification records the approved follow-up, whose gate acceptance remains pending.
+The estimate reuses core row/value accounting and excludes column metadata, widgets, incoming driver buffers, overlapping result snapshots, other tabs, pins and allocator-retained pages. It is not a process-memory ceiling. A result larger than the cache budget can still lose access to earlier pages. Broader ownership and profiling acceptance remain under [#1032](https://github.com/cozyGarage/BookiE/issues/1032); design work for revisiting rows beyond the in-memory budget remains under [#554](https://github.com/cozyGarage/BookiE/issues/554). The native profile is source-build evidence, not installed GTK or release qualification.
