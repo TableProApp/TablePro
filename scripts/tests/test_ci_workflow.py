@@ -23,6 +23,25 @@ port_spec.loader.exec_module(port_helper)
 
 
 class CiWorkflowTests(unittest.TestCase):
+    def test_ubuntu_canary_runs_only_headless_driver_tls_job(self):
+        workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
+        jobs = workflow.split("\njobs:\n", 1)[1]
+        headings = list(re.finditer(r"^  ([A-Za-z0-9_-]+):\s*$", jobs, re.MULTILINE))
+        canary_jobs = set()
+        for index, heading in enumerate(headings):
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(jobs)
+            block = jobs[heading.start() : end]
+            if "runs-on: ubuntu2604-canary" in block:
+                canary_jobs.add(heading.group(1))
+        self.assertEqual(canary_jobs, {"driver-tls"})
+
+    def test_driver_tls_fixture_wait_is_bounded_with_failure_diagnostics(self):
+        script = (ROOT / "scripts/test-driver-tls.sh").read_text()
+        self.assertIn("compose up -d --build --wait --wait-timeout 300", script)
+        self.assertIn("compose ps --all", script)
+        self.assertIn("docker inspect --format '{{json .State.Health}}'", script)
+        self.assertIn("compose logs --no-color --tail 50", script)
+
     def test_forgejo_jobs_bound_runtime_and_scope_checkout_credentials(self):
         for name in ("ci", "nightly"):
             workflow = (ROOT / f".forgejo/workflows/{name}.yml").read_text()

@@ -36,7 +36,7 @@ teardown() {
 
 bash "$FIXTURE/generate-materials.sh" --force
 compose down --volumes --remove-orphans >/dev/null 2>&1 || true
-if compose up -d --build --wait; then
+if compose up -d --build --wait --wait-timeout 300; then
   :
 else
   startup_status=$?

@@ -521,7 +521,7 @@ jobs:
         run: |
           cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
   driver-tls:
-    runs-on: any-host
+    runs-on: ubuntu2604-canary
     needs: [guards, clippy, unit, sandbox, widgets]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
