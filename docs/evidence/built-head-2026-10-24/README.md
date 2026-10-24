@@ -191,3 +191,11 @@ A 31.005-second idle sample after the query recorded RSS from 169,504 to 168,540
 The full Xvfb/AT-SPI GTK safety suite ran against the same extracted candidate with `TABLEPRO_TEST_MCP_HTTP_PORT=19433` to avoid colliding with the native app's MCP listener. All 111 scenarios passed; the script exited 0. The log ends with four D-Bus disconnect messages during fixture teardown, after the final passing scenario. This is automated GTK evidence and does not replace the native Wayland checks above.
 
 - [GTK safety run log](gtk-safety-xvfb-20261024.txt)
+
+## Installed package GTK rerun
+
+The installed `bookie 0.2.0-1` package was retested after PR #1568 merged. The installed executable SHA-256 was `b406fd8055670abc230cfead154eb27ff39dbff7f46ca8a4b0f67a6c6c50b971`; the package archive SHA-256 was `c23e787348daeeabeecc750735f0d7759c4567a663c391597ddee8cdf90fc2bd`. The run used `/usr/bin/bookie`, an isolated D-Bus session and Xvfb, and port 19434 for the MCP listener. All 111 GTK safety scenarios passed and the script exited 0.
+
+The default test wrapper sets `XDG_CURRENT_DESKTOP=GNOME`. On this host, the GNOME portal exposed no FileChooser interface under Xvfb, so an initial run passed 95 scenarios and could not reach file-picker dialogs in 16. A focused CSV-export scenario passed after setting `XDG_CURRENT_DESKTOP=Hyprland`; the full installed-package rerun used the same setting and passed all scenarios. This isolates the earlier failures to the portal selection in the headless test environment. The log contains D-Bus disconnect messages during teardown. Its private runtime directory was removed after the run.
+
+- [Installed-package GTK safety run log](gtk-safety-installed-hyprland-xvfb-20261024.txt)
