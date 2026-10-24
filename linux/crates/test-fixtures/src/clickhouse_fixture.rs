@@ -60,19 +60,22 @@ impl ClickHouseFixture {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let version = ClickHouseVersion::selected()?;
-        let mut request: ContainerRequest<GenericImage> = version
-            .image()
-            .generic()
-            .with_exposed_port(HTTP_PORT.tcp())
-            .with_exposed_port(HTTPS_PORT.tcp())
-            .into();
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
-        if let (Some(network), Some(alias)) = (network, &network_alias) {
-            request = request.with_network(network.name()).with_container_name(alias);
-        }
         let mut files = Self::files(&pki, &password)?;
         files.extend(extra_files);
-        let container = start_container(with_files(request, files)).await?;
+        let container = start_container(|| {
+            let mut request: ContainerRequest<GenericImage> = version
+                .image()
+                .generic()
+                .with_exposed_port(HTTP_PORT.tcp())
+                .with_exposed_port(HTTPS_PORT.tcp())
+                .into();
+            if let (Some(network), Some(alias)) = (network, &network_alias) {
+                request = request.with_network(network.name()).with_container_name(alias);
+            }
+            with_files(request, files.clone())
+        })
+        .await?;
         let (host, http_port, https_port) = match published(&container).await {
             Ok(published) => published,
             Err(error) => {

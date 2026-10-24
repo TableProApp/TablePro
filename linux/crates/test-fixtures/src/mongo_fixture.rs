@@ -100,22 +100,26 @@ impl MongoFixture {
         let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let version = MongoVersion::selected()?;
-        let mut request: ContainerRequest<GenericImage> = version
-            .image()
-            .generic()
-            .with_wait_for(WaitFor::message_on_stdout(READY))
-            .with_exposed_port(PORT.tcp())
-            .with_exposed_port(CERTIFICATE_PORT.tcp())
-            .with_entrypoint("sh")
-            .with_cmd([format!("{CONFIG_DIR}/start.sh")])
-            .with_env_var("TABLEPRO_PASSWORD", &password)
-            .with_env_var("TABLEPRO_TLS", if listening == Listening::Tls { "1" } else { "0" })
-            .with_startup_timeout(READY_TIMEOUT);
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
-        if let (Some(network), Some(alias)) = (network, &network_alias) {
-            request = request.with_network(network.name()).with_container_name(alias);
-        }
-        let container = start_container(with_files(request, Self::files(&pki)?)).await?;
+        let files = Self::files(&pki)?;
+        let container = start_container(|| {
+            let mut request: ContainerRequest<GenericImage> = version
+                .image()
+                .generic()
+                .with_wait_for(WaitFor::message_on_stdout(READY))
+                .with_exposed_port(PORT.tcp())
+                .with_exposed_port(CERTIFICATE_PORT.tcp())
+                .with_entrypoint("sh")
+                .with_cmd([format!("{CONFIG_DIR}/start.sh")])
+                .with_env_var("TABLEPRO_PASSWORD", &password)
+                .with_env_var("TABLEPRO_TLS", if listening == Listening::Tls { "1" } else { "0" })
+                .with_startup_timeout(READY_TIMEOUT);
+            if let (Some(network), Some(alias)) = (network, &network_alias) {
+                request = request.with_network(network.name()).with_container_name(alias);
+            }
+            with_files(request, files.clone())
+        })
+        .await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(PORT).await?;
         let certificate_port = match listening {

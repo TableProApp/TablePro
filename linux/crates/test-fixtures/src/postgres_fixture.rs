@@ -90,23 +90,27 @@ impl PostgresFixture {
         let pki = TestPki::generate_with(algorithm)?;
         let password = FixtureCredentials::generate_password();
         let image = version.image();
-        let mut request = Postgres::default()
-            .with_db_name(DATABASE)
-            .with_user(PASSWORD_USER)
-            .with_password(&password)
-            .with_name(image.name)
-            .with_tag(image.tag);
-        if let Some(command) = Self::server_command(hba) {
-            request = request.with_cmd(command);
-        }
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
-        if let (Some(network), Some(alias)) = (network, &network_alias) {
-            request = request.with_network(network.name()).with_container_name(alias);
-        }
-        if let Some(host_port) = host_port {
-            request = request.with_mapped_port(host_port, CONTAINER_PORT.tcp());
-        }
-        let container = start_container(with_files(request, Self::files(hba, &pki)?)).await?;
+        let files = Self::files(hba, &pki)?;
+        let container = start_container(|| {
+            let mut request = Postgres::default()
+                .with_db_name(DATABASE)
+                .with_user(PASSWORD_USER)
+                .with_password(&password)
+                .with_name(image.name)
+                .with_tag(image.tag);
+            if let Some(command) = Self::server_command(hba) {
+                request = request.with_cmd(command);
+            }
+            if let (Some(network), Some(alias)) = (network, &network_alias) {
+                request = request.with_network(network.name()).with_container_name(alias);
+            }
+            if let Some(host_port) = host_port {
+                request = request.with_mapped_port(host_port, CONTAINER_PORT.tcp());
+            }
+            with_files(request, files.clone())
+        })
+        .await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(CONTAINER_PORT).await?;
         Ok(Self {

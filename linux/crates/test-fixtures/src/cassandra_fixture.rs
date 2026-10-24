@@ -166,29 +166,34 @@ impl CassandraFixture {
         // ScyllaDB's image exposes "9042" with no protocol, so publishing every
         // exposed port gives Docker 28 two 9042/tcp bindings on one host port.
         // Host port 0 lets Docker pick one.
-        let mut request: ContainerRequest<GenericImage> =
-            image.with_cmd(command).with_mapped_port(0, Self::CONTAINER_PORT.tcp());
-        if flavour == CassandraFlavour::Cassandra {
-            // A joining node waits out the ring delay to learn who owns
-            // which tokens, so only the first node skips it.
-            let options = match &seed {
-                None => Self::fast_start_options(),
-                Some(_) => "-Dcassandra.superuser_setup_delay_ms=0",
-            };
-            request = request
-                .with_env_var("MAX_HEAP_SIZE", CASSANDRA_HEAP)
-                .with_env_var("HEAP_NEWSIZE", CASSANDRA_NEW_HEAP)
-                .with_env_var("JVM_EXTRA_OPTS", options);
-            if let Some(seed) = &seed {
-                request = request.with_env_var("CASSANDRA_SEEDS", seed.as_str());
-            }
-        }
         let network_alias = network.as_ref().map(|(_, alias)| alias.clone());
-        if let Some((network, alias)) = &network {
-            request = request.with_network(network.name()).with_container_name(alias.as_str());
-        }
         let files = Self::files(flavour, server_version, tls, &pki, &password)?;
-        let container = start_container(with_files(request, files)).await?;
+        let container = start_container(|| {
+            let mut request: ContainerRequest<GenericImage> = image
+                .clone()
+                .with_cmd(command.clone())
+                .with_mapped_port(0, Self::CONTAINER_PORT.tcp());
+            if flavour == CassandraFlavour::Cassandra {
+                // A joining node waits out the ring delay to learn who owns
+                // which tokens, so only the first node skips it.
+                let options = match &seed {
+                    None => Self::fast_start_options(),
+                    Some(_) => "-Dcassandra.superuser_setup_delay_ms=0",
+                };
+                request = request
+                    .with_env_var("MAX_HEAP_SIZE", CASSANDRA_HEAP)
+                    .with_env_var("HEAP_NEWSIZE", CASSANDRA_NEW_HEAP)
+                    .with_env_var("JVM_EXTRA_OPTS", options);
+                if let Some(seed) = &seed {
+                    request = request.with_env_var("CASSANDRA_SEEDS", seed.as_str());
+                }
+            }
+            if let Some((network, alias)) = &network {
+                request = request.with_network(network.name()).with_container_name(alias.as_str());
+            }
+            with_files(request, files.clone())
+        })
+        .await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(Self::CONTAINER_PORT).await?;
         let fixture = Self {

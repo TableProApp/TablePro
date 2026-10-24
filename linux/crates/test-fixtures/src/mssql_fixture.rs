@@ -32,16 +32,20 @@ impl MssqlFixture {
         let password = format!("Tp1!{}", Uuid::new_v4().simple());
         let version = MssqlVersion::selected()?;
         let image = version.image();
-        let request = MssqlServer::default()
-            .with_accept_eula()
-            .with_sa_password(&password)
-            .with_name(image.name)
-            .with_tag(image.tag)
-            .with_startup_timeout(STARTUP_TIMEOUT)
-            // SQL Server otherwise takes 80% of the host's memory, and a
-            // container left behind by a killed test keeps all of it.
-            .with_env_var("MSSQL_MEMORY_LIMIT_MB", MEMORY_LIMIT_MB);
-        let container = start_container(with_files(request, Self::files(&pki)?)).await?;
+        let files = Self::files(&pki)?;
+        let container = start_container(|| {
+            let request = MssqlServer::default()
+                .with_accept_eula()
+                .with_sa_password(&password)
+                .with_name(image.name)
+                .with_tag(image.tag)
+                .with_startup_timeout(STARTUP_TIMEOUT)
+                // SQL Server otherwise takes 80% of the host's memory, and a
+                // container left behind by a killed test keeps all of it.
+                .with_env_var("MSSQL_MEMORY_LIMIT_MB", MEMORY_LIMIT_MB);
+            with_files(request, files.clone())
+        })
+        .await?;
         let host = container.get_host().await?.to_string();
         let port = container.get_host_port_ipv4(CONTAINER_PORT).await?;
         Ok(Self {

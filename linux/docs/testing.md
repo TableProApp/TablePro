@@ -351,7 +351,7 @@ cargo nextest run -p tablepro-driver-postgres --run-ignored only
 
 Do not bother with `TESTCONTAINERS_RYUK_DISABLED`. That is a testcontainers-java / go setting; the Rust crate has no Ryuk reaper and stops each container when its handle drops.
 
-Every fixture starts its container through `tablepro_test_fixtures::start_container`, which pulls a missing image itself and tries a failed pull twice more, 5 seconds apart. testcontainers pulls once, and Docker Hub sometimes ends a pull early ("bytes remaining on stream"), which failed every test that needed the image. A test that starts a container of its own goes through it too.
+Every fixture starts its container through `tablepro_test_fixtures::start_container`, which takes a closure that builds the request and, when pulling the image failed, builds and starts it again, up to three times 5 seconds apart. testcontainers pulls once, and Docker Hub sometimes ends a pull early ("bytes remaining on stream"), which failed every test that needed the image. A test that starts a container of its own goes through it too.
 
 `curl --unix-socket "${DOCKER_HOST#unix://}" http://localhost/_ping` should print `OK` before you run the suite. `--unix-socket` takes a filesystem path, so the `unix://` prefix has to come off.
 
