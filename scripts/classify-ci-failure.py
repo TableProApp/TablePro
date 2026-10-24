@@ -33,7 +33,7 @@ SIGNATURES = [
     ("infra", "compiler crashed", r"Compiler killed by signal|rustc.*SIGSEGV|signal: 11"),
     ("infra", "runner volume path missing on the Docker host", r"bind source path does not exist"),
     ("infra", "network failure", r"Temporary failure in name resolution|Network is unreachable|Could not resolve host"),
-    ("infra", "disk full", r"No space left on device"),
+    ("infra", "disk full", r"No space left on device|Out of diskspace"),
     ("infra", "the linker died on a bus error (cache or target volume problem)", r"ld terminated with signal 7|\[Bus error\]"),
     ("infra", "a fixture image is missing on the executor", r"No such image:"),
     ("infra", "a fixture container exited before the tests ran", r"container \S+ exited \(\d+\)"),

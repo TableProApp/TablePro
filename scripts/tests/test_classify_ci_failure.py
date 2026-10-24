@@ -32,6 +32,21 @@ class ClassifyCiFailureTests(unittest.TestCase):
         text = 'invalid mount config for type "bind": bind source path does not exist: /tmp/.tmp1cLtTA'
         self.assertEqual(self.tag(text), "infra")
 
+    def test_a_git_checkout_disk_failure_is_infrastructure_and_keeps_its_evidence(self):
+        line = "fatal: sha1 file '/work/src/.git/index.lock' write error. Out of diskspace"
+        tag, _, evidence = classifier.classify_log(line + "\nJob failed")
+        self.assertEqual(tag, "infra")
+        self.assertEqual(evidence, line)
+
+    def test_disk_exhaustion_precedes_a_following_compile_failure(self):
+        for message in ("No space left on device", "Out of diskspace"):
+            with self.subTest(message=message):
+                text = message + "\nerror: could not compile `tablepro-app`\nJob failed"
+                self.assertEqual(self.tag(text), "infra")
+
+    def test_an_unrelated_git_checkout_failure_stays_unknown(self):
+        self.assertEqual(self.tag("fatal: reference is not a tree: missing-revision\nJob failed"), "unknown")
+
     def test_infrastructure_wins_over_the_failing_test_line_it_caused(self):
         text = "test mysql_accepts_a_query ... FAILED\nthread 'x' panicked at tests/integration.rs:61:41:\nstart mysql container: StartupTimeout"
         self.assertEqual(self.tag(text), "infra")
