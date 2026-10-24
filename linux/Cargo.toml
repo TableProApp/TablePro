@@ -10,6 +10,7 @@ members = [
     "crates/storage",
     "crates/test-fixtures",
     "crates/test-support",
+    "crates/drivers/cassandra",
     "crates/drivers/clickhouse",
     "crates/drivers/duckdb",
     "crates/drivers/mssql",
@@ -27,6 +28,7 @@ publish = false
 
 [workspace.dependencies]
 tablepro-core = { path = "crates/core" }
+tablepro-driver-cassandra = { path = "crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "crates/drivers/clickhouse" }
 tablepro-driver-duckdb = { path = "crates/drivers/duckdb" }
 tablepro-driver-mssql = { path = "crates/drivers/mssql" }
@@ -55,6 +57,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # own TLS features would only add a second, unused TLS stack.
 clickhouse = { version = "0.15", default-features = false }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "chrono", "uuid", "json"] }
+# TLS goes through the ClientConfig the driver builds, on aws-lc-rs.
+# Values are read as CqlValue, so no chrono, num-bigint or bigdecimal
+# feature is needed.
+scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 # The driver reads and writes DECIMAL through tiberius's own Numeric.
 tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
 # The driver hands redis-rs a stream it opened and wrapped in TLS itself, so
@@ -82,7 +88,7 @@ clickhouse-types = "0.1.3"
 tokio-postgres-rustls = { version = "0.14.0", default-features = false }
 libsqlite3-sys = ">=0.30.1, <0.38.0"
 # DuckDB 1.5, compiled from the sources the crate ships, since only Ubuntu
-# 26.10 packages libduckdb (docs/decisions/0023-bundled-duckdb.md). json and
+# 26.10 packages libduckdb (docs/decisions/0024-bundled-duckdb.md). json and
 # parquet are linked in, since extensions are never downloaded.
 duckdb = { version = "~1.10506", default-features = false, features = ["bundled", "json", "parquet"] }
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }

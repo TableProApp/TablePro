@@ -1,12 +1,13 @@
 use crate::column::{ColumnInfo, ColumnType, SqlExpression};
 use crate::ddl::DdlDialect;
+use crate::filter::{Combinator, FilterOp, operators_for};
 use crate::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use crate::sql_syntax::{ExpressionSyntaxError, HistoryRecording, SqlGrammar, TypeSyntaxError};
 use crate::value::Value;
 
 use super::{
     BindError, BindTarget, DialectCapabilities, InsertBatchLimits, KeysetDirection, LikeCase, LikeForm, LiteralError,
-    Placeholder,
+    Placeholder, TablePaging,
 };
 
 /// How one engine spells SQL.
@@ -81,6 +82,36 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
     /// does not edit this engine's structure.
     fn ddl(&self) -> Option<&dyn DdlDialect> {
         None
+    }
+
+    /// How a page of a table is read. Where the server pages, a page
+    /// carries no ORDER BY and no window, so a user sort is not offered.
+    fn table_paging(&self) -> TablePaging {
+        TablePaging::InStatement
+    }
+
+    /// Words a read with a WHERE clause takes at its end, such as CQL's
+    /// ALLOW FILTERING, without which a condition on anything but the
+    /// key is refused.
+    fn filtered_read_suffix(&self) -> &'static str {
+        ""
+    }
+
+    /// The filter operators the engine evaluates on the column, in the
+    /// order the filter strip lists them.
+    fn filter_operators(&self, column: &ColumnInfo) -> &'static [FilterOp] {
+        operators_for(&column.column_type.kind)
+    }
+
+    /// How the engine joins filter rules. CQL has no OR.
+    fn filter_combinators(&self) -> &'static [Combinator] {
+        &[Combinator::And, Combinator::Or]
+    }
+
+    /// A raw predicate the user wrote, as it joins the generated rules.
+    /// The parentheses keep its own OR from binding to them.
+    fn raw_predicate_sql(&self, raw: &str) -> String {
+        format!("({raw})")
     }
 
     fn qualify(&self, table: &TableRef) -> String {
@@ -168,8 +199,29 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         format!("UPDATE {table_sql} SET {assignments_sql} WHERE {predicate_sql}")
     }
 
+    /// An UPDATE of columns that hold one value per partition (CQL
+    /// static columns), `predicate_sql` naming the partition. A save
+    /// proves its row with a probe, so it carries no condition.
+    fn partition_update_statement(&self, table_sql: &str, assignments_sql: &str, predicate_sql: &str) -> String {
+        self.update_statement(table_sql, assignments_sql, predicate_sql)
+    }
+
     fn delete_statement(&self, table_sql: &str, predicate_sql: &str) -> String {
         format!("DELETE FROM {table_sql} WHERE {predicate_sql}")
+    }
+
+    /// An INSERT of `rows_sql`, each row a parenthesised list of
+    /// markers in `columns_sql` order.
+    fn insert_statement(&self, table_sql: &str, columns_sql: &str, rows_sql: &str) -> String {
+        format!("INSERT INTO {table_sql} ({columns_sql}) VALUES {rows_sql}")
+    }
+
+    /// Whether an INSERT names a column whose value is NULL. An engine
+    /// that answers false has the column left out, as CQL does: an absent
+    /// cell reads as NULL without the tombstone a written one leaves, and
+    /// a partition's static row has no clustering value to write.
+    fn insert_names_null_cells(&self) -> bool {
+        true
     }
 
     /// How much one multi-row INSERT may carry.

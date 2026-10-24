@@ -13,6 +13,9 @@ pub(crate) enum CompoundRule {
     None,
     RoutineBody,
     TriggerBody,
+    /// CQL's `BEGIN [UNLOGGED | COUNTER] BATCH ... APPLY BATCH`, whose
+    /// statements cqlsh sends as one.
+    Batch,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +56,8 @@ pub(crate) enum DollarQuote {
     None,
     Tagged,
     Heredoc,
+    /// `$$ ... $$` with no tag, as CQL takes a function body.
+    Untagged,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +219,30 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
     },
 };
 
+const CQL: ScriptRules = ScriptRules {
+    boundary: Boundary::Semicolon,
+    compound: CompoundRule::Batch,
+    parens_hold_semicolons: false,
+    batch_error: BatchErrorPolicy::StopScript,
+    syntax: ScriptSyntax {
+        single_quote: quote(QuoteKind::StringLiteral, BackslashPolicy::Never),
+        double_quote: quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never),
+        backtick: None,
+        bracket_identifier: BracketIdentifier::None,
+        escape_string_prefix: false,
+        dash_comment_needs_space: false,
+        line_comment_ends_at_cr: true,
+        hash_comment: HashComment::None,
+        slash_slash_comment: true,
+        nested_block_comments: false,
+        executable_comments: false,
+        dollar_quote: DollarQuote::Untagged,
+        digit_separators: false,
+        word_start_extra: b"",
+        word_part_extra: b"",
+    },
+};
+
 /// DuckDB's parser is PostgreSQL's scanner without its procedural
 /// bodies: a string escapes only with an `E` prefix, block comments
 /// nest, `$tag$` quotes, and a backtick quotes nothing.
@@ -250,6 +279,7 @@ pub(crate) fn rules_for(grammar: SqlGrammar) -> Option<&'static ScriptRules> {
         SqlGrammar::MsSql => Some(&MSSQL),
         SqlGrammar::ClickHouse => Some(&CLICKHOUSE),
         SqlGrammar::DuckDb => Some(&DUCKDB),
+        SqlGrammar::Cql => Some(&CQL),
         SqlGrammar::Redis => None,
     }
 }

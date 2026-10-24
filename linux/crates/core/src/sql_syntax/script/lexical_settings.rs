@@ -13,6 +13,7 @@ impl LexicalSettings {
             | SqlGrammar::Sqlite
             | SqlGrammar::MsSql
             | SqlGrammar::DuckDb
+            | SqlGrammar::Cql
             | SqlGrammar::Redis => false,
         };
         Self { backslash_escapes }

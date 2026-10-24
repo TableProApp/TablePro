@@ -27,6 +27,11 @@ pub enum DdlOperation {
     DropIndex,
     AddForeignKey,
     DropForeignKey,
+    /// A default on a column, on an engine with no column defaults.
+    ColumnDefault,
+    /// NOT NULL on a column outside the primary key, on an engine with
+    /// no such constraint.
+    RequiredColumn,
 }
 
 impl fmt::Display for DdlOperation {
@@ -54,6 +59,8 @@ impl fmt::Display for DdlOperation {
             Self::DropIndex => "dropping an index",
             Self::AddForeignKey => "adding a foreign key",
             Self::DropForeignKey => "dropping a foreign key",
+            Self::ColumnDefault => "a column default",
+            Self::RequiredColumn => "a column that refuses NULL outside the primary key",
         })
     }
 }

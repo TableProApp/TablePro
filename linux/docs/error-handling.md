@@ -78,13 +78,14 @@ A server error keeps the shape the server sent it in. `ServerCode` holds each en
 | `Tds { number, state, class }` | SQL Server | SQL Server error 2627 |
 | `ClickHouse { code }` | ClickHouse | ClickHouse code 62 |
 | `Sqlite { primary, extended }` | SQLite | SQLite error 2067 |
+| `Cql { code }` | Cassandra, ScyllaDB | CQL error 0x2200 |
 | `Redis { prefix }` | Redis | the error reply's first word, such as WRONGTYPE |
 
 `ServerCode` is closed: an engine with its own numbering adds a variant, and its label in `crates/app/src/ui/error_text/driver.rs`.
 
 `ServerDiagnostics` also carries `severity`, `detail`, `hint`, `position`, `where_context`, `schema`, `table`, `column` and `constraint`. PostgreSQL fills most of them; the other engines mostly leave them empty. `position` counts characters from the start of the statement the user wrote: a driver that wraps the statement corrects it (the PostgreSQL cursor flight subtracts its `DECLARE` prefix).
 
-A driver maps the codes the app acts on to their own variants and passes everything else through as `Server`. Each engine page has its driver's table, and the places where it can only read the message, as SQL Server's TLS failures through tiberius: [PostgreSQL](drivers/postgresql.md#stops-and-timeouts), [MySQL and MariaDB](drivers/mysql.md#stops-and-timeouts), [SQLite](drivers/sqlite.md#stops-and-timeouts), [SQL Server](drivers/sql-server.md#stops-and-timeouts), [ClickHouse](drivers/clickhouse.md#stops-and-timeouts).
+A driver maps the codes the app acts on to their own variants and passes everything else through as `Server`. Each engine page has its driver's table, and the places where it can only read the message, as SQL Server's TLS failures through tiberius: [PostgreSQL](drivers/postgresql.md#stops-and-timeouts), [MySQL and MariaDB](drivers/mysql.md#stops-and-timeouts), [SQLite](drivers/sqlite.md#stops-and-timeouts), [SQL Server](drivers/sql-server.md#stops-and-timeouts), [ClickHouse](drivers/clickhouse.md#stops-and-timeouts), [Cassandra and ScyllaDB](drivers/cassandra.md#stops-and-timeouts).
 
 ## `TimeoutPhase`
 
@@ -148,7 +149,7 @@ Levels: `error!` for what the user must see or a broken contract, `warn!` for re
 
 Never log a password, a secret, a key or a bound value. sqlx's own statement logging is turned off in the MySQL and SQLite drivers, and a test in each crate (`tests/statement_logging.rs`) proves no statement text reaches the subscriber.
 
-The libraries under the drivers log what a database was sent or answered: tokio-postgres the text of every statement at `debug`, through `log`, which `tracing-subscriber` forwards; sqlx every statement, and a slow one as a warning; tiberius rows at `trace` and server messages as errors; the clickhouse crate exceptions that quote the query; deadpool the errors of the connections it recycles; sqlparser, also through `log`, the text of every statement, filter and default it parses, and the literals in it, at `debug`. So the subscriber drops every event whose target starts with `tokio_postgres`, `deadpool`, `tiberius`, `sqlx`, `clickhouse` or `sqlparser`, at every level. That filter sits beside the `RUST_LOG` one, so no directive turns them back on, however specific. A driver logs what it needs from their errors itself. A new driver's client library, or any other library that logs SQL text, joins `SILENCED_LIBRARIES` in `logging.rs`.
+The libraries under the drivers log what a database was sent or answered: tokio-postgres the text of every statement at `debug`, through `log`, which `tracing-subscriber` forwards; sqlx every statement, and a slow one as a warning; tiberius rows at `trace` and server messages as errors; the clickhouse crate exceptions that quote the query; scylla the server's error messages, which can quote a statement; deadpool the errors of the connections it recycles; sqlparser, also through `log`, the text of every statement, filter and default it parses, and the literals in it, at `debug`. So the subscriber drops every event whose target starts with `tokio_postgres`, `deadpool`, `tiberius`, `sqlx`, `clickhouse`, `scylla` or `sqlparser`, at every level. That filter sits beside the `RUST_LOG` one, so no directive turns them back on, however specific. A driver logs what it needs from their errors itself. A new driver's client library, or any other library that logs SQL text, joins `SILENCED_LIBRARIES` in `logging.rs`.
 
 ## Crashes
 

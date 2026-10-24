@@ -55,6 +55,7 @@ pub mod save;
 mod server_diagnostics;
 mod server_info;
 mod server_name_override;
+mod server_page;
 mod session_fate;
 pub mod sql_syntax;
 mod ssh_algorithm_kind;
@@ -89,7 +90,7 @@ pub use busy_reason::BusyReason;
 pub use call_options::CallOptions;
 pub use capabilities::{
     CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
-    ScriptExecution,
+    ScriptExecution, StatementStop,
 };
 pub use certificate_file_problem::CertificateFileProblem;
 pub use client_identity::ClientIdentity;
@@ -140,6 +141,7 @@ pub use safe_mode_level::{SafeModeLevel, WriteGate};
 pub use server_diagnostics::{ServerCode, ServerDiagnostics};
 pub use server_info::ServerInfo;
 pub use server_name_override::ServerNameOverride;
+pub use server_page::{ServerPage, ServerPageRequest};
 pub use session_fate::SessionFate;
 pub use ssh_algorithm_kind::SshAlgorithmKind;
 pub use ssh_destination_part::SshDestinationPart;

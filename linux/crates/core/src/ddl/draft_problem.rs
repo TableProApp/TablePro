@@ -16,6 +16,9 @@ pub enum DraftProblem {
     EmptyColumnType(String),
     #[error("primary key column {0} takes NULL")]
     NullablePrimaryKey(String),
+    /// An engine whose every table needs a primary key, as CQL's does.
+    #[error("the table has no primary key")]
+    NoPrimaryKey,
     /// An index or foreign key the draft keeps names a column it no
     /// longer has.
     #[error("column {column} is gone but {} still use it", used_by.join(", "))]

@@ -323,7 +323,13 @@ impl<'a> Lexer<'a> {
                     return self.plain(ScriptTokenKind::DollarQuoted, end);
                 }
             }
-            DollarQuote::None => {}
+            DollarQuote::Untagged if self.bytes.get(start + 1) == Some(&b'$') => {
+                return match self.text[start + 2..].find("$$") {
+                    Some(offset) => self.plain(ScriptTokenKind::DollarQuoted, start + 2 + offset + 2),
+                    None => self.unterminated(start, OpenConstruct::DollarQuoted),
+                };
+            }
+            DollarQuote::Untagged | DollarQuote::None => {}
         }
         if self.is_word_start(b'$') {
             return self.word(start, delimiter);

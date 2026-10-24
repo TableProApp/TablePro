@@ -1,0 +1,31 @@
+[package]
+name = "tablepro-driver-cassandra"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-net.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+num-bigint.workspace = true
+rustix = { workspace = true, features = ["process"] }
+rustls.workspace = true
+rustls-pki-types.workspace = true
+scylla.workspace = true
+secrecy.workspace = true
+tokio = { workspace = true, features = ["io-util", "rt"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+futures-util.workspace = true
+tablepro-test-fixtures.workspace = true
+tablepro-test-support.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

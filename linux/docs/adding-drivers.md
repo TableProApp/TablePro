@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Every engine is one crate under `crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [DuckDB](drivers/duckdb.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Redis](drivers/redis.md). An engine that does not speak SQL meets the same contract the way [Engines without SQL](#engines-without-sql) says.
+Every engine is one crate under `crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [DuckDB](drivers/duckdb.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Cassandra and ScyllaDB](drivers/cassandra.md), [Redis](drivers/redis.md). An engine that does not speak SQL meets the same contract the way [Engines without SQL](#engines-without-sql) says.
 
 The work, in order:
 
@@ -21,8 +21,8 @@ The library must:
 
 - be maintained and published on crates.io, used without a fork ([ADR 0005](decisions/0005-supply-chain-policy.md)); `deny.toml` allows no git source;
 - use rustls with aws-lc-rs, or no TLS of its own ([ADR 0009](decisions/0009-crypto-provider-and-sources.md));
-- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../ARCHITECTURE.md#transports));
-- have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt;
+- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
+- have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt. Where the protocol has none, as CQL's has not, it drops the request and keeps the connection serving (`StatementStop::Abandon`);
 - let the driver keep a connection clean for the next caller, with no server-side state it did not ask for.
 
 What the shipped drivers use:
@@ -32,9 +32,10 @@ What the shipped drivers use:
 | PostgreSQL | tokio-postgres 0.7.18, tokio-postgres-rustls 0.14 | deadpool-postgres 0.14.2 | `Transport::open` |
 | MySQL, MariaDB | sqlx 0.9 (`mysql`) | deadpool 0.13 | `Transport::route`, dialled by sqlx |
 | SQLite | sqlx 0.9 (`sqlite-unbundled`) | sqlx, one connection | a file path |
-| DuckDB | duckdb 1.10506 (`bundled`), DuckDB 1.5.6 compiled in ([ADR 0023](decisions/0023-bundled-duckdb.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
+| DuckDB | duckdb 1.10506 (`bundled`), DuckDB 1.5.6 compiled in ([ADR 0024](decisions/0024-bundled-duckdb.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
 | SQL Server | tiberius 0.13 | deadpool 0.13 | `Transport::open` |
 | ClickHouse | clickhouse 0.15 over hyper-util and hyper-rustls | hyper's connection pool | `Transport::open` |
+| Cassandra, ScyllaDB | scylla 1.9 (`rustls-023`) | none: one multiplexed connection per session | a loopback relay over `Transport::open` |
 | Redis | redis 1.7 (`aio`, `tokio-comp`), tokio-rustls | one multiplexed link | `Transport::open` |
 
 Open an issue before starting an engine that is not listed, and say which library and why.
@@ -87,11 +88,11 @@ pub trait DatabaseDriver: Send + Sync {
 }
 ```
 
-`id()` is written into saved connections and never changes once shipped. The ids in use are `postgres`, `mysql`, `sqlite`, `duckdb`, `mssql`, `clickhouse` and `redis`.
+`id()` is written into saved connections and never changes once shipped. The ids in use are `postgres`, `mysql`, `sqlite`, `duckdb`, `mssql`, `clickhouse`, `cassandra` and `redis`.
 
 ### Capabilities
 
-`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `username_required`, `tls`, `read_only` and `database_required`, the workspace reads `data_model`, and the structure review reads `ddl_writes`. The conformance suites hold `endpoint`, `dml_writes`, `ddl_writes`, `commit_resolution` and the TLS client certificate flag to what the engine does. Nothing reads `script_execution`, `row_count_estimate` or `object_kinds` yet: set them to what the engine does.
+`DriverCapabilities` is a `static` the driver returns before any connection exists. The connect dialog and `DriverConnector` read `endpoint`, `auth_modes`, `username_required`, `tls`, `read_only` and `database_required`, the workspace reads `data_model`, and the structure review reads `ddl_writes`. The conformance suites hold `endpoint`, `dml_writes`, `ddl_writes`, `commit_resolution`, `statement_stop` and the TLS client certificate flag to what the engine does. Nothing reads `script_execution`, `row_count_estimate` or `object_kinds` yet: set them to what the engine does.
 
 | Field | Meaning |
 |---|---|
@@ -107,26 +108,28 @@ pub trait DatabaseDriver: Send + Sync {
 | `row_count_estimate` | `Statistics` ("about N"), `ExactMetadata` or `Unavailable`. |
 | `object_kinds` | The `ObjectKind`s `list_objects` returns. |
 | `database_required` | Whether a connect without a database name is refused before anything is opened. |
+| `statement_stop` | `Server` where the engine stop reaches the server, `Abandon` where the protocol carries none and the server runs the statement to its own timeout. |
 
 The shipped drivers:
 
-| | PostgreSQL | MySQL | SQLite | DuckDB | SQL Server | ClickHouse | Redis |
-|---|---|---|---|---|---|---|---|
-| `data_model` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `KeyValue` |
-| `endpoint` | 5432 | 3306 | `File` | `File` | 1433 | 8123 | 6379 |
-| `auth_modes` | Password | Password | none | none | Password, Kerberos | Password | Password |
-| `username_required` | yes | yes | | | yes | yes | no |
-| TLS modes | all three | all three | none | none | all three | all three | all three |
-| CA file | yes | yes | | | yes | yes | yes |
-| Client certificate | yes | yes | | | no | yes | yes |
-| Server name override | `AnyRoute` | `SshForwardOnly` | | | `AnyRoute` | `AnyRoute` | `AnyRoute` |
-| `read_only` | `SessionDefault` | `SessionDefault` | `EngineEnforced` | `EngineEnforced` | `LoginPrivileges` | `EngineEnforced` | `ClientGuard` |
-| `dml_writes` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` |
-| `ddl_writes` | `Transactional` | `StatementByStatement` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` |
-| `script_execution` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `SingleStatement` | `SingleStatement` |
-| `commit_resolution` | `ServerTransactionStatus` | `Unavailable` | `Unavailable` | `Unavailable` | `Unavailable` | `QueryLog` | `Unavailable` |
-| `row_count_estimate` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `ExactMetadata` | `ExactMetadata` |
-| `database_required` | no | yes | no | no | no | no |
+| | PostgreSQL | MySQL | SQLite | DuckDB | SQL Server | ClickHouse | Cassandra | Redis |
+|---|---|---|---|---|---|---|---|---|
+| `data_model` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `Relational` | `KeyValue` |
+| `endpoint` | 5432 | 3306 | `File` | `File` | 1433 | 8123 | 9042 | 6379 |
+| `auth_modes` | Password | Password | none | none | Password, Kerberos | Password | Password | Password |
+| `username_required` | yes | yes | | | yes | yes | no | no |
+| TLS modes | all three | all three | none | none | all three | all three | all three | all three |
+| CA file | yes | yes | | | yes | yes | yes | yes |
+| Client certificate | yes | yes | | | no | yes | yes | yes |
+| Server name override | `AnyRoute` | `SshForwardOnly` | | | `AnyRoute` | `AnyRoute` | `AnyRoute` | `AnyRoute` |
+| `read_only` | `SessionDefault` | `SessionDefault` | `EngineEnforced` | `EngineEnforced` | `LoginPrivileges` | `EngineEnforced` | `LoginPrivileges` | `ClientGuard` |
+| `dml_writes` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` | `StatementByStatement` |
+| `ddl_writes` | `Transactional` | `StatementByStatement` | `Transactional` | `Transactional` | `Transactional` | `StatementByStatement` | `StatementByStatement` | `StatementByStatement` |
+| `script_execution` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `NativeBatch` | `SingleStatement` | `SingleStatement` | `SingleStatement` |
+| `commit_resolution` | `ServerTransactionStatus` | `Unavailable` | `Unavailable` | `Unavailable` | `Unavailable` | `QueryLog` | `Unavailable` | `Unavailable` |
+| `row_count_estimate` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `Statistics` | `ExactMetadata` | `Unavailable` | `ExactMetadata` |
+| `database_required` | no | yes | no | no | no | no | no | no |
+| `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` | `Server` |
 
 SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
 
@@ -208,6 +211,7 @@ Start the resource empty and fill it inside the work, as `PgCall::acquire` and `
 | DuckDB | `duckdb_interrupt` on the call's connection, sent every 10 ms until the work returns or holds stops off, since DuckDB clears it as each statement starts | `OutOfBand(Connection)` |
 | SQL Server | TDS attention on the request's own connection (`Client::cancel_query`) | `InBand` |
 | ClickHouse | `KILL QUERY WHERE query_id = ? ASYNC` on a sessionless client | `OutOfBand(Statement)` |
+| Cassandra, ScyllaDB | None in the protocol: the call drops its request, and the server runs it to its own timeout | `InBand` |
 | Redis | A workspace read stops between its bounded commands; an editor command gets `CLIENT UNBLOCK <id> ERROR`, then `CLIENT KILL ID <id>` past the grace, from a link of its own ([redis.md](drivers/redis.md#stops-and-timeouts)) | `InBand` |
 
 ### `CallResource` release rules
@@ -271,7 +275,7 @@ Where the engine can answer later, the ledger carries a `CommitToken`:
 - `PostgresXid { xid, legacy_txid }`: `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read inside the transaction before COMMIT, and asked back with `pg_xact_status` (or `txid_status`).
 - `ClickHouseQuery { query_ids, first_unconfirmed, table }`: the query id of every statement, looked up in `system.query_log`, and the table they write, which finds a mutation in `system.mutations`.
 
-`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite, DuckDB) every answer is `Unresolvable`.
+`resolve_commit` answers with a `CommitResolution`: `Applied`, `NotApplied`, `PartiallyApplied`, `StillRunning` or `Unresolvable`. A commit the engine keeps no record of is `Unresolvable`, never an error, so where `commit_resolution` is `Unavailable` (MySQL, SQL Server, SQLite, DuckDB, Cassandra) every answer is `Unresolvable`.
 
 After a save ends in `CommitOutcomeUnknown` with a token, the workspace asks `resolve_commit` once (`crates/app/src/workspace/workspace_handle.rs`). `Applied` reads as saved, `NotApplied` as rolled back and `PartiallyApplied` as partly applied. `StillRunning`, `Unresolvable` or a failed question leave the outcome unknown, and the user reloads to see what landed.
 
@@ -303,14 +307,14 @@ A run streams `ResultEvent`s into a `ResultSink`:
 - `CommandCompleted { rows_affected }` reports a statement that returned no rows; `None` is "not reported", not zero.
 - `Notice` passes on a server notice or warning.
 
-`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, and DuckDB stops fetching its streamed result. `stream_read` uses the same sink and events, without a row limit.
+`ResultSink::accept` is awaited before the next rows are read off the wire, so a grid that cannot keep up slows the read instead of growing a queue the size of the result. `SinkFlow::ConsumerGone` ends the run with `RunEnd::Cancelled`. PostgreSQL, MySQL, SQL Server and ClickHouse then stop the statement on the server, SQLite stops stepping it, DuckDB stops fetching its streamed result, and the Cassandra driver asks for no more pages. `stream_read` uses the same sink and events, without a row limit.
 
 ## The row-limit rule
 
 `RowLimit` wraps a `NonZeroU64`; `RowLimit::EDITOR_DEFAULT` is 10,000.
 
 - `query_bound` keeps at most the limit and reads one more row to mark the result truncated.
-- An editor run keeps at most the limit in each result set and sends `RowLimitReached` once. A set the server cut at one row past the limit ends with `Truncation::ServerStopped` and no `total_rows`: PostgreSQL reports it when its cursor stopped the set, MySQL when `sql_select_limit` did. A set read past the limit ends with `Truncation::ReadPastLimit`. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping, and DuckDB stops fetching the chunks of its streamed result, so the rest is never produced. Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL where `sql_select_limit` does not apply).
+- An editor run keeps at most the limit in each result set and sends `RowLimitReached` once. A set the server cut at one row past the limit ends with `Truncation::ServerStopped` and no `total_rows`: PostgreSQL reports it when its cursor stopped the set, MySQL when `sql_select_limit` did. A set read past the limit ends with `Truncation::ReadPastLimit`. Where the engine allows, the rest of the set is stopped on the server rather than read: a `FETCH` of one row past the limit (PostgreSQL), `sql_select_limit` (MySQL), `KILL QUERY` (ClickHouse). SQLite stops stepping and DuckDB stops fetching the chunks of its streamed result, so the rest is never produced, and the Cassandra driver asks the server for no more pages (`ServerStopped`). Otherwise the rows past the limit are counted without being decoded (SQL Server, and MySQL where `sql_select_limit` does not apply).
 - The limit never ends the script, the user's transaction or the statements after the limited one. The conformance case `row_limit_keeps_transaction_and_later_statements` checks this on every engine with editor transactions.
 - The driver never rewrites the user's SQL to add a `LIMIT`.
 - `stream_read` has no limit.
@@ -318,6 +322,8 @@ A run streams `ResultEvent`s into a `ResultSink`:
 ## 7. Dialects
 
 `Connection::dialect()` returns the engine's `SqlDialect`, built from `ServerInfo` at connect. Every builder in `tablepro-core` (pages, filters, row edits, exports) goes through it: quoting, placeholders, literals, the page window, keyset comparison, the engine's row address and type parsing. A dialect never reads session state. Where ordering by a table's key sorts the whole table, as on DuckDB, whose indexes do not order a scan, `key_order_sorts_the_table` says so, and an export with no sort of the user's keeps the scan's order instead of holding every row. `qualify` names a table in the connection's own statements and `portable_name` in an export and a foreign key's REFERENCES; they differ on DuckDB, which names its file's catalogue only in the first. `SqlDialect::ddl()` returns the engine's `DdlDialect`, or `None` where the app does not edit the engine's structure. Never match on a driver id in core; add a dialect method.
+
+A table whose scan has no order to page by, as a CQL scan in token order has none, returns `TablePaging::ServerState` from `table_paging`: the browse tab then pages by the state the server hands back, through `Connection::query_server_page`, offers no sort, and reaches a page by number by skipping rows. `filter_operators`, `filter_combinators` and `filtered_read_suffix` narrow the filter strip to what the engine evaluates and add what it needs after a WHERE clause. `capabilities().insert_conflict` says what an INSERT of a taken key does, which decides how a save proves an insert: refused (`Refused`), skipped (`Skipped`, proved by the count), or replaced (`Replaced`, proved by a probe for the key first). A column that holds one value per partition, a CQL partition key or static column, is `ColumnInfo::partition_scoped`: an update of such columns alone names only the partition, is spelled by `partition_update_statement`, and is proved by a probe for its row.
 
 `SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `crates/core/src/sql_syntax/script/script_rules.rs`. A language that is not SQL adds a variant too, with no SQL rules ([Engines without SQL](#engines-without-sql)). Each rule gets a named case in `crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
 
@@ -348,6 +354,7 @@ Add the crate to `crates/app/Cargo.toml` and register it in `build_registry` in 
 ```rust
 fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
+    r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
     r.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));

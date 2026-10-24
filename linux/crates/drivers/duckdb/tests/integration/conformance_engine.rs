@@ -12,6 +12,7 @@ tablepro_test_support::connection_conformance_suite! {
     engine: DuckDbEngine,
     docker: false,
     endpoint: file,
+    server_stop: true,
     pool: pooled,
     editor_transactions: true,
     unsupported_types: true,

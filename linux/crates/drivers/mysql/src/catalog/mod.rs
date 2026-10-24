@@ -207,6 +207,7 @@ pub(crate) fn column_info(row: &MySqlColumnRow, flavour: MySqlFlavour) -> Column
         primary_key: row.column_key == "PRI",
         is_auto_increment: extra.auto_increment,
         is_generated: generated,
+        partition_scoped: false,
         default,
         comment: row.comment.clone(),
     }

@@ -9,7 +9,7 @@ use crate::conformance::support::{
     SCHEDULING_SLACK, connect, expect, no_deadline, run_completed, run_options, single_count, statement, unexpected,
     unique, within, writable,
 };
-use crate::conformance::{ConformanceFailure, NetworkConformanceEngine, PooledConformanceEngine, test_liveness};
+use crate::conformance::{ConformanceFailure, PooledConformanceEngine, ServerStopEngine, test_liveness};
 
 const CASE: &str = "probe_succeeds_while_every_pool_slot_is_busy";
 const HOLD: Duration = Duration::from_secs(6);
@@ -28,7 +28,7 @@ pub async fn probe_succeeds_while_every_pool_slot_is_busy<E: PooledConformanceEn
 /// the pool's size of statements is running.
 pub async fn probe_succeeds_while_every_network_pool_slot_is_busy<E>(engine: E) -> Result<(), ConformanceFailure>
 where
-    E: PooledConformanceEngine + NetworkConformanceEngine,
+    E: PooledConformanceEngine + ServerStopEngine,
 {
     let count_sql = |marker: &str| engine.running_statement_count_sql(marker);
     pool_case(&engine, Some(&count_sql)).await
@@ -61,7 +61,7 @@ async fn pool_case<E: PooledConformanceEngine>(
         });
     }
 
-    prove_saturated(connection.as_ref(), size).await?;
+    prove_saturated(connection.as_ref(), size, &engine.trivial_read_sql()).await?;
     if let (Some(monitor), Some(count_sql)) = (&monitor, count_sql) {
         let rows = run_completed(CASE, monitor.as_ref(), &count_sql(&marker), run_options())
             .await?
@@ -99,11 +99,11 @@ async fn pool_case<E: PooledConformanceEngine>(
 /// the pool wait and come back busy. A slot can still be free for a
 /// moment while the statements reach the server, so a read that runs is
 /// retried for a short window rather than failing the case at once.
-async fn prove_saturated(connection: &dyn Connection, size: usize) -> Result<(), ConformanceFailure> {
+async fn prove_saturated(connection: &dyn Connection, size: usize, trivial: &str) -> Result<(), ConformanceFailure> {
     let give_up = Instant::now() + SATURATION_WINDOW;
     loop {
         let extra = connection
-            .query_bound(&statement("SELECT 1"), RowLimit::EDITOR_DEFAULT, no_deadline())
+            .query_bound(&statement(trivial), RowLimit::EDITOR_DEFAULT, no_deadline())
             .await;
         match extra {
             Err(error) if error.category() == ErrorCategory::Busy => return Ok(()),

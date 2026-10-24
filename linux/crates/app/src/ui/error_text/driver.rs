@@ -183,6 +183,7 @@ fn server_code_text(code: &ServerCode) -> String {
         ServerCode::ClickHouse { .. } => crate::i18n::gettext_f("ClickHouse code {code}", &[("code", &number)]),
         ServerCode::Sqlite { .. } => crate::i18n::gettext_f("SQLite error {code}", &[("code", &number)]),
         ServerCode::DuckDb { .. } => crate::i18n::gettext_f("DuckDB {code} error", &[("code", &number)]),
+        ServerCode::Cql { .. } => crate::i18n::gettext_f("CQL error {code}", &[("code", &number)]),
         // Redis names its errors by a word, such as WRONGTYPE.
         ServerCode::Redis { .. } => number,
     }

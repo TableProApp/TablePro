@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tablepro_core::meta::PagePosition;
 
 use super::row_total::RowTotal;
@@ -24,6 +26,11 @@ pub(crate) struct BrowsePager {
     /// The last page can be read backward from the table's end, which
     /// the last page read said.
     seeks: bool,
+    /// Where each page of a table the server pages was read from, by its
+    /// first row. A paging state only goes forward, so going back reads
+    /// a page from the state it was read from before, rather than every
+    /// row up to it.
+    resumes: BTreeMap<u64, PagePosition>,
 }
 
 /// How to reach the pages either side of a page by its edge rows.
@@ -31,6 +38,10 @@ pub(crate) struct BrowsePager {
 pub(crate) struct PageEdges {
     pub(crate) previous: Option<PagePosition>,
     pub(crate) next: Option<PagePosition>,
+    /// The server that pages the table said no row follows, whatever
+    /// the page's size. Only an offset read past every row would say so
+    /// otherwise.
+    pub(crate) last: bool,
 }
 
 /// A page the pager can move to.
@@ -52,6 +63,7 @@ impl BrowsePager {
             limit: page_size,
             edges: PageEdges::default(),
             seeks: false,
+            resumes: BTreeMap::new(),
         }
     }
 
@@ -84,6 +96,22 @@ impl BrowsePager {
     pub(crate) fn restart(&mut self) {
         self.move_to(self.target(PagePosition::First, 0));
         self.seeks = false;
+        self.resumes.clear();
+    }
+
+    /// The table's columns changed, and with them the statement a page
+    /// is read with, which a paging state the server handed back for the
+    /// old one cannot resume. The page stays where it was, by its offset.
+    pub(crate) fn forget_paging_states(&mut self) {
+        self.resumes.clear();
+        if matches!(self.position, PagePosition::Resume(_)) {
+            self.move_to(self.target(position_at(self.start_ordinal), self.start_ordinal));
+        }
+        for edge in [&mut self.edges.previous, &mut self.edges.next] {
+            if matches!(edge, Some(PagePosition::Resume(_))) {
+                *edge = None;
+            }
+        }
     }
 
     /// The table's row identity changed, so a key the pager holds names
@@ -91,6 +119,7 @@ impl BrowsePager {
     pub(crate) fn rebase(&mut self) {
         self.move_to(self.target(position_at(self.start_ordinal), self.start_ordinal));
         self.seeks = false;
+        self.resumes.clear();
     }
 
     /// A page landed: where it starts, what it was read as, and the way
@@ -98,6 +127,9 @@ impl BrowsePager {
     pub(crate) fn land(&mut self, start: u64, position: PagePosition, edges: PageEdges, seeks: bool) {
         if position == PagePosition::First {
             self.limit = self.page_size;
+        }
+        if matches!(position, PagePosition::Resume(_)) {
+            self.resumes.insert(start, position.clone());
         }
         self.position = position;
         self.start_ordinal = start;
@@ -109,6 +141,7 @@ impl BrowsePager {
     pub(crate) fn resize(&mut self, page_size: u64) {
         self.page_size = page_size.max(1);
         self.move_to(self.target(PagePosition::First, 0));
+        self.resumes.clear();
     }
 
     pub(crate) fn first(&self) -> Option<PageTarget> {
@@ -120,7 +153,12 @@ impl BrowsePager {
             let start = self.start_ordinal.saturating_sub(self.page_size);
             let position = match start {
                 0 => PagePosition::First,
-                start => self.edges.previous.clone().unwrap_or(PagePosition::Offset(start)),
+                start => self
+                    .edges
+                    .previous
+                    .clone()
+                    .or_else(|| self.resumes.get(&start).cloned())
+                    .unwrap_or(PagePosition::Offset(start)),
             };
             self.target(position, start)
         })
@@ -128,7 +166,7 @@ impl BrowsePager {
 
     /// A page with fewer rows than a page holds was the last one.
     pub(crate) fn next(&self, rows_on_page: u64) -> Option<PageTarget> {
-        (rows_on_page >= self.page_size).then(|| {
+        (rows_on_page >= self.page_size && !self.edges.last).then(|| {
             let start = self.start_ordinal.saturating_add(self.page_size);
             let position = self.edges.next.clone().unwrap_or(PagePosition::Offset(start));
             self.target(position, start)
@@ -200,7 +238,79 @@ mod tests {
         PageEdges {
             previous: Some(PagePosition::BeforeKey(vec![Value::Int(first)])),
             next: Some(PagePosition::AfterKey(vec![Value::Int(last)])),
+            last: false,
         }
+    }
+
+    fn resumed(byte: u8) -> PagePosition {
+        let mut builder = tablepro_core::statement::StatementBuilder::new();
+        builder.push_sql("SELECT \"id\" FROM \"t\"");
+        PagePosition::Resume(tablepro_core::meta::PagingState::new(
+            std::sync::Arc::from(vec![byte]),
+            builder.finish(),
+        ))
+    }
+
+    fn resuming(next: u8) -> PageEdges {
+        PageEdges {
+            previous: None,
+            next: Some(resumed(next)),
+            last: false,
+        }
+    }
+
+    #[test]
+    fn a_full_server_page_with_nothing_after_it_is_the_last() {
+        let mut pager = BrowsePager::new(100, 0);
+        pager.land(
+            0,
+            PagePosition::First,
+            PageEdges {
+                last: true,
+                ..PageEdges::default()
+            },
+            false,
+        );
+
+        assert_eq!(pager.next(100), None);
+    }
+
+    #[test]
+    fn new_columns_leave_a_server_paged_table_at_its_offset() {
+        let mut pager = BrowsePager::new(100, 0);
+        pager.land(0, PagePosition::First, resuming(1), false);
+        pager.move_to(pager.next(100).expect("a next page"));
+        pager.land(100, resumed(1), resuming(2), false);
+
+        pager.forget_paging_states();
+
+        assert_eq!(pager.position(), PagePosition::Offset(100));
+        assert_eq!(pager.next(100), target(PagePosition::Offset(200), 200));
+        assert_eq!(pager.prev(), target(PagePosition::First, 0));
+    }
+
+    #[test]
+    fn a_server_paged_table_goes_back_by_the_state_its_page_was_read_from() {
+        let mut pager = BrowsePager::new(100, 0);
+        pager.land(0, PagePosition::First, resuming(1), false);
+        for (start, byte) in [(100, 1), (200, 2)] {
+            let next = pager.next(100).expect("a next page");
+            assert_eq!(next, target(resumed(byte), start).expect("a target"));
+            pager.move_to(next);
+            pager.land(start, resumed(byte), resuming(byte + 1), false);
+        }
+
+        assert_eq!(pager.prev(), target(resumed(1), 100));
+        pager.move_to(pager.prev().expect("a previous page"));
+        assert_eq!(pager.prev(), target(PagePosition::First, 0));
+
+        pager.restart();
+        pager.move_to(target(PagePosition::Offset(200), 200).expect("a target"));
+        assert_eq!(
+            pager.prev(),
+            target(PagePosition::Offset(100), 100),
+            "a restarted browse kept a state from before"
+        );
     }
 
     #[test]

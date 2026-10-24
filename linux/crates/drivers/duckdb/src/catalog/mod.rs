@@ -156,6 +156,7 @@ pub(crate) fn fetch_columns(link: &Link, catalog: &str, table: &TableRef) -> Res
                 nullable: flag(row, 2),
                 is_auto_increment: !is_generated && is_sequence_default(default_text.as_deref()),
                 is_generated,
+                partition_scoped: false,
                 default,
                 comment: row.get(4).cloned().flatten(),
                 column_type,

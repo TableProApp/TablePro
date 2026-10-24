@@ -55,7 +55,8 @@ impl StructureContext {
 
     /// Which changes the row of `column` offers. A column the user added
     /// in this tab is only a draft, so everything about it can change,
-    /// apart from joining the primary key of a table whose key is held.
+    /// apart from joining the primary key of a table whose key is held,
+    /// and a default or NOT NULL the engine has no such thing as.
     pub(super) fn column_permissions(&self, column: &DraftColumn) -> ColumnCapabilities {
         let capabilities = self.capabilities();
         let (Some(ddl), Some(definition), Some(original)) = (self.ddl(), self.original(), column.original.as_ref())
@@ -68,8 +69,8 @@ impl StructureContext {
                 rename: Permission::Allowed,
                 drop: Permission::Allowed,
                 alter_type: Permission::Allowed,
-                alter_nullability: Permission::Allowed,
-                alter_default: Permission::Allowed,
+                alter_nullability: Permission::unless(capabilities.required_columns, RefusalReason::EngineUnsupported),
+                alter_default: Permission::unless(capabilities.column_defaults, RefusalReason::EngineUnsupported),
                 alter_primary_key: primary_key,
                 alter_auto_increment: Permission::Allowed,
                 alter_comment: Permission::unless(capabilities.column_comments, RefusalReason::EngineUnsupported),

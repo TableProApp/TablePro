@@ -15,8 +15,8 @@ use rustls::sign::CertifiedKey;
 use rustls::{RootCertStore, ServerConfig};
 use tablepro_core::{CertificateFileProblem, ClientIdentity, ConfigError, TlsConfig, TlsFailure, TlsMode};
 use tablepro_net::tls::{
-    MAX_PEM_FILE_BYTES, TlsSetupError, build_client_config, check_pem_files, classify, client_identity_pem,
-    mysql_ca_bundle_pem,
+    MAX_PEM_FILE_BYTES, TlsSetupError, build_client_config, build_client_config_checking, check_pem_files, classify,
+    client_identity_pem, mysql_ca_bundle_pem,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -105,6 +105,28 @@ async fn handshake(
     .await)
 }
 
+/// A handshake started under the loopback address, as a client library
+/// that dials a relay starts one, with the config checking `checked`.
+async fn handshake_by_address(
+    tls: &TlsConfig,
+    server: Arc<ServerConfig>,
+    checked: &str,
+) -> TestResult<Result<Vec<u8>, std::io::Error>> {
+    let address = serve_once(server).await?;
+    let client =
+        build_client_config_checking(tls, ServerName::try_from(checked.to_owned())?)?.ok_or("TLS is disabled")?;
+    let connector = TlsConnector::from(client);
+    let stream = TcpStream::connect(address).await?;
+    let dialled = ServerName::IpAddress(address.ip().into());
+    Ok(async {
+        let mut tls = connector.connect(dialled, stream).await?;
+        let mut received = Vec::new();
+        tls.read_to_end(&mut received).await?;
+        Ok(received)
+    }
+    .await)
+}
+
 fn verify_full(ca_file: Option<&Path>) -> TlsConfig {
     TlsConfig {
         ca_file: ca_file.map(Path::to_owned),
@@ -129,6 +151,26 @@ async fn verify_full_with_extra_root_connects() {
         .await
         .unwrap();
     assert_eq!(received.unwrap(), b"ok");
+}
+
+#[tokio::test]
+async fn a_fixed_name_is_checked_whatever_address_was_dialled() {
+    let pki = pki("db.internal").unwrap();
+    let server = server_config(pki.server_chain.clone(), pki.server_key.clone_key()).unwrap();
+    let received = handshake_by_address(&verify_full(Some(&pki.ca_file)), server, "db.internal")
+        .await
+        .unwrap();
+    assert_eq!(received.unwrap(), b"ok");
+
+    let server = server_config(pki.server_chain, pki.server_key).unwrap();
+    let error = handshake_by_address(&verify_full(Some(&pki.ca_file)), server, "other.internal")
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        classify(&error).map(|(failure, _)| failure),
+        Some(TlsFailure::NameMismatch)
+    );
 }
 
 #[tokio::test]

@@ -1,4 +1,7 @@
-use tablepro_core::{ColumnInfo, FilterOp, FilterValue};
+use std::sync::Arc;
+
+use tablepro_core::dialect::SqlDialect;
+use tablepro_core::{ColumnInfo, Combinator, FilterOp, FilterValue};
 
 /// An operator as the operator dropdown shows it.
 pub(super) struct OpEntry {
@@ -29,14 +32,43 @@ impl ValueShape {
     }
 }
 
+/// What the connection's engine evaluates in a filter: the operators
+/// for each column and whether rules can match any rather than all.
+/// Without a connection, every operator the column's kind takes.
+#[derive(Clone, Default)]
+pub(crate) struct FilterVocabulary {
+    dialect: Option<Arc<dyn SqlDialect>>,
+}
+
+impl FilterVocabulary {
+    pub(crate) fn of(dialect: Option<Arc<dyn SqlDialect>>) -> Self {
+        Self { dialect }
+    }
+
+    pub(super) fn operators(&self, column: &ColumnInfo) -> &'static [FilterOp] {
+        match &self.dialect {
+            Some(dialect) => dialect.filter_operators(column),
+            None => tablepro_core::operators_for(&column.column_type.kind),
+        }
+    }
+
+    pub(super) fn matches_any(&self) -> bool {
+        self.dialect
+            .as_ref()
+            .is_none_or(|dialect| dialect.filter_combinators().contains(&Combinator::Or))
+    }
+}
+
 /// The operators this column allows, with the label and value shape
 /// the dropdown needs for each.
 ///
-/// The set itself comes from core, so what the strip offers and what
-/// the builder accepts cannot drift apart: an operator the user can
-/// pick is one the filter can be built from.
-pub(super) fn operators_for(column: &ColumnInfo) -> Vec<OpEntry> {
-    tablepro_core::operators_for(&column.column_type.kind)
+/// The set itself comes from the dialect the builder writes with, so
+/// what the strip offers and what the builder accepts cannot drift
+/// apart: an operator the user can pick is one the filter can be built
+/// from.
+pub(super) fn operators_for(column: &ColumnInfo, vocabulary: &FilterVocabulary) -> Vec<OpEntry> {
+    vocabulary
+        .operators(column)
         .iter()
         .map(|op| OpEntry {
             op: *op,
@@ -87,6 +119,7 @@ pub(super) fn placeholder_column(name: &str) -> ColumnInfo {
         primary_key: false,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: tablepro_core::column::ColumnDefault::None,
         comment: None,
     }

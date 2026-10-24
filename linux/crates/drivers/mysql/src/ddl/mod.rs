@@ -38,6 +38,9 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         column_comments: true,
         // MySQL parses CASCADE on DROP TABLE and does nothing with it.
         drop_table_cascade: false,
+        column_defaults: true,
+        required_columns: true,
+        declared_column_order: true,
     }
 }
 
@@ -345,6 +348,7 @@ mod tests {
                 primary_key,
                 is_auto_increment: false,
                 is_generated: false,
+                partition_scoped: false,
                 default: ColumnDefault::None,
                 comment: None,
             },

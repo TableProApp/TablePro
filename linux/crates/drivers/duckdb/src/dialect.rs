@@ -1,7 +1,7 @@
 use tablepro_core::column::{ColumnInfo, ColumnKind, ColumnType, IntegerKind, IntegerWidth, ReadForm, SqlExpression};
 use tablepro_core::ddl::DdlDialect;
 use tablepro_core::dialect::{
-    BindError, BindTarget, DialectCapabilities, KeysetDirection, LiteralError, Placeholder, SqlDialect,
+    BindError, BindTarget, DialectCapabilities, InsertConflict, KeysetDirection, LiteralError, Placeholder, SqlDialect,
 };
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -51,7 +51,10 @@ impl DuckDbDialect {
 
 impl SqlDialect for DuckDbDialect {
     fn capabilities(&self) -> DialectCapabilities {
-        DialectCapabilities { exact_row_counts: true }
+        DialectCapabilities {
+            exact_row_counts: true,
+            insert_conflict: InsertConflict::Refused,
+        }
     }
 
     fn grammar(&self) -> SqlGrammar {
@@ -391,6 +394,7 @@ mod tests {
             primary_key: false,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         }

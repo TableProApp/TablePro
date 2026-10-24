@@ -41,7 +41,7 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
         &engine,
         connection.as_ref(),
         ddl,
-        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
     )
     .await?;
     create(case, &engine, connection.as_ref(), ddl, &child_draft(&engine, &child)).await?;
@@ -49,8 +49,9 @@ pub async fn ddl_plans_apply_and_read_back<E: ConformanceDdlEngine>(engine: E) -
     matches_draft(
         case,
         "create",
+        ddl,
         &table,
-        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
     )?;
 
     let step = Step {
@@ -92,7 +93,7 @@ pub async fn failed_ddl_batch_outcome_matches_ddl_atomicity<E: ConformanceDdlEng
         &engine,
         connection.as_ref(),
         ddl,
-        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
     )
     .await?;
     let original = definition(connection.as_ref(), &parent).await?;
@@ -166,7 +167,7 @@ pub async fn create_table_script_recreates_the_table<E: ConformanceDdlEngine>(
         &engine,
         connection.as_ref(),
         ddl,
-        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
     )
     .await?;
     let mut table = definition(connection.as_ref(), &parent).await?;
@@ -230,7 +231,7 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
         &engine,
         connection.as_ref(),
         ddl,
-        &parent_draft(case, &engine, dialect.as_ref(), &parent)?,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
     )
     .await?;
     let mut table = definition(connection.as_ref(), &parent).await?;
@@ -278,22 +279,24 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
 
     let rows = count(connection.as_ref(), &parent).await?;
     expect(case, rows == 3, || format!("{rows} rows are left of 3"))?;
+    // Sorted here: CQL orders by a column only within one partition.
     let sql = format!(
-        "SELECT {} FROM {} ORDER BY {}",
+        "SELECT {}, {} FROM {}",
+        dialect.quote_identifier("id"),
         dialect.quote_identifier("label"),
         dialect.qualify(&parent),
-        dialect.quote_identifier("id")
     );
-    let read = connection
+    let mut read = connection
         .query_bound(&statement(&sql), RowLimit::EDITOR_DEFAULT, within(CALL_DEADLINE))
-        .await?;
+        .await?
+        .rows;
+    read.sort_by_key(|row| row.first().and_then(Value::as_exact_u64));
+    let read: Vec<Vec<Value>> = read.into_iter().map(|row| row.into_iter().skip(1).collect()).collect();
     let expected: Vec<Vec<Value>> = labels
         .iter()
         .map(|label| vec![Value::Text((*label).to_owned())])
         .collect();
-    expect(case, read.rows == expected, || {
-        format!("the labels read back as {:?}", read.rows)
-    })?;
+    expect(case, read == expected, || format!("the labels read back as {read:?}"))?;
     let after = secondary_indexes(&table);
     expect(case, after == indexes, || {
         format!("the indexes were {indexes:?} and are {after:?}")
@@ -314,24 +317,29 @@ fn planned(case: &'static str, step: &str, error: BuildDdlError) -> ConformanceF
 }
 
 /// `id` keyed, `label` with a literal default that needs quoting, and
-/// `created_at` with the engine's own current-timestamp expression.
+/// `created_at` with the engine's own current-timestamp expression. An
+/// engine with no column defaults or no NOT NULL (CQL) gets neither.
 fn parent_draft<E: ConformanceDdlEngine>(
     case: &'static str,
     engine: &E,
     dialect: &dyn SqlDialect,
+    ddl: &dyn DdlDialect,
     table: &TableRef,
 ) -> Result<TableDraft, ConformanceFailure> {
+    let capabilities = ddl.capabilities();
     let mut id = DraftColumn::new("id", DraftType::Typed(engine.integer_type().to_owned()));
     id.primary_key = true;
     id.nullable = false;
     let mut label = DraftColumn::new("label", DraftType::Typed(engine.text_type().to_owned()));
-    label.nullable = false;
-    label.default = ColumnDefault::Literal(Value::Text("it's".to_owned()));
+    label.nullable = !capabilities.required_columns;
     let mut created = DraftColumn::new("created_at", DraftType::Typed(engine.timestamp_type().to_owned()));
-    let now = dialect
-        .parse_expression(engine.current_timestamp_expression())
-        .map_err(|error| unexpected(case, format!("the current-timestamp expression did not parse: {error}")))?;
-    created.default = ColumnDefault::Expression(now);
+    if capabilities.column_defaults {
+        label.default = ColumnDefault::Literal(Value::Text("it's".to_owned()));
+        let now = dialect
+            .parse_expression(engine.current_timestamp_expression())
+            .map_err(|error| unexpected(case, format!("the current-timestamp expression did not parse: {error}")))?;
+        created.default = ColumnDefault::Expression(now);
+    }
     let mut draft = TableDraft::new(table.clone());
     draft.columns = vec![id, label, created];
     Ok(draft)
@@ -450,7 +458,7 @@ impl Step<'_> {
             (Permission::Allowed, Ok(plan)) => {
                 run(self.connection, &table.table, plan).await?;
                 *table = definition(self.connection, &draft.table).await?;
-                matches_draft(self.case, step, table, &draft)?;
+                matches_draft(self.case, step, self.ddl, table, &draft)?;
                 Ok(true)
             }
             (Permission::Refused(_), Err(BuildDdlError::Unsupported(_) | BuildDdlError::Refused { .. })) => Ok(false),
@@ -621,18 +629,28 @@ impl Step<'_> {
 /// Names and order, nullability and defaults of the columns, the keys of
 /// every index the draft holds and every foreign key it declares. The
 /// server may add an index of its own, as MySQL does for a foreign key.
+/// An engine that orders a table's columns itself (CQL) is held to the
+/// same columns in any order.
 fn matches_draft(
     case: &'static str,
     step: &str,
+    ddl: &dyn DdlDialect,
     table: &TableDefinition,
     draft: &TableDraft,
 ) -> Result<(), ConformanceFailure> {
-    let names: Vec<&str> = table.columns.iter().map(ColumnDefinition::name).collect();
-    let drafted: Vec<&str> = draft.columns.iter().map(|column| column.name.as_str()).collect();
+    let mut names: Vec<&str> = table.columns.iter().map(ColumnDefinition::name).collect();
+    let mut drafted: Vec<&str> = draft.columns.iter().map(|column| column.name.as_str()).collect();
+    if !ddl.capabilities().declared_column_order {
+        names.sort_unstable();
+        drafted.sort_unstable();
+    }
     expect(case, names == drafted, || {
         format!("after {step} the columns are {names:?}, not {drafted:?}")
     })?;
-    for (column, drafted) in table.columns.iter().zip(&draft.columns) {
+    for drafted in &draft.columns {
+        let Some(column) = table.column(&drafted.name) else {
+            continue;
+        };
         expect(case, column.info.nullable == drafted.nullable, || {
             format!("after {step} {} has nullable {}", drafted.name, column.info.nullable)
         })?;

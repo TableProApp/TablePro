@@ -103,7 +103,7 @@ mod tests {
     use super::*;
     use crate::capabilities::{
         CommitResolutionSupport, DataModel, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement,
-        ScriptExecution,
+        ScriptExecution, StatementStop,
     };
     use crate::connect_options::ConnectOptions;
     use crate::connection::Connection;
@@ -126,6 +126,7 @@ mod tests {
             row_count_estimate: EstimateQuality::Unavailable,
             object_kinds: &[],
             database_required: false,
+            statement_stop: StatementStop::Server,
         }
     }
 

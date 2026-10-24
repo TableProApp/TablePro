@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to seven engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, SQLite, DuckDB and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to eight engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -17,13 +17,15 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | MariaDB | 10.11, 11.4 and 12.3 | 10.6 and older, past end of life (10.6 on 2026-07-06). Rolling releases such as 13.0 |
 | SQL Server | 2017, 2019, 2022 and 2025 | 2016 and older, past extended support (2016 on 2026-07-14) |
 | ClickHouse | 26.3 and 26.8 | Monthly releases between long-term ones. 25.8 and older long-term releases, past end of life (25.8 on 2026-08-29) |
+| Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
+| ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
-| DuckDB | 1.5.6, compiled into the app ([ADR 0023](docs/decisions/0023-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
+| DuckDB | 1.5.6, compiled into the app ([ADR 0024](docs/decisions/0024-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
 - MySQL 8.0 reached end of life on 2026-04-30, but Amazon RDS keeps 8.0 instances under paid Extended Support until 2029-07-31, so it stays tested.
-- MariaDB 11.8 and PostgreSQL 15 and 16 are supported between the tested releases, which bound them.
+- MariaDB 11.8, PostgreSQL 15 and 16, and Cassandra 4.1 are supported between the tested releases, which bound them.
 
 ## Install
 
@@ -59,7 +61,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
-| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
+| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate, scylla 1.9 (Cassandra and ScyllaDB) and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
 | SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
 | TLS | rustls with aws-lc-rs as the only crypto provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)) |
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
@@ -280,8 +282,8 @@ selects its first stop; Tab moves to the next stop and Shift+Tab back.
 | `ins` | `INSERT INTO … VALUES` |
 | `upd` | `UPDATE … SET … WHERE`, and `ALTER TABLE … UPDATE … WHERE` on ClickHouse |
 | `del` | `DELETE FROM … WHERE` |
-| `selj` | `SELECT … JOIN … ON` |
-| `ctab` | `CREATE TABLE` with an `id` key column, as the engine spells one |
+| `selj` | `SELECT … JOIN … ON`, except on Cassandra and ScyllaDB, which have no joins |
+| `ctab` | `CREATE TABLE` with an `id` key column, as the engine spells one: a `uuid` on Cassandra and ScyllaDB |
 | `cidx` | `CREATE INDEX` |
 
 Your own snippets live in the folder **Preferences → Editor → Snippets
@@ -309,9 +311,9 @@ added, changed or removed takes effect without a restart:
   parameters out of snippets.
 - `languages` says where a snippet shows: `sql` on every SQL connection
   and in a tab with no connection, or one engine: `postgres`, `mysql`
-  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse`, `duckdb` or
-  `redis`, whose editor offers its own snippets and no SQL ones.
-  Separate several with `;`.
+  (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse`, `cassandra`
+  (Cassandra and ScyllaDB), `duckdb` or `redis`, whose editor offers its
+  own snippets and no SQL ones. Separate several with `;`.
 - A snippet for the engine replaces a `sql` one with the same trigger,
   and either replaces the built-in one.
 - A file that does not parse is skipped, and GtkSourceView logs its name.

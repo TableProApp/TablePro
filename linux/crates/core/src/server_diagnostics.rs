@@ -25,6 +25,11 @@ pub enum ServerCode {
         primary: i32,
         extended: i32,
     },
+    /// The error code of a CQL ERROR frame, which the native protocol
+    /// spec writes in hex: `0x2200` is Invalid.
+    Cql {
+        code: i32,
+    },
     /// DuckDB names its errors by kind rather than number, as the
     /// `Constraint` of "Constraint Error: ...".
     DuckDb {
@@ -56,6 +61,7 @@ impl fmt::Display for ServerCode {
             Self::ClickHouse { code } => write!(f, "{code}"),
             Self::Sqlite { extended, .. } => write!(f, "{extended}"),
             Self::DuckDb { error_type } => f.write_str(error_type),
+            Self::Cql { code } => write!(f, "{code:#06x}"),
             Self::Redis { prefix } => f.write_str(prefix),
         }
     }
@@ -122,6 +128,8 @@ mod tests {
     #[test]
     fn a_code_without_a_sqlstate_reports_none() {
         assert_eq!(ServerCode::ClickHouse { code: 192 }.sqlstate(), None);
+        assert_eq!(ServerCode::Cql { code: 0x2200 }.sqlstate(), None);
+        assert_eq!(ServerCode::Cql { code: 0x2200 }.to_string(), "0x2200");
         assert_eq!(
             ServerCode::Sqlite {
                 primary: 1,

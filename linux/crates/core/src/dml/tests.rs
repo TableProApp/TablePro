@@ -22,6 +22,7 @@ fn column(name: &str, kind: ColumnKind) -> ColumnInfo {
         primary_key: false,
         is_auto_increment: false,
         is_generated: false,
+        partition_scoped: false,
         default: ColumnDefault::None,
         comment: None,
     }
@@ -86,6 +87,40 @@ fn build_update_binds_every_value_and_names_the_row() {
     assert_eq!(statement.params().len(), 2);
     assert_eq!(statement.params()[0].value(), &Value::Text("new".to_owned()));
     assert_eq!(statement.params()[1].value(), &Value::Int(7));
+}
+
+#[test]
+fn an_update_of_partition_scoped_columns_alone_names_only_the_partition() {
+    let dialect = TestDialect::exact();
+    let mut columns = columns();
+    columns[0].partition_scoped = true;
+    columns[2].partition_scoped = true;
+    let identity = RowIdentity::UniqueKey {
+        columns: vec!["id".to_owned(), "name".to_owned()],
+    };
+    let key = [Value::Int(7), Value::Text("ada".to_owned())];
+
+    let shared =
+        build_update(&dialect, &table(), &columns, &identity, &key, &[(2, Value::Int(3))]).expect("the update");
+    let mixed = build_update(
+        &dialect,
+        &table(),
+        &columns,
+        &identity,
+        &key,
+        &[(1, Value::Text("grace".to_owned())), (2, Value::Int(3))],
+    )
+    .expect("the update");
+
+    assert_eq!(
+        shared.sql(),
+        r#"UPDATE "public"."users" SET "tenant" = $1 WHERE "id" = $2"#
+    );
+    assert_eq!(shared.params()[1].value(), &Value::Int(7));
+    assert_eq!(
+        mixed.sql(),
+        r#"UPDATE "public"."users" SET "name" = $1, "tenant" = $2 WHERE "id" = $3 AND "name" = $4"#
+    );
 }
 
 #[test]

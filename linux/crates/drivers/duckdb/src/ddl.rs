@@ -45,6 +45,9 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_comments: true,
     // CASCADE drops no table whose key another table references.
     drop_table_cascade: false,
+    column_defaults: true,
+    required_columns: true,
+    declared_column_order: true,
 };
 
 const TYPE_SUGGESTIONS: &[&str] = &[

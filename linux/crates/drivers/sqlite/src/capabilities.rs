@@ -1,7 +1,7 @@
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
     CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, FileFormat, FileSignature,
-    ReadOnlyEnforcement, ScriptExecution, WriteAtomicity,
+    ReadOnlyEnforcement, ScriptExecution, StatementStop, WriteAtomicity,
 };
 
 /// A database file begins with this header, the shared MIME database
@@ -35,4 +35,5 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     row_count_estimate: EstimateQuality::Statistics,
     object_kinds: &[ObjectKind::Table, ObjectKind::View],
     database_required: false,
+    statement_stop: StatementStop::Server,
 };

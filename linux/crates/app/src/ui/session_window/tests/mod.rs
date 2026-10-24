@@ -1176,6 +1176,7 @@ fn users_table() -> tablepro_core::ddl::TableDefinition {
             primary_key: true,
             is_auto_increment: false,
             is_generated: false,
+            partition_scoped: false,
             default: ColumnDefault::None,
             comment: None,
         },

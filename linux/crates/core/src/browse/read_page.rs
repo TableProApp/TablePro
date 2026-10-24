@@ -1,9 +1,10 @@
 use crate::call_options::CallOptions;
 use crate::connection::Connection;
 use crate::error::DriverError;
-use crate::meta::{CtidWindow, EngineRowIdPart, HeapAddress, PagePosition, RowIdentity, TableEstimate};
+use crate::meta::{CtidWindow, EngineRowIdPart, HeapAddress, PagePosition, PagingState, RowIdentity, TableEstimate};
 use crate::query_result::QueryResult;
 use crate::row_limit::RowLimit;
+use crate::server_page::ServerPageRequest;
 use crate::value::Value;
 
 use super::declared_precision::with_declared_precision;
@@ -44,7 +45,10 @@ pub async fn read_page<E>(
 where
     E: From<BrowseSqlError> + From<DriverError>,
 {
-    let mode = paging_mode(request.identity, request.sort);
+    let mode = paging_mode(connection.dialect().table_paging(), request.identity, request.sort);
+    if mode == PagingMode::ServerPaging {
+        return read_server_page::<E>(connection, request, options).await;
+    }
     let (mut result, mut spec) = read_at::<E>(connection, request, request.position, options).await?;
     let mut position = request.position.clone();
     let reached_start = reads_backward(request.position) && (result.rows.len() as u64) < request.limit;
@@ -56,7 +60,7 @@ where
         }
     }
     let (previous, next) = match mode {
-        PagingMode::Offset => (None, None),
+        PagingMode::Offset | PagingMode::ServerPaging => (None, None),
         PagingMode::Keyset | PagingMode::CtidWindow => (
             edge_key(result.rows.first(), &spec.row_key).map(PagePosition::BeforeKey),
             edge_key(result.rows.last(), &spec.row_key).map(PagePosition::AfterKey),
@@ -72,11 +76,56 @@ where
     })
 }
 
+/// A page the server pages itself, resumed from the paging state the
+/// page before handed back, or read past the rows an offset skips. The
+/// way back is the pager's to remember: a paging state only goes forward.
+async fn read_server_page<E>(
+    connection: &dyn Connection,
+    request: &PageRequest<'_>,
+    options: &CallOptions,
+) -> Result<PageRead, E>
+where
+    E: From<BrowseSqlError> + From<DriverError>,
+{
+    let dialect = connection.dialect();
+    let spec = build_page(&*dialect, request)?;
+    let (resume, skip) = match request.position {
+        PagePosition::Resume(state) => {
+            let bytes = state
+                .bytes_for(&spec.statement)
+                .ok_or(BrowseSqlError::StalePagingState)?;
+            (Some(bytes.clone()), 0)
+        }
+        PagePosition::Offset(offset) => (None, *offset),
+        _ => (None, 0),
+    };
+    let limit = RowLimit::new(request.limit).unwrap_or(RowLimit::EDITOR_DEFAULT);
+    let page = connection
+        .query_server_page(
+            &spec.statement,
+            ServerPageRequest { resume, skip, limit },
+            options.clone(),
+        )
+        .await?;
+    check_shape(&page.result, &spec.layout)?;
+    let next = page
+        .next
+        .map(|bytes| PagePosition::Resume(PagingState::new(bytes, spec.statement.clone())));
+    Ok(PageRead {
+        result: with_declared_precision(page.result, request.columns),
+        layout: spec.layout,
+        position: request.position.clone(),
+        mode: PagingMode::ServerPaging,
+        previous: None,
+        next,
+    })
+}
+
 fn reads_backward(position: &PagePosition) -> bool {
     match position {
         PagePosition::Last | PagePosition::BeforeKey(_) => true,
         PagePosition::CtidWindow(window) => window.backward,
-        PagePosition::First | PagePosition::Offset(_) | PagePosition::AfterKey(_) => false,
+        PagePosition::First | PagePosition::Offset(_) | PagePosition::AfterKey(_) | PagePosition::Resume(_) => false,
     }
 }
 
@@ -94,9 +143,9 @@ async fn read_at<E>(
 where
     E: From<BrowseSqlError> + From<DriverError>,
 {
-    let start = match paging_mode(request.identity, request.sort) {
+    let start = match paging_mode(connection.dialect().table_paging(), request.identity, request.sort) {
         PagingMode::CtidWindow => ctid_start(position, request.identity)?,
-        PagingMode::Keyset | PagingMode::Offset => None,
+        PagingMode::Keyset | PagingMode::Offset | PagingMode::ServerPaging => None,
     };
     let (mut result, spec) = match start {
         Some(start) => walk_heap::<E>(connection, request, start, options).await?,
@@ -116,7 +165,7 @@ fn ctid_start(position: &PagePosition, identity: &RowIdentity) -> Result<Option<
         PagePosition::Last => Some(CtidStart::Backward(None)),
         PagePosition::AfterKey(key) => Some(CtidStart::Forward(Some(heap_address(key, identity)?))),
         PagePosition::BeforeKey(key) => Some(CtidStart::Backward(Some(heap_address(key, identity)?))),
-        PagePosition::Offset(_) | PagePosition::CtidWindow(_) => None,
+        PagePosition::Offset(_) | PagePosition::CtidWindow(_) | PagePosition::Resume(_) => None,
     })
 }
 

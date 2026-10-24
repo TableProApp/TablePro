@@ -5,7 +5,8 @@
 //! of SQLite's keywords. ClickHouse reserves nothing, so its list holds
 //! the words its parser takes as a clause, an operator or a literal
 //! wherever they stand. DuckDB's are the `reserved` and `type_function`
-//! words of its `duckdb_keywords()`.
+//! words of its `duckdb_keywords()`. CQL's is `reserved_keywords.txt` from
+//! the Apache Cassandra 5.0 jar.
 
 use crate::sql_syntax::SqlGrammar;
 
@@ -96,6 +97,13 @@ const DUCKDB: &str = "
     VERBOSE WHEN WHERE WINDOW WITH
 ";
 
+const CQL: &str = "
+    ADD ALLOW ALTER AND APPLY ASC AUTHORIZE BATCH BEGIN BY COLUMNFAMILY CREATE DELETE DESC DESCRIBE DROP
+    ENTRIES EXECUTE FROM FULL GRANT IF IN INDEX INFINITY INSERT INTO IS KEYSPACE LIMIT MATERIALIZED MODIFY
+    NAN NORECURSIVE NOT NULL OF ON OR ORDER PRIMARY RENAME REVOKE SCHEMA SELECT SET TABLE TO TOKEN TRUNCATE
+    UNLOGGED UPDATE USE USING VIEW WHERE WITH
+";
+
 impl SqlGrammar {
     /// Whether `name` reads as the same identifier written without
     /// quotes.
@@ -112,18 +120,19 @@ impl SqlGrammar {
             return false;
         };
         let letter = |c: char| match self {
-            Self::ClickHouse => c.is_ascii_alphabetic(),
+            Self::ClickHouse | Self::Cql => c.is_ascii_alphabetic(),
             _ => c.is_alphabetic(),
         };
-        let start = letter(first) || first == '_' || (self == Self::MsSql && first == '#');
+        // A CQL name starts with a letter, never an underscore.
+        let start = letter(first) || (first == '_' && self != Self::Cql) || (self == Self::MsSql && first == '#');
         let part = |c: char| {
             letter(c)
                 || c.is_ascii_digit()
                 || c == '_'
-                || (c == '$' && self != Self::ClickHouse)
+                || (c == '$' && !matches!(self, Self::ClickHouse | Self::Cql))
                 || (self == Self::MsSql && matches!(c, '#' | '@'))
         };
-        let folds = self == Self::PostgreSql && name.chars().any(char::is_uppercase);
+        let folds = matches!(self, Self::PostgreSql | Self::Cql) && name.chars().any(char::is_uppercase);
         start && chars.all(part) && !folds && !self.is_reserved(name)
     }
 
@@ -141,6 +150,7 @@ impl SqlGrammar {
             Self::MsSql => MSSQL,
             Self::ClickHouse => CLICKHOUSE,
             Self::DuckDb => DUCKDB,
+            Self::Cql => CQL,
             Self::Redis => "",
         }
     }
@@ -168,7 +178,11 @@ mod tests {
         for grammar in SqlGrammar::SQL {
             assert!(grammar.is_bare_identifier("users"), "{grammar:?}");
             assert!(grammar.is_bare_identifier("order_items_2"), "{grammar:?}");
-            assert!(grammar.is_bare_identifier("_draft"), "{grammar:?}");
+            assert_eq!(
+                grammar.is_bare_identifier("_draft"),
+                grammar != SqlGrammar::Cql,
+                "{grammar:?}"
+            );
         }
         assert!(SqlGrammar::PostgreSql.is_bare_identifier("đơn_hàng"));
         assert!(SqlGrammar::MySql.is_bare_identifier("Users"));
@@ -177,6 +191,18 @@ mod tests {
             SqlGrammar::DuckDb.is_bare_identifier("Users"),
             "DuckDB matches a name in any case"
         );
+    }
+
+    #[test]
+    fn a_cql_name_is_lower_case_ascii_and_not_a_keyword() {
+        assert!(SqlGrammar::Cql.is_bare_identifier("count"));
+        assert!(
+            SqlGrammar::Cql.is_bare_identifier("text"),
+            "a type name is not reserved"
+        );
+        for name in ["Users", "đơn", "a$b", "keyspace", "token", "allow"] {
+            assert!(!SqlGrammar::Cql.is_bare_identifier(name), "{name}");
+        }
     }
 
     #[test]

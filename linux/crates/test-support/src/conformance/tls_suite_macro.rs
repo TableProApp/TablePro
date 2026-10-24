@@ -3,9 +3,12 @@
 /// Every case starts a TLS-only server, so every case is
 /// `#[ignore = "requires docker"]`. `client_identity: true` adds the
 /// client-certificate case and needs `ClientIdentityEngine`; `false`
-/// emits no such case. `tls_suite_flags_match_driver_capabilities` is
-/// never ignored and fails when the flag disagrees with the driver's
-/// TLS capabilities.
+/// emits no such case. An engine whose server asks every client for a
+/// certificate or none, as Cassandra and ScyllaDB do, names a second
+/// engine for that case with `identity_engine:`. The other cases then
+/// start a server that asks for none.
+/// `tls_suite_flags_match_driver_capabilities` is never ignored and
+/// fails when the flag disagrees with the driver's TLS capabilities.
 ///
 /// ```no_run,test_harness
 /// # use std::path::{Path, PathBuf};
@@ -78,10 +81,27 @@
 ///         client_identity: false,
 ///     }
 /// }
+///
+/// mod with_a_server_for_the_identity_case {
+///     use super::ExampleTlsEngine;
+///
+///     tablepro_test_support::tls_conformance_suite! {
+///         engine: ExampleTlsEngine,
+///         identity_engine: ExampleTlsEngine,
+///         client_identity: true,
+///     }
+/// }
 /// ```
 #[macro_export]
 macro_rules! tls_conformance_suite {
     (engine: $engine:ty, client_identity: $identity:tt $(,)?) => {
+        $crate::tls_conformance_suite! {
+            engine: $engine,
+            identity_engine: $engine,
+            client_identity: $identity,
+        }
+    };
+    (engine: $engine:ty, identity_engine: $identity_engine:ty, client_identity: $identity:tt $(,)?) => {
         $crate::__conformance_case! {
             true,
             $engine as TlsConformanceEngine,
@@ -118,7 +138,7 @@ macro_rules! tls_conformance_suite {
             disable_against_tls_only_server_is_refused,
             $crate::conformance::cases::tls::disable_against_tls_only_server_is_refused::<$engine>
         }
-        $crate::__tls_identity_case! { $identity, $engine }
+        $crate::__tls_identity_case! { $identity, $identity_engine }
 
         #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn tls_suite_flags_match_driver_capabilities()

@@ -8,10 +8,10 @@ use rustls::pki_types::{CertificateDer, ServerName};
 use std::process::Stdio;
 
 use tablepro_test_fixtures::{
-    ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode, HostKeyRevocation, MssqlFixture, MysqlFixture,
-    MysqlFlavour, MysqlOptions, OpenSshFixture, OpenSshOptions, OpenSshVersion, PgBouncerFixture, PkiFile, PoolMode,
-    PostgresFixture, PostgresVersion, ScriptedAskpass, ServerVersion, SshAgent, SshAuthVariant, SshKeyPair,
-    TestNetwork, TestPki,
+    CassandraFixture, CassandraFlavour, CassandraTls, ClickHouseFixture, ExecOutput, FixtureCredentials, HbaMode,
+    HostKeyRevocation, MssqlFixture, MysqlFixture, MysqlFlavour, MysqlOptions, OpenSshFixture, OpenSshOptions,
+    OpenSshVersion, PgBouncerFixture, PkiFile, PoolMode, PostgresFixture, PostgresVersion, ScriptedAskpass,
+    ServerVersion, SshAgent, SshAuthVariant, SshKeyPair, TestNetwork, TestPki,
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -307,6 +307,50 @@ async fn clickhouse_fixture_starts_the_server_once_with_the_database() -> TestRe
         "{}",
         databases.stderr_text()
     );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn cassandra_fixture_runs_the_requested_release_with_its_roles_and_keyspace() -> TestResult {
+    for flavour in CassandraFlavour::ALL {
+        let fixture = CassandraFixture::start(flavour).await?;
+        let version = match flavour {
+            CassandraFlavour::Cassandra => "SELECT release_version FROM system.local",
+            CassandraFlavour::Scylla => "SELECT version FROM system.versions WHERE key = 'local'",
+        };
+
+        let reported = fixture.cql(version).await?.stdout_text();
+        let roles = fixture.cql("LIST ROLES").await?.stdout_text();
+        let keyspace = fixture
+            .cql("SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name = 'tablepro'")
+            .await?
+            .stdout_text();
+
+        let (major, minor) = fixture.server_version();
+        assert!(
+            reported.contains(&format!(" {major}.{minor}.")),
+            "{flavour:?}: {reported}"
+        );
+        for role in ["tablepro", "tablepro_limited", TestPki::CLIENT_COMMON_NAME] {
+            assert!(roles.contains(role), "{flavour:?}: {roles}");
+        }
+        assert!(keyspace.contains("tablepro"), "{flavour:?}: {keyspace}");
+        assert!(fixture.cql("SELECT nothing FROM nowhere").await.is_err());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn cassandra_tls_fixture_serves_the_generated_certificate() -> TestResult {
+    for flavour in CassandraFlavour::ALL {
+        let fixture = CassandraFixture::start_with(flavour, CassandraTls::Required, None).await?;
+
+        let leaf = served_leaf(fixture.pki(), fixture.host(), fixture.port(), false).await?;
+
+        assert_eq!(leaf, server_certificate(fixture.pki())?, "{flavour:?}");
+    }
     Ok(())
 }
 
