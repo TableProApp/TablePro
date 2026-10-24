@@ -14,6 +14,10 @@ The cleanup path should:
 4. Protect recent targets during routine cleanup based on recorded use, not directory modification time alone. If the free-space reserve is still unmet after stale-cache cleanup, evict only marked Cargo profiles in least-recently-used order while holding the exclusive lock. Preserve unmarked legacy directories and stop when the reserve is met.
 5. Test lock contention, path boundaries, symlinks, recent targets, command failures and insufficient space with disposable fixtures.
 
+Forgejo checkout writes the job workspace before later repository shell commands can run. The checkout shell therefore acquires the exclusive cache lock and performs this cleanup before cloning, then downgrades to a shared lock held through checkout. If marked Cargo profiles cannot restore the reserve, the job stops before creating a partial workspace. This protects only cache-managed Cargo profiles; it does not reclaim Docker data or unrelated filesystem usage.
+
+Deploy the matching helper to every runner label used by these workflows before enabling the checkout shell, including the Ubuntu canary used by `driver-tls`. A stale helper will reject the new `checkout` command before the job starts.
+
 The implementation is in [`scripts/ci-cache.py`](../../scripts/ci-cache.py), with workflow and service integration under [`.forgejo/workflows/`](../../.forgejo/workflows/) and [`ci/`](../../ci/). The [October 23 local evidence](../evidence/ci-profile-cache-cleanup-2026-10-23/README.md) covers the earlier profile-cleanup change in #1497, not the pressure-recovery change in #1586. These files prove repository configuration only; they do not prove deployment on a live runner.
 
 ## Gate scheduling

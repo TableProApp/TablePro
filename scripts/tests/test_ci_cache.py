@@ -107,6 +107,47 @@ class CiCacheTests(unittest.TestCase):
         self.assertFalse((first / 'debug').exists())
         self.assertEqual(result, 0)
 
+    def test_checkout_refuses_to_run_when_cleanup_cannot_restore_the_reserve(self):
+        self.target('unit', 0)
+        shell = self.directory / 'checkout.sh'
+        shell.write_text('touch "$SENTINEL"\n')
+        sentinel = self.directory / 'sentinel'
+        env = dict(os.environ, SENTINEL=str(sentinel))
+        result = subprocess.run(
+            self.command + ['checkout', '--min-free-gib', '100000', str(shell)],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertFalse(sentinel.exists())
+        self.assertIn('reserve', result.stderr)
+
+    def test_checkout_holds_the_shared_cache_lock_for_the_workspace_script(self):
+        shell = self.directory / 'checkout.sh'
+        sentinel = self.directory / 'sentinel'
+        shell.write_text(
+            '"$PYTHON" "$HELPER" --root "$CACHE" --lock "$LOCK" cleanup --min-free-gib 0 > "$SENTINEL"\n'
+        )
+        env = dict(
+            os.environ,
+            CACHE=str(self.cache),
+            HELPER=str(SCRIPT),
+            LOCK=str(self.lock),
+            PYTHON=sys.executable,
+            SENTINEL=str(sentinel),
+            CARGO_TARGET_DIR=str(self.cache / 'unit'),
+        )
+        result = subprocess.run(
+            self.command + ['checkout', '--min-free-gib', '0', str(shell)],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('cache busy; cleanup skipped', sentinel.read_text())
+        self.assertTrue((self.cache / 'unit/.bookie-last-used').is_file())
+
     def test_shared_build_lock_prevents_cleanup(self):
         target = self.target('unit', 10)
         with self.lock.open('r+') as lock:
@@ -191,8 +232,18 @@ class CiCacheTests(unittest.TestCase):
         for filename in ('ci.yml', 'nightly.yml'):
             workflow = (ROOT / '.forgejo/workflows' / filename).read_text()
             self.assertIn('defaults:\n  run:\n    shell: /usr/local/libexec/bookie-ci-cache run {0}\n', workflow)
-            self.assertEqual(workflow.count('shell:'), 1)
+            self.assertEqual(workflow.count('shell: /usr/local/libexec/bookie-ci-cache run {0}'), 1)
             self.assertNotIn('uses:', workflow)
+
+    def test_every_forgejo_checkout_recovers_cache_before_writing_workspace(self):
+        for filename in ('ci.yml', 'nightly.yml'):
+            workflow = (ROOT / '.forgejo/workflows' / filename).read_text()
+            checkout_steps = workflow.split('      - name: Check out\n')[1:]
+            self.assertTrue(checkout_steps, filename)
+            for block in checkout_steps:
+                step = block.split('\n      - name:', 1)[0]
+                self.assertIn('shell: /usr/local/libexec/bookie-ci-cache checkout {0}', step, filename)
+                self.assertLess(step.index('shell:'), step.index('run:'), filename)
 
     def test_missing_or_symlink_lock_fails_closed(self):
         self.lock.unlink()

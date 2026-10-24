@@ -130,6 +130,9 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     run = commands.add_parser('run')
     run.add_argument('script')
+    checkout = commands.add_parser('checkout')
+    checkout.add_argument('script')
+    checkout.add_argument('--min-free-gib', type=int, default=45)
     maintenance = commands.add_parser('cleanup')
     maintenance.add_argument('--min-free-gib', type=int, default=45)
     args = parser.parse_args()
@@ -145,6 +148,15 @@ def main():
             os.execv('/bin/bash', ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', args.script])
         if args.min_free_gib < 0:
             raise ValueError('minimum free space cannot be negative')
+        if args.command == 'checkout':
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            status = cleanup(root, args.min_free_gib * 1024**3)
+            if status:
+                return status
+            fcntl.flock(lock, fcntl.LOCK_SH)
+            mark_used(root)
+            os.set_inheritable(lock, True)
+            os.execv('/bin/bash', ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', args.script])
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
