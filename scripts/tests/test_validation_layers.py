@@ -123,6 +123,33 @@ class LayerRunnerTests(unittest.TestCase):
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 0 tests in 0.01s\n\nOK\n"))
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 3 tests in 0.01s\n\nOK (skipped=1)\n"))
 
+    def test_python_evidence_rejects_mixed_suite_outcomes_even_if_the_wrapper_exits_zero(self):
+        success = "Ran 1 test in 0.01s\n\nOK\n"
+        for other in (
+            "Ran 1 test in 0.01s\n\nFAILED (failures=1)\n",
+            "Ran 1 test in 0.01s\n\nOK (skipped=1)\n",
+            "Ran 0 tests in 0.01s\n\nOK\n",
+        ):
+            for output in (other + success, success + other):
+                with self.subTest(output=output):
+                    result = self.execute(self.step(f"print({output!r})", "python-tests"))
+                    self.assertEqual(result["exit_code"], 0)
+                    self.assertEqual(result["status"], "failed")
+
+    def test_real_python_suite_failure_cannot_be_overruled_by_later_success(self):
+        for outcomes, expected in (((True,), "passed"), ((False, True), "failed"), ((True, False), "failed")):
+            code = (
+                "import unittest\n"
+                "class Contract(unittest.TestCase):\n"
+                "    def runTest(self): self.assertTrue(ok)\n"
+                f"for ok in {outcomes!r}:\n"
+                "    unittest.TextTestRunner().run(Contract())\n"
+            )
+            with self.subTest(outcomes=outcomes):
+                result = self.execute(self.step(code, "python-tests"))
+                self.assertEqual(result["exit_code"], 0)
+                self.assertEqual(result["status"], expected)
+
     def test_nextest_summaries_count_as_rust_test_evidence(self):
         passed = "\x1b[32;1m     Summary\x1b[0m [  24.136s] 1675 tests run: 1675 passed, 15 skipped"
         self.assertTrue(runner.execution_evidence("rust-tests", passed))

@@ -84,7 +84,10 @@ def execution_evidence(kind, output):
     if kind == "exit":
         return True
     if kind == "python-tests":
-        return bool(re.search(r"Ran [1-9]\d* tests? in", output) and re.search(r"^OK$", output, re.M))
+        lines = output.splitlines()
+        counts = [match[1] for line in lines if (match := re.fullmatch(r"Ran (\d+) tests? in .+", line))]
+        outcomes = [line for line in lines if line == "OK" or line.startswith(("OK (", "FAILED"))]
+        return len(counts) == 1 and int(counts[0]) > 0 and outcomes == ["OK"]
     output = re.sub(r"\x1b\[[0-9;]*m", "", output)
     libtest = [
         (row[0] == "ok" and row[2] == "0", int(row[1]))
