@@ -1,4 +1,5 @@
 pub mod active_session;
+pub(crate) mod ai_service;
 pub mod cell_overlay;
 pub mod change_origins;
 pub mod change_tracker;

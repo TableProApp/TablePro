@@ -86,6 +86,11 @@ pub(super) fn describe_buttons(workspace: &Workspace) {
         Some("win.new-editor-tab"),
     );
     describe_icon_button(&imp.tab_button.get(), &crate::i18n::gettext("View Open Tabs"), None);
+    describe_icon_button(
+        &imp.assistant_toggle.get(),
+        &crate::i18n::gettext("Show the Assistant"),
+        Some("win.show-assistant"),
+    );
 }
 
 pub(super) fn install(
@@ -225,6 +230,8 @@ pub(super) mod tests {
                 ..Script::default()
             },
         );
+        // GTK fits a remembered size to the monitor, and xvfb-run on Fedora gives a 640x480 one.
+        test.window.set_size_request(width, height);
         test.window
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
         test.wait_for_page("workspace");
@@ -242,13 +249,17 @@ pub(super) mod tests {
 
         assert_eq!(sidebar, imp.sidebar_header.get());
         assert_eq!(content, imp.content_header.get());
+        let assistant = descendants(&imp.assistant_pane.get())
+            .into_iter()
+            .find_map(|widget| widget.downcast::<adw::HeaderBar>().ok())
+            .expect("the assistant's header bar");
         // The overview draws a header bar of its own while it is open.
         let headers: Vec<adw::HeaderBar> = descendants(&imp.breakpoint_bin.get())
             .into_iter()
             .filter_map(|widget| widget.downcast::<adw::HeaderBar>().ok())
             .collect();
-        assert_eq!(headers.len(), 2, "a header bar outside the two panes");
-        assert!(headers.contains(&sidebar) && headers.contains(&content));
+        assert_eq!(headers.len(), 3, "a header bar outside the three panes");
+        assert!(headers.contains(&sidebar) && headers.contains(&content) && headers.contains(&assistant));
         assert!(
             descendants(&imp.sidebar_header.get()).iter().any(|widget| {
                 widget
@@ -350,7 +361,10 @@ pub(super) mod tests {
         let test = sized("Wide", 1200, 760);
         let workspace = test.workspace();
         let imp = workspace.imp();
-        wait_until(Duration::from_secs(2), || imp.breakpoint_bin.width() > 0).expect("the workspace laid out");
+        wait_until(Duration::from_secs(2), || {
+            imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint().is_none()
+        })
+        .expect("the workspace laid out with no breakpoint");
 
         assert_eq!(imp.breakpoint_bin.current_breakpoint(), None);
         assert!(imp.tab_bar.is_visible());

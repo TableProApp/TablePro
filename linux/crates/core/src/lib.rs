@@ -1,3 +1,5 @@
+mod ai_policy;
+mod ai_provider;
 mod auth_mode;
 pub mod browse;
 mod busy_reason;
@@ -87,6 +89,8 @@ mod write_batch;
 mod write_ledger;
 mod write_report;
 
+pub use ai_policy::AiPolicy;
+pub use ai_provider::AiProvider;
 pub use auth_mode::AuthMode;
 pub use busy_reason::BusyReason;
 pub use call_options::CallOptions;

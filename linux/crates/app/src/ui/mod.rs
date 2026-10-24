@@ -1,4 +1,6 @@
 mod a11y;
+mod ai_policy;
+pub(crate) mod assistant;
 mod browse_tab;
 pub(crate) mod clipboard;
 mod combo_value;

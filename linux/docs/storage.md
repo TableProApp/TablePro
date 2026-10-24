@@ -24,6 +24,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 - A `SavedConnection` does **not** carry a password. Secrets live in the keyring, keyed by the connection's UUID, so a rename or a new host keeps them.
 - `safe_mode` is the connection's Safe Mode level: `off`, `confirm_writes` or `read_only`. It has no default, since guessing Off would drop a guard. Version 1 of the file had a `read_only` switch instead, which reads as `read_only` when on and `off` when off.
 - `external_access` is what MCP clients may do on the connection: `blocked`, `read_only` or `read_write` ([ADR 0022](decisions/0022-ai-assistant-and-mcp-server.md)). A file written before it existed reads as `read_only`, the level a new connection starts at.
+- `ai_policy` is what the AI assistant may send from the connection: `ask`, `allow` or `never`. A file written before it existed reads as `ask`, the policy a new connection starts at.
 - `group` is a `ConnectionGroupName`: trimmed, 1 to 64 characters, no control characters. Earlier builds stored any name, so a stored one is read with its control characters turned into spaces and cut to 64 characters, and a blank one reads as no group.
 - The file's `tags` list holds every `ConnectionTag`: an `id`, a `name` (`ConnectionTagName`: trimmed, 1 to 32 characters, no control characters, cleaned on read as a group's is) and a `color` from the same palette as `color`. No two tags share a name in any case: `create_tag_blocking` and `update_tag_blocking` refuse one with `TagNameTaken`.
 - A connection's `tags` are ids from that list. Every write drops an id the list lacks and a repeated one, so `delete_tag_blocking` takes the tag off every connection in the same write, and a connection saved with a tag deleted meanwhile loses it.
@@ -51,6 +52,7 @@ Notes:
 
 - Schema name: the application id plus `.Password`, so `app.tablepro.TablePro.Password` for an installed build and `app.tablepro.TablePro.Devel.Password` for a development one. Neither reads the other's secrets. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
 - The MCP server's access token is one item of its own, with `xdg:schema` and `kind` `mcp_token` and no `connection-id`, so deleting a connection never matches it. It is made on the server's first start and replaced from Preferences.
+- Each AI provider's API key is one item, with `xdg:schema`, `kind` `ai_api_key` and `provider` (`anthropic`, `openai` or `openai-compatible`) and no `connection-id`. Preferences > AI stores and removes it; the assistant reads it before each request.
 - Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
@@ -283,6 +285,12 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `restore-session` | `b` | `true` | |
 | `mcp-server-enabled` | `b` | `false` | |
 | `mcp-server-port` | `u` | `23508` | 1024 to 65535 |
+| `ai-provider` | enum | `none` | `none`, `anthropic`, `openai`, `openai-compatible` |
+| `ai-anthropic-model` | `s` | `claude-opus-5-5` | |
+| `ai-openai-model` | `s` | empty | |
+| `ai-compatible-model` | `s` | empty | |
+| `ai-compatible-url` | `s` | `http://localhost:11434/v1` | |
+| `ai-inline-suggestions` | `b` | `false` | |
 | `connect-dialog-driver` | `s` | `postgres` | |
 | `save-query-history` | `b` | `true` | |
 | `history-retention-days` | `u` | `30` | 0 to 365 |

@@ -57,6 +57,7 @@ crates/app/src/runtime/resume_detector.rs
 crates/app/src/runtime/stamped.rs
 crates/app/src/runtime/system_clocks.rs
 crates/app/src/services/active_session.rs
+crates/app/src/services/ai_service.rs
 crates/app/src/services/cell_overlay.rs
 crates/app/src/services/change_origins.rs
 crates/app/src/services/change_tracker.rs
@@ -130,6 +131,17 @@ crates/app/src/ui/a11y/invalid.rs
 crates/app/src/ui/a11y/key_shortcuts.rs
 crates/app/src/ui/a11y/mod.rs
 crates/app/src/ui/a11y/tests.rs
+crates/app/src/ui/ai_policy.rs
+crates/app/src/ui/assistant/assistant_access.rs
+crates/app/src/ui/assistant/assistant_pane.rs
+crates/app/src/ui/assistant/code_block.rs
+crates/app/src/ui/assistant/conversation.rs
+crates/app/src/ui/assistant/error_text.rs
+crates/app/src/ui/assistant/fake_provider.rs
+crates/app/src/ui/assistant/markdown.rs
+crates/app/src/ui/assistant/message_view.rs
+crates/app/src/ui/assistant/mod.rs
+crates/app/src/ui/assistant/schema_reader.rs
 crates/app/src/ui/browse_tab/browse_actions.rs
 crates/app/src/ui/browse_tab/browse_command.rs
 crates/app/src/ui/browse_tab/browse_pager.rs
@@ -226,6 +238,7 @@ crates/app/src/ui/diagram/tab_imp.rs
 crates/app/src/ui/diagram/tests.rs
 crates/app/src/ui/diagram/zoom.rs
 crates/app/src/ui/discard_alert.rs
+crates/app/src/ui/editor/assistant_actions.rs
 crates/app/src/ui/editor/buffer_edit.rs
 crates/app/src/ui/editor/completion/catalog_read.rs
 crates/app/src/ui/editor/completion/completion_scope.rs
@@ -253,6 +266,7 @@ crates/app/src/ui/editor/find_bar.rs
 crates/app/src/ui/editor/find_state.rs
 crates/app/src/ui/editor/format_plan.rs
 crates/app/src/ui/editor/imp.rs
+crates/app/src/ui/editor/inline_suggestion.rs
 crates/app/src/ui/editor/mod.rs
 crates/app/src/ui/editor/result_item.rs
 crates/app/src/ui/editor/result_widgets.rs
@@ -406,6 +420,7 @@ crates/app/src/ui/picker/new_group_dialog.rs
 crates/app/src/ui/picker/picker_actions.rs
 crates/app/src/ui/picker/tests.rs
 crates/app/src/ui/plain_toast.rs
+crates/app/src/ui/preferences_dialog/ai_page.rs
 crates/app/src/ui/preferences_dialog/data_browser_group.rs
 crates/app/src/ui/preferences_dialog/editor_page.rs
 crates/app/src/ui/preferences_dialog/general_page.rs
@@ -502,6 +517,7 @@ crates/app/src/ui/tags/mod.rs
 crates/app/src/ui/tags/tag_dialog.rs
 crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
+crates/app/src/ui/workspace/assistant.rs
 crates/app/src/ui/workspace/close_flow.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
@@ -542,6 +558,7 @@ crates/app/src/ui/workspace/tab_index.rs
 crates/app/src/ui/workspace/tab_spec.rs
 crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
+crates/app/src/ui/workspace/tests/assistant.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
 crates/app/src/ui/workspace/tests/diagram.rs
 crates/app/src/ui/workspace/tests/keys.rs
@@ -627,6 +644,7 @@ data/app.tablepro.TablePro.gschema.xml.in
 data/app.tablepro.TablePro.metainfo.xml.in.in
 data/resources/gtk/menus.ui
 data/resources/shortcuts-dialog.ui
+data/resources/ui/assistant-pane.ui
 data/resources/ui/browse-tab.ui
 data/resources/ui/connect-dialog.ui
 data/resources/ui/connect-failed-page.ui
@@ -642,6 +660,7 @@ data/resources/ui/history-row.ui
 data/resources/ui/pager-bar.ui
 data/resources/ui/pending-changes-bar.ui
 data/resources/ui/picker-page.ui
+data/resources/ui/preferences-ai-page.ui
 data/resources/ui/preferences-data-browser-group.ui
 data/resources/ui/preferences-dialog.ui
 data/resources/ui/preferences-editor-page.ui

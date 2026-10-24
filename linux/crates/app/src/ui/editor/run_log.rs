@@ -311,6 +311,8 @@ fn failed(error: &DriverError, lost: SessionLoss, error_base: usize) -> EntryKin
 /// The results list of one run, built as the batches report.
 #[derive(Debug, Default)]
 pub struct RunLog {
+    /// What each batch sent, for the assistant to fix one that failed.
+    statements: Vec<UserSql>,
     previews: Vec<String>,
     entries: Vec<RunLogEntry>,
     /// The first batch no report has arrived for yet.
@@ -333,9 +335,15 @@ impl RunLog {
             .collect();
         Self {
             previews: statements.iter().map(|sql| sql_preview(sql.as_str())).collect(),
+            statements,
             entries,
             ..Self::default()
         }
+    }
+
+    /// The text batch `batch` sent.
+    pub fn statement(&self, batch: usize) -> Option<&str> {
+        self.statements.get(batch).map(UserSql::as_str)
     }
 
     /// Take one event; returns how many lines the log had before it, so

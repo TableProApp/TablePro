@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 use tablepro_storage::settings::keys;
 use tablepro_storage::{AppSettings, EditorFont, SettingsError, WindowGeometry};
@@ -79,6 +80,43 @@ fn mcp_server_round_trip_and_port_range() -> TestResult {
     // A port below 1024 belongs to a system service, never to the app.
     assert!(fixture.settings.set_mcp_server_port(80).is_err());
     assert_eq!(fixture.settings.mcp_server_port(), 40_000);
+    Ok(())
+}
+
+#[test]
+fn the_assistant_starts_off_and_keeps_each_providers_model() -> TestResult {
+    let fixture = Fixture::new()?;
+    assert_eq!(fixture.settings.ai_provider(), None);
+    assert!(!fixture.settings.ai_inline_suggestions());
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    assert_eq!(fixture.settings.ai_model(AiProvider::OpenAi), "");
+    assert_eq!(
+        fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
+        "http://localhost:11434/v1"
+    );
+
+    fixture.settings.set_ai_provider(Some(AiProvider::OpenAiCompatible))?;
+    fixture
+        .settings
+        .set_ai_model(AiProvider::OpenAiCompatible, " llama3.2 ")?;
+    fixture.settings.set_ai_compatible_url("http://gpu-box:11434/v1")?;
+    fixture.settings.set_ai_inline_suggestions(true)?;
+
+    assert_eq!(fixture.settings.ai_provider(), Some(AiProvider::OpenAiCompatible));
+    assert_eq!(fixture.settings.ai_model(AiProvider::OpenAiCompatible), "llama3.2");
+    assert_eq!(fixture.settings.ai_model(AiProvider::Anthropic), "claude-opus-5-5");
+    assert_eq!(
+        fixture.settings.ai_base_url(AiProvider::OpenAiCompatible),
+        "http://gpu-box:11434/v1"
+    );
+    assert_eq!(
+        fixture.settings.ai_base_url(AiProvider::OpenAi),
+        "https://api.openai.com/v1"
+    );
+    assert!(fixture.settings.ai_inline_suggestions());
+
+    fixture.settings.set_ai_provider(None)?;
+    assert_eq!(fixture.settings.ai_provider(), None);
     Ok(())
 }
 

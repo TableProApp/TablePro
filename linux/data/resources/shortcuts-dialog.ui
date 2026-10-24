@@ -40,6 +40,12 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="win-show-assistant">
+            <property name="title" translatable="yes">Show or Hide the Assistant</property>
+            <property name="action-name">win.show-assistant</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="app-shortcuts">
             <property name="title" translatable="yes">Keyboard Shortcuts</property>
             <property name="action-name">app.shortcuts</property>
@@ -417,6 +423,18 @@
           <object class="AdwShortcutsItem" id="editor-find-previous">
             <property name="title" translatable="yes">Previous Match</property>
             <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="suggestion-accept">
+            <property name="title" translatable="yes">Accept the Assistant’s Suggestion</property>
+            <property name="accelerator">Tab</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="suggestion-dismiss">
+            <property name="title" translatable="yes">Dismiss the Assistant’s Suggestion</property>
+            <property name="accelerator">Escape</property>
           </object>
         </child>
       </object>

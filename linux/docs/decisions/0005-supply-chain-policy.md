@@ -56,3 +56,9 @@ sqlx takes MySQL CA certificates only as PEM bytes and has no hook for a rustls 
 **Watch list**: sqlx #4044 and #4045, which let a caller pass a rustls `ClientConfig`. The bundle is deleted in the commit that adopts them.
 
 **Per-engine trust**: PostgreSQL and ClickHouse verify through rustls-platform-verifier with the CA file as an extra root; MySQL uses the PEM bundle; SQL Server uses tiberius' native roots plus one CA certificate. Inside Flatpak only the runtime CA bundle is visible (freedesktop-sdk #1905), so a host-only CA needs the CA file row.
+
+### AI provider protocols (`tablepro-ai`)
+
+`tablepro-ai` writes the request bodies and reads the streamed events of two protocols by hand, over hyper: Anthropic's Messages API (`anthropic.rs`) and OpenAI's Chat Completions (`openai.rs`), which Ollama and other self-hosted servers also speak. Anthropic publishes no Rust SDK. The community crates for OpenAI's protocol go through reqwest, a second HTTP client beside the hyper one the ClickHouse driver uses, with a TLS setup of its own, where every connection the app makes takes its rustls configuration from `tablepro-net` ([ADR 0009](0009-crypto-provider-and-sources.md)). The server-sent events are parsed by `sse-stream`, which rmcp already brings; `tests/providers.rs` runs both protocols against a local server that answers the way each provider does.
+
+**Watch list**: an official Anthropic Rust SDK, or an OpenAI-protocol crate, that takes the caller's hyper client or rustls `ClientConfig`.

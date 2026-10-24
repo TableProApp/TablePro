@@ -58,6 +58,7 @@ default = ["kerberos"]
 kerberos = ["tablepro-driver-mssql/kerberos"]
 
 [dependencies]
+tablepro-ai.workspace = true
 tablepro-core.workspace = true
 tablepro-driver-cassandra.workspace = true
 tablepro-driver-clickhouse.workspace = true
@@ -99,6 +100,8 @@ gettext-rs = { version = "0.8", features = ["gettext-system"] }
 # Counts grouped the way the user's locale groups digits.
 icu_decimal = { version = "2.3", features = ["alloc"] }
 icu_locale_core = { version = "2.3", features = ["alloc"] }
+# The assistant's replies are Markdown; the HTML writer stays off.
+pulldown-cmark = { version = "0.13", default-features = false }
 sqlformat = "0.5"
 
 [dev-dependencies]
@@ -107,7 +110,7 @@ tablepro-session = { workspace = true, features = ["fakes"] }
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt", "test-util"] }
+tokio = { workspace = true, features = ["rt", "test-util", "io-util"] }
 # tokio-postgres logs through `log`, so the logging tests drive that
 # bridge the way it does.
 log = "0.4"

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use oo7::Keyring;
 use secrecy::{ExposeSecret, SecretString};
@@ -34,10 +36,49 @@ impl SecretStore {
 
     /// The token MCP clients present, or `None` before one was made.
     pub async fn load_mcp_token(&self) -> Result<Option<SecretString>, SecretError> {
+        self.load_text(&secret_attributes::for_mcp_token(&self.schema)).await
+    }
+
+    /// Store `token` in place of the one before it.
+    pub async fn store_mcp_token(&self, token: &SecretString, label: &str) -> Result<(), SecretError> {
         let attributes = secret_attributes::for_mcp_token(&self.schema);
+        self.with_keyring(async |keyring| {
+            keyring
+                .create_item(label, &attributes, oo7::Secret::text(token.expose_secret()), true)
+                .await
+        })
+        .await
+    }
+
+    /// The API key kept for an AI provider, or `None` before one was
+    /// added. `provider` is the provider's stored id.
+    pub async fn load_ai_key(&self, provider: &str) -> Result<Option<SecretString>, SecretError> {
+        self.load_text(&secret_attributes::for_ai_key(&self.schema, provider))
+            .await
+    }
+
+    /// Store `key` in place of the provider's key before it.
+    pub async fn store_ai_key(&self, provider: &str, key: &SecretString, label: &str) -> Result<(), SecretError> {
+        let attributes = secret_attributes::for_ai_key(&self.schema, provider);
+        self.with_keyring(async |keyring| {
+            keyring
+                .create_item(label, &attributes, oo7::Secret::text(key.expose_secret()), true)
+                .await
+        })
+        .await
+    }
+
+    pub async fn delete_ai_key(&self, provider: &str) -> Result<(), SecretError> {
+        let attributes = secret_attributes::for_ai_key(&self.schema, provider);
+        self.with_keyring(async |keyring| keyring.delete(&attributes).await)
+            .await
+    }
+
+    /// The text of the first item matching `attributes`.
+    async fn load_text(&self, attributes: &HashMap<&'static str, String>) -> Result<Option<SecretString>, SecretError> {
         let secret = self
             .with_keyring(async |keyring| {
-                let items = keyring.search_items(&attributes).await?;
+                let items = keyring.search_items(attributes).await?;
                 let Some(item) = items.into_iter().next() else {
                     return Ok(None);
                 };
@@ -52,17 +93,6 @@ impl SecretStore {
         };
         let text = std::str::from_utf8(secret.as_bytes()).map_err(|_| SecretError::InvalidEncoding)?;
         Ok(Some(SecretString::from(text.to_owned())))
-    }
-
-    /// Store `token` in place of the one before it.
-    pub async fn store_mcp_token(&self, token: &SecretString, label: &str) -> Result<(), SecretError> {
-        let attributes = secret_attributes::for_mcp_token(&self.schema);
-        self.with_keyring(async |keyring| {
-            keyring
-                .create_item(label, &attributes, oo7::Secret::text(token.expose_secret()), true)
-                .await
-        })
-        .await
     }
 
     /// Run one operation against an unlocked keyring, reopening the

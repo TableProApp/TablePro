@@ -12,6 +12,9 @@
       <object class="TableProEditorPage" id="editor_page"/>
     </child>
     <child>
+      <object class="TableProAiPage" id="ai_page"/>
+    </child>
+    <child>
       <object class="TableProMcpPage" id="mcp_page"/>
     </child>
   </template>

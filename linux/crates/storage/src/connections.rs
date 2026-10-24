@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tablepro_core::credentials::SecretKind;
-use tablepro_core::{AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
+use tablepro_core::{AiPolicy, AuthMode, ExternalAccess, NetworkOptions, SafeModeLevel, TlsConfig};
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -34,6 +34,11 @@ pub struct SavedConnection {
     /// existed reads as Read Only, the level a new connection starts at.
     #[serde(default)]
     pub external_access: ExternalAccess,
+    /// What the AI assistant may send from here. A file written before
+    /// the policy existed reads as Ask, the policy a new connection
+    /// starts at.
+    #[serde(default)]
+    pub ai_policy: AiPolicy,
     #[serde(default)]
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -775,6 +780,7 @@ mod tests {
             tls: TlsConfig::verify_full(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(Utc::now()),
@@ -802,6 +808,7 @@ mod tests {
             tls: TlsConfig::disabled(),
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

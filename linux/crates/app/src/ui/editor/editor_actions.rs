@@ -55,6 +55,19 @@ impl SqlEditor {
             }),
             entry("single-cursor", SqlEditor::close_popup_or_single_cursor),
         ]);
+        for (name, action) in super::assistant_actions::ASSISTANT_ACTIONS {
+            let weak = self.downgrade();
+            let entry = gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
+                .activate(move |_, _, _| {
+                    if let Some(editor) = weak.upgrade() {
+                        editor.ask_assistant(action);
+                    }
+                })
+                .build();
+            actions.add_action_entries([entry]);
+            // Hidden until a workspace attaches an assistant that may send.
+            set_enabled(&actions, name, false);
+        }
         sync_run_actions(&actions, false, None);
         sync_caret_actions(&actions, &self.imp().source_view);
         // Commands have no comments, and no layout to format them into.

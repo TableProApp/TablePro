@@ -184,6 +184,26 @@ fn in_from_list(rest: &[Lexeme<'_>], grammar: SqlGrammar) -> bool {
     false
 }
 
+/// Every table `text` names, in the order its statements name them,
+/// for what the assistant reads the structure of.
+pub fn tables_named(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> Vec<TableRef> {
+    let plan = ScriptPlan::build(text, grammar, settings);
+    let mut tables: Vec<TableRef> = Vec::new();
+    for statement in plan.statements() {
+        let lexemes: Vec<Lexeme<'_>> = plan
+            .tokens(statement.range.clone())
+            .filter(|token| !token.kind.is_trivia() && token.kind != ScriptTokenKind::ExecutableMarker)
+            .filter_map(|token| Lexeme::new(text, token))
+            .collect();
+        for table in TableMap::collect(&lexemes, grammar).in_order() {
+            if !tables.contains(&table) {
+                tables.push(table);
+            }
+        }
+    }
+    tables
+}
+
 /// The tables a statement names, under their aliases and their own
 /// names.
 #[derive(Debug, Default)]
@@ -461,6 +481,26 @@ mod tests {
     }
 
     const OBJECTS: Option<CompletionScope> = Some(CompletionScope::Objects { schema: None });
+
+    #[test]
+    fn every_statements_tables_are_named_once_in_order() {
+        let text = "SELECT * FROM orders o JOIN customers c ON c.id = o.customer_id;\nUPDATE sales.orders SET x = 1;\nSELECT 1 FROM orders;";
+
+        let tables = tables_named(
+            text,
+            SqlGrammar::PostgreSql,
+            LexicalSettings::default_for(SqlGrammar::PostgreSql),
+        );
+
+        assert_eq!(
+            tables,
+            [
+                table(None, "orders"),
+                table(None, "customers"),
+                table(Some("sales"), "orders")
+            ]
+        );
+    }
 
     #[test]
     fn after_from_suggests_objects() {

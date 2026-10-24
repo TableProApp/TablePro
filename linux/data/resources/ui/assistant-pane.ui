@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <menu id="assistant_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">New Conversation</attribute>
+        <attribute name="action">assistant.new-conversation</attribute>
+      </item>
+    </section>
+  </menu>
+  <template class="TableProAssistantPane" parent="AdwBin">
+    <property name="child">
+      <object class="AdwToolbarView" id="toolbar">
+        <property name="bottom-bar-style">raised</property>
+        <child type="top">
+          <object class="AdwHeaderBar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle" id="title">
+                <property name="title" translatable="yes">Assistant</property>
+              </object>
+            </property>
+            <child type="end">
+              <object class="GtkMenuButton" id="menu_button">
+                <property name="icon-name">view-more-symbolic</property>
+                <property name="menu-model">assistant_menu</property>
+                <property name="tooltip-text" translatable="yes">Assistant Menu</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Assistant Menu</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkStack" id="stack">
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">off</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">assistant-symbolic</property>
+                    <property name="title" translatable="yes">The Assistant Is Off</property>
+                    <property name="description" translatable="yes">Choose a provider in Preferences to ask about this connection, and to explain, review and fix its SQL.</property>
+                    <property name="child">
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Open Preferences</property>
+                        <property name="action-name">app.preferences</property>
+                        <property name="halign">center</property>
+                        <style>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                    </property>
+                    <style>
+                      <class name="compact"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">blocked</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">action-unavailable-symbolic</property>
+                    <property name="title" translatable="yes">Off for This Connection</property>
+                    <property name="description" translatable="yes">This connection’s AI Assistant setting is Never, so nothing from it is sent. Edit the connection to change it.</property>
+                    <style>
+                      <class name="compact"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">chat</property>
+                <property name="child">
+                  <object class="GtkStack" id="conversation_stack">
+                    <child>
+                      <object class="GtkStackPage">
+                        <property name="name">empty</property>
+                        <property name="child">
+                          <object class="AdwStatusPage" id="empty_page">
+                            <property name="icon-name">assistant-symbolic</property>
+                            <property name="title" translatable="yes">Ask About This Connection</property>
+                            <style>
+                              <class name="compact"/>
+                            </style>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkStackPage">
+                        <property name="name">messages</property>
+                        <property name="child">
+                          <object class="GtkScrolledWindow" id="scroller">
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="vexpand">true</property>
+                            <property name="child">
+                              <object class="GtkBox" id="messages">
+                                <property name="orientation">vertical</property>
+                                <property name="spacing">18</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                              </object>
+                            </property>
+                          </object>
+                        </property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkBox" id="composer_bar">
+            <property name="spacing">6</property>
+            <property name="margin-top">6</property>
+            <property name="margin-bottom">6</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <child>
+              <object class="GtkOverlay">
+                <property name="hexpand">true</property>
+                <property name="child">
+                  <object class="GtkScrolledWindow">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="propagate-natural-height">true</property>
+                    <property name="max-content-height">160</property>
+                    <property name="has-frame">true</property>
+                    <property name="child">
+                      <object class="GtkTextView" id="composer">
+                        <property name="wrap-mode">word-char</property>
+                        <property name="accepts-tab">false</property>
+                        <property name="top-margin">8</property>
+                        <property name="bottom-margin">8</property>
+                        <property name="left-margin">10</property>
+                        <property name="right-margin">10</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Message to the Assistant</property>
+                        </accessibility>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+                <child type="overlay">
+                  <object class="GtkLabel" id="placeholder">
+                    <property name="label" translatable="yes">Ask about this connection…</property>
+                    <property name="halign">start</property>
+                    <property name="valign">start</property>
+                    <property name="margin-top">9</property>
+                    <property name="margin-start">11</property>
+                    <property name="can-target">false</property>
+                    <property name="accessible-role">presentation</property>
+                    <style>
+                      <class name="dim-label"/>
+                    </style>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStack" id="send_stack">
+                <property name="valign">end</property>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">send</property>
+                    <property name="child">
+                      <object class="GtkButton" id="send_button">
+                        <property name="icon-name">go-up-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Send</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Send</property>
+                        </accessibility>
+                        <style>
+                          <class name="circular"/>
+                          <class name="suggested-action"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkStackPage">
+                    <property name="name">stop</property>
+                    <property name="child">
+                      <object class="GtkButton" id="stop_button">
+                        <property name="icon-name">media-playback-stop-symbolic</property>
+                        <property name="tooltip-text" translatable="yes">Stop the Reply</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Stop the Reply</property>
+                        </accessibility>
+                        <style>
+                          <class name="circular"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

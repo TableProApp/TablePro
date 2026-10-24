@@ -55,6 +55,8 @@ pub(super) struct TabFactoryParts {
     pub read_only: bool,
     /// Whether a tab's title names the table's schema.
     pub naming: Rc<Cell<TableNaming>>,
+    /// The window's assistant, which editor tabs ask.
+    pub assistant: Rc<crate::ui::assistant::AssistantAccess>,
     pub snippets: Rc<crate::services::snippet_library::SnippetLibrary>,
 }
 
@@ -164,6 +166,7 @@ impl TabFactory {
             snippets: parts.snippets.clone(),
         });
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.
         if let Some(file) = file {
@@ -477,6 +480,10 @@ pub(super) fn connect_editor(
     editor.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let close = input.clone();
     editor.connect_close_requested(move |_| close.deliver(WorkspaceInput::CloseWorkspaceTab(tab_id)));
+    let assistant = input.clone();
+    editor.connect_assistant_requested(move |_, request| {
+        assistant.deliver(WorkspaceInput::AskAssistant(Box::new(request)));
+    });
     let export = input.clone();
     editor.connect_export_results(move |_, offer| {
         export.deliver(WorkspaceInput::ExportResults {

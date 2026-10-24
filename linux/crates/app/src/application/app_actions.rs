@@ -65,6 +65,7 @@ fn present_preferences(app: &TableProApplication) {
         &services.tasks,
         services.file_revealer.clone(),
         services.mcp(),
+        services.ai.clone(),
     )
     .present(app.active_window().as_ref());
 }

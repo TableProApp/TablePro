@@ -29,6 +29,16 @@ pub(super) fn for_mcp_token(schema: &str) -> HashMap<&'static str, String> {
     attributes
 }
 
+/// Attributes of one AI provider's API key. Like the MCP token it
+/// belongs to no connection.
+pub(super) fn for_ai_key(schema: &str, provider: &str) -> HashMap<&'static str, String> {
+    let mut attributes = HashMap::new();
+    attributes.insert("xdg:schema", schema.to_owned());
+    attributes.insert("kind", "ai_api_key".to_owned());
+    attributes.insert("provider", provider.to_owned());
+    attributes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,6 +90,22 @@ mod tests {
         assert_eq!(token.get("xdg:schema").map(String::as_str), Some(SCHEMA));
         for kind in SecretKind::ALL {
             assert_ne!(token.get("kind"), for_secret(SCHEMA, Uuid::new_v4(), kind).get("kind"));
+        }
+    }
+
+    #[test]
+    fn an_ai_key_matches_no_connection_and_no_other_provider() {
+        let anthropic = for_ai_key(SCHEMA, "anthropic");
+        let openai = for_ai_key(SCHEMA, "openai");
+
+        assert!(!anthropic.contains_key("connection-id"));
+        assert_ne!(anthropic, openai);
+        assert_ne!(anthropic.get("kind"), for_mcp_token(SCHEMA).get("kind"));
+        for kind in SecretKind::ALL {
+            assert_ne!(
+                anthropic.get("kind"),
+                for_secret(SCHEMA, Uuid::new_v4(), kind).get("kind")
+            );
         }
     }
 

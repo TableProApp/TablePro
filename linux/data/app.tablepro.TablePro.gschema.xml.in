@@ -24,6 +24,13 @@
     <value nick="comma" value="1"/>
   </enum>
 
+  <enum id="@app-id@.AiProvider">
+    <value nick="none" value="0"/>
+    <value nick="anthropic" value="1"/>
+    <value nick="openai" value="2"/>
+    <value nick="openai-compatible" value="3"/>
+  </enum>
+
   <schema id="@app-id@" path="@schema-path@">
     <key name="window-width" type="i">
       <default>1200</default>
@@ -119,6 +126,42 @@
       <range min="1024" max="65535"/>
       <summary>MCP server port</summary>
       <description>The port on 127.0.0.1 the MCP server listens on.</description>
+    </key>
+
+    <key name="ai-provider" enum="@app-id@.AiProvider">
+      <default>'none'</default>
+      <summary>AI assistant provider</summary>
+      <description>Who answers the AI assistant: Anthropic, OpenAI, or Ollama and other servers that speak OpenAI's protocol. None turns the assistant off, and then nothing is sent anywhere.</description>
+    </key>
+
+    <key name="ai-anthropic-model" type="s">
+      <default>'claude-opus-5-5'</default>
+      <summary>Anthropic model</summary>
+      <description>The model id the assistant asks Anthropic for.</description>
+    </key>
+
+    <key name="ai-openai-model" type="s">
+      <default>''</default>
+      <summary>OpenAI model</summary>
+      <description>The model id the assistant asks OpenAI for.</description>
+    </key>
+
+    <key name="ai-compatible-model" type="s">
+      <default>''</default>
+      <summary>Compatible server model</summary>
+      <description>The model id the assistant asks an Ollama or other OpenAI-compatible server for, such as llama3.2.</description>
+    </key>
+
+    <key name="ai-compatible-url" type="s">
+      <default>'http://localhost:11434/v1'</default>
+      <summary>Compatible server address</summary>
+      <description>The address of an Ollama or other OpenAI-compatible server, version path included. An API key is sent over plain http only to this computer.</description>
+    </key>
+
+    <key name="ai-inline-suggestions" type="b">
+      <default>false</default>
+      <summary>Suggest SQL while typing</summary>
+      <description>Whether the editor asks the assistant for a completion when you pause typing, and shows it as dimmed text that Tab accepts. Each pause sends the text around the cursor.</description>
     </key>
 
     <key name="connect-dialog-driver" type="s">

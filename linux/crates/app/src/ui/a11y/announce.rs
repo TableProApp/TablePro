@@ -1,4 +1,5 @@
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 
 /// Say `message` from `widget`, for a change a screen reader would not
@@ -11,7 +12,23 @@ pub(crate) fn announce(widget: &impl IsA<gtk::Widget>, message: &str, priority: 
     let widget = widget.as_ref();
     #[cfg(test)]
     said::record(widget, message, priority);
-    widget.announce(message, priority);
+    if can_announce(widget) {
+        widget.announce(message, priority);
+    }
+}
+
+/// With no accessibility bus GTK falls back to its test context, which
+/// has no announce of its own: calling it crashes the app.
+fn can_announce(widget: &gtk::Widget) -> bool {
+    // gtk-rs takes the context as never null, but GTK returns none under
+    // GTK_A11Y=none or while the widget is destroyed.
+    // SAFETY: a live widget; the call returns a full reference or null.
+    let context: Option<gtk::ATContext> = unsafe {
+        glib::translate::from_glib_full(gtk::ffi::gtk_accessible_get_at_context(
+            glib::translate::ToGlibPtr::to_glib_none(widget.upcast_ref::<gtk::Accessible>()).0,
+        ))
+    };
+    context.is_some_and(|context| context.type_().name() != "GtkTestATContext")
 }
 
 /// Show `text` on a status line, and say it when it changed: a screen

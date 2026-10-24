@@ -1,3 +1,4 @@
+mod assistant;
 mod close_tab;
 mod diagram;
 mod keys;

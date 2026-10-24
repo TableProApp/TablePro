@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow, PickerPage,
-    PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
+    AssistantComposer, BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow,
+    InlineSuggestion, PickerPage, PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -74,6 +74,7 @@ pub const ACCELERATORS: &[Accelerator] = &[
     application("win.show-history", &["<Primary><Shift>h"], General),
     // As in GNOME Files.
     application("win.show-sidebar", &["F9"], General),
+    application("win.show-assistant", &["<Primary><Alt>a"], General),
     application("app.quit", &["<Primary>q"], General),
     // AdwApplication adds the action and its accelerator once it finds
     // shortcuts-dialog.ui under the resource base path.
@@ -341,6 +342,22 @@ pub const ACCELERATORS: &[Accelerator] = &[
         &["<Primary><Shift>g"],
         Listed(ShortcutSection::SqlEditor),
     ),
+    // Only while a suggestion shows: otherwise Tab indents and Escape
+    // goes on to the editor.
+    component(
+        InlineSuggestion,
+        "suggestion.accept",
+        &["Tab"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    component(
+        InlineSuggestion,
+        "suggestion.dismiss",
+        &["Escape"],
+        Listed(ShortcutSection::SqlEditor),
+    ),
+    // Shift+Return starts a new line, as in a chat.
+    component(AssistantComposer, "assistant.send", &["Return"], Unlisted),
     local(
         StructureTab,
         BUBBLE,
@@ -499,6 +516,8 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         DiagramTab => "tablepro-diagram-tab-shortcuts",
         DiagramCanvas => "tablepro-diagram-canvas-shortcuts",
         PickerPage => "tablepro-picker-page-shortcuts",
+        InlineSuggestion => "tablepro-inline-suggestion-shortcuts",
+        AssistantComposer => "tablepro-assistant-composer-shortcuts",
     }
 }
 

@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use tablepro_core::{AuthMode, ClientIdentity, ExternalAccess, SafeModeLevel, TlsConfig, TlsMode};
+use tablepro_core::{AiPolicy, AuthMode, ClientIdentity, ExternalAccess, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionStore, SavedConnection, SavedSshAuth, SavedSshConfig, StoragePaths,
 };
@@ -58,6 +58,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         tls: tls(TlsMode::Disable),
         safe_mode: SafeModeLevel::Off,
         external_access: ExternalAccess::ReadOnly,
+        ai_policy: tablepro_core::AiPolicy::Ask,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -323,6 +324,45 @@ fn an_external_access_level_writes_back_as_it_was_set() -> TestResult {
             .find(|connection| connection.id == first)
             .map(|c| c.external_access),
         Some(ExternalAccess::Blocked)
+    );
+    Ok(())
+}
+
+#[test]
+fn a_list_written_before_the_ai_policy_asks_before_sending() -> TestResult {
+    let root = tempfile::tempdir()?;
+
+    let read = connections_from(root.path(), CONNECTIONS_V2)?;
+
+    assert!(!String::from_utf8_lossy(CONNECTIONS_V2).contains("ai_policy"));
+    assert!(read.iter().all(|connection| connection.ai_policy == AiPolicy::Ask));
+    Ok(())
+}
+
+#[test]
+fn an_ai_policy_writes_back_as_it_was_set() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    store.import_blocking(Path::new("/tmp/connections-v2.json"), CONNECTIONS_V2)?;
+    let first = store.load_blocking()?.first().map(|connection| connection.id);
+    let Some(first) = first else {
+        return Err("the fixture has no connections".into());
+    };
+    store.update_blocking(first, |connection| {
+        connection.ai_policy = AiPolicy::Never;
+    })?;
+
+    let exported = store.export_blocking()?;
+    let again = tempfile::tempdir()?;
+    let read = connections_from(again.path(), &exported)?;
+
+    assert!(String::from_utf8_lossy(&exported).contains("\"ai_policy\": \"never\""));
+    assert_eq!(
+        read.iter()
+            .find(|connection| connection.id == first)
+            .map(|connection| connection.ai_policy),
+        Some(AiPolicy::Never)
     );
     Ok(())
 }

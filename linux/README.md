@@ -52,7 +52,7 @@ apt and dnf, and Software Updater and GNOME Software with them, install the upda
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
 
 ## Stack
 
@@ -331,7 +331,7 @@ The SQL editor can type, delete, paste and move at several places at once.
 | Ctrl+click | Adds a cursor, or takes away the one you click |
 | Escape | Returns to one cursor, keeping its selection |
 
-Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list and snippets work with one cursor, so another cursor ends the snippet being filled in, and overwrite (Insert) and Vim mode keep one cursor.
+Typing, Return, Tab, BackSpace, Delete and the moves by character, word or line work at every cursor, and one Ctrl+Z takes an edit back at all of them and returns to one cursor. Copy joins the selections with new lines, and pasting as many lines as there are cursors puts one line at each. Ctrl+/ comments every cursor's lines. A click, a find, Format, a query from history and Page Up or Down return to one cursor, as do moving lines (Alt+Up, Alt+Down) and words (Alt+Left, Alt+Right), which act on one line. The completion list, snippets and suggestions while typing work with one cursor, so another cursor ends the snippet being filled in and drops a suggestion, and overwrite (Insert) and Vim mode keep one cursor.
 
 ## SQL Server with Windows integrated auth
 
@@ -360,6 +360,32 @@ worth knowing:
 Under Flatpak the app brings its own Kerberos configuration and reads
 tickets from the KCM cache. [Kerberos inside Flatpak](docs/drivers/sql-server.md#kerberos-inside-flatpak)
 says where the realm, the KDC and the tickets come from there.
+
+## AI assistant
+
+The assistant answers questions about the connected database, explains, reviews, optimizes and fixes your SQL, and can suggest SQL as you type ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). It is off until you choose a provider in **Preferences > AI**:
+
+| Provider | Requests go to | Key |
+|---|---|---|
+| Anthropic | `api.anthropic.com` | an API key from the Claude Console |
+| OpenAI | `api.openai.com` | an API key from the OpenAI platform |
+| Ollama or Compatible Server | the address you enter, `http://localhost:11434/v1` for Ollama on this computer | optional; sent over plain http only to this computer |
+
+Each request bills to your own account with that provider. The key is kept in the keyring, as passwords are. Pick the model on the same page, from the list the provider offers.
+
+**Show the Assistant** (Ctrl+Alt+A, or the speech bubble in the header bar) opens it beside the tabs. A conversation starts with the SQL in the editor and the structure of the tables named there and in your question; each reply's code blocks carry **Copy** and **Insert**, which puts the code at the editor's cursor, or in a new query tab when the tab in front is not an editor. **Explain with AI**, **Review with AI** and **Optimize with AI** in the editor's menu and context menu send the selection, or the statement at the cursor, and a failed statement's page offers **Fix with AI** with the server's error. Conversations stay in memory and end with the window.
+
+**Suggest While Typing**, off by default, asks for a completion when you pause at the end of a line and shows it dimmed after the cursor: Tab accepts it, Escape or typing on drops it. Each pause sends the text around the cursor.
+
+Each connection's **AI Assistant** setting, under Options in its connect dialog, decides what leaves it:
+
+| Setting | The assistant |
+|---|---|
+| Ask Each Time, the default | asks before its first request in a window, naming the provider and its address; the answer lasts until the window disconnects |
+| Allow | sends without asking |
+| Never | sends nothing from the connection: not its structure, its SQL or a question asked beside it |
+
+The assistant reads no rows: the structure comes from the catalog, and a statement it writes runs only when you run it, under the connection's Safe Mode. What leaves the computer is what you type, the SQL it acts on, that structure, and for **Fix with AI** the server's error message, which can quote a value.
 
 ## MCP server
 

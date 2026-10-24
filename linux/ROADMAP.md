@@ -125,8 +125,17 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |
 | Closing safely | Unsaved edits, a save in flight or of unknown outcome, an open editor transaction, or a running export ask before a window closes or the app quits; logout waits while any of those holds, and suspend while a save runs or an export writes |
 | Notifications | Work that finishes in a tab you are not looking at sends a notification |
-| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the MCP server |
+| Preferences | Restore session, page size, the bulk delete confirmation, query history, editor font and scheme, Vim keybindings, query timeout, the AI assistant, the MCP server |
 | Shortcuts and About | A shortcuts dialog, and About from the metainfo with third-party licenses and debug info |
+
+### AI assistant
+
+| Capability | Detail |
+|---|---|
+| Providers | Off until a provider is chosen in Preferences: Anthropic, OpenAI, or Ollama and other servers through the OpenAI-compatible protocol. Keys in the keyring; the model picked from the provider's list ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)) |
+| Chat | A pane beside the tabs (Ctrl+Alt+A) with streamed replies, Stop, Retry and New Conversation; code blocks with Copy and Insert. A conversation carries the editor's SQL and the structure of the tables it names, and reads no rows |
+| Editor | Explain, Review and Optimize the selection or the statement at the cursor, Fix with AI on a failed statement, and suggestions while typing (off by default) that Tab accepts |
+| AI policy | Per connection: Ask Each Time (the default) asks before the first request in a window, Allow sends without asking, Never sends nothing from the connection |
 
 ### MCP server
 
@@ -175,10 +184,6 @@ Not built yet, in no order.
 - A manual pass with Orca, the keyboard alone, High Contrast, 1.5x text scaling and a right-to-left locale.
 - Install and use it on Ubuntu 26.04 and Fedora 44 by hand, and under KDE Plasma with the Adwaita style.
 - A Linux user guide on docs.tablepro.app, a page on the marketing site, and a support channel.
-
-### AI assistant
-
-- An AI assistant, off with no provider until the user adds one: Anthropic, OpenAI, and Ollama through the OpenAI-compatible protocol, so self-hosted servers work too. Keys in the keyring, an AI policy per connection that keeps its schema and rows out of every prompt, and the Privacy section naming the provider ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)).
 
 ### More engines
 

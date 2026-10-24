@@ -879,6 +879,7 @@ mod mcp {
             tls: TlsConfig::disabled(),
             safe_mode: SafeModeLevel::Off,
             external_access: access,
+            ai_policy: tablepro_core::AiPolicy::Ask,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,

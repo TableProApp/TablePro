@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProAiPage" parent="AdwPreferencesPage">
+    <property name="title" translatable="yes">AI</property>
+    <property name="icon-name">assistant-symbolic</property>
+    <child>
+      <object class="AdwPreferencesGroup">
+        <property name="title" translatable="yes">AI Assistant</property>
+        <property name="description" translatable="yes">The assistant answers questions about the connected database, explains, reviews and fixes your SQL, and can suggest SQL as you type. It sends your questions, your SQL and the structure of the tables involved to the provider you choose, and reads no rows for it. Each connection’s AI Assistant setting decides whether anything is sent from it.</property>
+        <child>
+          <object class="AdwComboRow" id="provider_row">
+            <property name="title" translatable="yes">Provider</property>
+            <property name="model">
+              <object class="GtkStringList" id="provider_names"/>
+            </property>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="connection_group">
+        <property name="title" translatable="yes">Connection to the Provider</property>
+        <property name="description" translatable="yes">The API key is kept in the keyring.</property>
+        <child>
+          <object class="AdwEntryRow" id="address_row">
+            <property name="title" translatable="yes">Server Address</property>
+            <property name="input-purpose">url</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwPasswordEntryRow" id="key_row">
+            <property name="title" translatable="yes">API Key</property>
+            <property name="show-apply-button">true</property>
+            <child type="suffix">
+              <object class="GtkLabel" id="key_state">
+                <property name="label" translatable="yes">Saved</property>
+                <property name="visible">false</property>
+                <style>
+                  <class name="dim-label"/>
+                </style>
+              </object>
+            </child>
+            <child type="suffix">
+              <object class="GtkButton" id="remove_key_button">
+                <property name="icon-name">user-trash-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Remove API Key</property>
+                <property name="valign">center</property>
+                <property name="visible">false</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Remove API Key</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="AdwEntryRow" id="model_row">
+            <property name="title" translatable="yes">Model</property>
+            <child type="suffix">
+              <object class="GtkMenuButton" id="models_button">
+                <property name="icon-name">view-list-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Choose From the Provider’s Models</property>
+                <property name="valign">center</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Choose From the Provider’s Models</property>
+                </accessibility>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <property name="popover">
+                  <object class="GtkPopover" id="models_popover">
+                    <property name="child">
+                      <object class="GtkStack" id="models_stack">
+                        <property name="width-request">280</property>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">loading</property>
+                            <property name="child">
+                              <object class="AdwSpinner">
+                                <property name="halign">center</property>
+                                <property name="margin-top">18</property>
+                                <property name="margin-bottom">18</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">failed</property>
+                            <property name="child">
+                              <object class="GtkLabel" id="models_problem">
+                                <property name="wrap">true</property>
+                                <property name="max-width-chars">36</property>
+                                <property name="margin-top">12</property>
+                                <property name="margin-bottom">12</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkStackPage">
+                            <property name="name">models</property>
+                            <property name="child">
+                              <object class="GtkScrolledWindow">
+                                <property name="hscrollbar-policy">never</property>
+                                <property name="propagate-natural-height">true</property>
+                                <property name="max-content-height">360</property>
+                                <property name="child">
+                                  <object class="GtkListBox" id="models_list">
+                                    <property name="selection-mode">none</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Models</property>
+                                    </accessibility>
+                                  </object>
+                                </property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="AdwPreferencesGroup" id="editor_group">
+        <property name="title" translatable="yes">SQL Editor</property>
+        <child>
+          <object class="AdwSwitchRow" id="suggestions_row">
+            <property name="title" translatable="yes">Suggest While Typing</property>
+            <property name="subtitle" translatable="yes">When you pause at the end of a line, the assistant suggests how to go on, shown dimmed. Tab accepts it. Each pause sends the text around the cursor.</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>
