@@ -24,7 +24,7 @@ Commit `ci/forgejo-train.json` on that branch with this shape, replacing the SHA
 {"version": 1, "base": "BASE_SHA", "members": [{"number": 1197, "sha": "FIRST_HEAD_SHA"}, {"number": 1201, "sha": "SECOND_HEAD_SHA"}]}
 ```
 
-Open one aggregate PR against `linux`, listing the constituents and any train-owned changes. Its GitHub checks must pass too. Use the following checks with the actual train PR number and Forgejo run ID:
+Open one aggregate PR against `linux`, listing the constituents and any train-owned changes. Its body also carries every constituent's `Release-Note:` lines (or a single `Release-Note: none` when none has one), because the squash commit body is the PR body ([ADR 0022](decisions/0022-release-notes-from-merge-commits.md)); `check-forgejo-train.py` refuses a train whose body drops one. Its GitHub checks must pass too. Use the following checks with the actual train PR number and Forgejo run ID:
 
 ```bash
 python3 scripts/check-forgejo-train.py TRAIN_PR --phase gate

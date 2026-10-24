@@ -17,6 +17,10 @@ The choices behind [ADR 0007](decisions/0007-type-and-value-preservation.md), gr
 - **A named time zone is resolved by rule, never guessed.** ClickHouse named-zone `DateTime64` returns a local wall clock with no offset. The decoder applies IANA rules and refuses a daylight-saving gap or fold.
 - **Session state is part of the proof.** MySQL `TIMESTAMP` is exact only in a UTC session, because the server returns a session-local wall time and `sqlx` decodes it as UTC. Driver-owned pool connections set `+00:00` on creation and reset it at each checkout. If a dedicated session later changes zone, non-NULL cells are `Undecodable`, not a wrong instant.
 
+- **Refuse out-of-range values before the server can clamp them.** ClickHouse 24.8 accepts `1899-12-31 23:59:59.999999999` for `DateTime64(9)` but clamps it to year 1900, and returns an error above `2262-04-11 23:47:16.854775807`. BookiE refuses both as parameters and SQL literals. A caller's raw SQL can still hit the server's clamp, which cannot be undone from the result ([history, 2026-09-29](archive/value-contract-history.md#clickhouse-datetime649-server-boundary-behavior-2026-09-29)).
+- **Choose the coarsest exact scale.** The renderer picks the smallest `DateTime64` scale that keeps every supplied fractional digit and fits the server calendar and 64-bit ticks, so `DateTime64(0)` accepts year 2299. Forcing scale 9 wrongly refused it.
+- **Nanosecond values bind as exact text where the driver binding truncates.** The pinned DuckDB crate returns only six fractional digits for native `TIME` and `TIMESTAMP` nanosecond parameters, so the adapter binds exact `VARCHAR`. The caller must cast it explicitly in a typed expression.
+
 ## Numeric
 
 - **Never decode money through a float.** SQL Server `money` and `smallmoney` travel as `f64` in the TDS client and lose digits (`123456789012345.6789` read as `.67`). Non-NULL cells are `Undecodable`; NULL stays NULL.
@@ -27,6 +31,10 @@ The choices behind [ADR 0007](decisions/0007-type-and-value-preservation.md), gr
 
 - **XML keeps carriage returns.** CR is written as `&#13;` so standalone CR and CRLF survive. XML-illegal characters are refused, not replaced with U+FFFD.
 - **Spreadsheet-safe CSV is not reversible.** The formula-protection prefix makes `=1+1` and `'=1+1` collide, so raw export is the lossless path and the dialog says so. The NULL marker starts at `\N` and grows until no value collides.
+
+## SQLite
+
+- **A STRICT `ANY` edit keeps the cell's runtime kind.** The grid parses an edit with the existing cell's kind: INTEGER stays integer, REAL stays real, TEXT stays text. A new or NULL cell stores nonempty input as TEXT, even when numeric-looking, because there is nothing to preserve and the grid must not guess a conversion. Clearing existing TEXT stores empty TEXT, not NULL.
 
 ## MongoDB
 

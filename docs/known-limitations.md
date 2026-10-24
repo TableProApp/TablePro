@@ -84,6 +84,7 @@ This page records current branch behavior, including changes made after 0.2.0 wa
 
 ## Editing and connections
 
+- **Grid saves detect a changed value only for the cells you edited, and relational deletes check the key only** ([ADR 0024](decisions/0024-keyed-grid-writes-check-what-they-overwrite.md)). A save that loses a race on PostgreSQL, MySQL, SQL Server or SQLite rolls back, but a value changed and changed back is not detected, and a DELETE does not verify that the row is unchanged. Engines without checked writes save by key and warn after commit when a row matched nothing.
 - **Redis supports a single host/port endpoint.** Sentinel and Cluster topologies are unsupported and have no release target.
 - **PostgreSQL behind a connection pooler:** PgBouncer in session mode works. In transaction mode it works when the pooler supports prepared statements (PgBouncer 1.21 or newer with `max_prepared_statements` above 0); without that, workloads can succeed but backend switching can cause prepared-statement conflicts. Such errors include a pooler configuration hint. Session features of the editor (`SET`, temporary tables, an open transaction across statements) need session pooling by design.
 - **SSH jump chains cannot be edited in the form** (UI-1b / [#548](https://github.com/cozyGarage/BookiE/issues/548)). They connect and run, but editing remains disabled until the complete GTK editor path is implemented and accepted.

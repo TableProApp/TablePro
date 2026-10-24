@@ -88,6 +88,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Bundle admin audit | [ADR 0010](0010-administrative-action-audit.md) |
 | Official Rust MCP SDK behind the governed seam | [ADR 0017](0017-mcp-sdk-behind-the-governed-seam.md) (accepted direction; production remains hand-written, with an optional stdio prototype) |
 | System OpenSSH askpass and transport boundaries | [ADR 0023](0023-system-openssh-transport-boundaries.md) |
+| Stale grid edits and deletes | [ADR 0024](0024-keyed-grid-writes-check-what-they-overwrite.md) |
 | Headless application-services crate | [ADR 0018](0018-headless-app-services-crate.md) (accepted; staged module moves continue under APP-MOD) |
 | File conversion, schema migrations, logical backup | [ADR 0019](0019-database-tooling-without-sidecars.md) (accepted design; implementation status varies by tool, with remaining work post-0.2.0) |
 

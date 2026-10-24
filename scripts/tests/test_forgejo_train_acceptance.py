@@ -25,6 +25,26 @@ class TrainAcceptanceTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 TRAIN.manifest_members(value)
 
+    def test_aggregate_body_must_carry_every_constituent_release_note(self):
+        first = 'Release-Note: Fixed: Export keeps NULLs'
+        second = 'Release-Note: Added: Pager'
+        bodies = {7: first, 8: second + '\nRelease-Note: Changed: Wider footer'}
+        full = '\n'.join([first, second, 'Release-Note: Changed: Wider footer'])
+        TRAIN.check_release_notes(full, bodies)
+        for aggregate in (first, 'no notes', full.replace('Pager', 'Pagers')):
+            with self.subTest(aggregate=aggregate), self.assertRaises(ValueError):
+                TRAIN.check_release_notes(aggregate, bodies)
+
+    def test_a_constituent_without_a_release_note_blocks_the_train(self):
+        with self.assertRaises(ValueError):
+            TRAIN.check_release_notes('Release-Note: none', {7: 'no trailer', 8: 'Release-Note: none'})
+
+    def test_a_train_of_none_notes_is_none(self):
+        bodies = {7: 'Release-Note: none', 8: 'Release-Note: none'}
+        TRAIN.check_release_notes('Release-Note: none', bodies)
+        with self.assertRaises(ValueError):
+            TRAIN.check_release_notes('no notes', bodies)
+
     def test_reference_failure_cannot_hide_a_missing_or_failed_required_check(self):
         checks = [{'name': name, 'state': 'SUCCESS', 'workflow': ''} for name in TRAIN.REQUIRED_CHECKS]
         checks.append({'name': 'SonarCloud Code Analysis', 'state': 'FAILURE', 'workflow': ''})
@@ -168,7 +188,8 @@ class TrainIntegrationTests(unittest.TestCase):
         head = self.git('rev-parse', 'HEAD')
         states = {
             number: {'number': number, 'headRefOid': sha, 'baseRefName': 'linux', 'state': 'OPEN',
-                     'isDraft': False, 'reviewDecision': '', 'mergeable': 'MERGEABLE'}
+                     'isDraft': False, 'reviewDecision': '', 'mergeable': 'MERGEABLE',
+                     'body': 'Release-Note: none'}
             for number, sha in [(9, head), (7, self.a), (8, self.b)]
         }
         checks = [{'name': n, 'state': 'SUCCESS', 'workflow': ''} for n in TRAIN.REQUIRED_CHECKS]
