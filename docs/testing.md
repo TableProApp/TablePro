@@ -365,6 +365,8 @@ Resource regressions belong in the existing unit and gtk-widgets tiers. Prefer r
 
 The [2026-10-24 evidence](evidence/performance-regressions-2026-10-24/README.md) records source tests and controlled regression injection. These tests pin existing behavior; they do not introduce new product limits.
 
+The [performance and acceptance scenario matrix](performance-acceptance-scenarios.md) maps those deterministic guards to host profiling, PostgreSQL workloads and installed GTK checks. It records which cases have a maintained command and which remain manual or unautomated; it does not add a CI tier.
+
 Run the non-display application checks locally with:
 
     cargo test --locked -p tablepro-app --lib stream_pages::performance_tests -- --test-threads=1
