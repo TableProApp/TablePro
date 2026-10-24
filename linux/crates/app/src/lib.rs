@@ -125,6 +125,49 @@ mod tests {
         }
     }
 
+    /// Software centres, apt, dnf and the man page describe the app by
+    /// the engines it connects to.
+    #[test]
+    fn package_descriptions_name_every_engine() {
+        fn section(path: &str, start: &str, end: Option<&str>) -> String {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+            let text = std::fs::read_to_string(root.join(path)).unwrap_or_else(|error| panic!("{path}: {error}"));
+            let Some((_, rest)) = text.split_once(start) else {
+                panic!("{path} has no {start}");
+            };
+            let words = match end {
+                Some(end) => match rest.split_once(end) {
+                    Some((words, _)) => words,
+                    None => panic!("{path} has no {end} after {start}"),
+                },
+                None => rest,
+            };
+            words.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+
+        let desktop = "data/app.tablepro.TablePro.desktop.in.in";
+        let metainfo = "data/app.tablepro.TablePro.metainfo.xml.in.in";
+        let control = "build-aux/debian/control";
+        let spec = "build-aux/rpm/tablepro.spec";
+        let descriptions = [
+            ("desktop Comment", section(desktop, "\nComment=", Some("\n"))),
+            ("desktop Keywords", section(desktop, "\nKeywords=", Some("\n"))),
+            ("metainfo", section(metainfo, "<description>", Some("</description>"))),
+            ("man page", section("data/tablepro.1", ".SH DESCRIPTION", Some(".SH "))),
+            // The binary package's stanza ends the file.
+            ("debian/control", section(control, "\nDescription:", None)),
+            ("rpm spec", section(spec, "\n%description", Some("\n%prep"))),
+        ];
+
+        for driver in build_registry().iter() {
+            for engine in driver.display_name().split(" / ") {
+                for (place, text) in &descriptions {
+                    assert!(text.contains(engine), "{place} does not name {engine}: {text}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn resources_contain_style_css() {
         register_test_resources();

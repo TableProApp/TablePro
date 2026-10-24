@@ -103,9 +103,10 @@ Recommends:     (gnome-keyring or kf6-kwallet or keepassxc)
 Suggests:       krb5-workstation
 
 %description
-TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server and
-ClickHouse. Browse tables, edit rows in place, run SQL with syntax
-highlighting, and reach servers behind an SSH bastion.
+TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server,
+ClickHouse, Cassandra, ScyllaDB and Redis. Browse tables, edit rows in
+place, run SQL with syntax highlighting, and reach servers behind an SSH
+bastion.
 
 %prep
 %autosetup -n %{name}-%{version_no_tilde} -a1
