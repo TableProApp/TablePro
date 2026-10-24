@@ -6287,7 +6287,7 @@ DEALINGS IN THE SOFTWARE.
 Packages:
 
 - `argon2 0.6.0`
-- `crypto-bigint 0.7.5`
+- `crypto-bigint 0.7.6`
 - `pkcs5 0.8.1`
 - `scrypt 0.12.0`
 - `sec1 0.8.1`
@@ -6816,7 +6816,7 @@ DEALINGS IN THE SOFTWARE.
 
 Packages:
 
-- `ctutils 0.4.4`
+- `ctutils 0.4.5`
 
 ```text
 Copyright (c) 2025-2026 The RustCrypto Project Developers
