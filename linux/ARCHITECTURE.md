@@ -30,6 +30,7 @@ linux/
         ├── postgres/              tokio-postgres
         ├── mysql/                 sqlx-mysql, MySQL and MariaDB
         ├── sqlite/                sqlx-sqlite
+        ├── duckdb/                duckdb, with DuckDB compiled in
         ├── mssql/                 tiberius
         ├── clickhouse/            clickhouse over hyper
         ├── cassandra/             scylla, Cassandra and ScyllaDB
@@ -43,7 +44,7 @@ linux/
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
 | `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis` | `core`, `net` |
-| `drivers/sqlite` | `core` |
+| `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
 | `ai` | `core`, `net`, `storage` |
@@ -75,6 +76,7 @@ fn build_registry() -> DriverRegistry {
     let mut r = DriverRegistry::new();
     r.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     r.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    r.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
     r.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     r.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     r.register(Arc::new(tablepro_driver_postgres::PgDriver));
@@ -153,7 +155,7 @@ How the app reaches a database: the contract in `tablepro-core`, a transport tha
 
 ### The contract
 
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md). An engine without SQL says so through `DriverCapabilities::data_model`, and the workspace lists its keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
+`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md). An engine without SQL says so through `DriverCapabilities::data_model`, and the workspace lists its keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
 
 ### SQL scripts
 
@@ -166,6 +168,7 @@ A driver names its grammar through `SqlDialect::grammar`. The rules for each `Sq
 | PostgreSQL | `;` | dollar-quoted bodies, the `BEGIN ... END` body of a `CREATE FUNCTION` or `PROCEDURE`, parentheses | `E'...'` escapes, nested block comments, backslash escapes only with `standard_conforming_strings` off |
 | MySQL, MariaDB | `;`, or the delimiter a `DELIMITER` line sets | nothing | backtick names, `"` strings, `#` comments, `--` only before whitespace, a control character or the end of the text, backslash escapes |
 | SQLite | `;` | a `CREATE TRIGGER` body, as `sqlite3_complete` reads it | `[name]` and backtick names |
+| DuckDB | `;` | `$tag$ ... $tag$` strings | `E'...'` escapes, nested block comments |
 | SQL Server | a `GO` line, with an optional count | the whole batch, whatever `;` it holds | `[name]` with `]]` inside, nested block comments |
 | ClickHouse | `;` | heredocs, `$tag$ ... $tag$` | backslash escapes in every quote, `//`, `# ` and `#!` comments, nested block comments |
 | CQL | `;` | `BEGIN ... APPLY BATCH`, as cqlsh keeps it, and `$$ ... $$` function bodies | `''` inside a string and no backslash escapes, `//` comments, a line comment that also ends at a carriage return |
@@ -236,6 +239,7 @@ Each engine's TLS stack takes trust in its own form, so the driver builds it:
 | SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
 | Cassandra, ScyllaDB | The system store (rustls-platform-verifier), plus the CA file, checked against the server name and not the relay's address (`FixedNameVerifier`) | Yes, with the password login | The rustls error |
 | SQLite | No TLS | | |
+| DuckDB | No TLS | | |
 
 PostgreSQL and ClickHouse get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`, and Cassandra from `build_client_config_checking`, which checks a name it is given in place of the one the client dials. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
 

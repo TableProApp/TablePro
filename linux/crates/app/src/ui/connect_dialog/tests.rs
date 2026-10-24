@@ -53,6 +53,7 @@ fn registry() -> Arc<DriverRegistry> {
     let mut registry = DriverRegistry::new();
     registry.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
+    registry.register(Arc::new(tablepro_driver_duckdb::DuckDbDriver));
     registry.register(Arc::new(tablepro_driver_mssql::MssqlDriver));
     registry.register(Arc::new(tablepro_driver_mysql::MysqlDriver));
     registry.register(Arc::new(tablepro_driver_postgres::PgDriver));

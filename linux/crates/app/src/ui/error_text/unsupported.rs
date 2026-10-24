@@ -40,6 +40,9 @@ pub(super) fn unsupported_message(feature: UnsupportedFeature) -> String {
             "This database has no dates outside the years {first} to {last}.",
             &[("first", &first.to_string()), ("last", &last.to_string())],
         ),
+        UnsupportedFeature::HiddenAttach => {
+            gettext("The editor cannot attach a HIDDEN database, which no other window could see is open.")
+        }
         UnsupportedFeature::ServerPaging => gettext("This database does not page tables on the server."),
         UnsupportedFeature::Tables => gettext("This database holds keys, not tables."),
         UnsupportedFeature::Keys => gettext("This database holds tables, not keys."),
@@ -75,6 +78,7 @@ mod tests {
             UnsupportedFeature::NumberWiderThan { digits: 38 },
             UnsupportedFeature::DecimalOutOfRange { digits: 38 },
             UnsupportedFeature::DateOutsideYears { first: 1, last: 9999 },
+            UnsupportedFeature::HiddenAttach,
             UnsupportedFeature::ServerPaging,
             UnsupportedFeature::Tables,
             UnsupportedFeature::Keys,

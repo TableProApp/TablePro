@@ -31,6 +31,7 @@ const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
         create_index: true,
         drop_index: true,
         expression_index_keys,
+        descending_index_keys: true,
         partial_indexes: false,
         add_foreign_key: true,
         drop_foreign_key: true,

@@ -17,8 +17,10 @@ use crate::config::Profile;
 /// clickhouse crate exceptions that quote the query, scylla the server's
 /// error messages, which quote the statement, deadpool the errors of the
 /// connections it recycles, and sqlparser at debug the text it parses
-/// and the tokens and literals it reads. The drivers map and log what
-/// they need from these libraries themselves.
+/// and the tokens and literals it reads. The duckdb crate logs nothing
+/// today, and is silenced so a release that starts to cannot write
+/// statements to the journal. The drivers map and log what they need
+/// from these libraries themselves.
 const SILENCED_LIBRARIES: &[&str] = &[
     "tokio_postgres",
     "deadpool",
@@ -28,6 +30,7 @@ const SILENCED_LIBRARIES: &[&str] = &[
     "scylla",
     "redis",
     "sqlparser",
+    "duckdb",
 ];
 
 #[derive(Debug, ThisError)]

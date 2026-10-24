@@ -1,7 +1,20 @@
 use tablepro_core::meta::ObjectKind;
 use tablepro_core::{
-    CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, ReadOnlyEnforcement, ScriptExecution,
-    StatementStop, WriteAtomicity,
+    CommitResolutionSupport, DriverCapabilities, EndpointKind, EstimateQuality, FileFormat, FileSignature,
+    ReadOnlyEnforcement, ScriptExecution, StatementStop, WriteAtomicity,
+};
+
+/// A database file begins with this header, the shared MIME database
+/// knows it by these types, and SQLite reads an empty file as an empty
+/// database.
+pub(crate) const FILE_FORMAT: FileFormat = FileFormat {
+    signature: FileSignature {
+        offset: 0,
+        bytes: b"SQLite format 3\0",
+    },
+    suffixes: &["sqlite3", "sqlite", "db", "db3"],
+    mime_types: &["application/vnd.sqlite3", "application/x-sqlite3"],
+    empty_file_is_database: true,
 };
 
 /// A file with no login and no TLS. A read-only connection is opened
@@ -10,7 +23,7 @@ use tablepro_core::{
 /// so there is nothing to resolve afterwards.
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     data_model: tablepro_core::DataModel::Relational,
-    endpoint: EndpointKind::File,
+    endpoint: EndpointKind::File(FILE_FORMAT),
     auth_modes: &[],
     username_required: false,
     tls: None,

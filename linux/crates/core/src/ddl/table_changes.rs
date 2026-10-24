@@ -93,6 +93,11 @@ impl TableChanges {
         if !self.dropped_indexes.is_empty() {
             require(capabilities.drop_index, DdlOperation::DropIndex)?;
         }
+        for index in &self.dropped_indexes {
+            if !ddl.index_removal(original, index).is_allowed() {
+                return Err(BuildDdlError::Unsupported(DdlOperation::DropIndex));
+            }
+        }
         for column in &self.dropped_columns {
             let permission = ddl.column_capabilities(original, column).drop;
             permit(permission, column.name(), DdlOperation::DropColumn)?;
@@ -203,6 +208,9 @@ pub(super) fn check_new_indexes(ddl: &dyn DdlDialect, indexes: &[IndexInfo]) -> 
         require(capabilities.create_index, DdlOperation::CreateIndex)?;
         if index.keys.iter().any(|key| matches!(key, IndexKey::Expression { .. })) {
             require(capabilities.expression_index_keys, DdlOperation::IndexExpressionKey)?;
+        }
+        if index.keys.iter().any(IndexKey::descending) {
+            require(capabilities.descending_index_keys, DdlOperation::DescendingIndexKey)?;
         }
         if index.predicate.is_some() {
             require(capabilities.partial_indexes, DdlOperation::PartialIndex)?;

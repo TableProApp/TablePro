@@ -58,7 +58,7 @@ impl Pickers {
         crate::register_test_resources();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
-        let list = SavedConnectionList::follow(&store);
+        let list = SavedConnectionList::follow(&store, std::sync::Arc::new(crate::build_registry()));
         let views = [
             WelcomeView::new(list.clone(), None),
             WelcomeView::new(list.clone(), None),

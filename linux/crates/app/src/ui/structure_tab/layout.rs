@@ -185,23 +185,28 @@ fn columns_page(tab: &StructureTab, context: &Rc<RefCell<StructureContext>>, col
 /// the names its indexes already take.
 fn indexes_page(tab: &StructureTab, context: &Rc<RefCell<StructureContext>>, stores: &DraftStores<'_>) {
     let imp = tab.imp();
-    let (context, sender) = (context.clone(), tab.sender());
+    let (listed, sender) = (context.clone(), tab.sender());
     bind_list(&imp.indexes_list, stores.indexes, move |index: &IndexObject| {
-        let context = context.borrow();
-        let removable = context.table_permission(context.capabilities().drop_index);
+        let context = listed.borrow();
+        let removable = context
+            .table_permission(context.capabilities().drop_index)
+            .and(|| context.index_removal(index.info()));
         build_index_row(index, &removable, &sender)
     });
+    let context = Rc::downgrade(context);
     let (columns, indexes, sender) = (stores.columns.downgrade(), stores.indexes.downgrade(), tab.sender());
     imp.add_index_row.connect_activated(move |row| {
-        let (Some(columns), Some(indexes)) = (columns.upgrade(), indexes.upgrade()) else {
+        let (Some(columns), Some(indexes), Some(context)) = (columns.upgrade(), indexes.upgrade(), context.upgrade())
+        else {
             return;
         };
+        let descending = context.borrow().capabilities().descending_index_keys;
         let existing = items::<IndexObject>(&indexes)
             .iter()
             .map(|index| index.info().name.clone())
             .collect();
         let sender = sender.clone();
-        IndexDialog::new(column_names(&columns), existing, move |index| {
+        IndexDialog::new(column_names(&columns), existing, descending, move |index| {
             sender.input(IndexesInput::AddIndex(index));
         })
         .present(row.upcast_ref());

@@ -62,7 +62,7 @@ pub(super) fn insert_shape(
     if written.is_empty() {
         return None;
     }
-    let table_sql = dialect.qualify(table);
+    let table_sql = dialect.portable_name(table);
     Some(InsertShape {
         start: format!("INSERT INTO {table_sql} ({}) VALUES ", written.join(", ")),
         table_sql,
@@ -129,7 +129,7 @@ pub fn render_insert(
     columns: &[ColumnInfo],
     cells: &[CellInput],
 ) -> Result<String, RenderInsertError> {
-    let table_sql = dialect.qualify(table);
+    let table_sql = dialect.portable_name(table);
     let mut names = Vec::with_capacity(columns.len());
     let mut values = Vec::with_capacity(columns.len());
     for (index, column) in columns.iter().enumerate() {

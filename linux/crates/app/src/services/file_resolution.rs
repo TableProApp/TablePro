@@ -1,9 +1,10 @@
 //! A database file handed to TablePro, resolved to the session it
 //! opens. Resolving reads the disk, so it runs on the blocking pool.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use tablepro_core::DriverRegistry;
+use tablepro_core::{BusyReason, DriverError, DriverRegistry};
 use tablepro_session::SessionKey;
 use tablepro_session::registry::FileIdentity;
 use tablepro_storage::{ConnectionStore, SavedConnection};
@@ -82,11 +83,120 @@ pub fn resolve_file_blocking(
     ResolvedFile { uri, target }
 }
 
+/// The first `len` bytes of the file, or as many as it has, which say
+/// which engine opens it.
+///
+/// SQLite and DuckDB lock a file with POSIX record locks, which belong to
+/// the process: closing any descriptor this process has on the file
+/// drops them all. A file this process already holds open, through
+/// another name such as a hard link, is refused rather than read, and no
+/// engine opens a file until the read is done (`opening_file_blocking`).
+pub fn read_header_blocking(path: &Path, len: usize) -> Result<Vec<u8>, DriverError> {
+    let _opening = tablepro_core::opening_file_blocking();
+    let failed = |error: std::io::Error| {
+        let path = path.to_path_buf();
+        match error.kind() {
+            std::io::ErrorKind::NotFound => DriverError::FileNotFound { path },
+            std::io::ErrorKind::PermissionDenied => DriverError::FileAccessDenied { path },
+            std::io::ErrorKind::IsADirectory => DriverError::NotADatabase { path },
+            kind => DriverError::FileIo { path, kind },
+        }
+    };
+    let metadata = std::fs::metadata(path).map_err(failed)?;
+    // A FIFO would hold the read, and every engine's open behind it,
+    // until something wrote to it.
+    if !metadata.is_file() {
+        return Err(DriverError::NotADatabase {
+            path: path.to_path_buf(),
+        });
+    }
+    if tablepro_core::held_by_this_process(path) {
+        return Err(DriverError::Busy(BusyReason::FileLocked));
+    }
+    let mut header = Vec::with_capacity(len);
+    std::fs::File::open(path)
+        .and_then(|file| file.take(len as u64).read_to_end(&mut header))
+        .map_err(failed)?;
+    Ok(header)
+}
+
 #[cfg(test)]
 mod tests {
     use tablepro_test_support::{ConnectionScript, FakeDriver};
 
     use super::*;
+
+    #[test]
+    fn a_header_is_at_most_what_the_file_holds() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let short = directory.path().join("short.db");
+        std::fs::write(&short, b"abc").expect("seed");
+        let missing = directory.path().join("missing.db");
+
+        assert_eq!(read_header_blocking(&short, 16).expect("the header"), b"abc");
+        assert_eq!(
+            read_header_blocking(&missing, 16),
+            Err(DriverError::FileNotFound { path: missing })
+        );
+    }
+
+    /// Reading a FIFO would wait for a writer, with every engine's open
+    /// waiting behind it.
+    #[test]
+    fn a_fifo_is_not_read() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("pipe.db");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo");
+        assert!(made.success());
+
+        assert_eq!(read_header_blocking(&path, 16), Err(DriverError::NotADatabase { path }));
+    }
+
+    /// An engine opening a file holds no descriptor on it yet, so the
+    /// read waits until it does.
+    #[test]
+    fn a_header_read_waits_for_an_engine_opening_a_file() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("opening.db");
+        std::fs::write(&path, b"SQLite format 3\0").expect("seed");
+        let opening = tablepro_core::opening_file_blocking();
+
+        let reading = std::thread::spawn(move || read_header_blocking(&path, 16));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let waited = !reading.is_finished();
+        drop(opening);
+
+        assert!(waited, "the header was read while an engine was opening a file");
+        assert_eq!(
+            reading.join().expect("the read").expect("the header"),
+            b"SQLite format 3\0"
+        );
+    }
+
+    /// Reading a file through a second name would close a descriptor on
+    /// it, which drops every lock this process holds on it.
+    #[test]
+    fn a_file_this_process_holds_is_not_read() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let held = directory.path().join("held.db");
+        std::fs::write(&held, b"SQLite format 3\0").expect("seed");
+        let linked = directory.path().join("linked.db");
+        std::fs::hard_link(&held, &linked).expect("link");
+        let open = std::fs::File::open(&held).expect("open");
+
+        assert_eq!(
+            read_header_blocking(&linked, 16),
+            Err(DriverError::Busy(BusyReason::FileLocked))
+        );
+        drop(open);
+        assert_eq!(
+            read_header_blocking(&linked, 16).expect("the header"),
+            b"SQLite format 3\0"
+        );
+    }
 
     #[test]
     fn a_missing_file_is_not_found() {

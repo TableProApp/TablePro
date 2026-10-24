@@ -525,9 +525,13 @@ fn build_export_projects_only_visible_columns() {
 }
 
 fn export_sql(identity: RowIdentity, sort: &[SortKey]) -> String {
+    export_sql_in(&TestDialect::exact(), identity, sort)
+}
+
+fn export_sql_in(dialect: &TestDialect, identity: RowIdentity, sort: &[SortKey]) -> String {
     let columns = columns();
     let statement = build_export(
-        &TestDialect::exact(),
+        dialect,
         &ExportRequest {
             table: &table(),
             columns: &columns,
@@ -557,6 +561,27 @@ fn an_unsorted_export_of_a_heap_is_not_sorted_by_row_address() {
     assert_eq!(
         export_sql(by_id(), &[]),
         r#"SELECT "id", "name" FROM "public"."users" ORDER BY "users"."id" ASC"#
+    );
+}
+
+#[test]
+fn an_unsorted_export_keeps_the_scan_order_where_the_key_order_is_a_sort() {
+    let dialect = TestDialect::exact().sorting_by_key();
+
+    assert_eq!(
+        export_sql_in(&dialect, by_id(), &[]),
+        r#"SELECT "id", "name" FROM "public"."users""#
+    );
+    assert_eq!(
+        export_sql_in(
+            &dialect,
+            by_id(),
+            &[SortKey {
+                column: 1,
+                ascending: false
+            }]
+        ),
+        r#"SELECT "id", "name" FROM "public"."users" ORDER BY "users"."name" DESC, "users"."id" ASC"#
     );
 }
 

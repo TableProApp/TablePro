@@ -448,7 +448,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn any_text_classifies_without_panicking(sql in "\\PC{0,120}", grammar in 0usize..5) {
+        fn any_text_classifies_without_panicking(sql in "\\PC{0,120}", grammar in 0usize..SqlGrammar::SQL.len()) {
             let grammar = SqlGrammar::SQL[grammar];
             let _ = classify(grammar, &sql);
         }

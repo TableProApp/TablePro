@@ -15,6 +15,18 @@ fn database(dir: &tempfile::TempDir, name: &str) -> gio::File {
     file
 }
 
+/// A file carrying the second file engine's signature, under a name the
+/// first engine claims.
+fn signed_database(dir: &tempfile::TempDir, name: &str) -> gio::File {
+    let mut header = vec![0u8; 64];
+    let signature = tablepro_test_support::FakeDriver::SIGNED_FILE_SIGNATURE;
+    header[signature.offset..signature.header_len()].copy_from_slice(signature.bytes);
+    let file = gio::File::for_path(dir.path().join(name));
+    file.replace_contents(&header, None, false, gio::FileCreateFlags::NONE, gio::Cancellable::NONE)
+        .expect("seed the database file");
+    file
+}
+
 fn other_windows(test: &TestWindow) -> Vec<SessionWindow> {
     test.app
         .windows()
@@ -49,6 +61,22 @@ fn an_opened_file_goes_to_the_idle_window_then_its_owner_then_a_new_window() {
     })
     .expect("a new window on the second file");
     assert_eq!(test.app.windows().len(), 2);
+}
+
+/// Files hands over a file by its path alone, and the file's own header
+/// says which engine opens it, whatever its name.
+#[gtk4::test]
+fn an_opened_file_goes_to_the_engine_whose_file_it_is() {
+    let test = TestWindow::picker("OpenFileEngine");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = signed_database(&dir, "sales.db");
+
+    test.app.open(std::slice::from_ref(&file), "");
+    test.wait_for_page("workspace");
+
+    let calls = test.connector.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].request.metadata.driver_id, "duckdb");
 }
 
 #[gtk4::test]

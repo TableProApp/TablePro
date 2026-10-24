@@ -4,9 +4,9 @@ use tablepro_session::SessionKey;
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
 
+use super::file_location_dialog::LocationChoice;
 use super::resolve_file_identity::ResolvedFile;
 use super::session_window_command::SessionWindowCommand;
-use super::sqlite_location_dialog::LocationChoice;
 use crate::services::connection_deletion::DeletionOptions;
 use crate::ui::connect_dialog::ConnectSubmission;
 use crate::workspace::{CloseReason, CompletedWork};
@@ -81,7 +81,7 @@ pub(crate) enum SessionWindowInput {
     /// A notification about the tab was clicked.
     FocusTab(Uuid),
     Command(Box<SessionWindowCommand>),
-    /// The answer for a file on a filesystem whose locking SQLite cannot
+    /// The answer for a file on a filesystem whose locking the engines cannot
     /// trust, or ReadWrite when there was nothing to ask.
     LocationChosen {
         generation: tablepro_session::connect::AttemptGeneration,

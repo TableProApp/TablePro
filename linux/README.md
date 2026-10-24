@@ -4,7 +4,7 @@ Native Linux database client, the Linux sibling of the macOS TablePro app. The t
 
 ## Status
 
-It connects to seven engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
+It connects to eight engines: PostgreSQL, MySQL and MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB, SQLite, DuckDB and Redis. Each connection session gets a window of its own. Nothing is released yet: no `linux-v*` tag exists. [ROADMAP.md](ROADMAP.md) lists what is built, what is not, and the release criteria.
 
 ## Supported servers
 
@@ -20,6 +20,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
+| DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 
 - PostgreSQL 14 reaches end of life on 2026-11-12.
@@ -50,7 +51,7 @@ apt and dnf, and Software Updater and GNOME Software with them, install the upda
 
 ## Privacy
 
-TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
+TablePro makes no network requests of its own: no telemetry, no update check and no crash upload. DuckDB fetches no extension unless your own SQL runs `INSTALL`. It connects to the database servers and SSH hosts you set up, and nothing else. With a provider chosen for the [AI assistant](#ai-assistant), it also sends what the assistant asks to that provider: Anthropic (`api.anthropic.com`), OpenAI (`api.openai.com`), or the Ollama or other server whose address you enter. That is your questions, your SQL, the structure of the tables involved and, for Fix with AI, the server's error message, and only from connections whose AI Assistant setting allows it; it reads no rows for it. With the [MCP server](#mcp-server) on, it also listens on `127.0.0.1` for MCP clients on this computer, which send what they read wherever their own settings say. Crash reports stay on your disk until you attach one to a bug report. Updates come from apt or dnf.
 
 ## Stack
 
@@ -60,7 +61,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
-| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate and scylla 1.9 (Cassandra and ScyllaDB), all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
+| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate, scylla 1.9 (Cassandra and ScyllaDB) and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
 | SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
 | TLS | rustls with aws-lc-rs as the only crypto provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)) |
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
@@ -86,7 +87,7 @@ System dependencies:
 sudo apt install -y build-essential pkgconf meson ninja-build gettext desktop-file-utils appstream libglib2.0-bin libxml2-utils libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev libsqlite3-dev libkrb5-dev clang libclang-dev openssh-client
 
 # Fedora 44
-sudo dnf install -y gcc pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
+sudo dnf install -y gcc gcc-c++ pkgconf meson ninja-build gettext desktop-file-utils appstream glib2-devel libxml2 gtk4-devel libadwaita-devel gtksourceview5-devel sqlite-devel krb5-devel clang-devel openssh-clients
 
 # Arch (not covered by CI)
 sudo pacman -S --needed base-devel pkgconf meson ninja gettext desktop-file-utils appstream libxml2 gtk4 libadwaita gtksourceview5 sqlite krb5 clang openssh
@@ -144,6 +145,10 @@ Before pushing, run the [fast-job commands](CONTRIBUTING.md#fast-job-commands). 
 link the system SQLite through sqlx's `sqlite-unbundled` feature rather
 than compiling a second copy into the binary. `libclang-dev` lets
 `libsqlite3-sys` run bindgen against the installed `sqlite3.h`.
+
+A C++ compiler is there for DuckDB, which the `duckdb` crate compiles
+from its own sources: `build-essential` brings g++ on Ubuntu, `gcc-c++`
+on Fedora. The first build of it takes several minutes.
 
 `libkrb5-dev` is there for the app's default `kerberos` feature: SQL
 Server Windows integrated auth links MIT Kerberos and runs bindgen against
@@ -225,19 +230,22 @@ After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag along with
 `data/licenses`.
 
-## Opening SQLite files
+## Opening database files
 
 Once installed, TablePro is in the file manager's **Open With** for
-SQLite databases (`application/vnd.sqlite3`). From a terminal:
+SQLite databases (`application/vnd.sqlite3`). shared-mime-info has no
+type for DuckDB files, so a `.duckdb` file opens from the connect dialog
+or a terminal:
 
 ```bash
-tablepro app.sqlite3
+tablepro app.sqlite3 sales.duckdb
 ```
 
-A running TablePro opens the file in its own window and the new launch
-exits. A file already open brings its window forward. A database on a
-network or FUSE filesystem asks whether to open read-only first, because
-SQLite's locking cannot be trusted there.
+The file's own header picks the engine, whatever its name. A running
+TablePro opens each file in its own window and the new launch exits. A
+file already open brings its window forward. A database on a network or
+FUSE filesystem asks whether to open read-only first, because neither
+engine's locking can be trusted there.
 
 ## Vim keybindings
 
@@ -304,9 +312,8 @@ added, changed or removed takes effect without a restart:
 - `languages` says where a snippet shows: `sql` on every SQL connection
   and in a tab with no connection, or one engine: `postgres`, `mysql`
   (MySQL and MariaDB), `sqlite`, `mssql`, `clickhouse`, `cassandra`
-  (Cassandra and ScyllaDB) or `redis`, whose
-  editor offers its own snippets and no SQL ones. Separate several with
-  `;`.
+  (Cassandra and ScyllaDB), `duckdb` or `redis`, whose editor offers its
+  own snippets and no SQL ones. Separate several with `;`.
 - A snippet for the engine replaces a `sql` one with the same trigger,
   and either replaces the built-in one.
 - A file that does not parse is skipped, and GtkSourceView logs its name.

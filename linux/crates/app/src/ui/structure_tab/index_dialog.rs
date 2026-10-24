@@ -36,6 +36,8 @@ struct Inner {
     columns: Vec<String>,
     /// The names the table's indexes already take.
     existing: Vec<String>,
+    /// Whether the engine keeps a key in descending order.
+    descending: bool,
     draft: RefCell<IndexDraft>,
     /// An empty name is a problem to point out only once the user has
     /// typed one.
@@ -45,7 +47,12 @@ struct Inner {
 }
 
 impl IndexDialog {
-    pub(super) fn new(columns: Vec<String>, existing: Vec<String>, on_add: impl Fn(IndexInfo) + 'static) -> Self {
+    pub(super) fn new(
+        columns: Vec<String>,
+        existing: Vec<String>,
+        descending: bool,
+        on_add: impl Fn(IndexInfo) + 'static,
+    ) -> Self {
         let (form, dialog) = FormDialog::new(&crate::i18n::gettext("Add Index"), &crate::i18n::gettext("_Add"));
         let details = adw::PreferencesGroup::new();
         let name_row = FormDialog::entry_row(&crate::i18n::gettext("Name"));
@@ -84,6 +91,7 @@ impl IndexDialog {
             shown_keys: RefCell::default(),
             columns,
             existing,
+            descending,
             draft: RefCell::default(),
             name_edited: Cell::new(false),
             refresh_queued: Cell::new(false),
@@ -209,15 +217,17 @@ impl Inner {
         if key.descending {
             row.set_subtitle(&crate::i18n::gettext("Descending"));
         }
-        let order = gio::Menu::new();
-        order.append(Some(&crate::i18n::gettext("Sort _Descending")), Some("key.descending"));
         let moves = gio::Menu::new();
         moves.append(Some(&crate::i18n::gettext("Move _Up")), Some("key.move-up"));
         moves.append(Some(&crate::i18n::gettext("Move D_own")), Some("key.move-down"));
         let removal = gio::Menu::new();
         removal.append(Some(&crate::i18n::gettext("_Remove")), Some("key.remove"));
         let menu = gio::Menu::new();
-        menu.append_section(None, &order);
+        if self.descending {
+            let order = gio::Menu::new();
+            order.append(Some(&crate::i18n::gettext("Sort _Descending")), Some("key.descending"));
+            menu.append_section(None, &order);
+        }
         menu.append_section(None, &moves);
         menu.append_section(None, &removal);
         let button = gtk::MenuButton::builder()
@@ -230,14 +240,16 @@ impl Inner {
         row.add_suffix(&button);
 
         let actions = gio::SimpleActionGroup::new();
-        let descending = gio::SimpleAction::new_stateful("descending", None, &key.descending.to_variant());
-        let weak = Rc::downgrade(self);
-        descending.connect_activate(move |action, _| {
-            let next = !action.state().and_then(|state| state.get::<bool>()).unwrap_or(false);
-            action.set_state(&next.to_variant());
-            edit_later(&weak, move |draft| draft.set_descending(position, next));
-        });
-        actions.add_action(&descending);
+        if self.descending {
+            let descending = gio::SimpleAction::new_stateful("descending", None, &key.descending.to_variant());
+            let weak = Rc::downgrade(self);
+            descending.connect_activate(move |action, _| {
+                let next = !action.state().and_then(|state| state.get::<bool>()).unwrap_or(false);
+                action.set_state(&next.to_variant());
+                edit_later(&weak, move |draft| draft.set_descending(position, next));
+            });
+            actions.add_action(&descending);
+        }
         let steps = [
             ("move-up", position > 0, Edit::Up),
             ("move-down", position + 1 < count, Edit::Down),
@@ -297,10 +309,15 @@ mod tests {
     use crate::test_support::{drain_main_context, wait_until};
 
     fn dialog(added: &Rc<RefCell<Vec<IndexInfo>>>) -> IndexDialog {
+        dialog_sorting(added, true)
+    }
+
+    fn dialog_sorting(added: &Rc<RefCell<Vec<IndexInfo>>>, descending: bool) -> IndexDialog {
         let sink = added.clone();
         IndexDialog::new(
             vec!["id".to_owned(), "email".to_owned(), "created_at".to_owned()],
             vec!["users_pkey".to_owned()],
+            descending,
             move |index| sink.borrow_mut().push(index),
         )
     }
@@ -423,6 +440,19 @@ mod tests {
         );
         let first = dialog.inner.key_rows.borrow()[0].clone();
         assert_eq!(first.subtitle().as_deref(), Some("Descending"));
+    }
+
+    #[gtk4::test]
+    fn an_engine_that_keeps_keys_ascending_offers_no_descending_sort() {
+        let window = window();
+        let added = Rc::new(RefCell::new(Vec::new()));
+        let dialog = dialog_sorting(&added, false);
+        dialog.present(window.upcast_ref());
+        add_key(&dialog, "email");
+
+        let row = dialog.inner.key_rows.borrow()[0].clone();
+        assert!(row.activate_action("key.descending", None).is_err());
+        assert!(row.activate_action("key.remove", None).is_ok());
     }
 
     #[gtk4::test]

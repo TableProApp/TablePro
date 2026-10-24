@@ -186,6 +186,12 @@ path = "LICENSE-MIT"
 license = "MIT"
 checksum = "5abbdd842310c8f1650fcde3a5a51a3e09412b9e5a6eea87519e0db9e32b339d"
 
+# The crate packages no license file; the repository root holds it.
+[duckdb.clarify]
+license = "MIT"
+[[duckdb.clarify.git]]
+path = "LICENSE"
+checksum = "e00a318e49c9ff90254194864b2b695efc04c0384a8682c93ef51518e77ff5ea"
 # The LICENSE opens with a note on the project's move from MIT to
 # Apache-2.0, then holds both texts: code whose authors have not agreed to
 # the move stays under MIT, so the notice carries both.

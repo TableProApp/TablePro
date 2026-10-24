@@ -26,6 +26,34 @@ APACHE = """
       Copyright [yyyy] [name of copyright owner]
 """
 
+GPL2 = """
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 2, June 1991
+
+ Copyright (C) 1989, 1991 Free Software Foundation, Inc.,
+ 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+                    GNU GENERAL PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+                     END OF TERMS AND CONDITIONS
+
+            How to Apply These Terms to Your New Programs
+
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+library.  If this is what you want to do, use the GNU Lesser General
+Public License instead of this License.
+"""
+
+LGPL21 = """
+                  GNU LESSER GENERAL PUBLIC LICENSE
+                       Version 2.1, February 1999
+
+                  GNU LESSER GENERAL PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+"""
+
 MIT_ALICE = """Copyright (c) 2019 Alice
 
 Permission is hereby granted, free of charge, to any person obtaining a copy.
@@ -280,6 +308,13 @@ class RenderCopyrightTests(unittest.TestCase):
 
         self.assertEqual(paragraph["Copyright"], ["2019 Alice", "1991-2024 Unicode, Inc."])
 
+    def test_a_notice_written_as_a_field_loses_its_colon(self):
+        text = "This product includes code from Apache Spark.\n\nCopyright: 2014 The Apache Software Foundation.\n"
+        licenses = [entry("MIT", text, crate("a", "1.0.0"))]
+        paragraph = files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")
+
+        self.assertEqual(paragraph["Copyright"], ["2014 The Apache Software Foundation."])
+
     def test_a_text_without_a_notice_credits_the_crates_authors(self):
         licenses = [entry("MIT", MIT_NO_NOTICE, crate("serde", "1.0.0"), crate("syn", "1.0.0"), crate("syn", "2.0.0"))]
         paragraph = files_paragraph(self.render(licenses), "vendor/serde-1.0.0/*")
@@ -303,6 +338,33 @@ class RenderCopyrightTests(unittest.TestCase):
 
         with self.assertRaises(license_metadata.MetadataError):
             self.render([entry("Apache-2.0", broken, crate("ryu", "1.0.0"))])
+
+    def test_the_gpl2_terms_and_their_fsf_address_point_at_common_licenses(self):
+        dual = "Copyright The Mbed TLS Contributors\n\nApache-2.0 OR GPL-2.0-or-later.\n" + APACHE + "\n=====\n" + GPL2
+        licenses = [entry("Apache-2.0", dual, crate("mbedtls", "1.0.0"))]
+        rendered = self.render(licenses, declared(licenses, mbedtls="Apache-2.0 OR GPL-2.0-or-later"))
+        paragraph = files_paragraph(rendered, "vendor/mbedtls-1.0.0/*")
+        body = "\n".join(paragraph["License"][1:])
+
+        self.assertNotIn("TERMS AND CONDITIONS FOR COPYING", rendered)
+        self.assertNotIn("02110-1301", rendered)
+        self.assertIn("/usr/share/common-licenses/Apache-2.0", body)
+        self.assertIn("/usr/share/common-licenses/GPL-2", body)
+        self.assertTrue(body.rstrip().endswith('"/usr/share/common-licenses/GPL-2".'))
+        self.assertEqual(paragraph["Copyright"], ["The Mbed TLS Contributors"])
+
+    def test_an_lgpl_text_is_kept(self):
+        licenses = [entry("LGPL-2.1-or-later", LGPL21, crate("a", "1.0.0"))]
+        body = "\n".join(files_paragraph(self.render(licenses), "vendor/a-1.0.0/*")["License"][1:])
+
+        self.assertIn("TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION", body)
+        self.assertNotIn("common-licenses", body)
+
+    def test_a_gpl2_text_with_no_last_line_is_refused(self):
+        broken = GPL2.replace("Public License instead of this License.", "")
+
+        with self.assertRaises(license_metadata.MetadataError):
+            self.render([entry("GPL-2.0-or-later", broken, crate("a", "1.0.0"))])
 
     def test_blank_lines_and_tabs_are_deb822_safe(self):
         licenses = [entry("MIT", "Copyright 2020 Bob\n\n\tIndented\fline\n\n", crate("a", "1.0.0"))]

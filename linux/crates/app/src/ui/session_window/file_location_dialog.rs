@@ -1,4 +1,4 @@
-//! The question asked before a SQLite file on a network or FUSE
+//! The question asked before a database file on a network or FUSE
 //! filesystem opens read-write.
 
 use std::path::PathBuf;
@@ -38,7 +38,7 @@ pub(crate) enum LocationChoice {
 #[derive(Debug)]
 pub(crate) enum FileCheck {
     /// Read the filesystem `path` is on before connecting, and stop to
-    /// ask when SQLite's locking cannot be trusted there.
+    /// ask when the engines' file locks cannot be trusted there.
     Pending {
         path: PathBuf,
         classify: LocationClassifier,
@@ -53,7 +53,7 @@ impl FileCheck {
     }
 
     /// Run `connecting` once the file is known to be on a filesystem
-    /// whose locking SQLite can trust. The check reads the disk on the
+    /// whose locks the engines can trust. The check reads the disk on the
     /// spawner, and only a file that needs the question comes back to
     /// the GTK thread before connecting.
     pub(crate) fn guard(
@@ -94,7 +94,7 @@ fn location_dialog() -> adw::AlertDialog {
     let dialog = adw::AlertDialog::new(
         Some(&crate::i18n::gettext("Database on a Network Filesystem")),
         Some(&crate::i18n::gettext(
-            "SQLite can corrupt a database on a network or FUSE filesystem when more than one program writes to it.",
+            "A database on a network or FUSE filesystem can be corrupted when more than one program writes to it.",
         )),
     );
     dialog.add_responses(&[

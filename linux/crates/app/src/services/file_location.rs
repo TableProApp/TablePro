@@ -15,7 +15,7 @@ pub type LocationClassifier = fn(&Path) -> FileLocationKind;
 /// GIO's name for the portal's `user.document-portal.host-path`.
 const HOST_PATH_ATTRIBUTE: &str = "xattr::document-portal.host-path";
 
-/// Filesystems whose locks SQLite cannot rely on across machines.
+/// Filesystems whose locks the engines cannot rely on across machines.
 const REMOTE_FILESYSTEMS: &[&str] = &[
     "nfs",
     "nfs4",
@@ -67,7 +67,7 @@ fn classify_with(path: &Path, mount_kind: impl Fn(&Path) -> FileLocationKind) ->
     }
 }
 
-/// SQLite opens the file a link points to, while GIO finds the mount
+/// An engine opens the file a link points to, while GIO finds the mount
 /// of the link itself. A path that does not resolve, such as a file
 /// not made yet, stays as given, and GIO resolves its folder.
 fn follow_links(path: &Path) -> PathBuf {

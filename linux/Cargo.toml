@@ -13,6 +13,7 @@ members = [
     "crates/test-support",
     "crates/drivers/cassandra",
     "crates/drivers/clickhouse",
+    "crates/drivers/duckdb",
     "crates/drivers/mssql",
     "crates/drivers/mysql",
     "crates/drivers/postgres",
@@ -31,6 +32,7 @@ tablepro-ai = { path = "crates/ai" }
 tablepro-core = { path = "crates/core" }
 tablepro-driver-cassandra = { path = "crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "crates/drivers/clickhouse" }
+tablepro-driver-duckdb = { path = "crates/drivers/duckdb" }
 tablepro-driver-mssql = { path = "crates/drivers/mssql" }
 tablepro-driver-mysql = { path = "crates/drivers/mysql" }
 tablepro-driver-postgres = { path = "crates/drivers/postgres" }
@@ -87,6 +89,10 @@ clickhouse-types = "0.1.3"
 # provider feature is needed, and leaving both off keeps ring out.
 tokio-postgres-rustls = { version = "0.14.0", default-features = false }
 libsqlite3-sys = ">=0.30.1, <0.38.0"
+# DuckDB 1.5, compiled from the sources the crate ships, since only Ubuntu
+# 26.10 packages libduckdb (docs/decisions/0025-bundled-duckdb.md). json and
+# parquet are linked in, since extensions are never downloaded.
+duckdb = { version = "~1.10506", default-features = false, features = ["bundled", "json", "parquet"] }
 num-bigint = { version = "0.4", default-features = false, features = ["std"] }
 proptest = "1.11"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
@@ -137,6 +143,13 @@ allow_attributes_without_reason = "deny"
 ignore_without_reason = "deny"
 too_many_lines = "deny"
 self_named_module_files = "deny"
+
+# Unoptimised with debug info, DuckDB's archive is 2.6 GB, which every
+# test binary of the app links, and the engine runs the suites at debug
+# speed.
+[profile.dev.package.libduckdb-sys]
+opt-level = 2
+debug = false
 
 [profile.release]
 lto = "fat"

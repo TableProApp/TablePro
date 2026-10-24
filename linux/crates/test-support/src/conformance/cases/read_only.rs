@@ -15,6 +15,13 @@ pub async fn f001_read_only_connection_refuses_writes<E: ConformanceEngine>(
 ) -> Result<(), ConformanceFailure> {
     let owner = connect(CASE, &engine, writable()).await?;
     let table = create_scratch_table(&engine, owner.as_ref(), "read_only").await?;
+    let owner = match E::READ_ONLY_BESIDE_WRITER {
+        true => Some(owner),
+        false => {
+            owner.close().await?;
+            None
+        }
+    };
     let reader = connect(CASE, &engine, WorkspaceSettings::workspace(true)).await?;
     let insert = insert_sql(reader.dialect().as_ref(), &table, 1, "refused");
 
@@ -41,6 +48,13 @@ pub async fn f001_read_only_connection_refuses_writes<E: ConformanceEngine>(
         }
         session.close().await;
     }
+    let owner = match owner {
+        Some(owner) => owner,
+        None => {
+            reader.close().await?;
+            connect(CASE, &engine, writable()).await?
+        }
+    };
     let rows = count(owner.as_ref(), &table).await?;
     expect(CASE, rows == 0, || {
         format!("{rows} rows reached a table only a read-only connection wrote to")

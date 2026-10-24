@@ -134,6 +134,13 @@ impl TestWindow {
             (false, false) => &FakeDriver::FILE_CAPABILITIES,
         };
         drivers.register(Arc::new(FakeDriver::connecting(capabilities, connection.clone())));
+        // A second file engine, as the app ships two, whose files a
+        // handed-over file is told apart from by its header.
+        if !network {
+            drivers.register(Arc::new(
+                FakeDriver::connecting(&FakeDriver::SIGNED_FILE_CAPABILITIES, connection.clone()).with_id("duckdb"),
+            ));
+        }
         let connector = FakeConnector::new(establish).always(FakeEstablish::Connect(connection));
         let liveness = LivenessPolicy::DESKTOP;
         let hold = Rc::new(CountingHold::new());

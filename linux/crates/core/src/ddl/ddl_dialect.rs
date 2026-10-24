@@ -1,9 +1,9 @@
 use super::{
     BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlOperation, DdlPlan, DropTableOptions,
-    ReferentialAction, TableChanges, TableDefinition, TableDraft,
+    Permission, ReferentialAction, TableChanges, TableDefinition, TableDraft,
 };
 use crate::dialect::SqlDialect;
-use crate::meta::TableRef;
+use crate::meta::{IndexInfo, TableRef};
 
 /// How one engine plans structure changes.
 ///
@@ -30,6 +30,13 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
 
     fn column_capabilities(&self, table: &TableDefinition, column: &ColumnDefinition) -> ColumnCapabilities {
         ColumnCapabilities::standard(self.capabilities(), table, column)
+    }
+
+    /// Whether one of the table's indexes can be dropped, where the
+    /// table's `drop_index` allows it: an index a constraint owns may
+    /// not be.
+    fn index_removal(&self, _table: &TableDefinition, _index: &IndexInfo) -> Permission {
+        Permission::Allowed
     }
 
     /// Types offered in the structure tab, most common first. Each one

@@ -15,12 +15,13 @@ Every connection to the file opens with the same options:
 - `foreign_keys = ON`, and `trusted_schema = OFF`, so a view or trigger in a file from elsewhere cannot run SQL functions with side effects.
 - The statement cache is off, because sqlx keeps a statement's columns from its first prepare and SQLite prepares it again with more columns after an `ALTER TABLE`.
 - sqlx's statement logging is off.
+- A file DuckDB has open in the app is `Busy(FileLocked)`, and an `ATTACH` of one is refused by an authorizer every connection installs: SQLite would close the file again on finding no database in it, which drops the POSIX locks DuckDB holds on it (`tablepro_core::claimed_by_another`). The authorizer sees a file name the `ATTACH` spells as a string.
 
 The connect reads `sqlite_version()` and counts `sqlite_schema` once, so a file that is not a database fails the connect (`NotADatabase`) rather than the first page. Either statement can be the one that finds out: SQLite 3.51 reads the schema before it compiles a connection's first SELECT, while 3.46 waits for a statement that names a table. SQLite only says it could not open a file; the driver tells a moved file (`FileNotFound`) from one the user may not read (`FileAccessDenied`) by looking at the path.
 
 ### New databases
 
-`FileOpenMode::CreateNew` is what the New Database flow sends after the save dialog has asked about replacing a file. The driver writes an empty file next to the target with mode 0600, syncs it, renames it over the path, removes any `-wal`, `-shm` or `-journal` file left beside the old database (it would be replayed into the new one), and syncs the folder so the rename is durable. A reader sees the old file or the new one, never half of one. An existing file is replaced, not refused.
+`FileOpenMode::CreateNew` is what the New Database flow sends after the save dialog has asked about replacing a file. The driver writes an empty file next to the target with mode 0600, syncs it, renames it over the path, removes any `-wal`, `-shm` or `-journal` file left beside the old database (it would be replayed into the new one), and syncs the folder so the rename is durable. A reader sees the old file or the new one, never half of one. An existing file is replaced, not refused, unless this process has it open: the rename would pull it out from under the window or the DuckDB database using it, so that is `Busy(FileLocked)`.
 
 A reconnect uses `FileEndpoint::for_reopen`, which is always `OpenExisting`, so reconnecting never empties a database the user just created.
 

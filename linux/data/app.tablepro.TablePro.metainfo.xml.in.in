@@ -8,9 +8,10 @@
   <summary>Work with your databases</summary>
   <description>
     <p>
-      TablePro connects to PostgreSQL, MySQL, SQLite, SQL Server, ClickHouse,
-      Cassandra and ScyllaDB. Browse tables, edit rows in place, run SQL with
-      syntax highlighting, and reach servers behind an SSH bastion.
+      TablePro connects to PostgreSQL, MySQL, SQLite, DuckDB, SQL Server,
+      ClickHouse, Cassandra and ScyllaDB. Browse tables, edit rows in place,
+      run SQL with syntax highlighting, and reach servers behind an SSH
+      bastion.
     </p>
     <p>It can:</p>
     <ul>

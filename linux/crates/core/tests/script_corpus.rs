@@ -2,7 +2,8 @@ use std::num::NonZeroU32;
 
 use proptest::prelude::*;
 use sqlparser::dialect::{
-    ClickHouseDialect, Dialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect, SQLiteDialect,
+    ClickHouseDialect, Dialect, DuckDbDialect, GenericDialect, MsSqlDialect, MySqlDialect, PostgreSqlDialect,
+    SQLiteDialect,
 };
 use sqlparser::tokenizer::{Token, Tokenizer, TokenizerError};
 use tablepro_core::sql_syntax::SqlGrammar;
@@ -477,6 +478,30 @@ fn cql_unterminated_double_dollar_keeps_prior_statements() {
 }
 
 #[test]
+fn duckdb_escapes_only_in_an_e_string() {
+    let text = r"SELECT E'it\'s; x'; SELECT 'a\'; SELECT 2;";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        [r"SELECT E'it\'s; x'", r"SELECT 'a\'", "SELECT 2"]
+    );
+}
+
+#[test]
+fn duckdb_nests_comments_and_quotes_with_dollar_tags() {
+    let text = "SELECT /* a /* b; */ c; */ $x$it's; here$x$, $$;$$; SELECT 2;";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        ["SELECT /* a /* b; */ c; */ $x$it's; here$x$, $$;$$", "SELECT 2"]
+    );
+}
+
+#[test]
+fn duckdb_reads_a_backtick_as_no_quote() {
+    let text = "SELECT `a;b` FROM t;";
+    assert_eq!(statements(SqlGrammar::DuckDb, text), ["SELECT `a", "b` FROM t"]);
+}
+
+#[test]
 fn statement_at_on_terminator_takes_preceding() {
     let text = "SELECT 1;SELECT 2;";
     let plan = plan(SqlGrammar::PostgreSql, text);
@@ -639,6 +664,7 @@ const AGREED_CASES: &[(SqlGrammar, &str)] = &[
     ),
     (SqlGrammar::ClickHouse, "SELECT $doc$a; b$doc$; SELECT 2;"),
     (SqlGrammar::ClickHouse, r"SELECT 'a\'; b', `c;d` FROM t; SELECT 2;"),
+    (SqlGrammar::DuckDb, "SELECT 'a;b', \"c;d\" FROM t; -- x;\nSELECT 2;"),
     (SqlGrammar::Cql, "SELECT 'x''y;', \"a;b\" FROM t; -- c;\nSELECT 2;"),
 ];
 
@@ -665,6 +691,7 @@ fn sqlparser_semicolons(grammar: SqlGrammar, text: &str) -> Result<Vec<usize>, T
         SqlGrammar::Sqlite => &SQLiteDialect {},
         SqlGrammar::MsSql => &MsSqlDialect {},
         SqlGrammar::ClickHouse => &ClickHouseDialect {},
+        SqlGrammar::DuckDb => &DuckDbDialect {},
         SqlGrammar::Cql => &GenericDialect {},
         // Commands have no SQL tokenizer to agree with, and no agreed case
         // is a Redis one.
@@ -737,6 +764,9 @@ fn a_digit_separator_keeps_a_number_whole_where_the_engine_reads_one() {
         ["1_0e", "2"],
         "a name, then a number"
     );
+    // DuckDB 1.5 reads both as one number and refuses `1._5`.
+    assert_eq!(numbers(SqlGrammar::DuckDb, "1_0e+2"), ["1_0e+2"]);
+    assert_eq!(numbers(SqlGrammar::DuckDb, "1_000.000_5"), ["1_000.000_5"]);
 }
 
 #[test]
