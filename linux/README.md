@@ -61,7 +61,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 | GUI toolkit | GTK 4, libadwaita, GtkSourceView and GLib at the GNOME 50 floor ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)) |
 | App architecture | gtk-rs subclasses with composite templates, one window per connection session ([ADR 0012](docs/decisions/0012-window-per-session.md)); the saved-queries and CSV import dialogs are still [Relm4](https://relm4.org) 0.11 components |
 | Async | the app's tokio runtime (`AppRuntime`) for background work, results delivered to the GLib main loop |
-| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate, scylla 1.9 (Cassandra and ScyllaDB) and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
+| Database drivers | tokio-postgres with deadpool-postgres (PostgreSQL), sqlx 0.9 (MySQL and MariaDB, SQLite), tiberius 0.13 (SQL Server), the official `clickhouse` crate, scylla 1.9 (Cassandra and ScyllaDB), redis 1.7 (Redis) and the `duckdb` crate with DuckDB compiled in, all from crates.io ([ADR 0016](docs/decisions/0016-driver-contract-v2.md)) |
 | SSH | the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)) |
 | TLS | rustls with aws-lc-rs as the only crypto provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)) |
 | Secrets | oo7: the Secret portal inside Flatpak, the Secret Service over D-Bus on the host ([ADR 0004](docs/decisions/0004-libsecret-secret-storage.md)) |
