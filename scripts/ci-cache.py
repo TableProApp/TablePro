@@ -172,8 +172,14 @@ def main():
         if args.min_free_gib < 0:
             raise ValueError('minimum free space cannot be negative')
         if args.command == 'checkout':
+            reserve = args.min_free_gib * 1024**3
+            fcntl.flock(lock, fcntl.LOCK_SH)
+            if shutil.disk_usage(root).free >= reserve:
+                mark_used(root)
+                return run_script(args.script)
+            fcntl.flock(lock, fcntl.LOCK_UN)
             fcntl.flock(lock, fcntl.LOCK_EX)
-            status = cleanup(root, args.min_free_gib * 1024**3)
+            status = cleanup(root, reserve)
             if status:
                 return status
             fcntl.flock(lock, fcntl.LOCK_SH)

@@ -139,12 +139,15 @@ class CiCacheTests(unittest.TestCase):
             SENTINEL=str(sentinel),
             CARGO_TARGET_DIR=str(self.cache / 'unit'),
         )
-        result = subprocess.run(
-            self.command + ['checkout', '--min-free-gib', '0', str(shell)],
-            env=env,
-            capture_output=True,
-            text=True,
-        )
+        with self.lock.open('r+') as active_job:
+            fcntl.flock(active_job, fcntl.LOCK_SH)
+            result = subprocess.run(
+                self.command + ['checkout', '--min-free-gib', '0', str(shell)],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('cache busy; cleanup skipped', sentinel.read_text())
         self.assertTrue((self.cache / 'unit/.bookie-last-used').is_file())
