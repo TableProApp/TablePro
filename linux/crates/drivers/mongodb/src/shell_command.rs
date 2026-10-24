@@ -495,34 +495,56 @@ const AGGREGATE_OPTIONS: [&str; 9] = [
 ];
 
 /// An aggregate. Its columns are the last `$project`'s, where it ends on
-/// one, and its `explain()` asks the planner instead.
-fn aggregate(target: Bson, pipeline: Vec<Bson>, options: Document, database: String, call: &ShellCall) -> Planned {
-    let columns = pipeline
-        .last()
-        .and_then(Bson::as_document)
-        .and_then(|stage| stage.get_document("$project").ok())
-        .map_or(Columns::Discovered, crate::shell_find::projected_columns);
+/// one, its `explain()` asks the planner instead, and its `itcount()`
+/// counts what it returns on the server.
+fn aggregate(target: Bson, mut pipeline: Vec<Bson>, options: Document, database: String, call: &ShellCall) -> Planned {
     let mut explained = false;
+    let mut counted = false;
     for modifier in call.modifiers() {
         match modifier.name.as_str() {
             "explain" => explained = true,
+            "itcount" => counted = true,
             "toArray" | "pretty" => {}
             _ => return Err(unsupported("this aggregate cursor method")),
         }
     }
-    let mut command = doc! { "aggregate": target, "pipeline": pipeline, "cursor": {} };
+    let mut cursor = Document::new();
+    let mut fields = Document::new();
     for (key, value) in options {
         match key.as_str() {
             "batchSize" => {
-                command.insert("cursor", doc! { "batchSize": value });
+                cursor.insert("batchSize", value);
             }
             "explain" => explained |= value.as_bool().unwrap_or(false),
             name if AGGREGATE_OPTIONS.contains(&name) => {
-                command.insert(key, value);
+                fields.insert(key, value);
             }
             _ => return Err(value_error(ValueError(format!("aggregate() takes no option {key}")))),
         }
     }
+    let mut columns = pipeline
+        .last()
+        .and_then(Bson::as_document)
+        .and_then(|stage| stage.get_document("$project").ok())
+        .map_or(Columns::Discovered, crate::shell_find::projected_columns);
+    if counted && !explained {
+        // The server takes no stage after one that writes, and such a
+        // pipeline returns no documents to count.
+        let writes = pipeline
+            .last()
+            .and_then(Bson::as_document)
+            .and_then(|stage| stage.keys().next())
+            .is_some_and(|stage| stage == "$out" || stage == "$merge");
+        if writes {
+            return Err(unsupported("itcount() after $out or $merge"));
+        }
+        pipeline.push(Bson::Document(
+            doc! { "$group": { "_id": 1_i32, "n": { "$sum": 1_i32 } } },
+        ));
+        columns = Columns::Discovered;
+    }
+    let mut command = doc! { "aggregate": target, "pipeline": pipeline, "cursor": cursor };
+    command.extend(fields);
     if explained {
         return Ok(Plan::Command {
             database,
@@ -534,7 +556,7 @@ fn aggregate(target: Bson, pipeline: Vec<Bson>, options: Document, database: Str
         database,
         command,
         columns,
-        counted: false,
+        counted,
     })
 }
 
@@ -568,6 +590,28 @@ mod tests {
             "an aggregate takes no sort()"
         );
         assert!(planned("db.a.aggregate([{$out: 'b'}]).itcount()").is_err());
+    }
+
+    #[test]
+    fn an_aggregates_itcount_counts_on_the_server() {
+        let Ok(Plan::Cursor { command, counted, .. }) =
+            planned("db.a.aggregate([{$match: {size: {$gt: 1}}}]).itcount()")
+        else {
+            panic!("not a cursor");
+        };
+        assert!(counted);
+        let pipeline = command.get_array("pipeline").unwrap();
+        assert_eq!(pipeline.len(), 2);
+        assert_eq!(
+            pipeline[1].as_document().unwrap(),
+            &doc! { "$group": { "_id": 1_i32, "n": { "$sum": 1_i32 } } }
+        );
+
+        assert!(planned("db.a.aggregate([{$merge: {into: 'b'}}]).itcount()").is_err());
+        assert!(matches!(
+            planned("db.a.aggregate([{$out: 'b'}], {explain: true}).itcount()"),
+            Ok(Plan::Command { .. })
+        ));
     }
 
     #[test]

@@ -109,6 +109,14 @@ async fn a_find_reads_the_fields_it_projects_in_the_order_it_sorts() {
     .await;
     assert_eq!(counted.end, RunEnd::Completed);
     assert_eq!(rows(&events), [vec![Value::Int(2)]]);
+
+    let (iterated, events) = run(
+        session.as_ref(),
+        &format!("db.getCollection('{collection}').aggregate([{{$match: {{size: {{$gt: 10}}}}}}]).itcount()"),
+    )
+    .await;
+    assert_eq!(iterated.end, RunEnd::Completed);
+    assert_eq!(rows(&events), [vec![Value::Int(2)]]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
