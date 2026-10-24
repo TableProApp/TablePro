@@ -1,0 +1,38 @@
+[
+  {
+    "bytes": 65536,
+    "character_kind": "ascii",
+    "baseline_rss_kib": 100620,
+    "peak_rss_kib": 131960,
+    "heartbeat_count": 28,
+    "first_heartbeat_seconds": 0.10022682300768793,
+    "maximum_heartbeat_gap_seconds": 0.10135528299724683
+  },
+  {
+    "bytes": 262144,
+    "character_kind": "ascii",
+    "baseline_rss_kib": 101576,
+    "peak_rss_kib": 170020,
+    "heartbeat_count": 27,
+    "first_heartbeat_seconds": 0.10872924799332395,
+    "maximum_heartbeat_gap_seconds": 0.10011628200300038
+  },
+  {
+    "bytes": 1048576,
+    "character_kind": "ascii",
+    "baseline_rss_kib": 102984,
+    "peak_rss_kib": 319776,
+    "heartbeat_count": 29,
+    "first_heartbeat_seconds": 0.4447572799981572,
+    "maximum_heartbeat_gap_seconds": 0.2609225759515539
+  },
+  {
+    "bytes": 262142,
+    "character_kind": "emoji",
+    "baseline_rss_kib": 101744,
+    "peak_rss_kib": 134888,
+    "heartbeat_count": 27,
+    "first_heartbeat_seconds": 0.1001218159799464,
+    "maximum_heartbeat_gap_seconds": 0.10150172800058499
+  }
+]

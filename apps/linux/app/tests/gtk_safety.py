@@ -2374,6 +2374,49 @@ def jump_to_column_keyboard_search(database, base):
 jump_to_column_keyboard_search.environment = "local"
 
 
+def overlong_sql_files_are_refused_without_replacing_the_editor(_database, base):
+    path = base / "home" / "long-line.sql"
+    content = "--" + "x" * (8 * 1024 * 1024 - 3) + "\n"
+    path.write_text(content, encoding="utf-8")
+    editor = set_editor_text("SELECT 731;")
+    app = owned_application()
+    tab_count = sum(node_role(node) == pyatspi.ROLE_PAGE_TAB for node in descendants(application_node()))
+    output = os.environ.get("TABLEPRO_PROFILE_OUT")
+    for cycle in range(3 if output else 1):
+        wait_for_node_containing("Split long lines before opening", present=False)
+        before_rss, _ = app.memory_kb()
+        started = time.monotonic()
+        invoke_accessible_action("win.open-file")
+        chooser = wait_for_node(name="Open SQL file", role=FILE_CHOOSER_ROLES)
+        show_file_chooser_location(chooser)
+        location = set_visible_editable_within("Open SQL file", FILE_CHOOSER_ROLES, str(path), action_name="Open")
+        invoke(location)
+        button = wait_within(chooser, name="Open", role=pyatspi.ROLE_PUSH_BUTTON)
+        deadline = time.monotonic() + WAIT_SECONDS
+        while not button.getState().contains(pyatspi.STATE_SENSITIVE) and time.monotonic() < deadline:
+            time.sleep(POLL_SECONDS)
+        assert button.getState().contains(pyatspi.STATE_SENSITIVE), "file chooser did not resolve the fixture"
+        invoke(button)
+        wait_for_node_containing("Split long lines before opening")
+        text = editor.queryText()
+        assert text.getText(0, text.characterCount) == "SELECT 731;"
+        assert sum(node_role(node) == pyatspi.ROLE_PAGE_TAB for node in descendants(application_node())) == tab_count
+        assert path.read_text(encoding="utf-8") == content
+        rss, peak = app.memory_kb()
+        if output:
+            with open(output, "a", encoding="utf-8") as target:
+                target.write(json.dumps({
+                    **app.identity(), "cycle": cycle + 1, "file_bytes": len(content.encode("utf-8")),
+                    "rss_before_kib": before_rss, "rss_after_kib": rss, "peak_rss_kib": peak,
+                    "chooser_to_refusal_seconds": time.monotonic() - started,
+                }) + "\n")
+    run_sql("SELECT 731;")
+    wait_for_node(name="731", role=pyatspi.ROLE_TABLE_CELL)
+
+
+overlong_sql_files_are_refused_without_replacing_the_editor.environment = "local"
+
+
 def committed_editor_ddl_refreshes_sidebar(database, base):
     run_sql("CREATE TABLE catalog_probe (id INTEGER PRIMARY KEY)")
     wait_for_node(name="catalog_probe")
@@ -2648,6 +2691,7 @@ def main():
     scenarios = [
         jump_to_column_keyboard_search,
         committed_editor_ddl_refreshes_sidebar,
+        overlong_sql_files_are_refused_without_replacing_the_editor,
         mysql_unix_socket_endpoint_is_available_in_installed_form,
         imported_mysql_socket_urls_survive_restart,
         new_connection_form_keeps_title_and_help_text_visible,

@@ -855,3 +855,64 @@ fn dropping_an_editor_releases_its_source_view_and_buffer() {
     assert!(view.upgrade().is_none(), "editor view remains alive");
     assert!(buffer.upgrade().is_none(), "editor buffer remains alive");
 }
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn confirmed_session_rollbacks_retire_gutter_marks_and_stale_callbacks_do_not() {
+    for commit_reply in [false, true] {
+        let fixture = EditorFixture::new();
+        let id = fixture.open_transaction();
+        fixture.shortcut("<Primary>Return", false);
+        let query = fixture.next_query();
+        fixture.finish(query, success());
+        fixture.process_inputs();
+        let buffer = fixture
+            .controller
+            .model()
+            .source_view
+            .buffer()
+            .downcast::<sourceview5::Buffer>()
+            .unwrap();
+        assert!(!buffer.source_marks_at_line(0, None).is_empty());
+        fixture.controller.state().get_mut().model.ending_session_id = Some(id);
+        let stale = Uuid::new_v4();
+        fixture
+            .controller
+            .sender()
+            .send(if commit_reply {
+                SqlEditorInput::SessionCommitFinished {
+                    session_id: stale,
+                    result: Ok(tablepro_core::SessionCommitOutcome::RolledBack),
+                }
+            } else {
+                SqlEditorInput::SessionRollbackFinished {
+                    session_id: stale,
+                    result: Ok(()),
+                }
+            })
+            .unwrap();
+        fixture.process_inputs();
+        assert!(!buffer.source_marks_at_line(0, None).is_empty());
+        assert_eq!(fixture.controller.model().session.as_ref().unwrap().id, id);
+        fixture
+            .controller
+            .sender()
+            .send(if commit_reply {
+                SqlEditorInput::SessionCommitFinished {
+                    session_id: id,
+                    result: Ok(tablepro_core::SessionCommitOutcome::RolledBack),
+                }
+            } else {
+                SqlEditorInput::SessionRollbackFinished {
+                    session_id: id,
+                    result: Ok(()),
+                }
+            })
+            .unwrap();
+        fixture.process_inputs();
+        assert!(
+            buffer.source_marks_at_line(0, None).is_empty(),
+            "confirmed rollback left the prior run marker visible"
+        );
+    }
+}

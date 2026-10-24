@@ -920,12 +920,8 @@ impl SimpleComponent for SqlEditor {
                 if !self.drop_generation.accepts(request) {
                     return;
                 }
-                let buffer = self.source_view.buffer();
-                let (start, end) = buffer.bounds();
-                if buffer.text(&start, &end, true).trim().is_empty() {
-                    buffer.set_text(&text);
-                } else {
-                    buffer.insert_at_cursor(&text);
+                if let Err(message) = split_view::insert_dropped_sql(&self.source_view, &text) {
+                    self.status.set_label(&message);
                 }
             }
 

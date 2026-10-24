@@ -42,6 +42,8 @@ Ctrl+E opens a SQL editor tab for the current connection.
 
 Supported single-statement PostgreSQL `SELECT`s load progressively. The grid keeps up to four pages of 5,000 rows within a shared 64 MiB estimated row budget, always keeping the newest page; use **Previous page** and **Next page** to navigate retained pages. The row summary states which rows remain when older pages leave the forward-only window. Discarded rows cannot be revisited there. Other engines and unsupported query shapes load a capped result. A truncated, failed or cancelled result is incomplete; see [result limits](known-limitations.md#data-and-values).
 
+SQL files are limited to 8 MiB in total and 256 KiB of UTF-8 text per physical line. Files with longer lines are refused before opening to limit text-layout memory. The file on disk is unchanged; split long lines in another editor before opening it here. Dropping a file into existing SQL also checks the combined lines and total size before insertion. Existing editor contents can still be saved without truncation.
+
 Automatic completion, statement shading and character diagnostics are available for SQL buffers up to 200,000 UTF-8 bytes. Larger files remain editable, saveable and executable; automatic assistance is disabled to bound background analysis.
 
 SQL completion offers keywords and scoped table and column names. Choosing an identifier inserts its complete quoted SQL name. Table names keep their schema; column suggestions after an alias keep that alias. Arbitrary words elsewhere in the editor are not suggestions.

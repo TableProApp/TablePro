@@ -110,6 +110,23 @@ pub(crate) fn install_shortcuts(view: &sourceview5::View, sender: &ComponentSend
     view.add_controller(controller);
 }
 
+pub(super) fn insert_dropped_sql(view: &sourceview5::View, text: &str) -> Result<(), String> {
+    let buffer = view.buffer();
+    let (start, end) = buffer.bounds();
+    let current = buffer.text(&start, &end, true);
+    let cursor_chars = buffer.iter_at_mark(&buffer.get_insert()).offset() as usize;
+    let cursor = super::statement_cursor::cursor_byte_offset(&current, cursor_chars);
+    super::open_file::validate_dropped_sql(&current, cursor, text)?;
+    buffer.begin_user_action();
+    if current.trim().is_empty() {
+        buffer.set_text(text);
+    } else {
+        buffer.insert_at_cursor(text);
+    }
+    buffer.end_user_action();
+    Ok(())
+}
+
 pub(crate) fn install_drop_target(
     view: &sourceview5::View,
     sender: &ComponentSender<SqlEditor>,
@@ -143,6 +160,32 @@ pub(crate) fn install_drop_target(
 mod tests {
     use super::*;
     use relm4::gtk;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn dropped_sql_rejection_preserves_text_cursor_and_accepted_drop_undo() {
+        gtk::init().unwrap();
+        let view = sourceview5::View::new();
+        let buffer = sourceview5::Buffer::new(None::<&gtk::TextTagTable>);
+        view.set_buffer(Some(&buffer));
+        let current = format!("é{}", "x".repeat(200 * 1024));
+        buffer.set_text(&current);
+        buffer.place_cursor(&buffer.iter_at_offset(1));
+        let cursor = buffer.cursor_position();
+        assert!(insert_dropped_sql(&view, &"y".repeat(100 * 1024)).is_err());
+        let (start, end) = buffer.bounds();
+        assert_eq!(buffer.text(&start, &end, true).as_str(), current);
+        assert_eq!(buffer.cursor_position(), cursor);
+        buffer.set_text("éSELECT 1;");
+        buffer.place_cursor(&buffer.iter_at_offset(1));
+        insert_dropped_sql(&view, "-- 😀\n").unwrap();
+        let (start, end) = buffer.bounds();
+        assert_eq!(buffer.text(&start, &end, true).as_str(), "é-- 😀\nSELECT 1;");
+        assert!(buffer.can_undo());
+        buffer.undo();
+        let (start, end) = buffer.bounds();
+        assert_eq!(buffer.text(&start, &end, true).as_str(), "éSELECT 1;");
+    }
 
     #[test]
     #[ignore = "requires an isolated GTK display"]

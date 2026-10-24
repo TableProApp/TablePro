@@ -674,9 +674,11 @@ fn build_streamed_result_widget(
 }
 
 pub(super) fn stream_progress_text(result: &StreamedResult) -> String {
-    let received = crate::tr!("Received {rows} rows · {pages} pages")
-        .replace("{rows}", &result.total_rows.to_string())
+    let rows = crate::trn!("Received {rows} row", "Received {rows} rows", result.total_rows)
+        .replace("{rows}", &result.total_rows.to_string());
+    let pages = crate::trn!("{pages} page", "{pages} pages", result.total_pages)
         .replace("{pages}", &result.total_pages.to_string());
+    let received = format!("{rows} · {pages}");
     let retained: usize = result.pages.iter().map(|page| page.rows.len()).sum();
     if retained == result.total_rows {
         return received;

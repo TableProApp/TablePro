@@ -1,0 +1,12 @@
+{
+  "base": "c2fc2ba0c5b621f199aa2a16be4e39936e971eb1",
+  "uncommitted_fix": true,
+  "binary_sha256": "0a9fe5e2eed617f39662bd3b75f87e22010bc1b74c7f7cc0dc8675c08842f365",
+  "profile": "dev",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ]
+}

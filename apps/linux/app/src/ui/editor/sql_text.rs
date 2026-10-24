@@ -84,9 +84,10 @@ pub(super) fn analysis_text(buffer: &gtk::TextBuffer) -> Option<gtk::glib::GStri
 }
 
 pub(super) fn read_sql_text(path: &std::path::Path, max_bytes: u64) -> Result<String, String> {
-    tablepro_core::text_file::read_text_file(path, max_bytes)
-        .map(|file| file.text)
-        .map_err(|error| super::open_file::file_error_message(&error))
+    let file = tablepro_core::text_file::read_text_file(path, max_bytes)
+        .map_err(|error| super::open_file::file_error_message(&error))?;
+    super::open_file::validate_sql_line_lengths(&file.text)?;
+    Ok(file.text)
 }
 
 pub(super) fn export_name_for_query(query: &str) -> String {
