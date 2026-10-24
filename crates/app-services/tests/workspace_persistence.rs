@@ -218,3 +218,46 @@ fn repeated_large_draft_saves_preserve_other_connections_and_unicode_text() {
 fn repeated_large_draft_saves_preserve_one_connections_unicode_text() {
     repeated_large_draft_saves(1);
 }
+
+#[test]
+fn saving_one_connection_preserves_an_external_change_to_an_unrelated_draft() {
+    use std::os::unix::fs::MetadataExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("workspace_state.json");
+    let drafts = dir.path().join("drafts");
+    let store = WorkspaceStore::new(Some(path.clone()), drafts.clone());
+    let changed = Uuid::new_v4();
+    let untouched = Uuid::new_v4();
+    let record = |query: &str| ConnectionWorkspaceState {
+        tabs: vec![WorkspaceTabRecord::Editor {
+            query: query.into(),
+            draft_id: None,
+            file: None,
+        }],
+        ..Default::default()
+    };
+    store.save_connection(changed, record("SELECT 'changed';"));
+    store.save_connection(untouched, record("SELECT 'original';"));
+    assert_eq!(flush(&store), Ok(()));
+
+    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let draft_id = json["connections"][untouched.to_string()]["tabs"][0]["draft_id"]
+        .as_str()
+        .unwrap();
+    let untouched_draft = drafts.join(untouched.to_string()).join(format!("{draft_id}.sql"));
+    let external_text = "SELECT 'written outside the store';";
+    std::fs::write(&untouched_draft, external_text).unwrap();
+    let external_inode = std::fs::metadata(&untouched_draft).unwrap().ino();
+
+    store.save_connection(changed, record("SELECT 'changed again';"));
+    assert_eq!(flush(&store), Ok(()));
+
+    assert_eq!(std::fs::read_to_string(&untouched_draft).unwrap(), external_text);
+    assert_eq!(std::fs::metadata(untouched_draft).unwrap().ino(), external_inode);
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(
+        saved["connections"][untouched.to_string()]["tabs"][0]["draft_id"],
+        draft_id
+    );
+}

@@ -3,54 +3,44 @@ use std::path::Path;
 use uuid::Uuid;
 
 use super::config_io::{atomic_write_bytes, atomic_write_json};
-use super::workspace_state::{WorkspaceState, WorkspaceTabRecord};
+use super::workspace_state::{ConnectionWorkspaceState, WorkspaceState, WorkspaceTabRecord};
 
 pub fn load(path: &Path, drafts: &Path) -> std::io::Result<WorkspaceState> {
+    let mut state = load_metadata(path)?;
+    for (connection, workspace) in &mut state.connections {
+        let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
+        load_connection_drafts(connection, workspace, drafts);
+    }
+    Ok(state)
+}
+
+pub fn load_connection(
+    path: &Path,
+    drafts: &Path,
+    connection: Uuid,
+) -> std::io::Result<Option<ConnectionWorkspaceState>> {
+    let mut state = load_metadata(path)?;
+    let Some(mut workspace) = state.connections.remove(&connection.to_string()) else {
+        return Ok(None);
+    };
+    load_connection_drafts(connection, &mut workspace, drafts);
+    Ok(Some(workspace))
+}
+
+pub fn load_metadata(path: &Path) -> std::io::Result<WorkspaceState> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(WorkspaceState::default()),
         Err(error) => return Err(error),
     };
-    let mut state: WorkspaceState = serde_json::from_slice(&bytes).map_err(std::io::Error::other)?;
-    for (connection, workspace) in &mut state.connections {
-        let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
-        for tab in workspace.all_tabs_mut() {
-            if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab
-                && let Some(id) = *draft_id
-            {
-                match std::fs::read_to_string(drafts.join(connection.to_string()).join(format!("{id}.sql"))) {
-                    Ok(text) => *query = text,
-                    Err(error) => {
-                        tracing::warn!(
-                            %connection,
-                            %id,
-                            %error,
-                            "workspace draft could not be read; the tab will restore with an empty query"
-                        );
-                        query.clear();
-                        *draft_id = None;
-                    }
-                }
-            }
-        }
-    }
-    Ok(state)
+    serde_json::from_slice(&bytes).map_err(std::io::Error::other)
 }
 
 pub fn save(path: &Path, drafts: &Path, mut state: WorkspaceState) -> std::io::Result<()> {
-    let existing = match std::fs::read(path) {
-        Ok(bytes) => Some(bytes),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error),
-    };
+    let existing = read_existing(path)?;
     if let Some(bytes) = &existing {
         let previous: WorkspaceState = serde_json::from_slice(bytes).map_err(std::io::Error::other)?;
-        if previous.connections.values().any(|workspace| {
-            workspace
-                .tabs
-                .iter()
-                .any(|tab| matches!(tab, WorkspaceTabRecord::Editor { draft_id: None, .. }))
-        }) {
+        if has_legacy_draft(&previous) {
             let backup = path.with_extension("before-drafts.json");
             if !backup.try_exists()? {
                 atomic_write_bytes(&backup, bytes)?;
@@ -59,18 +49,93 @@ pub fn save(path: &Path, drafts: &Path, mut state: WorkspaceState) -> std::io::R
     }
     for (connection, workspace) in &mut state.connections {
         let connection = Uuid::parse_str(connection).map_err(std::io::Error::other)?;
-        for tab in workspace.all_tabs_mut() {
-            if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab {
-                let id = *draft_id.get_or_insert_with(Uuid::new_v4);
-                atomic_write_bytes(
-                    &drafts.join(connection.to_string()).join(format!("{id}.sql")),
-                    query.as_bytes(),
-                )?;
-                query.clear();
+        save_connection_drafts(connection, workspace, drafts)?;
+    }
+    atomic_write_json(path, &state)
+}
+
+pub fn save_connections(
+    path: &Path,
+    drafts: &Path,
+    updates: Vec<(Uuid, ConnectionWorkspaceState)>,
+) -> std::io::Result<()> {
+    let existing = read_existing(path)?;
+    let mut state = match &existing {
+        Some(bytes) => serde_json::from_slice(bytes).map_err(std::io::Error::other)?,
+        None => WorkspaceState::default(),
+    };
+    if existing.as_ref().is_some_and(|_| has_legacy_draft(&state)) {
+        let backup = path.with_extension("before-drafts.json");
+        if !backup.try_exists()?
+            && let Some(bytes) = &existing
+        {
+            atomic_write_bytes(&backup, bytes)?;
+        }
+    }
+    super::workspace_state::clamp(&mut state);
+    for (connection, mut workspace) in updates {
+        super::workspace_state::clamp_connection(&mut workspace);
+        save_connection_drafts(connection, &mut workspace, drafts)?;
+        state.connections.insert(connection.to_string(), workspace);
+    }
+    atomic_write_json(path, &state)
+}
+
+fn read_existing(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn has_legacy_draft(state: &WorkspaceState) -> bool {
+    state.connections.values().any(|workspace| {
+        workspace
+            .tabs
+            .iter()
+            .any(|tab| matches!(tab, WorkspaceTabRecord::Editor { draft_id: None, .. }))
+    })
+}
+
+fn load_connection_drafts(connection: Uuid, workspace: &mut ConnectionWorkspaceState, drafts: &Path) {
+    for tab in workspace.all_tabs_mut() {
+        if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab
+            && let Some(id) = *draft_id
+        {
+            match std::fs::read_to_string(drafts.join(connection.to_string()).join(format!("{id}.sql"))) {
+                Ok(text) => *query = text,
+                Err(error) => {
+                    tracing::warn!(
+                        %connection,
+                        %id,
+                        %error,
+                        "workspace draft could not be read; the tab will restore with an empty query"
+                    );
+                    query.clear();
+                    *draft_id = None;
+                }
             }
         }
     }
-    atomic_write_json(path, &state)
+}
+
+fn save_connection_drafts(
+    connection: Uuid,
+    workspace: &mut ConnectionWorkspaceState,
+    drafts: &Path,
+) -> std::io::Result<()> {
+    for tab in workspace.all_tabs_mut() {
+        if let WorkspaceTabRecord::Editor { query, draft_id, .. } = tab {
+            let id = *draft_id.get_or_insert_with(Uuid::new_v4);
+            atomic_write_bytes(
+                &drafts.join(connection.to_string()).join(format!("{id}.sql")),
+                query.as_bytes(),
+            )?;
+            query.clear();
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

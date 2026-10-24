@@ -413,7 +413,10 @@ impl WorkspaceStore {
             .file_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        load_locked(&self.inner.paths).ok()?.connections.remove(&id.to_string())
+        let path = self.inner.paths.state.as_deref()?;
+        let mut workspace = workspace_disk::load_connection(path, &self.inner.paths.drafts, id).ok()??;
+        clamp_connection(&mut workspace);
+        Some(workspace)
     }
 
     pub fn save_connection(&self, id: Uuid, mut conn_state: ConnectionWorkspaceState) {
@@ -542,12 +545,16 @@ fn run_writer(
         let attempted_sequence = pending.iter().map(|(_, entry)| entry.sequence).max().unwrap_or(0);
         let result = {
             let _guard = file_lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            load_locked(&paths).and_then(|mut state| {
-                for (id, entry) in &pending {
-                    state.connections.insert(id.to_string(), entry.state.clone());
+            match paths.state.as_deref() {
+                Some(path) => {
+                    let updates = pending.iter().map(|(id, entry)| (*id, entry.state.clone())).collect();
+                    workspace_disk::save_connections(path, &paths.drafts, updates).map_err(|error| {
+                        tracing::warn!(%error, "workspace could not be saved");
+                        WorkspaceFlushError::WriteFailed
+                    })
                 }
-                save_locked(&paths, state)
-            })
+                None => Err(WorkspaceFlushError::WriteFailed),
+            }
         };
         let mut queue = queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if result.is_err() {
@@ -557,13 +564,13 @@ fn run_writer(
     }
 }
 
-fn clamp(state: &mut WorkspaceState) {
+pub(super) fn clamp(state: &mut WorkspaceState) {
     for conn in state.connections.values_mut() {
         clamp_connection(conn);
     }
 }
 
-fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
+pub(super) fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
     for other in conn.other_databases.values_mut() {
         other.other_databases.clear();
         clamp_connection(other);

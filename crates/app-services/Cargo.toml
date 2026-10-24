@@ -10,6 +10,10 @@ publish = false
 name = "tablepro_app_services"
 path = "src/lib.rs"
 
+[[bench]]
+name = "workspace_save_io"
+harness = false
+
 [dependencies]
 tablepro-core = { path = "../core" }
 tablepro-dump = { path = "../dump" }
