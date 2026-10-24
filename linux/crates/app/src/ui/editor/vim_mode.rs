@@ -145,11 +145,13 @@ impl SqlEditor {
         // mode would follow motions and edits that are not typing. Vim
         // turns overwrite off in insert mode only.
         let completion_blocked = Rc::new(Cell::new(false));
-        follow_insert_mode(&view, &completion_blocked);
+        follow_insert_mode(view.upcast_ref(), &completion_blocked);
         let blocked = completion_blocked.clone();
-        let mode = view.connect_overwrite_notify(move |view| follow_insert_mode(view, &blocked));
+        let mode = view.connect_overwrite_notify(move |view| follow_insert_mode(view.upcast_ref(), &blocked));
 
         imp.text_pane.set_reveal_bottom_bars(true);
+        // Vim edits the buffer itself, which no other cursor could follow.
+        view.set_carets_enabled(false);
         // Escape is Vim's now; the Stop button still stops a run.
         imp.stop_button.reset_property(gtk4::AccessibleProperty::KeyShortcuts);
         imp.vim.replace(Some(VimMode {
@@ -159,6 +161,7 @@ impl SqlEditor {
             mode,
             completion_blocked,
         }));
+        self.refresh_caret_actions();
     }
 
     pub(super) fn detach_vim(&self) {
@@ -185,6 +188,8 @@ impl SqlEditor {
         imp.vim_command.set_label("");
         imp.text_pane.set_reveal_bottom_bars(false);
         crate::ui::a11y::announce_key_shortcuts(&imp.stop_button.get(), "editor.cancel");
+        view.set_carets_enabled(true);
+        self.refresh_caret_actions();
     }
 
     fn connect_vim_commands(&self, context: &sourceview5::VimIMContext) {

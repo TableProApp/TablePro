@@ -71,6 +71,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0021](0021-engines-without-sql.md) | Engines without SQL keep the driver contract and say what they hold | Accepted | A key-value engine states `DataModel::KeyValue`, lists keys with `scan_keys` and reads them with `read_key`, has its own `SqlGrammar` variant, and is held read-only by the driver's check where the server cannot. |
 | [0022](0022-ai-assistant-and-mcp-server.md) | An AI assistant and a local MCP server | Accepted | An MCP server on `127.0.0.1`, off until turned on, with a token and a per-connection External Clients level, every client write approved in the app; an AI assistant with no provider until the user adds one and a per-connection AI policy. |
 | [0023](0023-loopback-relay-for-cql.md) | A loopback relay for the CQL client | Accepted | Each scylla session dials a 127.0.0.1 relay that serves only this user and carries every connection over `Transport::open`, so CQL reaches a server through an SSH forward. |
+| [0024](0024-multi-cursor-on-text-marks.md) | Multiple cursors on text marks, in the app | Accepted | The SQL editor's view, a GtkSourceView subclass, keeps extra cursors as GtkTextMark pairs, runs GTK's own commands once per cursor and repeats committed text from `end-user-action`, so one undo takes back every cursor's edit. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

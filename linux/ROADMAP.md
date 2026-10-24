@@ -87,6 +87,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Files | Open a .sql file into the editor (Ctrl+O) or drop one on it, and save to it (Ctrl+S, or Save As with Ctrl+Shift+S) |
 | Results | Several result sets per run, a limit of 10,000 rows per result and 100,000 per run with a banner and Export All, and Go to Error |
 | Drafts | Each editor tab's text is kept, and a connection's tabs (table tabs with page and sort, structure and editor tabs) reopen when it opens |
+| Multiple cursors | Ctrl+D for the next match, Ctrl+Shift+L for every match, Shift+Alt+Up and Down for the lines above and below, Ctrl+click; typing, deleting, pasting and moves at every cursor, one undo for all of them ([README](README.md#multiple-cursors)) |
 | Vim mode | GtkSourceView's Vim emulation, off by default, with the mode and pending command under the text; `:w`, `:e`, `:q`, `:wq` and `:x` act on the tab, and the editor's Ctrl shortcuts work in every mode ([README](README.md#vim-keybindings)) |
 
 ### History and saved queries
@@ -165,10 +166,6 @@ Not built yet, in no order.
 - Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
 - The CREATE INDEX statement for one index. Show CREATE TABLE lists them after the table on PostgreSQL, SQL Server and SQLite (with the triggers on SQLite).
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
-
-### SQL editor
-
-- Multi-cursor editing.
 
 ### Release and project
 

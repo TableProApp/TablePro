@@ -12,6 +12,7 @@ use gtk4::subclass::prelude::*;
 use tablepro_ai::{ChatMessage, ChatRequest};
 
 use super::SqlEditor;
+use super::editor_view::EditorView;
 use crate::ui::assistant::AssistantAccess;
 
 /// How long a pause in typing is before a suggestion is asked for.
@@ -87,6 +88,15 @@ impl SqlEditor {
                 editor.dismiss_suggestion();
             }
         });
+        let editor = self.downgrade();
+        // A suggestion goes in at GTK's cursor alone, as a completion does.
+        self.imp().source_view.connect_carets_changed(move |view| {
+            if view.has_extra_carets()
+                && let Some(editor) = editor.upgrade()
+            {
+                editor.dismiss_suggestion();
+            }
+        });
         let view = self.imp().source_view.get();
         view.add_controller(self.suggestion_keys());
         let focus = gtk::EventControllerFocus::new();
@@ -110,7 +120,7 @@ impl SqlEditor {
                 return glib::Propagation::Proceed;
             };
             // The completion list, when it is open, takes Tab first.
-            if editor.imp().suggestion.borrow().ghost.is_none() || shows_popup(&editor.imp().source_view.get()) {
+            if editor.imp().suggestion.borrow().ghost.is_none() || editor.imp().source_view.shows_popup() {
                 return glib::Propagation::Proceed;
             }
             if crate::application::component_matches("suggestion.accept", keyval, state) {
@@ -191,7 +201,7 @@ impl SqlEditor {
             return;
         }
         let buffer = self.buffer();
-        if buffer.has_selection() {
+        if buffer.has_selection() || self.imp().source_view.has_extra_carets() {
             return;
         }
         let cursor = buffer.iter_at_mark(&buffer.get_insert());
@@ -247,7 +257,8 @@ impl SqlEditor {
             || buffer.cursor_position() != offset
             || buffer.has_selection()
             || !self.is_typing_mode()
-            || shows_popup(&view)
+            || view.shows_popup()
+            || view.has_extra_carets()
         {
             return;
         }
@@ -309,22 +320,9 @@ impl SqlEditor {
     }
 }
 
-/// Whether the view shows a popover of its own, such as the completion
-/// list, which GtkSourceView parents to the view.
-fn shows_popup(view: &sourceview5::View) -> bool {
-    let mut child = view.first_child();
-    while let Some(widget) = child {
-        if widget.is::<gtk::Popover>() && widget.is_visible() {
-            return true;
-        }
-        child = widget.next_sibling();
-    }
-    false
-}
-
 /// Dimmed text laid over the view, in the editor's font, which the
 /// label takes from the view. Hidden until a suggestion shows in it.
-fn ghost_label(view: &sourceview5::View) -> gtk::Label {
+fn ghost_label(view: &EditorView) -> gtk::Label {
     let label = gtk::Label::builder()
         .xalign(0.0)
         .can_target(false)
@@ -338,7 +336,7 @@ fn ghost_label(view: &sourceview5::View) -> gtk::Label {
 }
 
 /// Show `text` in `label` at buffer position `x`, `y`; an empty one hides it.
-fn show_ghost(view: &sourceview5::View, label: &gtk::Label, text: &str, x: i32, y: i32) {
+fn show_ghost(view: &EditorView, label: &gtk::Label, text: &str, x: i32, y: i32) {
     label.set_label(text);
     view.move_overlay(label, x, y);
     label.set_visible(!text.is_empty());
@@ -465,6 +463,27 @@ mod suggestion_tests {
         editor.show_suggestion(" FROM orders\nWHERE id = 1;".to_owned(), 8, true);
 
         assert_eq!(editor.suggestion_text().as_deref(), Some(" FROM orders"));
+    }
+
+    #[gtk4::test]
+    fn another_cursor_drops_it_and_none_shows_beside_one() {
+        let harness = editor_with_assistant("SELECT a FROM a", AiPolicy::Allow);
+        harness.settings.get().set_ai_inline_suggestions(true).expect("on");
+        let editor = &harness.editor;
+        let view = editor.imp().source_view.get();
+        let offset = at_end(editor);
+        editor.show_suggestion(" WHERE a = 1;".to_owned(), offset, false);
+
+        assert!(view.add_carets_at_all_matches());
+        assert_eq!(editor.suggestion_text(), None, "kept beside a cursor at each match");
+
+        view.single_caret();
+        let buffer = editor.buffer();
+        buffer.place_cursor(&buffer.end_iter());
+        view.toggle_caret_at(&buffer.start_iter());
+        assert!(view.has_extra_carets());
+        editor.show_suggestion(" WHERE a = 1;".to_owned(), buffer.cursor_position(), false);
+        assert_eq!(editor.suggestion_text(), None, "shown beside another cursor");
     }
 
     #[gtk4::test]

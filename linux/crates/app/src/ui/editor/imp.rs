@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::EditorDeps;
 use super::editor_session_slot::EditorSessionSlot;
+use super::editor_view::EditorView;
 use super::find_bar::FindBar;
 use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
@@ -40,7 +41,7 @@ pub struct SqlEditor {
     #[template_child]
     pub find_bar: TemplateChild<FindBar>,
     #[template_child]
-    pub source_view: TemplateChild<sourceview5::View>,
+    pub source_view: TemplateChild<EditorView>,
     #[template_child]
     pub text_pane: TemplateChild<adw::ToolbarView>,
     #[template_child]
@@ -84,6 +85,10 @@ pub struct SqlEditor {
     /// The window's assistant, once the workspace attached it.
     pub(super) assistant: RefCell<Option<std::rc::Rc<crate::ui::assistant::AssistantAccess>>>,
     pub(super) suggestion: RefCell<super::inline_suggestion::SuggestionState>,
+    /// The Escape being handled found a popup of the view's open. The
+    /// completion list closes itself on Escape before the editor's keys
+    /// run, and lets the key go on.
+    pub(super) escape_found_popup: Cell<bool>,
 }
 
 #[glib::object_subclass]
@@ -93,7 +98,7 @@ impl ObjectSubclass for SqlEditor {
     type ParentType = adw::Bin;
 
     fn class_init(klass: &mut Self::Class) {
-        sourceview5::View::ensure_type();
+        EditorView::ensure_type();
         FindBar::ensure_type();
         ResultsPane::ensure_type();
         klass.bind_template();
