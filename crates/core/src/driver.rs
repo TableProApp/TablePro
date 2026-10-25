@@ -33,6 +33,26 @@ pub enum EnumInputStyle {
     SqlQuotedLabel,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DriverCapabilities {
+    pub maturity: DriverMaturity,
+    pub enum_input_style: EnumInputStyle,
+    pub is_file_based: bool,
+    pub ddl_is_transactional: bool,
+    pub reports_rows_affected: bool,
+    pub supports_database_listing: bool,
+    pub supports_index_metadata: bool,
+    pub supports_foreign_key_metadata: bool,
+    pub supports_column_comments: bool,
+    pub supports_view_metadata: bool,
+    pub catalog_object_kinds: &'static [crate::CatalogObjectKind],
+    pub supports_integrated_auth: bool,
+    pub supports_local_socket: bool,
+    pub supports_local_socket_file: bool,
+    pub supports_local_socket_directory: bool,
+    pub supports_client_tls_auth: bool,
+}
+
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
     fn id(&self) -> &'static str;
@@ -45,6 +65,27 @@ pub trait DatabaseDriver: Send + Sync {
 
     fn default_username(&self) -> &'static str {
         ""
+    }
+
+    fn capabilities(&self) -> DriverCapabilities {
+        DriverCapabilities {
+            maturity: self.maturity(),
+            enum_input_style: self.enum_input_style(),
+            is_file_based: self.is_file_based(),
+            ddl_is_transactional: self.ddl_is_transactional(),
+            reports_rows_affected: self.reports_rows_affected(),
+            supports_database_listing: self.supports_database_listing(),
+            supports_index_metadata: self.supports_index_metadata(),
+            supports_foreign_key_metadata: self.supports_foreign_key_metadata(),
+            supports_column_comments: self.supports_column_comments(),
+            supports_view_metadata: self.supports_view_metadata(),
+            catalog_object_kinds: self.catalog_object_kinds(),
+            supports_integrated_auth: self.supports_integrated_auth(),
+            supports_local_socket: self.supports_local_socket(),
+            supports_local_socket_file: self.supports_local_socket_file(),
+            supports_local_socket_directory: self.supports_local_socket_directory(),
+            supports_client_tls_auth: self.supports_client_tls_auth(),
+        }
     }
 
     fn maturity(&self) -> DriverMaturity {
@@ -212,8 +253,116 @@ mod tests {
         assert!(!driver.supports_foreign_key_metadata());
         assert!(!driver.supports_view_metadata());
         assert!(!driver.supports_column_comments());
+        let capabilities = driver.capabilities();
+        assert!(!capabilities.supports_database_listing);
+        assert!(!capabilities.supports_index_metadata);
+        assert!(!capabilities.supports_foreign_key_metadata);
+        assert!(!capabilities.supports_view_metadata);
+        assert!(!capabilities.supports_column_comments);
         assert_eq!(driver.default_database(), "");
         assert_eq!(driver.default_username(), "");
+    }
+
+    struct DeclaredCapabilitiesDriver;
+
+    #[async_trait]
+    impl DatabaseDriver for DeclaredCapabilitiesDriver {
+        fn id(&self) -> &'static str {
+            "declared-capabilities"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Declared capabilities"
+        }
+
+        fn default_port(&self) -> u16 {
+            0
+        }
+
+        fn maturity(&self) -> DriverMaturity {
+            DriverMaturity::Experimental
+        }
+
+        fn enum_input_style(&self) -> EnumInputStyle {
+            EnumInputStyle::SqlQuotedLabel
+        }
+
+        fn is_file_based(&self) -> bool {
+            true
+        }
+
+        fn ddl_is_transactional(&self) -> bool {
+            true
+        }
+
+        fn reports_rows_affected(&self) -> bool {
+            false
+        }
+
+        fn supports_database_listing(&self) -> bool {
+            true
+        }
+
+        fn supports_index_metadata(&self) -> bool {
+            true
+        }
+
+        fn supports_foreign_key_metadata(&self) -> bool {
+            true
+        }
+
+        fn supports_view_metadata(&self) -> bool {
+            true
+        }
+
+        fn catalog_object_kinds(&self) -> &'static [crate::CatalogObjectKind] {
+            &[crate::CatalogObjectKind::Routine]
+        }
+
+        fn supports_integrated_auth(&self) -> bool {
+            true
+        }
+
+        fn supports_local_socket(&self) -> bool {
+            true
+        }
+
+        fn supports_local_socket_file(&self) -> bool {
+            true
+        }
+
+        fn supports_local_socket_directory(&self) -> bool {
+            true
+        }
+
+        fn supports_client_tls_auth(&self) -> bool {
+            true
+        }
+
+        async fn connect(&self, _opts: ConnectOptions) -> Result<Box<dyn Connection>, DriverError> {
+            Err(DriverError::Unsupported("test driver".into()))
+        }
+    }
+
+    #[test]
+    fn the_static_capability_profile_reflects_driver_declarations() {
+        let capabilities = DeclaredCapabilitiesDriver.capabilities();
+
+        assert_eq!(capabilities.maturity, DriverMaturity::Experimental);
+        assert_eq!(capabilities.enum_input_style, EnumInputStyle::SqlQuotedLabel);
+        assert!(capabilities.is_file_based);
+        assert!(capabilities.ddl_is_transactional);
+        assert!(!capabilities.reports_rows_affected);
+        assert!(capabilities.supports_database_listing);
+        assert!(capabilities.supports_index_metadata);
+        assert!(capabilities.supports_foreign_key_metadata);
+        assert!(capabilities.supports_view_metadata);
+        assert_eq!(capabilities.catalog_object_kinds, &[crate::CatalogObjectKind::Routine]);
+        assert!(capabilities.supports_integrated_auth);
+        assert!(capabilities.supports_local_socket);
+        assert!(capabilities.supports_local_socket_file);
+        assert!(capabilities.supports_local_socket_directory);
+        assert!(capabilities.supports_client_tls_auth);
     }
 
     struct NamedDriver {

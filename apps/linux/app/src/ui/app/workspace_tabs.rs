@@ -350,7 +350,7 @@ impl App {
             .registry
             .get(&driver_id)
             .map_or(tablepro_core::EnumInputStyle::RawValue, |driver| {
-                driver.enum_input_style()
+                driver.capabilities().enum_input_style
             });
         let connection_id = self.connection_id;
         let read_only = self.read_only;

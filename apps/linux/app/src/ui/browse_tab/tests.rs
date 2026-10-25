@@ -13,22 +13,72 @@ use tablepro_core::EnumInputStyle;
 fn registered_drivers_declare_enum_input_style_for_grid_parsing() {
     let registry = crate::build_registry();
     assert_eq!(
-        registry.get("mysql").map(|driver| driver.enum_input_style()),
+        registry
+            .get("mysql")
+            .map(|driver| driver.capabilities().enum_input_style),
         Some(EnumInputStyle::DeclaredMemberList)
     );
     assert_eq!(
-        registry.get("clickhouse").map(|driver| driver.enum_input_style()),
+        registry
+            .get("clickhouse")
+            .map(|driver| driver.capabilities().enum_input_style),
         Some(EnumInputStyle::SqlQuotedLabel)
     );
     assert_eq!(
-        registry.get("postgres").map(|driver| driver.enum_input_style()),
+        registry
+            .get("postgres")
+            .map(|driver| driver.capabilities().enum_input_style),
         Some(EnumInputStyle::RawValue)
     );
     #[cfg(feature = "duckdb")]
     assert_eq!(
-        registry.get("duckdb").map(|driver| driver.enum_input_style()),
+        registry
+            .get("duckdb")
+            .map(|driver| driver.capabilities().enum_input_style),
         Some(EnumInputStyle::SqlQuotedLabel)
     );
+}
+
+#[test]
+fn every_registered_driver_profile_matches_its_declared_static_behavior() {
+    let registry = crate::build_registry();
+
+    for driver in registry.iter() {
+        let capabilities = driver.capabilities();
+        macro_rules! assert_matches_declaration {
+            ($actual:expr, $expected:expr) => {
+                assert_eq!($actual, $expected, "driver {}", driver.id());
+            };
+        }
+        assert_matches_declaration!(capabilities.maturity, driver.maturity());
+        assert_matches_declaration!(capabilities.enum_input_style, driver.enum_input_style());
+        assert_matches_declaration!(capabilities.is_file_based, driver.is_file_based());
+        assert_matches_declaration!(capabilities.ddl_is_transactional, driver.ddl_is_transactional());
+        assert_matches_declaration!(capabilities.reports_rows_affected, driver.reports_rows_affected());
+        assert_matches_declaration!(
+            capabilities.supports_database_listing,
+            driver.supports_database_listing()
+        );
+        assert_matches_declaration!(capabilities.supports_index_metadata, driver.supports_index_metadata());
+        assert_matches_declaration!(
+            capabilities.supports_foreign_key_metadata,
+            driver.supports_foreign_key_metadata()
+        );
+        assert_matches_declaration!(capabilities.supports_column_comments, driver.supports_column_comments());
+        assert_matches_declaration!(capabilities.supports_view_metadata, driver.supports_view_metadata());
+        assert_matches_declaration!(capabilities.catalog_object_kinds, driver.catalog_object_kinds());
+        assert_matches_declaration!(capabilities.supports_integrated_auth, driver.supports_integrated_auth());
+        assert_matches_declaration!(capabilities.supports_local_socket, driver.supports_local_socket());
+        assert_matches_declaration!(
+            capabilities.supports_local_socket_file,
+            driver.supports_local_socket_file()
+        );
+        assert_matches_declaration!(
+            capabilities.supports_local_socket_directory,
+            driver.supports_local_socket_directory()
+        );
+        assert_matches_declaration!(capabilities.supports_client_tls_auth, driver.supports_client_tls_auth());
+    }
 }
 
 #[test]

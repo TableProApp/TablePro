@@ -37,8 +37,8 @@ pub use activity::{ActivityQuery, ActivityUnsupported, activity_kinds, activity_
 pub use catalog::{CATALOG_OBJECT_LIMIT, CatalogObject, CatalogObjectKind};
 pub use connection::{AuthMode, ConnectOptions, Connection, SocketOrigin, Transport};
 pub use driver::{
-    ConnectionFormDefaults, DatabaseDriver, DriverMaturity, EnumInputStyle, connection_form_defaults,
-    initial_connection_form_defaults,
+    ConnectionFormDefaults, DatabaseDriver, DriverCapabilities, DriverMaturity, EnumInputStyle,
+    connection_form_defaults, initial_connection_form_defaults,
 };
 pub use error::DriverError;
 pub use filter::{

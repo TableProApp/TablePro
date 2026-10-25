@@ -67,7 +67,9 @@ fn registered_enum_input_style(driver_id: &str) -> EnumInputStyle {
     REGISTRY
         .get_or_init(crate::build_registry)
         .get(driver_id)
-        .map_or(EnumInputStyle::RawValue, |driver| driver.enum_input_style())
+        .map_or(EnumInputStyle::RawValue, |driver| {
+            driver.capabilities().enum_input_style
+        })
 }
 
 #[cfg(test)]

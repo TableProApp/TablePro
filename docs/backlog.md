@@ -113,6 +113,10 @@ The [peer-review tracker #1026](https://github.com/cozyGarage/BookiE/issues/1026
 - Improve CI feedback time and reliability based on measured workload and available capacity ([#573](https://github.com/cozyGarage/BookiE/issues/573)).
 - Folder layout: done on 2026-10-11 (`crates/`, `apps/linux/`, `tests/`; see [ARCHITECTURE](../ARCHITECTURE.md#repository-layout)). Moving every per-crate integration test out of its crate stays a separate, larger step if wanted.
 
+## Static driver contract
+
+- DRV-1 / [#1639](https://github.com/cozyGarage/BookiE/issues/1639): describe static engine capabilities through a typed shared profile, with UI, driver documentation and conformance tests consuming it. Keep connection-scoped cancellation and metadata-derived object permissions outside the static profile.
+
 ## Issue and lane status
 
 Project #3 owns live scheduling and lane assignment. `docs/known-issues.md` maps ledger IDs to issues; issue bodies own scope and acceptance. Check those sources before treating a row above as open or selecting it.

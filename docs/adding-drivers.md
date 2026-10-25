@@ -6,7 +6,7 @@ Drivers are static Rust crates under `crates/drivers/`; see [ADR 0001](decisions
 
 Read the actual traits before implementing a driver:
 
-- [DatabaseDriver](../crates/core/src/driver.rs): identity, defaults, maturity, metadata and transport capabilities, row-count and DDL guarantees.
+- [DatabaseDriver](../crates/core/src/driver.rs): identity, defaults and static capabilities. The typed profile and the rules for connection-scoped or metadata-derived behavior are in [static driver capabilities](driver-capabilities.md).
 - [Connection](../crates/core/src/connection.rs): schema-aware reads, bound parameters, transactions, controlled calls, session creation and optional query cursors.
 - [Session](../crates/core/src/session.rs): dedicated connection lifetime, transactions, usability and awaited close.
 - [Values](../crates/core/src/query.rs), [errors](../crates/core/src/error.rs) and [operation control](../crates/core/src/operation.rs).
@@ -35,7 +35,7 @@ Review engine/library proposals against [driver maturity](adding-drivers.md#orde
 1. Create `crates/drivers/<engine>/`. Package name is `tablepro-driver-<engine>`; existing library names use `drivers_<engine>`. Reuse workspace versions/lints and review dependencies with `deny.toml`.
 2. Implement the current traits. Preserve SQL NULL versus unsupported/non-NULL values; unsupported values must remain `Value::Undecodable` or be refused, rather than becoming NULL. Map errors to typed `DriverError` variants.
 3. Bind values and quote identifiers for the actual dialect. Carry schema and table identity separately. Declare generated/identity metadata accurately; include composite keys and real affected-row behavior.
-4. Declare maturity and capabilities honestly, including `enum_input_style` when grid and paste input need dialect-specific enum handling. Controlled calls need a bounded operation, confirmed server cancellation or an honest unknown outcome with retirement. Do not claim Stop support from a dropped client future.
+4. Declare maturity and static capabilities honestly, including `enum_input_style` when grid and paste input need dialect-specific enum handling. Controlled calls need a bounded operation, confirmed server cancellation or an honest unknown outcome with retirement. Do not claim Stop support from a dropped client future.
 5. If supporting sessions, prove settings/temp tables/transactions stay on one physical connection, lost sessions never fall back to a pool, and close is awaited. New methods must be forwarded through policy and owning wrappers.
 6. Keep dial endpoints separate from TLS/Kerberos service identity. Test wrong CA/hostname, no plaintext fallback and tunneled verification per engine. Initialize the shared crypto provider in test composition roots that link multiple TLS drivers. Do not load saved secrets inside a driver.
 7. Add the workspace member and dependencies in both composition roots. Register in [app::build_registry](../apps/linux/app/src/lib.rs) and [agentd::build_registry](../crates/agentd/src/main.rs). Apply matching feature gates where native build cost requires them.
