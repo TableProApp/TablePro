@@ -148,6 +148,45 @@ struct DataTabGridEditCommitTests {
 
     // MARK: - Save, close, refresh and mode switch
 
+    @Test("A refresh keeps the place the mounted grid is scrolled to, not one it saved earlier")
+    func refreshKeepsTheScrolledPlace() throws {
+        let state = SessionStateFactory.create(connection: TestFixtures.makeConnection(), payload: nil)
+        let coordinator = state.coordinator
+        defer { coordinator.teardown() }
+        let tabId = addTableTab(coordinator, name: "users")
+        select(tabId, in: coordinator)
+        let model = coordinator.gridModel(forTab: tabId)
+        let mount = DataTabGridMountStub()
+        mount.sample = (row: 1, offset: 4)
+        model.attach(mount)
+
+        let snapshot = withExtendedLifetime(mount) {
+            coordinator.viewportSnapshot(forTab: tabId, intent: .keepPlace, keyColumns: ["id"])
+        }
+
+        #expect(snapshot.firstVisiblePosition == 1)
+        #expect(snapshot.firstVisibleOffset == 4)
+    }
+
+    @Test("Save is offered while the first edit is still open in the grid")
+    func saveIsOfferedForAnOpenEdit() throws {
+        let state = SessionStateFactory.create(connection: TestFixtures.makeConnection(), payload: nil)
+        let coordinator = state.coordinator
+        defer { coordinator.teardown() }
+        let actions = makeActions(coordinator)
+        let tabId = addTableTab(coordinator, name: "users")
+        select(tabId, in: coordinator)
+        #expect(!actions.hasOpenGridEdit)
+
+        // The model holds its mounted view weakly, so the test holds it.
+        let (_, mount) = try openEditor(coordinator, tabId: tabId, text: "Zed")
+
+        withExtendedLifetime(mount) {
+            #expect(!actions.hasPendingChanges)
+            #expect(actions.hasOpenGridEdit)
+        }
+    }
+
     // A gate that refuses the save fails it with its reason, which shows the save ran with the edit the editor held.
     @Test("Save commits the open edit before it looks for changes")
     func saveCommitsTheOpenEditFirst() async throws {

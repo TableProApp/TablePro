@@ -518,6 +518,10 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.toolbarState.hasPendingChanges ?? false
     }
 
+    var hasOpenGridEdit: Bool {
+        coordinator?.isEditingActiveGrid == true
+    }
+
     var hasStructureChanges: Bool {
         coordinator?.toolbarState.hasStructureChanges ?? false
     }

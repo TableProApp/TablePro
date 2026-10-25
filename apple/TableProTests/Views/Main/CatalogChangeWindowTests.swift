@@ -513,6 +513,29 @@ struct CatalogChangeWindowTests {
         #expect(Self.totalRowCount(of: selected.id, in: tabManager) == nil)
     }
 
+    @Test("a change put off while a cell editor was open reloads the tab once the editor closes, even with nothing typed")
+    func deferredChangeReloadsOnceTheEditorCloses() async throws {
+        let connection = TestFixtures.makeConnection(database: "shop")
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let (coordinator, tabManager) = makeCoordinator(connection: connection)
+        let selected = Self.loadedTab("users", rowCount: 3, totalRowCount: 42, in: coordinator)
+        tabManager.tabs = [selected]
+        tabManager.selectedTabId = selected.id
+        let model = coordinator.gridModel(forTab: selected.id)
+        let mount = DataTabGridMountStub()
+        mount.isEditing = true
+        model.attach(mount)
+
+        coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
+        #expect(Self.totalRowCount(of: selected.id, in: tabManager) == 42)
+
+        model.discardEditing()
+        model.editingDidEnd()
+
+        try await Self.waitForReload(of: selected.id, in: tabManager)
+        #expect(Self.totalRowCount(of: selected.id, in: tabManager) == nil)
+    }
+
     /// Waits for a reload the change manager's cleared edits start on a later turn. A timeout
     /// returns too, so the case's own expectation reports it.
     private static func waitForReload(of tabId: UUID, in tabManager: QueryTabManager) async throws {

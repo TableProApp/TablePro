@@ -23,8 +23,15 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
         self.sqlExporter = DataTabSQLExporter(tabId: tabId, coordinator: coordinator)
     }
 
+    // A refresh deferred while a cell was open runs once the edit ends, committed, cancelled or unchanged, on the
+    // next turn, as after a commit, so the editor finishes tearing down first.
     func attach(_ model: DataGridModel) {
         self.model = model
+        model.onEditingEnded = { [weak coordinator] in
+            Task { @MainActor [weak coordinator] in
+                coordinator?.resumeDeferredTableRefresh()
+            }
+        }
     }
 
     private var tab: QueryTab? {

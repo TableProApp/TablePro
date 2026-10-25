@@ -46,6 +46,8 @@ struct MenuValidationContext: Equatable {
     var canClearQuery = false
     var canClearResults = false
     var hasPendingChanges = false
+    // Save commits an edit still open in the grid before it looks for changes.
+    var hasOpenGridEdit = false
     var hasDataPendingChanges = false
     var hasRowSelection = false
     // Copy with headers and Copy as JSON read the data grid's columns, so the structure grid's selection does not count.
@@ -163,7 +165,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canNavigatePages
 
         case #selector(saveDocument(_:)):
-            return context.isConnected && !context.isReadOnly && context.hasPendingChanges
+            return context.isConnected && !context.isReadOnly && (context.hasPendingChanges || context.hasOpenGridEdit)
         case #selector(saveDocumentAs(_:)):
             return context.isConnected && context.isQueryTab
         case #selector(exportQueryResults(_:)):
@@ -555,6 +557,7 @@ extension MainSplitViewController: NSMenuItemValidation {
             canClearQuery: actions.canClearQuery,
             canClearResults: actions.canClearResults,
             hasPendingChanges: actions.hasPendingChanges,
+            hasOpenGridEdit: actions.hasOpenGridEdit,
             hasDataPendingChanges: actions.hasDataPendingChanges,
             hasRowSelection: actions.hasRowSelection,
             hasDataGridRowSelection: actions.hasDataGridRowSelection,

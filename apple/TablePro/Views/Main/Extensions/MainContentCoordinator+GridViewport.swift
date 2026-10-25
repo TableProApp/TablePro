@@ -55,9 +55,11 @@ extension MainContentCoordinator {
         return sample == nil ? snapshot.selectionOnly : snapshot
     }
 
-    // The anchor the grid last saved; the model has no live read of the first visible row.
+    // The mounted grid's first visible row, else the anchor the grid saved when it was last unmounted.
     private func viewportSample(of model: DataGridModel?) -> (row: Int, offset: CGFloat)? {
-        guard let model, let anchor = model.store.viewportAnchor,
+        guard let model else { return nil }
+        if let live = model.viewportSample() { return live }
+        guard let anchor = model.store.viewportAnchor,
               let rowID = anchor.firstVisibleRow,
               let row = model.displayIndex(of: rowID) else { return nil }
         return (row, anchor.firstVisibleOffset)

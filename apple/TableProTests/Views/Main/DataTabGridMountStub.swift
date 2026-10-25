@@ -12,6 +12,8 @@ import AppKit
 @MainActor
 final class DataTabGridMountStub: DataGridMountedView {
     var isEditing = false
+    // The first visible row and its offset, as a scrolled grid reports them.
+    var sample: (row: Int, offset: CGFloat)?
     private(set) var changes: [DataGridChange] = []
     private(set) var commitCount = 0
     private(set) var discardCount = 0
@@ -27,7 +29,7 @@ final class DataTabGridMountStub: DataGridMountedView {
     func revealColumn(_ displayColumn: Int) {}
     func sortDidChange() {}
     func summaryRulesDidChange() {}
-    func viewportSample() -> (row: Int, offset: CGFloat)? { nil }
+    func viewportSample() -> (row: Int, offset: CGFloat)? { sample }
     func beginEditing(row: Int, displayColumn: Int) -> Bool { false }
 
     func commitEditing() -> Bool {
