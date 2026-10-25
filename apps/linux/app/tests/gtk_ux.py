@@ -411,6 +411,44 @@ def scenarios(ui):
         finally:
             psql("DROP SCHEMA IF EXISTS bookie_reopen_a CASCADE; DROP SCHEMA IF EXISTS bookie_reopen_b CASCADE")
 
+    def postgres_structure_tabs_keep_backend_count_bounded(_database, _base):
+        tables = [f"public.structure_activity_{index:02}" for index in range(20)]
+        psql("DROP TABLE IF EXISTS " + ", ".join(tables))
+        psql("; ".join(
+            f"CREATE TABLE {table} (id integer PRIMARY KEY, marker_{index:02} text)"
+            for index, table in enumerate(tables)
+        ))
+        try:
+            ui.open_saved_connection(ui.POSTGRES_MTLS_CONNECTION_NAME)
+            ui.wait_for_node(name="public.release_items", role=pyatspi.ROLE_LIST_ITEM)
+            initial = None
+            for index, table in enumerate(tables):
+                row = ui.wait_for_node(name=table, role=pyatspi.ROLE_LIST_ITEM)
+                actions = row.queryAction()
+                edit = next(
+                    (position for position in range(actions.nActions)
+                     if actions.getName(position) == "sidebar-row.edit-structure"),
+                    None,
+                )
+                assert edit is not None, f"{table} has no Edit Structure action"
+                assert actions.doAction(edit), f"{table} did not open in a Structure tab"
+                ui.wait_for_node_containing(table.rsplit(".", 1)[-1], role=pyatspi.ROLE_PAGE_TAB)
+                ui.wait_for_node(name=f"marker_{index:02}")
+                if index == 0:
+                    initial = int(psql(
+                        "SELECT count(*) FROM pg_stat_activity "
+                        "WHERE application_name = 'BookiE' AND datname = current_database()"
+                    ))
+                    assert initial > 0, "the saved connection has no PostgreSQL backend"
+
+            final = int(psql(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE application_name = 'BookiE' AND datname = current_database()"
+            ))
+            assert final == initial, ("Structure tabs increased PostgreSQL backend count", initial, final)
+        finally:
+            psql("DROP TABLE IF EXISTS " + ", ".join(tables))
+
     def grid_paste_preserves_multiline_text_and_sibling_rows(database, base):
         import sqlite3
         with sqlite3.connect(database) as connection:
@@ -2132,6 +2170,7 @@ GLib.MainLoop().run()
         result.append(postgres_database_switcher_reconnects_to_the_chosen_database)
     if os.environ.get("TABLEPRO_GTK_POSTGRES_MTLS_PORT"):
         result.append(postgres_saved_mtls_connection_authenticates_and_queries)
+        result.append(postgres_structure_tabs_keep_backend_count_bounded)
     if os.environ.get("TABLEPRO_GTK_POSTGRES_SSH_AUDIT_PORT"):
         result.append(postgres_ssh_unknown_host_key_decline_is_durably_audited)
         result.append(postgres_ssh_unknown_host_key_accepts_and_queries)
