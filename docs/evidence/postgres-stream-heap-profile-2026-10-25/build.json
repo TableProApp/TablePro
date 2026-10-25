@@ -1,0 +1,34 @@
+{
+  "source_commit": "fa50f371c6ba0e81ca0d7cca568d9328dd8b0fd4",
+  "source_ref": "linux at fa50f371c6ba0e81ca0d7cca568d9328dd8b0fd4; built from local branch ux/stream-result-heap-profile",
+  "profile": "release",
+  "binary_sha256": "4e5665776ffc5046c3b38055c0fe8e23edc886bf34fb290b7fe2f676dbfd0b9d",
+  "binary_build_id_sha1": "a8d35c225d81c6af229cad54d94aee2b9200ca60",
+  "toolchain": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+  "toolkits": {
+    "gtk4": "4.24.1",
+    "libadwaita": "1.10.0",
+    "gtksourceview": "5.22.0"
+  },
+  "profilers": {
+    "heaptrack": "1.5.0",
+    "heaptrack_print": "1.5.0"
+  },
+  "host": "Arch Linux / Omarchy, x86_64, kernel 7.2.8-9-omarchy",
+  "logical_cpus": 16,
+  "display": "Xvfb with Cairo renderer, AT-SPI, private D-Bus session",
+  "postgres_image": "postgres:16-alpine",
+  "postgres_image_digest": "sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
+  "query": "SELECT * FROM big",
+  "columns": 10,
+  "rows": 2000000,
+  "retained_rows_reported": 145000,
+  "retained_row_range": "1855001-2000000",
+  "retention_policy_source": "crates/core/src/query.rs: MAX_QUERY_RESULT_BYTES = 67108864; apps/linux/app/src/ui/editor/stream_pages.rs evicts oldest pages while over the byte budget",
+  "run_script_sha256": "ae4719c955fdc56b159677972b9e48034b0e16002b0a5a01c60565bc72eeead5",
+  "probe_sha256": "1ca5df1d5479af39ae379550291c1c5a435e41d7082b82347b4008adfeeeac93",
+  "heaptrack_profile_sha256": "a55b6a045ee5f15ffb572ee3ee9156616cb34298d4c6bd483cbfe894da3791e2",
+  "uninstrumented_profile_sha256": "ddcd758163b47073a470b90aa1cc254af4dcd382cc4f2d809e159ce2b75398ba",
+  "heaptrack_report_sha256": "6438b83e7c2afb95acc6c74b64dcd44191d346c14f1646e06969545b45036f29"
+}
