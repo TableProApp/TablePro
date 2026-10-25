@@ -525,6 +525,11 @@ class CiWorkflowTests(unittest.TestCase):
         exclusions = workspace["workspace"]["metadata"]["sonar"]["sonar.coverage.exclusions"]
         self.assertIn("**/pinned_tests.rs", exclusions)
 
+    def test_evidence_harness_fetches_history_for_manifest_blob_checks(self):
+        workflow = (ROOT / ".github/workflows/linux-ci-contracts.yml").read_text()
+        match = re.search(r"(?ms)^  harness:\n(?P<job>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", workflow)
+        self.assertIsNotNone(match)
+        self.assertRegex(match.group("job"), r"(?m)^          fetch-depth: 0$")
 
     def test_arch_package_container_mounts_the_repository_root(self):
         script = (ROOT / "scripts/test-arch-package-container.sh").read_text()

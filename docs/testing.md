@@ -10,7 +10,7 @@ Design rules distilled from past audits (test ownership, runner parsers, oracles
 
 The script harness checks selected documented Rust declarations against source and generates the gettext template in memory and fails if extraction breaks. The template (`bookie.pot`) and `POTFILES.in` are build outputs, ignored by git; run `python3 scripts/update-translations.py` to write them. The catalog check needs GNU `xgettext` and does not load GTK GIR bindings or a desktop session.
 
-`scripts/validate-evidence.py` distinguishes `run-test-layer.py` execution reports from evidence manifests. It checks a report's commit, worktree field, tracked-diff digest and any untracked-input paths and digest. It does not treat a dirty report as a clean checkout or rewrite its provenance. Durable evidence manifests keep their separate `source_commit` or `base_commit` contract.
+`scripts/validate-evidence.py` distinguishes `run-test-layer.py` execution reports from evidence manifests. It checks a report's commit, worktree field, tracked-diff digest and any untracked-input paths and digest. It does not treat a dirty report as a clean checkout or rewrite its provenance. Durable evidence manifests keep their separate `source_commit` or `base_commit` contract. When hashed files came from different revisions, `source_commits` can map individual paths to the commits whose Git blobs match those hashes; the validator supports the historical `linux/` tree prefix and limits each manifest to 128 per-file commit mappings. It reports current-checkout drift only when the recorded source bytes have not been verified at that per-file commit.
 
 ## What a container run proves
 

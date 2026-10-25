@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -134,6 +135,177 @@ class EvidenceManifestTests(unittest.TestCase):
         manifest["source_sha256"] = hashlib.sha256(b"source").hexdigest()
         path.write_text(json.dumps(manifest))
         self.assertEqual(VALIDATOR.validate_manifest(path, strict=True)[0], [])
+
+    def test_manifest_verifies_a_source_digest_at_its_own_commit_after_checkout_drift(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+            app = repo / "app.rs"
+            app.write_text("app source")
+            self._commit(repo, "app.rs")
+            app_commit = self._revision(repo)
+
+            historical_source = b"recorded test source"
+            historical_prefix = "lin" + "ux"
+            historical_relative_path = "/".join(("crates", "app", "tests", "gtk_safety.py"))
+            historical_path = repo / historical_prefix / historical_relative_path
+            historical_path.parent.mkdir(parents=True)
+            historical_path.write_bytes(historical_source)
+            self._commit(repo, f"{historical_prefix}/{historical_relative_path}")
+
+            already_prefixed_path = "/".join((historical_prefix, "generated", "source.py"))
+            prefixed_source = b"source path already includes the old prefix"
+            prefixed_path = repo / already_prefixed_path
+            prefixed_path.parent.mkdir(parents=True)
+            prefixed_path.write_bytes(prefixed_source)
+            self._commit(repo, already_prefixed_path)
+            test_commit = self._revision(repo)
+
+            current_source = repo / historical_relative_path
+            current_source.parent.mkdir(parents=True)
+            current_source.write_text("current checkout")
+            manifest_path = repo / "evidence/manifest.json"
+            manifest_path.parent.mkdir()
+            manifest_path.write_text(json.dumps({
+                "schema_version": 1,
+                "source_commit": app_commit,
+                "source_sha256": {
+                    historical_relative_path: hashlib.sha256(historical_source).hexdigest(),
+                    already_prefixed_path: hashlib.sha256(prefixed_source).hexdigest(),
+                },
+                "source_commits": {
+                    historical_relative_path: test_commit,
+                    already_prefixed_path: test_commit,
+                },
+            }))
+
+            with mock.patch.object(VALIDATOR, "ROOT", repo):
+                errors, warnings = VALIDATOR.validate_manifest(manifest_path, strict=True)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_manifest_rejects_a_per_source_commit_that_does_not_match_the_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+            source = repo / "source.rs"
+            source.write_text("recorded source")
+            self._commit(repo, "source.rs")
+            commit = self._revision(repo)
+            manifest_path = repo / "evidence/manifest.json"
+            manifest_path.parent.mkdir()
+            manifest_path.write_text(json.dumps({
+                "schema_version": 1,
+                "source_commit": commit,
+                "source_sha256": {"source.rs": hashlib.sha256(b"different source").hexdigest()},
+                "source_commits": {"source.rs": commit},
+            }))
+
+            with mock.patch.object(VALIDATOR, "ROOT", repo):
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+
+        self.assertTrue(any("source digest does not match its recorded commit" in error for error in errors))
+
+    def test_manifest_rejects_an_oversized_per_file_source_commit_map_before_git_lookup(self):
+        path, manifest = self.fixture()
+        source_names = [f"source-{index}.rs" for index in range(VALIDATOR.MAX_SOURCE_COMMITS + 1)]
+        expected = hashlib.sha256(b"source").hexdigest()
+        manifest["source_sha256"] = {name: expected for name in source_names}
+        manifest["source_commits"] = {name: "a" * 40 for name in source_names}
+        path.write_text(json.dumps(manifest))
+
+        with mock.patch.object(VALIDATOR, "source_bytes_at_commit", return_value=b"source") as source_lookup:
+            errors, _ = VALIDATOR.validate_manifest(path, strict=True)
+
+        self.assertTrue(any("too many per-file source commits" in error for error in errors))
+        source_lookup.assert_not_called()
+
+    def test_manifest_refuses_invalid_per_file_source_mappings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            subprocess.run(["git", "init", "--quiet"], cwd=repo, check=True)
+            source = repo / "source.rs"
+            source.write_text("recorded source")
+            self._commit(repo, "source.rs")
+            commit = self._revision(repo)
+            manifest_path = repo / "evidence/manifest.json"
+            manifest_path.parent.mkdir()
+            source_sha256 = {"source.rs": hashlib.sha256(b"recorded source").hexdigest()}
+
+            with mock.patch.object(VALIDATOR, "ROOT", repo):
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1,
+                    "source_commit": commit,
+                    "source_sha256": source_sha256,
+                    "source_commits": [],
+                }))
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                self.assertTrue(any("source_commits must map" in error for error in errors))
+
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1,
+                    "source_commit": commit,
+                    "source_sha256": source_sha256,
+                    "source_commits": {"orphan.rs": commit},
+                }))
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                self.assertTrue(any("has no matching source_sha256 entry" in error for error in errors))
+
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1,
+                    "source_commit": commit,
+                    "source_sha256": source_sha256,
+                    "source_commits": {"source.rs": "invalid"},
+                }))
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                self.assertTrue(any("invalid source commit" in error for error in errors))
+
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1,
+                    "source_commit": commit,
+                    "source_sha256": source_sha256,
+                    "source_commits": {"source.rs": None},
+                }))
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                self.assertTrue(any("invalid source commit" in error for error in errors))
+
+                missing_digest = hashlib.sha256(b"missing source").hexdigest()
+                manifest_path.write_text(json.dumps({
+                    "schema_version": 1,
+                    "source_commit": commit,
+                    "source_sha256": {"missing.rs": missing_digest},
+                    "source_commits": {"missing.rs": commit},
+                }))
+                errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                for unsafe_path in ("../outside.rs", "/outside.rs"):
+                    manifest_path.write_text(json.dumps({
+                        "schema_version": 1,
+                        "source_commit": commit,
+                        "source_sha256": {unsafe_path: missing_digest},
+                        "source_commits": {unsafe_path: commit},
+                    }))
+                    errors, _ = VALIDATOR.validate_manifest(manifest_path, strict=True)
+                    self.assertTrue(any(
+                        "source digest does not match its recorded commit" in error for error in errors
+                    ))
+
+        self.assertTrue(any("source digest does not match its recorded commit" in error for error in errors))
+
+    @staticmethod
+    def _commit(repo, path):
+        subprocess.run(["git", "add", path], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=Evidence Test", "-c", "user.email=evidence@example.invalid", "commit", "--quiet", "-m", "fixture"],
+            cwd=repo,
+            check=True,
+        )
+
+    @staticmethod
+    def _revision(repo):
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
 
     def test_selector_extracts_the_last_positional_cargo_test_filter(self):
         selector, exact = VALIDATOR.test_selector(

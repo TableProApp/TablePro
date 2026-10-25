@@ -35,6 +35,10 @@
     "crates/app/tests/gtk_safety.py": "2ffbc8c802c22c74e39aea88ecac56a87a9bc7c2219d316dc414ec02ab3aaf5c",
     "scripts/test-gtk-mysql-approval.sh": "27ffda727809f426c64d4493c09c44b4d8a980255678e495f211858302b477a9"
   },
+  "source_commits": {
+    "crates/app/tests/gtk_safety.py": "0f5280e124eb964f1a14edbc16990172f5a2c806",
+    "scripts/test-gtk-mysql-approval.sh": "ee017acb145a5b7e8a12eff05f2f65ff1742454f"
+  },
   "not_established": [
     "Hosted GTK acceptance for the new disconnect scenario",
     "Distro-package acceptance",

@@ -31,7 +31,7 @@
   },
   "log_sha256": {
     "postgres-eight-domain.txt": "6d298d215f830827fd77466cdd64cd052856ef3f08d37ac631d66f9058975abe",
-    "clippy.txt": "ded1f2c3e7619d2ffa20d74ac870b213f947c9239b2fada9bc725126d37f9e",
+    "clippy.txt": "38f43be67687e2be723304080a741b053284c9cb0b84a9356181b7a51d67c371",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "remaining": [

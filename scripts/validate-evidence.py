@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs/evidence"
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 COMMIT_PATTERN = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+MAX_SOURCE_COMMITS = 128
 
 
 def test_selector(command):
@@ -73,6 +75,25 @@ def validate_test_layer_report(path, report):
     return errors, []
 
 
+def source_bytes_at_commit(name, commit):
+    path = Path(name)
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    candidates = [name]
+    if not name.startswith("linux/"):
+        candidates.append(f"linux/{name}")
+    for candidate in candidates:
+        result = subprocess.run(
+            ["git", "cat-file", "blob", f"{commit}:{candidate}"],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    return None
+
+
 def validate_manifest(path, strict=False):
     errors = []
     warnings = []
@@ -97,9 +118,30 @@ def validate_manifest(path, strict=False):
     if not isinstance(source_digests, dict):
         (errors if strict else warnings).append(f"{path}: source_sha256 must be a digest map or a digest with source_file")
         source_digests = {}
+    source_commits = manifest.get("source_commits", {})
+    if not isinstance(source_commits, dict):
+        (errors if strict else warnings).append(f"{path}: source_commits must map source paths to commits")
+        source_commits = {}
+    if len(source_commits) > MAX_SOURCE_COMMITS:
+        errors.append(f"{path}: too many per-file source commits (maximum {MAX_SOURCE_COMMITS})")
+        return errors, warnings
+    for name in source_commits.keys() - source_digests.keys():
+        errors.append(f"{path}: source_commits has no matching source_sha256 entry for {name}")
     for name, expected in source_digests.items():
         if not isinstance(expected, str) or not SHA256_PATTERN.fullmatch(expected):
             errors.append(f"{path}: invalid source digest for {name}")
+            continue
+        if name in source_commits:
+            source_commit = source_commits[name]
+            if not isinstance(source_commit, str) or not COMMIT_PATTERN.fullmatch(source_commit):
+                (errors if strict else warnings).append(f"{path}: invalid source commit for {name}")
+                continue
+            source_bytes = source_bytes_at_commit(name, source_commit)
+            if source_bytes is None or hashlib.sha256(source_bytes).hexdigest() != expected:
+                (errors if strict else warnings).append(
+                    f"{path}: source digest does not match its recorded commit: {name}"
+                )
+                continue
             continue
         source = ROOT / name
         if source.is_file() and hashlib.sha256(source.read_bytes()).hexdigest() != expected:

@@ -11,6 +11,14 @@
     "crates/core/src/lib.rs": "bf52185b3f220408f6616f62a8b641743658ce4c93c55e659838791829560f5d",
     "crates/core/src/numeric_input.rs": "956455ea759d73cdc0ad98d040ab3a2a5763ec41252e7660d72ac1c52138916c"
   },
+  "source_commits": {
+    "crates/app/src/ui/browse_tab/value_parse.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f",
+    "crates/app/tests/support/sqlite_numeric_affinity.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f",
+    "crates/core/src/import/cell.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f",
+    "crates/core/src/import/cell/tests/sqlite_affinity.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f",
+    "crates/core/src/lib.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f",
+    "crates/core/src/numeric_input.rs": "0b2f1a9a14a6174a552957cc93d042c7bb8ccd1f"
+  },
   "engine": "SQLite, in-memory, INTEGER/REAL/NUMERIC affinity",
   "case": "SQLite numeric-affinity edits preserve text and exact numbers while refusing overflow, underflow and rounding",
   "test": "ui::browse_tab::value_parse::tests::sqlite_numeric_affinity::sqlite_numeric_affinity_grid_edit_preserves_text_and_sibling_values",
