@@ -53,7 +53,7 @@ struct DataGridConfigurationTests {
         defer { grid.close() }
 
         let prototypes = dataColumns(of: grid.main).map { $0.sortDescriptorPrototype }
-        #expect(prototypes.map { $0?.key } == ["id", "name", "age"])
+        #expect(prototypes.map { $0?.key } == ["id", "name", "age"].map { DataGridColumnID(name: $0, occurrence: 0).stringValue })
         #expect(prototypes.allSatisfy { $0?.ascending == true })
     }
 
@@ -71,7 +71,7 @@ struct DataGridConfigurationTests {
     func columnSortOffLive() {
         let grid = HostedDataGrid(rows: GridFixtureRows.people, store: Self.sorted(by: "name", ascending: false))
         defer { grid.close() }
-        #expect(grid.main.sortDescriptors.map { $0.key } == ["name"])
+        #expect(grid.main.sortDescriptors.map { $0.key } == [DataGridColumnID(name: "name", occurrence: 0).stringValue])
 
         grid.model.configuration.supportsColumnSort = false
 
@@ -100,7 +100,7 @@ struct DataGridConfigurationTests {
         let name = try #require(grid.tableColumn(named: "name"))
         let age = try #require(grid.tableColumn(named: "age"))
 
-        #expect(descriptor.key == "name")
+        #expect(descriptor.key == DataGridColumnID(name: "name", occurrence: 0).stringValue)
         #expect(!descriptor.ascending)
         #expect(name.headerCell.accessibilitySortDirection() == .descending)
         #expect(age.headerCell.accessibilitySortDirection() == .unknown)

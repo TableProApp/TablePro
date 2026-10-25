@@ -67,10 +67,14 @@ extension DataGridCommands {
 
     // One commit for the whole column; rows that already hold the value are left as they are.
     func applyFillColumn(_ column: DataGridColumn, content: FillColumnContent) {
-        let targets = fillTargetRowIDs()
+        fill(fillTargetRowIDs(), column: column, content: content)
+    }
+
+    // The retry keeps these rows: a filter changed while values load must not move the fill onto others.
+    private func fill(_ targets: [RowID], column: DataGridColumn, content: FillColumnContent) {
         guard !targets.isEmpty else { return }
         guard loader.ensureLoaded(targets, columns: IndexSet(integer: column.dataIndex), in: model, retry: {
-            applyFillColumn(column, content: content)
+            fill(targets, column: column, content: content)
         }) else { return }
         let edits = targets.map { rowID in
             let staged = Self.fillValue(content)

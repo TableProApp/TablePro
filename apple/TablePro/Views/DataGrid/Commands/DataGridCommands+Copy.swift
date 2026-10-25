@@ -199,6 +199,10 @@ extension DataGridCommands {
         let ids = rowIDs(scope)
         guard !ids.isEmpty else { return }
         guard loader.ensureLoaded(ids, columns: IndexSet(integer: column.dataIndex), in: model, retry: {
+            guard rowIDs(scope) == ids else {
+                NSSound.beep()
+                return
+            }
             copyRowsAsInClause(scope)
         }) else { return }
         let tableRows = model.rows
@@ -235,6 +239,10 @@ extension DataGridCommands {
               let exporter = model.actions?.gridSQLExporter else { return }
         let ids = rowIDs(scope)
         guard loader.ensureLoaded(ids, columns: nil, in: model, retry: {
+            guard rowIDs(scope) == ids else {
+                NSSound.beep()
+                return
+            }
             copyRowsAsStatements(scope, update: update)
         }) else { return }
         let columns = selectedColumns(scope)

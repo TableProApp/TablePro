@@ -811,6 +811,31 @@ struct DataGridHeaderMenuTests {
         #expect(!CommandRows.titles(readOnly.headerMenu("name")).contains(String(localized: "Fill Column…")))
     }
 
+    // A filter applied while the values load must not move the fill onto other records.
+    @Test("A fill that waits for values writes the rows it was started on")
+    func fillKeepsItsRowsAcrossALoad() throws {
+        let grid = CommandGrid(TableRows.from(
+            queryRows: [[.text("1"), .null], [.text("2"), .null], [.text("3"), .text("c")]],
+            columns: ["id", "body"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+            unloadedCells: [0: [1: 2_000_000], 1: [1: 2_000_000]]
+        ))
+        grid.owner.loadableValues = [.existing(0): [1: .text("a")], .existing(1): [1: .text("b")]]
+        grid.owner.defersLoads = true
+        let body = try #require(grid.model.columns.column(at: 1))
+
+        grid.commands.applyFillColumn(body, content: .value(.text("x")))
+        try #require(grid.owner.commits.isEmpty)
+        var filter = GridValueFilterState()
+        filter.set(ColumnValueFilter(selectedValues: ["2", "3"], includesNull: false), columnName: "id", forColumn: 0)
+        grid.model.setValueFilter(filter)
+        grid.owner.finishLoads()
+
+        #expect(grid.owner.staged(0, 1)?.value == .text("x"))
+        #expect(grid.owner.staged(1, 1)?.value == .text("x"))
+        #expect(grid.owner.staged(2, 1)?.value == .text("x"))
+    }
+
     @Test("Freeze Up to This Column and Unfreeze Columns write the frozen count")
     func freezeColumns() throws {
         var configuration = CommandGrid.editable()
