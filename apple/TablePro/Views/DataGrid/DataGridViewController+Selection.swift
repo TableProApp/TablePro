@@ -226,18 +226,38 @@ extension DataGridViewController {
             handleDoubleClickBelowRows()
             return
         }
-        guard row >= 0, tableColumn >= 0, let slot = pane.slot(atTableIndex: tableColumn, columns: model.columns) else {
+        guard row >= 0 else {
             if event.clickCount == 1, modifiers.isEmpty {
                 model.clearSelection()
                 mirrorSelection()
             }
             return
         }
+        guard tableColumn >= 0, let slot = pane.slot(atTableIndex: tableColumn, columns: model.columns) else {
+            // Past the last column the press lands on the row, which AppKit selects and tracks as in any table.
+            if modifiers.isEmpty {
+                model.setSelection(GridSelectionReducer.rowsSelectedNatively(
+                    IndexSet(integer: row),
+                    previous: model.selection,
+                    in: selectionContext
+                ))
+                mirrorSelection()
+            }
+            table.performNativeMouseDown(with: event)
+            return
+        }
 
         switch slot {
         case .rowNumber:
-            // AppKit tracks a press on the frozen row number itself, so a sideways drag can lift the row (Structure).
+            // AppKit tracks a press on the frozen row number itself, so a sideways drag can lift the rows it picks.
             if pane.kind == .frozen, canDragRows(fromRowNumberAt: row), !modifiers.contains(.command), !modifiers.contains(.shift) {
+                model.setSelection(GridSelectionReducer.rowNumberDragPress(
+                    model.selection,
+                    row: row,
+                    keepsPickedRows: !model.configuration.rowReorder.isEnabled,
+                    in: selectionContext
+                ))
+                mirrorSelection()
                 table.performNativeMouseDown(with: event)
                 return
             }

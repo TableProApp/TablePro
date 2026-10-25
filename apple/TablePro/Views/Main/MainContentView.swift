@@ -349,7 +349,7 @@ struct MainContentView: View {
                     GridSelectionWatcher(
                         model: model,
                         onAttach: { scheduleInspectorUpdate() },
-                        onChange: { handleGridSelectionChange() }
+                        onChange: { rowsChanged in handleGridSelectionChange(rowsChanged: rowsChanged) }
                     )
                     .id(ObjectIdentifier(model))
                 }
@@ -459,9 +459,10 @@ struct MainContentView: View {
             }
     }
 
-    // Any grid's selection counts, a query result's as much as a table's: the setting is "on row select".
-    private func handleGridSelectionChange() {
-        if coordinator.activeGridModel?.selection.isEmpty == false,
+    // Any grid's selection counts, a query result's as much as a table's: the setting is "on row select", not on cursor moves.
+    private func handleGridSelectionChange(rowsChanged: Bool) {
+        if rowsChanged,
+           coordinator.activeGridModel?.selection.isEmpty == false,
            AppSettingsManager.shared.dataGrid.autoShowInspector {
             coordinator.trailingPaneProxy?.revealInspectorForSelection()
         }

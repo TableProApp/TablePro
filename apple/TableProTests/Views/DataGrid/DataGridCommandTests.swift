@@ -161,7 +161,7 @@ final class CommandGridOwner: DataGridDataSource, DataGridActions {
 
     var gridSQLExporter: (any DataGridSQLExporting)? { exporter }
 
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] {
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
         rowMenuTitles.map { NSMenuItem(title: $0, action: nil, keyEquivalent: "") }
     }
 

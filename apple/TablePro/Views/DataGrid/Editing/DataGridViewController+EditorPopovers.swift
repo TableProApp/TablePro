@@ -26,8 +26,8 @@ extension DataGridViewController {
         state.typedPopoverRow = heldRow(cell)
         state.typedPopoverPane = frame.pane.kind
         state.typedPopoverEdits = edits
-        state.typedPopoverObserver.onClose = { [weak self, weak popover] in
-            self?.typedPopoverDidClose(popover)
+        state.typedPopoverObserver.onClose = { [weak self] closed in
+            self?.typedPopoverDidClose(closed)
         }
         popover.delegate = state.typedPopoverObserver
         if frame.pane.tableView.window?.isVisible == true {
@@ -42,9 +42,9 @@ extension DataGridViewController {
         typedPopoverDidClose(popover)
     }
 
-    private func typedPopoverDidClose(_ popover: NSPopover?) {
+    private func typedPopoverDidClose(_ popover: NSPopover) {
         let state = editingState
-        guard let popover, state.typedPopover === popover else { return }
+        guard state.typedPopover === popover else { return }
         let edits = state.typedPopoverEdits
         state.typedPopover = nil
         state.typedPopoverRow = nil
@@ -119,6 +119,8 @@ extension DataGridViewController {
                 closePoppedOutEditor()
             }
         }
+        // The value filter lists the values it opened over, which a reload, insert or removal makes stale.
+        dismissValueFilterPopover()
         followActiveCellWithForeignKeyPreview()
     }
 }
@@ -126,9 +128,11 @@ extension DataGridViewController {
 // A popover that closes itself (Escape, a click outside, its own Done) reaches the grid here.
 @MainActor
 final class DataGridPopoverCloseObserver: NSObject, NSPopoverDelegate {
-    var onClose: (@MainActor () -> Void)?
+    var onClose: (@MainActor (NSPopover) -> Void)?
 
+    // Names the popover that closed: a replaced one finishes animating out after the next is shown.
     func popoverDidClose(_ notification: Notification) {
-        onClose?()
+        guard let popover = notification.object as? NSPopover else { return }
+        onClose?(popover)
     }
 }

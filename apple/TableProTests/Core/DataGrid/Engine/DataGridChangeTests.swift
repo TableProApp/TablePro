@@ -66,6 +66,15 @@ struct DataGridChangeTests {
         #expect(change(.none).isNone)
     }
 
+    @Test("An insert or removal moves every row from its first index to the end, and an update moves none")
+    func insertsAndRemovalsMoveTheRowsBelow() {
+        #expect(DataGridChange.rowsInserted(IndexSet([2, 4])).movedRows(rowCount: 7) == IndexSet(integersIn: 2..<7))
+        #expect(DataGridChange.rowsRemoved(IndexSet([1, 3])).movedRows(rowCount: 5) == IndexSet(integersIn: 1..<5))
+        #expect(DataGridChange.rowsRemoved(IndexSet(integer: 4)).movedRows(rowCount: 4).isEmpty)
+        #expect(DataGridChange.rowsUpdated(IndexSet(integer: 1), columns: nil).movedRows(rowCount: 5).isEmpty)
+        #expect(DataGridChange.reload.movedRows(rowCount: 5).isEmpty)
+    }
+
     @Test("A real update is never mistaken for no change")
     func updateIsNotNone() {
         #expect(!change(.cellChanged(row: 0, column: 0)).isNone)

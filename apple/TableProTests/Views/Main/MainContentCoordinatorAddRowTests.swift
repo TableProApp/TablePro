@@ -77,6 +77,33 @@ struct MainContentCoordinatorAddRowTests {
         #expect(!unresolved.canAddRow)
     }
 
+    // The grid's text editor refuses bytes, so the caret on a BLOB column would open nothing.
+    @Test("Add Row and Duplicate Row put the caret past a BLOB column, on the first one that takes text")
+    func newRowSkipsABlobColumn() throws {
+        let fixture = fixtures.make()
+        var tab = QueryTab(title: "files", query: "SELECT * FROM files", tabType: .table)
+        tab.tableContext.tableName = "files"
+        tab.tableContext.isEditable = true
+        tab.display.resultsViewMode = .data
+        fixture.addTab(tab, rows: TableRows.from(
+            queryRows: [[.bytes(Data([0x01, 0x02])), .text("a")]],
+            columns: ["payload", "name"],
+            columnTypes: [.blob(rawType: "BYTEA"), .text(rawType: "TEXT")],
+            hasAuthoritativeSchema: true
+        ))
+        let coordinator = fixture.coordinator
+        let model = coordinator.gridModel(forTab: tab.id)
+
+        coordinator.addNewRow()
+        let added = try #require(model.selection.activeCell)
+        #expect(model.columns.column(at: added.displayColumn)?.name == "name")
+
+        coordinator.duplicateRow(.existing(0))
+        let duplicated = try #require(model.selection.activeCell)
+        #expect(duplicated.row != added.row)
+        #expect(model.columns.column(at: duplicated.displayColumn)?.name == "name")
+    }
+
     private func makeQueryCoordinator(keysResolved: Bool) throws -> MainContentCoordinator {
         let fixture = fixtures.make()
         let tabManager = fixture.tabManager

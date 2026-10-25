@@ -181,4 +181,16 @@ private final class DataGridFieldEditor: NSTextView {
     func endUndoSession() {
         sessionUndoManager.removeAllActions()
     }
+
+    // Paste, drop and Services read here; single-line mode would drop the text's line breaks.
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        let range = rangeForUserTextChange
+        if range.location != NSNotFound,
+           let text = pboard.string(forType: .string), text.contains(where: \.isNewline),
+           let fieldDelegate = (delegate as? NSTextField)?.delegate as? DataGridFieldEditorDelegate,
+           fieldDelegate.fieldEditorInsertsLines(text, replacing: range) {
+            return true
+        }
+        return super.readSelection(from: pboard, type: type)
+    }
 }

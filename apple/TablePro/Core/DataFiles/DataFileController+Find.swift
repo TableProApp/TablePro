@@ -30,8 +30,12 @@ extension DataFileController {
         gridModel.useSelectionForFind()
     }
 
+    // The grid finds only in the columns it shows, so a hidden column is shown first.
     func scopeFind(to column: TabularColumnID) {
         guard let id = findColumns.first(where: { $0.tabular == column })?.grid else { return }
+        if let name = columnNames.name(for: column), columnLayout.hiddenColumns.contains(name) {
+            columnLayout.hiddenColumns.remove(name)
+        }
         gridModel.findInColumn(id, replace: true)
     }
 

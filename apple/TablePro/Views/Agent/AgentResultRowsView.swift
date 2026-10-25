@@ -86,13 +86,14 @@ internal struct AgentResultRowsView: View {
             .task(id: run.id) { load(decoded, for: run) }
     }
 
-    // Another run starts with no selection and no sort; the same run keeps both across a remount.
+    // Another run starts with no selection, sort or display formats; the same run keeps them across a remount.
     private func load(_ decoded: TableRows, for run: AgentQueryRun) {
         grid.model.configuration = configuration
         guard loadedRunId != run.id else { return }
         if loadedRunId != nil {
             grid.model.clearSelection()
             grid.showSort(SortState())
+            grid.model.store.displayFormats = []
         }
         loadedRunId = run.id
         grid.setRows(decoded)

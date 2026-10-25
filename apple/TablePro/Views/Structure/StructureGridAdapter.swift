@@ -164,11 +164,14 @@ final class StructureGridAdapter {
                 tintsModifiedFields: true
             )
         }
+        let wasEditable = model.configuration.isEditable
         model.configuration = makeConfiguration(provider: provider)
         let previous = snapshot
         snapshot = StructureGridSnapshot(rows: rows, states: states)
         model.applyHeldSnapshot(from: previous, to: snapshot)
-        if previous.rows.rows != rows.rows || previous.states != states || previous.rows.columns != rows.columns {
+        // A save hold changes only the editability, and the inspector's fields have to follow it.
+        if previous.rows.rows != rows.rows || previous.states != states || previous.rows.columns != rows.columns
+            || wasEditable != model.configuration.isEditable {
             coordinator?.inspectorRowSourceRevision += 1
         }
     }
@@ -469,8 +472,8 @@ extension StructureGridAdapter: DataGridActions {
         model.configuration = makeConfiguration(provider: provider)
     }
 
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] {
-        structureRowMenuItems(for: rowIDs)
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
+        structureRowMenuItems(for: rowIDs, clickedRow: clickedRow)
     }
 
     func gridEmptySpaceMenu() -> NSMenu? {

@@ -13,7 +13,7 @@ struct DataGridFindBar: View {
     @State private var capabilities = Capabilities()
     @State private var pendingSearch: Task<Void, Never>?
     @State private var status: String?
-    @FocusState private var isFindFieldFocused: Bool
+    @State private var focusRequest = 0
 
     init(model: DataGridModel) {
         self.model = model
@@ -32,11 +32,11 @@ struct DataGridFindBar: View {
             .padding(.vertical, 6)
             Divider()
         }
+        // The search field clears on the first Escape and hands the second on, which closes the bar.
         .onExitCommand { model.hideFind() }
-        .onAppear { isFindFieldFocused = true }
         // Find while the bar is already open moves focus back to its field.
         .onReceive(find.$isVisible.dropFirst()) { isVisible in
-            if isVisible { isFindFieldFocused = true }
+            if isVisible { focusRequest += 1 }
         }
         // Configuration changes bump this revision; the bar observes nothing else on the model.
         .onReceive(model.$editabilityRevision) { _ in
@@ -48,13 +48,16 @@ struct DataGridFindBar: View {
 
     private var findRow: some View {
         HStack(spacing: 8) {
-            TextField(String(localized: "Find"), text: termBinding)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 160, maxWidth: 320)
-                .focused($isFindFieldFocused)
-                .onSubmit { step(forward: NSApp.currentEvent?.modifierFlags.contains(.shift) != true) }
-                .accessibilityLabel(String(localized: "Find"))
-                .accessibilityIdentifier("grid-find-field")
+            // A SwiftUI field's @FocusState set as the bar appears never reaches the window's first responder here (CI).
+            NativeSearchField(
+                text: termBinding,
+                placeholder: String(localized: "Find"),
+                onSubmit: { step(forward: NSApp.currentEvent?.modifierFlags.contains(.shift) != true) },
+                focusOnAppear: true,
+                focusTrigger: focusRequest,
+                accessibilityIdentifier: "grid-find-field"
+            )
+            .frame(minWidth: 160, maxWidth: 320)
 
             optionsMenu
 

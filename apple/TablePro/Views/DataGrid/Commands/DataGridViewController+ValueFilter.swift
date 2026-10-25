@@ -73,10 +73,15 @@ extension DataGridViewController {
                 values: values,
                 loadedRowCount: rows.count,
                 initialFilter: initialFilter,
+                // A change closes the popover once applied, in followRowChangesWithPopovers; declining the alert keeps the picks.
                 onApply: { filter in
-                    dismiss()
-                    guard let self, let current = self.model.columns.column(id: columnID) else { return }
-                    self.applyValueFilter(filter, to: current)
+                    guard let self, let current = self.model.columns.column(id: columnID) else {
+                        dismiss()
+                        return
+                    }
+                    if !self.applyValueFilter(filter, to: current) {
+                        dismiss()
+                    }
                 },
                 onCancel: dismiss
             )
@@ -90,14 +95,17 @@ extension DataGridViewController {
     }
 
     // The model asks the owner to confirm before a change that would drop pending edits; no change asks nothing.
-    func applyValueFilter(_ filter: ColumnValueFilter?, to column: DataGridColumn) {
+    @discardableResult
+    func applyValueFilter(_ filter: ColumnValueFilter?, to column: DataGridColumn) -> Bool {
         var state = model.store.valueFilter
         if let filter {
             state.set(filter, columnName: column.name, forColumn: column.dataIndex)
         } else {
             state.clear(column: column.dataIndex)
         }
+        guard state != model.store.valueFilter else { return false }
         model.setValueFilter(state)
+        return true
     }
 
     func clearAllValueFilters() {

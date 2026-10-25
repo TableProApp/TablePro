@@ -133,4 +133,45 @@ struct DataGridHighlightTests {
         #expect(grid.presenter.visualState(of: highlighted).tint(in: .live) == HighlightColor.green.washColor)
         #expect(grid.presenter.visualState(of: plain).tint(in: .live) == nil)
     }
+
+    // MARK: - Repaint
+
+    @Test("A value change repaints its whole row where a row rule can wash it, else only the changed column")
+    func rowRuleRepaintsWholeRow() throws {
+        let grid = HostedDataGrid(rows: GridFixtureRows.people) { owner, _ in
+            owner.highlightRules = [HighlightRule(columnName: "name", value: "bob", color: .green)]
+        }
+        defer { grid.close() }
+        _ = try #require(grid.main.rowView(atRow: 1, makeIfNecessary: true))
+        _ = try #require(grid.frozen.rowView(atRow: 1, makeIfNecessary: true))
+
+        #expect(grid.controller.refreshRowState(IndexSet(integer: 1), columns: IndexSet(integer: 1)) == IndexSet(integer: 1))
+
+        grid.owner.highlightRules = [HighlightRule(columnName: "name", value: "bob", color: .green, target: .cell)]
+
+        #expect(grid.controller.refreshRowState(IndexSet(integer: 1), columns: IndexSet(integer: 1)).isEmpty)
+    }
+
+    @Test("A value change on a row whose pending mark moved repaints the whole row")
+    func movedMarkRepaintsWholeRow() throws {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "people",
+            columns: ["id", "name", "age"],
+            primaryKeyColumns: ["id"],
+            databaseType: .mysql,
+            generatedColumns: []
+        )
+        let grid = HostedDataGrid(rows: GridFixtureRows.people, changeManager: manager)
+        defer { grid.close() }
+        _ = try #require(grid.main.rowView(atRow: 2, makeIfNecessary: true))
+        manager.recordRowDeletion(rowID: .existing(2), originalRow: [.text("2"), .text("cid"), .text("25")])
+        grid.model.repaintRows([RowID.existing(2)])
+        try #require(grid.controller.rowTint(forRow: 2) != nil)
+
+        manager.undoRowDeletion(rowID: .existing(2))
+
+        #expect(grid.controller.refreshRowState(IndexSet(integer: 2), columns: IndexSet(integer: 1)) == IndexSet(integer: 2))
+        #expect(grid.controller.rowTint(forRow: 2) == nil)
+    }
 }

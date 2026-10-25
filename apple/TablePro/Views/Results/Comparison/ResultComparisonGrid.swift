@@ -33,7 +33,8 @@ internal final class ResultComparisonGridModel: ObservableObject {
         configuration.showRowNumbers = false
         configuration.supportsValueFilter = false
         configuration.supportsColumnSort = false
-        configuration.commands = [.freezeColumns]
+        configuration.appliesRowCopyFormat = true
+        configuration.commands = [.freezeColumns, .displayAs]
         return configuration
     }
 
@@ -58,6 +59,10 @@ internal final class ResultComparisonGridModel: ObservableObject {
             states[row.id] = Self.visualState(for: line)
         }
         grid.visualStates = states
+        // Display formats are kept by data index, so another pairing's columns start with raw values.
+        if rows.columns != tableRows.columns || rows.columnTypes != tableRows.columnTypes {
+            grid.model.store.displayFormats = []
+        }
         grid.setRows(rows)
         return tableRows
     }

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
@@ -11,14 +12,8 @@ import TableProTabularIO
 import Testing
 
 @MainActor
-struct DataFileControllerTests {
-    private let undoManager = UndoManager()
-
-    private func loaded(_ text: String, fileExtension: String = "csv") async throws -> (DataFileController, URL) {
-        try await loaded(data: Data(text.utf8), fileExtension: fileExtension)
-    }
-
-    private func loaded(data: Data, fileExtension: String) async throws -> (DataFileController, URL) {
+private enum DataFileFixture {
+    static func open(data: Data, fileExtension: String, undoManager: UndoManager) async throws -> (DataFileController, URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("DataFileControllerTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -31,6 +26,59 @@ struct DataFileControllerTests {
         await controller.waitForPendingWork()
         #expect(controller.loadState == .loaded)
         return (controller, url)
+    }
+
+    // The grid as the window builds it, with the window's configuration.
+    static func grid(for controller: DataFileController) -> DataGridViewController {
+        controller.gridModel.configuration = DataFileContentView.gridConfiguration(for: controller)
+        return DataGridViewController(model: controller.gridModel)
+    }
+
+    static func item(_ title: String, in menu: NSMenu?) -> NSMenuItem? {
+        menu?.items.first { $0.title == title }
+    }
+
+    static func perform(_ item: NSMenuItem) {
+        guard let action = item.action else { return }
+        _ = NSApp.sendAction(action, to: item.target, from: item)
+    }
+}
+
+// Header geometry exists only once the grid is laid out in a window.
+@MainActor
+private final class MountedDataFileGrid {
+    let grid: DataGridViewController
+    let window: NSWindow
+
+    init(controller: DataFileController) {
+        grid = DataFileFixture.grid(for: controller)
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = grid.view
+        grid.view.layoutSubtreeIfNeeded()
+    }
+
+    func tearDown() {
+        grid.dismantle()
+        window.contentView = nil
+    }
+}
+
+@MainActor
+struct DataFileControllerTests {
+    private let undoManager = UndoManager()
+
+    private func loaded(_ text: String, fileExtension: String = "csv") async throws -> (DataFileController, URL) {
+        try await loaded(data: Data(text.utf8), fileExtension: fileExtension)
+    }
+
+    private func loaded(data: Data, fileExtension: String) async throws -> (DataFileController, URL) {
+        try await DataFileFixture.open(data: data, fileExtension: fileExtension, undoManager: undoManager)
     }
 
     private func loaded(workbook base64: String) async throws -> DataFileController {
@@ -311,6 +359,91 @@ struct DataFileControllerTests {
         #expect(model.find.matches.count == 1)
         #expect(model.selection.activeCell == GridCoord(row: 1, displayColumn: 1))
         #expect(controller.activeCell()?.column == controller.columnNames.ids[1])
+    }
+
+    @Test("Replace in Column on a hidden column shows the column and replaces only in it")
+    func replaceInHiddenColumnStaysInIt() async throws {
+        let (controller, _) = try await loaded("name,notes\nfoo,foo\nbar,foo bar\n")
+        let model = editableGrid(controller)
+        controller.columnLayout.hiddenColumns.insert("notes")
+
+        controller.scopeFind(to: controller.columnNames.ids[1])
+        model.find.term = "foo"
+        model.findQueryDidChange()
+        await model.findSearchSettled()
+
+        #expect(!controller.columnLayout.hiddenColumns.contains("notes"))
+        let scope = try #require(model.find.options.columnScope)
+        #expect(model.columns.column(id: scope)?.name == "notes")
+        #expect(model.find.matches.count == 2)
+        model.find.replacement = "qux"
+        model.replaceAllMatches()
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["foo", "bar"])
+        #expect(column(controller, 1) == ["qux", "qux bar"])
+    }
+
+    @Test("Show Row as JSON on a row outside the selection shows that row")
+    func showRowAsJSONSelectsTheClickedRow() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Rome\n")
+        let grid = DataFileFixture.grid(for: controller)
+        controller.selectRows(pageRows: [0])
+
+        let menu = grid.rowMenu(forRow: 2, displayColumn: 1, in: .main)
+        DataFileFixture.perform(try #require(DataFileFixture.item(String(localized: "Show Row as JSON"), in: menu)))
+
+        #expect(controller.isInspectorVisible)
+        #expect(controller.selectedRowIndices == [2])
+    }
+
+    @Test("Insert Row Above and Below on a row inside the selection anchor at the row right-clicked")
+    func insertRowItemsAnchorAtTheClickedRow() async throws {
+        let (controller, _) = try await loaded("n\n1\n2\n3\n4\n")
+        let grid = DataFileFixture.grid(for: controller)
+        controller.selectRows(pageRows: [0, 1, 2])
+
+        let menu = grid.rowMenu(forRow: 2, displayColumn: 0, in: .main)
+        let above = try #require(DataFileFixture.item(String(localized: "Insert Row Above"), in: menu))
+        let below = try #require(DataFileFixture.item(String(localized: "Insert Row Below"), in: menu))
+        #expect(above.representedObject as? Int == 2)
+        #expect(below.representedObject as? Int == 2)
+
+        controller.insertRow(anchoredAtPageRow: below.representedObject as? Int, below: true)
+        #expect(column(controller, 0) == ["1", "2", "3", "", "4"])
+    }
+
+    @Test("Column Statistics points at the column's header; a hidden column has no header to point at")
+    func statisticsAnchorIsTheColumnHeader() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        let mounted = MountedDataFileGrid(controller: controller)
+        defer { mounted.tearDown() }
+        let ids = controller.columnNames.ids
+
+        let name = try #require(controller.headerAnchor(for: ids[0]))
+        let city = try #require(controller.headerAnchor(for: ids[1]))
+
+        #expect(name.view is NSTableHeaderView)
+        #expect(city.view === name.view)
+        #expect(name.rect.width > 0)
+        #expect(city.rect.minX >= name.rect.maxX - 1)
+
+        controller.columnLayout.hiddenColumns.insert("city")
+        #expect(controller.headerAnchor(for: ids[1])?.view == nil)
+    }
+
+    @Test("The header menu offers Display As on a file's column and applies the chosen format")
+    func headerMenuOffersDisplayAs() async throws {
+        let (controller, _) = try await loaded("payload\nabc\n")
+        let grid = DataFileFixture.grid(for: controller)
+        let column = try #require(controller.gridModel.columns.column(at: 0))
+
+        let menu = grid.headerMenu(for: column)
+        let displayAs = try #require(DataFileFixture.item(String(localized: "Display As"), in: menu)?.submenu)
+        #expect(displayAs.items.contains { $0.title == ValueDisplayFormat.uuid.displayName })
+        DataFileFixture.perform(try #require(displayAs.items.first { $0.title == ValueDisplayFormat.json.displayName }))
+
+        #expect(controller.gridModel.store.displayFormats.first == .json)
     }
 
     @Test("Saving writes untouched rows byte for byte and the edited row once")
@@ -795,5 +928,25 @@ struct DataFileControllerTests {
     func invisibleCharactersAreNamed() {
         #expect(DataFileController.describe("\u{A0}") == "U+00A0 NO-BREAK SPACE")
         #expect(DataFileController.describe("漢") == "“漢”")
+    }
+}
+
+extension GlobalStateSuites {
+    @Suite(.recordingClipboard)
+    @MainActor
+    struct DataFileCopyRowsTests {
+        @Test("Copy Rows writes a NULL or missing cell as empty and a tab or line break in a value as a space")
+        func copyRowsKeepsEachRecordOnOneLine() async throws {
+            let text = "{\"id\":1,\"name\":null,\"note\":\"a\\tb\"}\n{\"id\":2,\"note\":\"line1\\nline2\"}\n"
+            let (controller, _) = try await DataFileFixture.open(data: Data(text.utf8), fileExtension: "jsonl", undoManager: UndoManager())
+            let grid = DataFileFixture.grid(for: controller)
+            controller.selectRows(pageRows: [0, 1])
+
+            grid.copySelectedRows(nil)
+
+            let clipboard = try #require(RecordingClipboard.current)
+            #expect(clipboard.text == "1\t\ta b\n2\t\tline1 line2")
+            #expect(clipboard.gridRows?.rows.last?.last == .text("line1\nline2"))
+        }
     }
 }

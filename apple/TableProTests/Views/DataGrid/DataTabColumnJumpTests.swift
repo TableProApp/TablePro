@@ -13,6 +13,7 @@ import Testing
 private final class MountedGridStub: DataGridMountedView {
     private(set) var revealed: [(row: Int, displayColumn: Int?)] = []
     private(set) var focusRequests = 0
+    var firstVisibleRow: Int?
 
     func apply(_ change: DataGridChange) {}
     func selectionDidChange() {}
@@ -25,7 +26,7 @@ private final class MountedGridStub: DataGridMountedView {
     func revealColumn(_ displayColumn: Int) {}
     func sortDidChange() {}
     func summaryRulesDidChange() {}
-    func viewportSample() -> (row: Int, offset: CGFloat)? { nil }
+    func viewportSample() -> (row: Int, offset: CGFloat)? { firstVisibleRow.map { (row: $0, offset: 0) } }
     func beginEditing(row: Int, displayColumn: Int) -> Bool { false }
     var isEditing: Bool { false }
     func commitEditing() -> Bool { true }
@@ -107,6 +108,17 @@ struct DataTabColumnJumpTests {
         #expect(mounted.revealed.last?.row == 0)
         #expect(mounted.revealed.last?.displayColumn == 2)
         #expect(mounted.focusRequests == 1)
+    }
+
+    @Test("A jump with nothing selected lands on the first visible row, not the top")
+    func jumpWithoutSelectionKeepsTheScrolledPlace() {
+        let (tab, model) = mountGrid(rowCount: 50)
+        mounted.firstVisibleRow = 30
+
+        jump(to: entry("email", dataIndex: 2), tab: tab, model: model)
+
+        #expect(model.selection.activeCell == GridCoord(row: 30, displayColumn: 2))
+        #expect(mounted.revealed.last?.row == 30)
     }
 
     @Test("A jump keeps the active row")

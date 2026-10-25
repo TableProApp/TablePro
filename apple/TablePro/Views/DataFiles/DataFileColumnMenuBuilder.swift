@@ -50,10 +50,10 @@ enum DataFileColumnMenuBuilder {
         return items
     }
 
-    static func rowItems(forPageRow row: Int) -> [NSMenuItem] {
+    static func rowItems(abovePageRow above: Int, belowPageRow below: Int) -> [NSMenuItem] {
         [
-            rowItem(String(localized: "Insert Row Above"), #selector(DataFileSplitViewController.dataFileInsertRowAbove(_:)), row),
-            rowItem(String(localized: "Insert Row Below"), #selector(DataFileSplitViewController.dataFileInsertRowBelow(_:)), row)
+            rowItem(String(localized: "Insert Row Above"), #selector(DataFileSplitViewController.dataFileInsertRowAbove(_:)), above),
+            rowItem(String(localized: "Insert Row Below"), #selector(DataFileSplitViewController.dataFileInsertRowBelow(_:)), below)
         ]
     }
 

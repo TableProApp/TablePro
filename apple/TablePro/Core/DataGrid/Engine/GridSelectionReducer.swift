@@ -151,6 +151,20 @@ enum GridSelectionReducer {
         }
     }
 
+    // A plain row number press AppKit tracks for a drag. A reorder moves one row, so there the pressed row is picked alone.
+    static func rowNumberDragPress(
+        _ s: GridSelection,
+        row: Int,
+        keepsPickedRows: Bool,
+        in c: GridSelectionContext
+    ) -> GridSelection {
+        let current = c.fit(s)
+        if keepsPickedRows, current.picksRows, current.affectedRows.contains(row) {
+            return current
+        }
+        return rowHeaderPress(current, row: row, modifiers: [], in: c).0
+    }
+
     static func columnHeaderCommandClick(
         _ s: GridSelection,
         column: Int,
@@ -159,16 +173,17 @@ enum GridSelectionReducer {
     ) -> GridSelection {
         let current = c.fit(s)
         guard !c.isEmpty, column >= 0, column < c.columnCount else { return current }
+        let base = cellBase(of: current, in: c)
         if modifiers.contains(.shift),
-           let from = current.anchor?.displayColumn ?? current.activeCell?.displayColumn,
+           let from = base.anchor?.displayColumn ?? base.activeCell?.displayColumn,
            from != column {
-            return c.fit(addingColumns(from: from, to: column, in: current, c))
+            return c.fit(addingColumns(from: from, to: column, in: base, c))
         }
-        if current.columns.contains(column) {
-            return c.fit(removingColumn(column, from: current, c))
+        if base.columns.contains(column) {
+            return c.fit(removingColumn(column, from: base, c))
         }
         let addition = GridSelection.column(column, totalRows: c.rowCount)
-        return c.fit(current.isEmpty ? addition : current.union(addition))
+        return c.fit(base.isEmpty ? addition : base.union(addition))
     }
 
     // MARK: - Keyboard
@@ -326,7 +341,7 @@ private extension GridSelectionReducer {
         return picked
     }
 
-    // A Command-click adds a cell to the cells already chosen; a row the click selected contributes only its cursor cell.
+    // A Command-click on a cell or a header adds to the cells already chosen; a clicked row lends only its cursor cell.
     static func cellBase(of s: GridSelection, in c: GridSelectionContext) -> GridSelection {
         switch s.mode {
         case .cells:

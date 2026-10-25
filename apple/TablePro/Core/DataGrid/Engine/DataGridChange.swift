@@ -11,6 +11,17 @@ enum DataGridChange: Equatable {
 
     var isNone: Bool { self == .none }
 
+    // Every row from the first inserted or removed index to the end now sits at a new index.
+    func movedRows(rowCount: Int) -> IndexSet {
+        switch self {
+        case .rowsInserted(let indexes), .rowsRemoved(let indexes):
+            guard let first = indexes.first, first < rowCount else { return [] }
+            return IndexSet(integersIn: first..<rowCount)
+        case .reload, .columnsChanged, .rowsUpdated:
+            return []
+        }
+    }
+
     // Under a value filter an insert or removal reshapes the order itself, so it reloads.
     static func from(
         _ delta: Delta,

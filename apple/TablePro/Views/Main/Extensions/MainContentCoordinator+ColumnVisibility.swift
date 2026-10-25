@@ -105,9 +105,10 @@ extension MainContentCoordinator {
     private func applyColumnReset() {
         guard let index = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[index]
+        // Through the model, which rebuilds its columns: a query tab's requery reloads nothing, so it alone shows them again.
         if let entry = dataGridEntries[tab.id] {
             entry.store.discardPendingLayout()
-            entry.model.updateColumnLayout { $0.resetGeometry() }
+            entry.model.updateColumnLayout { $0 = ColumnLayoutState() }
         }
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)

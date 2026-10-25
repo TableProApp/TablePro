@@ -125,6 +125,11 @@ struct MenuValidationContext: Equatable {
     var hasDatabaseFilter = false
     var canFilterSchemas = false
     var hasSchemaFilter = false
+
+    // The validation and the window's handler both read it, so a lit Use Selection for Find never lands on an editor with no selection.
+    var usesGridSelectionForFind: Bool {
+        !hasSelectionForFind && isConnected && canUseGridFindCommands && hasDataGridRowSelection
+    }
 }
 
 extension MainSplitViewController: NSMenuItemValidation {
@@ -439,8 +444,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         case #selector(findNext(_:)), #selector(findPrevious(_:)):
             return context.hasEditorForFind || context.hasActiveGridFind
         case #selector(useSelectionForFind(_:)):
-            return context.hasSelectionForFind
-                || (context.isConnected && context.canUseGridFindCommands && context.hasDataGridRowSelection)
+            return context.hasSelectionForFind || context.usesGridSelectionForFind
         default:
             return nil
         }

@@ -77,6 +77,10 @@ struct DataFileContentView: View {
     }
 
     private var configuration: DataGridConfiguration {
+        Self.gridConfiguration(for: controller)
+    }
+
+    static func gridConfiguration(for controller: DataFileController) -> DataGridConfiguration {
         var config = DataGridConfiguration()
         let isEditable = controller.isEditable && !controller.isBusy
         config.showRowNumbers = true
@@ -84,7 +88,7 @@ struct DataFileContentView: View {
         config.supportsValueFilter = false
         config.appliesRowCopyFormat = true
         var commands: Set<DataGridCommand> = [
-            .filterWithColumn, .hideColumns, .showRowsAsJSON, .exportResults, .freezeColumns,
+            .filterWithColumn, .hideColumns, .showRowsAsJSON, .exportResults, .freezeColumns, .displayAs,
         ]
         if isEditable {
             commands.formUnion([.addRow, .deleteRows, .pasteRows])

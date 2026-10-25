@@ -270,6 +270,35 @@ struct GridSelectionReducerTests {
         #expect(dragged.rectangles == [wholeRows(0...0), wholeRows(4...6)])
     }
 
+    @Test("A row number press that may lift rows picks a clicked row, so it copies as a row")
+    func rowNumberDragPressPicksAClickedRow() {
+        let picked = GridSelectionReducer.rowNumberDragPress(cursorAt(2, 3), row: 2, keepsPickedRows: true, in: grid)
+
+        #expect(picked.picksRows)
+        #expect(picked.rectangles == [wholeRows(2...2)])
+        #expect(picked.activeCell == cell(2, 3))
+    }
+
+    @Test("A row number press inside picked rows keeps them all for the drag")
+    func rowNumberDragPressKeepsPickedRows() {
+        let (start, _) = GridSelectionReducer.rowHeaderPress(.empty, row: 1, modifiers: [], in: grid)
+        let (rows, _) = GridSelectionReducer.rowHeaderPress(start, row: 3, modifiers: .shift, in: grid)
+
+        #expect(GridSelectionReducer.rowNumberDragPress(rows, row: 2, keepsPickedRows: true, in: grid) == rows)
+    }
+
+    @Test("Where a drag reorders one row, a row number press picks the pressed row alone")
+    func rowNumberDragPressForReorderPicksThePressedRow() {
+        let (start, _) = GridSelectionReducer.rowHeaderPress(.empty, row: 1, modifiers: [], in: grid)
+        let (rows, _) = GridSelectionReducer.rowHeaderPress(start, row: 3, modifiers: .shift, in: grid)
+
+        let pressed = GridSelectionReducer.rowNumberDragPress(rows, row: 3, keepsPickedRows: false, in: grid)
+
+        #expect(pressed.picksRows)
+        #expect(pressed.rectangles == [wholeRows(3...3)])
+        #expect(pressed.affectedRows == IndexSet(integer: 3))
+    }
+
     // MARK: - Column header
 
     @Test("Command on a header picks the whole column and marks it")
@@ -325,6 +354,30 @@ struct GridSelectionReducerTests {
         let released = GridSelectionReducer.columnHeaderCommandClick(run, column: 2, modifiers: .command, in: grid)
         #expect(released.columns == IndexSet([1, 3]))
         #expect(!released.contains(cell(5, 2)))
+    }
+
+    @Test("Command on a header after a click adds the column to the cursor's cell, not to the clicked row")
+    func headerAfterClickKeepsOnlyTheCursorCell() {
+        let picked = GridSelectionReducer.columnHeaderCommandClick(cursorAt(2, 1), column: 4, modifiers: .command, in: grid)
+
+        #expect(picked.rectangles == [GridRect(cell: cell(2, 1)), GridRect(rows: 0...9, columns: 4...4)])
+        #expect(picked.columns == IndexSet(integer: 4))
+        #expect(picked.mode == .cells)
+        #expect(!picked.contains(cell(2, 5)))
+
+        let run = GridSelectionReducer.columnHeaderCommandClick(cursorAt(2, 1), column: 3, modifiers: [.command, .shift], in: grid)
+        #expect(run.columns == IndexSet(integersIn: 1...3))
+        #expect(!run.contains(cell(2, 5)))
+    }
+
+    @Test("Command on a header after picked rows picks the column alone")
+    func headerAfterRowPickPicksOnlyTheColumn() {
+        let (rows, _) = GridSelectionReducer.rowHeaderPress(.empty, row: 3, modifiers: [], in: grid)
+
+        let picked = GridSelectionReducer.columnHeaderCommandClick(rows, column: 4, modifiers: .command, in: grid)
+
+        #expect(picked.rectangles == [GridRect(rows: 0...9, columns: 4...4)])
+        #expect(picked.columns == IndexSet(integer: 4))
     }
 
     @Test("A header outside the grid leaves the selection alone")

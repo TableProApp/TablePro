@@ -25,6 +25,8 @@ extension DataGridViewController {
         case .rowsUpdated(let rows, let columns):
             updateRows(rows, columns: columns)
         }
+        // A moved row view keeps its layer's pixels, and its number and stripe come from the index it now holds.
+        redrawRows(change.movedRows(rowCount: model.rowCount))
         isMirroringSelection = false
         mirrorSelection()
         editingDidApply(change)
@@ -103,23 +105,53 @@ extension DataGridViewController {
     }
 
     private func updateRows(_ rows: IndexSet, columns displayColumns: IndexSet?) {
-        let current = model.rows
-        presenter.updateVisualIndex(for: rows.compactMap { model.order.rowID(at: $0, in: current) })
+        let wholeRows = refreshRowState(rows, columns: displayColumns)
         for pane in panes {
             let table = pane.tableView
-            let rects: [NSRect]? = displayColumns.map { positions in
-                positions.compactMap { pane.tableIndex(forDisplayPosition: $0, columns: model.columns).map(table.rect(ofColumn:)) }
+            let rects = (displayColumns ?? []).compactMap {
+                pane.tableIndex(forDisplayPosition: $0, columns: model.columns).map(table.rect(ofColumn:))
             }
-            if let rects, rects.isEmpty { continue }
             table.enumerateAvailableRowViews { rowView, row in
                 guard rows.contains(row), let rowView = rowView as? DataGridRowView else { return }
-                if let rects {
-                    rects.forEach(rowView.redrawCells(inTableRect:))
-                } else {
+                if wholeRows.contains(row) {
                     rowView.redrawCells()
+                } else {
+                    rects.forEach(rowView.redrawCells(inTableRect:))
                 }
             }
         }
+    }
+
+    // Updates the rows' pending marks and answers which drawn rows repaint whole: a row tint and the row number span
+    // both panes, so only a row whose tint cannot have changed keeps to the changed columns.
+    func refreshRowState(_ rows: IndexSet, columns displayColumns: IndexSet?) -> IndexSet {
+        let current = model.rows
+        let drawn = rowsWithViews(in: rows)
+        let tintsBefore = drawn.map { rowTint(forRow: $0) }
+        presenter.updateVisualIndex(for: rows.compactMap { model.order.rowID(at: $0, in: current) })
+        // The model drops a changed row's cached highlight before this runs, so a row rule's old wash is not known.
+        guard displayColumns != nil, !hasRowHighlightRules else { return drawn }
+        var retinted = IndexSet()
+        for (row, before) in zip(drawn, tintsBefore) where rowTint(forRow: row) != before {
+            retinted.insert(row)
+        }
+        return retinted
+    }
+
+    private var hasRowHighlightRules: Bool {
+        model.dataSource?.gridHighlightRules.contains { $0.isEnabled && $0.target == .row } ?? false
+    }
+
+    private func rowsWithViews(in rows: IndexSet) -> IndexSet {
+        var drawn = IndexSet()
+        for pane in panes {
+            pane.tableView.enumerateAvailableRowViews { _, row in
+                if rows.contains(row) {
+                    drawn.insert(row)
+                }
+            }
+        }
+        return drawn
     }
 
     // MARK: - Geometry

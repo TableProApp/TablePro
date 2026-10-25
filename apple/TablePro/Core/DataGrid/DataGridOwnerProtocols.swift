@@ -102,7 +102,8 @@ protocol DataGridActions: AnyObject {
     var gridSQLExporter: (any DataGridSQLExporting)? { get }
 
     func gridColumnMenuItems(for column: DataGridColumn) -> [NSMenuItem]
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem]
+    // `rowIDs` are the rows the menu acts on; `clickedRow` is the one right-clicked, inside them or alone.
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem]
     func gridCellMenuItems(for rowID: RowID, column: DataGridColumn) -> [NSMenuItem]
     func gridEmptySpaceMenu() -> NSMenu?
     func gridHighlightValuesMenuItem(for column: DataGridColumn) -> NSMenuItem?
@@ -134,7 +135,7 @@ extension DataGridActions {
     }
     var gridSQLExporter: (any DataGridSQLExporting)? { nil }
     func gridColumnMenuItems(for column: DataGridColumn) -> [NSMenuItem] { [] }
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] { [] }
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] { [] }
     func gridCellMenuItems(for rowID: RowID, column: DataGridColumn) -> [NSMenuItem] { [] }
     func gridEmptySpaceMenu() -> NSMenu? { nil }
     func gridHighlightValuesMenuItem(for column: DataGridColumn) -> NSMenuItem? { nil }

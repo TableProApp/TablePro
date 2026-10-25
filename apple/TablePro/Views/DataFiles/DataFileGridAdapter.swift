@@ -31,6 +31,14 @@ final class DataFileGridAdapter {
         guard let controller, controller.columnNames.ids.indices.contains(column.dataIndex) else { return nil }
         return controller.columnNames.ids[column.dataIndex]
     }
+
+    nonisolated private static func copiedField(_ cell: PluginCellValue) -> String {
+        guard case .text(let text) = cell else { return "" }
+        return text
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+    }
 }
 
 extension DataFileGridAdapter: DataGridDataSource {
@@ -64,6 +72,29 @@ extension DataFileGridAdapter: DataGridActions {
 
     func gridDeleteRows(_ rowIDs: [RowID]) {
         owner?.deleteRows(pageRows(of: rowIDs))
+    }
+
+    // A file's NULL or missing cell copies as empty, and a tab or line break in a value as a space,
+    // so each record pastes into a spreadsheet as one line.
+    func gridCopyRows(_ rowIDs: [RowID]) -> Bool {
+        let tableRows = model.rows
+        let copied = rowIDs.compactMap { tableRows.row(withID: $0) }
+        guard !copied.isEmpty else { return false }
+        let projection = VisibleColumnProjection(indices: model.columns.columns.map(\.dataIndex))
+        let tsv = copied.map { row in
+            projection.values(Array(row.values)).map(Self.copiedField).joined(separator: "\t")
+        }.joined(separator: "\n")
+        ClipboardService.shared.writeRows(
+            tsv: tsv,
+            html: nil,
+            gridRows: GridRowsClipboardPayload(
+                columns: projection.columns(tableRows.columns),
+                copying: copied,
+                expressionColumns: copied.map { _ in [] },
+                projection: projection
+            )
+        )
+        return true
     }
 
     func gridAddRow() {
@@ -106,7 +137,11 @@ extension DataFileGridAdapter: DataGridActions {
         controller?.updateSort(sort)
     }
 
+    // The inspector shows the selection, so rows the menu was opened on outside it become the selection.
     func gridShowRowsAsJSON(_ rowIDs: [RowID]) {
+        if !rowIDs.isEmpty, Set(model.selectedRowIDs) != Set(rowIDs) {
+            model.selectRows(rowIDs)
+        }
         controller?.isInspectorVisible = true
     }
 
@@ -149,9 +184,10 @@ extension DataFileGridAdapter: DataGridActions {
         )
     }
 
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] {
-        guard let controller, controller.isEditable, let pageRow = pageRows(of: rowIDs).min() else { return [] }
-        return DataFileColumnMenuBuilder.rowItems(forPageRow: pageRow)
+    // Insert Row Above and Below anchor at the row right-clicked, inside a selection or not.
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
+        guard let controller, controller.isEditable, let row = model.displayIndex(of: clickedRow) else { return [] }
+        return DataFileColumnMenuBuilder.rowItems(abovePageRow: row, belowPageRow: row)
     }
 }
 

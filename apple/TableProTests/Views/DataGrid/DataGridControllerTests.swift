@@ -57,6 +57,29 @@ struct DataGridControllerTests {
         grid.model.store.sortState.columns.map { $0.columnName }
     }
 
+    // NSTableView tracks a press until the mouse-up, so the mouse-up waits in the queue before the press is sent.
+    private func click(_ table: DataGridTableView, at point: NSPoint, in grid: HostedDataGrid) throws {
+        let location = table.convert(point, to: nil)
+        func event(_ type: NSEvent.EventType) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: type,
+                location: location,
+                modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: grid.window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: type == .leftMouseDown ? 1 : 0
+            ))
+        }
+        let up = try event(.leftMouseUp)
+        let down = try event(.leftMouseDown)
+        NSApp.postEvent(up, atStart: true)
+        table.mouseDown(with: down)
+        _ = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .default, dequeue: true)
+    }
+
     // MARK: - Keyboard
 
     @Test("Typing a letter selects the next row whose active column starts with it")
@@ -342,6 +365,43 @@ struct DataGridControllerTests {
         #expect(grid.model.activeCell?.rowID == .existing(1))
         #expect(grid.main.selectedRowIndexes == IndexSet(integersIn: 2...3))
         #expect(grid.frozen.selectedRowIndexes == IndexSet(integersIn: 2...3))
+    }
+
+    @Test("A click past the last column selects that row with the cursor, as a table row does")
+    func clickPastLastColumnSelectsRow() throws {
+        let grid = HostedDataGrid(rows: GridFixtureRows.people)
+        defer { grid.close() }
+        grid.model.setSelection(GridSelectionReducer.cursor(GridCoord(row: 1, displayColumn: 2), in: grid.controller.selectionContext))
+        let table = grid.main
+        let lastColumn = table.rect(ofColumn: table.numberOfColumns - 1)
+        let point = NSPoint(x: (lastColumn.maxX + table.bounds.maxX) / 2, y: table.rect(ofRow: 3).midY)
+        try #require(table.column(at: point) == -1)
+        try #require(table.row(at: point) == 3)
+
+        try click(table, at: point, in: grid)
+
+        #expect(grid.model.selection.mode == .cursor)
+        #expect(grid.model.selectedRowIDs == [.existing(3)])
+        #expect(grid.model.selection.activeCell == GridCoord(row: 3, displayColumn: 2))
+        #expect(grid.main.selectedRowIndexes == IndexSet(integer: 3))
+        #expect(grid.frozen.selectedRowIndexes == IndexSet(integer: 3))
+    }
+
+    @Test("Pressing the number of a clicked row picks the row, so Copy takes the whole row")
+    func rowNumberPressPicksClickedRow() throws {
+        let grid = HostedDataGrid(rows: GridFixtureRows.people)
+        defer { grid.close() }
+        grid.model.setSelection(GridSelectionReducer.cursor(GridCoord(row: 2, displayColumn: 1), in: grid.controller.selectionContext))
+        let table = grid.frozen
+        try #require(table.tableColumns.first?.identifier == DataGridPane.rowNumberIdentifier)
+        try #require(grid.controller.canDragRows(fromRowNumberAt: 2))
+        let point = NSPoint(x: table.rect(ofColumn: 0).midX, y: table.rect(ofRow: 2).midY)
+
+        try click(table, at: point, in: grid)
+
+        #expect(grid.model.selection.picksRows)
+        #expect(grid.model.selectedRowIDs == [.existing(2)])
+        #expect(grid.frozen.selectedRowIndexes == IndexSet(integer: 2))
     }
 
     @Test("A row the table selects itself becomes the model's selection, keeping the column")

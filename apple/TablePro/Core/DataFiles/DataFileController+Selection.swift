@@ -3,7 +3,7 @@
 //  TablePro
 //
 
-import Foundation
+import AppKit
 import TableProTabular
 
 struct DataFileColumnCells: Equatable, Sendable {
@@ -34,6 +34,14 @@ extension DataFileController {
 
     func selectedColumnIDs() -> [TabularColumnID] {
         gridSelection.columns.compactMap { columnID(atDisplayPosition: $0) }
+    }
+
+    // Nil for a hidden column or an unmounted grid.
+    func headerAnchor(for id: TabularColumnID) -> (view: NSView, rect: NSRect)? {
+        guard let dataIndex = columnNames.index(of: id),
+              let position = gridModel.columns.displayPosition(ofDataIndex: dataIndex),
+              let column = gridModel.columns.column(at: position) else { return nil }
+        return gridModel.anchor(for: column)
     }
 
     func activeCell() -> (key: Int, column: TabularColumnID)? {

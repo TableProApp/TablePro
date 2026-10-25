@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import TableProTheme
@@ -439,6 +440,36 @@ struct DataGridEditingTests {
         #expect(grid.owner.committedValues == [.text("a\nb")])
     }
 
+    // Single-line mode drops a pasted line break, so only text that has one leaves the field.
+    @Test("Pasting text with a line break hands the edit to the popover editor with the text in place")
+    func multiLinePasteMovesToThePopover() throws {
+        let grid = EditingGrid()
+        defer { grid.tearDown() }
+        grid.controller.beginEditingCell(row: 0, displayColumn: 1)
+        grid.type("ab")
+        let editor = try #require(grid.fieldEditor)
+        editor.setSelectedRange(NSRange(location: 1, length: 0))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.TablePro.tests.grid.paste"))
+        pasteboard.clearContents()
+        pasteboard.setString("z", forType: .string)
+
+        #expect(editor.readSelection(from: pasteboard, type: .string))
+        #expect(grid.controller.editedCell != nil)
+        #expect(grid.controller.editingState.textPopover == nil)
+
+        pasteboard.clearContents()
+        pasteboard.setString("x\ny", forType: .string)
+        #expect(editor.readSelection(from: pasteboard, type: .string))
+
+        let popover = try #require(grid.controller.editingState.textPopover)
+        #expect(popover.textView.string == "azx\nyb")
+        #expect(grid.controller.editingState.session?.editor == .textPopover)
+        #expect(grid.controller.editedCell == nil)
+
+        #expect(grid.model.commitEditing())
+        #expect(grid.owner.committedValues == [.text("azx\nyb")])
+    }
+
     @Test("A value with a line break opens the popover editor instead of the field")
     func multiLineValueOpensThePopover() throws {
         let rows = TableRows.from(
@@ -560,6 +591,29 @@ struct DataGridEditingTests {
 
         #expect(first.closeCount == 1)
         #expect(grid.controller.editingState.typedPopover == nil)
+    }
+
+    // AppKit posts a closed popover's didClose once it finishes animating out, after the next one is shown.
+    @Test("The replaced typed editor closing late leaves the open one tracked")
+    func lateCloseOfTheReplacedEditorKeepsTheOpenOne() throws {
+        let grid = EditingGrid()
+        defer { grid.tearDown() }
+        let state = grid.controller.editingState
+        let first = try #require(grid.controller.editCell(at: GridCoord(row: 0, displayColumn: 1)))
+        let second = try #require(grid.controller.editCell(at: GridCoord(row: 1, displayColumn: 1)))
+        let replaced = try #require(grid.controller.presentTypedPopover(for: first, edits: true) { _ in EmptyView() })
+        let open = try #require(grid.controller.presentTypedPopover(for: second, edits: true) { _ in EmptyView() })
+
+        state.typedPopoverObserver.popoverDidClose(Notification(name: NSPopover.didCloseNotification, object: replaced))
+
+        #expect(state.typedPopover === open)
+        #expect(state.typedPopoverRow?.target.rowID == .existing(1))
+        #expect(grid.model.isEditing)
+
+        state.typedPopoverObserver.popoverDidClose(Notification(name: NSPopover.didCloseNotification, object: open))
+
+        #expect(state.typedPopover == nil)
+        #expect(!grid.model.isEditing)
     }
 
     @Test("A reload that keeps the record keeps its typed editor; one that replaces it closes the editor")

@@ -37,7 +37,7 @@ extension DataGridViewController {
             groups.append(valueItems(scope: scope, context: context, cell: cell))
         }
         groups.append(exportItems(context: context))
-        groups.append(model.actions?.gridRowMenuItems(for: commands.rowIDs(scope)) ?? [])
+        groups.append(model.actions?.gridRowMenuItems(for: commands.rowIDs(scope), clickedRow: rowID) ?? [])
         groups.append(rowItems(context: context))
         return Self.menu(groups: groups)
     }

@@ -314,4 +314,50 @@ struct DataGridValueFilterTests {
 
         #expect(owner.askedCount == 0)
     }
+
+    // MARK: - The popover
+
+    // The confirmation is a sheet answered later, so the popover and its picks stay until the change lands.
+    @Test("The popover closes only once its change is applied; declining the change leaves it open")
+    func popoverClosesOnceTheFilterApplies() throws {
+        let grid = HostedDataGrid(rows: Self.statuses)
+        defer { grid.close() }
+        let popover = EditingCloseCountingPopover()
+        grid.controller.menuState.valueFilterPopover = popover
+        let status = try #require(grid.model.columns.columns.first { $0.name == "status" })
+        let onlyActive = ColumnValueFilter(selectedValues: ["active"], includesNull: false)
+
+        grid.owner.approvesDisplayOrderChange = false
+        #expect(grid.controller.applyValueFilter(onlyActive, to: status))
+        #expect(grid.owner.displayOrderRequests == 1)
+        #expect(popover.closeCount == 0)
+        #expect(grid.controller.menuState.valueFilterPopover === popover)
+
+        grid.owner.approvesDisplayOrderChange = true
+        #expect(grid.controller.applyValueFilter(onlyActive, to: status))
+        #expect(grid.model.rowCount == 2)
+        #expect(popover.closeCount == 1)
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+
+        #expect(!grid.controller.applyValueFilter(onlyActive, to: status), "the same filter is no change")
+        #expect(grid.owner.displayOrderRequests == 2)
+    }
+
+    @Test("Replacing the rows closes an open value filter, whose values were the old rows'")
+    func replacingTheRowsClosesTheValueFilter() {
+        let grid = HostedDataGrid(rows: Self.statuses)
+        defer { grid.close() }
+        let popover = EditingCloseCountingPopover()
+        grid.controller.menuState.valueFilterPopover = popover
+
+        grid.owner.tableRows = TableRows(
+            rows: [Row(id: .existing(0), values: [.text("archived"), .text("z")])],
+            columns: ["status", "name"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+        )
+        grid.model.reloadRows()
+
+        #expect(popover.closeCount == 1)
+        #expect(grid.controller.menuState.valueFilterPopover == nil)
+    }
 }

@@ -322,6 +322,50 @@ struct CompareRowGridModelTests {
         #expect(model.model.rowCount == 1)
     }
 
+    @Test func testTheRowMenuOffersCopyAsAndAColumnHeaderOffersDisplayAs() throws {
+        let session = try makeSession()
+        let model = loadedModel(session: session)
+        let controller = DataGridViewController(model: model.model)
+        let email = try #require(gridColumn(model, dataIndex: 4))
+
+        let rowMenu = controller.rowMenu(forRow: 0, displayColumn: 4, in: .main)
+        let headerMenu = controller.headerMenu(for: email)
+
+        #expect(rowMenu?.items.contains { $0.title == String(localized: "Copy as") } == true)
+        #expect(headerMenu?.items.contains { $0.title == String(localized: "Display As") } == true)
+    }
+
+    @Test func testAnotherTablesColumnsStartWithRawValues() throws {
+        let session = try makeSession()
+        let model = loadedModel(session: session)
+        let email = try #require(gridColumn(model, dataIndex: 4))
+        model.model.setDisplayFormat(.json, for: email)
+
+        model.ensureLoaded(
+            key: key(entryCount: 1), plan: plan(), entries: [entry(.delete, key: "k9")], session: session
+        )
+        #expect(model.model.displayFormat(for: email) == .json, "the same table keeps its formats")
+
+        let other = DataComparePlan(
+            table: "users",
+            schema: nil,
+            columns: ["id", "login"].map { CompareColumn(name: $0) },
+            scope: DataTableScope(keyColumns: ["id"]),
+            isEnabled: true
+        )
+        model.ensureLoaded(
+            key: CompareRowGridModel.LoadKey(
+                planId: other.id, answer: nil, columns: other.columnNames, filter: .all, entryCount: 1
+            ),
+            plan: other,
+            entries: [entry(.insert, key: "k1")],
+            session: session
+        )
+
+        let login = try #require(gridColumn(model, dataIndex: 4))
+        #expect(model.model.displayFormat(for: login) == nil)
+    }
+
     @Test func testSpaceOnSelectedLinesTogglesTheirCheckboxesAndKeepsTheSelection() async throws {
         let session = try makeSession()
         let entries = [

@@ -111,4 +111,26 @@ struct AgentResultRowsGridTests {
         #expect(model.selection.isEmpty)
         #expect(!model.store.sortState.isSorting)
     }
+
+    @Test("Another run draws raw values, not the formats picked on the previous run")
+    func anotherRunDropsDisplayFormats() async throws {
+        let first = run("1", names: ["carol", "alice"])
+        let list = AgentRunList([first])
+        let window = await host(list)
+        defer { window.contentView = nil }
+        let model = try gridModel(in: window)
+        let column = try #require(model.columns.columns.first)
+        model.setDisplayFormat(.json, for: column)
+        try #require(model.displayFormat(for: column) == .json)
+
+        list.runs = [first, run("2", names: ["zed", "amy"])]
+        try await waitUntil(timeout: .seconds(5)) {
+            window.contentView?.layoutSubtreeIfNeeded()
+            return names(model) == ["zed", "amy"]
+        }
+
+        let next = try #require(model.columns.columns.first)
+        #expect(model.displayFormat(for: next) == nil)
+        #expect(model.store.displayFormats.allSatisfy { $0 == nil })
+    }
 }

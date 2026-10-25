@@ -357,5 +357,36 @@ extension GlobalStateSuites {
             #expect(actions.hasRowSelection)
             #expect(actions.hasDataGridRowSelection)
         }
+
+        // MARK: - Use Selection for Find
+
+        // The menu lit the item over a query result's selection while the window sent it to the editor.
+        @Test("Use Selection for Find over a query result's selection goes to its grid unless the editor has a selection")
+        func useSelectionForFind_queryResult_reachesTheGrid() throws {
+            let (actions, coordinator) = makeSUT()
+            coordinator.tabManager.addTab(databaseName: "testdb")
+            seedRows(coordinator)
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            #expect(coordinator.tabManager.selectedTab?.tabType == .query)
+            let model = coordinator.gridModel(forTab: tabId)
+            let mounted = DataTabGridMountStub()
+            model.attach(mounted)
+            defer { model.detach(mounted) }
+            model.selectCell(GridCoord(row: 1, displayColumn: 1))
+
+            var context = MenuValidationContext()
+            context.isConnected = true
+            context.canUseGridFindCommands = actions.canUseGridFindCommands
+            context.hasDataGridRowSelection = actions.hasDataGridRowSelection
+            #expect(context.usesGridSelectionForFind)
+            #expect(MainSplitViewController.isEnabled(#selector(MainSplitViewController.useSelectionForFind(_:)), context: context))
+            context.hasSelectionForFind = true
+            #expect(!context.usesGridSelectionForFind)
+
+            actions.useGridSelectionForFind()
+
+            #expect(model.find.term == "Bob")
+            #expect(model.find.isVisible)
+        }
     }
 }

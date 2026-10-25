@@ -198,7 +198,7 @@ final class DataTabGridAdapter: DataGridDataSource, DataGridActions {
 
     // MARK: - Menus
 
-    func gridRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] {
+    func gridRowMenuItems(for rowIDs: [RowID], clickedRow: RowID) -> [NSMenuItem] {
         guard let coordinator, ownsWindowState, coordinator.canInsertDocument else { return [] }
         var items: [NSMenuItem] = []
         // Read while the menu is built, so a reload under the open menu cannot retarget the edit.

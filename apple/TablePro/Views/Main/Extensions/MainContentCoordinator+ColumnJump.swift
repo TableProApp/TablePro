@@ -84,14 +84,17 @@ extension MainContentCoordinator {
         jumpToColumn(dataIndex: dataIndex, in: model, tabId: tab.id)
     }
 
-    // Puts the active cell in the column on the active row, or the first row, and scrolls it into view.
+    // Puts the active cell in the column on the active row, or the first visible row, and scrolls it into view.
     @discardableResult
     private func jumpToColumn(dataIndex: Int, in model: DataGridModel, tabId: UUID) -> Bool {
         guard let displayColumn = model.columns.displayPosition(ofDataIndex: dataIndex),
               let column = model.columns.column(at: displayColumn) else { return false }
         dataGridEntries[tabId]?.adapter.pendingColumnJump = nil
         model.commitEditing()
-        let row = model.selection.activeCell?.row ?? model.selection.affectedRows.first ?? 0
+        let row = model.selection.activeCell?.row
+            ?? model.selection.affectedRows.first
+            ?? model.viewportSample()?.row
+            ?? 0
         if let rowID = model.rowID(at: row) {
             model.selectCell(GridCoord(row: row, displayColumn: displayColumn))
             model.reveal(rowID: rowID, columnID: column.id)

@@ -71,7 +71,7 @@ extension MainSplitViewController {
     }
 
     @objc func useSelectionForFind(_ sender: Any?) {
-        guard commandActions?.canUseTableResultCommands == true else {
+        guard menuValidationContext.usesGridSelectionForFind else {
             EditorEventRouter.shared.useSelectionForFindInKeyWindow()
             return
         }

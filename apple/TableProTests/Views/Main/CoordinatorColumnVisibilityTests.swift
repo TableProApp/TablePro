@@ -301,6 +301,38 @@ struct CoordinatorColumnVisibilityTests {
         #expect(FileColumnLayoutPersister.shared.load(for: target.tableKey) == nil)
     }
 
+    // A query tab's requery reloads nothing, so only the model can bring the hidden columns back to its grid.
+    @Test("Reset Columns on a query tab shows the hidden columns in its grid and keeps Show All Columns working")
+    func resetOnAQueryTabShowsHiddenColumnsInTheGrid() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tab = QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query)
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+        defer { coordinator.releaseGridModel(forTab: tab.id, persistingLayout: false) }
+        coordinator.setActiveTableRows(
+            TableRows.from(
+                queryRows: [[.text("1"), .text("Ada"), .text("ada@example.com")]],
+                columns: ["id", "name", "email"],
+                columnTypes: Array(repeating: .text(rawType: "TEXT"), count: 3)
+            ),
+            for: tab.id
+        )
+        let model = coordinator.gridModel(forTab: tab.id)
+        coordinator.hideColumn("email")
+        #expect(model.columns.orderedNames == ["id", "name"])
+
+        coordinator.resetColumns()
+
+        #expect(model.columns.orderedNames == ["id", "name", "email"])
+        let layout = try #require(tabManager.selectedTab).columnLayout
+        #expect(layout == ColumnLayoutState())
+
+        coordinator.hideColumn("name")
+        coordinator.showAllColumns()
+
+        #expect(model.columns.orderedNames == ["id", "name", "email"])
+    }
+
     @Test("showColumn removes from the active tab's hidden set")
     func showColumn() {
         let (coordinator, tabManager) = makeCoordinator()

@@ -51,7 +51,8 @@ internal final class CompareRowGridModel: ObservableObject {
         configuration.checkboxColumns = [includeColumn]
         configuration.supportsValueFilter = false
         configuration.supportsColumnSort = false
-        configuration.commands = [.freezeColumns]
+        configuration.appliesRowCopyFormat = true
+        configuration.commands = [.freezeColumns, .displayAs]
         return configuration
     }
 
@@ -80,7 +81,7 @@ internal final class CompareRowGridModel: ObservableObject {
             return Row(id: rowID, values: Self.values(for: line, columns: columns))
         })
         grid.visualStates = states
-        grid.setRows(TableRows(
+        let loaded = TableRows(
             rows: rows,
             columns: [
                 String(localized: "Include"),
@@ -89,7 +90,12 @@ internal final class CompareRowGridModel: ObservableObject {
             ] + columns,
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: Self.leadingColumnCount)
                 + plan.columns.map { Self.displayType(for: $0) }
-        ))
+        )
+        // Display formats are kept by data index, so another table's columns start with raw values.
+        if loaded.columns != tableRows.columns || loaded.columnTypes != tableRows.columnTypes {
+            grid.model.store.displayFormats = []
+        }
+        grid.setRows(loaded)
         return tableRows
     }
 

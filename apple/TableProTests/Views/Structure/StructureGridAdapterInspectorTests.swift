@@ -79,6 +79,29 @@ struct StructureGridAdapterInspectorTests {
         #expect(adapter.inspectorRow(atDisplayRow: 1)?.isEditable == true)
     }
 
+    // A hold changes no row, so the inspector kept the fields it built before the save and dropped what was typed.
+    @Test("A save hold and its release each rebuild the inspector")
+    func heldSaveRebuildsTheInspector() throws {
+        let fixture = CoordinatorFixture(connection: connection())
+        let session = makeSession()
+        let manager = session.changeManager
+        let adapter = session.gridAdapter
+        adapter.coordinator = fixture.coordinator
+        var email = try #require(manager.workingColumns.first { $0.name == "email" })
+        email.comment = "Contact"
+        manager.updateColumn(id: email.id, with: email)
+        adapter.refresh()
+        let beforeHold = fixture.coordinator.inspectorRowSourceRevision
+
+        let snapshot = try #require(manager.holdForSave())
+        adapter.refresh()
+        #expect(fixture.coordinator.inspectorRowSourceRevision == beforeHold + 1)
+
+        manager.releaseHold(snapshot, written: false)
+        adapter.refresh()
+        #expect(fixture.coordinator.inspectorRowSourceRevision == beforeHold + 2)
+    }
+
     @Test("The published row describes the structure grid, not the data grid")
     func publishedRowDescribesStructure() throws {
         let session = makeSession()

@@ -6,8 +6,11 @@
 //  tab switch or a result-mode switch never loses it (#2667).
 //
 
+import AppKit
 import Foundation
+import SwiftUI
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 @testable import TablePro
@@ -133,6 +136,53 @@ struct MainContentCoordinatorGridSelectionTests {
         }
         tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = .chart }
         #expect(coordinator.activeGridModel == nil)
+    }
+
+    // MARK: - Watching from outside the grid
+
+    private final class WatchedChanges {
+        var appeared = false
+        var rowsChanged: [Bool] = []
+    }
+
+    private func settle(_ window: NSWindow, until condition: () -> Bool) async throws {
+        try await waitUntil {
+            window.contentView?.layoutSubtreeIfNeeded()
+            return condition()
+        }
+    }
+
+    // The window reopens the inspector only when other rows are picked, so a closed one stays closed under arrow keys.
+    @Test("the selection watcher tells a move of the cursor within the selected row from picking another row")
+    func watcherReportsWhetherTheSelectedRowsChanged() async throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager, title: "A")
+        coordinator.setActiveTableRows(makeRows(5), for: tabId)
+        let model = coordinator.gridModel(forTab: tabId)
+        let changes = WatchedChanges()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 40, height: 40),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: GridSelectionWatcher(
+            model: model,
+            onAttach: { changes.appeared = true },
+            onChange: { changes.rowsChanged.append($0) }
+        ))
+        defer { window.orderOut(nil) }
+        try await settle(window) { changes.appeared }
+
+        model.selectCell(GridCoord(row: 1, displayColumn: 0))
+        try await settle(window) { changes.rowsChanged.count == 1 }
+        model.selectCell(GridCoord(row: 1, displayColumn: 1))
+        try await settle(window) { changes.rowsChanged.count == 2 }
+        model.selectCell(GridCoord(row: 2, displayColumn: 1))
+        try await settle(window) { changes.rowsChanged.count == 3 }
+
+        #expect(changes.rowsChanged == [true, false, true])
     }
 
     // MARK: - Invalidation

@@ -148,7 +148,10 @@ final class RowEditingCoordinator: ObservableObject {
         guard selectionPointsTheGrid,
               let model = parent.existingGridModel(forTab: tabId),
               let displayRow = model.displayIndex(of: rowID) else { return }
-        guard let column = firstEditableColumn(in: model, skipping: prefilled),
+        let row = model.rows.row(withID: rowID)
+        let typable = model.columns.columns.filter { model.isColumnWritable($0) && Self.takesTypedText($0, in: row) }
+        // Column 0 is where the row starts, not always where it can be typed into: the server may own it.
+        guard let column = typable.first(where: { !prefilled.contains($0.dataIndex) }) ?? typable.first ?? model.columns.columns.first,
               let displayColumn = model.columns.displayPosition(of: column.id) else {
             model.selectRows([rowID])
             model.reveal(rowID: rowID)
@@ -156,15 +159,14 @@ final class RowEditingCoordinator: ObservableObject {
         }
         model.selectCell(GridCoord(row: displayRow, displayColumn: displayColumn))
         model.reveal(rowID: rowID, columnID: column.id)
-        if model.isColumnWritable(column) {
+        if typable.contains(where: { $0.id == column.id }) {
             model.beginEditing(rowID: rowID, columnID: column.id)
         }
     }
 
-    // Column 0 is where the row starts, not always where it can be typed into: the server may own it.
-    private func firstEditableColumn(in model: DataGridModel, skipping prefilled: Set<Int>) -> DataGridColumn? {
-        let editable = model.columns.columns.filter { model.isColumnWritable($0) }
-        return editable.first { !prefilled.contains($0.dataIndex) } ?? editable.first ?? model.columns.columns.first
+    // The grid's text editor refuses bytes, so a BLOB column would take the caret and open nothing.
+    private static func takesTypedText(_ column: DataGridColumn, in row: Row?) -> Bool {
+        column.type?.isBlobType != true && row?[column.dataIndex].asBytes == nil
     }
 
     private func uuidKeyForms(in tableRows: TableRows, tab: QueryTab) -> [Int: UUIDCellForm] {

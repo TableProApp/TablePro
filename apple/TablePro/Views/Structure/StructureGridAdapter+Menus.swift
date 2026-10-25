@@ -8,11 +8,13 @@ import TableProPluginKit
 
 extension StructureGridAdapter {
     // The grid adds Copy, Duplicate, Delete and Undo Delete from its commands; these are the schema's own.
-    func structureRowMenuItems(for rowIDs: [RowID]) -> [NSMenuItem] {
+    // The copies act on every targeted row, Open and the moves on the clicked one; nil when that is not known.
+    func structureRowMenuItems(for rowIDs: [RowID], clickedRow: RowID?) -> [NSMenuItem] {
         guard showsGrid, !rowIDs.isEmpty else { return [] }
         let indices = sourceIndices(of: rowIDs)
         let tab = selectedTab
-        guard !indices.contains(where: { structureChangeManager.deleteInsertState(for: $0, tab: tab).isDeleted }) else {
+        let clicked = clickedRow.flatMap(StructureRowProvider.sourceIndex(of:))
+        if let clicked, structureChangeManager.deleteInsertState(for: clicked, tab: tab).isDeleted {
             return []
         }
 
@@ -22,18 +24,17 @@ extension StructureGridAdapter {
             copyAsItem(indices),
         ]
 
-        let single = indices.count == 1 ? indices.first : nil
-        if tab == .foreignKeys, let single, structureChangeManager.workingForeignKeys.indices.contains(single) {
-            let referenced = structureChangeManager.workingForeignKeys[single].referencedTable
+        if tab == .foreignKeys, let clicked, structureChangeManager.workingForeignKeys.indices.contains(clicked) {
+            let referenced = structureChangeManager.workingForeignKeys[clicked].referencedTable
             if !referenced.isEmpty {
                 items.append(.separator())
                 items.append(menuItem(String(format: String(localized: "Open %@"), referenced)) { [weak self] in
-                    self?.navigateToForeignKey(sourceIndex: single)
+                    self?.navigateToForeignKey(sourceIndex: clicked)
                 })
             }
         }
 
-        let moves = columnMoveItems(movingRow: single)
+        let moves = columnMoveItems(movingRow: clicked)
         if !moves.isEmpty {
             items.append(.separator())
             items.append(contentsOf: moves)

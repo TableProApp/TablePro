@@ -3,7 +3,7 @@
 //  TableProTests
 //
 
-import Foundation
+import AppKit
 @testable import TablePro
 import TableProPluginKit
 import Testing
@@ -82,6 +82,24 @@ struct ResultComparisonGridModelTests {
         #expect(CompareRowGridModel.displayType(source: date, target: timestamp) == .text(rawType: nil))
         #expect(CompareRowGridModel.displayType(source: timestamp, target: .timestamp(rawType: "timestamp(6)")) == timestamp)
         #expect(CompareRowGridModel.displayType(source: nil, target: date) == date)
+    }
+
+    @Test("The row menu offers Copy as and a column header offers Display As")
+    func offersCopyAsAndDisplayAs() throws {
+        let comparison = try Self.comparison()
+        let grid = ResultComparisonGridModel()
+        grid.ensureLoaded(
+            key: ResultComparisonGridModel.LoadKey(comparisonId: comparison.id, filter: .all),
+            comparison: comparison, left: Self.left, right: Self.right, pairing: Self.pairing
+        )
+        let controller = DataGridViewController(model: grid.model)
+        let name = try #require(grid.model.columns.columns.first { $0.name == "name" })
+
+        let rowMenu = controller.rowMenu(forRow: 0, displayColumn: 3, in: .main)
+        let headerMenu = controller.headerMenu(for: name)
+
+        #expect(rowMenu?.items.contains { $0.title == String(localized: "Copy as") } == true)
+        #expect(headerMenu?.items.contains { $0.title == String(localized: "Display As") } == true)
     }
 
     @Test("VoiceOver names the side rather than the sync direction")

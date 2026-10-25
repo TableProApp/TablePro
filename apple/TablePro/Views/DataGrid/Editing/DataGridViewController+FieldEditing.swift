@@ -158,7 +158,7 @@ extension DataGridViewController {
             finishFieldEditing(commit: true, then: movement)
             return true
         case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
-            moveFieldEditToPopover(insertingLineBreakAt: textView.selectedRange())
+            moveFieldEditToPopover(inserting: "\n", replacing: textView.selectedRange())
             return true
         default:
             return false
@@ -191,20 +191,27 @@ extension DataGridViewController {
         model.editingDidEnd()
     }
 
-    private func moveFieldEditToPopover(insertingLineBreakAt selection: NSRange) {
+    // Pasted or dropped text with a line break goes to the popover editor, which keeps the break.
+    func fieldEditorInsertsLines(_ text: String, replacing range: NSRange) -> Bool {
+        guard editingState.session?.editor == .field else { return false }
+        moveFieldEditToPopover(inserting: text, replacing: range)
+        return true
+    }
+
+    private func moveFieldEditToPopover(inserting insertion: String, replacing selection: NSRange) {
         guard let session = editingState.session, session.editor == .field else { return }
         let text = currentFieldText() as NSString
         let location = min(max(selection.location, 0), text.length)
         let replaced = NSRange(location: location, length: min(max(selection.length, 0), text.length - location))
-        let withBreak = text.replacingCharacters(in: replaced, with: "\n")
+        let combined = text.replacingCharacters(in: replaced, with: insertion)
         endFieldSession()
         unmountEditingCell()
         guard let cell = editCell(for: session.target) else {
             model.editingDidEnd()
             return
         }
-        let caret = NSRange(location: location + 1, length: 0)
-        if !beginTextPopoverEditing(cell, text: withBreak, original: session.originalText, selection: caret) {
+        let caret = NSRange(location: location + (insertion as NSString).length, length: 0)
+        if !beginTextPopoverEditing(cell, text: combined, original: session.originalText, selection: caret) {
             model.editingDidEnd()
         }
     }
@@ -384,6 +391,10 @@ final class DataGridFieldEditorDelegate: NSObject, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         controller?.fieldEditor(textView, doCommandBy: commandSelector) ?? false
+    }
+
+    func fieldEditorInsertsLines(_ text: String, replacing range: NSRange) -> Bool {
+        controller?.fieldEditorInsertsLines(text, replacing: range) ?? false
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {

@@ -19,13 +19,22 @@ struct DataGridModelReader<Content: View>: View {
 struct GridSelectionWatcher: View {
     @ObservedObject var model: DataGridModel
     let onAttach: () -> Void
-    let onChange: () -> Void
+    let onChange: (_ rowsChanged: Bool) -> Void
+    @State private var selectedRowIDs: [RowID] = []
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .onAppear(perform: onAttach)
-            .onChange(of: model.selectionRevision) { _ in onChange() }
+            .onAppear {
+                selectedRowIDs = model.selectedRowIDs
+                onAttach()
+            }
+            .onChange(of: model.selectionRevision) { _ in
+                let rowIDs = model.selectedRowIDs
+                let rowsChanged = rowIDs != selectedRowIDs
+                selectedRowIDs = rowIDs
+                onChange(rowsChanged)
+            }
     }
 }

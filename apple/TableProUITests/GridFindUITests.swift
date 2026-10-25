@@ -33,8 +33,11 @@ final class GridFindUITests: UITestCase {
             "Return must move to West on row 4, the counter reads '\(text(of: count))'"
         )
 
+        // The search field clears on the first Escape and closes the bar on the second (#1490).
         app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitForPredicate(timeout: 10) { !field.exists }, "Escape in the field must close the find bar")
+        XCTAssertTrue(waitForPredicate(timeout: 10) { field.exists && self.text(of: count).isEmpty }, "The first Escape must clear the term")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitForPredicate(timeout: 10) { !field.exists }, "The second Escape in the field must close the find bar")
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { self.holdsKeyboardFocus(grid.element) },
             "Closing the find bar must hand the keyboard back to the grid"

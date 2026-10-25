@@ -215,8 +215,11 @@ extension DataFileSplitViewController {
         }
     }
 
-    // The grid's model offers no header geometry, so the popover points at the middle of the content.
+    // A hidden column has no header, so its popover points at the middle of the content.
     private func headerAnchor(for id: TabularColumnID) -> (rect: NSRect, view: NSView) {
-        (view.bounds.insetBy(dx: view.bounds.width / 2 - 1, dy: view.bounds.height / 2 - 1), view)
+        if let anchor = controller.headerAnchor(for: id) {
+            return (anchor.rect, anchor.view)
+        }
+        return (view.bounds.insetBy(dx: view.bounds.width / 2 - 1, dy: view.bounds.height / 2 - 1), view)
     }
 }
