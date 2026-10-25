@@ -14,7 +14,6 @@ struct MultiRowEditStateDetachedCommitTests {
     private func makeState(rowIDs: [RowID], values: [[String?]]) -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: Set(rowIDs.indices),
             rowIDs: rowIDs,
             allRows: values,
             columns: ["id", "name"],
@@ -38,8 +37,7 @@ struct MultiRowEditStateDetachedCommitTests {
         #expect(state.fields[1].pendingValue == "Zed")
     }
 
-    /// The field's id is reissued on every selection change, so the lookup this replaced failed and
-    /// dropped the text with no warning.
+    // The field's id is reissued on every selection change, so a lookup by id dropped the text silently.
     @Test("a commit after the selection moved writes the rows the window was opened for")
     func commitsToTheOpenedRowsAfterTheSelectionMoved() {
         let state = makeState(rowIDs: [.existing(1)], values: [["2", "Bob"]])
@@ -48,7 +46,6 @@ struct MultiRowEditStateDetachedCommitTests {
         state.onDetachedFieldChanged = { columnIndex, value, rowIDs, _ in detached.append((columnIndex, value, rowIDs)) }
 
         state.configure(
-            selectedRowIndices: [0],
             rowIDs: [.existing(2)],
             allRows: [["3", "Carol"]],
             columns: ["id", "name"],

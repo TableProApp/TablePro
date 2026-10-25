@@ -9,18 +9,13 @@ import Testing
 
 @testable import TablePro
 
-/// The regression suite for #3051.
-///
-/// The editor and the store are two mirrors of one value, and the hang was a fixpoint between
-/// them: one keystroke produced 6,944 body evaluations in 30 seconds at 100% CPU, and the typed
-/// character was thrown away. What catches it is ``adoptsRestatement``: the store always answers
-/// with a different string than the editor holds, and adopting that answer is the bug.
+// #3051: adopting the store's restated value looped the editor at 100% CPU (6,944 body evaluations in 30 s).
 @MainActor
 struct JsonFieldEditingModelTests {
     private static func makeState(value: String, type: ColumnType) -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: [0],
+            rowIDs: [.existing(0)],
             allRows: [[value]],
             columns: ["payload"],
             columnTypes: [type]
@@ -28,17 +23,7 @@ struct JsonFieldEditingModelTests {
         return state
     }
 
-    /// Whether the editor adopts the store's restatement of what the editor itself just published.
-    ///
-    /// This is the whole of #3051 in one question. `MultiRowEditState` stages a compacted form of
-    /// the text the editor shows, so the store always answers with a *different string* than the
-    /// editor holds. Adopting that answer is what overwrote the keystroke and pushed the overwrite
-    /// back, at about 75 rounds a second.
-    ///
-    /// Asserted directly rather than by looping the pair until it settles: `displayText` and
-    /// `lastSynced` are equal at every exit of both entry points, so a loop that re-publishes
-    /// `model.displayText` can never take a second turn and would report convergence for any model
-    /// at all, including one with the bug.
+    // Asserted directly: displayText and lastSynced match at every exit, so a re-publish loop would always look converged.
     private static func adoptsRestatement(
         _ model: inout JsonFieldEditingModel,
         from state: MultiRowEditState
@@ -64,8 +49,7 @@ struct JsonFieldEditingModelTests {
         #expect(state.fields[0].pendingValue == "{\"a\":2}")
     }
 
-    /// The document is invalid for as long as the user is halfway through typing a value, which is
-    /// where `JsonReindenter`'s parse-failure fallback used to make the two sides disagree.
+    // Halfway through typing a value, where JsonReindenter's parse-failure fallback used to make the two sides disagree.
     @Test("A transiently invalid document keeps every keystroke")
     func invalidIntermediateSettles() {
         let original = "{\"a\": 1}"
@@ -82,8 +66,7 @@ struct JsonFieldEditingModelTests {
         }
     }
 
-    /// The store drops a pending value that matches the stored one again, so the binding answers
-    /// with the original. That is still this editor's own echo and must not be adopted.
+    // The store drops a pending value equal to the stored one, so the binding answers with the original: still our own echo.
     @Test("Editing back to the stored value does not bounce")
     func revertToOriginalSettles() {
         let original = "{\"a\":1}"
@@ -95,8 +78,6 @@ struct JsonFieldEditingModelTests {
 
         state.updateField(at: 0, value: model.typed(JsonReindenter.reindent(original)))
         #expect(!state.fields[0].hasEdit)
-        /// The store dropped the pending value, so it now answers with `originalValue`. That is
-        /// still this editor's own write coming back and must not be adopted.
         let adopted = Self.adoptsRestatement(&model, from: state)
         #expect(!adopted)
     }
@@ -118,14 +99,12 @@ struct JsonFieldEditingModelTests {
         let adopted = model.received("{\"b\":2}")
         #expect(adopted)
         #expect(model.displayText == JsonReindenter.reindent("{\"b\":2}"))
-        /// The adopted value arrived compact and is displayed laid out, so the two differ by more
-        /// than nothing. Republishing it would stage an edit the user never made.
+        // Arrived compact and displays laid out; republishing it would stage an edit the user never made.
         let republished = model.typed(model.displayText)
         #expect(republished == nil, "adopting is not an edit")
     }
 
-    /// Set NULL, Set DEFAULT and Set EMPTY all empty the field's editable text. Adopting that and
-    /// then publishing it again would clear the state the user just asked for.
+    // Set NULL, DEFAULT and EMPTY all empty the text; publishing that back would clear the state the user asked for.
     @Test("An emptied field is adopted once and not published back")
     func emptiedFieldIsNotRepublished() {
         var model = JsonFieldEditingModel(storedValue: "{\"a\":1}")

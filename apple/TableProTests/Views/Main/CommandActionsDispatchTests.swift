@@ -8,13 +8,6 @@ import SwiftUI
 import TableProPluginKit
 import Testing
 
-@MainActor
-private final class CommandActionsLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
 extension GlobalStateSuites {
     @Suite(.recordingClipboard)
     @MainActor
@@ -35,7 +28,6 @@ extension GlobalStateSuites {
             let actions = MainContentCommandActions(
                 coordinator: coordinator,
                 connection: connection,
-                selectionState: coordinator.selectionState,
                 selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
                 pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
                 pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),
@@ -51,8 +43,7 @@ extension GlobalStateSuites {
 
         // MARK: - Query text
 
-        /// The Query menu used to test the text for emptiness while the editor bar trimmed it, so
-        /// Run and Explain Query stayed enabled over an editor holding only whitespace.
+        // The menu tested the text for emptiness while the editor bar trimmed it, so Run stayed lit over whitespace.
         @Test("An editor holding only whitespace or invisible characters has no query text for the menu")
         func blankEditorHasNoQueryText() {
             let (actions, coordinator) = makeSUT()
@@ -110,10 +101,7 @@ extension GlobalStateSuites {
 
             actions.insertQueryFromAI("SELECT 2")
 
-            /// Left alone. Appending was removed on purpose in #1257, and `aiInsertReusesSelectedQueryTab`
-            /// is true only for a query tab that is empty, so generated SQL takes over a blank tab and
-            /// otherwise opens its own. A tab the user has typed into is never rewritten, which is the
-            /// property worth holding; this case asserted the concatenation that fix removed.
+            // Appending went in #1257: generated SQL takes over only an empty query tab and otherwise opens its own.
             #expect(coordinator.tabManager.selectedTab?.content.query == "SELECT 1")
         }
 
@@ -218,9 +206,7 @@ extension GlobalStateSuites {
 
         // MARK: - saveChanges (createTable tab)
 
-        /// A Create Table tab is answered by `createTableActions` and nothing else. The structure arm
-        /// sits below it and would otherwise try to apply the staged edits of whatever session the tab
-        /// id happens to carry.
+        // The structure arm below would otherwise apply the staged edits of whatever session the tab id carries.
         @Test("saveChanges dispatches createTableActions when the selected tab is createTable")
         func saveChanges_createTableTab_callsCreateTableAction() {
             let (actions, coordinator) = makeSUT()
@@ -280,53 +266,45 @@ extension GlobalStateSuites {
             coordinator.setActiveTableRows(tableRows, for: tabId)
         }
 
-        private func attachGridWithRangeSelection(
-            to coordinator: MainContentCoordinator
-        ) -> (DataTabGridDelegate, TableViewCoordinator) {
-            let delegate = DataTabGridDelegate()
-            let tableViewCoordinator = TableViewCoordinator(
-                changeManager: AnyChangeManager(DataChangeManager()),
-                isEditable: true,
-                selectedRowIndices: .constant([]),
-                delegate: delegate,
-                layoutPersister: CommandActionsLayoutPersister()
-            )
-            tableViewCoordinator.selectionController.update(
+        private func selectRange(in coordinator: MainContentCoordinator) throws -> DataGridModel {
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            let model = coordinator.gridModel(forTab: tabId)
+            model.setSelection(
                 .single(
                     GridRect(rows: 0...1, columns: 0...0),
                     anchor: GridCoord(row: 0, displayColumn: 0),
                     active: GridCoord(row: 1, displayColumn: 0)
                 )
             )
-            delegate.dataGridAttach(tableViewCoordinator: tableViewCoordinator)
-            coordinator.dataTabDelegate = delegate
-            return (delegate, tableViewCoordinator)
+            return model
         }
 
-        @Test("copySelectedRowsAsJson honors the grid range selection")
+        @Test("copySelectedRowsAsJson honors the model's range selection")
         func copySelectedRowsAsJson_usesRangeSelection() throws {
             let clipboard = try #require(RecordingClipboard.current)
 
             let (actions, coordinator) = makeSUT()
             coordinator.tabManager.addTab(databaseName: "testdb")
             seedRows(coordinator)
-            let attached = attachGridWithRangeSelection(to: coordinator)
+            _ = try selectRange(in: coordinator)
 
             actions.copySelectedRowsAsJson()
 
             #expect(clipboard.text?.contains("Alice") == true)
             #expect(clipboard.text?.contains("Bob") == true)
-            withExtendedLifetime(attached) {}
         }
 
-        @Test("copySelectedRowsAsJson falls back to the row selection without a grid")
-        func copySelectedRowsAsJson_fallsBackWithoutGrid() throws {
+        @Test("copySelectedRowsAsJson reads the model's row selection with no grid mounted")
+        func copySelectedRowsAsJson_readsTheModelWithoutAGrid() throws {
             let clipboard = try #require(RecordingClipboard.current)
 
             let (actions, coordinator) = makeSUT()
             coordinator.tabManager.addTab(databaseName: "testdb")
             seedRows(coordinator)
-            coordinator.selectionState.indices = [0]
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            let model = coordinator.gridModel(forTab: tabId)
+            model.selectRows([.existing(0)])
+            #expect(!model.isMounted)
 
             actions.copySelectedRowsAsJson()
 
@@ -334,15 +312,50 @@ extension GlobalStateSuites {
             #expect(clipboard.text?.contains("Bob") != true)
         }
 
-        @Test("hasRowSelection reflects a grid range selection")
-        func hasRowSelection_reflectsRangeSelection() {
+        @Test("Copy Rows in Data mode copies the rows the model selected")
+        func copySelectedRows_dataMode_readsTheModel() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+
             let (actions, coordinator) = makeSUT()
             coordinator.tabManager.addTab(databaseName: "testdb")
             seedRows(coordinator)
-            let attached = attachGridWithRangeSelection(to: coordinator)
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            coordinator.gridModel(forTab: tabId).selectRows([.existing(1)])
+
+            actions.copySelectedRows()
+
+            #expect(clipboard.writes.last == "2\tBob")
+        }
+
+        @Test(
+            "Copy with the grid not focused writes the selected rows in the row copy format",
+            .appSettings { $0.dataGrid.rowCopyFormat = .csvWithHeaders }
+        )
+        func copyInCopyFormat_unfocusedGrid_usesTheFormat() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+
+            let (actions, coordinator) = makeSUT()
+            coordinator.tabManager.addTab(databaseName: "testdb")
+            seedRows(coordinator)
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            coordinator.gridModel(forTab: tabId).selectCell(GridCoord(row: 1, displayColumn: 1))
+
+            actions.copySelectedRowsInCopyFormat()
+
+            #expect(clipboard.writes.last == "id,name\n2,Bob\n")
+        }
+
+        @Test("hasRowSelection reflects the model's range selection")
+        func hasRowSelection_reflectsRangeSelection() throws {
+            let (actions, coordinator) = makeSUT()
+            coordinator.tabManager.addTab(databaseName: "testdb")
+            seedRows(coordinator)
+            #expect(!actions.hasRowSelection)
+
+            _ = try selectRange(in: coordinator)
 
             #expect(actions.hasRowSelection)
-            withExtendedLifetime(attached) {}
+            #expect(actions.hasDataGridRowSelection)
         }
     }
 }

@@ -24,7 +24,6 @@ final class TriggerInspectorState: ObservableObject {
         return list.first { selectedIDs.contains($0.id) } ?? list.first
     }
 
-    /// Edit and Delete act on one trigger, so they have no target while several rows are selected.
     func actionTarget(_ triggers: [TriggerInfo]) -> TriggerInfo? {
         let list = displayed(triggers)
         let selected = list.filter { selectedIDs.contains($0.id) }
@@ -195,9 +194,6 @@ struct TriggerDetailView: View {
         )
     }
 
-    /// Read through the tab's own scope rather than the session driver, which follows the sidebar:
-    /// an engine that qualifies its template with the connection's current database pre-fills a
-    /// statement that creates the trigger on a same-named table in whatever database that is.
     private func newTrigger() {
         let scope = scope
         let tableName = tableName
@@ -285,7 +281,6 @@ internal struct TriggerListPane: View {
     @StateObject private var grid = StructureListGridModel<TriggerInfo.ID>(
         accessibilityLabel: StructureTab.triggers.displayName
     )
-    @State private var columnLayout = ColumnLayoutState()
 
     private var showsEnabled: Bool { triggers.contains { $0.enabled != nil } }
 
@@ -309,20 +304,16 @@ internal struct TriggerListPane: View {
                 spokenValues: TriggerListColumns.spokenValues(for: trigger, showsEnabled: showsEnabled)
             )
         }
-        var hasher = Hasher()
-        hasher.combine(rows)
         return StructureListGrid(
             model: grid,
             columns: TriggerListColumns.titles(showsEnabled: showsEnabled),
             defaultWidths: TriggerListColumns.widths(showsEnabled: showsEnabled),
             minimumWidths: TriggerListColumns.minimumWidths(showsEnabled: showsEnabled),
-            contentKey: hasher.finalize(),
-            rows: { rows },
+            rows: rows,
             databaseType: databaseType,
-            selectedIDs: { inspector.selectedIDs },
+            selectedIDs: inspector.selectedIDs,
             select: { inspector.select($0) },
-            sortState: $state.sortState,
-            columnLayout: $columnLayout
+            sortState: $state.sortState
         )
     }
 }

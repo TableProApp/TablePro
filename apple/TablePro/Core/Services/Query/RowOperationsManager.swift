@@ -13,7 +13,7 @@ final class RowOperationsManager {
         let rowID: RowID
         let values: [PluginCellValue]
         let delta: Delta
-        /// Key columns given a fresh UUID, which the caret skips.
+        // Key columns given a fresh UUID, which the caret skips.
         var prefilledColumns: Set<Int> = []
     }
 
@@ -35,7 +35,7 @@ final class RowOperationsManager {
     }
 
     struct UndoApplicationResult {
-        let adjustedSelection: Set<Int>?
+        let clearsSelection: Bool
         let delta: Delta
     }
 
@@ -45,12 +45,7 @@ final class RowOperationsManager {
         self.changeManager = changeManager
     }
 
-    /// A new row holds DEFAULT where the server assigns the value and NULL elsewhere. On an engine
-    /// that tells a missing field from NULL those other fields start missing instead, so a document
-    /// saved as it was added holds only what the user typed.
-    ///
-    /// `uuidKeyForms` are the UUID keys the server does not fill, by column. Each gets a fresh UUID, since NULL
-    /// there is a key the INSERT is refused for.
+    // On engines that tell missing from NULL, non-default fields start missing; unfilled UUID keys get a fresh UUID, not NULL.
     func addNewRow(tableRows: inout TableRows, uuidKeyForms: [Int: UUIDCellForm] = [:]) -> AddNewRowResult? {
         var newRowValues: [PluginCellValue] = []
         var absentColumns: Set<Int> = []
@@ -71,7 +66,7 @@ final class RowOperationsManager {
         )
     }
 
-    /// A pending source row keeps the SQL staged in it, so a copy of `now()` is `now()` again, not the text.
+    // A pending source row keeps its staged SQL, so a copy of now() is now() again, not the text.
     func duplicateRow(
         sourceRowIndex: Int,
         tableRows: inout TableRows,
@@ -85,8 +80,7 @@ final class RowOperationsManager {
         var expressionColumns = changeManager.expressionColumns(forRow: source.id).filter { $0 < newValues.count }
         var prefilled: Set<Int> = []
 
-        /// An identity column is not always the primary key, and copying its value verbatim is
-        /// what the server rejects.
+        // An identity column isn't always the primary key, and the server rejects a copied identity value.
         let resetColumns = changeManager.primaryKeyColumns
             + Array(tableRows.generatedColumns)
             + Array(tableRows.columnIdentity.keys)
@@ -130,24 +124,23 @@ final class RowOperationsManager {
         return AddNewRowResult(rowID: rowID, values: values, delta: delta, prefilledColumns: prefilledColumns)
     }
 
-    func deleteSelectedRows(
-        selectedIndices: Set<Int>,
-        displayIDs: [RowID]? = nil,
+    // `selectedDisplayIndices` and `displayCount` only place the row selected afterwards.
+    func deleteRows(
+        _ rowIDs: [RowID],
+        selectedDisplayIndices: Set<Int>,
+        displayCount displayCountBefore: Int,
         tableRows: inout TableRows
     ) -> DeleteRowsResult {
-        guard !selectedIndices.isEmpty else {
+        guard !rowIDs.isEmpty else {
             return DeleteRowsResult(nextRowToSelect: -1, physicallyRemovedIndices: [], delta: .none)
         }
 
-        let displayCountBefore = displayIDs?.count ?? tableRows.count
         var insertedRowsToRemove: [InsertedRowLocation] = []
         var existingRowsToDelete: [(rowID: RowID, originalRow: [PluginCellValue])] = []
         var deletedAbsentColumns: [RowID: Set<Int>] = [:]
 
-        for displayIndex in selectedIndices.sorted(by: >) {
-            guard let storageIndex = DisplayRowMapping.rowIndex(
-                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
-            ) else { continue }
+        let storageIndices = Set(rowIDs.compactMap { tableRows.index(of: $0) })
+        for storageIndex in storageIndices.sorted(by: >) {
             let row = tableRows.rows[storageIndex]
             if row.id.isInserted {
                 insertedRowsToRemove.append(InsertedRowLocation(rowID: row.id, storageIndex: storageIndex))
@@ -171,7 +164,7 @@ final class RowOperationsManager {
 
         return DeleteRowsResult(
             nextRowToSelect: Self.nextRowToSelect(
-                afterDeleting: selectedIndices,
+                afterDeleting: selectedDisplayIndices,
                 removedCount: insertedRowsToRemove.count,
                 displayCountAfter: displayCountBefore - insertedRowsToRemove.count
             ),
@@ -201,20 +194,20 @@ final class RowOperationsManager {
         switch result.action {
         case .cellEdit(let rowID, let columnIndex, _, let previousValue, _, _, let absence, _):
             guard let storageRow = tableRows.index(of: rowID) else {
-                return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+                return UndoApplicationResult(clearsSelection: false, delta: .none)
             }
             let delta = tableRows.edit(
                 row: storageRow, column: columnIndex, value: previousValue, isAbsent: absence.wasAbsent
             )
-            return UndoApplicationResult(adjustedSelection: nil, delta: delta)
+            return UndoApplicationResult(clearsSelection: false, delta: delta)
 
         case .rowInsertion(let rowID, _):
             if result.needsRowRemoval {
                 let delta = tableRows.remove(rowIDs: [rowID])
                 guard delta != .none else {
-                    return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+                    return UndoApplicationResult(clearsSelection: false, delta: .none)
                 }
-                return UndoApplicationResult(adjustedSelection: Set<Int>(), delta: delta)
+                return UndoApplicationResult(clearsSelection: true, delta: delta)
             }
             if result.needsRowRestore {
                 let values = result.restoreRow
@@ -222,27 +215,27 @@ final class RowOperationsManager {
                 let delta = tableRows.appendInsertedRow(
                     id: rowID, values: values, absentColumns: result.restoreAbsentColumns
                 )
-                return UndoApplicationResult(adjustedSelection: nil, delta: delta)
+                return UndoApplicationResult(clearsSelection: false, delta: delta)
             }
-            return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            return UndoApplicationResult(clearsSelection: false, delta: .none)
 
         case .rowDeletion, .batchRowDeletion:
-            return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
+            return UndoApplicationResult(clearsSelection: false, delta: result.delta)
 
         case .batchRowInsertion(let rows, let rowValues, let rowAbsentColumns, _):
             if result.needsRowRemoval {
                 let delta = tableRows.remove(rowIDs: Set(rows.map(\.rowID)))
-                return UndoApplicationResult(adjustedSelection: nil, delta: delta)
+                return UndoApplicationResult(clearsSelection: false, delta: delta)
             }
             if result.needsRowRestore {
                 return UndoApplicationResult(
-                    adjustedSelection: nil,
+                    clearsSelection: false,
                     delta: restoreInsertedRows(
                         rows, values: rowValues, absentColumns: rowAbsentColumns, into: &tableRows
                     )
                 )
             }
-            return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            return UndoApplicationResult(clearsSelection: false, delta: .none)
         }
     }
 
@@ -268,17 +261,16 @@ final class RowOperationsManager {
         return insertedIndices.isEmpty ? .none : .rowsInserted(insertedIndices)
     }
 
-    func copySelectedRowsToClipboard(
-        selectedIndices: Set<Int>,
+    // `rowIDs` come in the order the grid shows them.
+    func copyRowsToClipboard(
+        _ rowIDs: [RowID],
         tableRows: TableRows,
-        displayIDs: [RowID]? = nil,
         includeHeaders: Bool = false,
         visibleColumnIndices: [Int]? = nil
     ) {
-        guard !selectedIndices.isEmpty else { return }
+        guard !rowIDs.isEmpty else { return }
 
-        let sortedIndices = selectedIndices.sorted()
-        let totalSelected = sortedIndices.count
+        let totalSelected = rowIDs.count
         let isTruncated = totalSelected > Self.maxClipboardRows
 
         if isTruncated {
@@ -287,15 +279,15 @@ final class RowOperationsManager {
             )
         }
 
-        let indicesToCopy = isTruncated ? Array(sortedIndices.prefix(Self.maxClipboardRows)) : sortedIndices
+        let idsToCopy = isTruncated ? Array(rowIDs.prefix(Self.maxClipboardRows)) : rowIDs
 
         let projection = VisibleColumnProjection(indices: visibleColumnIndices)
         let columns = projection.columns(tableRows.columns)
         let estimatedRowLength = max(columns.count, 1) * 12
         var result = ""
-        result.reserveCapacity(indicesToCopy.count * estimatedRowLength)
+        result.reserveCapacity(idsToCopy.count * estimatedRowLength)
         var copiedRows: [Row] = []
-        copiedRows.reserveCapacity(indicesToCopy.count)
+        copiedRows.reserveCapacity(idsToCopy.count)
 
         if includeHeaders, !columns.isEmpty {
             for (colIdx, col) in columns.enumerated() {
@@ -304,9 +296,8 @@ final class RowOperationsManager {
             }
         }
 
-        for displayIndex in indicesToCopy {
-            guard let row = DisplayRowMapping.row(forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows)
-            else { continue }
+        for rowID in idsToCopy {
+            guard let row = tableRows.row(withID: rowID) else { continue }
             if !result.isEmpty { result.append("\n") }
             copiedRows.append(row)
             for (colIdx, cell) in projection.values(Array(row.values)).enumerated() {
@@ -387,8 +378,7 @@ final class RowOperationsManager {
         }
     }
 
-    /// Copied rows keep the fields they did not have, and a column the copy did not carry is a
-    /// field the pasted row does not have either, on an engine that tells that apart from NULL.
+    // On engines that tell missing from NULL, a column the copy didn't carry is a field the pasted row lacks too.
     private static func reconcileStructuredRows(
         _ payload: GridRowsClipboardPayload,
         schema: TableSchema,
@@ -428,9 +418,7 @@ final class RowOperationsManager {
         }
     }
 
-    /// Cells the grid copied, as wide as the table, become rows field by field, so a value holding a
-    /// tab or a line break stays one value and a NULL stays NULL. An empty field is read for its
-    /// column, as a typed one is, and a field the copy marked as SQL stays SQL.
+    // Field by field, so a value holding a tab or line break stays one value, NULL stays NULL and SQL stays SQL.
     private static func rows(
         fromCopiedCells cells: GridCellsClipboardPayload,
         schema: TableSchema,
@@ -455,8 +443,7 @@ final class RowOperationsManager {
         }
     }
 
-    /// Text says nothing about which fields a row lacks, so on an engine that tells a missing field
-    /// from NULL a pasted NULL leaves the field out, which is what a new row does with it too.
+    // Text can't say which fields a row lacks, so a pasted NULL leaves the field out, as a new row does.
     private static func nullsAsMissingFields(_ row: ParsedRow) -> ParsedRow {
         var missing = row
         missing.absentColumns = Set(row.values.indices.filter { row.values[$0].isNull })
@@ -493,8 +480,7 @@ final class RowOperationsManager {
         return containsComma ? CSVRowParser() : TSVRowParser()
     }
 
-    /// Every paste path resets the key to `__DEFAULT__` before it gets here. A UUID key the server does not
-    /// fill takes a fresh UUID in its place, one per row.
+    // Every paste path resets the key to __DEFAULT__ first; an unfilled UUID key then takes a fresh UUID per row.
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
         uuidKeyForms: [Int: UUIDCellForm],
@@ -503,9 +489,7 @@ final class RowOperationsManager {
         var pastedRowInfo: [PastedRowInfo] = []
         var insertedIndices = IndexSet()
 
-        /// A pasted row arrives whole, so it carries values for columns the server owns too. They
-        /// never reach the cell-edit boundary that refuses them, and the statement generator drops
-        /// them silently, so the grid showed a pasted identity value the row was never saved with.
+        // Pasted server-owned values skip the cell-edit check and the generator drops them, so the grid showed unsaved values.
         let serverOwned = tableRows.columns.enumerated().filter { _, name in
             tableRows.generatedColumns.contains(name) || tableRows.columnIdentity[name] != nil
         }.map(\.offset)

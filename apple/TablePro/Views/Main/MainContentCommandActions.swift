@@ -2,10 +2,6 @@
 //  MainContentCommandActions.swift
 //  TablePro
 //
-//  Provides command actions for MainContentView, reached through MainContentCoordinator.
-//  Menu commands and toolbar buttons call methods directly instead of posting notifications.
-//  Retains NotificationCenter subscribers only for legitimate multi-listener broadcasts.
-//
 
 import AppKit
 import Combine
@@ -17,7 +13,7 @@ import TableProSQLGrammar
 import TableProUtilities
 import UniformTypeIdentifiers
 
-/// Provides command actions for MainContentView, reached through `MainContentCoordinator.commandActions`.
+// Menu and toolbar commands call methods directly; NotificationCenter stays only for multi-listener broadcasts.
 @MainActor
 final class MainContentCommandActions: ObservableObject {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCommandActions")
@@ -37,14 +33,12 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Bindings
 
-    private let selectionState: GridSelectionState
     private let selectedTables: Binding<Set<DatabaseTreeTableRef>>
     private let pendingTruncates: Binding<Set<DatabaseTreeTableRef>>
     private let pendingDeletes: Binding<Set<DatabaseTreeTableRef>>
     private let tableOperationOptions: Binding<[DatabaseTreeTableRef: TableOperationOptions]>
     private let trailingPaneState: TrailingPaneState
 
-    /// The window this instance belongs to — used for key-window guards.
     weak var window: NSWindow? {
         didSet {
             guard window !== oldValue else { return }
@@ -54,24 +48,20 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - State
 
-    /// Whether a text input holds first responder in this instance's window.
-    /// Stored rather than computed so Observation wakes the menu when focus
-    /// crosses that boundary; `NSWindow.firstResponder` publishes no change.
+    // Stored, not computed: NSWindow.firstResponder publishes no change, so Observation could not wake the menu.
     @Published var focusOwnsTextInput = false
 
     let textInputFocusObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
 
     var isTextInputFocusCheckScheduled = false
 
-    /// Asks whether to save a tab being closed. The alert by default, a scripted answer in a test.
+    // A var so a test can script the answer instead of showing the alert.
     var confirmSaveChanges: (String, NSWindow?) async -> AlertHelper.SaveConfirmationResult = { message, window in
         await AlertHelper.confirmSaveChanges(message: message, window: window)
     }
 
-    /// Task handles for async notification observers; cancelled on deinit.
     private var notificationTasks: [Task<Void, Never>] = []
 
-    /// Combine subscriptions for typed AppEvents publishers.
     private var eventCancellables: Set<AnyCancellable> = []
 
     // MARK: - Initialization
@@ -79,7 +69,6 @@ final class MainContentCommandActions: ObservableObject {
     init(
         coordinator: MainContentCoordinator,
         connection: DatabaseConnection,
-        selectionState: GridSelectionState,
         selectedTables: Binding<Set<DatabaseTreeTableRef>>,
         pendingTruncates: Binding<Set<DatabaseTreeTableRef>>,
         pendingDeletes: Binding<Set<DatabaseTreeTableRef>>,
@@ -88,7 +77,6 @@ final class MainContentCommandActions: ObservableObject {
     ) {
         self.coordinator = coordinator
         self.connection = connection
-        self.selectionState = selectionState
         self.selectedTables = selectedTables
         self.pendingTruncates = pendingTruncates
         self.pendingDeletes = pendingDeletes
@@ -109,8 +97,6 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Async Notification Helper
 
-    /// Creates a Task that iterates an async notification sequence and calls the handler.
-    /// The task is stored for cancellation on deinit.
     private func observe(
         _ name: Notification.Name,
         handler: @escaping @MainActor (Notification) -> Void
@@ -124,16 +110,13 @@ final class MainContentCommandActions: ObservableObject {
         notificationTasks.append(task)
     }
 
-    /// The window being key is no longer enough: every connection it hosts shares that window, so
-    /// a broadcast gated on it alone ran once per connection and opened a file in all of them.
-    /// Only the connection on screen answers.
+    // Key window alone is not enough: every connection shares it, so a broadcast opened a file in all of them.
     private func isVisibleInKeyWindow() -> Bool {
         guard let window = self.window, window.isKeyWindow else { return false }
         guard let host = window.contentViewController as? MainSplitViewController else { return true }
         return host.workspaces.selected?.sessionState?.coordinator === coordinator
     }
 
-    /// Like `observe(_:handler:)` but only runs the handler when this instance's window is key.
     private func observeKeyWindowOnly(
         _ name: Notification.Name,
         handler: @escaping @MainActor (Notification) -> Void
@@ -144,7 +127,6 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    /// Subscribes to an `AppCommands` publisher and only runs the handler when this instance's window is key.
     private func observeKeyWindowOnly<Payload>(
         _ publisher: PassthroughSubject<Payload, Never>,
         handler: @escaping @MainActor (Payload) -> Void
@@ -156,11 +138,6 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Save Action
 
-    /// Writes the inspector's pending edits.
-    ///
-    /// This used to be stored back on the panel's state as an `onSave` closure that only this type
-    /// ever set and only this type ever called; no view read it, despite a comment saying the panel
-    /// did. Calling the coordinator directly is the same work with one fewer hop.
     private func saveInspectorEdits() {
         let editState = trailingPaneState.inspector.editState
         Task { [weak self] in
@@ -191,13 +168,10 @@ final class MainContentCommandActions: ObservableObject {
         observeKeyWindowOnly(AppCommands.shared.exportQueryResults) { [weak self] _ in self?.exportQueryResults() }
     }
 
-    // MARK: - Row Operations (Group A — Called Directly)
+    // MARK: - Row Operations (Group A: Called Directly)
 
     func addNewRow() {
-        // The structure tab routes through StructureGridDelegate, which inserts
-        // a column / index / FK row depending on the active Structure sub-tab.
-        // The data tab routes through MainContentCoordinator.addNewRow which
-        // calls RowEditingCoordinator.addNewRow (data-only).
+        // Structure inserts a column, index or FK row by sub-tab; the data path adds data rows only.
         switch selectionOwner {
         case .schemaGrid: coordinator?.structureActions?.addRow?()
         case .dataGrid: coordinator?.addNewRow()
@@ -205,17 +179,13 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    private func resolvedRowSelection() -> Set<Int> {
-        coordinator?.dataTabDelegate?.tableViewCoordinator?.currentRowSelection() ?? selectionState.indices
+    // The rows the data grid's model has selected, in display order; empty when another grid owns the selection.
+    private var selectedDataRowIDs: [RowID] {
+        guard dataGridOwnsSelection else { return [] }
+        return coordinator?.activeGridModel?.selectedRowIDs ?? []
     }
 
-    /// `selectionState` is shared with the structure and new-table grids, and nothing clears it when
-    /// the result mode changes, so its indices only mean something once this says whose grid they
-    /// came from. Every row command routes through it rather than re-deriving the answer.
-    ///
-    /// A Create Table tab publishes into the same channel but has no structure handler behind it,
-    /// so claiming ownership there would make its commands silently inert and would shadow the
-    /// table-deletion fallback the sidebar still needs. Ownership counts only where someone can act.
+    // A Create Table tab has no structure handler; claiming its selection would make commands inert and shadow sidebar delete.
     private var selectionOwner: GridSelectionOwner {
         let owner = GridSelectionOwner.resolve(
             tabType: coordinator?.tabManager.selectedTab?.tabType,
@@ -227,57 +197,49 @@ final class MainContentCommandActions: ObservableObject {
 
     private var dataGridOwnsSelection: Bool { selectionOwner == .dataGrid }
 
-    /// The display position of the one data-grid row a single-row command acts on, or nil when the
-    /// data grid does not own the selection or it holds other than one row.
-    var singleSelectedDataGridRow: Int? {
-        guard dataGridOwnsSelection else { return nil }
-        let indices = resolvedRowSelection()
-        guard indices.count == 1 else { return nil }
-        return indices.first
+    // The one data-grid row a single-row command acts on, or nil when the selection holds other than one row.
+    var singleSelectedDataGridRowID: RowID? {
+        let rowIDs = selectedDataRowIDs
+        guard rowIDs.count == 1 else { return nil }
+        return rowIDs.first
     }
 
-    func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
-        let fromDataGrid = rowIndices != nil
-
+    func deleteSelectedRows() {
         if selectionOwner == .schemaGrid {
             coordinator?.structureActions?.removeRow?()
             return
         }
 
-        let indices = dataGridOwnsSelection ? (rowIndices ?? resolvedRowSelection()) : []
-        if !indices.isEmpty {
-            coordinator?.deleteSelectedRows(indices: indices)
-        } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
-            /// Through the sidebar's own path rather than a second copy of it. Staging the queue
-            /// here directly skipped the confirmation `batchToggleDelete` raises, so Delete from
-            /// the menu bar queued a drop with no dialog while the sidebar's Delete asked first.
+        let rowIDs = selectedDataRowIDs
+        if !rowIDs.isEmpty {
+            coordinator?.deleteRows(rowIDs)
+        } else if !selectedTables.wrappedValue.isEmpty {
+            // Through the sidebar's own path, which asks before it queues a drop.
             coordinator?.sidebarViewModel?.batchToggleDelete(refs: Array(selectedTables.wrappedValue))
         }
     }
 
     func duplicateRow() {
-        guard dataGridOwnsSelection else { return }
-        let indices = selectionState.indices
-        guard let selectedIndex = indices.first, indices.count == 1 else { return }
-        coordinator?.duplicateSelectedRow(index: selectedIndex)
+        guard let rowID = singleSelectedDataGridRowID else { return }
+        coordinator?.duplicateRow(rowID)
     }
 
     func copySelectedRows() {
         switch selectionOwner {
         case .schemaGrid: coordinator?.structureActions?.copyRows?()
-        case .dataGrid: coordinator?.copySelectedRowsToClipboard(indices: resolvedRowSelection())
+        case .dataGrid: coordinator?.copyRowsToClipboard(selectedDataRowIDs)
         case .none: break
         }
     }
 
     func copySelectedRowsWithHeaders() {
         guard dataGridOwnsSelection else { return }
-        coordinator?.copySelectedRowsWithHeaders(indices: resolvedRowSelection())
+        coordinator?.copyRowsToClipboard(selectedDataRowIDs, includeHeaders: true)
     }
 
     func copySelectedRowsAsJson() {
         guard dataGridOwnsSelection else { return }
-        coordinator?.copySelectedRowsAsJson(indices: resolvedRowSelection())
+        coordinator?.copyRowsAsJson(selectedDataRowIDs)
     }
 
     func pasteRows() {
@@ -290,14 +252,10 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Per-Window State (replaces AppState.shared for menu enablement)
 
-    /// Answered by the window that owns this instance, because only its `ConnectionWindowPhase`
-    /// can tell a window that is dialing or has failed from one that is connected. This object
-    /// existing proves nothing: it is kept alive across a lost session so a reconnect can restore
-    /// the user's tabs.
+    // Only the window's ConnectionWindowPhase knows; this object outlives a lost session so a reconnect can restore tabs.
     var isConnected: Bool { coordinator?.splitViewController?.isConnected ?? false }
     var isQueryExecuting: Bool { coordinator?.isSelectedTabBusy ?? false }
-    /// Separate from `isQueryExecuting` because `Cmd+.` has to dim while a batch commits, which is
-    /// running work nothing can interrupt.
+    // Not isQueryExecuting: Cmd+. has to dim while a batch commits, which nothing can interrupt.
     var isQueryStoppable: Bool { coordinator?.isSelectedTabStoppable ?? false }
 
     var safeModeLevel: SafeModeLevel { coordinator?.toolbarState.safeModeLevel ?? connection.safeModeLevel }
@@ -316,8 +274,7 @@ final class MainContentCommandActions: ObservableObject {
 
     var connectionId: UUID { connection.id }
 
-    /// Whether Close has a tab to act on. With none, it ends the connection instead, and the menu
-    /// has to say so rather than offering to close a tab that is not there.
+    // With no tab, Close ends the connection, and the menu has to say so.
     var hasOpenTab: Bool { coordinator?.tabManager.selectedTab != nil }
 
     var browseDatabaseName: String { coordinator?.browseDatabaseName ?? "" }
@@ -328,8 +285,6 @@ final class MainContentCommandActions: ObservableObject {
         PluginManager.shared.supportsContainerSwitching(for: connection.type)
     }
 
-    /// An engine with no database dimension has nothing to favorite, and neither has a window whose
-    /// browse database is still empty.
     var canFavoriteActiveDatabase: Bool {
         PluginManager.shared.containerSwitchTarget(for: connection.type) == .database
             && !browseDatabaseName.isEmpty
@@ -360,10 +315,7 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
-    /// Picks between the two spellings a container command has. Each one is a whole localized
-    /// string rather than a noun dropped into a format, because System Settings binds an App
-    /// Shortcut to a menu item's exact literal title, and because the driver's own entity name
-    /// would make the set open-ended. Both callers live in other files, so this is not private.
+    // Whole localized titles, not a format: System Settings binds an App Shortcut to a menu item's exact title.
     func containerSwitchTitle(schema: String, database: String) -> String {
         switch PluginManager.shared.containerSwitchTarget(for: currentDatabaseType) {
         case .schema: return schema
@@ -382,9 +334,7 @@ final class MainContentCommandActions: ObservableObject {
         PluginManager.shared.supportsDatabaseTree(for: connection.type)
     }
 
-    /// Whether the driver published any session context to switch. Only Snowflake does today, and
-    /// it pays two round trips for the list, so this reads what `loadSessionContexts` already
-    /// fetched rather than asking again.
+    // Reads what loadSessionContexts fetched: Snowflake (the only one today) pays two round trips for the list.
     var hasSessionContexts: Bool {
         !(coordinator?.sessionContexts.isEmpty ?? true)
     }
@@ -393,15 +343,13 @@ final class MainContentCommandActions: ObservableObject {
         PluginManager.shared.supportsSchemaSwitching(for: connection.type)
     }
 
-    /// Filtering the database list only means anything on a connection whose sidebar can show one,
-    /// which is the same rule the tree layout itself is gated on.
+    // Same rule the tree layout is gated on.
     var canFilterDatabases: Bool {
         PluginManager.shared.supportsDatabaseTree(for: connection.type)
             && sidebarLayout == .tree
     }
 
-    /// Asks the same question the sidebar banner does, so Show All Databases is never offered for a
-    /// filter that shows nothing on screen: one naming only system databases while they are hidden.
+    // Same check as the sidebar banner: no Show All Databases for a filter naming only hidden system databases.
     var hasDatabaseFilter: Bool {
         DatabaseTreeVisibility.isFiltering(
             selected: SharedSidebarState.forConnection(connection.id).databaseFilterSelected,
@@ -410,8 +358,7 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
-    /// Every layout of an engine that lists tables per schema, because search, Open Quickly and the
-    /// pickers follow the filter even where the sidebar shows one schema.
+    // Not gated on layout: search, Open Quickly and the pickers follow the filter even where the sidebar shows one schema.
     var canFilterSchemas: Bool {
         DatabaseTreeMetadataService.listsTablesPerSchema(PluginManager.shared.databaseGroupingStrategy(for: connection.type))
     }
@@ -445,8 +392,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
 
-    /// Find and the filter panel act on the result grid, so they need a table tab that is showing
-    /// one. Chart mode is not, and neither is Structure, whose own grid has its own commands.
+    // Chart mode has no result grid, and Structure's grid has its own commands.
     var canUseTableResultCommands: Bool {
         guard coordinator?.toolbarState.isTableTab == true,
               let viewMode = coordinator?.tabManager.selectedTab?.display.resultsViewMode
@@ -456,23 +402,18 @@ final class MainContentCommandActions: ObservableObject {
         return viewMode.showsRowFilters
     }
 
+    // A query result's grid finds as a table's does; only a mounted grid has a bar to show.
     var canUseGridFindCommands: Bool {
-        guard coordinator?.toolbarState.isTableTab == true,
-              let viewMode = coordinator?.tabManager.selectedTab?.display.resultsViewMode
-        else {
-            return false
-        }
-        return viewMode.showsFindBar
+        guard let coordinator, let tab = coordinator.tabManager.selectedTab,
+              tab.tabType == .table || tab.tabType == .query,
+              tab.display.resultsViewMode.showsFindBar else { return false }
+        return coordinator.hasMountedDataGrid
     }
 
     var hasActiveGridFind: Bool {
-        guard canUseGridFindCommands,
-              let findState = coordinator?.tabManager.selectedTab?.findState else { return false }
-        return findState.isVisible && !findState.matches.isEmpty
+        canUseGridFindCommands && coordinator?.findCoordinator.hasActiveFind == true
     }
 
-    /// Jump to Column reads the mounted data grid, so it needs the grid on screen and a result that
-    /// names columns. A query's result counts as much as a table's: a wide result is a wide result.
     var canJumpToColumn: Bool {
         guard dataGridOwnsSelection,
               let coordinator,
@@ -483,9 +424,7 @@ final class MainContentCommandActions: ObservableObject {
         return !coordinator.columnsForVisibilityPicker(for: tab, resultColumns: resultColumns).isEmpty
     }
 
-    /// What `pasteRows()` will actually do, so the Edit menu's Paste item is enabled only when it
-    /// leads somewhere. AppKit gives a disabled item its key equivalent all the same, so an item
-    /// enabled over a handler that returns at its first guard swallows Command+V in silence.
+    // Mirrors pasteRows(): an item enabled over a handler that bails at its first guard swallows Command+V silently.
     var canPasteRows: Bool {
         guard !safeModeLevel.blocksAllWrites, let tab = coordinator?.tabManager.selectedTab else {
             return false
@@ -501,9 +440,7 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    /// The two facts Save As and Export Results actually turn on. Their menu items used to be
-    /// validated on `isConnected` alone, so both stayed lit in states where the handler returns at
-    /// its first guard and the click does nothing at all.
+    // Save As and Export Results gate on this, not isConnected, which left them lit over a handler that did nothing.
     var isQueryTab: Bool {
         coordinator?.tabManager.selectedTab?.tabType == .query
     }
@@ -514,14 +451,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     var hasRowSelection: Bool {
-        selectionOwner != .none && !resolvedRowSelection().isEmpty
+        selectionOwner != .none && coordinator?.activeGridModel?.selection.isEmpty == false
     }
 
-    /// Copy with headers and copy as JSON read the data grid's columns, so they are only meaningful
-    /// when the data grid owns the indices. The structure grid has its own plain copy and nothing
-    /// else; handing it these would read a structure row's position into the result rows.
+    // Structure grid indices are not result rows; copy with headers or as JSON would read the wrong rows.
     var hasDataGridRowSelection: Bool {
-        dataGridOwnsSelection && !resolvedRowSelection().isEmpty
+        !selectedDataRowIDs.isEmpty
     }
 
     var hasTableSelection: Bool {
@@ -536,16 +471,14 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.openJoinBuilder(seededWith: selectedTables.wrappedValue)
     }
 
-    /// A selection can be perfectly valid and still hold nothing truncatable, so the menu bar asks
-    /// this rather than `hasTableSelection`, which is what let it stage a `TRUNCATE` on a view.
+    // Not hasTableSelection, which let the menu bar stage a TRUNCATE on a view.
     var canTruncateSelectedTables: Bool {
         TableOperationEligibility.canTruncate(
             selectedTables.wrappedValue, context: tableOperationEligibility
         )
     }
 
-    /// The same question the sidebar's own Delete item asks, so the two agree. Without it the menu
-    /// bar offered Delete on an engine with no statement for it and the sidebar did not.
+    // Same check as the sidebar's Delete item, which the menu bar used to skip on engines with no statement for it.
     var canDropSelectedTables: Bool {
         TableOperationEligibility.canDrop(selectedTables.wrappedValue, context: tableOperationEligibility)
     }
@@ -560,18 +493,13 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
-    /// The one selected object with the database and schema it lives in, or nil when the selection
-    /// is empty or spans several. A command that acts on the object takes this rather than the bare
-    /// `TableInfo`, which names no database, so it reaches the object the user selected even while
-    /// the browser points at another database or schema.
+    // Use over TableInfo, which names no database, so commands reach the selection while the browser points elsewhere.
     var selectedObjectRef: DatabaseTreeTableRef? {
         let selection = selectedTables.wrappedValue
         guard selection.count == 1 else { return nil }
         return selection.first
     }
 
-    /// The one selected object, or nil when the selection is empty or spans several.
-    /// Commands that open a single object need this rather than `hasTableSelection`.
     var selectedObject: TableInfo? {
         selectedObjectRef?.table
     }
@@ -580,15 +508,12 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.tabManager.selectedTab?.hasQueryText ?? false
     }
 
-    /// Whether there are pending data changes that the SQL preview can show.
-    /// Mirrors the toolbar Preview SQL button's enabled condition so the
-    /// menu shortcut (Cmd+Shift+P) doesn't open an empty preview popover.
+    // Mirrors the toolbar Preview SQL button so Cmd+Shift+P never opens an empty preview popover.
     var hasDataPendingChanges: Bool {
         coordinator?.toolbarState.hasDataPendingChanges ?? false
     }
 
-    /// Any pending changes (data edits OR file edits). Mirrors the toolbar
-    /// Save Changes button's enabled condition.
+    // Mirrors the toolbar Save Changes button's enabled condition.
     var hasPendingChanges: Bool {
         coordinator?.toolbarState.hasPendingChanges ?? false
     }
@@ -599,11 +524,7 @@ final class MainContentCommandActions: ObservableObject {
 
     // MARK: - Unsaved Changes Check
 
-    /// Scoped to the whole window, not the selected tab: closing a window closes every tab in it,
-    /// so a tab the user is not looking at must still get its prompt.
-    /// Every connection the window hosts, because closing the window closes all of them. Asking
-    /// only about the one on screen let a background connection's unsaved edits go without a
-    /// prompt, which is silent data loss rather than a missing confirmation.
+    // Every connection in the window: closing it closes them all, and skipping a background one is silent data loss.
     internal var hasUnsavedWorkInWindow: Bool {
         guard let host = window?.contentViewController as? MainSplitViewController else {
             return coordinator?.hasAnyUnsavedWork() ?? false
@@ -613,8 +534,7 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    /// This connection only. Closing its tabs says nothing about what another connection in the
-    /// same window has pending, so prompting about that would ask the wrong question.
+    // This connection only: closing its tabs leaves another connection's pending work alone.
     internal var hasUnsavedWorkInConnection: Bool {
         coordinator?.hasAnyUnsavedWork() ?? false
     }
@@ -637,7 +557,7 @@ final class MainContentCommandActions: ObservableObject {
         return actions.redoMenuTitle()
     }
 
-    // MARK: - Editor Query Loading (Group A — Called Directly)
+    // MARK: - Editor Query Loading (Group A: Called Directly)
 
     func loadQueryIntoEditor(_ query: String) {
         coordinator?.loadQueryIntoEditor(query)
@@ -651,10 +571,8 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.applyAISuggestion(afterSQL, replacing: beforeSQL, source: source)
     }
 
-    // MARK: - Tab Operations (Group A — Called Directly)
+    // MARK: - Tab Operations (Group A: Called Directly)
 
-    /// A new tab joins the connection's own tab list. It used to open another window whenever
-    /// the list was not empty, which is why two tables meant two windows.
     func newTab(initialQuery: String? = nil) {
         guard let coordinator else { return }
         coordinator.tabManager.addTab(
@@ -664,25 +582,19 @@ final class MainContentCommandActions: ObservableObject {
         )
     }
 
-    /// Closing the last tab leaves the connection open on its empty state, the same state it is
-    /// in right after connecting. The window hosts every open connection now, so closing it here
-    /// would take the other connections' tabs and their unsaved edits with it.
+    // The last tab leaves the connection on its empty state; closing the window would take other connections' tabs too.
     func closeTab(id: UUID) {
         Task { await closeTabAwaiting(id: id) }
     }
 
-    /// A tab holding work only a save can recover asks before it goes, which is what the window
-    /// close and the batch closes already do and what the HIG requires of an app that does not
-    /// autosave: "present a save dialog when people choose to close the document, quit your app,
-    /// log out, or restart".
-    ///
-    /// Save proceeds with the close, per `NSDocument.canCloseDocumentWithDelegate`: "shouldClose
-    /// will be YES if ... the user chose to discard modifications, or chose to save and the saving
-    /// was successful". `saveSelectedTabWork` returns false whenever the work is still unsaved
-    /// after the attempt, and the tab stays open.
+    // Asks before closing unsaved work (HIG); like NSDocument, the tab stays open when the save leaves work unsaved.
     func closeTabAwaiting(id: UUID) async {
         guard let coordinator,
               let tab = coordinator.tabManager.tabs.first(where: { $0.id == id }) else { return }
+        // An open cell editor is unsaved work too, so it lands before the question is asked.
+        if coordinator.tabManager.selectedTabId == id {
+            coordinator.commitActiveGridEdit()
+        }
         guard coordinator.hasUnsavedWork(in: tab) else {
             coordinator.closeTabsByUser(ids: [id])
             return
@@ -708,9 +620,7 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    /// The selection goes back only while the closing tab still holds it. A save can wait on the
-    /// server with the strip still live, and a tab the user picked in the meantime is a newer choice
-    /// than the one this close set aside.
+    // A save can wait on the server; a tab the user picked meanwhile is a newer choice than the one this close set aside.
     private func closeRevealedTab(_ id: UUID, returningTo previousSelection: UUID?) {
         guard let coordinator else { return }
         let stillShowsClosingTab = coordinator.tabManager.selectedTabId == id
@@ -719,19 +629,13 @@ final class MainContentCommandActions: ObservableObject {
         restoreSelection(previousSelection)
     }
 
-    /// Shown, then asked. The save and discard machinery reads the selected tab, so the tab being
-    /// closed has to be the selected one before the question is put; naming work the user cannot
-    /// see would also ask them to decide about something they have no way to look at first.
+    // Save and discard read the selected tab, and the user should see the work the alert asks about.
     private func revealTab(_ id: UUID) {
         guard let coordinator, coordinator.tabManager.selectedTabId != id else { return }
         coordinator.tabManager.selectedTabId = id
     }
 
-    /// Every answer puts the selection back where the user had it, unless they have since picked
-    /// another tab, because it only moved so the alert had somewhere honest to point. After a close that is the tab they were working in, not
-    /// the neighbour of the one that went: closing a tab in the background leaves the one in front
-    /// alone whether or not it had anything to save. Closing the tab in front lands on its
-    /// neighbour as before, since the tab it would restore is gone.
+    // The selection moved only for the alert; a closed front tab lands on its neighbour since the tab to restore is gone.
     private func restoreSelection(_ id: UUID?) {
         guard let coordinator,
               let id,
@@ -740,9 +644,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.tabManager.selectedTabId = id
     }
 
-    /// Cmd+W closes the tab in front. Pressed again with no tabs left it closes the entry, the way
-    /// the connections strip closes it, and the connection once that was its only entry. The window
-    /// itself goes only once that was the last connection open in it.
     func closeTab() {
         guard let coordinator else {
             Task { await closeWindowAwaiting() }
@@ -762,12 +663,11 @@ final class MainContentCommandActions: ObservableObject {
         Task { await ConnectionCloseAction.close(connectionId: connectionId) }
     }
 
-    /// The single close primitive. `asBatchSurvivor` is `nil` for a lone close gesture, which lets
-    /// the window decide for itself whether it can go away; a batch passes `true` for the one
-    /// window it keeps blank and `false` for every window it tears down.
+    // asBatchSurvivor: nil for a lone close (the window decides), true for the window a batch keeps blank, false otherwise.
     @discardableResult
     func closeWindowAwaiting(asBatchSurvivor: Bool? = nil) async -> WindowCloseOutcome {
         let seq = MainContentCoordinator.nextSwitchSeq()
+        coordinator?.commitActiveGridEdit()
         Self.logger.info("[close] closeWindowAwaiting seq=\(seq) hasUnsavedWork=\(self.hasUnsavedWorkInWindow)")
 
         guard hasUnsavedWorkInWindow else {
@@ -796,8 +696,7 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.contentWindow ?? window ?? NSApp.keyWindow
     }
 
-    /// A background tabbed window is occluded by the selected tab, so its confirmation sheet would
-    /// animate onto a surface the user cannot see. Bring it forward first.
+    // A background tabbed window is occluded, so its confirmation sheet would animate where the user cannot see it.
     private func selectInTabGroup() {
         guard let target = coordinator?.contentWindow ?? window,
               let tabGroup = target.tabGroup,
@@ -808,9 +707,7 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
-    /// Every close gesture funnels here, so this is the one place that can guarantee a closing
-    /// tab's content outlives the window. It runs before the branch dispatch below because two of
-    /// the three branches tear the window down without another chance to capture anything.
+    // Called before the close dispatch: two of its three branches tear the window down with no later chance to capture.
     private func captureClosingTabsForRecovery() {
         guard let coordinator else { return }
         for tab in coordinator.tabsForRecoveryCapture() {
@@ -844,8 +741,7 @@ final class MainContentCommandActions: ObservableObject {
         Self.logger.info("[close] finish done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
-    /// Empties the window instead of closing it, which is how the last tab of a group lands on the
-    /// no-tabs state with its connection still live.
+    // Empties instead of closing, so the last tab lands on the no-tabs state with its connection still live.
     private func clearTabsInPlace() {
         guard let coordinator else { return }
         for tab in coordinator.tabManager.tabs {
@@ -856,15 +752,7 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.toolbarState.isTableTab = false
     }
 
-    /// The save half of a close, shared by the tab close, the window close and the batch close so
-    /// the three cannot drift on what Save means. Returns whether the caller may go on to close.
-    ///
-    /// False comes back whenever the work is still staged after the attempt, because the caller
-    /// goes on to close and closing destroys it. User and role changes can only be applied after
-    /// the SQL is reviewed, so Save opens the review sheet and stands the close down; a schema
-    /// change that Safe Mode refused, that the user cancelled at the gate's confirmation, or that
-    /// the server rejected stands it down for the same reason, and so does a file that changed on
-    /// disk, whose conflict sheet is now up, or a Save As the user cancelled.
+    // False while work is still staged after the attempt (review sheet, refused or cancelled DDL, file conflict, Save As cancel).
     func saveSelectedTabWork() async -> Bool {
         guard let coordinator = coordinator else { return true }
 
@@ -873,10 +761,7 @@ final class MainContentCommandActions: ObservableObject {
             return false
         }
 
-        /// Asked of the tab's session rather than of the view on screen. `hasUnsavedWork` reads the
-        /// session too, so the prompt that offered Save can be raised by a tab showing its Data
-        /// view, or by a background tab in a batch close. Keying this on `resultsViewMode` meant
-        /// those answers ran nothing, reported success, and closed over the staged ALTERs.
+        // Keyed on the session, not resultsViewMode, which let a Data-view or background tab close over its staged ALTERs.
         if let tabId = coordinator.tabManager.selectedTabId,
            let session = coordinator.structureSessions[tabId],
            session.changeManager.hasChanges {
@@ -923,11 +808,7 @@ final class MainContentCommandActions: ObservableObject {
         return true
     }
 
-    /// Save on a prompt raised for the whole window or the whole batch has to reach every tab it
-    /// asked about, not just the selected one. `hasUnsavedWorkInWindow` and
-    /// `hasUnsavedWorkInConnection` both walk every tab's session, so a background tab's staged
-    /// ALTERs are exactly what the user has been asked about. The selected tab is skipped here
-    /// because `saveSelectedTabWork` takes it, along with its data-grid edits.
+    // Reaches every tab the window or batch prompt asked about; the selected tab is left to saveSelectedTabWork.
     func applyStagedStructureEdits(in tabs: [QueryTab]) async -> Bool {
         guard let coordinator else { return true }
         let selectedId = coordinator.tabManager.selectedTabId
@@ -958,7 +839,7 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.sidebarViewModel?.batchToggleTruncate()
     }
 
-    // MARK: - Filter Operations (Group A — Called Directly)
+    // MARK: - Filter Operations (Group A: Called Directly)
 
     func toggleFilterPanel() {
         guard canUseTableResultCommands, let coordinator else { return }
@@ -974,26 +855,27 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.presentHighlightRules()
     }
 
-    func showFindBar() {
-        guard canUseGridFindCommands, let coordinator else { return }
-        coordinator.findCoordinator.show()
+    func showFindBar(replace: Bool = false) {
+        guard canUseGridFindCommands else { return }
+        coordinator?.findCoordinator.showFind(replace: replace)
+    }
+
+    func useGridSelectionForFind() {
+        guard canUseGridFindCommands else { return }
+        coordinator?.findCoordinator.useSelectionForFind()
     }
 
     func stepFindForward() {
-        coordinator?.findCoordinator.stepForward()
+        coordinator?.findCoordinator.findNext()
     }
 
     func stepFindBackward() {
-        coordinator?.findCoordinator.stepBackward()
+        coordinator?.findCoordinator.findPrevious()
     }
 
-    // MARK: - Data Operations (Group A — Called Directly)
+    // MARK: - Data Operations (Group A: Called Directly)
 
-    /// Cmd+S on a tab showing its structure. Which sub-tab is on screen makes no difference: DDL,
-    /// Parts and Triggers are read-only views of the same table, and refusing to save from them
-    /// used to make Cmd+S silently inert. The results mode still gates this, because Cmd+S saves
-    /// what you are looking at; the close prompt asks a different question and reaches the session
-    /// whatever the tab is showing.
+    // Any Structure sub-tab saves: DDL, Parts and Triggers are read-only views, and refusing left Cmd+S silently inert.
     private func applyStagedStructureChanges() {
         guard let coordinator,
               let tabId = coordinator.tabManager.selectedTabId,
@@ -1007,6 +889,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func saveChanges() {
+        coordinator?.commitActiveGridEdit()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.reviewAndApply()
             return
@@ -1024,9 +907,7 @@ final class MainContentCommandActions: ObservableObject {
         } else if coordinator?.changeManager.hasChanges == true
             || !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty {
-            // Handle data grid changes (prioritize over sidebar edits since
-            // data grid edits are synced to sidebar editState, and the data grid
-            // path uses the correct plugin driver for statement generation)
+            // Data grid first: its edits sync to the sidebar editState, and its path uses the plugin driver for statements.
             var truncates = pendingTruncates.wrappedValue
             var deletes = pendingDeletes.wrappedValue
             var options = tableOperationOptions.wrappedValue
@@ -1102,10 +983,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.runAIQueryAction(action, target: .selectionOrStatementAtCursor)
     }
 
-    func previewFKReference() {
-        coordinator?.toggleFKPreviewForFocusedCell()
-    }
-
     func showRowAsJSON() {
         coordinator?.showRowAsJSON()
     }
@@ -1138,9 +1015,7 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.activeSheet = .backupDatabase(databases: [])
     }
 
-    /// Asked of the connection, not only its type. libSQL reaches either a local file or a Turso
-    /// URL and only the file can be handed to `sqlite3`, so a remote one offered a Backup Dump that
-    /// wrote a 52-byte file and reported success.
+    // Per connection: a remote libSQL (Turso) URL cannot go to sqlite3, and its Backup Dump wrote a 52-byte file.
     var supportsBackup: Bool {
         NativeDumpRegistry.supports(
             connection,
@@ -1178,8 +1053,6 @@ final class MainContentCommandActions: ObservableObject {
         coordinator?.activeSheet = .restoreDatabase(fileURL: url)
     }
 
-    /// The engine's own archive, not PostgreSQL's. Every engine the registry supports is offered
-    /// Restore Dump, and the panel used to tell all of them to pick a `pg_dump` custom archive.
     private var restoreSourceContentTypes: [UTType] {
         let extensions = NativeDumpRegistry.formats(for: connection.type)
             .map(\.fileExtension)
@@ -1189,8 +1062,7 @@ final class MainContentCommandActions: ObservableObject {
         return types + [.folder, .data]
     }
 
-    /// DuckDB restores either one `.duckdb` file or a folder of Parquet, so the panel has to accept
-    /// a folder as well.
+    // DuckDB restores a .duckdb file or a folder of Parquet.
     private var restoreAcceptsDirectory: Bool {
         NativeDumpRegistry.formats(for: connection.type).contains { $0.producesDirectory }
     }
@@ -1242,12 +1114,6 @@ final class MainContentCommandActions: ObservableObject {
         EditorEventRouter.shared.performFormatSQLForKeyWindow()
     }
 
-    /// Emptying the editor and discarding the results are two commands, not one.
-    ///
-    /// They used to be a single trash button whose tooltip and accessibility label both said
-    /// "Clear Query" while it also cleared the results, the execution record and collapsed the
-    /// results pane. Neither half had a menu-bar command, so neither could be undone, reached by
-    /// keyboard, or announced for what it was.
     func clearQuery() {
         guard let coordinator,
               let (tab, tabIndex) = coordinator.tabManager.selectedTabAndIndex,
@@ -1255,10 +1121,7 @@ final class MainContentCommandActions: ObservableObject {
         coordinator.tabManager.mutate(at: tabIndex) { $0.content.query = "" }
         coordinator.toolbarState.hasQueryText = false
         coordinator.scheduleDraftSave()
-        /// The editor's own text binding recomputes this on every keystroke, and emptying the tab
-        /// from a command does not go through that binding. Without it a scratch tab keeps the
-        /// dirty dot it no longer deserves, and a file-backed tab that this command just emptied
-        /// is not marked modified until some other window event happens to recompute it.
+        // Emptying from a command bypasses the editor binding that recomputes the dirty indicator on each keystroke.
         coordinator.refreshUnsavedIndicator()
     }
 
@@ -1299,18 +1162,12 @@ final class MainContentCommandActions: ObservableObject {
         EditorEventRouter.shared.moveCursorToStatementForKeyWindow(.next)
     }
 
-    /// Runs the statement the caret is in, then puts the caret on the next one.
-    ///
-    /// The caret moves first so the reader can see which statement is queued next while this one runs, and so a held
-    /// key steps through the script rather than running the same statement repeatedly. The editor resolves and runs
-    /// both halves itself, through the same callback the gutter control uses, so the statement can only ever reach the
-    /// connection whose editor it came from. That callback ends at `runStatement`, which refuses while the tab is
-    /// executing, so a held key cannot queue a second run.
+    // Through the gutter's callback, so it only reaches its own connection; the caret moves first so a held key steps through.
     func runStatementAndAdvance() {
         EditorEventRouter.shared.runStatementAtCursorAndAdvanceForKeyWindow()
     }
 
-    // MARK: - UI Operations (Group A — Called Directly)
+    // MARK: - UI Operations (Group A: Called Directly)
 
     func toggleHistoryPanel() {
         guard let connectionId = coordinator?.connectionId else { return }
@@ -1468,12 +1325,9 @@ final class MainContentCommandActions: ObservableObject {
     private func handleDatabaseDidConnect() {
         Task { [weak coordinator] in
             guard let coordinator, !coordinator.isTearingDown else { return }
-            /// A reconnect hands the session a new driver, and the query builder would otherwise keep
-            /// building against the one that was just disconnected.
+            // A reconnect brings a new driver; the query builder would otherwise keep the disconnected one.
             coordinator.setupPluginDriver()
-            /// The first connect is also announced here, while the coordinator's own initial load runs
-            /// for it on the same driver. Refreshing on top sent every catalog query twice, so the
-            /// refresh waits for that load and runs only if it did not leave the catalog loaded.
+            // The first connect lands here during the initial load; refreshing on top sent every catalog query twice.
             if let inFlight = coordinator.schemaLoadTask,
                SchemaLoadPolicy.inFlightLoadCoversConnect(
                    loadDriver: coordinator.schemaLoadDriver,
@@ -1536,12 +1390,16 @@ final class MainContentCommandActions: ObservableObject {
 }
 
 extension MainContentCommandActions {
-    // Copy with the grid not focused: the grid's format when one is mounted, else Copy Rows.
+    // Copy with the grid not focused takes the selected rows in the row copy format; a focused grid answers `copy:` itself.
     func copySelectedRowsInCopyFormat() {
-        guard dataGridOwnsSelection, let grid = coordinator?.dataTabDelegate?.tableViewCoordinator else {
+        guard dataGridOwnsSelection, let model = coordinator?.activeGridModel else {
             copySelectedRows()
             return
         }
-        grid.copyRowsInCopyFormat(at: resolvedRowSelection())
+        let commands = DataGridCommands(model: model)
+        commands.copyRows(
+            DataGridCommandScope(selection: model.selection, focus: nil, isRowHeader: true),
+            as: commands.rowCopyFormat
+        )
     }
 }

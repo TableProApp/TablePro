@@ -2,9 +2,6 @@
 //  TableStructureView.swift
 //  TablePro
 //
-//  View for displaying table structure using DataGridView
-//  Complete refactor to match data grid UX
-//
 
 import AppKit
 import Combine
@@ -13,18 +10,11 @@ import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// View displaying table structure with DataGridView
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
     static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
-    /// The database type of the connection the structure rows were copied from, so a paste can tell
-    /// a row said in its own engine's SQL from one said in another's.
     static let structureSourceTypePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure.database-type")
 
-    /// Whether the clipboard holds structure rows this view can paste. Structure paste reads its
-    /// own pasteboard type and nothing else, so the plain text a structure copy also writes is not
-    /// enough. Menu validation and the grid delegate both ask here rather than each spelling out
-    /// the same check.
     static var canPasteStructureRows: Bool {
         NSPasteboard.general.data(forType: structurePasteboardType) != nil
     }
@@ -35,11 +25,9 @@ struct TableStructureView: View {
 
     @ObservedObject var toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator?
-    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) var services
 
-    /// Derived from the tab's own binding on every render so it can never go stale.
     var scope: DatabaseScope {
         DatabaseScope(
             connectionId: connection.id, database: databaseName, schema: schemaName, isSessionBound: isSessionBound
@@ -52,22 +40,10 @@ struct TableStructureView: View {
         TableStructureLoader(scope: scope, tableName: tableName)
     }
 
-    /// Everything the user has staged, plus the baseline it is staged against. Held outside this
-    /// view because the view is destroyed whenever the tab is deselected or switched to Data.
     @ObservedObject var session: StructureEditingSession
 
-    /// What kind of object the tab is open on, which decides every edit it may offer.
-    ///
-    /// The real `TableInfo.TableType`, read from the session rather than passed in beside it, so the
-    /// grid delegate the session owns and the footer this view publishes can never disagree about
-    /// what they are looking at. It used to be an `isView` Bool derived from `allowsRowEditing`,
-    /// which was true for a materialized view, so a matview reached here as a table and was offered
-    /// `ADD COLUMN`, `SET NOT NULL`, type changes and constraint edits the server always refuses.
-    /// (#2726)
     var objectKind: TableInfo.TableType { session.objectKind }
 
-    /// Where the user was. Two tabs on one table are two editors, and a trip through the Data view
-    /// must not lose the sub-tab, filter or sort either, so all of it lives on the session.
     var selectedTab: StructureTab {
         get { session.selectedTab }
         nonmutating set { session.selectedTab = newValue }
@@ -88,13 +64,6 @@ struct TableStructureView: View {
         nonmutating set { session.sortDescriptor = newValue }
     }
 
-    var structureColumnLayouts: [StructureTab: ColumnLayoutState] {
-        get { session.columnLayouts }
-        nonmutating set { session.columnLayouts = newValue }
-    }
-
-    /// Raised across a write and across the reload that follows it, so the handlers watching
-    /// `columns`, `indexes` and `foreignKeys` do not mistake either for the user editing.
     var isReloadingAfterSave: Bool {
         get { session.isApplying }
         nonmutating set { session.isApplying = newValue }
@@ -105,12 +74,8 @@ struct TableStructureView: View {
         nonmutating set { session.lastAppliedAt = newValue }
     }
 
-    var wrappedChangeManager: AnyChangeManager { session.wrappedChangeManager }
+    var gridAdapter: StructureGridAdapter { session.gridAdapter }
 
-    var gridDelegate: StructureGridDelegate { session.gridDelegate }
-
-    /// The loaded schema, forwarded to the session so a rebuild adopts it instead of refetching.
-    /// Refetching would re-baseline `structureChangeManager` and clear the staged edits.
     var columns: [ColumnInfo] {
         get { session.columns }
         nonmutating set { session.columns = newValue }
@@ -146,10 +111,7 @@ struct TableStructureView: View {
         nonmutating set { session.tabData = newValue }
     }
 
-    /// Observed in its own right, not reached through `session`. The session is observed, but a
-    /// change inside the manager it owns fires the manager's publisher and never the session's, so
-    /// every `onChange` below that reads the manager went deaf: staging a column, an index or a
-    /// foreign key reloaded no grid and left Save disabled, so Command+S did nothing.
+    // Observed on its own: a change inside it fires its publisher, never the session's.
     @ObservedObject var structureChangeManager: StructureChangeManager
 
     @AppStorage("structureCodeFontSize", store: AppStorageEnvironment.shared.defaults) var ddlFontSize: Double = 13
@@ -161,8 +123,6 @@ struct TableStructureView: View {
     @State var partsReloadToken = 0
     @AppStorage("skipSchemaPreview", store: AppStorageEnvironment.shared.defaults) var skipSchemaPreview = false
 
-    @State var displayVersion: Int = 0
-    @State var selectedRows: Set<Int> = []
     @State var actionHandler = StructureViewActionHandler()
     @FocusState var isTableCommentFocused: Bool
 
@@ -173,7 +133,6 @@ struct TableStructureView: View {
         schemaName: String?,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator?,
-        selectionState: GridSelectionState,
         session: StructureEditingSession
     ) {
         self.tableName = tableName
@@ -182,7 +141,6 @@ struct TableStructureView: View {
         self.schemaName = schemaName
         self.toolbarState = toolbarState
         self.coordinator = coordinator
-        self.selectionState = selectionState
         self.session = session
         self.structureChangeManager = session.changeManager
     }
@@ -196,8 +154,7 @@ struct TableStructureView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
-        .onChange(of: selectedRows) { newRows in
-            selectionState.indices = newRows
+        .onReceive(session.gridModel.$selectionRevision) { _ in
             publishFooterCapability()
         }
         .onChange(of: selectedTab) { newValue in
@@ -212,105 +169,62 @@ struct TableStructureView: View {
         .onChange(of: isTableCommentFocused) { isFocused in
             if !isFocused { structureChangeManager.endTableCommentRun() }
         }
-        .onChange(of: searchText) { _ in displayVersion += 1 }
-        .onChange(of: displayVersion) { _ in updateGridDelegate() }
+        .onChange(of: searchText) { _ in gridAdapter.refresh() }
+        .onChange(of: session.serverSupport) { _ in gridAdapter.refresh() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
+            coordinator?.inspectorRowSource = gridAdapter
 
-            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
-            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
-            selectionState.indices = selectedRows
-            coordinator?.inspectorRowSource = gridDelegate
-
-            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
-            gridDelegate.coordinator = coordinator
-            gridDelegate.sortHandler = { [self] column, ascending in
-                /// A cleared sort arrives as column -1, which is not a column. Writing it through as
-                /// one left a descriptor that `columnReorderAvailability` reads as "the list is
-                /// sorted", so Move Column Up and Down stayed dimmed until the next reload.
-                guard column >= 0 else {
-                    structureSortDescriptor = nil
-                    sortState = SortState(columns: [], source: .user)
-                    displayVersion += 1
-                    return
-                }
-                structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
-                sortState = SortState(
-                    columns: [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)],
-                    source: .user
-                )
-                displayVersion += 1
+            gridAdapter.coordinator = coordinator
+            gridAdapter.moveRowHandler = { [self] fromIndex, toIndex in
+                beginColumnReorder(fromIndex: fromIndex, toIndex: toIndex)
             }
-            updateGridDelegate()
+            gridAdapter.refresh()
 
             actionHandler.previewSQL = { self.generateStructurePreviewSQL() }
-            actionHandler.copyRows = { self.gridDelegate.dataGridCopyRows(self.selectedRows) }
-            actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
-            actionHandler.undo = { self.gridDelegate.dataGridUndo() }
-            actionHandler.redo = { self.gridDelegate.dataGridRedo() }
-            actionHandler.addRow = { self.gridDelegate.dataGridAddRow() }
-            actionHandler.removeRow = { self.gridDelegate.dataGridDeleteRows(self.selectedRows) }
+            actionHandler.copyRows = { self.gridAdapter.copyRows(self.session.gridModel.selectedRowIDs) }
+            actionHandler.pasteRows = { self.gridAdapter.pasteRows() }
+            actionHandler.undo = { self.gridAdapter.undo() }
+            actionHandler.redo = { self.gridAdapter.redo() }
+            actionHandler.addRow = { self.gridAdapter.addRow() }
+            actionHandler.removeRow = { self.gridAdapter.deleteRows(self.session.gridModel.selectedRowIDs) }
             actionHandler.refresh = { self.onRefreshData() }
             coordinator?.structureActions = actionHandler
             publishFooterCapability()
         }
         .onDisappear {
             structureChangeManager.endTableCommentRun()
-            /// Every clear is guarded by identity, because appearance is not lifetime: SwiftUI does
-            /// not order `onDisappear` on the outgoing view before `onAppear` on the incoming one,
-            /// and an unguarded clear that lands second nils the wiring the incoming structure tab
-            /// has already installed. Its Save, Refresh, Preview SQL, undo and footer buttons then
-            /// do nothing at all until something else re-runs `onAppear`.
-            ///
-            /// The shared selection channel gets a second guard on top of that one. Switching this
-            /// tab back to Data mounts the data grid, which restores its own rows into the channel,
-            /// and this clear landing afterwards would wipe them: the same unordered lifecycle, one
-            /// layer out. Ask who owns the channel now rather than assuming it is still this grid.
+            // Guarded by identity: SwiftUI does not order the outgoing view's onDisappear before the
+            // incoming one's onAppear, so an unguarded clear can nil the wiring another tab installed.
             if coordinator?.structureActions === actionHandler {
                 coordinator?.structureActions = nil
                 coordinator?.toolbarState.hasStructureChanges = false
-                if incomingSelectionOwner != .dataGrid {
-                    selectionState.indices = []
-                }
             }
-            if coordinator?.inspectorRowSource === gridDelegate {
+            if coordinator?.inspectorRowSource === gridAdapter {
                 coordinator?.inspectorRowSource = nil
             }
         }
         .onChange(of: structureChangeManager.hasChanges) { newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
-            updateGridDelegate()
+            gridAdapter.refresh()
             if !newValue, session.settleOwedRefetch() {
                 Task { await loadInitialData() }
             }
         }
         .onChange(of: structureChangeManager.isHeldForSave) { _ in
             publishFooterCapability()
-            updateGridDelegate()
+            gridAdapter.refresh()
         }
         .onChange(of: session.appliedVersion) { _ in
             Task { await refreshAfterApply() }
         }
+        // A mutation that leaves hasChanges as it was, such as a second added row, moves only this.
         .onChange(of: structureChangeManager.reloadVersion) { _ in
-            // Any mutation that does not toggle hasChanges (add row when changes
-            // already exist, undo to a still-dirty state) only bumps reloadVersion.
-            // Bump displayVersion so SwiftUI re-evaluates structureGrid with a fresh
-            // tableRows snapshot, which lets DataGridView see the new row count and
-            // call reloadData(). Without this, Cmd+Shift+N adds the row to the change
-            // manager but the grid never displays it.
-            displayVersion += 1
+            gridAdapter.refresh()
         }
     }
 
     // MARK: - Toolbar
-
-    /// Which grid owns the shared selection channel now that this view is leaving.
-    private var incomingSelectionOwner: GridSelectionOwner {
-        GridSelectionOwner.resolve(
-            tabType: coordinator?.tabManager.selectedTab?.tabType,
-            resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
-        )
-    }
 
     private var availableTabs: [StructureTab] {
         session.availableTabs
@@ -386,7 +300,7 @@ struct TableStructureView: View {
         case .indexes:
             Group {
                 if shouldShowIndexesEmptyState {
-                    EmptyStateView.indexes { gridDelegate.dataGridAddRow() }
+                    EmptyStateView.indexes { gridAdapter.addRow() }
                         .gridStandInBackground()
                 } else {
                     structureGrid
@@ -397,14 +311,14 @@ struct TableStructureView: View {
             }
         case .foreignKeys:
             if shouldShowForeignKeysEmptyState {
-                EmptyStateView.foreignKeys { gridDelegate.dataGridAddRow() }
+                EmptyStateView.foreignKeys { gridAdapter.addRow() }
                     .gridStandInBackground()
             } else {
                 structureGrid
             }
         case .checkConstraints:
             if shouldShowCheckConstraintsEmptyState {
-                EmptyStateView.checkConstraints { gridDelegate.dataGridAddRow() }
+                EmptyStateView.checkConstraints { gridAdapter.addRow() }
                     .gridStandInBackground()
             } else {
                 structureGrid
@@ -451,10 +365,6 @@ struct TableStructureView: View {
         }
     }
 
-    /// Only offered where the add behind it can actually run. An engine that lists an object but
-    /// cannot edit it shows the grid, so its real rows stay visible instead of being replaced by an
-    /// empty state whose only affordance is disabled, and a view whose kind refuses the add never
-    /// gets the empty state's button at all.
     private var shouldShowIndexesEmptyState: Bool {
         tabData.hasData(.indexes)
             && structureChangeManager.workingIndexes.isEmpty
@@ -474,99 +384,18 @@ struct TableStructureView: View {
             && editGate.allows(.addCheckConstraint)
     }
 
-    // MARK: - Structure Grid (DataGridView)
-
-    private func makeCurrentProvider() -> StructureRowProvider {
-        StructureRowProvider(
-            changeManager: structureChangeManager,
-            tab: selectedTab,
-            databaseType: connection.type,
-            additionalFields: [.primaryKey],
-            serverSupport: session.serverSupport,
-            filterText: searchText.isEmpty ? nil : searchText,
-            sortDescriptor: structureSortDescriptor
-        )
-    }
-
-    private func columnLayoutBinding(for tab: StructureTab) -> Binding<ColumnLayoutState> {
-        Binding(
-            get: { session.columnLayouts[tab] ?? ColumnLayoutState() },
-            set: { session.columnLayouts[tab] = $0 }
-        )
-    }
-
-    func updateGridDelegate() {
-        let provider = makeCurrentProvider()
-
-        gridDelegate.selectedTab = selectedTab
-        gridDelegate.serverSupport = session.serverSupport
-        gridDelegate.currentProvider = provider
-        gridDelegate.orderedFields = provider.orderedColumnFields
-        coordinator?.inspectorRowSourceRevision += 1
-
-        let availability = columnReorderAvailability
-        gridDelegate.moveRowHandler = availability.isAvailable ? { [self] fromIndex, toIndex in
-            beginColumnReorder(fromIndex: fromIndex, toIndex: toIndex)
-        } : nil
-        gridDelegate.columnReorder = DataGridRowReorder(
-            isEnabled: availability.isAvailable,
-            unavailableReason: availability.unavailableReason
-        )
-    }
+    // MARK: - Structure Grid
 
     private var structureGrid: some View {
-        let provider = makeCurrentProvider()
-        let canEdit = editGate.allowsAnyEdit && !structureChangeManager.isHeldForSave
-        let customOptions = provider.customDropdownOptions
-        let allDropdownColumns = provider.dropdownColumns
-        /// Resolved once. It reads the engine's curated capabilities and the object's own kind, and
-        /// this is a body property, so asking twice for the pair of values below doubled that work.
-        let reorder = columnReorderAvailability
-
-        // Build the row snapshot fresh on every call rather than capturing it
-        // once at body-evaluation time. After a cell edit / undo / redo the
-        // change manager's working state is updated synchronously, but a
-        // captured snapshot would still hold the pre-edit value, so the
-        // `tableView.reloadData(forRowIndexes:)` issued by the delegate would
-        // re-render the cell from a stale source. Mirror the data tab's pattern
-        // (`MainEditorContentView` rebuilds via `coordinator.tabSessionRegistry`
-        // on every call). `makeCurrentProvider` is cheap because the working
-        // arrays are small (typically <100 entries).
-        return DataGridView(
-            tableRowsProvider: { makeCurrentProvider().asTableRows() },
-            changeManager: wrappedChangeManager,
-            isEditable: canEdit,
-            configuration: DataGridConfiguration(
-                dropdownColumns: allDropdownColumns,
-                typePickerColumns: provider.typePickerColumns,
-                customDropdownOptions: customOptions.isEmpty ? nil : customOptions,
-                connectionId: connection.id,
-                databaseType: connection.type,
-                tableName: tableName,
-                databaseName: databaseName,
-                schemaName: schemaName,
-                tabType: .table,
-                lockedColumns: lockedStructureColumns(for: provider),
-                editRefusalMessage: structureEditRefusal
-            ),
-            delegate: gridDelegate,
-            rowReorder: DataGridRowReorder(
-                isEnabled: reorder.isAvailable,
-                unavailableReason: reorder.unavailableReason
-            ),
-            selectedRowIndices: $selectedRows,
-            sortState: $session.sortState,
-            columnLayout: columnLayoutBinding(for: selectedTab),
-            contentRevision: displayVersion
-        )
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                NativeSearchField(text: $session.searchText, placeholder: String(localized: "Filter"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-                Divider()
+        DataGridView(model: session.gridModel)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    NativeSearchField(text: $session.searchText, placeholder: String(localized: "Filter"))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                    Divider()
+                }
             }
-        }
     }
 
     // MARK: - Helper Views
@@ -600,7 +429,6 @@ struct TableStructureView: View {
         schemaName: nil,
         toolbarState: ConnectionToolbarState(),
         coordinator: nil,
-        selectionState: GridSelectionState(),
         session: StructureEditingSession(
             identity: "test.users",
             connection: connection,

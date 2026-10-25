@@ -5,7 +5,6 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import Testing
 
@@ -34,52 +33,55 @@ extension GlobalStateSuites {
             return fixture.coordinator
         }
 
-        /// Narrows the tab to the rows whose `name` is one of `names`, which is what a value filter
-        /// does and the only thing in the shipping app that makes display order differ from storage
-        /// order. No grid is attached, so this also covers the readers that run with none.
-        private func applyNameFilter(_ names: Set<String>, to coordinator: MainContentCoordinator) {
-            guard let tabId = coordinator.tabManager.selectedTab?.id else { return }
+        private func selectedModel(_ coordinator: MainContentCoordinator) throws -> DataGridModel {
+            let tabId = try #require(coordinator.tabManager.selectedTab?.id)
+            return coordinator.gridModel(forTab: tabId)
+        }
+
+        // The value filter is the only thing that makes display order differ from storage order. No grid is
+        // mounted, so this also covers the readers that run with none.
+        private func applyNameFilter(_ names: Set<String>, to coordinator: MainContentCoordinator) throws {
             var state = GridValueFilterState()
             state.set(
                 ColumnValueFilter(selectedValues: names, includesNull: false),
                 columnName: "name",
                 forColumn: 1
             )
-            coordinator.setValueFilter(state, forTab: tabId)
+            try selectedModel(coordinator).setValueFilter(state)
         }
 
-        @Test("Copy as JSON resolves display positions through the value-filtered order")
-        func copyAsJsonResolvesDisplayOrder() throws {
+        @Test("Copy as JSON copies the row the model selected under a value filter")
+        func copyAsJsonFollowsTheFilteredSelection() throws {
             let clipboard = try #require(RecordingClipboard.current)
-
             let coordinator = makeCoordinator()
-            applyNameFilter(["Bob"], to: coordinator)
+            try applyNameFilter(["Bob"], to: coordinator)
+            let model = try selectedModel(coordinator)
 
-            coordinator.copySelectedRowsAsJson(indices: [0])
+            model.setSelection(GridSelectionReducer.single(GridCoord(row: 0, displayColumn: 0)))
+            coordinator.copyRowsAsJson(model.selectedRowIDs)
 
+            #expect(model.selectedRowIDs == [.existing(1)])
             #expect(clipboard.text?.contains("Bob") == true)
             #expect(clipboard.text?.contains("Alice") != true)
         }
 
-        @Test("the display order survives with no grid mounted, which is what JSON mode reads")
-        func displayOrderResolvesWithNoGridAttached() {
+        @Test("the display order resolves with no grid mounted, which is what JSON mode reads")
+        func displayOrderResolvesWithNoGridMounted() throws {
             let coordinator = makeCoordinator()
-            applyNameFilter(["Bob"], to: coordinator)
+            try applyNameFilter(["Bob"], to: coordinator)
+            let tabId = try #require(coordinator.tabManager.selectedTab?.id)
 
-            #expect(coordinator.dataTabDelegate == nil)
-            #expect(coordinator.activeGridDisplayIDs == [.existing(1)])
+            #expect(try selectedModel(coordinator).isMounted == false)
+            #expect(coordinator.displayIDs(forTab: tabId) == [.existing(1)])
         }
 
         @Test("replacing the rows wholesale drops the value filter")
-        func newResultDropsTheValueFilter() {
+        func newResultDropsTheValueFilter() throws {
             let coordinator = makeCoordinator()
-            applyNameFilter(["Bob"], to: coordinator)
-            #expect(coordinator.activeGridDisplayIDs != nil)
+            try applyNameFilter(["Bob"], to: coordinator)
+            let tabId = try #require(coordinator.tabManager.selectedTab?.id)
+            #expect(coordinator.displayIDs(forTab: tabId) != nil)
 
-            guard let tabId = coordinator.tabManager.selectedTab?.id else {
-                Issue.record("no selected tab")
-                return
-            }
             coordinator.setActiveTableRows(
                 TableRows.from(
                     queryRows: [[.text("3"), .text("Carol")]],
@@ -89,23 +91,21 @@ extension GlobalStateSuites {
                 for: tabId
             )
 
-            #expect(coordinator.activeGridDisplayIDs == nil)
+            #expect(coordinator.displayIDs(forTab: tabId) == nil)
+            #expect(try selectedModel(coordinator).displayedRowIDs == nil)
             #expect(coordinator.tabManager.selectedTab?.valueFilter.isActive == false)
         }
 
-        /// Fetch All extends the same result rather than replacing it, so the filter stays and the
-        /// order is re-resolved over the rows that arrived. The memo keys on the registry's row-set
-        /// revision, so this holds with no grid mounted to recompute it.
+        // Fetch All extends the same result rather than replacing it, so the filter stays and the order is
+        // resolved again over the rows that arrived.
         @Test("loading more rows into the same result keeps the value filter and re-resolves the order")
-        func loadingMoreRowsKeepsTheValueFilter() {
+        func loadingMoreRowsKeepsTheValueFilter() throws {
             let coordinator = makeCoordinator()
-            applyNameFilter(["Bob"], to: coordinator)
-            #expect(coordinator.activeGridDisplayIDs == [.existing(1)])
+            try applyNameFilter(["Bob"], to: coordinator)
+            let model = try selectedModel(coordinator)
+            #expect(model.displayedRowIDs == [.existing(1)])
 
-            guard let tabId = coordinator.tabManager.selectedTab?.id else {
-                Issue.record("no selected tab")
-                return
-            }
+            let tabId = try #require(coordinator.tabManager.selectedTab?.id)
             coordinator.mutateActiveTableRows(for: tabId) { rows in
                 rows.replace(rows: [
                     [.text("1"), .text("Alice")],
@@ -115,40 +115,18 @@ extension GlobalStateSuites {
             }
 
             #expect(coordinator.tabManager.selectedTab?.valueFilter.isActive == true)
-            #expect(coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+            #expect(model.displayedRowIDs == [.existing(1), .existing(2)])
         }
 
-        /// The clear runs one line before `setActiveTableRows` drives the grid's full reload, and the
-        /// grid keeps its own mirror of the filter. Left un-adopted, the reload resolved the new rows
-        /// through the old filter and pruning it against the new columns wrote it back onto the tab.
-        @Test("a mounted grid does not resurrect the value filter a new result cleared")
-        func newResultClearsTheFilterOnTheMountedGridToo() {
+        // The model reads the filter through its store, so a filter a new result cleared cannot come back
+        // from a copy the grid kept.
+        @Test("a new result with other columns leaves the model unfiltered")
+        func newResultClearsTheFilterTheModelReads() throws {
             let coordinator = makeCoordinator()
-            let delegate = DataTabGridDelegate()
-            let grid = TableViewCoordinator(
-                changeManager: AnyChangeManager(DataChangeManager()),
-                isEditable: true,
-                selectedRowIndices: .constant([]),
-                delegate: delegate,
-                layoutPersister: InMemoryColumnLayoutStore()
-            )
-            delegate.dataGridAttach(tableViewCoordinator: grid)
-            coordinator.dataTabDelegate = delegate
-
-            guard let tabId = coordinator.tabManager.selectedTab?.id else {
-                Issue.record("no selected tab")
-                return
-            }
-            grid.tableRowsProvider = { [weak coordinator] in
-                coordinator?.tabSessionRegistry.tableRows(for: tabId) ?? TableRows()
-            }
-            grid.valueFilterBinding = Binding(
-                get: { coordinator.tabManager.selectedTab?.valueFilter ?? GridValueFilterState() },
-                set: { coordinator.setValueFilter($0, forTab: tabId) }
-            )
-            applyNameFilter(["Bob"], to: coordinator)
-            grid.adoptValueFilter(coordinator.tabManager.selectedTab?.valueFilter ?? GridValueFilterState())
-            #expect(grid.valueFilterState.isActive)
+            try applyNameFilter(["Bob"], to: coordinator)
+            let model = try selectedModel(coordinator)
+            #expect(model.store.valueFilter.isActive)
+            let tabId = try #require(coordinator.tabManager.selectedTab?.id)
 
             coordinator.setActiveTableRows(
                 TableRows.from(
@@ -160,32 +138,31 @@ extension GlobalStateSuites {
             )
 
             #expect(coordinator.tabManager.selectedTab?.valueFilter.isActive == false)
-            #expect(grid.valueFilterState.isActive == false)
-            #expect(coordinator.activeGridDisplayIDs == nil)
-            withExtendedLifetime((delegate, grid)) {}
+            #expect(model.store.valueFilter.isActive == false)
+            #expect(model.displayedRowIDs == nil)
+            #expect(model.rowCount == 1)
         }
 
-        @Test("Copy as JSON keeps storage order when no display mapping exists")
+        @Test("Copy as JSON keeps storage order when no value filter applies")
         func copyAsJsonWithoutDisplayMapping() throws {
             let clipboard = try #require(RecordingClipboard.current)
-
             let coordinator = makeCoordinator()
 
-            coordinator.copySelectedRowsAsJson(indices: [0])
+            coordinator.copyRowsAsJson([.existing(0)])
 
             #expect(clipboard.text?.contains("Alice") == true)
             #expect(clipboard.text?.contains("Bob") != true)
         }
 
-        @Test("Copy as JSON skips display positions past the current rows")
-        func copyAsJsonSkipsOutOfRangeIndices() throws {
+        @Test("Copy as JSON skips rows the result does not hold")
+        func copyAsJsonSkipsUnknownRows() throws {
             let clipboard = try #require(RecordingClipboard.current)
-
             let coordinator = makeCoordinator()
 
-            coordinator.copySelectedRowsAsJson(indices: [1, 99])
+            coordinator.copyRowsAsJson([.existing(1), .existing(99)])
 
             #expect(clipboard.text?.contains("Bob") == true)
+            #expect(clipboard.text?.contains("Alice") != true)
         }
 
         @Test("Copy as JSON preserves wide integer values")
@@ -199,7 +176,7 @@ extension GlobalStateSuites {
             )
             let coordinator = makeCoordinator(tableRows: tableRows)
 
-            coordinator.copySelectedRowsAsJson(indices: [0])
+            coordinator.copyRowsAsJson([.existing(0)])
 
             #expect(clipboard.text?.contains("\"value\": \(value)") == true)
         }

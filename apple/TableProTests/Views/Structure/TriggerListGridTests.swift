@@ -7,6 +7,7 @@ import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 @MainActor
@@ -25,11 +26,23 @@ struct TriggerListGridTests {
         list.map(\.name)
     }
 
-    private func load(_ grid: StructureListGridModel<TriggerInfo.ID>, _ state: TriggerInspectorState, key: Int) {
+    private func load(_ grid: StructureListGridModel<TriggerInfo.ID>, _ state: TriggerInspectorState) {
         let rows = state.displayed(triggers).map {
             StructureListRow(id: $0.id, values: TriggerListColumns.values(for: $0, showsEnabled: true))
         }
-        _ = grid.ensureLoaded(key: key, columns: TriggerListColumns.titles(showsEnabled: true)) { rows }
+        grid.load(
+            columns: TriggerListColumns.titles(showsEnabled: true),
+            rows: rows,
+            defaultWidths: TriggerListColumns.widths(showsEnabled: true),
+            minimumWidths: TriggerListColumns.minimumWidths(showsEnabled: true),
+            databaseType: .mysql,
+            sortState: state.sortState
+        )
+        grid.syncSelection(state.selectedIDs)
+    }
+
+    private func displayRows(_ grid: StructureListGridModel<TriggerInfo.ID>, of ids: Set<TriggerInfo.ID>) -> IndexSet {
+        IndexSet(ids.compactMap { id in grid.rowID(for: id).flatMap { grid.model.displayIndex(of: $0) } })
     }
 
     @Test("The list opens sorted by name, ascending")
@@ -109,44 +122,70 @@ struct TriggerListGridTests {
         }
     }
 
-    private func tableView(in view: NSView?) -> NSTableView? {
+    private func tableView(in view: NSView?) -> DataGridTableView? {
         guard let view else { return nil }
-        if let tableView = view as? KeyHandlingTableView { return tableView }
+        if let tableView = view as? DataGridTableView, tableView.paneKind == .main { return tableView }
         return view.subviews.lazy.compactMap { self.tableView(in: $0) }.first
     }
 
     @Test("The list's columns carry their minimum widths into the grid")
-    func gridColumnsCarryTheirMinimums() throws {
+    func gridColumnsCarryTheirMinimums() async throws {
         let window = ThemeTestFixture.host(
             TriggerListPane(triggers: triggers, databaseType: .mysql, state: TriggerInspectorState()),
             size: NSSize(width: 700, height: 300)
         )
+        defer { window.contentView = nil }
+        for _ in 0 ..< 10 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
         let grid = try #require(tableView(in: window.contentView))
-        let presented = grid.tableColumns.filter { $0.identifier != ColumnIdentitySchema.rowNumberIdentifier && !$0.isHidden }
+        let presented = grid.tableColumns.filter { $0.identifier != DataGridPane.rowNumberIdentifier }
         let minimums = Dictionary(uniqueKeysWithValues: presented.map { ($0.headerCell.stringValue, $0.minWidth) })
 
         let titles = TriggerListColumns.titles(showsEnabled: true)
         #expect(minimums == Dictionary(uniqueKeysWithValues: zip(titles, TriggerListColumns.minimumWidths(showsEnabled: true))))
-        withExtendedLifetime(window) {}
     }
 
     @Test("A selected trigger keeps its row through a sort")
-    func selectionFollowsTheTriggerThroughASort() {
+    func selectionFollowsTheTriggerThroughASort() throws {
         let state = TriggerInspectorState()
         let grid = StructureListGridModel<TriggerInfo.ID>()
-        load(grid, state, key: 1)
-        state.select(grid.ids(atDisplayRows: [1]))
+        grid.onSelect = { state.select($0) }
+        load(grid, state)
+        let second = try #require(grid.model.rowID(at: 1))
+        grid.model.selectRows([second])
         #expect(state.selectedTrigger(triggers)?.name == "trg_b")
 
         state.sortState = sort(0, .descending)
-        load(grid, state, key: 2)
+        load(grid, state)
 
-        #expect(grid.displayRows(of: state.selectedIDs) == [1])
+        #expect(displayRows(grid, of: state.selectedIDs) == [1])
+        #expect(grid.model.selection.affectedRows == [1])
         state.sortState = sort(2, .ascending)
-        load(grid, state, key: 3)
+        load(grid, state)
         #expect(names(state.displayed(triggers)) == ["trg_c", "trg_a", "trg_b"])
-        #expect(grid.displayRows(of: state.selectedIDs) == [2])
+        #expect(displayRows(grid, of: state.selectedIDs) == [2])
+        #expect(grid.model.selection.affectedRows == [2])
         #expect(state.selectedTrigger(triggers)?.name == "trg_b")
+    }
+
+    @Test("A header sort goes to the inspector state, which orders the triggers itself")
+    func headerSortReachesTheState() {
+        let state = TriggerInspectorState()
+        let grid = StructureListGridModel<TriggerInfo.ID>()
+        grid.grid.onSortChange = { state.sortState = $0 }
+        load(grid, state)
+        #expect(grid.model.configuration.supportsColumnSort)
+
+        grid.model.setSort(sort(1, .ascending))
+        load(grid, state)
+
+        #expect(state.sortState == sort(1, .ascending))
+        #expect(grid.model.store.sortState == sort(1, .ascending))
+        #expect(grid.model.rows.rows.compactMap { $0.values.first?.asText } == ["trg_a", "trg_c", "trg_b"])
     }
 
     @Test("Edit and Delete act on one trigger and have none while several are selected")

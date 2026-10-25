@@ -5,7 +5,6 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import Testing
 
@@ -60,13 +59,8 @@ struct CoordinatorColumnVisibilityTests {
         )
     }
 
-    /// Hiding or showing a column re-runs the table's query with a different column list, so the
-    /// rows are replaced and an unsaved edit goes with them. Sort, pagination and the WHERE filter
-    /// all confirm first; this reload used to do it without asking.
-    ///
-    /// The declined branch is reached by pretending an alert is already up, which is what
-    /// `confirmDiscardChangesIfNeeded` answers false to. That keeps the test off the real modal,
-    /// which would hang it.
+    // Hiding a column re-queries, so an unsaved edit would go with the rows. The declined branch pretends an alert
+    // is already up, which `confirmDiscardChangesIfNeeded` answers false to, keeping the test off the real modal.
     @Test("hiding a column changes nothing while the discard is unanswered")
     func hidingWaitsForTheDiscardAnswer() throws {
         let (coordinator, tabManager) = makeCoordinator()
@@ -108,7 +102,7 @@ struct CoordinatorColumnVisibilityTests {
         #expect(tab.columnLayout.hiddenColumns == ["name"])
     }
 
-    /// With nothing staged the gate answers immediately, so the common case takes no round trip.
+    // With nothing staged the gate answers at once.
     @Test("hiding a column with no unsaved edits applies straight away")
     func hidingWithNoEditsAppliesImmediately() throws {
         let (coordinator, tabManager) = makeCoordinator()
@@ -155,83 +149,61 @@ struct CoordinatorColumnVisibilityTests {
         #expect(FileColumnLayoutPersister.shared.loadHiddenColumns(for: key) == ["email"])
     }
 
-    @Test("Applying column geometry after hiding columns keeps the hidden set and syncs the session")
-    func applyColumnGeometryPreservesHiddenColumns() {
+    private func usersKey(_ coordinator: MainContentCoordinator, _ tab: QueryTab, table: String = "users") -> ColumnLayoutTableKey {
+        ColumnLayoutTableKey(
+            connectionId: coordinator.connectionId,
+            databaseName: tab.tableContext.databaseName,
+            schemaName: tab.tableContext.schemaName,
+            tableName: table
+        )
+    }
+
+    @Test("A grid geometry change after hiding columns keeps the hidden set and reaches the tab")
+    func gridGeometryPreservesHiddenColumns() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
+        let key = usersKey(coordinator, try #require(tabManager.selectedTab))
+        defer {
+            coordinator.releaseGridModel(forTab: tabId, persistingLayout: false)
+            FileColumnLayoutPersister.shared.clear(for: key)
+        }
         coordinator.hideColumn("email")
 
-        var geometry = ColumnLayoutState()
-        geometry.columnWidths = ["id": 80, "name": 220]
-        geometry.columnOrder = ["id", "name"]
-        coordinator.applyColumnGeometry(from: geometry, toTabId: tabId)
+        coordinator.gridModel(forTab: tabId).columnGeometryDidChange(widths: ["id": 80, "name": 220], order: ["id", "name"])
 
-        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("Expected tab to exist")
-            return
-        }
-        let layout = tabManager.tabs[index].columnLayout
+        let layout = try #require(tabManager.tabs.first { $0.id == tabId }).columnLayout
         #expect(layout.hiddenColumns == ["email"])
         #expect(layout.columnWidths == ["id": 80, "name": 220])
         #expect(layout.columnOrder == ["id", "name"])
     }
 
-    @Test("Clearing layout after a schema reorder clears every geometry owner")
+    @Test("Clearing layout after a schema reorder clears the tab, the store and a pending write")
     func clearColumnLayoutForSelectedTableClearsEveryGeometryOwner() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addTableTab(to: tabManager, tableName: "users")
-        guard let tabIndex = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            Issue.record("Expected table tab")
-            return
-        }
+        let tabIndex = try #require(tabManager.tabs.firstIndex(where: { $0.id == tabId }))
         tabManager.mutate(at: tabIndex) { tab in
             tab.columnLayout.columnWidths = ["name": 180]
             tab.columnLayout.columnContentWidths = ["name": 160]
             tab.columnLayout.columnOrder = ["name", "id"]
             tab.columnLayout.hiddenColumns = ["email"]
         }
-
-        let key = ColumnLayoutTableKey(
-            connectionId: coordinator.connectionId,
-            databaseName: tabManager.tabs[tabIndex].tableContext.databaseName,
-            schemaName: tabManager.tabs[tabIndex].tableContext.schemaName,
-            tableName: "users"
-        )
+        let key = usersKey(coordinator, tabManager.tabs[tabIndex])
         FileColumnLayoutPersister.shared.save(tabManager.tabs[tabIndex].columnLayout, for: key)
         FileColumnLayoutPersister.shared.saveHiddenColumns(["email"], for: key)
-        defer { FileColumnLayoutPersister.shared.clear(for: key) }
-
-        let rows = TableRows.from(
-            queryRows: [[.text("Ada")]],
-            columns: ["name"],
-            columnTypes: [.text(rawType: "TEXT")]
+        defer {
+            coordinator.releaseGridModel(forTab: tabId, persistingLayout: false)
+            FileColumnLayoutPersister.shared.clear(for: key)
+        }
+        coordinator.setActiveTableRows(
+            TableRows.from(queryRows: [[.text("Ada")]], columns: ["name"], columnTypes: [.text(rawType: "TEXT")]),
+            for: tabId
         )
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: FileColumnLayoutPersister.shared
-        )
-        gridCoordinator.connectionId = coordinator.connectionId
-        gridCoordinator.databaseName = ""
-        gridCoordinator.tableName = "users"
-        gridCoordinator.tabType = .table
-        gridCoordinator.tableRowsProvider = { rows }
-        gridCoordinator.rebuildColumnMetadataCache(from: rows)
-        let tableView = NSTableView()
-        gridCoordinator.tableView = tableView
-        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
-        column.width = 180
-        tableView.addTableColumn(column)
-        #expect(gridCoordinator.markColumnWidthUserSized(column))
-        gridCoordinator.scheduleLayoutPersist()
-
-        let gridDelegate = DataTabGridDelegate()
-        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = gridDelegate
+        let model = coordinator.gridModel(forTab: tabId)
+        model.columnGeometryDidChange(widths: ["name": 200], order: nil)
 
         coordinator.clearColumnLayoutForSelectedTable()
+        coordinator.flushColumnLayoutPersistence()
 
         let layout = tabManager.tabs[tabIndex].columnLayout
         #expect(layout.columnWidths.isEmpty)
@@ -240,9 +212,8 @@ struct CoordinatorColumnVisibilityTests {
         #expect(layout.hiddenColumns == ["email"])
         #expect(FileColumnLayoutPersister.shared.load(for: key) == nil)
         #expect(FileColumnLayoutPersister.shared.loadHiddenColumns(for: key) == ["email"])
-        #expect(gridCoordinator.userSizedColumnNames.isEmpty)
-        #expect(gridCoordinator.shouldRecalculateAutomaticColumnWidths)
-        #expect(gridCoordinator.pendingColumnLayoutPersistence == nil)
+        #expect(model.store.columnLayout.columnWidths.isEmpty)
+        #expect(model.store.columnLayout.columnContentWidths == nil)
     }
 
     @Test("A delayed schema reorder clears only its captured table layout")
@@ -263,21 +234,12 @@ struct CoordinatorColumnVisibilityTests {
             tab.columnLayout.columnOrder = ["id", "name"]
         }
 
-        let sourceKey = ColumnLayoutTableKey(
-            connectionId: coordinator.connectionId,
-            databaseName: "",
-            schemaName: nil,
-            tableName: "users"
-        )
-        let destinationKey = ColumnLayoutTableKey(
-            connectionId: coordinator.connectionId,
-            databaseName: "",
-            schemaName: nil,
-            tableName: "orders"
-        )
+        let sourceKey = usersKey(coordinator, tabManager.tabs[sourceIndex])
+        let destinationKey = usersKey(coordinator, tabManager.tabs[destinationIndex], table: "orders")
         FileColumnLayoutPersister.shared.save(tabManager.tabs[sourceIndex].columnLayout, for: sourceKey)
         FileColumnLayoutPersister.shared.save(tabManager.tabs[destinationIndex].columnLayout, for: destinationKey)
         defer {
+            coordinator.releaseGridModel(forTab: destinationTabId, persistingLayout: false)
             FileColumnLayoutPersister.shared.clear(for: sourceKey)
             FileColumnLayoutPersister.shared.clear(for: destinationKey)
         }
@@ -285,35 +247,12 @@ struct CoordinatorColumnVisibilityTests {
         tabManager.selectedTabId = sourceTabId
         let target = try #require(coordinator.selectedColumnLayoutClearTarget())
         tabManager.selectedTabId = destinationTabId
-
-        let rows = TableRows.from(
-            queryRows: [[.text("Ada")]],
-            columns: ["name"],
-            columnTypes: [.text(rawType: "TEXT")]
+        coordinator.setActiveTableRows(
+            TableRows.from(queryRows: [[.text("Ada")]], columns: ["name"], columnTypes: [.text(rawType: "TEXT")]),
+            for: destinationTabId
         )
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: FileColumnLayoutPersister.shared
-        )
-        gridCoordinator.connectionId = coordinator.connectionId
-        gridCoordinator.databaseName = ""
-        gridCoordinator.tableName = "orders"
-        gridCoordinator.tabType = .table
-        gridCoordinator.tableRowsProvider = { rows }
-        gridCoordinator.rebuildColumnMetadataCache(from: rows)
-        let tableView = NSTableView()
-        gridCoordinator.tableView = tableView
-        let column = NSTableColumn(identifier: try #require(gridCoordinator.columnIdentifier(for: 0)))
-        column.width = 240
-        tableView.addTableColumn(column)
-        #expect(gridCoordinator.markColumnWidthUserSized(column))
-
-        let gridDelegate = DataTabGridDelegate()
-        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = gridDelegate
+        let destinationModel = coordinator.gridModel(forTab: destinationTabId)
+        #expect(destinationModel.store.columnLayout.columnWidths == ["name": 240])
 
         coordinator.clearColumnLayout(target)
 
@@ -327,51 +266,38 @@ struct CoordinatorColumnVisibilityTests {
         #expect(destinationLayout.columnOrder == ["id", "name"])
         #expect(FileColumnLayoutPersister.shared.load(for: sourceKey) == nil)
         #expect(FileColumnLayoutPersister.shared.load(for: destinationKey)?.columnWidths == ["name": 240])
-        #expect(gridCoordinator.userSizedColumnNames == ["name"])
-        #expect(!gridCoordinator.shouldRecalculateAutomaticColumnWidths)
+        #expect(destinationModel.store.columnLayout.columnWidths == ["name": 240])
     }
 
-    @Test("clearing a table's layout unfreezes its mounted grid, whose tab never recorded the freeze")
-    func clearingTheLayoutUnfreezesTheMountedGrid() throws {
+    // The freeze lives in the table's stored layout, which the tab's own copy never records.
+    @Test("clearing a table's layout unfreezes its grid model")
+    func clearingTheLayoutUnfreezesTheModel() throws {
         let (coordinator, tabManager) = makeCoordinator()
-        _ = addTableTab(to: tabManager, tableName: "orders")
+        let tabId = addTableTab(to: tabManager, tableName: "orders")
         let target = try #require(coordinator.selectedColumnLayoutClearTarget())
         var stored = ColumnLayoutState()
         stored.columnOrder = ["id", "name"]
         stored.frozenColumnCount = 2
         FileColumnLayoutPersister.shared.save(stored, for: target.tableKey)
-        defer { FileColumnLayoutPersister.shared.clear(for: target.tableKey) }
-
-        let rows = TableRows.from(
-            queryRows: [[.text("1"), .text("Ada")]],
-            columns: ["id", "name"],
-            columnTypes: [.text(rawType: "TEXT"), .text(rawType: "TEXT")]
+        defer {
+            coordinator.releaseGridModel(forTab: tabId, persistingLayout: false)
+            FileColumnLayoutPersister.shared.clear(for: target.tableKey)
+        }
+        coordinator.setActiveTableRows(
+            TableRows.from(
+                queryRows: [[.text("1"), .text("Ada")]],
+                columns: ["id", "name"],
+                columnTypes: [.text(rawType: "TEXT"), .text(rawType: "TEXT")]
+            ),
+            for: tabId
         )
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: FileColumnLayoutPersister.shared
-        )
-        gridCoordinator.connectionId = coordinator.connectionId
-        gridCoordinator.databaseName = ""
-        gridCoordinator.tableName = "orders"
-        gridCoordinator.tabType = .table
-        gridCoordinator.tableRowsProvider = { rows }
-        gridCoordinator.rebuildColumnMetadataCache(from: rows)
-        gridCoordinator.tableView = NSTableView()
-        gridCoordinator.frozenColumnCount = 2
-        #expect(gridCoordinator.columnLayoutKey == target.tableKey)
+        let model = coordinator.gridModel(forTab: tabId)
+        #expect(model.columns.frozenCount == 2)
         #expect(tabManager.selectedTab?.columnLayout.frozenColumnCount == 0)
-
-        let gridDelegate = DataTabGridDelegate()
-        gridDelegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = gridDelegate
 
         coordinator.clearColumnLayout(target)
 
-        #expect(gridCoordinator.frozenColumnCount == 0)
+        #expect(model.columns.frozenCount == 0)
         #expect(FileColumnLayoutPersister.shared.load(for: target.tableKey) == nil)
     }
 

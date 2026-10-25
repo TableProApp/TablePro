@@ -5,145 +5,117 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@MainActor
-private final class StructureRouteLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-/// A column row raises the same menu whichever way AppKit reaches it.
-///
-/// There are two routes and they used to end in two different menus.
-/// `KeyHandlingTableView.rightMouseDown` intercepts a click that lands inside the selection and
-/// answers from `DataGridRowView.contextMenu(for:)`; a click outside the selection falls through to
-/// `super`, which reaches the row view's own `menu(for:)`. The Structure tab overrode only the
-/// second, so selecting a column and right-clicking it produced the data grid's row commands over a
-/// schema row.
-///
-/// Asserted here rather than in a UI test because XCUITest cannot tell the two menus apart in this
-/// runner: an open contextual menu is not a child of the application element, and the titles that
-/// would discriminate (`Export Results…`) also sit in the menu bar, so an app-rooted query answers
-/// from there whatever the contextual menu holds.
+// Every row menu, from any click and either pane, is the grid's commands plus the owner's `gridRowMenuItems`.
 @MainActor
 struct StructureRowMenuRouteTests {
-    /// Only the structure menu builds this.
-    private let structureOnly = "Copy Name"
-    /// Only the data grid's row menu builds this.
-    private let dataGridOnly = "Export Results…"
-
-    private func makeRowView(tab: StructureTab = .columns) -> StructureRowViewWithMenu {
-        let coordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StructureRouteLayoutPersister()
+    private func makeAdapter(
+        tab: StructureTab = .columns,
+        type: DatabaseType = .mysql,
+        objectKind: TableInfo.TableType = .table,
+        manager: StructureChangeManager = StructureChangeManager()
+    ) -> StructureGridAdapter {
+        if manager.workingColumns.isEmpty {
+            manager.addColumn(.placeholder())
+        }
+        let adapter = StructureGridAdapter(
+            structureChangeManager: manager,
+            connection: TestFixtures.makeConnection(type: type),
+            tableName: "orders",
+            databaseName: "shop",
+            schemaName: nil,
+            objectKind: objectKind,
+            isSessionBound: false
         )
-        let tableRows = TableRows.from(
-            queryRows: [[.text("id")]], columns: ["Name"], columnTypes: [.text(rawType: "TEXT")]
+        adapter.store.switchSubTab(to: tab)
+        adapter.refresh()
+        return adapter
+    }
+
+    private func row(_ sourceIndex: Int) -> RowID {
+        StructureRowProvider.rowID(forSourceIndex: sourceIndex)
+    }
+
+    private func titles(_ items: [NSMenuItem]) -> [String] {
+        items.map { $0.title }
+    }
+
+    @Test("A column row's menu is the schema's own items, with no result commands")
+    func columnRowsGetTheStructureMenu() {
+        let adapter = makeAdapter()
+        let items = titles(adapter.gridRowMenuItems(for: [row(0)]))
+
+        #expect(items.contains(String(localized: "Copy Name")))
+        #expect(items.contains(String(localized: "Copy Definition")))
+        let commands = adapter.model.configuration.commands
+        #expect(commands.isDisjoint(with: [.exportResults, .showRowsAsJSON, .clearResults, .copyAsSQL, .filterWithColumn]))
+    }
+
+    @Test("A DDL tab row offers no row items and no row commands")
+    func theDdlTabRaisesNoMenu() {
+        let adapter = makeAdapter(tab: .ddl)
+
+        #expect(adapter.gridRowMenuItems(for: [row(0)]).isEmpty)
+        #expect(adapter.gridEmptySpaceMenu() == nil)
+        #expect(adapter.model.configuration.commands.isDisjoint(with: [.deleteRows, .duplicateRows, .addRow, .undoDelete]))
+    }
+
+    @Test("A row pending deletion offers none of the schema's items")
+    func deletedRowOffersNothing() throws {
+        let manager = StructureChangeManager()
+        manager.loadSchema(
+            tableName: "orders",
+            columns: [ColumnInfo(name: "id", dataType: "INT", isNullable: false, isPrimaryKey: true)],
+            indexes: [],
+            foreignKeys: [],
+            primaryKey: ["id"]
         )
-        coordinator.tableRowsProvider = { tableRows }
-        coordinator.rebuildColumnMetadataCache(from: tableRows)
-        coordinator.updateCache()
+        let adapter = makeAdapter(manager: manager)
+        adapter.gridDeleteRows([row(0)])
+        try #require(manager.deleteInsertState(for: 0, tab: .columns).isDeleted)
 
-        let tableView = KeyHandlingTableView()
-        tableView.coordinator = coordinator
-        tableView.addTableColumn(DataGridView.makeRowNumberColumn())
-        coordinator.tableView = tableView
-
-        let rowView = StructureRowViewWithMenu()
-        rowView.coordinator = coordinator
-        rowView.rowIndex = 0
-        rowView.structureTab = tab
-        return rowView
+        #expect(adapter.gridRowMenuItems(for: [row(0)]).isEmpty)
     }
 
-    private func rightClick() throws -> NSEvent {
-        try #require(NSEvent.mouseEvent(
-            with: .rightMouseDown,
-            location: NSPoint(x: 10, y: 10),
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            eventNumber: 0,
-            clickCount: 1,
-            pressure: 1
-        ))
-    }
-
-    private func titles(_ menu: NSMenu?) -> [String] {
-        (menu?.items ?? []).map(\.title)
-    }
-
-    @Test("The route a click outside the selection takes builds the structure menu")
-    func theUnselectedRouteBuildsTheStructureMenu() throws {
-        let rowView = makeRowView()
-        let items = titles(rowView.menu(for: try rightClick()))
-
-        #expect(items.contains(structureOnly))
-        #expect(!items.contains(dataGridOnly))
-    }
-
-    @Test("The route a click inside the selection takes builds the structure menu too")
-    func theSelectedRouteBuildsTheStructureMenu() throws {
-        let rowView = makeRowView()
-        let items = titles(rowView.contextMenu(for: try rightClick()))
-
-        #expect(items.contains(structureOnly))
-        #expect(!items.contains(dataGridOnly))
-    }
-
-    /// The pinned row-number strip asks with the target already resolved, because the column under the
-    /// pointer there is one scrolled out of sight. Only the two event routes were overridden, so the
-    /// strip raised the data grid's row menu over a schema row.
-    @Test("The pinned row-number strip's route builds the structure menu too")
-    func thePinnedStripRouteBuildsTheStructureMenu() {
-        let rowView = makeRowView()
-        let items = titles(rowView.contextMenu(target: .row))
-
-        #expect(items.contains(structureOnly))
-        #expect(!items.contains(dataGridOnly))
-    }
-
-    /// Not a column list, so no route offers a menu at all.
-    @Test("A DDL tab row raises no menu on any route")
-    func theDdlTabRaisesNoMenu() throws {
-        let rowView = makeRowView(tab: .ddl)
-
-        #expect(rowView.menu(for: try rightClick()) == nil)
-        #expect(rowView.contextMenu(for: try rightClick()) == nil)
-        #expect(rowView.contextMenu(target: .row) == nil)
-    }
-
-    /// A materialized view refuses `DROP COLUMN` and `ADD COLUMN`. The menu used to offer Delete and
-    /// Duplicate on its columns anyway, and choosing either did nothing at all.
-    @Test("Delete and Duplicate appear only where the object accepts them")
+    // A materialized view refuses DROP COLUMN and ADD COLUMN; the menu used to offer both and do nothing.
+    @Test("Delete and Duplicate are offered only where the object accepts them")
     func rowEditsFollowTheGate() {
-        let refused = makeRowView()
-        refused.canDelete = false
-        refused.canDuplicate = false
-        let refusedItems = titles(refused.contextMenu(target: .row))
-        #expect(!refusedItems.contains(String(localized: "Delete")))
-        #expect(!refusedItems.contains(String(localized: "Duplicate")))
-        #expect(refusedItems.last != "")
+        let refused = makeAdapter(type: .postgresql, objectKind: .materializedView)
+        #expect(refused.model.configuration.commands.isDisjoint(with: [.deleteRows, .duplicateRows]))
+        #expect(refused.gridRowMenuItems(for: [row(0)]).last?.isSeparatorItem == false)
 
-        let deleteOnly = makeRowView(tab: .indexes)
-        deleteOnly.canDelete = true
-        deleteOnly.canDuplicate = false
-        let deleteOnlyItems = titles(deleteOnly.contextMenu(target: .row))
-        #expect(deleteOnlyItems.contains(String(localized: "Delete")))
-        #expect(!deleteOnlyItems.contains(String(localized: "Duplicate")))
+        let accepted = makeAdapter()
+        #expect(accepted.model.configuration.commands.isSuperset(of: [.deleteRows, .duplicateRows, .undoDelete]))
+    }
 
-        let accepted = makeRowView()
-        let acceptedItems = titles(accepted.contextMenu(target: .row))
-        #expect(acceptedItems.contains(String(localized: "Delete")))
-        #expect(acceptedItems.contains(String(localized: "Duplicate")))
+    @Test("Open names the referenced table only while one foreign key is targeted")
+    func openReferencedTableNeedsOneRow() {
+        let manager = StructureChangeManager()
+        var first = EditableForeignKeyDefinition.placeholder()
+        first.referencedTable = "customers"
+        var second = EditableForeignKeyDefinition.placeholder()
+        second.referencedTable = "customers"
+        manager.addForeignKey(first)
+        manager.addForeignKey(second)
+        let adapter = makeAdapter(tab: .foreignKeys, manager: manager)
+        let open = String(format: String(localized: "Open %@"), "customers")
+
+        #expect(titles(adapter.gridRowMenuItems(for: [row(0)])).contains(open))
+        #expect(!titles(adapter.gridRowMenuItems(for: [row(0), row(1)])).contains(open))
+    }
+
+    @Test("The empty space below the rows offers the sub-tab's own Add")
+    func emptySpaceOffersAdd() {
+        let columns = makeAdapter(tab: .columns)
+        #expect(titles(columns.gridEmptySpaceMenu()?.items ?? []) == [String(localized: "Add Column")])
+
+        let indexes = makeAdapter(tab: .indexes)
+        #expect(titles(indexes.gridEmptySpaceMenu()?.items ?? []) == [String(localized: "Add Index")])
+
+        let view = makeAdapter(type: .postgresql, objectKind: .view)
+        #expect(view.gridEmptySpaceMenu() == nil)
     }
 }

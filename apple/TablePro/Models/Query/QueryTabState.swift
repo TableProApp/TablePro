@@ -8,12 +8,6 @@ import Foundation
 import TableProPluginKit
 import TableProUtilities
 
-@MainActor
-final class GridSelectionState: ObservableObject {
-    @Published var indices: Set<Int> = []
-}
-
-/// Type of tab
 enum TabType: Equatable, Codable, Hashable {
     case query
     case table
@@ -24,12 +18,10 @@ enum TabType: Equatable, Codable, Hashable {
     case insights
     case objectSource
     case versionHistory
-    /// The tables of one database or schema, as a read-only grid. Built from the catalog each time it
-    /// loads, never from SQL saved with the tab.
+    // Read-only grid of one database's or schema's tables, rebuilt from the catalog on each load, never from saved SQL.
     case tableListing
 }
 
-/// Minimal representation of a tab for persistence
 struct PersistedTab: Codable {
     let id: UUID
     let title: String
@@ -37,9 +29,7 @@ struct PersistedTab: Codable {
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false
-    /// The object's own kind, as its `TableInfo.TableType` raw value. Optional and a raw String so a
-    /// file written before this existed decodes to nil, and a spelling a newer build invents decodes
-    /// to nil too rather than throwing and taking the whole tab aggregate with it.
+    // Optional raw String so old files and kinds a newer build invents decode to nil instead of failing the whole tab set.
     var objectTypeRawValue: String?
     var databaseName: String = ""
     var schemaName: String?
@@ -50,9 +40,7 @@ struct PersistedTab: Codable {
     var versionHistorySubject: VersionHistorySubject?
     var queryParameters: [QueryParameter]?
     var sortColumns: [PersistedSortColumn]?
-    /// Who chose the saved order. Absent in every file written before this existed, which decodes
-    /// back to the behaviour those files were written under: `.user` when columns were saved,
-    /// `.unset` when none were.
+    // Nil in files written before this existed: decodes to .user when columns were saved, .unset when none were.
     var sortSource: SortSource?
     var restoredPage: Int?
     var restoredPageSize: Int?
@@ -65,7 +53,7 @@ struct PersistedTab: Codable {
     var isPinned: Bool = false
     var isTemporary: Bool = false
 
-    /// Set when the query was too large for the tab-state JSON and lives in a sidecar file.
+    // Set when the query was too large for the tab-state JSON and lives in a sidecar file.
     var overflowFileName: String?
 
     init(
@@ -220,7 +208,6 @@ enum SortDirection: String, Equatable, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// A single column in a multi-column sort
 struct SortColumn: Equatable {
     var columnIndex: Int
     var direction: SortDirection
@@ -233,25 +220,19 @@ struct SortColumn: Equatable {
     }
 }
 
-/// A sort column captured for cross-launch persistence, keyed by name so it survives column reordering
+// Keyed by name so it survives column reordering across launches.
 struct PersistedSortColumn: Codable, Equatable {
     let columnName: String
     let direction: SortDirection
 }
 
-/// Who decided the order the rows are in.
-///
-/// Three answers, not two, and the third is what makes "Don't Sort" stick. An empty `SortState`
-/// used to mean both "nothing has decided yet" and "the user turned sorting off", so
-/// `wantsDefaultSort` could not tell them apart and wrote the app default back over an explicit
-/// clear on the next first load. `.unset` is the former; `columns: [], source: .user` is the latter.
+// .unset vs .user with no columns tells "nothing decided yet" from "user turned sorting off", so Don't Sort sticks.
 enum SortSource: String, Equatable, Codable {
     case unset
     case user
     case defaultSort
 }
 
-/// Tracks sorting state for a table (supports multi-column sort)
 struct SortState: Equatable {
     var columns: [SortColumn] = []
     var source: SortSource = .unset
@@ -263,8 +244,7 @@ struct SortState: Equatable {
 
     var isSorting: Bool { !columns.isEmpty }
 
-    /// The sort in the name-keyed shape both persistence and navigation history store it in. A
-    /// column with no name cannot be resolved back against a re-fetched result, so it is dropped.
+    // A column with no name cannot be resolved against a re-fetched result, so it is dropped.
     var persistedColumns: [PersistedSortColumn] {
         columns.compactMap { column in
             guard let name = column.columnName else { return nil }
@@ -277,31 +257,18 @@ struct SortState: Equatable {
     var direction: SortDirection { columns.first?.direction ?? .ascending }
 }
 
-/// Tracks pagination state for navigating large datasets
 struct PaginationState: Equatable {
-    var totalRowCount: Int?         // Total rows in table (from COUNT(*))
-    var pageSize: Int               // Rows per page (passed from manager/coordinator)
-    var currentPage: Int = 1         // Current page number (1-based)
-    var currentOffset: Int = 0       // Current OFFSET for SQL query
-    /// A fetch is in flight for the rows this state describes.
-    ///
-    /// Raised synchronously by whatever discards the tab's rows, in the same block that discards
-    /// them, and lowered when the rows land or the attempt fails. It cannot be derived from
-    /// `TabExecutionRegistry.isExecuting`: retargeting a tab clears the row buffer synchronously
-    /// but only *schedules* the load, so the claim arrives a main-actor turn later and the status
-    /// bar can render an empty buffer that nothing has yet called a load.
+    var totalRowCount: Int?
+    var pageSize: Int
+    var currentPage: Int = 1
+    var currentOffset: Int = 0
+    // Raised where rows are discarded; not derived from TabExecutionRegistry, whose claim lands a main-actor turn later.
     var isLoading: Bool = false
-    var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
-    var isCountingExact: Bool = false        // True while a user-requested exact count is running
-    /// The message a failed `Count Exactly` put on the tab, so a later count that succeeds takes
-    /// down its own error and no other.
+    var isApproximateRowCount: Bool = false
+    var isCountingExact: Bool = false
+    // From a failed Count Exactly, kept so a later successful count clears only this error.
     var exactCountError: String?
-    /// An automatic row count is running, so the total on screen is not the one this page settles on.
-    ///
-    /// Separate from `isCountingExact`, which the user asked for and which owns the spinner. This
-    /// one is silent: it exists so `Count Exactly` is not offered against a total that is about to
-    /// be replaced anyway. The execution claim cannot answer this, because it settles the moment
-    /// phase 1 applies, before the count is even dispatched.
+    // Silent automatic count in flight, so Count Exactly is not offered; the execution claim settles before it dispatches.
     var isCountPending: Bool = false
 
     // Result truncation state (query tabs)
@@ -310,16 +277,13 @@ struct PaginationState: Equatable {
     var baseQueryForMore: String?
     var baseQueryParameterValues: [String?]?
 
-    /// The query and its bindings are one fact, so they are replaced together. Setting the query
-    /// alone left the previous run's bindings in place, and Fetch All then sent them with a query
-    /// that no longer had placeholders, which the server rejects.
+    // Set together: stale bindings sent with a placeholder-free query made Fetch All fail on the server.
     mutating func setBaseQueryForMore(_ sql: String?, parameterValues: [String?]?) {
         baseQueryForMore = sql
         baseQueryParameterValues = parameterValues
     }
 
-    /// Default page size constant (used when no explicit value is provided)
-    /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
+    // Fallback only; new tabs pass AppSettingsManager.shared.dataGrid.defaultPageSize.
     static let defaultPageSize = 1_000
 
     init(
@@ -338,36 +302,26 @@ struct PaginationState: Equatable {
 
     // MARK: - Computed Properties
 
-    /// Total number of pages
-    ///
-    /// The ceiling is taken with `quotientAndRemainder` rather than `(total + pageSize - 1) / pageSize`
-    /// because the custom rows-per-page field used to accept `Int.max`, and the addition then trapped
-    /// on overflow the next time the status bar rendered.
+    // quotientAndRemainder, not (total + pageSize - 1): the rows-per-page field once accepted Int.max and overflowed.
     var totalPages: Int {
         guard let total = totalRowCount, total > 0, pageSize > 0 else { return 1 }
         let (quotient, remainder) = total.quotientAndRemainder(dividingBy: pageSize)
         return remainder == 0 ? quotient : quotient + 1
     }
 
-    /// Any asynchronous work this state is still waiting on.
     var isBusy: Bool {
         isLoading || isLoadingMore || isCountingExact || isCountPending
     }
 
-    /// Whether the total is a real count rather than a driver estimate.
-    ///
-    /// An estimate cannot bound navigation. MySQL's `TABLE_ROWS` under-reports InnoDB routinely, and
-    /// an estimate kept as the total left every row past it unreachable behind a disabled Next.
+    // An estimate cannot bound navigation: MySQL's TABLE_ROWS under-reports InnoDB and stranded rows behind a disabled Next.
     var hasExactRowCount: Bool {
         totalRowCount != nil && !isApproximateRowCount
     }
 
-    /// Whether any total is available, exact or estimated.
     var hasRowCountTotal: Bool {
         totalRowCount != nil
     }
 
-    /// Whether there is a next page available
     var hasNextPage: Bool {
         currentPage < totalPages
     }
@@ -381,21 +335,20 @@ struct PaginationState: Equatable {
         return loadedRowCount >= pageSize
     }
 
-    /// Whether there is a previous page available
+    // A table tab pages through currentPage; hasMoreRows is a query result cut short.
+    func hasUnloadedRows(loadedRowCount: Int) -> Bool {
+        hasMoreRows || canGoToNextPage(loadedRowCount: loadedRowCount)
+    }
+
     var hasPreviousPage: Bool {
         currentPage > 1
     }
 
-    /// Starting row number for current page (1-based)
     var rangeStart: Int {
         currentOffset + 1
     }
 
-    /// Ending row number for the current page, from the rows the page actually returned.
-    ///
-    /// Deriving it from `pageSize` fabricated a range the grid never showed: a table whose driver
-    /// estimate said a million rows but which returned twelve reported "1-1000 of ~1,000,000 rows".
-    /// The loaded count is the only number that describes what is on screen.
+    // From loaded rows, not pageSize: an estimate of 1M that returned 12 rows showed "1-1000 of ~1,000,000 rows".
     func rangeEnd(loadedRowCount: Int) -> Int {
         currentOffset + max(loadedRowCount, 0)
     }
@@ -431,52 +384,34 @@ struct PaginationState: Equatable {
         setPage(totalPages)
     }
 
-    /// A page beyond the last is refused only when the last one is actually known. With an estimate
-    /// there is no trustworthy upper bound, and refusing on one strands the rows past it.
+    // Pages past the last are refused only for an exact total; an estimate is no trustworthy upper bound.
     mutating func goToPage(_ page: Int) {
         guard page > 0, hasRowCountTotal else { return }
         guard !hasExactRowCount || page <= totalPages else { return }
         setPage(page)
     }
 
-    /// Applies a total the app derived on its own, rather than one the user asked for.
-    ///
-    /// An estimate never replaces an exact count. The automatic count re-runs after every execution,
-    /// including a page turn, and on a driver whose cheap count is an estimate that silently undid a
-    /// `Count Exactly` and brought the button back on the next page. Retiring an exact count is a
-    /// deliberate act, so it belongs to the paths that ask for fresh data, not to this one.
-    /// A nil total blanks it, which is what a filter change asks for and is never an estimate.
+    // Never replaces an exact count: the auto count re-runs on every page turn and undid Count Exactly. Nil blanks it.
     mutating func applyDerivedRowCount(_ total: Int?, isApproximate: Bool) {
         guard !isApproximate || !hasExactRowCount else { return }
         totalRowCount = total
         isApproximateRowCount = isApproximate
     }
 
-    /// Drops the total so the next execution derives it again from scratch.
-    ///
-    /// For the paths that change the row set or ask for it fresh, where the count on screen is no
-    /// longer describing the table. Clearing the number rather than flagging it approximate matters:
-    /// `rowCountPlan` skips counting a table whose total already exceeds the count threshold, so a
-    /// real count left in place and merely relabelled would keep its `~` forever, with `Last page`
-    /// disabled and no `Count Exactly` to put it right. Cleared, the tab counts exactly the way a
-    /// freshly opened one does.
+    // Cleared, not marked approximate: rowCountPlan skips counting a total above the threshold, so the ~ would stick.
     mutating func retireDerivedRowCount() {
         totalRowCount = nil
         isApproximateRowCount = false
     }
 
-    /// Reset pagination to first page
     mutating func reset() {
         currentPage = 1
         currentOffset = 0
         isLoading = false
-        /// A count belonging to the rows being replaced is not this tab's business any more. Left
-        /// set, a superseded attempt's mark would suppress `Count Exactly` on the new table until
-        /// something else happened to clear it.
+        // A superseded count's mark would otherwise suppress Count Exactly on the new table.
         isCountPending = false
     }
 
-    /// Reset result truncation state
     mutating func resetLoadMore() {
         hasMoreRows = false
         isLoadingMore = false
@@ -484,18 +419,13 @@ struct PaginationState: Equatable {
         baseQueryParameterValues = nil
     }
 
-    /// Update page size (limit), keeping the first visible row inside the new page.
-    ///
-    /// `setPage` is what re-derives the offset. Assigning `currentPage` alone left the old offset in
-    /// place, so changing 20 to 100 on page 3 ran `LIMIT 100 OFFSET 40` while the indicator read
-    /// "1 / N" and First and Previous went inert.
+    // Goes through setPage to re-derive the offset; setting currentPage alone ran LIMIT 100 OFFSET 40 shown as page 1.
     mutating func updatePageSize(_ newSize: Int) {
         guard newSize > 0 else { return }
         pageSize = newSize
         setPage((currentOffset / pageSize) + 1)
     }
 
-    /// Update offset directly and recalculate page
     mutating func updateOffset(_ newOffset: Int) {
         guard newOffset >= 0 else { return }
         currentOffset = newOffset
@@ -503,7 +433,6 @@ struct PaginationState: Equatable {
     }
 }
 
-/// Stores column layout (widths and order) within a tab session
 struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
     var columnContentWidths: [String: CGFloat]?
@@ -512,20 +441,13 @@ struct ColumnLayoutState: Equatable {
     // Leading columns in display order, a count so a result that repeats a name stays unambiguous.
     var frozenColumnCount: Int = 0
 
-    /// Splices a captured order into the stored one, keeping names the capture never saw.
-    ///
-    /// A capture only lists the columns the query returned, and hiding a column takes it out of
-    /// that projection. Overwriting with the capture therefore drops the hidden column's position,
-    /// and showing it again appends it at the end, which reorders a grid the user never touched.
-    /// Names the capture does cover take its order; the rest hold their slots.
+    // A capture omits hidden columns, so names it doesn't cover keep their slots instead of jumping to the end when shown.
     static func mergedColumnOrder(current: [String]?, incoming: [String]?) -> [String]? {
         guard let incoming else { return current }
         guard let current, !current.isEmpty else { return incoming }
 
         let incomingSet = Set(incoming)
-        // Only a narrowing of the same column set is a partial capture worth splicing. Anything
-        // else is a different result, and merging there would accumulate names from a table the
-        // layout no longer describes.
+        // Only a narrowing of the same column set is a partial capture; anything else is a different result.
         guard incomingSet.isSubset(of: Set(current)) else { return incoming }
         var remaining = incoming.makeIterator()
         var merged: [String] = []
@@ -552,8 +474,7 @@ struct ColumnLayoutState: Equatable {
         frozenColumnCount = other.frozenColumnCount
     }
 
-    /// Drops the geometry outright. Reset is not a capture, so it must not go through the merge,
-    /// which deliberately keeps a stored order when a capture carries none.
+    // Reset is not a capture, so it skips the merge, which keeps a stored order when a capture carries none.
     mutating func resetGeometry() {
         columnWidths = [:]
         columnContentWidths = nil
@@ -568,9 +489,7 @@ struct ColumnLayoutState: Equatable {
     }
 }
 
-/// Deliberately has no `isExecuting`. Busy state is derived from `TabExecutionRegistry`, because a
-/// stored flag could not be reset by a tab retarget and so kept a retargeted tab busy forever,
-/// silently swallowing every later navigation.
+// No isExecuting on purpose: busy comes from TabExecutionRegistry, as a stored flag kept retargeted tabs busy forever.
 struct TabExecutionState: Equatable {
     var executionTime: TimeInterval?
     var statusMessage: String?
@@ -579,14 +498,10 @@ struct TabExecutionState: Equatable {
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
 
-    /// Set when work on this tab finished somewhere the user could not see it, cleared when they
-    /// select the tab. This is the channel that survives a missed banner, a denied notification
-    /// permission and a Focus mode, none of which the app can do anything about.
+    // Set when work finished out of sight, cleared on select; survives missed banners, denied notifications and Focus.
     var finishedUnseenAt: Date?
 
-    /// Hand-written, and every field the UI draws from has to be in it. `finishedUnseenAt` drives
-    /// a dot in the tab strip, so leaving it out here would mean the dot never appeared: SwiftUI
-    /// compares the tab and sees no change.
+    // Hand-written: every field the UI draws must be compared, or SwiftUI sees no change (finishedUnseenAt drives a dot).
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
@@ -604,19 +519,10 @@ struct TabTableContext: Equatable {
     var isEditable: Bool = false
     var isView: Bool = false
 
-    /// The object's own kind, carried beside `isView` rather than replacing it.
-    ///
-    /// `isView` is a read-only mark that a dozen Bool-only carriers already speak (deeplinks, the URL
-    /// parser, scripting, recents), and a tab saved by an older build can carry it false over a
-    /// materialized view. It cannot say which of seven kinds the object is. This can, and only the
-    /// kind says which *structure* edits the object accepts. (#2726)
-    ///
-    /// Nil on a tab restored from a file written before this existed, and on any path that never
-    /// learned the kind; `resolvedObjectKind()` falls back to what `isView` can still tell us.
+    // Beside isView, which can't tell seven kinds apart; only the kind says which structure edits the object accepts (#2726).
     var objectType: TableInfo.TableType?
 
-    // Read on the session that holds it, and browsed only: a staged row edit would land on whatever table the name
-    // reaches once the temporary one is dropped.
+    // Browse only: a staged row edit would land on whatever table the name reaches once the temporary one is dropped.
     var isTemporary = false
 
     func resolvedObjectKind() -> TableInfo.TableType {
@@ -629,18 +535,14 @@ struct TabTableContext: Equatable {
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }
 
-    /// A tab opened without an explicit database carries an empty name and follows the window's
-    /// browse cursor, so comparing the stored value against a real database name never matches.
+    // An empty name means the tab follows the window's browse cursor.
     func resolvedDatabaseName(browsing browseDatabaseName: String) -> String {
         databaseName.isEmpty ? browseDatabaseName : databaseName
     }
 }
 
 struct TabQueryContent: Equatable {
-    /// Holds the query text behind a reference. SwiftUI's attribute-graph diff compares a value by walking its memory
-    /// layout, so a stored `String` field made it normalize the whole multi-megabyte query (NFC) on every view update.
-    /// Storing the text in a class makes that walk compare an 8-byte pointer instead. Value semantics are preserved
-    /// because the setter replaces the box.
+    // Boxed: SwiftUI's graph diff walks a stored String, which NFC-normalized multi-MB queries on every view update.
     private final class QueryStorage: Sendable {
         let text: String
         init(_ text: String) { self.text = text }
@@ -694,9 +596,7 @@ struct TabQueryContent: Equatable {
     }
 
     static func == (lhs: TabQueryContent, rhs: TabQueryContent) -> Bool {
-        // Cheap scalar fields short-circuit first. The query and saved-file text can be multiple megabytes and are
-        // bridged from NSTextStorage, so they are compared last and with `sameText` to avoid Swift's canonical Unicode
-        // comparison (O(n) on the bridged text); the same-box identity check makes an unchanged query O(1).
+        // Cheap fields first; multi-MB text last, via box identity and sameText to skip canonical Unicode comparison.
         lhs.isParameterPanelVisible == rhs.isParameterPanelVisible
             && lhs.diskChange == rhs.diskChange
             && lhs.dismissedDiskChange == rhs.dismissedDiskChange
@@ -708,7 +608,7 @@ struct TabQueryContent: Equatable {
             && sameText(lhs.savedFileContent, rhs.savedFileContent)
     }
 
-    /// Literal text equality that skips Swift's canonical Unicode comparison, returning in O(1) when the lengths differ.
+    // Literal comparison, skipping Swift's canonical Unicode equality; O(1) when the lengths differ.
     private static func sameText(_ lhs: String?, _ rhs: String?) -> Bool {
         switch (lhs, rhs) {
         case (nil, nil):
@@ -723,12 +623,7 @@ struct TabQueryContent: Equatable {
 
 struct TabDisplayState: Equatable {
     var resultsViewMode: ResultsViewMode = .data
-    /// The geometry columns of the result currently installed, decided where the rows are installed
-    /// rather than at each reader.
-    ///
-    /// Deciding it costs a sample of the column's values, and the status bar asks on every render
-    /// while the View menu asks on every validation, so it is answered once per result. Nothing but
-    /// `MainContentCoordinator.installTableRows` writes it.
+    // Set once per result in installTableRows: detection samples values, and the status bar and View menu ask constantly.
     var spatialColumns: [SpatialColumn] = []
     var erDiagramSchemaKey: String?
     var objectRef: DatabaseObjectRef?
@@ -755,7 +650,6 @@ struct TabDisplayState: Equatable {
         leaveOutputModeWithoutOutput()
     }
 
-    /// A re-read of one result takes its place, label and pin included, and leaves the others alone.
     @MainActor
     mutating func replaceResult(_ outgoingId: UUID, with result: ResultSet) {
         guard let index = resultSets.firstIndex(where: { $0.id == outgoingId }) else { return }
@@ -773,9 +667,7 @@ struct TabDisplayState: Equatable {
         leaveOutputModeWithoutOutput()
     }
 
-    /// Output mode shows what the active result printed, so it cannot outlive a result that printed nothing. The
-    /// rows of a new result are installed, and their modes reconciled, before the result itself replaces the old
-    /// one, which is too early to see the new result's output.
+    // Output mode can't outlive a silent result; checked here since row install reconciles modes before the result swap.
     @MainActor
     private mutating func leaveOutputModeWithoutOutput() {
         guard resultsViewMode == .output, activeResultSet?.serverOutput.isEmpty != false else { return }

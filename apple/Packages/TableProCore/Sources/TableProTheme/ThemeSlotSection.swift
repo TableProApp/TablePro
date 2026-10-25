@@ -1,13 +1,11 @@
 import Foundation
 
-/// The theme editor's grouping. It splits the data grid's file-format group so selection and row
-/// change colors, which are chosen together, sit together.
+// The theme editor's grouping: the row change colors, chosen together, get a section of their own.
 public enum ThemeSlotSection: String, CaseIterable, Sendable {
     case window
     case editor
     case syntax
     case dataGrid
-    case selection
     case changes
 
     public var label: String {
@@ -16,7 +14,6 @@ public enum ThemeSlotSection: String, CaseIterable, Sendable {
         case .editor: return String(localized: "Editor")
         case .syntax: return String(localized: "Syntax")
         case .dataGrid: return String(localized: "Data Grid")
-        case .selection: return String(localized: "Selection")
         case .changes: return String(localized: "Changes")
         }
     }

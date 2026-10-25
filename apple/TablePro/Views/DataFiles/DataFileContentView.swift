@@ -9,16 +9,11 @@ import TableProTheme
 
 struct DataFileContentView: View {
     @ObservedObject var controller: DataFileController
-    let gridDelegate: DataFileGridDelegate
 
     var body: some View {
         VStack(spacing: 0) {
             if controller.filterState.isVisible, controller.loadState == .loaded {
                 DataFileFilterPanel(controller: controller)
-                Divider()
-            }
-            if controller.find.isVisible, controller.loadState == .loaded {
-                DataFileFindBar(controller: controller)
                 Divider()
             }
             content
@@ -66,23 +61,9 @@ struct DataFileContentView: View {
     }
 
     private var grid: some View {
-        DataGridView(
-            tableRowsProvider: { controller.tableRows },
-            tableRowsMutator: { _ in .none },
-            paginationOffsetProvider: { controller.pageOffset },
-            changeManager: controller.anyChangeManager,
-            isEditable: controller.isEditable && !controller.isBusy,
-            configuration: configuration,
-            delegate: gridDelegate,
-            selectedRowIndices: $controller.selectedRowIndices,
-            sortState: Binding(
-                get: { controller.sortState },
-                set: { controller.updateSort($0) }
-            ),
-            columnLayout: $controller.columnLayout,
-            selectionSummary: controller.selectionSummary
-        )
-        .accessibilityIdentifier("data-grid")
+        DataGridView(model: controller.gridModel)
+            .onAppear { controller.gridModel.configuration = configuration }
+            .onChange(of: configuration) { controller.gridModel.configuration = $0 }
     }
 
     private var emptyView: some View {
@@ -97,13 +78,18 @@ struct DataFileContentView: View {
 
     private var configuration: DataGridConfiguration {
         var config = DataGridConfiguration()
+        let isEditable = controller.isEditable && !controller.isBusy
         config.showRowNumbers = true
-        config.hiddenColumns = controller.columnLayout.hiddenColumns
+        config.isEditable = isEditable
         config.supportsValueFilter = false
         config.appliesRowCopyFormat = true
-        config.filterMenuColumnTypes = controller.columnNames.ids.map {
-            DataFileColumnTypes.filterType(for: controller.kind(of: $0))
+        var commands: Set<DataGridCommand> = [
+            .filterWithColumn, .hideColumns, .showRowsAsJSON, .exportResults, .freezeColumns,
+        ]
+        if isEditable {
+            commands.formUnion([.addRow, .deleteRows, .pasteRows])
         }
+        config.commands = commands
         return config
     }
 }

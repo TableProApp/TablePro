@@ -2,8 +2,6 @@
 //  TableStructureView+ColumnReorder.swift
 //  TablePro
 //
-//  Dragging a column row to a new position, and what happens when the engine cannot.
-//
 
 import Combine
 import Foundation
@@ -12,22 +10,6 @@ import TableProPluginKit
 import TableProSQLGrammar
 
 extension TableStructureView {
-    /// Whether a column may be dragged right now, and the reason shown on the row number when not.
-    ///
-    /// Read by both the grid, which decides whether to offer the drag at all, and the delegate,
-    /// which decides whether there is a handler behind it. One answer, so the two cannot disagree.
-    var columnReorderAvailability: ColumnReorderAvailability {
-        ColumnReorderPolicy.resolve(
-            support: PluginManager.shared.columnReorderSupport(for: connection.type),
-            engineName: connection.type.displayName,
-            isColumnsTab: selectedTab == .columns,
-            kindRefusal: editGate.kindRefusal(.reorderColumns),
-            canEditSchema: editGate.canEditSchema,
-            hasStagedChanges: structureChangeManager.hasChanges,
-            isRearranged: !searchText.isEmpty || structureSortDescriptor != nil
-        )
-    }
-
     func beginColumnReorder(fromIndex: Int, toIndex: Int) {
         let columnsSnapshot = structureChangeManager.workingColumns
         let clearTarget = coordinator?.selectedColumnLayoutClearTarget()
@@ -56,7 +38,7 @@ extension TableStructureView {
                 case .tableRebuild:
                     presentColumnReorderReview(prepared, clearTarget: clearTarget)
                 @unknown default:
-                    /// A cost this build does not recognise is shown before it runs, never after.
+                    // A cost this build does not recognise is shown before it runs, never after.
                     presentColumnReorderReview(prepared, clearTarget: clearTarget)
                 }
             } catch {
@@ -65,8 +47,6 @@ extension TableStructureView {
         }
     }
 
-    /// A rebuild is never run on the drop. It is shown in full, with what it cannot carry over, and
-    /// the user either runs it here or takes the script to a query tab.
     private func presentColumnReorderReview(
         _ prepared: StructureColumnReorderHandler.PreparedReorder,
         clearTarget: ColumnLayoutClearTarget?
@@ -135,7 +115,6 @@ extension TableStructureView {
         )
     }
 
-    /// A Cancel at the gate's confirmation shows nothing: the user chose it a moment ago.
     private func reportColumnReorderFailure(_ error: any Error) {
         guard let message = StructureApplyFailure(error).message else { return }
         AlertHelper.showErrorSheet(

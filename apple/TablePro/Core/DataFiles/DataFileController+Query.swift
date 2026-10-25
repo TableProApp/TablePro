@@ -63,7 +63,7 @@ extension DataFileController {
         filterState.executedFilters = filterState.appliedFilters
         let predicate = currentPredicate()
         let sortKeys = currentSortKeys()
-        selectedRowIndices = []
+        gridModel.clearSelection()
         pageOffset = 0
         guard !predicate.isTrivial || !sortKeys.isEmpty else {
             setQueryTask(nil)

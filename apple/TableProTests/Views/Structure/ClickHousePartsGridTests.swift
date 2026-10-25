@@ -73,17 +73,29 @@ struct ClickHousePartsGridTests {
     }
 
     @Test("A selected grid row names its own part")
-    func selectedRowResolvesToItsPart() {
+    func selectedRowResolvesToItsPart() throws {
         let other = ClickHousePartInfo(
             partition: "202602", name: "202602_1_1_0", rows: 1, bytesOnDisk: 1, modificationTime: "", active: true
         )
         let parts = [part, other]
         let grid = StructureListGridModel<UUID>()
-        _ = grid.ensureLoaded(key: 1, columns: ClickHousePartsView.columnTitles) {
-            parts.map(ClickHousePartsView.gridRow(for:))
-        }
+        var selected: Set<UUID> = []
+        grid.onSelect = { selected = $0 }
+        grid.load(
+            columns: ClickHousePartsView.columnTitles,
+            rows: parts.map(ClickHousePartsView.gridRow(for:)),
+            defaultWidths: ClickHousePartsView.columnWidths,
+            minimumWidths: ClickHousePartsView.columnMinimumWidths,
+            databaseType: .clickhouse,
+            sortState: nil
+        )
+        let second = try #require(grid.model.rowID(at: 1))
 
-        #expect(grid.id(atDisplayRow: 1) == other.id)
-        #expect(grid.id(atDisplayRow: 2) == nil)
+        grid.model.selectRows([second])
+
+        #expect(grid.id(for: second) == other.id)
+        #expect(selected == [other.id])
+        #expect(ClickHousePartsView.partition(of: selected, in: parts) == "202602")
+        #expect(grid.model.rowID(at: 2) == nil)
     }
 }

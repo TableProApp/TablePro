@@ -16,7 +16,6 @@ struct MultiRowEditStateFieldAbsenceTests {
     private func configured(rows: [[String?]], absentCells: [Set<Int>], modified: Set<Int> = []) -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: Set(rows.indices),
             rowIDs: Array([rowA, rowB].prefix(rows.count)),
             allRows: rows,
             absentCells: absentCells,
@@ -113,8 +112,7 @@ struct MultiRowEditStateFieldAbsenceTests {
         #expect(reverted == [rowA])
     }
 
-    /// Staging refuses a value for a MongoDB `_id`, so the inspector offered Remove Field, Set NULL
-    /// and typing on a field whose edit then stayed pending and never saved.
+    // Staging refuses a MongoDB `_id`, so an editable field there left an edit pending that never saved.
     @Test("A column the change manager refuses is read-only in the inspector, Remove Field included")
     func unwritableColumnOffersNoEdit() throws {
         let manager = DataChangeManager()
@@ -124,7 +122,6 @@ struct MultiRowEditStateFieldAbsenceTests {
         )
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: [0],
             rowIDs: [rowA],
             allRows: [["1", "Ada"]],
             absentCells: [[]],

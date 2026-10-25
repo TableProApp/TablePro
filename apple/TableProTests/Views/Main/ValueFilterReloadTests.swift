@@ -3,20 +3,11 @@
 //  TableProTests
 //
 
-import AppKit
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
-
-@MainActor
-private final class ReloadLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
 
 @MainActor
 struct ValueFilterReloadTests {
@@ -46,7 +37,7 @@ struct ValueFilterReloadTests {
     private func filterName(_ names: Set<String>, at column: Int = 1, in coordinator: MainContentCoordinator, tabId: UUID) {
         var state = GridValueFilterState()
         state.set(ColumnValueFilter(selectedValues: names, includesNull: false), columnName: "name", forColumn: column)
-        coordinator.setValueFilter(state, forTab: tabId)
+        coordinator.gridModel(forTab: tabId).setValueFilter(state)
     }
 
     private func valueFilter(_ coordinator: MainContentCoordinator, _ tabId: UUID) -> GridValueFilterState? {
@@ -99,29 +90,12 @@ struct ValueFilterReloadTests {
         #expect(coordinator.displayIDs(forTab: tabId) == [.existing(1)])
     }
 
-    @Test("A mounted grid takes the moved filter, so its own prune cannot write the old copy back")
-    func mountedGridAdoptsTheCarriedFilter() {
+    @Test("The grid model reads the moved filter, so nothing writes the old copy back")
+    func modelAdoptsTheCarriedFilter() {
         let (coordinator, tabId) = makeCoordinator()
         defer { coordinator.teardown() }
-        let delegate = DataTabGridDelegate()
-        let grid = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: delegate,
-            layoutPersister: ReloadLayoutPersister()
-        )
-        delegate.dataGridAttach(tableViewCoordinator: grid)
-        coordinator.dataTabDelegate = delegate
-        grid.tableRowsProvider = { [weak coordinator] in
-            coordinator?.tabSessionRegistry.tableRows(for: tabId) ?? TableRows()
-        }
-        grid.valueFilterBinding = Binding(
-            get: { coordinator.tabManager.tabs.first { $0.id == tabId }?.valueFilter ?? GridValueFilterState() },
-            set: { coordinator.setValueFilter($0, forTab: tabId) }
-        )
         filterName(["Bob"], in: coordinator, tabId: tabId)
-        grid.adoptValueFilter(valueFilter(coordinator, tabId) ?? GridValueFilterState())
+        let model = coordinator.gridModel(forTab: tabId)
 
         coordinator.setActiveTableRows(
             Self.rows([["1", "a@x", "Alice"], ["2", "b@x", "Bob"]], columns: ["id", "email", "name"]),
@@ -130,8 +104,9 @@ struct ValueFilterReloadTests {
         )
 
         #expect(valueFilter(coordinator, tabId)?.isActive(column: 2) == true)
-        #expect(grid.valueFilterState == valueFilter(coordinator, tabId))
-        withExtendedLifetime((delegate, grid)) {}
+        #expect(valueFilter(coordinator, tabId)?.isActive(column: 1) == false)
+        #expect(model.store.valueFilter == valueFilter(coordinator, tabId))
+        #expect(model.displayedRowIDs == [.existing(1)])
     }
 
     @Test("A new source still clears the value filter")

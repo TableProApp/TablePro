@@ -1,37 +1,19 @@
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
-
-@MainActor
-private final class TruncationLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
 
 extension GlobalStateSuites {
     @Suite(.recordingClipboard)
     @MainActor
     struct GridSelectionCopyTruncationTests {
-        private func makeCoordinator(rowCount: Int) -> TableViewCoordinator {
-            let coordinator = TableViewCoordinator(
-                changeManager: AnyChangeManager(DataChangeManager()),
-                isEditable: true,
-                selectedRowIndices: .constant([]),
-                delegate: nil,
-                layoutPersister: TruncationLayoutPersister()
-            )
-            let tableRows = TableRows.from(
+        private func grid(rowCount: Int) -> CommandGrid {
+            CommandGrid(TableRows.from(
                 queryRows: (0..<rowCount).map { [.text("\($0)"), .text("v\($0)")] },
                 columns: ["id", "value"],
                 columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT")]
-            )
-            coordinator.tableRowsProvider = { tableRows }
-            coordinator.updateCache()
-            return coordinator
+            ))
         }
 
         private static func block(rowCount: Int) -> GridSelection {
@@ -47,9 +29,9 @@ extension GlobalStateSuites {
             let clipboard = try #require(RecordingClipboard.current)
             let cap = RowOperationsManager.maxClipboardRows
             let rowCount = cap + 2
-            let coordinator = makeCoordinator(rowCount: rowCount)
 
-            coordinator.copyGridSelection(Self.block(rowCount: rowCount))
+            let commandGrid = grid(rowCount: rowCount)
+            commandGrid.commands.copyRange(Self.block(rowCount: rowCount))
 
             let lines = clipboard.text?.components(separatedBy: "\n") ?? []
             #expect(lines.count == cap + 1)
@@ -61,9 +43,9 @@ extension GlobalStateSuites {
         @Test("a cell copy under the cap carries no notice")
         func copyUnderTheCapHasNoNotice() throws {
             let clipboard = try #require(RecordingClipboard.current)
-            let coordinator = makeCoordinator(rowCount: 3)
 
-            coordinator.copyGridSelection(Self.block(rowCount: 3))
+            let commandGrid = grid(rowCount: 3)
+            commandGrid.commands.copyRange(Self.block(rowCount: 3))
 
             #expect(clipboard.text == "0\tv0\n1\tv1\n2\tv2")
         }

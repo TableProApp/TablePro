@@ -51,7 +51,7 @@ final class PaginationCoordinator: ObservableObject {
         paginateIfPossible { $0.updatePageSize(pageSize) }
     }
 
-    /// Every page move asks this, because an engine that cannot skip rows has only the first page.
+    // An engine that cannot skip rows has only the first page.
     private var canSeek: Bool {
         parent.paginationCapability.allowsSeeking
     }
@@ -64,12 +64,7 @@ final class PaginationCoordinator: ObservableObject {
         paginateIfPossible(where: condition, mutate: mutate)
     }
 
-    /// Only ever sized from a real count.
-    ///
-    /// It used to accept the driver's estimate, so a table MySQL guessed at 420,000 rows loaded
-    /// `LIMIT 420000` and silently dropped the rest while the bar reported the page as complete.
-    /// `Count Exactly` in the status bar is the route to an exact total, and it sits next to the
-    /// estimate that makes this unavailable.
+    // Only sized from a real count: the driver's estimate (MySQL guessed 420,000) loaded a LIMIT that silently dropped rows.
     func showAllRows() {
         guard canSeek,
               let (tab, _) = parent.tabManager.selectedTabAndIndex,
@@ -151,8 +146,7 @@ final class PaginationCoordinator: ObservableObject {
 
     // MARK: - Cancel Current Query
 
-    /// Stop and `Cmd+.` act on the tab the user is looking at. A window-wide stop is what let one
-    /// tab's Stop roll back the batch another tab was running.
+    // Acts on the visible tab: a window-wide stop let one tab's Stop roll back another tab's batch.
     func cancelCurrentQuery() {
         guard let tabId = parent.tabManager.selectedTabId else { return }
         parent.stopExecution(for: tabId)
@@ -171,8 +165,7 @@ final class PaginationCoordinator: ObservableObject {
         let schemaName = tab.tableContext.schemaName
         let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
         let logicMode = tab.filterState.filterLogicMode
-        /// A browse narrowed by the plugin's own search runs that search instead of the table
-        /// filters, so the count has to read the same search or it counts the whole table.
+        // A plugin search replaces the table filters in a narrowed browse, so the count must read it or it counts the whole table.
         let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
         let queryColumns = parent.queryColumns(for: tab)
@@ -181,9 +174,7 @@ final class PaginationCoordinator: ObservableObject {
             columns: queryColumns.columns, columnTypes: queryColumns.columnTypes
         )
 
-        /// Taking the task slot supersedes whatever automatic count held it, so this claims that
-        /// count's flag too. Leaving it set would strand it: the superseded task's completion finds
-        /// the token changed and correctly declines to clear a successor's state.
+        // Claims the superseded automatic count's flag too: its task finds the token changed and won't clear a successor's state.
         parent.tabManager.mutate(at: index) { tab in
             tab.pagination.isCountingExact = true
             tab.pagination.isCountPending = false
@@ -202,13 +193,9 @@ final class PaginationCoordinator: ObservableObject {
                 countSQL: countSQL
             )
 
-            /// The flag says a count is running, so it has to clear on every way out. Returning
-            /// early on cancellation left it set, and a page turn cancels this task, so turning a
-            /// page during a long COUNT(*) used to leave a spinner that never stopped and a
-            /// `Count Exactly` that never came back for that tab.
+            // Clears on every exit: returning early on cancel left a page turn during COUNT(*) with an endless spinner and no Count Exactly.
             let isCurrent = !Task.isCancelled && parent.tabExecution.isSameContent(contentEpoch, for: tabId)
-            /// Cancelling through `Cmd+.` clears the flag and lets a second count start, so a late
-            /// first task would otherwise stop the second one's spinner while its query still runs.
+            // `Cmd+.` clears the flag and allows a second count, so a late first task must not stop the second one's spinner.
             let ownsIndicator = parent.releaseExactCount(for: tabId, token: token)
             parent.clearRowCountTask(for: tabId, token: token)
             parent.tabManager.mutate(tabId: tabId) { tab in
@@ -240,8 +227,7 @@ final class PaginationCoordinator: ObservableObject {
         }
     }
 
-    /// The user asked for this count, so a failure is shown on the tab rather than dropped: an engine whose count
-    /// only its driver can run, such as a throttled DynamoDB scan, has no other answer to fall back on.
+    // User-requested, so a failure shows on the tab: an engine only its driver can count (throttled DynamoDB scan) has no fallback.
     private static func exactRowCount(
         scope: DatabaseScope,
         tableName: String,
@@ -268,8 +254,7 @@ final class PaginationCoordinator: ObservableObject {
 
     // MARK: - Fetch All Rows
 
-    /// The scope is read before the confirmation alert, so a database change made while
-    /// the alert is open cannot send the tab's own query somewhere else.
+    // The scope is read before the alert, so a database change while it is open can't redirect the tab's query.
     func fetchAllRows() {
         guard let (tab, _) = parent.tabManager.selectedTabAndIndex,
               !tab.pagination.isLoadingMore,
@@ -308,12 +293,7 @@ final class PaginationCoordinator: ObservableObject {
         }
     }
 
-    /// Only the driver work runs inside the lease. Applying the rows to the tab stays
-    /// outside it, because the connection's driver gate is not reentrant.
-    ///
-    /// The rows belong to the result the fetch was started on. A result switch leaves the content
-    /// epoch alone, so the fetch is fenced on the result set as well, or the full row set lands on
-    /// whichever result is showing when it arrives, normalized to that result's column count.
+    // Only driver work runs in the lease (the gate isn't reentrant). Fenced on the result set too: a result switch keeps the epoch.
     internal func performFetchAll(tabId: UUID, baseQuery: String, scope: DatabaseScope) {
         guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
         guard !parent.tabManager.tabs[idx].pagination.isLoadingMore else { return }
@@ -324,10 +304,7 @@ final class PaginationCoordinator: ObservableObject {
 
         parent.tabManager.mutate(at: idx) { $0.pagination.isLoadingMore = true }
 
-        /// Fetch All extends the result already on screen instead of replacing it, so it validates
-        /// against the tab's content epoch and cannot claim the tab: claiming mints a new epoch and
-        /// would discard its own rows. It registers as unclaimed work instead, which is what keeps
-        /// the titlebar reporting it, and releases that on every exit including cancellation.
+        // Can't claim the tab: claiming mints a new epoch and drops its own rows. Unclaimed work keeps the titlebar reporting it.
         let workToken = parent.tabExecution.beginUnclaimedWork(for: tabId)
         let owner = TabQueryTaskOwner.unclaimedWork(tabId: tabId, token: workToken)
         let lease = DriverLeaseOwner()
@@ -335,9 +312,7 @@ final class PaginationCoordinator: ObservableObject {
         let lengthColumns = isTableTab ? parent.unloadedValueLengthColumns(for: parent.tabManager.tabs[idx]) : []
 
         let startedAt = ContinuousClock.Instant.now
-        /// Both releases belong to the whole task rather than to its exits: the cancelled path used
-        /// to clear the loading flag and bare return, leaving a finished fetch installed under the
-        /// tab's id, and the next `installQueryTask` read it as a live displaced entry and ended it.
+        // Both releases cover the whole task: a cancelled bare return left a finished fetch installed, which `installQueryTask` then ended.
         let fetchAllTask = Task { [weak self, parent] in
             defer {
                 parent.tabExecution.endUnclaimedWork(workToken, for: tabId)
@@ -364,12 +339,7 @@ final class PaginationCoordinator: ObservableObject {
                 progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
                 guard !Task.isCancelled else {
-                    /// Every other exit from this function clears the flag, and this one used to
-                    /// bare return, so a fetch-all cancelled after its rows had already arrived
-                    /// left the tab showing "Loading…" for good with Fetch All hidden, healed
-                    /// only by re-running the query. Deterministic on any driver whose
-                    /// `cancelQuery()` is the PluginKit no-op default, because the fetch always
-                    /// runs to completion there and returns straight into this guard.
+                    // Clears the flag like every exit: a bare return stuck the tab on Loading after a late cancel (no-op `cancelQuery()` drivers).
                     await MainActor.run { [weak self] in
                         self?.parent.tabManager.mutate(tabId: tabId) { tab in
                             tab.pagination.isLoadingMore = false
@@ -388,7 +358,7 @@ final class PaginationCoordinator: ObservableObject {
                     }
                     guard let idx = parent.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
-                    let replaceDelta = parent.mutateActiveTableRows(for: tabId) { rows in
+                    parent.mutateActiveTableRows(for: tabId) { rows in
                         rows.replace(
                             rows: result.rows,
                             rowLocators: isTableTab ? result.rowLocators : nil,
@@ -402,7 +372,6 @@ final class PaginationCoordinator: ObservableObject {
                         tab.pagination.resetLoadMore()
                         tab.display.activeResultSet?.isTruncated = false
                     }
-                    parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     parent.toolbarState.recordQueryTiming(result.resolvedTiming, for: tabId)
 
                     let totalTime = CFAbsoluteTimeGetCurrent() - start

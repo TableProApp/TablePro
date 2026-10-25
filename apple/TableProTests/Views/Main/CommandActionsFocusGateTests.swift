@@ -27,7 +27,6 @@ struct CommandActionsFocusGateTests {
         return MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
-            selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
             pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
             pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),
@@ -136,8 +135,7 @@ struct CommandActionsFocusGateTests {
         return MenuEquivalent(characters: resolved.characters, modifiers: resolved.modifiers)
     }
 
-    /// The restore assertions only mean something when the defaults actually bind these
-    /// actions, which a runner without a keyboard layout could break silently.
+    // The restore assertions mean something only while the defaults bind these actions.
     private func expectSyncedActionsAreBound(_ keyboard: KeyboardSettings) {
         #expect(bound(.delete, keyboard) != MenuEquivalent.cleared)
         #expect(bound(.truncateTable, keyboard) != MenuEquivalent.cleared)

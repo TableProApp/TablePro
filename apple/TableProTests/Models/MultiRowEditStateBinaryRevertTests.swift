@@ -16,11 +16,9 @@ struct MultiRowEditStateBinaryRevertTests {
     private static let wkbPoint = Data(
         [0x01, 0x01, 0x00, 0x00, 0x00] + [0, 0, 0, 0, 0, 0, 0xF0, 0x3F] + [0, 0, 0, 0, 0, 0, 0, 0x40]
     )
-    /// Every byte value, NUL first.
     private static let everyByte = Data((0 ... 255).map { UInt8($0) })
 
-    /// The handoff the main window does: the typed cells decide which columns are binary, and the
-    /// fields get each cell as text, bytes as one character per byte.
+    // The main window's handoff: typed cells pick the binary columns, and bytes reach the fields one character per byte.
     private func makeSUT(cells: [[PluginCellValue]], columnTypes: [ColumnType]) -> MultiRowEditState {
         let sut = MultiRowEditState()
         let rows: [[String?]] = cells.map { row in
@@ -33,7 +31,6 @@ struct MultiRowEditStateBinaryRevertTests {
             }
         }
         sut.configure(
-            selectedRowIndices: Set(cells.indices),
             rowIDs: cells.indices.map { RowID.existing($0) },
             allRows: rows,
             columns: columnTypes.indices.map { "c\($0)" },
@@ -43,7 +40,7 @@ struct MultiRowEditStateBinaryRevertTests {
         return sut
     }
 
-    /// What Clear in the field's menu does: put the field's own original value back.
+    // What Clear in the field's menu does.
     private func clear(_ sut: MultiRowEditState, at index: Int) {
         sut.updateField(at: index, value: sut.fields[index].originalValue ?? "")
     }

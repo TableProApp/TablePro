@@ -11,7 +11,7 @@ internal extension ThemeColor {
         )
     }
 
-    /// A color that cannot convert to sRGB, a pattern for one, becomes mid grey rather than failing.
+    // A color with no sRGB form, a pattern for one, becomes mid grey rather than failing.
     init(_ color: NSColor) {
         guard let converted = color.usingColorSpace(.sRGB) else {
             self.init(red: 0x80, green: 0x80, blue: 0x80)
@@ -41,10 +41,7 @@ internal enum HexColor {
 }
 
 internal extension ThemeSlot {
-    /// What the slot draws when no theme overrides it: the color AppKit itself uses on that
-    /// surface. Every value is dynamic, so it resolves against the drawing view's own appearance,
-    /// accent, highlight and contrast. A tint is built inside a provider, because
-    /// `withAlphaComponent` on a system color outside one freezes it at the current appearance.
+    // A tint is built inside a provider: `withAlphaComponent` on a system color outside one freezes it.
     var nativeColor: NSColor {
         switch self {
         case .windowBackdrop: return .windowBackgroundColor
@@ -65,13 +62,7 @@ internal extension ThemeSlot {
         case .gridBackground: return .controlBackgroundColor
         case .gridText, .gridBoolTrue, .gridBoolFalse: return .labelColor
         case .gridAlternateRow: return NativeThemeColors.alternateRow
-        case .gridHeaderBackground: return .controlBackgroundColor
-        case .gridHeaderText: return .headerTextColor
         case .gridLine: return .separatorColor
-        case .gridSelection: return .selectedContentBackgroundColor
-        case .gridSelectionText: return .alternateSelectedControlTextColor
-        case .gridInactiveSelection: return .unemphasizedSelectedContentBackgroundColor
-        case .gridFocusBorder: return .keyboardFocusIndicatorColor
         case .gridNullValue: return .secondaryLabelColor
         case .gridRowNumber: return .secondaryLabelColor
         case .gridModified: return NativeThemeColors.modifiedRow
@@ -83,8 +74,7 @@ internal extension ThemeSlot {
 }
 
 internal enum NativeThemeColors {
-    /// macOS 14 draws the caret in the Highlight color through `textInsertionPointColor`. Earlier
-    /// releases draw it in the text color.
+    // macOS 14 draws the caret in the Highlight color; earlier releases in the text color.
     static let insertionPoint: NSColor = {
         if #available(macOS 14.0, *) {
             return .textInsertionPointColor
@@ -92,8 +82,7 @@ internal enum NativeThemeColors {
         return .textColor
     }()
 
-    /// No system color exists for a current-line band; a faint accent keeps it on the user's
-    /// Accent color the way the selection and focus ring are.
+    // No system color exists for a current-line band; a faint accent follows Accent like the selection.
     static let currentLine = NSColor(name: NSColor.Name("tablepro.native.currentLine")) { appearance in
         NSColor.controlAccentColor.withAlphaComponent(appearance.isDarkTheme ? 0.14 : 0.08)
     }

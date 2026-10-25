@@ -14,6 +14,7 @@ extension MainContentCoordinator {
         pendingTruncates: inout Set<DatabaseTreeTableRef>,
         pendingDeletes: inout Set<DatabaseTreeTableRef>
     ) {
+        commitActiveGridEdit()
         rowEditingCoordinator.handleDiscard(
             pendingTruncates: &pendingTruncates,
             pendingDeletes: &pendingDeletes

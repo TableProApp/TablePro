@@ -11,85 +11,69 @@ import Testing
 @testable import TablePro
 
 @MainActor
-private final class SpokenValueLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
+private final class MountedStructureList {
+    let window: NSWindow
+    let controller: DataGridViewController
+    let list: StructureListGridModel<String>
 
-@MainActor
-struct StructureListGridAccessibilityTests {
-    private struct Grid {
-        let window: NSWindow
-        let coordinator: TableViewCoordinator
-        let model: StructureListGridModel<String>
-    }
-
-    private func makeGrid(columns: [String], rows: [StructureListRow<String>]) -> Grid {
-        let model = StructureListGridModel<String>()
-        let tableRows = model.ensureLoaded(key: 1, columns: columns) { rows }
-        let coordinator = TableViewCoordinator(
-            changeManager: model.changeManager,
-            isEditable: false,
-            selectedRowIndices: .constant([]),
-            delegate: model,
-            layoutPersister: SpokenValueLayoutPersister()
+    init(columns: [String], rows: [StructureListRow<String>]) {
+        list = StructureListGridModel<String>()
+        list.load(
+            columns: columns,
+            rows: rows,
+            defaultWidths: Array(repeating: 100, count: columns.count),
+            minimumWidths: [],
+            databaseType: .mysql,
+            sortState: nil
         )
-        coordinator.tableRowsProvider = { tableRows }
-        coordinator.rebuildColumnMetadataCache(from: tableRows)
-        coordinator.updateCache()
-
-        let tableView = KeyHandlingTableView(frame: NSRect(x: 0, y: 0, width: 700, height: 200))
-        tableView.columnAutoresizingStyle = .noColumnAutoresizing
-        tableView.rowHeight = 21
-        tableView.coordinator = coordinator
-        tableView.dataSource = coordinator
-        tableView.delegate = coordinator
-        tableView.addTableColumn(DataGridView.makeRowNumberColumn())
-        coordinator.tableView = tableView
-        coordinator.columnPool.reconcile(
-            tableView: tableView,
-            schema: coordinator.identitySchema,
-            columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: columns.count),
-            savedLayout: nil,
-            isEditable: false,
-            hiddenColumnNames: [],
-            firstClickSortDirection: .ascending,
-            widthCalculator: { _, _ in 100 }
-        )
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 700, height: 200))
-        scrollView.documentView = tableView
-        let window = NSWindow(
+        controller = DataGridViewController(model: list.model)
+        window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 200),
             styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.contentView = scrollView
-        model.dataGridAttach(tableViewCoordinator: coordinator)
-        tableView.reloadData()
-        tableView.layoutSubtreeIfNeeded()
-        window.layoutIfNeeded()
-        return Grid(window: window, coordinator: coordinator, model: model)
+        window.contentView = controller.view
+        controller.view.layoutSubtreeIfNeeded()
     }
 
-    private func cell(in grid: Grid, row: Int, dataColumn: Int) throws -> DataGridCellAccessibilityView {
-        let tableView = try #require(grid.coordinator.tableView)
-        let column = try #require(grid.coordinator.tableColumnIndex(for: dataColumn))
-        return try #require(
-            tableView.view(atColumn: column, row: row, makeIfNecessary: true) as? DataGridCellAccessibilityView
-        )
+    var table: DataGridTableView { controller.main.tableView }
+
+    func cell(row: Int, dataColumn: Int) throws -> DataGridAccessibilityCellView {
+        let columns = list.model.columns
+        let position = try #require(columns.displayPosition(ofDataIndex: dataColumn))
+        let index = try #require(controller.main.tableIndex(forDisplayPosition: position, columns: columns))
+        return try #require(table.view(atColumn: index, row: row, makeIfNecessary: true) as? DataGridAccessibilityCellView)
     }
 
-    private func spoken(in grid: Grid, row: Int, dataColumn: Int) throws -> String? {
-        try cell(in: grid, row: row, dataColumn: dataColumn).accessibilityValue() as? String
+    func spoken(row: Int, dataColumn: Int) throws -> String? {
+        try cell(row: row, dataColumn: dataColumn).accessibilityValue() as? String
     }
 
-    private func drawn(in grid: Grid, row: Int, dataColumn: Int) -> String? {
-        grid.coordinator.cellAppearance(row: row, columnIndex: dataColumn, onEmphasizedSelection: false)?.text
+    func drawn(row: Int, dataColumn: Int) -> String? {
+        let model = list.model
+        guard let rowModel = model.row(at: row),
+              let column = model.columns.columns.first(where: { $0.dataIndex == dataColumn }),
+              let pass = controller.presenter.makePass(in: table.effectiveAppearance) else { return nil }
+        return controller.presenter.appearance(
+            of: rowModel,
+            displayRow: row,
+            column: column,
+            visualState: controller.presenter.visualState(of: rowModel),
+            pass: pass,
+            onEmphasizedSelection: false
+        )?.text
     }
 
+    func tearDown() {
+        controller.dismantle()
+        window.contentView = nil
+    }
+}
+
+@MainActor
+struct StructureListGridAccessibilityTests {
     @Test("The Enabled column draws YES and NO and reads Enabled and Disabled")
     func triggerEnabledIsSpoken() throws {
         DataGridAccessibility.isActive = true
@@ -105,18 +89,18 @@ struct StructureListGridAccessibilityTests {
                 spokenValues: TriggerListColumns.spokenValues(for: trigger, showsEnabled: true)
             )
         }
-        let grid = makeGrid(columns: TriggerListColumns.titles(showsEnabled: true), rows: rows)
+        let grid = MountedStructureList(columns: TriggerListColumns.titles(showsEnabled: true), rows: rows)
+        defer { grid.tearDown() }
         let enabled = TriggerListColumns.enabledColumn
 
-        #expect(drawn(in: grid, row: 0, dataColumn: enabled) == "YES")
-        #expect(drawn(in: grid, row: 1, dataColumn: enabled) == "NO")
-        #expect(try spoken(in: grid, row: 0, dataColumn: enabled) == String(localized: "Enabled"))
-        #expect(try spoken(in: grid, row: 1, dataColumn: enabled) == String(localized: "Disabled"))
-        #expect(try cell(in: grid, row: 1, dataColumn: enabled).accessibilityLabel() == String(
+        #expect(grid.drawn(row: 0, dataColumn: enabled) == "YES")
+        #expect(grid.drawn(row: 1, dataColumn: enabled) == "NO")
+        #expect(try grid.spoken(row: 0, dataColumn: enabled) == String(localized: "Enabled"))
+        #expect(try grid.spoken(row: 1, dataColumn: enabled) == String(localized: "Disabled"))
+        #expect(try grid.cell(row: 1, dataColumn: enabled).accessibilityLabel() == String(
             format: String(localized: "Row %d, column %d: %@"), 2, enabled + 1, String(localized: "Disabled")
         ))
-        #expect(try spoken(in: grid, row: 0, dataColumn: TriggerListColumns.nameColumn) == "trg_on")
-        withExtendedLifetime(grid) {}
+        #expect(try grid.spoken(row: 0, dataColumn: TriggerListColumns.nameColumn) == "trg_on")
     }
 
     @Test("The Active column draws YES and NO and reads Active and Inactive")
@@ -132,27 +116,58 @@ struct StructureListGridAccessibilityTests {
             let row = ClickHousePartsView.gridRow(for: part)
             return StructureListRow(id: part.id.uuidString, values: row.values, spokenValues: row.spokenValues)
         }
-        let grid = makeGrid(columns: ClickHousePartsView.columnTitles, rows: rows)
+        let grid = MountedStructureList(columns: ClickHousePartsView.columnTitles, rows: rows)
+        defer { grid.tearDown() }
         let active = ClickHousePartsView.activeColumn
 
-        #expect(drawn(in: grid, row: 0, dataColumn: active) == "YES")
-        #expect(try spoken(in: grid, row: 0, dataColumn: active) == String(localized: "Active"))
-        #expect(try spoken(in: grid, row: 1, dataColumn: active) == String(localized: "Inactive"))
-        #expect(try spoken(in: grid, row: 0, dataColumn: 0) == "202601")
-        withExtendedLifetime(grid) {}
+        #expect(grid.drawn(row: 0, dataColumn: active) == "YES")
+        #expect(try grid.spoken(row: 0, dataColumn: active) == String(localized: "Active"))
+        #expect(try grid.spoken(row: 1, dataColumn: active) == String(localized: "Inactive"))
+        #expect(try grid.spoken(row: 0, dataColumn: 0) == "202601")
     }
 
     @Test("A cell with no spoken value reads the text it draws")
     func unspokenCellReadsItsText() throws {
         DataGridAccessibility.isActive = true
         defer { DataGridAccessibility.isActive = false }
-        let grid = makeGrid(
+        let grid = MountedStructureList(
             columns: ["Name", "Unique"],
             rows: [StructureListRow(id: "idx", values: ["idx_name", "YES"])]
         )
+        defer { grid.tearDown() }
+        let rowID = try #require(grid.list.model.rowID(at: 0))
+        let unique = try #require(grid.list.model.columns.column(at: 1))
 
-        #expect(try spoken(in: grid, row: 0, dataColumn: 1) == "YES")
-        #expect(grid.model.dataGridAccessibilityText(row: 0, column: 1) == nil)
-        withExtendedLifetime(grid) {}
+        #expect(try grid.spoken(row: 0, dataColumn: 1) == "YES")
+        #expect(grid.list.grid.gridAccessibilityText(for: rowID, column: unique) == nil)
+    }
+
+    // Each list names its grid for VoiceOver ("Triggers"), where an unnamed one reads "Data grid".
+    @Test("The trigger list's grid is named for the list it shows")
+    func namesTheGrid() async throws {
+        let window = ThemeTestFixture.host(
+            TriggerListPane(
+                triggers: [TriggerInfo(name: "trg", timing: "BEFORE", event: "UPDATE", statement: "")],
+                databaseType: .mysql,
+                state: TriggerInspectorState()
+            ),
+            size: NSSize(width: 600, height: 240)
+        )
+        defer { window.contentView = nil }
+        for _ in 0 ..< 10 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+        let table = try #require(Self.mainTable(in: window.contentView))
+
+        #expect(table.accessibilityLabel() == StructureTab.triggers.displayName)
+    }
+
+    private static func mainTable(in view: NSView?) -> DataGridTableView? {
+        guard let view else { return nil }
+        if let table = view as? DataGridTableView, table.paneKind == .main { return table }
+        return view.subviews.lazy.compactMap { mainTable(in: $0) }.first
     }
 }

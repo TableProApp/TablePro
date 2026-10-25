@@ -2,9 +2,6 @@
 //  CreateTableView.swift
 //  TablePro
 //
-//  Self-contained view for creating a new database table.
-//  Uses StructureChangeManager and DataGridView for column/index/FK editing.
-//
 
 import AppKit
 import Combine
@@ -33,20 +30,14 @@ struct CreateTableView: View {
 
     let connection: DatabaseConnection
 
-    /// The tab's own scope, which is where the table is created. The browse cursor moves when the
-    /// user clicks another database in the sidebar and the open Create Table tab does not follow it,
-    /// so taking the cursor created the table somewhere the tab never named.
     let scope: DatabaseScope?
     var coordinator: MainContentCoordinator?
-    @ObservedObject var selectionState: GridSelectionState
 
     @Environment(\.appServices) private var services
 
-    /// The definition in progress. Held outside this view because the view is destroyed the moment
-    /// the tab is deselected, and nothing in a Create Table tab exists anywhere else yet.
     @ObservedObject var draft: CreateTableDraft
-
-    @StateObject private var wrappedChangeManager: AnyChangeManager
+    @ObservedObject private var gridModel: DataGridModel
+    private let gridAdapter: CreateTableGridAdapter
 
     private var structureChangeManager: StructureChangeManager { draft.changeManager }
 
@@ -54,35 +45,21 @@ struct CreateTableView: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
     @State private var showError = false
-    @State private var gridDelegate: CreateTableGridDelegate
     @State private var actionHandler = CreateTableActionHandler()
-
-    // DataGridView state
-    @State private var selectedRows: Set<Int> = []
-    @State private var sortState = SortState()
-    @State private var columnLayout = ColumnLayoutState()
-    @State private var serverSupport = StructureServerSupport.unrestricted
 
     init(
         connection: DatabaseConnection,
         scope: DatabaseScope?,
         coordinator: MainContentCoordinator?,
-        selectionState: GridSelectionState,
         draft: CreateTableDraft
     ) {
         self.connection = connection
         self.scope = scope
         self.coordinator = coordinator
-        self.selectionState = selectionState
         self.draft = draft
-
-        let manager = draft.changeManager
-        _wrappedChangeManager = StateObject(wrappedValue: AnyChangeManager(manager))
-        _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
-            structureChangeManager: manager,
-            structureTab: .columns,
-            connection: connection
-        ))
+        let adapter = draft.gridAdapter(for: connection)
+        self.gridAdapter = adapter
+        self.gridModel = adapter.model
     }
 
     var body: some View {
@@ -93,9 +70,6 @@ struct CreateTableView: View {
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
-            /// A workspace switch remounts this view with `selectedRows` intact and the grid still
-            /// highlighting them, so the channel `onDisappear` cleared gets them back, not nothing.
-            selectionState.indices = selectedRows
             draft.resolveForm(
                 from: DatabaseManager.shared.driver(for: connection.id)?.createTableFormSpec(schema: scope?.schema)
             )
@@ -107,30 +81,18 @@ struct CreateTableView: View {
             coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
         }
         .onDisappear {
-            /// Guarded by identity, like the `inspectorRowSource` clear below it. SwiftUI does not
-            /// order the outgoing view's `onDisappear` before the incoming view's `onAppear`, so an
-            /// unguarded clear that lands second nils the wiring the incoming Create Table tab has
-            /// already installed, leaving its Create button and its close prompt dead.
-            ///
-            /// The shared selection channel gets a second guard, because a data grid mounting in
-            /// this tab's place restores its own rows into it and this clear landing afterwards
-            /// would wipe them.
+            // Guarded by identity: the outgoing view's onDisappear can land after the incoming one's onAppear.
             if coordinator?.createTableActions === actionHandler {
-                if GridSelectionOwner.resolve(
-                    tabType: coordinator?.tabManager.selectedTab?.tabType,
-                    resultsViewMode: coordinator?.tabManager.selectedTab?.display.resultsViewMode
-                ) != .dataGrid {
-                    selectionState.indices = []
-                }
                 coordinator?.createTableActions = nil
                 coordinator?.toolbarState.hasCreateTablePending = false
             }
-            if coordinator?.inspectorRowSource === gridDelegate {
+            if coordinator?.inspectorRowSource === gridAdapter {
                 coordinator?.inspectorRowSource = nil
             }
         }
-        .onChange(of: selectedRows) { newRows in selectionState.indices = newRows }
-        .onChange(of: selectedTab) { _ in updateGridDelegate() }
+        .onChange(of: selectedTab) { _ in gridAdapter.select(structureTab) }
+        .onChange(of: structureChangeManager.reloadVersion) { _ in gridAdapter.refresh() }
+        .onChange(of: structureChangeManager.hasChanges) { _ in gridAdapter.refresh() }
         .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
         .task(id: compositionKey) { await recomposeAfterPause() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
@@ -160,16 +122,17 @@ struct CreateTableView: View {
     }
 
     private func attachStructureGrid() {
-        coordinator?.inspectorRowSource = gridDelegate
-        gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
-        gridDelegate.onReferenceListsChanged = { coordinator?.inspectorRowSourceRevision += 1 }
-        serverSupport = StructureServerSupport.forConnection(connection.id)
-        updateGridDelegate()
+        coordinator?.inspectorRowSource = gridAdapter
+        gridAdapter.coordinator = coordinator
+        gridAdapter.serverSupport = StructureServerSupport.forConnection(connection.id)
+        gridAdapter.schemaName = coordinator?.toolbarState.currentSchema
         if structureChangeManager.workingColumns.isEmpty {
             structureChangeManager.addNewColumn()
         }
-        actionHandler.undo = { gridDelegate.dataGridUndo() }
-        actionHandler.redo = { gridDelegate.dataGridRedo() }
+        gridAdapter.select(structureTab)
+        gridAdapter.refresh()
+        actionHandler.undo = { gridAdapter.undo() }
+        actionHandler.redo = { gridAdapter.redo() }
     }
 
     // MARK: - Config Bar
@@ -238,7 +201,6 @@ struct CreateTableView: View {
         CreateTableDraft.offersEngineOptions(for: connection.type)
     }
 
-    /// The form path builds its own statements and has no place for a comment.
     private var offersTableComment: Bool {
         guard draft.hasResolvedForm, draft.form == nil else { return false }
         let support = DatabaseObjectToolEligibility.Support.of(DatabaseManager.shared.driver(for: connection.id))
@@ -260,13 +222,10 @@ struct CreateTableView: View {
     }
 
     private var toolbar: some View {
-        /// The composed issues, not the plan's. A driver that cannot spell one of the statements,
-        /// as Snowflake and Trino cannot spell `CREATE INDEX`, reports it only here, and reading the
-        /// plan alone left Create Table enabled over a preview the app would then refuse to run.
         let issues = draft.composed?.issues ?? draft.plan(for: connection.type).issues
 
         return HStack(spacing: 8) {
-            Button(action: { gridDelegate.dataGridAddRow() }) {
+            Button(action: { gridAdapter.addRow() }) {
                 Image(systemName: "plus")
                     .frame(width: 24, height: 24)
             }
@@ -274,13 +233,13 @@ struct CreateTableView: View {
             .accessibilityLabel(String(localized: "Add Row"))
             .disabled(!isGridTab)
 
-            Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
+            Button(action: { gridAdapter.deleteRows(gridModel.selectedRowIDs) }) {
                 Image(systemName: "minus")
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Delete Selected"))
             .accessibilityLabel(String(localized: "Delete Selected"))
-            .disabled(!isGridTab || selectedRows.isEmpty)
+            .disabled(!isGridTab || gridModel.selection.isEmpty)
 
             issueMessage(issues)
 
@@ -308,12 +267,6 @@ struct CreateTableView: View {
         .padding()
     }
 
-    /// The reason Create Table is unavailable, beside the row it is about.
-    ///
-    /// A row the user began and did not finish used to be deleted from the generated statement with
-    /// no message, which is how a filled-in foreign key came to vanish between the grid and the SQL
-    /// Preview. Naming the segment matters as much as naming the problem, because the offending row
-    /// is usually on a segment the user is not looking at.
     @ViewBuilder
     private func issueMessage(_ issues: [SchemaDraftIssue]) -> some View {
         if let first = issues.first {
@@ -354,65 +307,8 @@ struct CreateTableView: View {
         }
     }
 
-    private func updateGridDelegate() {
-        let provider = StructureRowProvider(
-            changeManager: structureChangeManager,
-            tab: structureTab,
-            databaseType: connection.type,
-            additionalFields: [.primaryKey],
-            serverSupport: serverSupport
-        )
-        gridDelegate.structureTab = structureTab
-        gridDelegate.serverSupport = serverSupport
-        gridDelegate.orderedFields = provider.orderedColumnFields
-        gridDelegate.schemaName = coordinator?.toolbarState.currentSchema
-        coordinator?.inspectorRowSourceRevision += 1
-    }
-
     private var structureGrid: some View {
-        let provider = StructureRowProvider(
-            changeManager: structureChangeManager,
-            tab: structureTab,
-            databaseType: connection.type,
-            additionalFields: [.primaryKey],
-            serverSupport: serverSupport
-        )
-
-        // Rebuild the row snapshot fresh on every call so cell edits made
-        // through the delegate are visible to the next reloadData. Capturing
-        // a snapshot here would let the cell view re-render with the pre-edit
-        // value. Same rationale as `TableStructureView.structureGrid`.
-        let manager = structureChangeManager
-        let tab = structureTab
-        let dbType = connection.type
-        let support = serverSupport
-        return DataGridView(
-            tableRowsProvider: {
-                StructureRowProvider(
-                    changeManager: manager,
-                    tab: tab,
-                    databaseType: dbType,
-                    additionalFields: [.primaryKey],
-                    serverSupport: support
-                ).asTableRows()
-            },
-            changeManager: wrappedChangeManager,
-            isEditable: true,
-            configuration: DataGridConfiguration(
-                dropdownColumns: provider.dropdownColumns,
-                typePickerColumns: provider.typePickerColumns,
-                customDropdownOptions: provider.customDropdownOptions,
-                connectionId: connection.id,
-                databaseType: connection.type,
-                databaseName: DatabaseManager.shared.browseDatabaseName(for: connection),
-                schemaName: coordinator?.toolbarState.currentSchema,
-                tabType: .createTable
-            ),
-            delegate: gridDelegate,
-            selectedRowIndices: $selectedRows,
-            sortState: $sortState,
-            columnLayout: $columnLayout
-        )
+        DataGridView(model: gridModel)
     }
 
     // MARK: - SQL Preview
@@ -437,8 +333,6 @@ struct CreateTableView: View {
             content: plan.definition == nil ? .message(plan.issues.first?.qualifiedMessage) : .composing
         )
     }
-
-    // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
 
     // MARK: - SQL Generation
 
@@ -477,13 +371,6 @@ struct CreateTableView: View {
         coordinator?.toolbarState.hasCreateTablePending = isReadyToCreate
     }
 
-    /// Routed through `DatabaseManager.executeCreateTable`, which owns the authorization, the
-    /// isolated connection, the transaction and the history records.
-    ///
-    /// The view used to do all four itself against `driver(for:)`, which is the session driver. A
-    /// `BEGIN` there joins whatever transaction a query tab left open, and the `COMMIT` after the
-    /// last `CREATE INDEX` takes that tab's uncommitted work with it. `schemaChangeRoute` exists to
-    /// keep the app's own DDL off the user's connection.
     private func createTable() {
         guard draft.form != nil else {
             createTableFromStructureGrid()

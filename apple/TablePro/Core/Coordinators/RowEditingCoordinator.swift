@@ -11,11 +11,7 @@ import TableProPluginKit
 final class RowEditingCoordinator: ObservableObject {
     unowned let parent: MainContentCoordinator
 
-    /// A save is between assembling its statements and hearing back.
-    ///
-    /// Nothing clears the pending changes until the write returns, so a second Cmd+S inside the
-    /// round trip finds them still there, assembles the same statements again and commits them
-    /// twice. Over a slow link that is easy to do by accident.
+    // Nothing clears the pending changes until the write returns, so a second Cmd+S in the round trip would commit twice.
     private(set) var isSaveInFlight = false
 
     init(parent: MainContentCoordinator) {
@@ -32,9 +28,7 @@ final class RowEditingCoordinator: ObservableObject {
         isSaveInFlight = false
     }
 
-    /// A row command selects the row it just made so the grid can highlight it and scroll to it.
-    /// No other mode has a grid to point at, and the JSON view reads the same selection as "show
-    /// only these rows", so writing it there collapses the document to the one new row.
+    // A row command selects the row it made. The JSON view reads the selection as "show only these rows".
     private var selectionPointsTheGrid: Bool {
         parent.tabManager.selectedTab?.display.resultsViewMode == .data
     }
@@ -47,12 +41,11 @@ final class RowEditingCoordinator: ObservableObject {
               tab.tableContext.tableName != nil else { return }
 
         let tabId = tab.id
-        /// A new row is pre-filled from the schema's account of which columns the server owns, so
-        /// staging one before that account exists writes NULL into an identity column.
+        // Pre-filled from the schema's account of which columns the server owns; without it an identity gets NULL.
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.hasAuthoritativeSchema else { return }
 
-        parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+        parent.commitActiveGridEdit()
 
         let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var addResult: RowOperationsManager.AddNewRowResult?
@@ -65,17 +58,18 @@ final class RowEditingCoordinator: ObservableObject {
         guard let result = addResult else { return }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         selectAndEditInsertedRow(result.rowID, tabId: tabId, skipping: result.prefilledColumns)
     }
 
-    func deleteSelectedRows(indices: Set<Int>) {
+    func deleteRows(_ rowIDs: [RowID]) {
         guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
-              !indices.isEmpty else { return }
+              !rowIDs.isEmpty else { return }
 
         let tabId = tab.id
-        let displayIDs = parent.activeGridDisplayIDs
+        let model = parent.gridModel(forTab: tabId)
+        let displayIndices = Set(rowIDs.compactMap { model.displayIndex(of: $0) })
+        let displayCount = model.rowCount
 
         var deleteResult = RowOperationsManager.DeleteRowsResult(
             nextRowToSelect: -1,
@@ -83,9 +77,10 @@ final class RowEditingCoordinator: ObservableObject {
             delta: .none
         )
         parent.mutateActiveTableRows(for: tabId) { rows in
-            let result = parent.rowOperationsManager.deleteSelectedRows(
-                selectedIndices: indices,
-                displayIDs: displayIDs,
+            let result = parent.rowOperationsManager.deleteRows(
+                rowIDs,
+                selectedDisplayIndices: displayIndices,
+                displayCount: displayCount,
                 tableRows: &rows
             )
             deleteResult = result
@@ -95,24 +90,27 @@ final class RowEditingCoordinator: ObservableObject {
         guard deleteResult.stagedRowCount > 0 else { return }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-
-        if !deleteResult.physicallyRemovedIndices.isEmpty {
-            parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(deleteResult.delta)
-        } else {
-            parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
-        }
+        model.repaintRows(rowIDs)
 
         guard selectionPointsTheGrid else { return }
-        let displayCount = parent.activeGridDisplayIDs?.count
-            ?? parent.tabSessionRegistry.tableRows(for: tabId).count
-        if deleteResult.nextRowToSelect >= 0 && deleteResult.nextRowToSelect < displayCount {
-            parent.selectionState.indices = [deleteResult.nextRowToSelect]
+        if let next = model.rowID(at: deleteResult.nextRowToSelect) {
+            model.selectRows([next])
         } else {
-            parent.selectionState.indices.removeAll()
+            model.clearSelection()
         }
     }
 
-    func duplicateSelectedRow(index: Int) {
+    func undoRowDeletions(_ rowIDs: [RowID]) {
+        guard parent.canEditActiveResult, let tabId = parent.tabManager.selectedTabId else { return }
+        let deleted = rowIDs.filter { parent.changeManager.isRowDeleted($0) }
+        guard !deleted.isEmpty else { return }
+        for rowID in deleted {
+            parent.changeManager.undoRowDeletion(rowID: rowID)
+        }
+        parent.existingGridModel(forTab: tabId)?.repaintRows(deleted)
+    }
+
+    func duplicateRow(_ rowID: RowID) {
         guard parent.canEditActiveResult,
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.tableName != nil else { return }
@@ -120,14 +118,12 @@ final class RowEditingCoordinator: ObservableObject {
         let tabId = tab.id
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.hasAuthoritativeSchema,
-              let storageIndex = DisplayRowMapping.rowIndex(
-                  forDisplay: index, displayIDs: parent.activeGridDisplayIDs, in: tableRows
-              ) else { return }
-        guard parent.unloadedValuesAreLoaded(displayRows: [index], retry: { [weak self] in
-            self?.duplicateSelectedRow(index: index)
+              let storageIndex = tableRows.index(of: rowID) else { return }
+        guard parent.unloadedValuesAreLoaded(rowIDs: [rowID], retry: { [weak self] in
+            self?.duplicateRow(rowID)
         }) else { return }
 
-        parent.dataTabDelegate?.tableViewCoordinator?.commitActiveCellEdit()
+        parent.commitActiveGridEdit()
 
         let uuidKeys = uuidKeyForms(in: tableRows, tab: tab)
         var dupResult: RowOperationsManager.AddNewRowResult?
@@ -144,18 +140,31 @@ final class RowEditingCoordinator: ObservableObject {
         guard let result = dupResult else { return }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(result.delta)
         selectAndEditInsertedRow(result.rowID, tabId: tabId, skipping: result.prefilledColumns)
     }
 
-    /// The caret skips a key the row was given a fresh UUID for, so the first keystroke does not replace it.
+    // The caret skips a key the row was given a fresh UUID for, so the first keystroke does not replace it.
     private func selectAndEditInsertedRow(_ rowID: RowID, tabId: UUID, skipping prefilled: Set<Int>) {
         guard selectionPointsTheGrid,
-              let displayIndex = displayIndex(of: rowID, tabId: tabId) else { return }
-        parent.selectionState.indices = [displayIndex]
-        parent.dataTabDelegate?.tableViewCoordinator?.beginEditingFirstEditableColumn(
-            displayRow: displayIndex, skipping: prefilled
-        )
+              let model = parent.existingGridModel(forTab: tabId),
+              let displayRow = model.displayIndex(of: rowID) else { return }
+        guard let column = firstEditableColumn(in: model, skipping: prefilled),
+              let displayColumn = model.columns.displayPosition(of: column.id) else {
+            model.selectRows([rowID])
+            model.reveal(rowID: rowID)
+            return
+        }
+        model.selectCell(GridCoord(row: displayRow, displayColumn: displayColumn))
+        model.reveal(rowID: rowID, columnID: column.id)
+        if model.isColumnWritable(column) {
+            model.beginEditing(rowID: rowID, columnID: column.id)
+        }
+    }
+
+    // Column 0 is where the row starts, not always where it can be typed into: the server may own it.
+    private func firstEditableColumn(in model: DataGridModel, skipping prefilled: Set<Int>) -> DataGridColumn? {
+        let editable = model.columns.columns.filter { model.isColumnWritable($0) }
+        return editable.first { !prefilled.contains($0.dataIndex) } ?? editable.first ?? model.columns.columns.first
     }
 
     private func uuidKeyForms(in tableRows: TableRows, tab: QueryTab) -> [Int: UUIDCellForm] {
@@ -170,9 +179,7 @@ final class RowEditingCoordinator: ObservableObject {
         )
     }
 
-    /// The key columns a new, duplicated or pasted row gets a fresh UUID in: a UUID key the server does not fill,
-    /// whose `__DEFAULT__` would leave the key out of the INSERT. Asked of `SetValueOptions`, so a foreign key, a
-    /// read-only column or a writer that cannot store UUID text gets none, exactly as Generate UUID is hidden.
+    // A UUID key the server does not fill; asked of SetValueOptions, so it is skipped wherever Generate UUID is hidden.
     static func uuidKeyForms(
         in tableRows: TableRows,
         primaryKeyColumns: [String],
@@ -214,36 +221,12 @@ final class RowEditingCoordinator: ObservableObject {
         return nil
     }
 
-    private func displayIndex(of rowID: RowID, tabId: UUID) -> Int? {
-        DisplayRowMapping.displayIndex(
-            forRowID: rowID,
-            displayIDs: parent.activeGridDisplayIDs,
-            in: parent.tabSessionRegistry.tableRows(for: tabId)
-        )
-    }
-
-    private func displayIndices(of rowIDs: Set<RowID>, tabId: UUID) -> Set<Int> {
-        guard let displayIDs = parent.activeGridDisplayIDs else {
-            let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
-            return Set(rowIDs.compactMap { tableRows.index(of: $0) })
-        }
-        return Set(displayIDs.indices.filter { rowIDs.contains(displayIDs[$0]) })
-    }
-
-    /// Ends the typed run an inspector field was building, so the next thing to register an undo
-    /// step lands after it rather than inside it.
+    // The next undo step then lands after the typed run, not inside it.
     func endInspectorEditRun() {
         parent.changeManager.endCoalescedUndoRun()
     }
 
-    /// Stages a row inspector field edit exactly as the grid's own cell editor stages one: the
-    /// change, the shared `TableRows` buffer both surfaces read, and the repaint.
-    ///
-    /// The rows are named by `RowID` rather than by the display positions the selection carries,
-    /// and each contributes its own `oldValue`. A shared one is wrong the moment a multi-row
-    /// selection disagrees on the field, where the inspector holds no value for it at all.
-    ///
-    /// `isExpression` stages `value`, SQL from `CellExpressionVocabulary`, to be written unquoted.
+    // By RowID, each row with its own oldValue: a shared one is wrong when a multi-row selection disagrees on the field.
     func stageInspectorFieldEdit(
         columnIndex: Int,
         value: PluginCellValue,
@@ -259,18 +242,12 @@ final class RowEditingCoordinator: ObservableObject {
         )
     }
 
-    /// A value of its own for each row, one undo step for all of them.
+    // One undo step for all rows.
     func stageInspectorFieldValues(columnIndex: Int, valuesByRow: [RowID: PluginCellValue]) {
         stageInspectorEdits(valuesByRow: valuesByRow, columnIndex: columnIndex, continuity: .discrete)
     }
 
-    /// Puts a field back to the values the inspector was configured with.
-    ///
-    /// A field the selected rows disagree on has no value of its own, and clearing it asks for each
-    /// row's own value back rather than for one value across all of them.
-    ///
-    /// `absentRowIDs` are the rows that had no field for the column, which it goes back to missing, and
-    /// `expressionRowIDs` the rows whose value was staged SQL, which goes back as SQL rather than as text.
+    // Disagreeing rows get their own values back; absentRowIDs go back to missing, expressionRowIDs back to SQL.
     func revertInspectorFieldEdit(
         columnIndex: Int,
         valuesByRow: [RowID: PluginCellValue],
@@ -286,8 +263,7 @@ final class RowEditingCoordinator: ObservableObject {
         )
     }
 
-    /// Takes the field out of every row the inspector is showing, for an engine that tells a
-    /// missing field from NULL.
+    // For an engine that tells a missing field from NULL.
     func stageInspectorFieldRemoval(columnIndex: Int, rowIDs: [RowID]) {
         guard parent.changeManager.supportsFieldRemoval else { return }
         stageInspectorEdits(
@@ -313,14 +289,11 @@ final class RowEditingCoordinator: ObservableObject {
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.columns.indices.contains(columnIndex) else { return }
         let columnName = tableRows.columns[columnIndex]
-        /// Before the rows are touched, not after: a column the server owns is refused when the
-        /// change is recorded, and editing here first would paint a value into the grid that no
-        /// statement will ever carry.
+        // Checked before touching rows: a server-owned column is refused later, so the grid would show a value nothing writes.
         guard parent.changeManager.isColumnWritable(columnName) else { return }
 
         var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
         var removedCells: Set<CellPosition> = []
-        var editedRowIDs: Set<RowID> = []
         for (rowID, value) in valuesByRow {
             guard let storageRow = tableRows.index(of: rowID) else { continue }
             let row = tableRows.rows[storageRow]
@@ -362,35 +335,42 @@ final class RowEditingCoordinator: ObservableObject {
             if removesField {
                 removedCells.insert(CellPosition(row: storageRow, column: columnIndex))
             }
-            editedRowIDs.insert(rowID)
         }
         guard !edits.isEmpty else { return }
 
         parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits, absentCells: removedCells) }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        repaintInspectorEdit(rowIDs: editedRowIDs, columnIndex: columnIndex, in: tableRows)
         parent.inspectorRowContentChanged.send()
     }
 
-    /// `editMany` reports the rows it changed by their position in storage, and the grid reads a
-    /// delta's rows as display positions, so a sort or a value filter would repaint the wrong ones.
-    ///
-    /// Resolved in one pass over the display order rather than a search per row, because that order
-    /// is as long as the result.
-    private func repaintInspectorEdit(rowIDs: Set<RowID>, columnIndex: Int, in tableRows: TableRows) {
-        var positions: Set<CellPosition> = []
-        if let displayIDs = parent.activeGridDisplayIDs {
-            for (displayRow, rowID) in displayIDs.enumerated() where rowIDs.contains(rowID) {
-                positions.insert(CellPosition(row: displayRow, column: columnIndex))
-            }
-        } else {
-            for rowID in rowIDs {
-                guard let displayRow = tableRows.index(of: rowID) else { continue }
-                positions.insert(CellPosition(row: displayRow, column: columnIndex))
+    // One user command, one undo step named for it; the buffer write reaches the grid as one delta.
+    func commitGridEdits(_ resolved: [DataGridResolvedEdit], actionName: String, tabId: UUID) -> Bool {
+        let changeManager = parent.changeManager
+        let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
+        var edits: [(row: Int, column: Int, value: PluginCellValue)] = []
+        var removedCells: Set<CellPosition> = []
+        for edit in resolved {
+            guard let storageRow = tableRows.index(of: edit.rowID) else { continue }
+            changeManager.recordCellChange(
+                rowID: edit.rowID,
+                columnIndex: edit.dataIndex,
+                columnName: edit.columnName,
+                oldValue: edit.oldValue,
+                newValue: edit.newValue,
+                originalRow: edit.originalRow,
+                absence: edit.absence,
+                isExpression: edit.isExpression
+            )
+            edits.append((row: storageRow, column: edit.dataIndex, value: edit.newValue))
+            if edit.absence.isAbsent {
+                removedCells.insert(CellPosition(row: storageRow, column: edit.dataIndex))
             }
         }
-        guard !positions.isEmpty else { return }
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(.cellsChanged(positions))
+        guard !edits.isEmpty else { return false }
+        changeManager.undoManagerProvider?()?.setActionName(actionName)
+        parent.mutateActiveTableRows(for: tabId) { rows in rows.editMany(edits, absentCells: removedCells) }
+        parent.tabManager.mutate(tabId: tabId) { $0.hasUserInteraction = true }
+        return true
     }
 
     func handleUndoResult(_ result: UndoResult) {
@@ -398,69 +378,56 @@ final class RowEditingCoordinator: ObservableObject {
 
         let tabId = tab.id
 
-        var application = RowOperationsManager.UndoApplicationResult(adjustedSelection: nil, delta: .none)
+        var application = RowOperationsManager.UndoApplicationResult(clearsSelection: false, delta: .none)
         parent.mutateActiveTableRows(for: tabId) { rows in
             let applied = parent.rowOperationsManager.applyUndoResult(result, tableRows: &rows)
             application = applied
             return applied.delta
         }
 
-        if let adjustedSelection = application.adjustedSelection {
-            parent.selectionState.indices = adjustedSelection
+        let model = parent.existingGridModel(forTab: tabId)
+        if application.clearsSelection {
+            model?.clearSelection()
         }
 
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
-        parent.dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(application.delta)
-        /// The row inspector reads its fields from the `TableRows` this just rewrote, and nothing
-        /// else in `InspectorTrigger` moves on an undo.
+        model?.repaintAllRows()
+        // The inspector reads its fields from the rows this rewrote, and nothing else it watches moves on an undo.
         parent.gridDisplayRevision &+= 1
     }
 
-    func copySelectedRowsToClipboard(indices: Set<Int>) {
-        guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
-            self?.copySelectedRowsToClipboard(indices: indices)
+    func copyRowsToClipboard(_ rowIDs: [RowID], includeHeaders: Bool = false) {
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(rowIDs: rowIDs, retry: { [weak self] in
+            self?.copyRowsToClipboard(rowIDs, includeHeaders: includeHeaders)
         }) else { return }
-        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        parent.rowOperationsManager.copySelectedRowsToClipboard(
-            selectedIndices: indices,
-            tableRows: tableRows,
-            displayIDs: parent.activeGridDisplayIDs,
-            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
+        parent.rowOperationsManager.copyRowsToClipboard(
+            rowIDs,
+            tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
+            includeHeaders: includeHeaders,
+            visibleColumnIndices: presentedColumnIndices(tabId: tab.id)
         )
     }
 
-    func copySelectedRowsWithHeaders(indices: Set<Int>) {
-        guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
-            self?.copySelectedRowsWithHeaders(indices: indices)
+    func copyRowsAsJson(_ rowIDs: [RowID]) {
+        guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !rowIDs.isEmpty else { return }
+        guard parent.unloadedValuesAreLoaded(rowIDs: rowIDs, retry: { [weak self] in
+            self?.copyRowsAsJson(rowIDs)
         }) else { return }
-        let tableRows = parent.tabSessionRegistry.tableRows(for: tab.id)
-        parent.rowOperationsManager.copySelectedRowsToClipboard(
-            selectedIndices: indices,
-            tableRows: tableRows,
-            displayIDs: parent.activeGridDisplayIDs,
-            includeHeaders: true,
-            visibleColumnIndices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
-        )
-    }
-
-    func copySelectedRowsAsJson(indices: Set<Int>) {
-        guard let (tab, _) = parent.tabManager.selectedTabAndIndex, !indices.isEmpty else { return }
-        guard parent.unloadedValuesAreLoaded(displayRows: indices, retry: { [weak self] in
-            self?.copySelectedRowsAsJson(indices: indices)
-        }) else { return }
+        let model = parent.gridModel(forTab: tab.id)
         let output = ResultJsonSerializer.serialize(
             tableRows: parent.tabSessionRegistry.tableRows(for: tab.id),
-            displayIDs: parent.activeGridDisplayIDs,
-            selectedDisplayIndices: indices,
-            columns: VisibleColumnProjection(
-                indices: parent.dataTabDelegate?.tableViewCoordinator?.visibleColumnDataIndices()
-            )
+            displayIDs: model.displayedRowIDs,
+            selectedDisplayIndices: Set(rowIDs.compactMap { model.displayIndex(of: $0) }),
+            columns: VisibleColumnProjection(indices: presentedColumnIndices(tabId: tab.id))
         )
         guard output.rowCount > 0 else { return }
         ClipboardService.shared.writeText(output.json)
+    }
+
+    // The columns the grid presents, in its order: hidden ones go, moved ones follow.
+    private func presentedColumnIndices(tabId: UUID) -> [Int] {
+        parent.gridModel(forTab: tabId).columns.columns.map(\.dataIndex)
     }
 
     func pasteRows() {
@@ -469,8 +436,7 @@ final class RowEditingCoordinator: ObservableObject {
               tab.tabType == .table else { return }
 
         let tabId = tab.id
-        /// Pasted rows hand the columns the server owns back to it, which only the schema names, so pasting waits for
-        /// it the way Add Row does rather than staging an identity value the save would send.
+        // Pasted rows hand the server-owned columns back to it, which only the schema names, so this waits for it.
         let tableRows = parent.tabSessionRegistry.tableRows(for: tabId)
         guard tableRows.hasAuthoritativeSchema else { return }
         let columns = tableRows.columns
@@ -490,23 +456,9 @@ final class RowEditingCoordinator: ObservableObject {
 
         guard !pasteResult.pastedRows.isEmpty else { return }
 
-        let newIndices = displayIndices(of: Set(pasteResult.pastedRows.map(\.rowID)), tabId: tabId)
-        if selectionPointsTheGrid {
-            parent.selectionState.indices = newIndices
-        }
-
-        parent.tabManager.mutate(at: tabIndex) { tab in
-            tab.selectedRowIndices = newIndices
-            /// The pasted rows are the selection now. Left behind, the stored rectangle would
-            /// outrank them in `selectedDisplayRows` and come back instead of them.
-            tab.cellSelection = .empty
-            tab.hasUserInteraction = true
-        }
-        parent.dataTabDelegate?.tableViewCoordinator?.applyDelta(pasteResult.delta)
-    }
-
-    func updateCellInTab(rowIndex: Int, columnIndex: Int, value: PluginCellValue) {
-        guard let (_, tabIndex) = parent.tabManager.selectedTabAndIndex else { return }
         parent.tabManager.mutate(at: tabIndex) { $0.hasUserInteraction = true }
+        if selectionPointsTheGrid {
+            parent.existingGridModel(forTab: tabId)?.selectRows(pasteResult.pastedRows.map(\.rowID))
+        }
     }
 }

@@ -6,8 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-/// Read-side of the panel toggles. Each one reads the same state its `toggle` writes,
-/// so the menu title describes what the command will actually do.
+// Each reads the state its toggle writes, so the menu title matches what the command does.
 extension MainContentCommandActions {
     var isFilterBarVisible: Bool {
         guard let coordinator, let index = coordinator.tabManager.selectedTabIndex else { return false }
@@ -25,19 +24,13 @@ extension MainContentCommandActions {
     }
 }
 
-/// The result's view mode, which the results header switches and the View menu mirrors.
-///
-/// The switcher used to be the only route to JSON and Chart mode, so those views were reachable by
-/// mouse alone. A menu command is also what the HIG asks of any control that is not in the menu bar.
+// The switcher was the only route to JSON and Chart; the HIG wants a menu command for any control not in the menu bar.
 extension MainContentCommandActions {
     var resultsViewMode: ResultsViewMode? {
         coordinator?.tabManager.selectedTab?.display.resultsViewMode
     }
 
-    /// Recomputed here rather than read off the status bar's snapshot, because the View menu has
-    /// to validate while no status bar is on screen. Both call sites take the same inputs, the
-    /// tab's own geometry columns included, so the menu and the switcher can never disagree about
-    /// whether Map is offered.
+    // Recomputed, not read from the status bar: the View menu validates while no status bar is on screen.
     var availableResultsViewModes: [ResultsViewMode] {
         guard let coordinator, let tab = coordinator.tabManager.selectedTab else { return [] }
         let tableRows = coordinator.tabSessionRegistry.existingTableRows(for: tab.id)
@@ -53,6 +46,7 @@ extension MainContentCommandActions {
     func setResultsViewMode(_ mode: ResultsViewMode) {
         guard let coordinator, let tabId = coordinator.tabManager.selectedTab?.id else { return }
         guard availableResultsViewModes.contains(mode) else { return }
+        coordinator.commitActiveGridEdit()
         coordinator.tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = mode }
     }
 }

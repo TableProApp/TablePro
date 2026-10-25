@@ -5,14 +5,13 @@
 
 import AppKit
 
-/// Start Dictation and Emoji & Symbols are omitted on purpose: the system appends
-/// them to the Edit menu itself.
+// Start Dictation and Emoji & Symbols are omitted on purpose: the system appends them to the Edit menu itself.
 @MainActor
 enum EditMenuBuilder {
-    /// Retained for the menu's lifetime, which is the app's: `NSMenu.delegate` is unowned.
+    // Retained for the app's lifetime: `NSMenu.delegate` is unowned.
     private static let delegate = EditMenuDelegate()
 
-    /// A key of its own: French names this menu "Édition" but an Edit button "Modifier".
+    // A key of its own: French names this menu "Édition" but an Edit button "Modifier".
     static var title: String {
         String(localized: "menu.edit", defaultValue: "Edit", comment: "The Edit menu in the menu bar")
     }
@@ -95,10 +94,7 @@ enum EditMenuBuilder {
                 action: #selector(MainSplitViewController.insertDocument(_:))
             ),
             MenuItemFactory.separator,
-            /// Not Undo, and deliberately not next to it. Undo takes back an edit the user has not
-            /// saved yet and costs nothing; this one writes to the database, needs review and can
-            /// be refused. The HIG scopes Undo to the current document's content, and every Apple
-            /// reversal of something already committed is a separate, named command.
+            // Not Undo, and not next to it: this writes to the database and can be refused; the HIG scopes Undo to uncommitted content.
             MenuItemFactory.item(
                 String(localized: "Restore Previous Values…"),
                 action: #selector(MainSplitViewController.restorePreviousValues(_:)),
@@ -132,19 +128,19 @@ enum EditMenuBuilder {
             MenuItemFactory.separator,
             MenuItemFactory.item(
                 String(localized: "Copy Rows"),
-                action: #selector(MainSplitViewController.copySelectedRows(_:)),
+                action: #selector(GridRowCopyCommandResponding.copySelectedRows(_:)),
                 shortcut: .copyRowsExplicit,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Copy with Headers"),
-                action: #selector(MainSplitViewController.copyRowsWithHeaders(_:)),
+                action: #selector(GridRowCopyCommandResponding.copyRowsWithHeaders(_:)),
                 shortcut: .copyWithHeaders,
                 keyboard: keyboard
             ),
             MenuItemFactory.item(
                 String(localized: "Copy as JSON"),
-                action: #selector(MainSplitViewController.copyRowsAsJson(_:)),
+                action: #selector(GridRowCopyCommandResponding.copyRowsAsJson(_:)),
                 shortcut: .copyAsJson,
                 keyboard: keyboard
             ),

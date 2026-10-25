@@ -1,8 +1,3 @@
-//
-//  DashboardTileView.swift
-//  TablePro
-//
-
 import SwiftUI
 import TableProTheme
 
@@ -51,7 +46,7 @@ struct DashboardTileView: View {
         .accessibilityIdentifier("server-dashboard-tile")
     }
 
-    /// The drag handle is the title row alone: a drag on a chart moves its selection, not the tile.
+    // The drag handle is the title row alone: a drag on a chart moves its selection, not the tile.
     private var header: some View {
         HStack(spacing: 6) {
             Text(title)
@@ -201,7 +196,7 @@ private struct DashboardTileContentView: View {
                             ForEach(Array(table.columns.enumerated()), id: \.offset) { _, column in
                                 Text(verbatim: column)
                                     .fontWeight(.semibold)
-                                    .themeForeground(.gridHeaderText, native: HierarchicalShapeStyle.secondary)
+                                    .themeForeground(.gridText, native: HierarchicalShapeStyle.secondary)
                             }
                         }
                         ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in

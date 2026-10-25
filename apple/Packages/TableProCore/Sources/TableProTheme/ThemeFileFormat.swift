@@ -1,11 +1,6 @@
 import Foundation
 
-/// Format 3 dropped the pane and status groups, made every color optional and removed `system:`
-/// values. Format 2 never shipped in a release, and format 1 files carried fonts the app now keeps in
-/// settings.
-///
-/// Adding a slot bumps `current`. The decoder keeps reading every older format, and an unknown key
-/// stays an error: a file is refused rather than loaded without colors its author wrote.
+// Removing a slot never bumps it: the slot's key joins `ThemeFileFormat.retiredKeys`.
 public enum ThemeSchema {
     public static let current = 3
 }
@@ -15,7 +10,7 @@ public enum ThemeIdentifier {
 
     private static let pattern = #"^[A-Za-z0-9._-]+$"#
 
-    /// Plain enough to be a file name on every file system TablePro writes to.
+    // Plain enough to be a file name on every file system TablePro writes to.
     public static func isValid(_ id: String) -> Bool {
         id.utf8.count <= maximumLength
             && id.range(of: pattern, options: .regularExpression) != nil
@@ -27,21 +22,24 @@ public enum ThemeIdentifier {
     }
 }
 
-/// The theme file format, and the only place a file can be rejected. Every color is optional: a
-/// slot the file leaves out draws its fallback. What is refused is anything that would otherwise
-/// load as something the author did not write: an unknown key, an unparseable color, missing
-/// metadata, another format.
-///
-/// Foundation keeps the first of two equal keys at one level, so that duplicate cannot be seen.
+// Foundation keeps the first of two equal keys at one level, so that duplicate cannot be seen.
 public enum ThemeFileFormat {
     public static let maximumTextLength = 100
 
-    /// What `decode` does with a name or author that is not one line of at most `maximumTextLength`.
+    // Removed slots: a file that still carries one loads without it.
+    static let retiredKeys: Set<String> = [
+        "dataGrid.headerBackground",
+        "dataGrid.headerText",
+        "dataGrid.selection",
+        "dataGrid.selectionText",
+        "dataGrid.inactiveSelection",
+        "dataGrid.focusBorder",
+    ]
+
     public enum TextPolicy: Sendable {
-        /// Refuses it: a file someone picked, and every record another Mac sent.
+        // A file someone picked, and every record another Mac sent.
         case strict
-        /// Folds it onto one line and cuts it at the cap. TablePro 0.81 wrote names and authors with
-        /// neither limit, and a theme it saved still loads; the next save writes the repaired text.
+        // TablePro 0.81 wrote names and authors with no limit; the next save writes the repaired text.
         case repaired
     }
 
@@ -97,7 +95,6 @@ public enum ThemeFileFormat {
         )
     }
 
-    /// Writes what `decode` reads back unchanged: a trimmed name and author, and opaque fills.
     public static func encode(_ theme: ThemeDefinition) throws -> Data {
         guard ThemeIdentifier.isValid(theme.id) else { throw ThemeLoadError.invalidIdentifier(theme.id) }
         let name = try validatedName(theme.name, policy: .strict)
@@ -124,8 +121,7 @@ public enum ThemeFileFormat {
 
     // MARK: - Reading
 
-    /// `JSONDecoder` rather than `JSONSerialization`: its underlying error names the character and
-    /// where it is, which is what a person fixing the file by hand needs.
+    // `JSONDecoder` over `JSONSerialization`: its error names the character and where it is.
     private static func parse(_ data: Data) throws -> ThemeJSONNode {
         do {
             return try JSONDecoder().decode(ThemeJSONNode.self, from: data)
@@ -141,6 +137,7 @@ public enum ThemeFileFormat {
         let leaves = root
             .filter { MetadataKey(rawValue: $0.key) == nil }
             .flatMap { key, node in node.leaves(prefix: key) }
+            .filter { !retiredKeys.contains($0.path) }
             .sorted { $0.path < $1.path }
 
         var parsed: [ThemeSlot: ThemeColor] = [:]
@@ -182,7 +179,7 @@ public enum ThemeFileFormat {
         return repaired(text)
     }
 
-    /// Every scalar `isSingleLine` refuses splits words, so the next save's strict check passes.
+    // Every scalar `isSingleLine` refuses splits words, so the next save's strict check passes.
     private static func repaired(_ text: String) -> String {
         let separators = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
         let words = text.components(separatedBy: separators).filter { !$0.isEmpty }
@@ -194,8 +191,7 @@ public enum ThemeFileFormat {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// `controlCharacters` holds the ASCII line breaks; `newlines` adds the Unicode line and paragraph
-    /// separators.
+    // `newlines` adds the Unicode line and paragraph separators to the ASCII breaks.
     private static func isSingleLine(_ text: String) -> Bool {
         !text.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) }
     }
@@ -216,9 +212,7 @@ public enum ThemeFileFormat {
     }
 }
 
-/// A JSON value as far as the format cares. A number is kept only as an integer, which is all the
-/// schema field holds; anything else that is not a string or an object is `other`, so the decoder
-/// can name it rather than drop it.
+// Anything not a string, an integer or an object is `other`, so the decoder names it rather than drop it.
 private indirect enum ThemeJSONNode: Decodable {
     case string(String)
     case number(Int)
@@ -253,7 +247,7 @@ private indirect enum ThemeJSONNode: Decodable {
         return value
     }
 
-    /// Every leaf with its dotted path. A leaf that is not a string is kept as `nil`.
+    // A leaf that is not a string is kept as `nil`.
     func leaves(prefix: String) -> [(path: String, value: String?)] {
         switch self {
         case let .string(value):

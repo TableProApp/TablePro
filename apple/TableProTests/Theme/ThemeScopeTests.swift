@@ -1,10 +1,4 @@
-//
-//  ThemeScopeTests.swift
-//  TableProTests
-//
-//  A fixed scope is how the theme editor renders a draft through the real carriers. It has to draw
-//  the draft whatever the engine holds, and leave the engine exactly as it was.
-//
+// The theme editor renders a draft through a fixed scope: it draws the draft and leaves the engine alone.
 
 import AppKit
 import Combine
@@ -20,7 +14,7 @@ struct ThemeScopeTests {
         let tableView: NSTableView
     }
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
+    // Never ordered front and never closed: `close()` on a test window over-releases it.
     private func makeTable() -> Table {
         let tableView = NSTableView(frame: NSRect(x: 0, y: 0, width: 240, height: 120))
         tableView.headerView = nil
@@ -50,7 +44,7 @@ struct ThemeScopeTests {
             appearance: .dark,
             overrides: [
                 .gridBackground: try ThemeColor(validating: "#282A36"),
-                .gridSelection: try ThemeColor(validating: "#44475A"),
+                .editorSelection: try ThemeColor(validating: "#44475A"),
                 .editorBackground: try ThemeColor(validating: "#1B3A2C"),
                 .editorText: try ThemeColor(validating: "#F8F8F2"),
             ]
@@ -73,7 +67,7 @@ struct ThemeScopeTests {
             #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .aqua) == "#282A36")
             #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .darkAqua) == "#282A36")
             #expect(ThemeTestFixture.hex(chrome.rowBackgroundColor(forRow: 1), in: .aqua) == "#31333E")
-            #expect(ThemeTestFixture.hex(chrome.selectionColor(emphasized: true)) == "#44475A")
+            #expect(chrome.selectionColor(emphasized: true) == nil)
             #expect(!table.scrollView.drawsBackground)
             #expect(engine.pair == pairBefore)
             #expect(engine.revision == revisionBefore)
@@ -92,6 +86,18 @@ struct ThemeScopeTests {
             chrome.apply()
 
             #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .aqua) == "#282A36")
+            withExtendedLifetime(chrome) {}
+        }
+    }
+
+    @Test("A fixed scope drives a code table's selection from its definition")
+    func fixedScopeDrivesACodeTableSelection() throws {
+        try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
+            let table = makeTable()
+            let chrome = ThemeTableChrome(tableView: table.tableView, family: .code, scope: .fixed(try Self.draft()))
+
+            #expect(ThemeTestFixture.hex(chrome.selectionColor(emphasized: true)) == "#44475A")
+            #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .aqua) == "#1B3A2C")
             withExtendedLifetime(chrome) {}
         }
     }

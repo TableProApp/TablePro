@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -12,7 +13,7 @@ internal struct ResultComparisonGridLine: Equatable {
 }
 
 @MainActor
-internal final class ResultComparisonGridModel: DataGridViewDelegate {
+internal final class ResultComparisonGridModel: ObservableObject {
     internal static let leadingColumnCount = 2
 
     internal struct LoadKey: Hashable {
@@ -20,14 +21,23 @@ internal final class ResultComparisonGridModel: DataGridViewDelegate {
         let filter: ResultComparisonFilter
     }
 
+    internal let grid = HeldRowsGridAdapter(configuration: ResultComparisonGridModel.configuration)
     private(set) var lines: [ResultComparisonGridLine] = []
-    private(set) var tableRows = TableRows()
-    private var states: [RowVisualState] = []
     private var loadedKey: LoadKey?
 
-    // A grid row is a display position; the grid's own value filter can reorder it.
-    private weak var coordinator: TableViewCoordinator?
+    internal var model: DataGridModel { grid.model }
+    internal var tableRows: TableRows { grid.heldRows }
 
+    private static var configuration: DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.showRowNumbers = false
+        configuration.supportsValueFilter = false
+        configuration.supportsColumnSort = false
+        configuration.commands = [.freezeColumns]
+        return configuration
+    }
+
+    @discardableResult
     internal func ensureLoaded(
         key: LoadKey,
         comparison: ResultComparison,
@@ -36,10 +46,19 @@ internal final class ResultComparisonGridModel: DataGridViewDelegate {
         pairing: ResultColumnPairing
     ) -> TableRows {
         guard loadedKey != key else { return tableRows }
+        // A row is a line of this load, so a selection made against another load names nothing here.
+        if loadedKey != nil {
+            grid.model.clearSelection()
+        }
         loadedKey = key
         lines = Self.lines(for: comparison.entries.filter { key.filter.matches($0.kind) })
-        states = lines.map(Self.visualState(for:))
-        tableRows = Self.tableRows(for: lines, left: left, right: right, pairing: pairing)
+        let rows = Self.tableRows(for: lines, left: left, right: right, pairing: pairing)
+        var states: [RowID: RowVisualState] = [:]
+        for (row, line) in zip(rows.rows, lines) {
+            states[row.id] = Self.visualState(for: line)
+        }
+        grid.visualStates = states
+        grid.setRows(rows)
         return tableRows
     }
 
@@ -137,26 +156,6 @@ internal final class ResultComparisonGridModel: DataGridViewDelegate {
     ) -> ColumnType {
         CompareRowGridModel.displayType(source: left.columnType(at: pair.left), target: right.columnType(at: pair.right))
     }
-
-    private func lineIndex(forDisplayRow row: Int) -> Int? {
-        let index = coordinator?.tableRowsIndex(forDisplayRow: row) ?? row
-        return lines.indices.contains(index) ? index : nil
-    }
-
-    // MARK: - DataGridViewDelegate
-
-    internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
-        coordinator = tableViewCoordinator
-    }
-
-    internal func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        guard let index = lineIndex(forDisplayRow: row), states.indices.contains(index) else { return nil }
-        return states[index]
-    }
-
-    internal func dataGridCopyRows(_ indices: Set<Int>) {
-        coordinator?.copyRowsAsTSV(at: indices, includeHeaders: false)
-    }
 }
 
 internal struct ResultComparisonGrid: View {
@@ -166,38 +165,19 @@ internal struct ResultComparisonGrid: View {
     internal let pairing: ResultColumnPairing
     internal let filter: ResultComparisonFilter
 
-    @State private var model = ResultComparisonGridModel()
-    @State private var changeManager = AnyChangeManager(DataChangeManager())
-    @State private var selectedRows: Set<Int> = []
-    @State private var columnLayout = ColumnLayoutState()
+    @StateObject private var model = ResultComparisonGridModel()
 
+    private var key: ResultComparisonGridModel.LoadKey {
+        ResultComparisonGridModel.LoadKey(comparisonId: comparison.id, filter: filter)
+    }
+
+    // task(id:) runs with this body's values; onChange(of:) would run with the previous body's (measured).
     internal var body: some View {
-        let key = ResultComparisonGridModel.LoadKey(comparisonId: comparison.id, filter: filter)
-        let model = model
-        let comparison = comparison
-        let left = left
-        let right = right
-        let pairing = pairing
-        var configuration = DataGridConfiguration()
-        configuration.showRowNumbers = false
-        configuration.supportsColumnCommands = false
-        configuration.supportsValueFilter = false
-        configuration.supportsColumnSort = false
-        return DataGridView(
-            tableRowsProvider: {
-                model.ensureLoaded(key: key, comparison: comparison, left: left, right: right, pairing: pairing)
-            },
-            changeManager: changeManager,
-            isEditable: false,
-            configuration: configuration,
-            delegate: model,
-            selectedRowIndices: $selectedRows,
-            sortState: .constant(SortState()),
-            columnLayout: $columnLayout,
-            contentRevision: key.hashValue
-        )
-        .onChange(of: key) { _ in
-            selectedRows = []
-        }
+        DataGridView(model: model.model)
+            .task(id: key) { load() }
+    }
+
+    private func load() {
+        model.ensureLoaded(key: key, comparison: comparison, left: left, right: right, pairing: pairing)
     }
 }

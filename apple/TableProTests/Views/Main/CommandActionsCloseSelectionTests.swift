@@ -2,9 +2,6 @@
 //  CommandActionsCloseSelectionTests.swift
 //  TableProTests
 //
-//  Closing a tab that holds unsaved work selects it first so the save question has something to
-//  point at. Whatever the answer, the selection then goes back to the tab the user was working in.
-//
 
 import AppKit
 import Foundation
@@ -33,7 +30,6 @@ struct CommandActionsCloseSelectionTests {
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
-            selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
             pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
             pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),
@@ -51,8 +47,7 @@ struct CommandActionsCloseSelectionTests {
         return Harness(actions: actions, coordinator: coordinator, window: window)
     }
 
-    /// Three query tabs, the middle one holding a `.sql` file emptied since it was saved. Empty, so
-    /// no close here files an entry in the Recently Closed Tabs history of whoever runs the suite.
+    // Emptied, so no close here files an entry in the runner's Recently Closed Tabs history.
     private func openTabs(in harness: Harness) throws -> (first: UUID, dirty: UUID, last: UUID) {
         let manager = harness.coordinator.tabManager
         for title in ["First", "Dirty", "Last"] {
@@ -69,8 +64,6 @@ struct CommandActionsCloseSelectionTests {
         return (first, manager.tabs[dirtyIndex].id, last)
     }
 
-    /// The reported case: the background tab closed after Don't Save, and the window showed its
-    /// neighbour instead of the tab the user had in front.
     @Test("Don't Save on a background tab leaves the tab the user was on in front")
     func dontSaveKeepsTheTabInFront() async throws {
         let harness = makeHarness()
@@ -99,8 +92,7 @@ struct CommandActionsCloseSelectionTests {
         #expect(harness.coordinator.tabManager.selectedTabId == tabs.first)
     }
 
-    /// A save can wait on the server after the prompt with the strip still live. Whatever the user
-    /// picked in that time is newer than the tab the close set aside.
+    // A save can wait on the server with the strip still live.
     @Test("A tab picked while the close was pending stays in front after the close")
     func aTabPickedMeanwhileStaysInFront() async throws {
         let harness = makeHarness()

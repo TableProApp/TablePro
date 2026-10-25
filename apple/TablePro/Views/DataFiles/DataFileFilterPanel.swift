@@ -42,8 +42,7 @@ extension DataFileController: FilterPanelActions {
     }
 
     func focusGrid() {
-        guard let tableView = gridCoordinator?.tableView else { return }
-        tableView.window?.makeFirstResponder(tableView)
+        gridModel.focus()
     }
 
     func addBlankFilter(columnName: String) {

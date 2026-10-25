@@ -36,7 +36,6 @@ struct SourceFileEncodingSaveTests {
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
-            selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
             pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
             pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),

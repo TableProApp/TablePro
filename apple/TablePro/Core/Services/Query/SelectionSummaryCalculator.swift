@@ -18,7 +18,8 @@ actor SelectionSummaryCalculator {
 
     func summarize(_ input: SelectionSummaryInput) throws(CancellationError) -> SelectionSummary {
         var tally = Tally(input: input)
-        let displayRowCount = input.displayIDs?.count ?? input.tableRows.count
+        let order = DataGridRowOrder(filteredIDs: input.displayIDs, revision: 0)
+        let displayRowCount = order.count(in: input.tableRows)
         var budget = 0
         for band in Self.rowBands(of: input.selection, rowLimit: displayRowCount) {
             let columns = input.selection.columns(in: band.lowerBound).compactMap { position -> BandColumn? in
@@ -33,12 +34,7 @@ actor SelectionSummaryCalculator {
                     budget = Self.cancellationInterval
                 }
                 budget -= columns.count
-                guard let storageIndex = DisplayRowMapping.rowIndex(
-                    forDisplay: displayRow,
-                    displayIDs: input.displayIDs,
-                    in: input.tableRows
-                ) else { continue }
-                let row = input.tableRows.rows[storageIndex]
+                guard let row = order.row(at: displayRow, in: input.tableRows) else { continue }
                 guard !input.deletedRowIDs.contains(row.id) else { continue }
                 for column in columns {
                     tally.add(row[column.dataIndex], column: column.dataIndex, rule: column.rule, rowID: row.id)
@@ -48,8 +44,7 @@ actor SelectionSummaryCalculator {
         return tally.summary(coversWholeColumn: !input.selection.columns.isEmpty)
     }
 
-    /// Every rectangle's row bounds are breakpoints, so the rectangles covering a band are the same
-    /// on each of its rows: one column union per band counts an overlapped cell once.
+    // Rectangle row bounds are breakpoints, so one column union per band counts an overlapped cell once.
     static func rowBands(of selection: GridSelection, rowLimit: Int) -> [Range<Int>] {
         guard rowLimit > 0 else { return [] }
         var bounds = Set<Int>()
@@ -106,16 +101,14 @@ private struct Tally {
         }
     }
 
-    /// The accumulator trims only ASCII blanks. Column Statistics also takes a number padded with
-    /// other Unicode spaces, and the two must agree on the same cells.
+    // The accumulator trims only ASCII blanks; Column Statistics takes other Unicode spaces too, and both must agree.
     private mutating func addNumber(_ text: String) -> Bool {
         if numbers.add(text) { return true }
         guard !text.utf8.allSatisfy({ $0 < 0x80 }) else { return false }
         return numbers.add(text.trimmingCharacters(in: .whitespaces))
     }
 
-    /// The default marker is the grid's own placeholder only where an edit put it; anywhere else
-    /// it is text the table holds.
+    // The default marker is the grid's placeholder only where an edit put it; elsewhere it is text the table holds.
     private func isEmpty(_ text: String, column: Int, rowID: RowID) -> Bool {
         if text.isEmpty { return emptyTextIsEmpty }
         guard text.utf8.count == Self.defaultMarkerLength, text == PluginCellValue.defaultMarkerText else {

@@ -4,223 +4,167 @@
 //
 
 import Foundation
-import SwiftUI
+@testable import TablePro
 import TableProPluginKit
 import Testing
 
-@testable import TablePro
-
-@MainActor
-private final class NoopColumnLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
 @MainActor
 struct FillColumnTests {
-    private func makeCoordinator(
+    private func makeGrid(
         columns: [String],
         rowCount: Int,
         isEditable: Bool = true,
         columnTypes: [ColumnType]? = nil,
         columnNullable: [String: Bool] = [:],
-        databaseType: DatabaseType? = nil,
-        manager: DataChangeManager
-    ) -> TableViewCoordinator {
-        let coordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(manager),
-            isEditable: isEditable,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: NoopColumnLayoutPersister()
-        )
+        databaseType: DatabaseType? = .postgresql
+    ) -> CommandGrid {
         let types = columnTypes ?? Array(repeating: .text(rawType: nil), count: columns.count)
-        let rows = (0..<rowCount).map { i in (0..<columns.count).map { c in "r\(i)c\(c)" } }
-        let tableRows = TableRows.from(
-            queryRows: rows.map { row in row.map { PluginCellValue.text($0) } },
-            columns: columns,
-            columnTypes: types,
-            columnNullable: columnNullable
+        let rows = (0..<rowCount).map { row in (0..<columns.count).map { PluginCellValue.text("r\(row)c\($0)") } }
+        return CommandGrid(
+            TableRows.from(queryRows: rows, columns: columns, columnTypes: types, columnNullable: columnNullable),
+            configuration: isEditable ? CommandGrid.editable(databaseType: databaseType) : CommandGrid.readOnly()
         )
-        coordinator.tableRowsProvider = { tableRows }
-        coordinator.databaseType = databaseType
-        coordinator.updateCache()
-        return coordinator
     }
 
-    private func stagedValues(_ manager: DataChangeManager, column: Int, rows: Range<Int>) -> [PluginCellValue?] {
-        rows.map { row in
-            manager.pending.change(forRow: .existing(row), type: .update)?
-                .cellChanges.first { $0.columnIndex == column }?.newValue
-        }
+    private func column(_ grid: CommandGrid, _ index: Int) -> DataGridColumn {
+        grid.model.columns.columns[index]
     }
 
-    // MARK: - Target selection
+    // MARK: - Targets
 
     @Test("Targets every loaded row when editable and none are deleted")
-    func targetsAllLoadedRows() {
-        let rows = TableViewCoordinator.fillTargetRows(
-            rowCount: 5,
-            isEditable: true,
-            isRowDeleted: { _ in false }
-        )
-        #expect(rows == [0, 1, 2, 3, 4])
+    func targetsEveryRow() {
+        let grid = makeGrid(columns: ["a"], rowCount: 3)
+        #expect(grid.commands.fillTargetRowIDs() == [.existing(0), .existing(1), .existing(2)])
     }
 
     @Test("Excludes rows marked for deletion")
     func excludesDeletedRows() {
-        let rows = TableViewCoordinator.fillTargetRows(
-            rowCount: 5,
-            isEditable: true,
-            isRowDeleted: { $0 == 2 }
-        )
-        #expect(rows == [0, 1, 3, 4])
+        let grid = makeGrid(columns: ["a"], rowCount: 3)
+        grid.owner.changeManager.recordRowDeletion(rowID: .existing(1), originalRow: [.text("r1c0")])
+
+        #expect(grid.commands.fillTargetRowIDs() == [.existing(0), .existing(2)])
     }
 
-    @Test("Targets nothing on a read-only result set")
-    func noTargetsWhenReadOnly() {
-        let rows = TableViewCoordinator.fillTargetRows(
-            rowCount: 5,
-            isEditable: false,
-            isRowDeleted: { _ in false }
-        )
-        #expect(rows.isEmpty)
-    }
+    @Test("Targets nothing on a read-only result, and is not offered there or without rows")
+    func targetsNothingWhenReadOnly() {
+        let readOnly = makeGrid(columns: ["a"], rowCount: 3, isEditable: false)
+        #expect(readOnly.commands.fillTargetRowIDs().isEmpty)
+        #expect(!readOnly.commands.canFillColumn(column(readOnly, 0)))
 
-    @Test("Targets nothing when no rows are loaded")
-    func noTargetsWhenEmpty() {
-        let rows = TableViewCoordinator.fillTargetRows(
-            rowCount: 0,
-            isEditable: true,
-            isRowDeleted: { _ in false }
-        )
-        #expect(rows.isEmpty)
+        let empty = makeGrid(columns: ["a"], rowCount: 0)
+        #expect(!empty.commands.canFillColumn(column(empty, 0)))
     }
 
     // MARK: - Value resolution
 
     @Test("Resolves NULL distinctly from an empty string")
     func resolvesNullDistinctFromEmpty() {
-        let coordinator = makeCoordinator(columns: ["a"], rowCount: 1, manager: DataChangeManager())
-        #expect(coordinator.fillColumnContent(choice: .null, text: "ignored", columnIndex: 0) == .value(.null))
-        #expect(coordinator.fillColumnContent(choice: .value, text: "", columnIndex: 0) == .value(.text("")))
-        #expect(coordinator.fillColumnContent(choice: .value, text: "active", columnIndex: 0) == .value(.text("active")))
+        let grid = makeGrid(columns: ["a"], rowCount: 1)
+        let target = column(grid, 0)
+
+        #expect(grid.commands.fillColumnContent(choice: .null, text: "ignored", column: target) == .value(.null))
+        #expect(grid.commands.fillColumnContent(choice: .value, text: "", column: target) == .value(.text("")))
+        #expect(grid.commands.fillColumnContent(choice: .value, text: "active", column: target) == .value(.text("active")))
     }
 
     @Test("Offers NULL where the column takes it, and the UUIDs only on a column that holds them")
     func choicesFollowTheColumn() {
-        let coordinator = makeCoordinator(
+        let grid = makeGrid(
             columns: ["id", "name", "code"],
             rowCount: 1,
             columnTypes: [.text(rawType: "uuid"), .text(rawType: "text"), .text(rawType: "text")],
-            columnNullable: ["id": false, "name": true, "code": false],
-            databaseType: .postgresql,
-            manager: DataChangeManager()
+            columnNullable: ["id": false, "name": true, "code": false]
         )
 
-        #expect(coordinator.fillColumnChoices(columnIndex: 0) == [.value, .uuid(.v4), .uuid(.v7)])
-        #expect(coordinator.fillColumnChoices(columnIndex: 1) == [.value, .null])
-        #expect(coordinator.fillColumnChoices(columnIndex: 2) == [.value])
+        #expect(grid.commands.fillColumnChoices(for: column(grid, 0)) == [.value, .uuid(.v4), .uuid(.v7)])
+        #expect(grid.commands.fillColumnChoices(for: column(grid, 1)) == [.value, .null])
+        #expect(grid.commands.fillColumnChoices(for: column(grid, 2)) == [.value])
     }
 
     @Test("A typed function on a date column fills as SQL, and the same text on a text column as text")
     func typedFunctionFillsAsExpression() {
-        let coordinator = makeCoordinator(
+        let grid = makeGrid(
             columns: ["seen", "note"],
             rowCount: 1,
-            columnTypes: [.timestamp(rawType: "timestamptz"), .text(rawType: "text")],
-            databaseType: .postgresql,
-            manager: DataChangeManager()
+            columnTypes: [.timestamp(rawType: "timestamptz"), .text(rawType: "text")]
         )
 
         #expect(
-            coordinator.fillColumnContent(choice: .value, text: " NOW() ", columnIndex: 0)
+            grid.commands.fillColumnContent(choice: .value, text: " NOW() ", column: column(grid, 0))
                 == .value(.text("now()"), isExpression: true)
         )
-        #expect(coordinator.fillColumnContent(choice: .value, text: "NOW()", columnIndex: 1) == .value(.text("NOW()")))
+        #expect(grid.commands.fillColumnContent(choice: .value, text: "NOW()", column: column(grid, 1)) == .value(.text("NOW()")))
     }
 
     @Test("Impact description reflects singular and plural counts")
     func impactDescriptionSingularAndPlural() {
-        #expect(TableViewCoordinator.fillImpactDescription(rowCount: 1).contains("1 loaded row"))
-        #expect(TableViewCoordinator.fillImpactDescription(rowCount: 42).contains("42 loaded rows"))
+        #expect(DataGridCommands.fillImpactDescription(rowCount: 1).contains("1 loaded row"))
+        #expect(DataGridCommands.fillImpactDescription(rowCount: 42).contains("42 loaded rows"))
     }
 
-    // MARK: - Apply (staged effect)
+    // MARK: - Apply
 
-    @Test("Records one staged change per loaded row, leaving other columns untouched")
+    @Test("One commit named Fill Column with a change per loaded row, other columns untouched")
     func appliesToEveryLoadedRow() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(columns: ["a", "b"], rowCount: 4, manager: manager)
+        let grid = makeGrid(columns: ["a", "b"], rowCount: 4)
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.text("X")))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.text("X")))
 
+        #expect(grid.owner.commits.map { $0.actionName } == [String(localized: "Fill Column")])
         for row in 0..<4 {
-            #expect(manager.pending.isCellModified(rowID: .existing(row), columnIndex: 0))
+            #expect(grid.owner.staged(row, 0)?.value == .text("X"))
+            #expect(grid.owner.staged(row, 1) == nil)
         }
-        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 1) == false)
     }
 
     @Test("Does not touch rows marked for deletion")
     func skipsDeletedRowsOnApply() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(columns: ["a"], rowCount: 4, manager: manager)
-        manager.recordRowDeletion(rowID: .existing(2), originalRow: [.text("r2c0")])
+        let grid = makeGrid(columns: ["a"], rowCount: 4)
+        grid.owner.changeManager.recordRowDeletion(rowID: .existing(2), originalRow: [.text("r2c0")])
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.text("X")))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.text("X")))
 
-        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 0))
-        #expect(manager.pending.isCellModified(rowID: .existing(2), columnIndex: 0) == false)
+        #expect(grid.owner.staged(0, 0)?.value == .text("X"))
+        #expect(grid.owner.staged(2, 0) == nil)
     }
 
-    @Test("Records nothing on a read-only result set")
+    @Test("Records nothing on a read-only result")
     func recordsNothingWhenReadOnly() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(columns: ["a"], rowCount: 4, isEditable: false, manager: manager)
+        let grid = makeGrid(columns: ["a"], rowCount: 4, isEditable: false)
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.text("X")))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.text("X")))
 
-        #expect(manager.hasChanges == false)
+        #expect(grid.owner.commits.isEmpty)
     }
 
     @Test("Writes NULL as a null change, not an empty string")
     func appliesNull() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(columns: ["a"], rowCount: 2, manager: manager)
+        let grid = makeGrid(columns: ["a"], rowCount: 2)
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.null))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.null))
 
-        let change = manager.pending.change(forRow: .existing(0), type: .update)
-        #expect(change?.cellChanges.first?.newValue == .null)
+        #expect(grid.owner.staged(0, 0)?.value == .null)
     }
 
     @Test("Skips rows whose value already equals the fill value")
     func skipsRowsAlreadyEqual() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(columns: ["a"], rowCount: 2, manager: manager)
+        let grid = makeGrid(columns: ["a"], rowCount: 2)
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.text("r0c0")))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.text("r0c0")))
 
-        #expect(manager.pending.isCellModified(rowID: .existing(0), columnIndex: 0) == false)
-        #expect(manager.pending.isCellModified(rowID: .existing(1), columnIndex: 0))
+        #expect(grid.owner.staged(0, 0) == nil)
+        #expect(grid.owner.staged(1, 0)?.value == .text("r0c0"))
     }
 
-    @Test("New UUID writes a different UUID into every row")
+    @Test("New UUID writes a different UUID into every row, in row order")
     func uuidFillDrawsOnePerRow() throws {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(
-            columns: ["id"],
-            rowCount: 3,
-            columnTypes: [.text(rawType: "uuid")],
-            databaseType: .postgresql,
-            manager: manager
-        )
-        let content = try #require(coordinator.fillColumnContent(choice: .uuid(.v7), text: "", columnIndex: 0))
+        let grid = makeGrid(columns: ["id"], rowCount: 3, columnTypes: [.text(rawType: "uuid")])
+        let content = try #require(grid.commands.fillColumnContent(choice: .uuid(.v7), text: "", column: column(grid, 0)))
 
-        coordinator.applyFillColumn(columnIndex: 0, content: content)
+        grid.commands.applyFillColumn(column(grid, 0), content: content)
 
-        let staged = stagedValues(manager, column: 0, rows: 0..<3).compactMap { $0?.asText }
+        let staged = (0..<3).compactMap { grid.owner.staged($0, 0)?.value.asText }
         #expect(staged.count == 3)
         #expect(Set(staged).count == 3)
         #expect(staged.allSatisfy { UUID(uuidString: $0) != nil && $0 == $0.lowercased() })
@@ -229,31 +173,18 @@ struct FillColumnTests {
 
     @Test("A fill function is staged as SQL on every row")
     func expressionFillIsMarked() {
-        let manager = DataChangeManager()
-        let coordinator = makeCoordinator(
-            columns: ["seen"],
-            rowCount: 2,
-            columnTypes: [.timestamp(rawType: "timestamptz")],
-            databaseType: .postgresql,
-            manager: manager
-        )
+        let grid = makeGrid(columns: ["seen"], rowCount: 2, columnTypes: [.timestamp(rawType: "timestamptz")])
 
-        coordinator.applyFillColumn(columnIndex: 0, content: .value(.text("now()"), isExpression: true))
+        grid.commands.applyFillColumn(column(grid, 0), content: .value(.text("now()"), isExpression: true))
 
-        #expect(manager.isExpression(rowID: .existing(0), columnIndex: 0))
-        #expect(manager.isExpression(rowID: .existing(1), columnIndex: 0))
+        #expect(grid.owner.staged(0, 0)?.isExpression == true)
+        #expect(grid.owner.staged(1, 0)?.isExpression == true)
     }
 
     @Test("No UUID content on a column that holds none")
     func uuidFillRefusedOnText() {
-        let coordinator = makeCoordinator(
-            columns: ["name"],
-            rowCount: 1,
-            columnTypes: [.text(rawType: "text")],
-            databaseType: .postgresql,
-            manager: DataChangeManager()
-        )
+        let grid = makeGrid(columns: ["name"], rowCount: 1, columnTypes: [.text(rawType: "text")])
 
-        #expect(coordinator.fillColumnContent(choice: .uuid(.v4), text: "", columnIndex: 0) == nil)
+        #expect(grid.commands.fillColumnContent(choice: .uuid(.v4), text: "", column: column(grid, 0)) == nil)
     }
 }

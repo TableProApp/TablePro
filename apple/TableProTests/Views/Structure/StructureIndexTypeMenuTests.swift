@@ -31,41 +31,53 @@ struct StructureIndexTypeMenuTests {
         return manager
     }
 
-    private func structureDelegate(_ manager: StructureChangeManager) -> StructureGridDelegate {
-        let delegate = StructureGridDelegate(
+    private func structureAdapter(_ manager: StructureChangeManager) -> StructureGridAdapter {
+        let adapter = StructureGridAdapter(
             structureChangeManager: manager,
-            selectedTab: .indexes,
             connection: connection(),
             tableName: "items",
-            coordinator: nil
+            databaseName: "test",
+            schemaName: nil,
+            objectKind: .table,
+            isSessionBound: false
         )
-        delegate.currentProvider = StructureRowProvider(
-            changeManager: manager,
-            tab: .indexes,
-            databaseType: .postgresql,
-            serverSupport: .unrestricted
-        )
-        return delegate
+        adapter.store.switchSubTab(to: .indexes)
+        adapter.refresh()
+        return adapter
+    }
+
+    private func column(_ model: DataGridModel, dataIndex: Int) throws -> DataGridColumn {
+        try #require(model.columns.columns.first { $0.dataIndex == dataIndex })
+    }
+
+    private func options(
+        _ source: any DataGridDataSource,
+        model: DataGridModel,
+        sourceIndex: Int,
+        dataIndex: Int
+    ) throws -> [String]? {
+        source.gridMenuOptions(
+            for: StructureRowProvider.rowID(forSourceIndex: sourceIndex),
+            column: try column(model, dataIndex: dataIndex)
+        )?.compactMap(\.sql)
     }
 
     private static let knownNames = EditableIndexDefinition.IndexType.knownTypes.map(\.rawValue)
 
     @Test("A bloom row offers BLOOM after the known types, and a b-tree row offers the known types alone")
-    func rowOffersItsOwnType() {
-        let delegate = structureDelegate(manager(indexTypes: ["bloom", "btree"]))
+    func rowOffersItsOwnType() throws {
+        let adapter = structureAdapter(manager(indexTypes: ["bloom", "btree"]))
         let typeColumn = StructureRowProvider.indexTypeColumn
 
-        #expect(delegate.dataGridMenuOptions(forRow: 0, columnIndex: typeColumn)?.compactMap(\.sql)
-            == Self.knownNames + ["BLOOM"])
-        #expect(delegate.dataGridMenuOptions(forRow: 1, columnIndex: typeColumn)?.compactMap(\.sql)
-            == Self.knownNames)
-        #expect(delegate.dataGridMenuOptions(forRow: 0, columnIndex: 3) == nil)
+        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: typeColumn) == Self.knownNames + ["BLOOM"])
+        #expect(try options(adapter, model: adapter.model, sourceIndex: 1, dataIndex: typeColumn) == Self.knownNames)
+        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: 3) == nil)
     }
 
     @Test("The inspector's Type picker for a CLUSTERED row holds the value it shows")
     func inspectorPickerHoldsTheRowType() throws {
-        let delegate = structureDelegate(manager(indexTypes: ["CLUSTERED"]))
-        let row = try #require(delegate.inspectorRow(atDisplayRow: 0))
+        let adapter = structureAdapter(manager(indexTypes: ["CLUSTERED"]))
+        let row = try #require(adapter.inspectorRow(atDisplayRow: 0))
         let typeField = row.fields[StructureRowProvider.indexTypeColumn]
 
         #expect(typeField.value == "CLUSTERED")
@@ -73,12 +85,12 @@ struct StructureIndexTypeMenuTests {
     }
 
     @Test("The new-table grid offers a pasted index its own type the same way")
-    func createTableOffersItsOwnType() {
-        let manager = manager(indexTypes: ["hnsw"])
-        let delegate = CreateTableGridDelegate(structureChangeManager: manager, structureTab: .indexes, connection: connection())
+    func createTableOffersItsOwnType() throws {
+        let adapter = CreateTableGridAdapter(structureChangeManager: manager(indexTypes: ["hnsw"]), connection: connection())
+        adapter.select(.indexes)
 
-        #expect(delegate.dataGridMenuOptions(forRow: 0, columnIndex: StructureRowProvider.indexTypeColumn)?
-            .compactMap(\.sql) == Self.knownNames + ["HNSW"])
+        #expect(try options(adapter, model: adapter.model, sourceIndex: 0, dataIndex: StructureRowProvider.indexTypeColumn)
+            == Self.knownNames + ["HNSW"])
     }
 
     @Test("A Type edit takes a known type and leaves the index alone for any other text")

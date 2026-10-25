@@ -3,7 +3,7 @@ import TableProTheme
 import Testing
 
 struct ThemeSlotFallbackTests {
-    /// A typo gives a color no theme draws, so the expectation it sits in fails.
+    // A typo gives a color no theme draws, so the expectation it sits in fails.
     private static func color(_ hex: String) -> ThemeColor {
         ThemeColor(hex: hex) ?? ThemeColor(red: 1, green: 2, blue: 3, alpha: 4)
     }
@@ -44,13 +44,7 @@ struct ThemeSlotFallbackTests {
         .gridBackground: .system,
         .gridText: .system,
         .gridAlternateRow: .derived(base: .gridBackground, rule: .stripe(toward: .gridText)),
-        .gridHeaderBackground: .derived(base: .gridBackground, rule: .same),
-        .gridHeaderText: .slot(.gridText),
         .gridLine: .system,
-        .gridSelection: .system,
-        .gridSelectionText: .paired(with: .gridSelection, fallback: .gridText),
-        .gridInactiveSelection: .system,
-        .gridFocusBorder: .system,
         .gridNullValue: .system,
         .gridBoolTrue: .slot(.gridText),
         .gridBoolFalse: .slot(.gridText),
@@ -71,7 +65,7 @@ struct ThemeSlotFallbackTests {
         #expect(Set(Self.expected.keys) == Set(ThemeSlot.allCases))
     }
 
-    /// A rule that named another dependent slot would chain, and two such rules could loop.
+    // A rule that named another dependent slot would chain, and two such rules could loop.
     @Test("A rule only names slots that fall back to the system themselves")
     func rulesNeverChain() {
         for slot in ThemeSlot.allCases {
@@ -79,9 +73,7 @@ struct ThemeSlotFallbackTests {
             switch slot.fallback {
             case .system, .defaultSyntax: named = []
             case let .slot(source): named = [source]
-            case let .derived(base, rule):
-                if case let .stripe(toward) = rule { named = [base, toward] } else { named = [base] }
-            case let .paired(partner, fallback): named = [partner, fallback]
+            case let .derived(base, .stripe(toward)): named = [base, toward]
             }
             for other in named {
                 #expect(other.fallback == .system, "\(slot.rawValue) names \(other.rawValue)")
@@ -107,7 +99,7 @@ struct ThemeSlotFallbackTests {
         }
     }
 
-    @Test("An explicit color draws as set wherever its rule allows it")
+    @Test("An explicit color draws as set")
     func explicitColorDraws() throws {
         let theme = try Self.theme(.dark, [.syntaxKeyword: "#FF79C6", .gridAlternateRow: "#21222C80", .editorCursor: "#F8F8F2"])
         #expect(theme.value(for: .syntaxKeyword) == .themed(Self.color("#FF79C6")))
@@ -119,17 +111,15 @@ struct ThemeSlotFallbackTests {
 
     // MARK: - Derived slots
 
-    @Test("A light background-only theme stripes and heads the grid from its own background")
+    @Test("A light background-only theme stripes the grid from its own background")
     func backgroundOnlyLight() throws {
         let theme = try Self.theme(.light, [.gridBackground: "#FDF6E3"])
 
         #expect(theme.value(for: .gridAlternateRow) == .themed(Self.color("#F3ECDA")))
-        #expect(theme.value(for: .gridHeaderBackground) == .themed(Self.color("#FDF6E3")))
         #expect(theme.isOverridden(.gridAlternateRow))
-        #expect(theme.isOverridden(.gridHeaderBackground))
         #expect(!theme.hasExplicitColor(.gridAlternateRow))
         #expect(theme.value(for: .gridText) == .system(.gridText))
-        #expect(theme.value(for: .gridSelection) == .system(.gridSelection))
+        #expect(theme.value(for: .gridLine) == .system(.gridLine))
     }
 
     @Test("A dark background-only theme stripes toward white")
@@ -137,7 +127,6 @@ struct ThemeSlotFallbackTests {
         let theme = try Self.theme(.dark, [.gridBackground: "#282A36"])
 
         #expect(theme.value(for: .gridAlternateRow) == .themed(Self.color("#31333E")))
-        #expect(theme.value(for: .gridHeaderBackground) == .themed(Self.color("#282A36")))
     }
 
     @Test("The stripe moves toward the theme's own grid text when it sets one")
@@ -149,50 +138,25 @@ struct ThemeSlotFallbackTests {
         #expect(stripe.isOpaque)
     }
 
-    @Test("Without a themed background the derived slots stay native, even with themed text")
+    @Test("Without a themed background the stripe stays native, even with themed text")
     func derivedNeedsTheBase() throws {
         let theme = try Self.theme(.light, [.gridText: "#112233"])
         #expect(theme.value(for: .gridAlternateRow) == .system(.gridAlternateRow))
-        #expect(theme.value(for: .gridHeaderBackground) == .system(.gridHeaderBackground))
     }
 
-    @Test("An explicit alternate row and header win over the derived ones")
+    @Test("An explicit alternate row wins over the derived one")
     func explicitBeatsDerived() throws {
-        let theme = try Self.theme(.light, [.gridBackground: "#FDF6E3", .gridAlternateRow: "#EEE8D5", .gridHeaderBackground: "#E0DAC8"])
+        let theme = try Self.theme(.light, [.gridBackground: "#FDF6E3", .gridAlternateRow: "#EEE8D5"])
         #expect(theme.value(for: .gridAlternateRow) == .themed(Self.color("#EEE8D5")))
-        #expect(theme.value(for: .gridHeaderBackground) == .themed(Self.color("#E0DAC8")))
-    }
-
-    // MARK: - Selection text
-
-    @Test("Selection text without a themed selection stays native, ignoring the file")
-    func selectionTextNeedsASelection() throws {
-        let theme = try Self.theme(.dark, [.gridSelectionText: "#00FF00", .gridText: "#FF0000"])
-        #expect(theme.value(for: .gridSelectionText) == .system(.gridSelectionText))
-        #expect(!theme.isOverridden(.gridSelectionText))
-        #expect(theme.hasExplicitColor(.gridSelectionText))
-    }
-
-    @Test("Selection text over a themed selection is the file's, else the grid text's value")
-    func selectionTextPairsWithTheSelection() throws {
-        let explicit = try Self.theme(.dark, [.gridSelection: "#44475A", .gridSelectionText: "#00FF00"])
-        #expect(explicit.value(for: .gridSelectionText) == .themed(Self.color("#00FF00")))
-
-        let textOnly = try Self.theme(.dark, [.gridSelection: "#44475A", .gridText: "#F8F8F2"])
-        #expect(textOnly.value(for: .gridSelectionText) == .themed(Self.color("#F8F8F2")))
-
-        let nativeText = try Self.theme(.dark, [.gridSelection: "#44475A"])
-        #expect(nativeText.value(for: .gridSelectionText) == .system(.gridText))
-        #expect(!nativeText.isOverridden(.gridSelectionText))
     }
 
     // MARK: - Slot fallbacks
 
-    @Test("Bools and the header text follow themed grid text, and stay native without it")
+    @Test("Bools follow themed grid text, and stay native without it")
     func gridTextFollowers() throws {
         let themed = try Self.theme(.dark, [.gridText: "#F8F8F2"])
         let text = Self.color("#F8F8F2")
-        for slot in [ThemeSlot.gridBoolTrue, .gridBoolFalse, .gridHeaderText] {
+        for slot in [ThemeSlot.gridBoolTrue, .gridBoolFalse] {
             #expect(themed.value(for: slot) == .themed(text), "\(slot.rawValue)")
             #expect(ThemeDefinition.defaultDark.value(for: slot) == .system(slot), "\(slot.rawValue)")
         }

@@ -2,10 +2,7 @@
 //  MainMenuBuilderTests.swift
 //  TableProTests
 //
-//  Pins the menu bar's structure: HIG menu order, title uniqueness (System
-//  Settings binds an App Shortcut to a menu item's exact literal title), key
-//  equivalent uniqueness (AppKit silently blanks the loser when two items claim
-//  one combo), and complete coverage of every customizable shortcut.
+//  Unique titles (App Shortcuts bind an exact title) and key equivalents (AppKit blanks the loser of a shared combo).
 //
 
 import AppKit
@@ -146,10 +143,7 @@ struct MainMenuStructureTests {
         #expect(duplicates.isEmpty, "AppKit blanks the loser when two items claim one combo: \(duplicates)")
     }
 
-    /// A menu builder that hardcodes a key equivalent takes that combo off the table for every
-    /// `ShortcutAction`, and only `reservedAppShortcuts` tells the recorder so. Nothing else
-    /// forces the two to agree, so a hardcoded item added without a matching entry ships a
-    /// binding the recorder accepts and AppKit then blanks.
+    // Only reservedAppShortcuts tells the recorder a hardcoded combo is taken; unreserved, AppKit blanks the user's binding.
     @Test("Every hardcoded menu key equivalent is reserved against user binding")
     func hardcodedKeyEquivalentsAreReserved() {
         func canonical(_ key: BoundKey) -> String? {
@@ -178,7 +172,7 @@ struct MainMenuStructureTests {
         #expect(dead.isEmpty, "Items without an action can never enable: \(dead)")
     }
 
-    /// Only leaf commands are checked: AppKit points a submenu container at its own `submenuAction:`.
+    // Leaf commands only: AppKit points a submenu container at its own submenuAction:.
     @Test("Every authored command leaves its target nil so the responder chain resolves it")
     func targetsAreNil() {
         let targeted = buildMenu().items
@@ -215,8 +209,7 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    /// `Cmd+Option+F` is Apple's Find and Replace key, so the filter bar moved off it rather than a
-    /// documented text-editing shortcut landing somewhere users would not look for it.
+    // Cmd+Option+F is Apple's Find and Replace key, so the filter bar moved off it.
     @Test("The find keys are Apple's and the filter bar sits beside them")
     func findAndFilterDefaultsHold() {
         #expect(KeyboardSettings.defaultShortcuts[.find] == .character("f", command: true))
@@ -313,9 +306,7 @@ struct MainMenuShortcutCoverageTests {
         #expect(item?.keyEquivalentModifierMask == [.command, .shift])
     }
 
-    /// The eight commands the revamp made rebindable. Each was reachable only by pointer before:
-    /// two segments of a toolbar control, an Edit menu item with no action identifier at all, and
-    /// five buttons inside Agent mode's rail and the assistant pane's header menu.
+    // Each was pointer-only before: two toolbar segments, an Edit item with no action id, five Agent and assistant buttons.
     private static let displacedCommands: [(action: ShortcutAction, title: String)] = [
         (.showTablesList, String(localized: "Show Tables")),
         (.showFavoritesList, String(localized: "Show Favorites")),
@@ -337,9 +328,7 @@ struct MainMenuShortcutCoverageTests {
         }
     }
 
-    /// Shipped unbound on purpose. Every combo a reasonable person would reach for is taken, and a
-    /// default that displaced a shipped one would be a worse trade than an unassigned row in
-    /// Settings, which is where these are now visible for the first time.
+    // Unbound on purpose: every reasonable combo is taken, and displacing a shipped default is worse than an unassigned row.
     @Test("Each newly rebindable command ships with no key equivalent of its own")
     func displacedCommandsShipUnbound() {
         let items = flatten(buildMenu())
@@ -350,8 +339,7 @@ struct MainMenuShortcutCoverageTests {
         }
     }
 
-    /// Settings lists every action by this name, so two sharing one would offer the user two
-    /// identical rows and no way to tell which command they were rebinding.
+    // Settings lists actions by this name, so two sharing one would be indistinguishable rows.
     @Test("No two actions share a display name")
     func displayNamesAreUnique() {
         let names = ShortcutAction.allCases.map(\.displayName)
@@ -372,9 +360,7 @@ struct MainMenuShortcutCoverageTests {
     }
 }
 
-/// Agent mode's sessions and the assistant's conversations had no menu-bar home at all: the rail's
-/// buttons and the trailing pane's header menu were the only routes, so none of the seven commands
-/// could be found by search, rebound, or reached with the rail collapsed or the pane closed.
+// Sessions and conversations had no menu-bar home, so their seven commands couldn't be searched, rebound or reached.
 @MainActor
 struct FileSessionMenuTests {
     private func sessionMenu() -> NSMenu? {
@@ -399,8 +385,7 @@ struct FileSessionMenuTests {
         ])
     }
 
-    /// The two list rows are exempt: AppKit points a submenu container at its own `submenuAction:`,
-    /// and the rows inside are built by the delegate when the list opens.
+    // The list rows are exempt: AppKit points a submenu container at its own submenuAction:, and the delegate builds the rows.
     @Test("Every leaf carries an action and leaves its target nil")
     func everyLeafIsACommand() throws {
         let leaves = try #require(sessionMenu()).items.filter { !$0.isSeparatorItem && $0.submenu == nil }
@@ -411,10 +396,7 @@ struct FileSessionMenuTests {
         }
     }
 
-    /// AppKit ignores a key equivalent on an item that owns a submenu, so the command a user can
-    /// rebind has to be a leaf. Open Session acts on the session the rail has highlighted, and the
-    /// list beside it is how any other session is reached, exactly as Import Data… and Import Data
-    /// From are split.
+    // AppKit ignores a key equivalent on an item that owns a submenu, so the rebindable Open Session must be a leaf.
     @Test("Open Session is a leaf, so a binding it is given can fire")
     func openSessionIsALeaf() throws {
         let item = try #require(
@@ -434,9 +416,7 @@ struct FileSessionMenuTests {
         #expect(submenu.items.isEmpty, "The list is filled when it opens, not at build time")
     }
 
-    /// `AIChatViewModel` is a plain `ObservableObject` and `AgentSessionRegistry` is not a responder,
-    /// so a command named on either would reach nothing and AppKit would draw it dead. Every one of
-    /// these names a window selector instead, including the two lists' rows.
+    // AIChatViewModel and AgentSessionRegistry aren't responders; a command named on either reaches nothing and draws dead.
     @Test("Each command reaches the window rather than a view model nothing can resolve")
     func everyCommandIsAWindowSelector() throws {
         var actions = try #require(sessionMenu()).items
@@ -493,8 +473,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.executeQuery(_:)), context))
     }
 
-    /// Redis declares no plan, and the menu item used to validate on the query text alone, so
-    /// `Cmd+Option+E` ran a `DEBUG OBJECT` the server refuses while the bar's button was dimmed.
+    // Redis declares no plan; validating on query text alone let Cmd+Option+E run a DEBUG OBJECT the server refuses.
     @Test("Explain Query needs an engine that declares a plan")
     func explainNeedsADeclaredPlan() {
         var context = MenuValidationContext()
@@ -515,7 +494,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.formatQuery(_:)), context))
     }
 
-    /// `runExplain` returns at its first guard while the tab runs, so a lit item did nothing.
+    // runExplain returns at its first guard while the tab runs, so a lit item did nothing.
     @Test("Explain Query dims while the tab is running a query")
     func explainDimsWhileExecuting() {
         var context = MenuValidationContext()
@@ -554,11 +533,7 @@ struct MainMenuValidationTests {
         }
     }
 
-    /// #2172: `paste:` had no window-level implementation at all, so with focus anywhere that does
-    /// not paste, AppKit disabled the item, and a disabled item still owns its key equivalent, so
-    /// Command+V was swallowed for the whole window. Adding the handler without an explicit arm
-    /// here would have been just as wrong in the other direction: `isEnabled` ends in
-    /// `default: return true`, which would have shipped Paste permanently lit.
+    // #2172: a disabled Paste still owns Cmd+V and swallowed it window-wide; isEnabled's default: true would light it forever.
     @Test("Paste needs a connection and somewhere for the rows to land")
     func pasteNeedsSomewhereToLand() {
         var context = MenuValidationContext()
@@ -570,8 +545,7 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.paste(_:)), context))
     }
 
-    /// A database view opens as a `.table` tab with `tableContext.isEditable` false, so tab type
-    /// alone would light Paste over content the row paste must never write to.
+    // A view opens as a .table tab with isEditable false, so tab type alone would light Paste over read-only rows.
     @Test("Paste needs the tab to be editable, not merely a table tab")
     func pasteNeedsAnEditableTab() {
         var context = MenuValidationContext()
@@ -596,8 +570,7 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.saveDocument(_:)), context))
     }
 
-    /// Both handlers return at their first guard in states the old validation called enabled, so
-    /// the item stayed lit and the click did nothing at all.
+    // Both handlers return at their first guard in states the old validation enabled, so the click did nothing.
     @Test("Save As needs a query tab, not just a connection")
     func saveAsNeedsAQueryTab() {
         var context = MenuValidationContext()
@@ -695,8 +668,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.createTableFolder(_:)), context))
     }
 
-    /// A view is a valid selection and a hopeless truncate. The menu bar used to ask only whether
-    /// anything was selected, so it offered Truncate Table for one and the server refused the save.
+    // A view is a valid selection but can't be truncated; asking only for a selection offered Truncate and the server refused.
     @Test("Truncate Table is disabled for a selection holding nothing truncatable")
     func truncateNeedsATruncatableSelection() {
         var context = MenuValidationContext()
@@ -718,8 +690,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.cancelQuery(_:)), context))
     }
 
-    /// A batch whose `COMMIT` is on the wire is executing and unstoppable at the same time, and
-    /// `Cmd+.` has to dim rather than fire into work nothing can interrupt.
+    // A batch whose COMMIT is on the wire is executing yet unstoppable, so Cmd+. must dim.
     @Test("Cancel Query dims while a batch is committing")
     func cancelDimsWhileCommitting() {
         var context = MenuValidationContext()
@@ -763,8 +734,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
     }
 
-    /// Everything a connection-scoped command could also need is switched on, so `isConnected`
-    /// is the only thing left that can disable them.
+    // Everything else is switched on, so isConnected is the only thing left that can disable them.
     private func capableContext(phase: ConnectionWindowPhase, pane: ConnectionWindowPane) -> MenuValidationContext {
         var context = capableContext()
         context.isConnected = MainSplitViewController.isConnected(phase: phase, pane: pane)
@@ -806,8 +776,7 @@ struct MainMenuValidationTests {
         return context
     }
 
-    /// A window whose coordinator is alive is exactly the case the old `coordinator != nil`
-    /// check got wrong, so every phase is resolved with a renderable session behind it.
+    // A live coordinator is the case the old coordinator != nil check got wrong, so every phase gets a renderable session.
     private func livePane(for phase: ConnectionWindowPhase) -> ConnectionWindowPane {
         ConnectionWindowPaneResolver.pane(phase: phase, hasConnection: true, hasRenderableSession: true)
     }
@@ -838,8 +807,7 @@ struct MainMenuValidationTests {
         ]
     }
 
-    /// Gated on a grid, a tab or a sidebar selection the coordinator keeps across a lost session,
-    /// so each one needs the connection too or it stays lit over the unavailable pane.
+    // These gate on state the coordinator keeps across a lost session, so each needs the connection or stays lit.
     private var contentScopedSelectors: [Selector] {
         [
             #selector(MainSplitViewController.addRow(_:)),
@@ -854,8 +822,7 @@ struct MainMenuValidationTests {
         ]
     }
 
-    /// Both commands pre-fill from the schema's account of which columns the server fills in, so
-    /// they stay disabled until it arrives rather than staging NULL into an identity column.
+    // Both pre-fill from the schema's server-filled columns, so they wait for it rather than stage NULL into an identity column.
     @Test("Add Row and Duplicate Row wait for the schema to resolve")
     func rowInsertionWaitsForTheSchema() {
         var context = capableContext()
@@ -897,8 +864,7 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.editDocument(_:)), context))
     }
 
-    /// Agent mode keeps the coordinator, and with it the row and the tab the user last had, so
-    /// only the mode can dim these.
+    // Agent mode keeps the coordinator with the user's last row and tab, so only the mode can dim these.
     @Test("Agent mode dims Edit Document and Insert Document over the row the coordinator still holds")
     func documentCommandsDimInAgentMode() {
         var context = capableContext()
@@ -1000,6 +966,20 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.findPrevious(_:)), context))
     }
 
+    // The grid's find bar has a replacement field and reads a selected cell as its term, so both follow Find.
+    @Test("Find and Replace and Use Selection for Find fall back to a mounted data grid")
+    func replaceAndUseSelectionReachTheGrid() {
+        var context = MenuValidationContext()
+        context.isConnected = true
+        #expect(!enabled(#selector(MainSplitViewController.performFindAndReplace(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.useSelectionForFind(_:)), context))
+        context.canUseGridFindCommands = true
+        #expect(enabled(#selector(MainSplitViewController.performFindAndReplace(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.useSelectionForFind(_:)), context))
+        context.hasDataGridRowSelection = true
+        #expect(enabled(#selector(MainSplitViewController.useSelectionForFind(_:)), context))
+    }
+
     @Test("An unknown selector stays enabled so the chain can answer for it")
     func unknownSelectorsFallThrough() {
         #expect(enabled(#selector(NSWindow.performClose(_:)), MenuValidationContext()))
@@ -1018,8 +998,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
     }
 
-    /// The sidebar hides Edit View Definition on a read-only connection. The menu bar used to leave
-    /// it enabled, so it opened the definition and the save then failed at the gate.
+    // The sidebar hides it on a read-only connection; the menu bar left it on and the save then failed at the gate.
     @Test("Editing a view definition is disabled on a read-only connection")
     func editViewDefinitionNeedsWriteAccess() {
         var context = MenuValidationContext()
@@ -1030,8 +1009,7 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.editViewDefinition(_:)), context))
     }
 
-    /// Reading a definition writes nothing, so these stay available on a read-only connection,
-    /// exactly as the sidebar offers them there.
+    // Reading a definition writes nothing, so these stay available read-only, as the sidebar offers them.
     @Test("Show DDL and Copy DDL need a view and survive read-only")
     func ddlCommandsFollowTheSelectedObject() {
         var context = MenuValidationContext()
@@ -1085,8 +1063,7 @@ struct MainMenuValidationTests {
         #expect(enabled(#selector(MainSplitViewController.runMaintenanceOperation(_:)), context))
     }
 
-    /// Both are sidebar commands first. They are mirrored here so the feature is reachable from
-    /// the keyboard, and they validate on the same facts the sidebar's own menu reads.
+    // Sidebar commands mirrored for the keyboard; they validate on the same facts as the sidebar's own menu.
     @Test("Copying is offered only on an engine that can copy")
     func copyObjectsNeedsASQLEngine() {
         var context = MenuValidationContext()
@@ -1170,8 +1147,7 @@ struct DatabaseMenuCommandTests {
         #expect(submenu?.items.isEmpty == true, "The submenu is filled when it opens, not at build time")
     }
 
-    /// The keyboard path to database favorites. The row star is hover-revealed and the context
-    /// menus need a right-click, so without this menu the feature is pointer-only.
+    // The keyboard path to favorites: the row star is hover-only and the context menus need a right-click.
     @Test("Favorite Database fills itself when the submenu opens")
     func favoriteDatabaseSubmenuIsDelegateDriven() {
         let container = databaseMenu()?.items.first { $0.title == String(localized: "Favorite Database") }
@@ -1216,8 +1192,7 @@ struct MainMenuBuilderTests {
         return mode.items.filter { $0.action == ContentModeMenuDelegate.action }
     }
 
-    /// A radio pair, never both ticked. With no connection window nothing validates the pair, so a
-    /// fresh menu bar ticks neither; a window that validates it ticks the mode its connection is in.
+    // With no connection window nothing validates the pair, so a fresh menu bar ticks neither.
     @Test("View > Mode never ticks both Browse and Agent")
     func modePairIsNeverBothTicked() throws {
         let items = try modeItems(in: buildMenu())
@@ -1356,7 +1331,9 @@ struct EditSetValueMenuTests {
     func onlyTheGridAnswers() {
         for leaf in Self.leaves {
             let name = NSStringFromSelector(leaf.action)
-            #expect(KeyHandlingTableView.instancesRespond(to: leaf.action), "\(name) reaches no grid")
+            let gridAnswers = DataGridTableView.instancesRespond(to: leaf.action)
+                || DataGridViewController.instancesRespond(to: leaf.action)
+            #expect(gridAnswers, "\(name) reaches no grid")
             #expect(!MainSplitViewController.instancesRespond(to: leaf.action), "\(name) answered by the window")
             #expect(!DataFileSplitViewController.instancesRespond(to: leaf.action), "\(name) answered by the window")
         }

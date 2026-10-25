@@ -29,9 +29,18 @@ extension GlobalStateSuites {
             return TableRows.from(queryRows: rows.map { row in row.map(PluginCellValue.fromOptional) }, columns: cols, columnTypes: columnTypes)
         }
 
+        // The rows a grid selection names, in display order, which is how the grid hands them over.
+        private static func rowIDs(
+            _ displayRows: IndexSet,
+            in tableRows: TableRows,
+            displayIDs: [RowID]? = nil
+        ) -> [RowID] {
+            DataGridRowOrder(filteredIDs: displayIDs, revision: 0).rowIDs(atDisplayIndexes: displayRows, in: tableRows)
+        }
+
         private func copyAndCapture(
             manager: RowOperationsManager,
-            indices: Set<Int>,
+            indices: IndexSet,
             rows: [[String?]],
             columns: [String]? = nil,
             includeHeaders: Bool = false,
@@ -39,8 +48,8 @@ extension GlobalStateSuites {
         ) throws -> String? {
             let clipboard = try #require(RecordingClipboard.current)
             let tableRows = makeTableRows(rows: rows, columns: columns ?? Self.defaultColumns)
-            manager.copySelectedRowsToClipboard(
-                selectedIndices: indices,
+            manager.copyRowsToClipboard(
+                Self.rowIDs(indices, in: tableRows),
                 tableRows: tableRows,
                 includeHeaders: includeHeaders,
                 visibleColumnIndices: visibleColumnIndices
@@ -104,10 +113,7 @@ extension GlobalStateSuites {
             let clipboard = try #require(RecordingClipboard.current)
             let tableRows = makeTableRows(rows: rows)
 
-            manager.copySelectedRowsToClipboard(
-                selectedIndices: [],
-                tableRows: tableRows
-            )
+            manager.copyRowsToClipboard([], tableRows: tableRows)
 
             #expect(clipboard.writes.last == nil)
         }
@@ -122,7 +128,7 @@ extension GlobalStateSuites {
 
             let result = try copyAndCapture(
                 manager: manager,
-                indices: Set(0..<count),
+                indices: IndexSet(integersIn: 0..<count),
                 rows: rows
             )
 
@@ -132,7 +138,7 @@ extension GlobalStateSuites {
             #expect(lines.last == "\(count - 1)\tname_\(count - 1)\temail_\(count - 1)")
         }
 
-        @Test("Copied rows are in sorted index order regardless of selection order")
+        @Test("Copied rows follow display order regardless of selection order")
         func rowsInSortedOrder() throws {
             let (manager, _) = makeManager()
             let rows: [[String?]] = [
@@ -165,7 +171,7 @@ extension GlobalStateSuites {
             #expect(lines[1] == "1\tAlice\ta@test.com")
         }
 
-        @Test("Out-of-bounds indices are skipped gracefully")
+        @Test("Display positions past the rows are skipped")
         func outOfBoundsIndicesSkipped() throws {
             let (manager, _) = makeManager()
             let rows: [[String?]] = [["1", "Alice"]]
@@ -249,7 +255,7 @@ extension GlobalStateSuites {
             let clipboard = try #require(RecordingClipboard.current)
             let tableRows = makeTableRows(rows: rows)
 
-            manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
+            manager.copyRowsToClipboard([.existing(0)], tableRows: tableRows)
 
             #expect(clipboard.gridRows?.columns == ["id", "name", "email"])
             #expect(clipboard.gridRows?.rows == [[.text("1"), .text("Smith, John"), .null]])
@@ -262,7 +268,7 @@ extension GlobalStateSuites {
             let clipboard = try #require(RecordingClipboard.current)
             let tableRows = makeTableRows(rows: rows)
 
-            manager.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows, visibleColumnIndices: [2, 0])
+            manager.copyRowsToClipboard([.existing(0)], tableRows: tableRows, visibleColumnIndices: [2, 0])
 
             #expect(clipboard.gridRows?.columns == ["email", "id"])
             #expect(clipboard.gridRows?.rows == [[.text("alice@test.com"), .text("1")]])
@@ -281,11 +287,7 @@ extension GlobalStateSuites {
             let tableRows = makeTableRows(rows: rows)
             let displayIDs: [RowID] = [.existing(0), .existing(2), .existing(3)]
 
-            manager.copySelectedRowsToClipboard(
-                selectedIndices: [1],
-                tableRows: tableRows,
-                displayIDs: displayIDs
-            )
+            manager.copyRowsToClipboard(Self.rowIDs([1], in: tableRows, displayIDs: displayIDs), tableRows: tableRows)
 
             #expect(clipboard.writes.last == "3\tCarol\tc@test.com")
         }
@@ -302,11 +304,7 @@ extension GlobalStateSuites {
             let tableRows = makeTableRows(rows: rows)
             let displayIDs: [RowID] = [.existing(2), .existing(0)]
 
-            manager.copySelectedRowsToClipboard(
-                selectedIndices: [0, 1],
-                tableRows: tableRows,
-                displayIDs: displayIDs
-            )
+            manager.copyRowsToClipboard(Self.rowIDs([0, 1], in: tableRows, displayIDs: displayIDs), tableRows: tableRows)
 
             #expect(clipboard.writes.last == "3\tCarol\tc@test.com\n1\tAlice\ta@test.com")
         }

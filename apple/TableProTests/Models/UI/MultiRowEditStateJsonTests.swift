@@ -14,7 +14,7 @@ struct MultiRowEditStateJsonTests {
     private func makeState(value: String, type: ColumnType, column: String = "data") -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: [0],
+            rowIDs: [.existing(0)],
             allRows: [[value]],
             columns: [column],
             columnTypes: [type]

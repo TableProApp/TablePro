@@ -2,11 +2,7 @@
 //  MainContentCoordinator+WindowLifecycle.swift
 //  TablePro
 //
-//  Window-lifecycle handlers invoked by TabWindowController's NSWindowDelegate
-//  methods. windowDidBecomeKey is intentionally lightweight (focus state,
-//  sidebar sync, and a file check that stats off the main actor) per Apple's
-//  documentation; visibility-scoped lazy-load lives in MainEditorContentView's
-//  `.task(id:)` modifier.
+//  windowDidBecomeKey stays light per Apple's docs; visibility-scoped lazy load lives in MainEditorContentView's .task(id:).
 //
 
 import AppKit
@@ -17,13 +13,7 @@ import TableProPluginKit
 extension MainContentCoordinator {
     // MARK: - Window Delegate Dispatch
 
-    /// Called from `TabWindowController.windowDidBecomeKey(_:)`.
-    /// Updates focus state, refreshes file-based schema if stale, starts a check of
-    /// each file-backed tab against its file on disk, and syncs the sidebar selection
-    /// to the active tab. The one query-related action here is
-    /// consuming a deferred restore load: a restored background tab loads its data
-    /// the first time its window becomes key. All other lazy-load is owned by
-    /// `MainEditorContentView`'s `.task(id:)` modifier.
+    // The one query action here: a restored background tab loads its data the first time its window becomes key.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
         Self.lifecycleLogger.debug(
@@ -45,9 +35,6 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Called from `TabWindowController.windowDidResignKey(_:)`.
-    /// Schedules a 5s-delayed eviction of row data in inactive tabs; a fresh
-    /// `windowDidBecomeKey` cancels the eviction before it fires.
     func handleWindowDidResignKey() {
         Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidResignKey connId=\(self.connectionId, privacy: .public)"
@@ -65,20 +52,15 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Called from `TabWindowController.windowWillClose(_:)`.
-    /// Synchronous teardown — no grace period, no delayed Task. Writes tab
-    /// state to disk, releases SwiftUI-scoped right-panel state, then
-    /// disconnects the session if this was the last window for the connection.
+    // Synchronous on purpose: no grace period, no delayed Task.
     func handleWindowWillClose() {
         let t0 = Date()
         Self.lifecycleLogger.info(
             "[close] coordinator.handleWindowWillClose connId=\(self.connectionId, privacy: .public) tabs=\(self.tabManager.tabs.count)"
         )
 
-        /// Never clears: a window closing says nothing about whether the user wants these tabs
-        /// kept, and every connection in the window reaches here. Discarding saved state is
-        /// `closeTabsByUser`'s job alone.
-        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        // Never clears: closing a window says nothing about keeping its tabs; only closeTabsByUser discards saved state.
+        flushColumnLayoutPersistence()
         if !MainContentCoordinator.isAppTerminating, !isTearingDown {
             persistence.saveAggregatedSync()
         }
@@ -95,8 +77,6 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Announce the active tab title to VoiceOver when the window becomes key,
-    /// so assistive-technology users get the same context the window title gives.
     private func announceActiveTabToVoiceOver() {
         guard let title = tabManager.selectedTab?.title, !title.isEmpty else { return }
         NSAccessibility.post(
@@ -129,13 +109,7 @@ extension MainContentCoordinator {
 
     // MARK: - Sidebar Sync
 
-    /// Mark the object the selected tab is showing in this window's object tree, or nothing when
-    /// that tab belongs to a container the tree is not listing. Reads tables fresh from the
-    /// DatabaseManager because the schema load is async and may complete after focus changes.
-    ///
-    /// The mark is a function of four inputs, so every one of them calls this: the selected tab,
-    /// the browsed container, the object list, and the window becoming key. Recomputing on only
-    /// some of them is what left a stale mark on a row in another database (#2217).
+    // Every input the mark depends on (tab, container, objects, key window) calls this; skipping one left a stale mark (#2217).
     func syncSidebarObjectSelection() {
         let selectedTab = tabManager.selectedTab
         let selection = SidebarObjectSelection.resolve(
@@ -151,13 +125,7 @@ extension MainContentCoordinator {
 
     // MARK: - Lazy Load
 
-    /// Lowers the flag `discardRowsForRetarget` raised, for a load that is not going to run.
-    ///
-    /// The flag is raised synchronously with the row buffer being emptied, so the bar never reads a
-    /// cleared tab as a settled empty result. Every path that then declines to start the load has to
-    /// lower it again, or the bar keeps a spinner and a fully disabled pagination cluster for a tab
-    /// that is not loading anything, until the next successful load or `Cmd+.`. A load that is
-    /// already in flight is not a decline, and must leave the flag alone.
+    // Every path that declines the load must lower the flag, or the bar keeps a spinner; an in-flight load leaves it alone.
     func declineTableLoad(for tabId: UUID) {
         tabManager.mutate(tabId: tabId) { $0.pagination.isLoading = false }
     }
@@ -183,8 +151,7 @@ extension MainContentCoordinator {
             connectionId: connectionId
         )
 
-        /// A trace the in-flight load still owns stays open, because that load is the one that will
-        /// close it. Only a trace this call minted is closed here.
+        // The in-flight load closes the trace it owns; only a trace this call minted is closed here.
         func noteLoadAlreadyInFlight() {
             guard carriedToken == nil else { return }
             tracer.anomaly(.loadAlreadyInFlight, token: traceToken)
@@ -198,12 +165,7 @@ extension MainContentCoordinator {
 
         clearAbandonedExecutingFlagIfNeeded(for: tab)
 
-        /// The task slot above stops answering the moment the load hands off to an execution:
-        /// `executeQueryInternal` supersedes, and `supersedeExecution` clears the very slot held by
-        /// the task it is running inside. Every later trigger for the same navigation then found an
-        /// empty slot and scheduled a second identical load, whose predecessor took the successor's
-        /// claim down with it on the way out (#2342). The registry owns the other half of the same
-        /// question, so both halves are asked, and neither alone is enough.
+        // The task slot empties once the load hands off to execution, so the registry is asked too, or a duplicate load ran (#2342).
         guard !tabExecution.isBusy(tab.id) else {
             noteLoadAlreadyInFlight()
             return
@@ -241,9 +203,7 @@ extension MainContentCoordinator {
         tableLoadTasks[tabId] = nil
     }
 
-    /// Becoming key ends the deferral whichever tab is selected. A link or an agent can select
-    /// another tab before the window comes forward, and a deferral left standing refused every
-    /// later load of that tab, including the table the user next opened into it.
+    // Ends the deferral whatever tab is selected: a link or agent can switch tabs first, and a leftover deferral blocked loads.
     func consumeDeferredRestoreLoadIfNeeded() {
         guard isKeyWindow, let deferredId = deferredRestoreLoadTabId else { return }
         deferredRestoreLoadTabId = nil

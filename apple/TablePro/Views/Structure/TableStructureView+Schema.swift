@@ -2,8 +2,6 @@
 //  TableStructureView+Schema.swift
 //  TablePro
 //
-//  Schema operations, DDL view, and DDL actions for table structure
-//
 
 import AppKit
 import Combine
@@ -18,9 +16,7 @@ extension TableStructureView {
     func generateStructurePreviewSQL() {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else {
-            // After undo brings the working copy back to a clean state, the popover
-            // would otherwise retain the last-generated SQL. Clear it so reopening
-            // the popover correctly shows "no changes".
+            // An undo back to a clean state would otherwise leave the last preview's SQL behind.
             toolbarState.previewStatements = []
             return
         }
@@ -34,36 +30,23 @@ extension TableStructureView {
         Task { await session.previewStagedChanges(coordinator: coordinator) }
     }
 
-    /// The part of a save only a mounted view can do: refetch the sub-tab the user is looking at
-    /// and repaint the grid. Driven by `session.appliedVersion` rather than called from the save,
-    /// so it runs exactly when there is a view to run it and never otherwise.
     func refreshAfterApply() async {
         isReloadingAfterSave = true
         await reloadCoreTabs()
         adoptFetchedBaseline()
         await loadTabDataIfNeeded(selectedTab)
 
-        /// Save resets the manager (pendingChanges cleared, working state refetched from the
-        /// database) but the row count is usually unchanged after a rename or a type change, so
-        /// `DataGridView.updateNSView` does not call `reloadData` on its own. Ask the grid to
-        /// repaint visible cells so the modified tint clears and any value the round trip changed
-        /// shows its canonical post-save form.
-        gridDelegate.reloadAllVisibleRows()
+        gridAdapter.refresh()
 
-        /// The apply cleared this so an unmounted tab refetches on its next mount. This view has
-        /// just done that refetch, so the session is loaded again. Leaving it false would make the
-        /// next remount run `loadInitialData`, and `loadSchemaForEditing` re-baselines the change
-        /// manager, so anything staged since the save would be discarded without a prompt.
+        // Left false, the next mount re-baselines the change manager and drops anything staged since.
         session.hasLoaded = true
         isReloadingAfterSave = false
     }
 
     func discardChanges() {
+        session.gridModel.discardEditing()
         structureChangeManager.discardChanges()
-        // Mirror the save path: discard reverts working state without changing
-        // row count, so the grid needs an explicit reload to drop the yellow
-        // modified tint and revert any displayed value.
-        gridDelegate.reloadAllVisibleRows()
+        gridAdapter.refresh()
     }
 
     // MARK: - DDL View

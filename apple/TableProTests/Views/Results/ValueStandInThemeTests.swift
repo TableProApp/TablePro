@@ -19,7 +19,7 @@ struct ValueStandInThemeTests {
     private static let size = CGSize(width: 360, height: 280)
     private static let editorBackground = "#282A36"
 
-    /// Under the default pair the state draws nothing of its own, under a theme the editor background.
+    // Under the default pair the state draws nothing of its own, under a theme the editor background.
     private func assertStandsIn(_ view: some View, at point: CGPoint = CGPoint(x: 0.03, y: 0.8)) throws {
         let framed = view.frame(width: Self.size.width, height: Self.size.height)
         try ThemeTestFixture.adopting(.builtIn, appearance: .light) {
@@ -54,7 +54,7 @@ struct ValueStandInThemeTests {
     func resultJSONWithoutRows() throws {
         try assertStandsIn(ResultsJsonView(
             tableRows: TableRows(),
-            selectedRowIndices: [],
+            selectedRowIDs: [],
             displayIDs: nil,
             deletedRowIDs: [],
             valueFilter: GridValueFilterState(),
@@ -70,7 +70,7 @@ struct ValueStandInThemeTests {
         try #require(ThemeTestFixture.textViews(in: window).first)
     }
 
-    /// A literal the list editor cannot read opens straight into raw text.
+    // A literal the list editor cannot read opens straight into raw text.
     private var rawArrayEditor: some View {
         ArrayValueEditorView(
             literal: "{{1,2},{3}}",

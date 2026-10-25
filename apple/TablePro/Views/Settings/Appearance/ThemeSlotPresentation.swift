@@ -1,9 +1,7 @@
 import AppKit
 import TableProTheme
 
-/// What one slot row says about the theme: the color the well shows, a line naming where that color
-/// comes from, and what a reset would return to. Text, not color alone, tells a set slot from one
-/// that follows the system.
+// Text, not color alone, tells a set slot from one that follows the system.
 internal struct ThemeSlotPresentation: Equatable {
     internal let slot: ThemeSlot
     internal let hasExplicitColor: Bool
@@ -23,8 +21,7 @@ internal struct ThemeSlotPresentation: Equatable {
             : String(format: String(localized: "Use Default Color for %@"), slot.accessibilityLabel)
     }
 
-    /// An unset slot shows the system color resolved in the theme's own appearance, not the one the
-    /// editor window happens to be in.
+    // An unset slot shows the system color in the theme's own appearance, not the editor window's.
     internal static func displayColor(for slot: ThemeSlot, in theme: ThemeDefinition) -> ThemeColor {
         switch theme.value(for: slot) {
         case let .themed(color):
@@ -82,7 +79,6 @@ internal struct ThemeSlotPresentation: Equatable {
     }
 }
 
-/// Text on its background, for the note under a section whose pair reads below the HIG's 4.5:1.
 internal enum ThemeContrastNote {
     internal static let minimumRatio = 4.5
 
@@ -90,7 +86,7 @@ internal enum ThemeContrastNote {
         switch section {
         case .editor: return (.editorText, .editorBackground)
         case .dataGrid: return (.gridText, .gridBackground)
-        case .window, .syntax, .selection, .changes: return nil
+        case .window, .syntax, .changes: return nil
         }
     }
 
@@ -109,13 +105,11 @@ internal enum ThemeContrastNote {
 }
 
 private extension ThemeSlot {
-    /// The slot an unset one takes its color from, when that is a theme color.
     var fallbackSource: ThemeSlot? {
         switch fallback {
         case .system, .defaultSyntax: return nil
         case let .slot(source): return source
         case let .derived(base, _): return base
-        case let .paired(_, fallback): return fallback
         }
     }
 }

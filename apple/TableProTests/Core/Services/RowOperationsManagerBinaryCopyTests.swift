@@ -31,10 +31,10 @@ extension GlobalStateSuites {
             return (rowOps, tableRows)
         }
 
-        /// The text a row copy wrote, read only when it went out as rows.
+        // Read only when the copy went out as rows.
         private func copiedText(_ rowOps: RowOperationsManager, _ tableRows: TableRows) throws -> String {
             let clipboard = try #require(RecordingClipboard.current)
-            rowOps.copySelectedRowsToClipboard(selectedIndices: [0], tableRows: tableRows)
+            rowOps.copyRowsToClipboard([.existing(0)], tableRows: tableRows)
             return clipboard.hasGridRows ? clipboard.text ?? "" : ""
         }
 

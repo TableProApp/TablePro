@@ -9,13 +9,7 @@ import Combine
 import Foundation
 
 extension MainContentCoordinator {
-    /// Marks every addressed table tab stale, reloads the selected one now when the plan allows, and
-    /// has the structure of each fetched again.
-    ///
-    /// Nothing here asks a question. The change was made somewhere else, maybe in another window, so
-    /// a tab holding edits or an open cell overlay keeps them, and its rows, until they are gone, and
-    /// a structure holding staged edits keeps those. The tab that made the change is left out of the
-    /// rows plan only: it reloads its own rows, and its structure is fetched like any other.
+    // Asks nothing: the change came from elsewhere, so tabs with edits or overlays keep them; the source tab reloads its own rows.
     func refreshTableTabs(
         for change: TableFreshness.Change,
         excluding originTabId: UUID? = nil,
@@ -44,10 +38,7 @@ extension MainContentCoordinator {
         refreshStructure(ofTabs: addressed)
     }
 
-    /// Runs the reload the selected tab put off while its cell overlay or its edits were in the way,
-    /// once they are gone. The plan is asked again rather than remembered, so whatever the user
-    /// started meanwhile, a new overlay, an edit or a load of the tab's own, still stands in the way.
-    /// A grid torn down with its window closes its overlay too, and that starts nothing.
+    // The plan is asked again, not remembered, so anything the user started meanwhile still blocks the reload.
     func resumeDeferredTableRefresh() {
         guard !isTearingDown,
               let selectedState = selectedTabRefreshState,
@@ -60,10 +51,7 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Edits go without a Discard too: the last one undone, a cell typed back to what it held, a
-    /// deleted row restored. Each leaves the change manager clean, which is when a reload put off for
-    /// them can run. Heard a turn later, because the manager publishes before it stores the value, and
-    /// a switch or a save that cleaned it has started the tab's own load by then.
+    // Heard a turn later: the manager publishes before it stores, and by then a cleaning switch or save has started the load.
     func resumeWhenEditsClear() -> AnyCancellable {
         changeManager.$hasChanges
             .removeDuplicates()
@@ -73,8 +61,7 @@ extension MainContentCoordinator {
             .sink { [weak self] _ in self?.resumeDeferredTableRefresh() }
     }
 
-    /// A change that names no single table reaches every table tab in its scope, and can have
-    /// changed the columns of a table no tab shows, so every column list cached for scoping goes.
+    // A scope-wide change can alter columns of tables no tab shows, so every cached column list goes.
     func applyDataRefresh(_ request: DataRefreshRequest) {
         guard request.connectionId == connectionId else { return }
         schemaColumns.removeAll()
@@ -83,9 +70,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Structure the user is not editing is fetched again: now for the one on screen, on its next
-    /// mount for the rest. A structure holding staged edits keeps them and the old baseline, and is
-    /// fetched once they are applied, undone or discarded.
+    // A structure with staged edits keeps them and the old baseline until they are applied, undone or discarded.
     func refreshStructure(ofTabs tabs: [QueryTab]) {
         let selectedId = tabManager.selectedTabId
         for tab in tabs {
@@ -99,15 +84,11 @@ extension MainContentCoordinator {
         }
     }
 
-    /// The named table's column list, cached for scoping a tab opened on it later.
     func forgetSchemaColumns(of change: DatabaseObjectChange) {
         schemaColumns.remove(schemaColumnsKey(change.name, scope: change.scope))
     }
 
-    /// The columns cached for building a table's column-scoped query describe the definition before
-    /// the change, and a reload builds its SQL from them before it fetches anything: kept, they would
-    /// name a dropped column in the select list and leave out an added one. The reload's own
-    /// definition fetch stores the new set.
+    // A reload builds its SQL from these cached columns before fetching, so stale ones would select a dropped column.
     private func forgetSchemaColumns(ofTabs tabs: [QueryTab]) {
         for tab in tabs {
             guard let tableName = tab.tableContext.tableName else { continue }
@@ -140,7 +121,7 @@ extension MainContentCoordinator {
         guard let tab = tabManager.selectedTab else { return nil }
         let holdsEdits = changeManager.hasChanges
             || tab.pendingChanges.hasChanges
-            || dataTabDelegate?.tableViewCoordinator?.hasOpenCellOverlay == true
+            || isEditingActiveGrid
         return TableRowsRefreshPlan.SelectedTabState(id: tab.id, holdsEdits: holdsEdits, load: selectedTabLoad(tab.id))
     }
 
@@ -154,7 +135,7 @@ extension MainContentCoordinator {
         return tabExecution.isBusy(tabId) ? .extending : .idle
     }
 
-    /// Written only when there is a count to retire, because every write fires `tabs`' `didSet`.
+    // Written only when set, because every write fires tabs' didSet.
     private func retireDerivedRowCountIfSet(forTab tabId: UUID) {
         guard let pagination = tabManager.tabs.first(where: { $0.id == tabId })?.pagination,
               pagination.totalRowCount != nil || pagination.isApproximateRowCount else { return }

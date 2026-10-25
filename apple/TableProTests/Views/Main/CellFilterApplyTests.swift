@@ -5,19 +5,11 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@MainActor
-private final class CellFilterLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-/// The cell menu's Filter item, from the menu the data tab's delegate builds to the query it runs.
+// The cell menu's Filter item, from the items the data tab's adapter contributes to the query it runs.
 @MainActor
 struct CellFilterApplyTests {
     private let rows = TableRows.from(
@@ -26,12 +18,24 @@ struct CellFilterApplyTests {
         columnTypes: [.integer(rawType: "INT"), .text(rawType: "VARCHAR(20)")]
     )
 
+    @MainActor
     private struct Harness {
         let coordinator: MainContentCoordinator
         let tabManager: QueryTabManager
-        let grid: TableViewCoordinator
-        let delegate: DataTabGridDelegate
         let tabId: UUID
+
+        func cellMenuItems(row: Int, dataColumn: Int) -> [NSMenuItem] {
+            let model = coordinator.gridModel(forTab: tabId)
+            guard let adapter = coordinator.dataGridEntries[tabId]?.adapter,
+                  let rowID = model.rowID(at: row),
+                  let position = model.columns.displayPosition(ofDataIndex: dataColumn),
+                  let column = model.columns.column(at: position) else { return [] }
+            return adapter.gridCellMenuItems(for: rowID, column: column)
+        }
+
+        func filterMenuItem(row: Int, dataColumn: Int) -> NSMenuItem? {
+            cellMenuItems(row: row, dataColumn: dataColumn).first { $0.title == String(localized: "Filter") }
+        }
     }
 
     private func makeHarness(tabType: TabType = .table, changeManager: DataChangeManager = DataChangeManager()) -> Harness {
@@ -53,25 +57,7 @@ struct CellFilterApplyTests {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
         coordinator.setActiveTableRows(rows, for: tab.id)
-
-        let grid = TableViewCoordinator(
-            changeManager: AnyChangeManager(changeManager),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: CellFilterLayoutPersister()
-        )
-        let tableRows = rows
-        grid.tableRowsProvider = { tableRows }
-        grid.rebuildColumnMetadataCache(from: tableRows)
-        grid.updateCache()
-        grid.visualIndex.rebuild(from: grid.changeManager)
-
-        let delegate = DataTabGridDelegate()
-        delegate.coordinator = coordinator
-        delegate.dataGridAttach(tableViewCoordinator: grid)
-        coordinator.dataTabDelegate = delegate
-        return Harness(coordinator: coordinator, tabManager: tabManager, grid: grid, delegate: delegate, tabId: tab.id)
+        return Harness(coordinator: coordinator, tabManager: tabManager, tabId: tab.id)
     }
 
     private func editedStatusOfFirstRow() -> DataChangeManager {
@@ -109,7 +95,7 @@ struct CellFilterApplyTests {
         let harness = makeHarness()
         defer { harness.coordinator.teardown() }
 
-        let item = try #require(harness.delegate.dataGridFilterMenuItem(forRow: 1, dataColumn: 1))
+        let item = try #require(harness.filterMenuItem(row: 1, dataColumn: 1))
 
         #expect(item.submenu?.items.map(\.title) == ["status = “open”", "status != “open”"])
     }
@@ -121,7 +107,7 @@ struct CellFilterApplyTests {
             clearSavedFilters(harness)
             harness.coordinator.teardown()
         }
-        let item = try #require(harness.delegate.dataGridFilterMenuItem(forRow: 0, dataColumn: 1))
+        let item = try #require(harness.filterMenuItem(row: 0, dataColumn: 1))
 
         item.submenu?.performActionForItem(at: 0)
 
@@ -141,9 +127,9 @@ struct CellFilterApplyTests {
             harness.coordinator.teardown()
         }
 
-        try #require(harness.delegate.dataGridFilterMenuItem(forRow: 0, dataColumn: 1))
+        try #require(harness.filterMenuItem(row: 0, dataColumn: 1))
             .submenu?.performActionForItem(at: 1)
-        try #require(harness.delegate.dataGridFilterMenuItem(forRow: 1, dataColumn: 0))
+        try #require(harness.filterMenuItem(row: 1, dataColumn: 0))
             .submenu?.performActionForItem(at: 2)
 
         let state = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId }?.filterState)
@@ -153,14 +139,13 @@ struct CellFilterApplyTests {
         #expect(state.filterLogicMode == .and)
     }
 
-    /// The declined branch is reached by pretending an alert is already up, which is what
-    /// `confirmDiscardChangesIfNeeded` answers false to once there are edits to lose.
+    // Pretends an alert is already up, which `confirmDiscardChangesIfNeeded` answers false to once there are edits.
     @Test("Nothing changes while the discard alert is unanswered")
     func declinedDiscardChangesNothing() throws {
         let harness = makeHarness(changeManager: editedStatusOfFirstRow())
         defer { harness.coordinator.teardown() }
         #expect(harness.coordinator.changeManager.hasChanges)
-        let item = try #require(harness.delegate.dataGridFilterMenuItem(forRow: 1, dataColumn: 1))
+        let item = try #require(harness.filterMenuItem(row: 1, dataColumn: 1))
         let before = try #require(harness.tabManager.tabs.first { $0.id == harness.tabId })
         harness.coordinator.isShowingConfirmAlert = true
 
@@ -176,7 +161,7 @@ struct CellFilterApplyTests {
         let harness = makeHarness(tabType: .query)
         defer { harness.coordinator.teardown() }
 
-        #expect(harness.delegate.dataGridFilterMenuItem(forRow: 0, dataColumn: 1) == nil)
+        #expect(harness.filterMenuItem(row: 0, dataColumn: 1) == nil)
     }
 
     @Test("An edited cell has no Filter item, because the server does not hold its value")
@@ -184,28 +169,20 @@ struct CellFilterApplyTests {
         let harness = makeHarness(changeManager: editedStatusOfFirstRow())
         defer { harness.coordinator.teardown() }
 
-        #expect(harness.delegate.dataGridFilterMenuItem(forRow: 0, dataColumn: 1) == nil)
-        #expect(harness.delegate.dataGridFilterMenuItem(forRow: 0, dataColumn: 0) != nil)
-        #expect(harness.delegate.dataGridFilterMenuItem(forRow: 1, dataColumn: 1) != nil)
+        #expect(harness.filterMenuItem(row: 0, dataColumn: 1) == nil)
+        #expect(harness.filterMenuItem(row: 0, dataColumn: 0) != nil)
+        #expect(harness.filterMenuItem(row: 1, dataColumn: 1) != nil)
     }
 
-    @Test("The Filter item sits just before Highlight in the cell menu")
-    func rowMenuPlacesFilterBeforeHighlight() throws {
+    @Test("The Filter item sits just before Highlight in the cell items the adapter adds")
+    func filterComesBeforeHighlight() throws {
         let harness = makeHarness()
         defer { harness.coordinator.teardown() }
-        harness.grid.delegate = harness.delegate
-        let tableView = KeyHandlingTableView()
-        tableView.coordinator = harness.grid
-        tableView.addTableColumn(DataGridView.makeRowNumberColumn())
-        harness.grid.tableView = tableView
-        let rowView = DataGridRowView()
-        rowView.coordinator = harness.grid
-        rowView.rowIndex = 0
 
-        let titles = try #require(rowView.contextMenu(target: .cell(dataColumn: 1))).items.map(\.title)
+        let titles = harness.cellMenuItems(row: 0, dataColumn: 1).map(\.title)
 
-        let filterIndex = try #require(titles.firstIndex(of: "Filter"))
+        let filterIndex = try #require(titles.firstIndex(of: String(localized: "Filter")))
         #expect(titles.indices.contains(filterIndex + 1))
-        #expect(titles[filterIndex + 1] == "Highlight")
+        #expect(titles.dropFirst(filterIndex + 1).first == String(localized: "Highlight"))
     }
 }

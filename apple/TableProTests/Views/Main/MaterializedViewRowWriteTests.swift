@@ -173,11 +173,11 @@ extension GlobalStateSuites {
             defer { coordinator.teardown() }
 
             coordinator.addNewRow()
-            coordinator.duplicateSelectedRow(index: 0)
+            coordinator.duplicateRow(.existing(0))
             coordinator.pasteRows()
             #expect(try rowCount(coordinator) == 2)
 
-            coordinator.deleteSelectedRows(indices: [0])
+            coordinator.deleteRows([.existing(0)])
             #expect(!coordinator.changeManager.hasChanges)
         }
 
@@ -186,7 +186,7 @@ extension GlobalStateSuites {
             let coordinator = try restoredTab(objectType: .view, isView: true)
             defer { coordinator.teardown() }
 
-            coordinator.deleteSelectedRows(indices: [0])
+            coordinator.deleteRows([.existing(0)])
             #expect(!coordinator.changeManager.hasChanges)
         }
 
@@ -200,7 +200,7 @@ extension GlobalStateSuites {
 
             coordinator.addNewRow()
             #expect(try rowCount(coordinator) == 3)
-            coordinator.duplicateSelectedRow(index: 0)
+            coordinator.duplicateRow(.existing(0))
             #expect(try rowCount(coordinator) == 4)
             coordinator.pasteRows()
             #expect(try rowCount(coordinator) == 5)
@@ -211,11 +211,17 @@ extension GlobalStateSuites {
             let coordinator = try restoredTab(objectType: .table, isView: false)
             defer { coordinator.teardown() }
 
-            coordinator.deleteSelectedRows(indices: [0])
+            coordinator.deleteRows([.existing(0)])
             #expect(coordinator.changeManager.hasChanges)
         }
 
         // MARK: - The grid's empty-space menu
+
+        private func adapter(of coordinator: MainContentCoordinator) throws -> DataTabGridAdapter {
+            let tabId = try #require(coordinator.tabManager.selectedTabId)
+            _ = coordinator.gridModel(forTab: tabId)
+            return try #require(coordinator.dataGridEntries[tabId]?.adapter)
+        }
 
         @Test("The grid's empty space offers Add Row on a table and not on a materialized view")
         func emptySpaceMenuFollowsTheGate() throws {
@@ -224,15 +230,8 @@ extension GlobalStateSuites {
             let table = try restoredTab(objectType: .table, isView: false)
             defer { table.teardown() }
 
-            let matviewDelegate = DataTabGridDelegate()
-            matviewDelegate.coordinator = matview
-            matviewDelegate.onAddRow = { matview.addNewRow() }
-            let tableDelegate = DataTabGridDelegate()
-            tableDelegate.coordinator = table
-            tableDelegate.onAddRow = { table.addNewRow() }
-
-            #expect(matviewDelegate.dataGridEmptySpaceMenu() == nil)
-            #expect(tableDelegate.dataGridEmptySpaceMenu() != nil)
+            #expect(try adapter(of: matview).gridEmptySpaceMenu() == nil)
+            #expect(try adapter(of: table).gridEmptySpaceMenu() != nil)
         }
     }
 }

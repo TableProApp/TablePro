@@ -5,25 +5,43 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProNumberFormatting
 import TableProPluginKit
 import TableProTabular
+import TableProTestSupport
 import Testing
 
 @MainActor
 struct DataFileSelectionSummaryTests {
-    /// The coordinator holds its delegate and its table view weakly, so the test holds them.
+    // The grid's controller computes the summary, so the test mounts it in a window and holds both.
     @MainActor
-    private struct MountedGrid {
+    private final class MountedGrid {
         let controller: DataFileController
-        let delegate: DataFileGridDelegate
-        let tableView: KeyHandlingTableView
-        let coordinator: TableViewCoordinator
+        let grid: DataGridViewController
+        let window: NSWindow
 
-        var tracker: SelectionSummaryTracker { coordinator.selectionSummaryTracker }
+        init(controller: DataFileController) {
+            self.controller = controller
+            grid = DataGridViewController(model: controller.gridModel)
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 600, height: 240),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.isReleasedWhenClosed = false
+            window.contentView = grid.view
+            grid.view.layoutSubtreeIfNeeded()
+        }
+
+        var tracker: SelectionSummaryTracker { grid.selectionSummaryTracker }
         var summary: SelectionSummary? { controller.selectionSummary.summary }
+
+        func tearDown() {
+            grid.dismantle()
+            window.contentView = nil
+        }
     }
 
     private let undoManager = UndoManager()
@@ -41,44 +59,10 @@ struct DataFileSelectionSummaryTests {
         await controller.waitForPendingWork()
         #expect(controller.loadState == .loaded)
 
-        let delegate = DataFileGridDelegate(controller: controller)
-        let view = DataGridView(
-            tableRowsProvider: { [controller] in controller.tableRows },
-            changeManager: controller.anyChangeManager,
-            isEditable: controller.isEditable,
-            delegate: delegate,
-            layoutPersister: InMemoryColumnLayoutStore(),
-            selectedRowIndices: .constant([]),
-            sortState: .constant(SortState()),
-            columnLayout: .constant(ColumnLayoutState()),
-            selectionSummary: controller.selectionSummary
-        )
-        let coordinator = view.makeCoordinator()
-        coordinator.tableRowsProvider = { [controller] in controller.tableRows }
-        delegate.dataGridAttach(tableViewCoordinator: coordinator)
-
-        let tableView = KeyHandlingTableView()
-        tableView.coordinator = coordinator
-        tableView.delegate = coordinator
-        tableView.dataSource = coordinator
-        tableView.columnAutoresizingStyle = .noColumnAutoresizing
-        tableView.addTableColumn(DataGridView.makeRowNumberColumn())
-        coordinator.tableView = tableView
-        let tableRows = controller.tableRows
-        coordinator.rebuildColumnMetadataCache(from: tableRows)
-        coordinator.columnPool.reconcile(
-            tableView: tableView,
-            schema: coordinator.identitySchema,
-            columnTypes: tableRows.columnTypes,
-            savedLayout: nil,
-            isEditable: true,
-            hiddenColumnNames: [],
-            firstClickSortDirection: .ascending,
-            widthCalculator: { _, _ in 100 }
-        )
-        coordinator.updateCache()
-        tableView.reloadData()
-        return MountedGrid(controller: controller, delegate: delegate, tableView: tableView, coordinator: coordinator)
+        let grid = MountedGrid(controller: controller)
+        // The grid attaches its summary on the turn after it mounts.
+        try await waitUntil(timeout: .seconds(5)) { grid.tracker.state === controller.selectionSummary }
+        return grid
     }
 
     private static func firstColumn(rows: ClosedRange<Int>) -> GridSelection {
@@ -92,25 +76,26 @@ struct DataFileSelectionSummaryTests {
     @Test("the window's own column rules are used, so an empty CSV cell is Empty and an integer column is summed")
     func dataFilePolicyIsConsulted() async throws {
         let grid = try await mount("n,label\n1,a\n,b\n3,c\n")
+        defer { grid.tearDown() }
         let id = try #require(grid.controller.columnNames.ids.first)
         #expect(grid.controller.kind(of: id) == .integer)
         #expect(grid.controller.tableRows.rows[1].values[0] == .text(""))
 
-        grid.coordinator.selectionController.update(Self.firstColumn(rows: 0...2))
+        grid.controller.gridModel.setSelection(Self.firstColumn(rows: 0...2))
         await grid.tracker.pendingTask?.value
 
         #expect(grid.summary?.emptyCount == 1)
         #expect(grid.summary?.valueCount == 2)
         #expect(grid.summary?.numbers?.sum.decimal == 4)
-        withExtendedLifetime(grid) {}
     }
 
     @Test("overriding a text column to Integer sums it, and setting it back to automatic stops")
     func kindOverridePublishesNewFigures() async throws {
         let grid = try await mount("code,label\n007,a\n010,b\n3,c\n")
+        defer { grid.tearDown() }
         let id = try #require(grid.controller.columnNames.ids.first)
         #expect(grid.controller.kind(of: id) == .text)
-        grid.coordinator.selectionController.update(Self.firstColumn(rows: 0...2))
+        grid.controller.gridModel.setSelection(Self.firstColumn(rows: 0...2))
         await grid.tracker.pendingTask?.value
         #expect(grid.summary?.valueCount == 3)
         #expect(grid.summary?.numbers == nil)
@@ -124,17 +109,16 @@ struct DataFileSelectionSummaryTests {
         await grid.tracker.pendingTask?.value
         #expect(grid.summary?.numbers == nil)
         #expect(grid.summary?.valueCount == 3)
-        withExtendedLifetime(grid) {}
     }
 
-    /// The kind override is not an undo step of its own; an undo puts back the kinds an earlier edit
-    /// captured, and it reloads the page, which drops the cell selection with it.
+    // The kind override is not an undo step of its own; an undo puts back the kinds an earlier edit captured.
     @Test("undoing back past a kind override leaves no figures computed under the override")
     func undoPastKindOverrideLeavesNoStaleFigures() async throws {
         let grid = try await mount("code,label\n007,a\n010,b\n3,c\n")
+        defer { grid.tearDown() }
         let id = try #require(grid.controller.columnNames.ids.first)
         grid.controller.setCell(pageRow: 0, column: 1, text: "z")
-        grid.coordinator.selectionController.update(Self.firstColumn(rows: 0...2))
+        grid.controller.gridModel.setSelection(Self.firstColumn(rows: 0...2))
         grid.controller.setKindOverride(.integer, for: id)
         await grid.tracker.pendingTask?.value
         #expect(grid.summary?.numbers?.sum.decimal == 20)
@@ -146,6 +130,17 @@ struct DataFileSelectionSummaryTests {
         #expect(grid.controller.kind(of: id) == .text)
         #expect(grid.summary?.numbers == nil)
         #expect(grid.tracker.currentSummary?.numbers == nil)
-        withExtendedLifetime(grid) {}
+    }
+
+    @Test("the status bar's row count follows the grid's selection")
+    func selectedRowsFollowTheGrid() async throws {
+        let grid = try await mount("n,label\n1,a\n2,b\n3,c\n")
+        defer { grid.tearDown() }
+
+        grid.controller.gridModel.setSelection(Self.firstColumn(rows: 1...2))
+        #expect(grid.controller.selectedRowIndices == [1, 2])
+
+        grid.controller.gridModel.clearSelection()
+        #expect(grid.controller.selectedRowIndices.isEmpty)
     }
 }

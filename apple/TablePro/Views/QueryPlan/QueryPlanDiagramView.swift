@@ -1,11 +1,3 @@
-//
-//  QueryPlanDiagramView.swift
-//  TablePro
-//
-//  EXPLAIN plan diagram: boxes and arrows on an AppKit-magnified canvas, so pan and zoom
-//  behave the way every other document surface on macOS does.
-//
-
 import SwiftUI
 import TableProTheme
 
@@ -13,11 +5,10 @@ struct QueryPlanDiagramView: View {
     @Binding var selectedNodeId: UUID?
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Owned by the plan's `QueryPlanViewState`, because this view goes away on every mode switch.
+    // Owned by the plan's `QueryPlanViewState`: this view goes away on every mode switch.
     let viewport: DiagramViewportController
 
-    /// Derived from the plan on every update, so a second EXPLAIN in the same tab redraws
-    /// instead of keeping the layout the first one produced.
+    // Derived on every update, so a second EXPLAIN in the same tab redraws.
     private let layout: QueryPlanDiagramLayout
 
     init(plan: QueryPlan, selectedNodeId: Binding<UUID?>, viewport: DiagramViewportController) {
@@ -76,9 +67,7 @@ struct QueryPlanDiagramView: View {
     }
 }
 
-/// A non-interactive copy at natural scale, so an export never captures the current zoom, scroll
-/// offset or selection. `ImageRenderer` draws in the light scheme whatever the window shows, so the
-/// canvas's own scheme is passed in.
+// `ImageRenderer` draws in the light scheme whatever the window shows, so the canvas's scheme is passed in.
 struct QueryPlanDiagramExportCanvas: View {
     let layout: QueryPlanDiagramLayout
     let colorScheme: ColorScheme
@@ -110,8 +99,7 @@ struct QueryPlanDiagramExportCanvas: View {
 
 // MARK: - Drawing
 
-/// What the canvas view hosts: every step and arrow, drawn at the layout's own coordinates. It takes
-/// no input and publishes nothing to accessibility, both of which `QueryPlanDiagramCanvasView` owns.
+// Input and accessibility belong to `QueryPlanDiagramCanvasView`.
 struct QueryPlanDiagramDrawing: View {
     let layout: QueryPlanDiagramLayout
     let selectedNodeId: UUID?
@@ -135,10 +123,7 @@ struct QueryPlanDiagramDrawing: View {
 
 // MARK: - Arrow Layer
 
-/// Shapes rather than a `Canvas`. A `Canvas` inside a magnifying `NSScrollView` stops painting past
-/// `contentSize * magnification + 128` document points once magnification reaches 0.5, so a plan
-/// zoomed out lost its arrows while its nodes, being ordinary views, stayed (#2692). The export
-/// canvas is never magnified and draws the same arrows from the same geometry.
+// Shapes, not a `Canvas`: a `Canvas` in a magnified `NSScrollView` stops painting at 0.5 magnification (#2692).
 struct QueryPlanArrowsView: View {
     let arrows: [QueryPlanDiagramLayout.Arrow]
     let size: CGSize
@@ -161,9 +146,7 @@ struct QueryPlanArrowsView: View {
         return path
     }
 
-    /// One shape for every curve and one for every head, rather than one view per arrow. A shape
-    /// view is sized to its own path, so a per-arrow view would be laid out at its bounding box and
-    /// centred, which moves the arrow off the node it points at.
+    // A per-arrow shape view is laid out at its bounding box and centred, off the node it points at.
     private struct Combined: Shape {
         let paths: [Path]
 
@@ -188,8 +171,6 @@ struct QueryPlanArrowsView: View {
 
 struct QueryPlanDiagramNodeView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    @Environment(\.colorSchemeContrast) private var contrast
-    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     let node: QueryPlanNode
     let isSelected: Bool
@@ -264,9 +245,7 @@ struct QueryPlanDiagramNodeView: View {
         node.severity?.tint(differentiateWithoutColor: differentiateWithoutColor) ?? .secondary
     }
 
-    /// The grid outlines its own selection with the focus border, so a selected step does too.
-    private var stroke: AnyShapeStyle {
-        guard isSelected else { return AnyShapeStyle(tint) }
-        return ThemeShapeStyle.style(.gridFocusBorder, native: Color.accentColor, engine: themeEngine, contrast: contrast)
+    private var stroke: Color {
+        isSelected ? .accentColor : tint
     }
 }

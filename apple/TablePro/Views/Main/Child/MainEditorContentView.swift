@@ -11,17 +11,13 @@ import SwiftUI
 import TableProEditorKit
 import TableProPluginKit
 
-/// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
-/// `MainEditorContentView`. Changes to either field cancel the previous
-/// task and start a new one — exactly the rapid-switch coalescing semantic
-/// we want for Cmd+Number tab navigation.
+// A change to either field cancels the old task and starts a new one, which coalesces rapid Cmd+Number switches.
 private struct TabLoadKey: Hashable {
     let tabId: UUID?
     let loadEpoch: Int
 }
 
-/// Picking another database reruns the tab only while it shows rows. An error, a plan or a write's
-/// count is not a view of the data the new database holds, and rerunning it was an unasked run.
+// Only a tab showing rows reruns: an error, a plan or a write's count is not a view of the new database's data.
 @MainActor
 internal enum ContainerChangeRerunPolicy {
     internal static func reruns(showing activeResult: ResultSet?) -> Bool {
@@ -36,9 +32,7 @@ struct MainEditorContentView: View {
     @ObservedObject private var schemaService = SchemaService.shared
     @ObservedObject private var licenseManager = LicenseManager.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
-    /// A query tab nests its own editor/results split, whose two minimums are required constraints.
-    /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
-    /// satisfy a height the content it contains cannot reach.
+    // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
     static let tabContentMinimumHeight = VerticalCollapsibleSplitView<EmptyView, EmptyView>.combinedMinimumThickness
 
     // MARK: - Dependencies
@@ -46,25 +40,14 @@ struct MainEditorContentView: View {
     @ObservedObject var tabManager: QueryTabManager
     @ObservedObject var coordinator: MainContentCoordinator
 
-    /// The drawer state is a per-connection singleton behind a factory, so it is handed in
-    /// rather than resolved in `body`, where nothing would observe it.
+    // Handed in, not resolved in `body` where nothing would observe it: the drawer state is a per-connection singleton.
     @ObservedObject var historyState: HistoryPanelState
     @ObservedObject var changeManager: DataChangeManager
     let connection: DatabaseConnection
     let windowId: UUID
     let connectionId: UUID
 
-    // MARK: - Selection State
-
-    @ObservedObject var selectionState: GridSelectionState
-
     // MARK: - Callbacks
-
-    let onCellEdit: (Int, Int, String?) -> Void
-    let onSortStateChanged: (SortState) -> Void
-    let onAddRow: () -> Void
-    let onSelectionChange: (Set<Int>) -> Void
-    let onFilterColumn: (String) -> Void
 
     let onFirstPage: () -> Void
     let onPreviousPage: () -> Void
@@ -74,38 +57,17 @@ struct MainEditorContentView: View {
     let onShowAll: () -> Void
     let onGoToPage: (Int) -> Void
 
-    @State private var cachedChangeManager: AnyChangeManager?
     @State private var queryPlanViewStates = QueryPlanViewStateStore()
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
     @State private var tableListingModels = TableListingModelStore()
-    @State private var dataTabDelegate = DataTabGridDelegate()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
-    /// A table's highlight rules live in this store, not on the tab, and `body` reads them for both
-    /// the grid and the status bar popover. Without observing it here a rule added to a table tab was
-    /// written and never shown: Add Rule did nothing visible, while a query result's rules, kept on
-    /// the tab, updated as expected.
+    // Table highlight rules live here, not on the tab; unobserved, Add Rule on a table tab changed nothing on screen.
     @ObservedObject private var highlightRuleStorage = HighlightRuleStorage.shared
 
-    // Native macOS window tabs — no LRU tracking needed (single tab per window)
-
-    // MARK: - Environment
-
-
-    /// Returns the cached AnyChangeManager, creating it on first access.
-    private var currentChangeManager: AnyChangeManager {
-        if let existing = cachedChangeManager {
-            return existing
-        }
-        // Fallback before onAppear initializes cachedChangeManager.
-        // Safe: onAppear fires before any user interaction needs it.
-        return AnyChangeManager(changeManager)
-    }
-
-    /// The tip that tells a first-time reader where past queries are. It is answered once history
-    /// has been on screen, which is now the trailing pane rather than a drawer under the editor.
+    // The tip is answered once history has been on screen, now the trailing pane rather than a drawer under the editor.
     private var showsHistoryTip: Bool {
         let historyState = HistoryPanelState.forConnection(connectionId)
         return !historyState.isVisible && !historyState.isCapturePaused
@@ -198,12 +160,6 @@ struct MainEditorContentView: View {
         }
         .onAppear {
             updateHasQueryText()
-            cachedChangeManager = AnyChangeManager(changeManager)
-            wireDataTabDelegateStableRefs()
-            coordinator.dataTabDelegate = dataTabDelegate
-        }
-        .onDisappear {
-            cachedChangeManager = nil
         }
         .task(id: TabLoadKey(
             tabId: tabManager.selectedTabId,
@@ -211,18 +167,6 @@ struct MainEditorContentView: View {
         )) {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
-        .onChange(of: selectionState.indices) { newIndices in
-            onSelectionChange(newIndices)
-        }
-    }
-
-    private func wireDataTabDelegateStableRefs() {
-        dataTabDelegate.coordinator = coordinator
-        dataTabDelegate.selectionState = selectionState
-        dataTabDelegate.onCellEdit = onCellEdit
-        dataTabDelegate.onSortStateChanged = onSortStateChanged
-        dataTabDelegate.onAddRow = onAddRow
-        dataTabDelegate.onFilterColumn = onFilterColumn
     }
 
     // MARK: - Tab Content
@@ -438,8 +382,6 @@ struct MainEditorContentView: View {
         PluginManager.shared.containerSwitchTarget(for: connection.type)
     }
 
-    /// The schemas on an engine whose entries are schemas: a query tab is bound to one, and this is
-    /// how it is pointed at another.
     private func containerDatabases(for tab: QueryTab) -> [DatabaseMetadata] {
         switch containerSwitchTarget {
         case .database:
@@ -464,8 +406,7 @@ struct MainEditorContentView: View {
         PluginManager.shared.containerEntityName(for: connection.type)
     }
 
-    /// Read from the tab's own scope, the same value completion resolves against, so the control
-    /// and the suggestions can never describe different databases.
+    // Read from the tab's own scope, which completion also resolves against, so the two never name different databases.
     private func containerName(for tab: QueryTab) -> String {
         if containerSwitchTarget == .schema {
             return coordinator.scope(for: tab)?.schema ?? tab.tableContext.schemaName ?? ""
@@ -475,15 +416,13 @@ struct MainEditorContentView: View {
         return bound.isEmpty ? coordinator.browseDatabaseName : bound
     }
 
-    /// Only shown beside a database, never instead of one: on an engine whose container IS the
-    /// schema the picker is already naming it.
+    // Only beside a database: where the container is the schema, the picker already names it.
     private func containerSchemaName(for tab: QueryTab) -> String? {
         guard containerSwitchTarget == .database else { return nil }
         return coordinator.scope(for: tab)?.schema
     }
 
-    /// The tab owns the new database, or schema, for the rest of its life, so it moves to that
-    /// entry and the window goes with it, the way selecting a tab of another entry does.
+    // The tab owns the new container for life, so it moves to that entry and the window follows, like selecting its tab.
     private func changeContainer(for tab: QueryTab, to name: String) {
         let tabId = tab.id
         guard tabManager.containerName(of: tab) != name,
@@ -494,7 +433,7 @@ struct MainEditorContentView: View {
         SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         guard tabManager.selectedTabId == tabId,
               ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
-        /// The statement at the caret may not be the one that produced the rows, so a write asks first.
+        // The statement at the caret may not be the one that produced the rows, so a write asks first.
         coordinator.runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
     }
 
@@ -599,9 +538,7 @@ struct MainEditorContentView: View {
         coordinator.tabManager.mutate(tabId: tabId) { FileTabBaseline.dismissDiskChange(in: &$0.content) }
     }
 
-    /// Both facts the toolbar's query items validate against, written together. They used to be one
-    /// fact, because the only thing that read it was a button inside this view which already knew
-    /// it was on a query tab. The toolbar does not: it belongs to the window and outlives every tab.
+    // Two facts, not one: the window's toolbar outlives every tab, so unlike the old in-view button it cannot assume a query tab.
     private func updateHasQueryText() {
         coordinator.syncQueryToolbarStateForSelectedTab()
     }
@@ -614,17 +551,12 @@ struct MainEditorContentView: View {
                 tabManager.tabs.first(where: { $0.id == tabId })?.content.query ?? fallbackQuery
             },
             set: { newValue in
-                // Find this tab by ID, not by selectedTabIndex. During tab switch,
-                // flushTextUpdate() fires on the OLD tab's EditorCoordinator when
-                // selectedTabIndex already points to the NEW tab — writing to
-                // selectedTabIndex would overwrite the new tab's query.
+                // By ID: mid-switch, flushTextUpdate() fires for the old tab while selectedTabIndex already points to the new one.
                 guard tabManager.mutate(tabId: tabId, { $0.content.query = newValue }) else { return }
 
                 coordinator.scheduleDraftSave()
 
-                // Typing into a scratch tab dirties it too: the text lives nowhere but this tab.
-                // The dot belongs to this tab's own window, not whichever window happens to be
-                // key, because a background window tab's editor stays mounted and can fire here.
+                // Scratch tabs dirty too. Only this tab's window: a background window tab's editor stays mounted and can fire here.
                 guard tabId == tabManager.selectedTabId,
                       let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
                       let window = coordinator.contentWindow else { return }
@@ -694,8 +626,7 @@ struct MainEditorContentView: View {
         coordinator.scope(for: tab)
     }
 
-    /// A Create Table tab holds nothing but unsaved work, so its draft is cached here rather than
-    /// left in the view, which is destroyed the moment the tab is deselected.
+    // The draft is cached here because the view is destroyed as soon as the tab is deselected.
     @ViewBuilder
     private func createTableContent(tab: QueryTab) -> some View {
         Group {
@@ -704,7 +635,6 @@ struct MainEditorContentView: View {
                     connection: connection,
                     scope: structureScope(for: tab),
                     coordinator: coordinator,
-                    selectionState: selectionState,
                     draft: draft
                 )
             } else {
@@ -715,17 +645,7 @@ struct MainEditorContentView: View {
         .id(tab.id)
     }
 
-    /// The structure editor is rebuilt whenever the tab is deselected or switched to Data, so its
-    /// staged ALTERs live in a session cached here by tab, the same way the Users & Roles, ER
-    /// diagram and dashboard view models do. Creating it in `onAppear` rather than inline keeps the
-    /// write out of the view-update pass.
-    ///
-    /// The identity is the tab, exactly as it is for every other builder that caches a view model
-    /// under `tab.id`. It used to be `"<database>.<schema>.<table>"`, which two tabs on one table
-    /// share, so switching between them updated the view in place instead of re-creating it: its
-    /// `@State` went on answering for whichever tab mounted first while `session` resolved to the
-    /// other. The `session.identity == identity` branch stays, because flipping it is what forces a
-    /// real remount when a tab is retargeted to a different table.
+    // Session cached by tab.id (a table-name key let two tabs share @State); the identity check forces a remount on retarget.
     @ViewBuilder
     private func structureContent(tab: QueryTab, tableName: String) -> some View {
         let scope = structureScope(for: tab)
@@ -740,7 +660,6 @@ struct MainEditorContentView: View {
                     schemaName: scope?.schema,
                     toolbarState: coordinator.toolbarState,
                     coordinator: coordinator,
-                    selectionState: selectionState,
                     session: session
                 )
             } else {
@@ -763,9 +682,6 @@ struct MainEditorContentView: View {
         .frame(maxHeight: .infinity)
     }
 
-    /// Renders `QueryResultPresentation`. Every branch this used to take lived here as a switch
-    /// over the view mode whose arms each repeated the result chrome, wrapped around a nested
-    /// `if/else` chain. The decision is a pure value now, so this is a rendering and nothing else.
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         let rows = resolvedTableRows(for: tab)
@@ -780,31 +696,17 @@ struct MainEditorContentView: View {
                 rowFilterChrome(tab: tab, rows: rows)
             }
 
-            if presentation.showsFindBar {
-                FindBarView(
-                    coordinator: coordinator,
-                    findState: tab.findState,
-                    rowsRevision: tab.loadEpoch
-                        &+ tab.pagination.currentPage
-                        &+ tab.paginationVersion
-                        &+ rows.rows.count,
-                    onSearchAllRows: { coordinator.findCoordinator.escalateToAllRows() }
-                )
-                /// Per tab, like the grid below it. The field text lives in the view's own
-                /// `@State`, seeded once from `onAppear`, and the grid's find tint lives on a
-                /// coordinator that `.id(tabId)` rebuilds from nothing. With find open on both tabs
-                /// this view kept its identity across a switch, so neither was re-seeded: the field
-                /// showed the other tab's term next to this tab's match count, and the grid came
-                /// back untinted. (#2667)
-                .id(tab.id)
-                Divider()
-            }
-
             resultContent(presentation.content, tab: tab, rows: rows)
                 .gridStandInBackground(isActive: presentation.content.standsInForGrid)
 
             if presentation.showsStatusBar {
-                statusBar(tab: tab)
+                if let model = coordinator.activeGridModel {
+                    DataGridModelReader(model: model) { model in
+                        statusBar(tab: tab, selectedRowCount: model.selection.affectedRows.count)
+                    }
+                } else {
+                    statusBar(tab: tab, selectedRowCount: 0)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -842,40 +744,41 @@ struct MainEditorContentView: View {
             }
         case .map:
             if let resultSet = tab.display.activeResultSet {
-                ResultMapView(
-                    configuration: mapConfigurationBinding(for: tab),
-                    columns: tab.display.spatialColumns,
-                    tableRows: rows,
-                    displayIDs: coordinator.displayIDs(forTab: tab.id),
-                    selectedRowIndices: selectionState.indices,
-                    tabId: tab.id,
-                    resultSetId: resultSet.id,
-                    dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                    displayRevision: coordinator.gridDisplayRevision,
-                    onSelectRow: { displayIndex in
-                        let selected: Set<Int> = displayIndex.map { [$0] } ?? []
-                        selectionState.indices = selected
-                        /// The shared channel alone does not survive the trip to Data mode: the
-                        /// grid remounts and restores the tab's own stored selection over it,
-                        /// which a map click never wrote. Storing it here is the same half that
-                        /// #2667 added for a mode switch, and the cell rectangle is cleared
-                        /// because a shape names a row and no columns.
-                        coordinator.storeGridSelection(rows: selected, cells: .empty, forTab: tab.id)
-                    }
-                )
+                DataGridModelReader(model: coordinator.gridModel(forTab: tab.id)) { model in
+                    ResultMapView(
+                        configuration: mapConfigurationBinding(for: tab),
+                        columns: tab.display.spatialColumns,
+                        tableRows: rows,
+                        displayIDs: model.displayedRowIDs,
+                        selectedRowIDs: Set(model.selectedRowIDs),
+                        tabId: tab.id,
+                        resultSetId: resultSet.id,
+                        dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                        displayRevision: coordinator.gridDisplayRevision,
+                        onSelectRow: { rowID in
+                            if let rowID {
+                                model.selectRows([rowID])
+                            } else {
+                                model.clearSelection()
+                            }
+                        }
+                    )
+                }
                 .id(tab.id)
             }
         case .json:
-            ResultsJsonView(
-                tableRows: rows,
-                selectedRowIndices: selectionState.indices,
-                displayIDs: coordinator.displayIDs(forTab: tab.id),
-                deletedRowIDs: changeManager.deletedRowIDs,
-                valueFilter: tab.valueFilter,
-                dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                displayRevision: coordinator.gridDisplayRevision,
-                columnLayout: tab.columnLayout
-            )
+            DataGridModelReader(model: coordinator.gridModel(forTab: tab.id)) { model in
+                ResultsJsonView(
+                    tableRows: rows,
+                    selectedRowIDs: Set(model.selectedRowIDs),
+                    displayIDs: model.displayedRowIDs,
+                    deletedRowIDs: changeManager.deletedRowIDs,
+                    valueFilter: tab.valueFilter,
+                    dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
+                    displayRevision: coordinator.gridDisplayRevision,
+                    columnLayout: tab.columnLayout
+                )
+            }
             .id(tab.id)
         case .grid:
             dataGridView(tab: tab)
@@ -905,8 +808,7 @@ struct MainEditorContentView: View {
         )
     }
 
-    /// Gathers what the resolver needs. The one place tab state is read for this decision, so the
-    /// conditions cannot drift apart the way they did while each arm tested its own combination.
+    // The one place tab state is read for this decision, so the conditions cannot drift apart again.
     private func resultPresentation(for tab: QueryTab, rows: TableRows) -> QueryResultPresentation {
         let activeResultSet = tab.display.activeResultSet
         var inputs = QueryResultInputs()
@@ -932,12 +834,10 @@ struct MainEditorContentView: View {
         inputs.executionStatusMessage = tab.execution.statusMessage
         inputs.hasAppliedFilters = tab.filterState.hasAppliedFilters
         inputs.isFilterPanelVisible = tab.filterState.isVisible
-        inputs.isFindBarVisible = tab.findState.isVisible
         return QueryResultPresentation(inputs: inputs)
     }
 
-    /// Shared by every mode whose `showsRowFilters` is true. Filtering rebuilds the query and
-    /// re-runs it, so a mode that renders this panel shows filtered rows without knowing about it.
+    // Filtering rebuilds and reruns the query, so a mode showing this panel gets filtered rows without knowing.
     @ViewBuilder
     private func rowFilterChrome(tab: QueryTab, rows: TableRows) -> some View {
         if tab.filterState.isVisible && tab.tabType == .table
@@ -959,8 +859,7 @@ struct MainEditorContentView: View {
         }
     }
 
-    /// Identified by its result set, so one plan's selection, zoom and scroll never carry onto the
-    /// next plan shown in the same place.
+    // Identified by its result set so one plan's selection, zoom and scroll never carry onto the next.
     private func queryPlanResultView(for resultSet: ResultSet, in tab: QueryTab) -> some View {
         QueryPlanResultView(
             rawText: resultSet.explainRawText ?? "",
@@ -977,9 +876,7 @@ struct MainEditorContentView: View {
         .id(resultSet.id)
     }
 
-    /// Whether the grid is the thing on screen, which is what decides if there is anything to jump
-    /// a column into. Asked of the resolver so it cannot disagree with what was actually rendered,
-    /// which is what a second hand-written copy of the condition used to do.
+    // Asked of the resolver so it cannot disagree with what was rendered, as a hand-written copy once did.
     private func showsGrid(tab: QueryTab, rows: TableRows) -> Bool {
         resultPresentation(for: tab, rows: rows).content == .grid
     }
@@ -996,93 +893,45 @@ struct MainEditorContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // Configuration is applied outside the update pass: the model publishes when it changes.
     @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
-        let refusal = coordinator.activeResultEditRefusal
-        let isEditable = coordinator.canEditActiveResult
+        let model = displayedGridModel(for: tab)
+        let configuration = coordinator.gridConfiguration(for: tab)
+        let highlightRules = coordinator.highlightRules(for: tab)
+        DataGridView(model: model)
+            .id(tab.id)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .onAppear {
+                model.configuration = configuration
+                focusGridIfRequested(model)
+            }
+            .onChange(of: configuration) { model.configuration = $0 }
+            .onChange(of: highlightRules) { _ in
+                model.display.cache.clearHighlights()
+                model.repaintAllRows()
+            }
+    }
 
-        let tabId = tab.id
-        DataGridView(
-            tableRowsProvider: { [coordinator] in
-                coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
-            },
-            tableRowsMutator: { [coordinator] mutate in
-                coordinator.mutateActiveTableRows(for: tabId) { rows in mutate(&rows) }
-            },
-            paginationOffsetProvider: { [coordinator] in
-                coordinator.tabManager.tabs.first(where: { $0.id == tabId })?.pagination.currentOffset ?? 0
-            },
-            changeManager: currentChangeManager,
-            isEditable: isEditable,
-            configuration: DataGridConfiguration(
-                connectionId: connection.id,
-                databaseType: connection.type,
-                tableName: tab.tableContext.tableName,
-                databaseName: tab.tableContext.databaseName,
-                schemaName: tab.tableContext.schemaName,
-                primaryKeyColumns: changeManager.primaryKeyColumns,
-                tabType: tab.tabType,
-                showRowNumbers: settingsManager.dataGrid.showRowNumbers,
-                hiddenColumns: tab.columnLayout.hiddenColumns,
-                appliesRowSortPreferences: true,
-                appliesRowCopyFormat: true,
-                supportsColumnSort: tab.tabType != .table
-                    || PluginManager.shared.supportsColumnSort(for: connection.type),
-                editRefusalMessage: refusal?.message
-            ),
-            displayFormats: coordinator.displayFormats(for: tab),
-            highlightRules: coordinator.highlightRules(for: tab),
-            delegate: dataTabDelegate,
-            selectedRowIndices: Binding(
-                get: { selectionState.indices },
-                set: { selectionState.indices = $0 }
-            ),
-            sortState: sortStateBinding(for: tab),
-            columnLayout: columnLayoutBinding(for: tab),
-            valueFilter: valueFilterBinding(for: tab),
-            displayOrderProvider: { [coordinator] in
-                coordinator.displayIDs(forTab: tabId)
-            },
-            displayState: coordinator.displayState(for: tab),
-            restoredRowSelection: tab.selectedRowIndices,
-            restoredCellSelection: tab.cellSelection,
-            onSelectionTeardown: { [coordinator] rows, cells in
-                coordinator.storeGridSelectionOnTeardown(rows: rows, cells: cells, forTab: tabId)
-            },
-            viewportPlacementProvider: { [coordinator] in
-                coordinator.takeViewportPlacement(forTab: tabId)
-            },
-            selectionSummary: coordinator.selectionSummary
-        )
-        .id(tabId)
-        .frame(maxHeight: .infinity, alignment: .top)
+    private func displayedGridModel(for tab: QueryTab) -> DataGridModel {
+        let model = coordinator.gridModel(forTab: tab.id)
+        coordinator.prepareGridModelForDisplay(forTab: tab.id)
+        return model
+    }
+
+    // An explicit open asks for the keyboard; the grid is in its window once this turn ends.
+    private func focusGridIfRequested(_ model: DataGridModel) {
+        guard coordinator.consumePendingGridFocus() else { return }
+        Task { @MainActor in
+            model.focus()
+        }
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
         coordinator.tabSessionRegistry.existingTableRows(for: tab.id) ?? TableRows()
     }
 
-    private func valueFilterBinding(for tab: QueryTab) -> Binding<GridValueFilterState> {
-        let tabId = tab.id
-        return Binding(
-            get: { tab.valueFilter },
-            set: { coordinator.setValueFilter($0, forTab: tabId) }
-        )
-    }
-
-    private func sortStateBinding(for tab: QueryTab) -> Binding<SortState> {
-        Binding(
-            get: { tab.sortState },
-            set: { newValue in
-                if let index = tabManager.selectedTabIndex {
-                    tabManager.mutate(at: index) { $0.sortState = newValue }
-                }
-            }
-        )
-    }
-
-    /// The chart's choices belong to the tab, not to the result set: a page turn, a sort or a
-    /// re-execute builds a new `ResultSet`, and the axes have to outlive it.
+    // Owned by the tab: a page turn, sort or rerun builds a new `ResultSet`, and the axes must outlive it.
     private func chartConfigurationBinding(for tab: QueryTab) -> Binding<ResultChartConfiguration> {
         Binding(
             get: { tab.chartConfiguration },
@@ -1094,8 +943,7 @@ struct MainEditorContentView: View {
         )
     }
 
-    /// The map's choices belong to the tab for the same reason the chart's do: a page turn, a sort
-    /// or a re-execute builds a new `ResultSet`, and the chosen column has to outlive it.
+    // Owned by the tab like the chart's: a page turn, sort or rerun builds a new `ResultSet`, and the column must outlive it.
     private func mapConfigurationBinding(for tab: QueryTab) -> Binding<ResultMapConfiguration> {
         let tabId = tab.id
         return Binding(
@@ -1106,23 +954,9 @@ struct MainEditorContentView: View {
         )
     }
 
-    private func columnLayoutBinding(for tab: QueryTab) -> Binding<ColumnLayoutState> {
-        let tabId = tab.id
-        return Binding(
-            get: { tab.columnLayout },
-            set: { newValue in
-                coordinator.isUpdatingColumnLayout = true
-                coordinator.applyColumnGeometry(from: newValue, toTabId: tabId)
-                Task { @MainActor in
-                    coordinator.isUpdatingColumnLayout = false
-                }
-            }
-        )
-    }
-
     // MARK: - Status Bar
 
-    private func statusBar(tab: QueryTab) -> some View {
+    private func statusBar(tab: QueryTab, selectedRowCount: Int) -> some View {
         let resolvedRows = resolvedTableRows(for: tab)
         let structureFooter = coordinator.structureSessions[tab.id]?.footer ?? StructureFooterCapability()
         let isExecuting = coordinator.tabExecution.isBusy(tab.id)
@@ -1141,7 +975,7 @@ struct MainEditorContentView: View {
             model: ResultStatusModel(
                 snapshot: snapshot,
                 viewMode: tab.display.resultsViewMode,
-                selectedRowCount: selectionState.indices.count
+                selectedRowCount: selectedRowCount
             ),
             snapshot: snapshot,
             filterState: tab.filterState,
@@ -1206,12 +1040,7 @@ struct MainEditorContentView: View {
         )
     }
 
-    /// Empty unless the resolver says the chooser is on screen, so the bar and the pane agree on
-    /// whether there is a choice to make.
-    ///
-    /// Asked with only the three fields that decide it rather than a full `resultPresentation`,
-    /// which would pull the tab's whole row buffer out of the session registry to answer a question
-    /// that does not depend on a single row.
+    // Only the three deciding fields, not a full `resultPresentation`, which would pull the whole row buffer for a row-free answer.
     private func resultSetMenuModel(for tab: QueryTab) -> ResultSetMenuModel {
         var selectorInputs = QueryResultInputs()
         selectorInputs.tabType = tab.tabType
@@ -1244,6 +1073,7 @@ struct MainEditorContentView: View {
             set: { newValue in
                 Task { @MainActor in
                     if let index = tabManager.selectedTabIndex {
+                        coordinator.commitActiveGridEdit()
                         tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                     }
                 }
@@ -1347,8 +1177,7 @@ extension MainEditorContentView {
 }
 
 fileprivate extension MainEditorContentView {
-    /// The editor is kept per tab on the coordinator, keyed by the tab's id rather than the type's
-    /// name, so a rename that retitles the tab keeps its queue.
+    // Keyed by tab id, not type name, so a rename that retitles the tab keeps its queue.
     @ViewBuilder
     func userTypeContent(tab: QueryTab, objectRef: DatabaseObjectRef) -> some View {
         Group {

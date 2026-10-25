@@ -28,32 +28,23 @@ extension MainContentCoordinator {
         return try changeManager.generateSQL(for: changes)
     }
 
-    // Each row keeps which fields it has none of, so a removal is written as one and a value typed into a missing
-    // field is compared against a field that is not there.
+    // Each row keeps its missing fields, so a removal writes as one and a typed value compares against an absent field.
     private func sidebarEditChanges(editedFields: [InspectorFieldEdit]) -> [RowChange] {
         guard let tab = tabManager.selectedTab,
-            !selectionState.indices.isEmpty,
             tab.tableContext.tableName != nil,
-            GridSelectionOwner.resolve(
-                tabType: tab.tabType,
-                resultsViewMode: tab.display.resultsViewMode
-            ) == .dataGrid
+            let model = activeDataGridModel,
+            !model.selection.isEmpty
         else {
             return []
         }
 
         guard !editedFields.isEmpty else { return [] }
 
-        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
+        let tableRows = model.rows
         let writes = editedFields.compactMap { sidebarWrite(for: $0, in: tableRows) }
         guard !writes.isEmpty else { return [] }
-        let displayIDs = activeGridDisplayIDs
-        return selectionState.indices.sorted().compactMap { rowIndex -> RowChange? in
-            guard let resolvedRow = DisplayRowMapping.row(
-                forDisplay: rowIndex,
-                displayIDs: displayIDs,
-                in: tableRows
-            ) else { return nil }
+        return model.selection.affectedRows.compactMap { displayRow -> RowChange? in
+            guard let resolvedRow = model.row(at: displayRow) else { return nil }
             let originalRow = Array(resolvedRow.values)
             return RowChange(
                 rowID: resolvedRow.id,
@@ -79,9 +70,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Typed text is read for its column, as the grid reads a cell: a function name on a date column is the
-    /// function, and text a NOT NULL column can hold neither as itself nor as NULL writes nothing. An explicit
-    /// NULL stays NULL, and SQL picked from the menu is already the vocabulary's spelling.
+    // Typed text is read for its column as the grid reads a cell (a date function stays a function); explicit NULL stays NULL.
     private func sidebarWrite(
         for field: InspectorFieldEdit,
         in tableRows: TableRows

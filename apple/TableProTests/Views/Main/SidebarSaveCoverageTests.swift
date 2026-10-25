@@ -41,13 +41,18 @@ struct SidebarSaveCoverageTests {
         return coordinator
     }
 
+    private func selectBothRows(in coordinator: MainContentCoordinator) throws {
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        coordinator.gridModel(forTab: tabId).selectRows([.existing(0), .existing(1)])
+    }
+
     @Test("An inspector save across rows the driver cannot all write throws instead of writing some")
-    func inspectorSaveRefusesAPartialWrite() {
+    func inspectorSaveRefusesAPartialWrite() throws {
         let firstRowOnly = RowWriteStubDriver { changes, _, _, _ in
             changes.prefix(1).map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex]) }
         }
         let coordinator = makeCoordinator(driver: firstRowOnly)
-        coordinator.selectionState.indices = [0, 1]
+        try selectBothRows(in: coordinator)
 
         #expect(throws: DataWriteError.changesNotWritable(table: "items", unwritten: UnwrittenRowCounts(updates: 1))) {
             _ = try coordinator.sidebarEditStatements(
@@ -62,7 +67,7 @@ struct SidebarSaveCoverageTests {
             changes.map { PluginRowWrite(statement: "updateOne(\($0.rowIndex))", rowIndices: [$0.rowIndex]) }
         }
         let coordinator = makeCoordinator(driver: everyRow)
-        coordinator.selectionState.indices = [0, 1]
+        try selectBothRows(in: coordinator)
 
         let statements = try coordinator.sidebarEditStatements(
             editedFields: [InspectorFieldEdit(columnIndex: 1, columnName: "name", newValue: "z")]

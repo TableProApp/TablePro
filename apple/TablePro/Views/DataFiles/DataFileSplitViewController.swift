@@ -14,7 +14,6 @@ final class DataFileSplitViewController: NSSplitViewController {
 
     weak var dataFileDocument: DataFileDocument?
     let controller: DataFileController
-    let gridDelegate: DataFileGridDelegate
     private let contentItem: NSSplitViewItem
     private let inspectorItem: NSSplitViewItem
     private var cancellables: Set<AnyCancellable> = []
@@ -25,12 +24,8 @@ final class DataFileSplitViewController: NSSplitViewController {
     init(document: DataFileDocument) {
         dataFileDocument = document
         controller = document.controller
-        gridDelegate = DataFileGridDelegate(controller: document.controller)
 
-        let content = NSHostingController(rootView: DataFileContentView(
-            controller: document.controller,
-            gridDelegate: gridDelegate
-        ))
+        let content = NSHostingController(rootView: DataFileContentView(controller: document.controller))
         content.sizingOptions = []
         contentItem = NSSplitViewItem(viewController: content)
         contentItem.minimumThickness = Self.contentMinThickness
@@ -46,7 +41,7 @@ final class DataFileSplitViewController: NSSplitViewController {
         inspectorItem.isCollapsed = true
 
         super.init(nibName: nil, bundle: nil)
-        gridDelegate.owner = self
+        controller.gridAdapter.owner = self
         addSplitViewItem(contentItem)
         addSplitViewItem(inspectorItem)
 
@@ -87,8 +82,7 @@ final class DataFileSplitViewController: NSSplitViewController {
     }
 
     func focusGrid() {
-        guard let tableView = controller.gridCoordinator?.tableView else { return }
-        view.window?.makeFirstResponder(tableView)
+        controller.gridModel.focus()
     }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {

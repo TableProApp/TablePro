@@ -43,23 +43,24 @@ extension MainContentCoordinator {
 
     // False while the rows' unloaded values load; `retry` runs once every one has arrived.
     func unloadedValuesAreLoaded(
-        displayRows: Set<Int>,
+        rowIDs: [RowID],
         columns: IndexSet? = nil,
         retry: @escaping @MainActor () -> Void
     ) -> Bool {
         guard let tab = tabManager.selectedTab else { return true }
-        let positions = displayRows.sorted()
-        let shownIDs = shownRowIDs(at: positions, tabId: tab.id)
         let rows = tabSessionRegistry.tableRows(for: tab.id)
-        let ids = shownIDs.compactMap { $0 }
-            .filter { id in rows.row(withID: id)?.unloadedColumns.keys.contains { columns?.contains($0) ?? true } == true }
+        let ids = rowIDs.filter { id in
+            rows.row(withID: id)?.unloadedColumns.keys.contains { columns?.contains($0) ?? true } == true
+        }
         guard !ids.isEmpty else { return true }
         let tabId = tab.id
+        // Row ids are positional per page, so a new buffer makes the same ids name other rows.
+        let epoch = tabSessionRegistry.session(for: tabId)?.bufferEpoch
         Task { @MainActor [weak self] in
             guard let self else { return }
             let loaded = await self.loadUnloadedValues(tabId: tabId, rowIDs: ids, columns: columns)
             guard loaded, self.tabManager.selectedTabId == tabId,
-                  self.shownRowIDs(at: positions, tabId: tabId) == shownIDs else {
+                  self.tabSessionRegistry.session(for: tabId)?.bufferEpoch == epoch else {
                 NSSound.beep()
                 return
             }
@@ -68,19 +69,9 @@ extension MainContentCoordinator {
         return false
     }
 
-    private func shownRowIDs(at positions: [Int], tabId: UUID) -> [RowID?] {
-        let rows = tabSessionRegistry.tableRows(for: tabId)
-        let displayIDs = activeGridDisplayIDs
-        return positions.map { DisplayRowMapping.row(forDisplay: $0, displayIDs: displayIDs, in: rows)?.id }
-    }
-
-    func loadInspectorRowValues(tabId: UUID, displayRow: Int) async {
+    func loadInspectorRowValues(tabId: UUID, rowID: RowID) async {
         guard tabManager.selectedTabId == tabId,
-              let row = DisplayRowMapping.row(
-                  forDisplay: displayRow,
-                  displayIDs: activeGridDisplayIDs,
-                  in: tabSessionRegistry.tableRows(for: tabId)
-              ),
+              let row = tabSessionRegistry.tableRows(for: tabId).row(withID: rowID),
               row.hasUnloadedValues else { return }
         await loadUnloadedValues(tabId: tabId, rowIDs: [row.id])
     }
@@ -148,7 +139,6 @@ extension MainContentCoordinator {
         mutateActiveTableRows(for: tabId) { $0.fillUnloaded(read.values) }
         if tabManager.selectedTabId == tabId {
             changeManager.adoptLoadedValues(read.values)
-            repaintFilledCells(read.values, tabId: tabId)
         } else {
             tabManager.mutate(tabId: tabId) { $0.pendingChanges.adoptLoadedValues(read.values) }
         }
@@ -209,23 +199,6 @@ extension MainContentCoordinator {
             }
         }
         return read
-    }
-
-    // The fill reports storage positions, and the grid reads a delta's rows as display positions.
-    private func repaintFilledCells(_ values: [RowID: [Int: PluginCellValue]], tabId: UUID) {
-        let rows = tabSessionRegistry.tableRows(for: tabId)
-        let displayIDs = activeGridDisplayIDs
-        var positions: Set<CellPosition> = []
-        for (id, cells) in values {
-            guard let displayRow = DisplayRowMapping.displayIndex(forRowID: id, displayIDs: displayIDs, in: rows) else {
-                continue
-            }
-            for column in cells.keys {
-                positions.insert(CellPosition(row: displayRow, column: column))
-            }
-        }
-        guard !positions.isEmpty else { return }
-        dataTabDelegate?.tableViewCoordinator?.applyDelta(.cellsChanged(positions))
     }
 
     func rowsWithUnloadedValues() -> Set<RowID> {

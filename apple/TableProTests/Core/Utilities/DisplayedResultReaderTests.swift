@@ -64,8 +64,7 @@ struct DisplayedResultReaderTests {
         #expect(texts(output) == [["a", "1"], ["c", "3"]])
     }
 
-    /// The invariant a per-column value filter breaks: `GridSelectionState.indices` are positions on
-    /// screen, and once `displayIDs` reorders or narrows the rows they stop matching array indices.
+    // A grid selection names positions on screen; once `displayIDs` reorders the rows they stop matching array indices.
     @Test("A selected index is a display position, not a storage index")
     func selectionIndicesAreDisplayPositions() {
         let output = read(displayIDs: [.existing(2), .existing(0)], selected: [0])

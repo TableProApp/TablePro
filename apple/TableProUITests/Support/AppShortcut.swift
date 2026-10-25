@@ -17,6 +17,7 @@ internal enum AppShortcut {
     case pinResult
     case save
     case undo
+    case find
     case selectAll
     case addRow
     case deleteRow
@@ -46,6 +47,7 @@ internal enum AppShortcut {
         case .pinResult: ("p", [.command, .option])
         case .save: ("s", .command)
         case .undo: ("z", .command)
+        case .find: ("f", .command)
         case .selectAll: ("a", .command)
         case .addRow: ("n", [.command, .shift])
         case .deleteRow: (XCUIKeyboardKey.delete.rawValue, .command)

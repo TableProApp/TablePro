@@ -5,15 +5,10 @@
 
 import AppKit
 
-/// `undo:`, `redo:`, `copy:`, `paste:` and `delete:` are declared here only as the fallback a
-/// window reaches when no more specific responder claimed them. The SQL editor's
-/// text view and the data grid implement the same selectors and sit closer to the
-/// first responder, so AppKit stops there first.
-///
-/// `paste:` has to be one of them. AppKit disables a menu item that no responder in the chain
-/// implements, and a disabled item still owns its key equivalent, so with focus anywhere that
-/// does not paste (the sidebar, the workspace rail, a toolbar control) Command+V was swallowed
-/// for the whole window with nothing to explain it.
+// The main window answers Copy Rows, Copy with Headers and Copy as JSON for a grid that does not have focus.
+extension MainSplitViewController: GridRowCopyCommandResponding {}
+
+// Fallback responders; paste: must be here, or AppKit disables Paste and the disabled item swallows Cmd+V window-wide.
 extension MainSplitViewController {
     @objc func undo(_ sender: Any?) {
         commandActions?.undoChange()
@@ -57,12 +52,7 @@ extension MainSplitViewController {
         NSApp.sendAction(#selector(NSResponder.cancelOperation(_:)), to: nil, from: nil)
     }
 
-    /// One Find command, and the responder chain decides what finding means. A focused editor declares
-    /// the same selectors on its own `TextViewController`, closer to the first responder, so it searches
-    /// its own text without this class knowing which editor is focused. Reaching here means no editor
-    /// holds focus: an active table result grid filters its rows, and every other view hands the find
-    /// to the editor the window is built around, so Cmd+F still reaches the query text while the grid
-    /// or sidebar has focus.
+    // Reached when no editor or grid has focus: a table tab's grid finds, else the window's editor, so sidebar Cmd+F works.
     @objc func performFind(_ sender: Any?) {
         guard commandActions?.canUseTableResultCommands == true else {
             EditorEventRouter.shared.showFindPanelForKeyWindow()
@@ -71,14 +61,21 @@ extension MainSplitViewController {
         commandActions?.showFindBar()
     }
 
-    /// Find and Replace and Use Selection for Find are the editor's alone: the result grid's find bar
-    /// has no replacement field, and a selected cell is a value rather than a search term.
+    // The grid's find bar has a replacement field and reads a selected cell as a term, so both follow Find.
     @objc func performFindAndReplace(_ sender: Any?) {
-        EditorEventRouter.shared.showFindAndReplacePanelForKeyWindow()
+        guard commandActions?.canUseTableResultCommands == true else {
+            EditorEventRouter.shared.showFindAndReplacePanelForKeyWindow()
+            return
+        }
+        commandActions?.showFindBar(replace: true)
     }
 
     @objc func useSelectionForFind(_ sender: Any?) {
-        EditorEventRouter.shared.useSelectionForFindInKeyWindow()
+        guard commandActions?.canUseTableResultCommands == true else {
+            EditorEventRouter.shared.useSelectionForFindInKeyWindow()
+            return
+        }
+        commandActions?.useGridSelectionForFind()
     }
 
     @objc func findNext(_ sender: Any?) {

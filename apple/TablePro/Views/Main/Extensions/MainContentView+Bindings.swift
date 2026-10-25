@@ -12,9 +12,7 @@ import TableProPluginKit
 extension MainContentView {
     // MARK: - Inspector Selection
 
-    /// Which grid owns the current selection. `GridSelectionState` is shared by the data
-    /// grid, the structure grid, and the new-table grid, so its indices only address the
-    /// data tab's rows when the data grid is the one on screen.
+    // Whose rows the active grid model's selection indexes: the data tab's, a schema grid's, or nobody's.
     var gridSelectionOwner: GridSelectionOwner {
         GridSelectionOwner.resolve(
             tabType: coordinator.tabManager.selectedTab?.tabType,
@@ -22,27 +20,27 @@ extension MainContentView {
         )
     }
 
+    private var dataGridModel: DataGridModel? {
+        gridSelectionOwner == .dataGrid ? coordinator.activeGridModel : nil
+    }
+
     var selectedInspectorRow: InspectorRow? {
         guard gridSelectionOwner == .schemaGrid,
-              let displayRow = coordinator.selectionState.indices.min() else { return nil }
+              let displayRow = coordinator.activeGridModel?.selection.affectedRows.first else { return nil }
         return coordinator.inspectorRowSource?.inspectorRow(atDisplayRow: displayRow)
     }
 
     // MARK: - Inspector Subject
 
-    /// Whether anything is selected for the inspector to show.
     var hasInspectableRow: Bool {
         switch gridSelectionOwner {
         case .schemaGrid: return selectedInspectorRow != nil
-        case .dataGrid: return !coordinator.selectionState.indices.isEmpty
+        case .dataGrid: return dataGridModel?.selection.isEmpty == false
         case .none: return false
         }
     }
 
-    /// What the inspector names above its fields.
-    ///
-    /// A schema grid's selection is a column definition, not a row of a result: it has no position
-    /// and no identity, so it gets its own case rather than being rendered as "Row 0 of 0".
+    // A schema grid's selection is a column definition with no position, so it is not named "Row 0 of 0".
     var inspectorSubject: InspectorSubject {
         switch gridSelectionOwner {
         case .schemaGrid:
@@ -61,34 +59,24 @@ extension MainContentView {
             }
             return dataRowSubject(table: table) ?? .tableOnly(table: table)
         case .none:
-            /// A chart, a dashboard or an ER diagram owns no grid, so there is no row to name. The
-            /// table still is the subject when the tab has one, which is what the table statistics
-            /// are shown under.
+            // A chart, a dashboard or a diagram owns no grid; the table is still the subject of its statistics.
             guard let table = qualifiedTableName else { return .empty }
             return .tableOnly(table: table)
         }
     }
 
     private func dataRowSubject(table: String) -> InspectorSubject? {
-        let indices = coordinator.selectionState.indices
-        guard !indices.isEmpty else { return nil }
-        if indices.count > 1 {
-            return .multipleRows(table: table, count: indices.count)
+        guard let model = dataGridModel else { return nil }
+        let rows = model.selection.affectedRows
+        guard let first = rows.first else { return nil }
+        if rows.count > 1 {
+            return .multipleRows(table: table, count: rows.count)
         }
-        guard let tab = coordinator.tabManager.selectedTab, let first = indices.min() else {
-            return .tableRow(table: table, position: nil)
-        }
-        let total = coordinator.activeGridDisplayIDs?.count
-            ?? coordinator.tabSessionRegistry.tableRows(for: tab.id).count
+        let total = model.rowCount
         guard total > 0 else { return .tableRow(table: table, position: nil) }
-        return .tableRow(
-            table: table,
-            position: InspectorSubject.RowPosition(index: first + 1, total: total)
-        )
+        return .tableRow(table: table, position: InspectorSubject.RowPosition(index: first + 1, total: total))
     }
 
-    /// Schema-qualified where the engine has schemas, so two tables of the same name in different
-    /// schemas do not read identically in the header.
     private var qualifiedTableName: String? {
         guard let table = currentTab?.tableContext.tableName else { return nil }
         guard let schema = currentTab?.tableContext.schemaName, !schema.isEmpty else { return table }
@@ -97,23 +85,15 @@ extension MainContentView {
 
     // MARK: - Selected Row for the JSON Tab
 
-    /// The same selection the details tab reads, carried as raw cell values.
-    ///
-    /// The JSON tab decides from the column's own type whether a value prints quoted, which the
-    /// formatted strings the details tab takes cannot answer. Only the data grid supplies it: the
-    /// schema grid's rows are label and value pairs with no types and no foreign keys.
+    // Raw cell values, so the JSON tab can quote by the column's own type. Only the data grid has types.
     var jsonRowSnapshotForSidebar: JSONRowSnapshot? {
-        guard gridSelectionOwner == .dataGrid,
+        guard let model = dataGridModel,
               let tab = coordinator.tabManager.selectedTab,
-              let firstDisplayIndex = coordinator.selectionState.indices.min(),
-              let scope = coordinator.scope(for: tab) else { return nil }
-        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-        guard !tableRows.columns.isEmpty,
-              let row = DisplayRowMapping.row(
-                  forDisplay: firstDisplayIndex,
-                  displayIDs: coordinator.activeGridDisplayIDs,
-                  in: tableRows
-              ) else { return nil }
+              let firstDisplayIndex = model.selection.affectedRows.first,
+              let scope = coordinator.scope(for: tab),
+              let row = model.row(at: firstDisplayIndex) else { return nil }
+        let tableRows = model.rows
+        guard !tableRows.columns.isEmpty else { return nil }
 
         return JSONRowSnapshot(
             rowIdentity: "\(tab.id.uuidString)\u{001F}\(row.id)",
@@ -128,36 +108,29 @@ extension MainContentView {
 
     // MARK: - Sidebar Edit State
 
-    /// Determine if sidebar should be in editable mode
     var isSidebarEditable: Bool {
         if gridSelectionOwner == .schemaGrid {
             return selectedInspectorRow?.isEditable ?? false
         }
-        guard gridSelectionOwner == .dataGrid,
+        guard let model = dataGridModel,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
               coordinator.canEditActiveResult,
-              !coordinator.selectionState.indices.isEmpty else {
+              !model.selection.isEmpty else {
             return false
         }
         return true
     }
 
     var isSelectedRowDeleted: Bool {
-        guard gridSelectionOwner == .dataGrid,
-              let tabId = coordinator.tabManager.selectedTab?.id,
-              let firstIndex = coordinator.selectionState.indices.min(),
-              let row = DisplayRowMapping.row(
-                  forDisplay: firstIndex,
-                  displayIDs: coordinator.activeGridDisplayIDs,
-                  in: coordinator.tabSessionRegistry.tableRows(for: tabId)
-              ) else { return false }
-        return coordinator.changeManager.isRowDeleted(row.id)
+        guard let model = dataGridModel,
+              let first = model.selection.affectedRows.first,
+              let rowID = model.rowID(at: first) else { return false }
+        return coordinator.changeManager.isRowDeleted(rowID)
     }
 
     // MARK: - Sort State Binding
 
-    /// Binding for the current tab's sort state
     var sortStateBinding: Binding<SortState> {
         Binding(
             get: {
@@ -176,12 +149,12 @@ extension MainContentView {
 
     // MARK: - Results View Mode Binding
 
-    /// Binding for resultsViewMode state
     var resultsViewModeBinding: Binding<ResultsViewMode> {
         Binding(
             get: { coordinator.tabManager.selectedTab?.display.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
+                    coordinator.commitActiveGridEdit()
                     coordinator.tabManager.mutate(at: index) { $0.display.resultsViewMode = newValue }
                 }
             }
@@ -190,7 +163,6 @@ extension MainContentView {
 
     // MARK: - Current Tab Accessor
 
-    /// Current selected tab for convenience
     var currentTab: QueryTab? {
         coordinator.tabManager.selectedTab
     }
@@ -219,15 +191,14 @@ struct InspectorTrigger: Equatable {
 }
 
 enum InspectorValueDisplayFormatResolver {
-    /// The window keeps one grid coordinator, so it can still be pointed at the previously
-    /// selected tab. Its formats are only meaningful while it holds this tab's columns.
+    // The model's formats include a Display As the grid applied without a table to save it under.
     @MainActor
     static func activeFormats(
-        from grid: TableViewCoordinator?,
+        from model: DataGridModel?,
         matching columns: [String]
     ) -> [ValueDisplayFormat?]? {
-        guard let grid, grid.tableRowsProvider().columns == columns else { return nil }
-        return grid.columnDisplayFormats
+        guard let model, model.rows.columns == columns else { return nil }
+        return model.store.displayFormats
     }
 
     static func resolve(
@@ -249,8 +220,7 @@ enum InspectorValueDisplayFormatResolver {
     }
 }
 
-/// Lightweight equatable value combining all pending-change sources
-/// for consolidated toolbar badge onChange observation.
+// One value so a single `onChange` drives the toolbar badge across every pending-change source.
 struct PendingChangeTrigger: Equatable {
     let hasDataChanges: Bool
     let pendingTruncates: Set<DatabaseTreeTableRef>
@@ -261,9 +231,7 @@ struct PendingChangeTrigger: Equatable {
     var selectedTabId: UUID?
     let isFileDirty: Bool
     let hasCreateTablePending: Bool
-    /// The fifth source. Without it staging a principal edit changes nothing this value can see, so
-    /// `updateToolbarPendingState()` is never re-run and the commit control stays dim however many
-    /// changes the Users & Roles tab holds.
+    // Without it a staged principal edit never re-runs `updateToolbarPendingState()`, so the commit control stays dim.
     let hasPrincipalChanges: Bool
     let hasTypeChanges: Bool
 }

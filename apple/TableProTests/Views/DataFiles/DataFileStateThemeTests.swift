@@ -10,15 +10,14 @@ import SwiftUI
 import TableProTheme
 import Testing
 
-/// The Data File window's content sits on the window backdrop, and its loading and failure states
-/// stand in for the grid, so they take the grid's background while a theme sets it.
+// The loading and failure states stand in for the grid, so they take the grid's background.
 @MainActor
 struct DataFileStateThemeTests {
     private static let size = CGSize(width: 320, height: 240)
     private static let body = CGPoint(x: 0.03, y: 0.05)
 
     private func content(_ controller: DataFileController) -> some View {
-        DataFileContentView(controller: controller, gridDelegate: DataFileGridDelegate(controller: controller))
+        DataFileContentView(controller: controller)
             .frame(width: Self.size.width, height: Self.size.height)
     }
 

@@ -2,10 +2,8 @@
 //  MainContentCoordinatorSelectionResetTests.swift
 //  TableProTests
 //
-//  A row selection is a set of display positions into the result that produced it. Replacing
-//  the rows wholesale, by running a query or switching result set, has to drop it: consumers
-//  that keep reading it, the JSON results view and the row inspector, would otherwise resolve
-//  positions that belong to rows the user never selected.
+//  Row ids are positional per page, so a selection means nothing once its rows are replaced
+//  wholesale. The JSON view and the inspector would otherwise read rows the user never selected.
 //
 
 import Foundation
@@ -45,44 +43,52 @@ struct MainContentCoordinatorSelectionResetTests {
         return TableRows(rows: rows, columns: ["name"], columnTypes: [.text(rawType: nil)])
     }
 
-    @Test("a new result clears the live selection of the active tab")
+    private func snapshot(rows: [Int]) -> GridSelectionSnapshot {
+        GridSelectionSnapshot(rowIDs: rows.map { RowID.existing($0) }, rectangles: [], activeCell: nil, anchor: nil)
+    }
+
+    @Test("a new result clears the active tab's model selection")
     func newResultClearsLiveSelection() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager)
         coordinator.setActiveTableRows(makeRows(5), for: tabId)
-        coordinator.selectionState.indices = [1, 3]
+        let model = coordinator.gridModel(forTab: tabId)
+        model.selectRows([.existing(1), .existing(3)])
 
         coordinator.setActiveTableRows(makeRows(5), for: tabId)
 
-        #expect(coordinator.selectionState.indices.isEmpty)
+        #expect(model.selection.isEmpty)
+        #expect(model.store.selectionSnapshot.isEmpty)
     }
 
-    @Test("a new result clears the tab's persisted selection")
+    @Test("a new result clears the selection the tab carries")
     func newResultClearsPersistedSelection() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager)
-        tabManager.mutate(tabId: tabId) { $0.selectedRowIndices = [0, 2] }
+        tabManager.mutate(tabId: tabId) { $0.selectionSnapshot = snapshot(rows: [0, 2]) }
 
         coordinator.setActiveTableRows(makeRows(3), for: tabId)
 
         let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedRowIndices.isEmpty)
+        #expect(tab.selectionSnapshot.isEmpty)
     }
 
-    @Test("a result for a background tab leaves the active tab's live selection alone")
+    @Test("a result for a background tab clears that tab's selection and leaves the active tab's alone")
     func backgroundTabResultKeepsActiveSelection() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let backgroundTabId = addQueryTab(to: tabManager, select: false)
         let activeTabId = addQueryTab(to: tabManager)
-        tabManager.mutate(tabId: backgroundTabId) { $0.selectedRowIndices = [4] }
+        coordinator.setActiveTableRows(makeRows(5), for: backgroundTabId)
         coordinator.setActiveTableRows(makeRows(5), for: activeTabId)
-        coordinator.selectionState.indices = [2]
+        let background = coordinator.gridModel(forTab: backgroundTabId)
+        background.selectRows([.existing(4)])
+        let active = coordinator.gridModel(forTab: activeTabId)
+        active.selectRows([.existing(2)])
 
         coordinator.setActiveTableRows(makeRows(5), for: backgroundTabId)
 
-        #expect(coordinator.selectionState.indices == [2])
-        let background = try #require(tabManager.tabs.first { $0.id == backgroundTabId })
-        #expect(background.selectedRowIndices.isEmpty)
+        #expect(active.selectedRowIDs == [.existing(2)])
+        #expect(background.selection.isEmpty)
     }
 
     @Test("an incremental row edit keeps the selection")
@@ -90,13 +96,13 @@ struct MainContentCoordinatorSelectionResetTests {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager)
         coordinator.setActiveTableRows(makeRows(4), for: tabId)
-        coordinator.selectionState.indices = [1]
+        let model = coordinator.gridModel(forTab: tabId)
+        model.selectRows([.existing(1)])
 
         coordinator.mutateActiveTableRows(for: tabId) { rows in
-            rows.rows[1].values[0] = .text("edited")
-            return .none
+            rows.edit(row: 1, column: 0, value: .text("edited"))
         }
 
-        #expect(coordinator.selectionState.indices == [1])
+        #expect(model.selectedRowIDs == [.existing(1)])
     }
 }

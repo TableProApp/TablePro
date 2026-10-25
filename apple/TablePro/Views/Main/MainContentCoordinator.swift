@@ -14,7 +14,6 @@ import TableProEditorKit
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// Discard action types for unified alert handling
 enum DiscardAction {
     case refresh
     case sort
@@ -46,27 +45,21 @@ struct DisplayFormatsCacheEntry {
     }
 }
 
-/// Represents which sheet is currently active in MainContentView.
-/// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
+// Drives one `.sheet(item:)` in MainContentView instead of several `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
     case sqlPreview
     case exportDialog
     case importDialog(formatId: String)
     case rowImport(formatId: String)
-    /// Several files, or a folder, each imported as rows into its own table. The files are in `importBatch`.
+    // The files are in `importBatch`, each imported into its own table.
     case rowImportBatch
     case exportQueryResults
-    /// The tables the user right-clicked travel with the request, because the object browser may be
-    /// pointed somewhere else by the time the sheet appears.
+    // Carries the right-clicked tables: the object browser may point elsewhere by the time the sheet appears.
     case transferTables(tables: Set<String>, schema: String?)
-    /// The databases the user right-clicked travel with the request, so the sheet opens on them
-    /// rather than on wherever the object browser happens to point. Empty means the browse database.
+    // Carries the right-clicked databases, not the object browser's current one. Empty means the browse database.
     case backupDatabase(databases: Set<String>)
     case restoreDatabase(fileURL: URL)
-    /// The object's own database and schema travel with the request. A maintenance statement names
-    /// its table and nothing else, so acting on wherever the object browser happens to point
-    /// maintains the same-named table in another database whenever the two have drifted apart.
-    /// This is the rule the sidebar's other destructive commands already keep by carrying their ref.
+    // Carries the object's own scope: the statement names only the table, so the browser's scope could hit a same-named one.
     case maintenance(
         operation: PluginMaintenanceOperation,
         tableName: String,
@@ -74,28 +67,19 @@ enum ActiveSheet: Identifiable {
         schema: String?
     )
     case createDatabase
-    /// The database the new schema goes in travels with the request, for the reason `.maintenance`
-    /// carries its scope: the sheet creates the schema in the database the user right-clicked, not
-    /// in wherever the object browser points by the time Create is pressed.
+    // The right-clicked database, not wherever the object browser points by the time Create is pressed.
     case createSchema(database: String?)
     case editSchema(DatabaseContainerRef)
-    /// The object's own database and schema travel in the target, for the reason `.maintenance`
-    /// carries them: the comment is written to the object the user right-clicked, not to a
-    /// same-named one wherever the browser points by the time Save is pressed.
+    // Carries the object's scope so the comment lands on the right-clicked object, not a same-named one the browser points at.
     case editObjectComment(DatabaseObjectTarget)
     case setSequenceNextValue(DatabaseObjectTarget)
     case editSequence(DatabaseObjectTarget)
-    /// Copying carries the whole launch request, because the source database, the source schema
-    /// and the objects the user right-clicked are all part of what the sheet opens onto, and the
-    /// object browser may be pointed somewhere else by the time the sheet appears.
+    // Carries the source database, schema and objects: the object browser may point elsewhere by the time the sheet appears.
     case copyObjects(ObjectCopyLaunchRequest)
     case rewind
     case tableRebuildReview
-    /// The collection and its database travel with the request, for the reason `.maintenance`
-    /// carries its scope: the document is written where it was read, not wherever the object
-    /// browser points by the time Save is pressed.
+    // Carries the collection and database so the document is saved where it was read, not where the browser points on Save.
     case documentEditor(DocumentEditorRequest)
-    /// The database and schema the Types section was right-clicked in travel with the request.
     case createUserType(database: String?, schema: String?)
     case searchDatabase(DatabaseSearchSession)
     case joinBuilder(JoinBuilderLaunchRequest)
@@ -136,13 +120,12 @@ enum ActiveSheet: Identifiable {
     }
 }
 
-/// Coordinator managing MainContentView business logic
 @MainActor
 final class MainContentCoordinator: ObservableObject {
     nonisolated static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
     nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Monotonic counter for correlating rapid tab-switch/close log entries.
+    // Correlates rapid tab-switch and tab-close log entries.
     static var switchSeq: Int = 0
     static func nextSwitchSeq() -> Int {
         switchSeq += 1
@@ -156,17 +139,11 @@ final class MainContentCoordinator: ObservableObject {
     var connectionId: UUID { connection.id }
     var sqlDialect: SqlDialect { SqlDialect.from(databaseTypeId: connection.type.rawValue) }
 
-    /// How this connection's scripts are split for execution, with what the driver read from its own session.
     var lexicalGrammar: SQLLexicalGrammar {
         SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connectionId)
     }
     var statementModel: QueryStatementModel { QueryStatementModel.forDatabaseType(connection.type) }
-    /// Whether `:name` in this connection's queries is a bind parameter, which it is only in SQL.
-    ///
-    /// Every other language already gives the colon a meaning: an object key in a MongoDB script, a field
-    /// query in an Elasticsearch URL (`?q=name:lamp`), a key separator in Redis (`GET user:name`), a record
-    /// id in SurrealQL (`person:tobie`). Read as a parameter, it opens the panel, holds the run until a value
-    /// is typed, and then sends a placeholder the engine's driver never binds.
+    // Only SQL: `:name` means something else in MongoDB, Elasticsearch (`?q=name:lamp`), Redis (`GET user:name`) and SurrealQL.
     var bindsNamedParameters: Bool { services.pluginManager.editorLanguage(for: connection.type) == .sql }
     var browseDatabaseName: String {
         services.databaseManager.browseDatabaseName(for: connection)
@@ -175,8 +152,7 @@ final class MainContentCoordinator: ObservableObject {
         tabManager.openingDatabase(browsing: browseDatabaseName)
     }
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
-    /// The level the toolbar shows, and the floor under it with Agent mode's included, which is what
-    /// the Safe Mode list offers from and what the toolbar's tooltip explains.
+    // The floor includes Agent mode's; the Safe Mode list offers levels from it and the toolbar tooltip explains it.
     var safeModeStatus: SafeModeStatus {
         SafeModeStatus(level: safeModeLevel, floor: AgentModeSafeModeFloor.effectiveFloor(for: connection))
     }
@@ -184,7 +160,6 @@ final class MainContentCoordinator: ObservableObject {
         services.databaseManager.chooseSafeModeLevel(level, for: connectionId)
         toolbarState.safeModeLevel = services.databaseManager.session(for: connectionId)?.safeModeLevel ?? level
     }
-    let selectionState = GridSelectionState()
     let selectionSummary = SelectionSummaryState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
@@ -209,107 +184,72 @@ final class MainContentCoordinator: ObservableObject {
     private(set) var rowEditingCoordinator: RowEditingCoordinator!
     private(set) lazy var browseCursorCoordinator = BrowseCursorCoordinator(parent: self)
 
-    /// Stable identifier for this coordinator's window (set by MainContentView on appear)
+    // Set by MainContentView on appear.
     @Published var windowId: UUID?
 
-    /// Setting this presents the favorite-edit dialog sheet from `MainEditorContentView`.
     @Published var favoriteDialogQuery: FavoriteDialogQuery?
 
-    /// Direct reference to sidebar viewmodel, eliminates global notification broadcasts
     weak var sidebarViewModel: SidebarViewModel?
 
-    /// Direct reference to structure view actions — eliminates notification broadcasts
     weak var structureActions: StructureViewActionHandler?
 
-    /// Direct reference to create-table view actions so the Save Changes menu
-    /// (Cmd+S) routes to table creation. Set by `CreateTableView` on appear.
+    // Lets Save Changes (Cmd+S) route to table creation. Set by `CreateTableView` on appear.
     weak var createTableActions: CreateTableActionHandler?
 
     weak var usersRolesActions: UsersRolesActionHandler?
 
-    /// Staged structure edits and table drafts, per tab. They belong here rather than in the view
-    /// for two reasons: the view is destroyed on every tab switch and on every switch between Data
-    /// and Structure, and the close gate has to be able to see the staged work of a tab the user is
-    /// not currently looking at.
+    // Not in the view: it dies on every tab and Data/Structure switch, and the close gate must see unseen tabs' staged work.
     @Published var structureSessions: [UUID: StructureEditingSession] = [:]
     @Published var createTableDrafts: [UUID: CreateTableDraft] = [:]
-    /// A type tab's queued changes, kept here for the same two reasons.
+    // Kept here for the same reasons as `structureSessions`.
     @Published var userTypeEditors: [UUID: UserTypeEditorModel] = [:]
     // Held here for the same reason: the diagram stages schema edits that Save and the close gate reach.
     @Published var erDiagramModels: [UUID: ERDiagramViewModel] = [:]
 
-    /// Tabs holding staged principal changes. `usersRolesActions` is nilled the moment the tab is
-    /// deselected, but the view model behind it is cached per tab id and keeps the staged work, so
-    /// without this record a background Users & Roles tab reports itself clean and closes silently.
+    // The cached view model keeps staged work after `usersRolesActions` is nilled; without this a background tab closes silently.
     internal var tabsWithStagedPrincipals: Set<UUID> = []
 
-    /// Tabs whose close confirmation is already on screen. `saveCompletionContinuation` is a single
-    /// slot, so a second gesture arriving before the first sheet resolves would overwrite the
-    /// continuation the first one is suspended on and leave that task waiting forever.
+    // `saveCompletionContinuation` is one slot: a second close gesture would overwrite it and strand the first task forever.
     internal var tabClosesInFlight: Set<UUID> = []
 
-    /// The grid that owns the current selection when it is not the data grid, so the
-    /// inspector reads the selected row from it instead of the data tab's rows.
-    /// Set by `TableStructureView` and `CreateTableView` on appear.
+    // The non-data grid that owns the selection, read by the inspector. Set by `TableStructureView` and `CreateTableView`.
     weak var inspectorRowSource: (any InspectorRowSource)?
 
-    /// Bumped whenever a published schema row changes, so the inspector re-reads it.
+    // Bumped when a published schema row changes, so the inspector re-reads it.
     @Published var inspectorRowSourceRevision: Int = 0
 
-    /// Direct reference to AI chat viewmodel — eliminates notification broadcasts
-    /// The assistant's view model, and only if something has already brought one into existence.
-    /// Reading this never builds one: an editor command that wants to talk to the assistant reveals
-    /// it first, and revealing is what activates it.
+    // Never builds the view model: a command reveals the assistant first, and revealing is what activates it.
     var aiViewModel: AIChatViewModel? { trailingPaneState?.assistant.viewModelIfActivated }
 
     weak var trailingPaneState: TrailingPaneState?
 
-    /// Direct reference to the data tab grid delegate — enables row mutation operations to
-    /// Observable mirror of the grid's display revision, so views outside the grid re-render when
-    /// the value filter or the displayed order changes. The grid's own state lives on a plain
-    /// AppKit object reached through observation-ignored hops, so it cannot invalidate a view.
+    // Moves when a value filter or a display format changes, so views outside the grid re-read the order.
     @Published var gridDisplayRevision: Int = 0
 
-    /// Sent when an inspector edit rewrites the selected row's values, so the inspector's JSON
-    /// rendering re-reads the row. Apart from `gridDisplayRevision`, which drives a full rebuild of
-    /// the field list and takes first responder out of whatever is being typed into.
-    ///
-    /// An event rather than a published counter. The counter it replaces was not published, so the
-    /// `onChange` that read it never fired and the JSON rendering went stale. Publishing it would
-    /// have redrawn every view that observes this coordinator on each keystroke a detached value
-    /// window commits, and only one of them wants to know.
+    // Refreshes the inspector JSON without `gridDisplayRevision`'s full rebuild; a subject so observers don't redraw per keystroke.
     let inspectorRowContentChanged = PassthroughSubject<Void, Never>()
 
-    /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
-    weak var dataTabDelegate: DataTabGridDelegate?
+    // One grid model per data tab, outliving every mount of its grid.
+    var dataGridEntries: [UUID: DataTabGridEntry] = [:]
+    // Set while a tab switch still has the outgoing tab's edits in the change manager.
+    var tabSwitchOutgoingTabId: UUID?
+    private(set) lazy var gridChangeState = AnyChangeManager(changeManager)
+    let gridCellsEdited = PassthroughSubject<Void, Never>()
 
-    var activeGridDisplayIDs: [RowID]? {
-        guard let tabId = tabManager.selectedTab?.id else { return nil }
-        return displayIDs(forTab: tabId)
-    }
-
-    /// One-shot intent set when the user explicitly opens a table (Return/double-click),
-    /// consumed by the grid as it appears to move focus into it. Never set on mere selection.
+    // One-shot: set on an explicit open (Return, double-click), consumed by the grid to take focus. Never set on selection.
     var pendingGridFocusOnOpen = false
 
-    /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     weak var trailingPaneProxy: TrailingPaneProxy?
 
-    /// Direct reference to split view controller for sidebar toggle
     weak var splitViewController: MainSplitViewController?
 
-    /// Direct reference to this coordinator's content window, used for presenting alerts.
-    /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
+    // For alerts instead of NSApp.keyWindow, which may return a sheet window and leave dialogs stuck.
     weak var contentWindow: NSWindow?
 
-    /// Back-reference to this coordinator's command actions, enabling window → coordinator → actions
-    /// lookup. The app runs the AppKit lifecycle with no SwiftUI `Scene`, so a focused value has
-    /// nothing to resolve against; this reference reaches every caller, AppKit and SwiftUI alike.
+    // No SwiftUI `Scene` in the AppKit lifecycle, so a focused value can't resolve; this reaches AppKit and SwiftUI callers.
     weak var commandActions: MainContentCommandActions?
 
-    /// Presents the quick switcher as a floating panel anchored over this coordinator's window.
-    /// The window owns it, because the panel anchors on the window and every connection the window
-    /// hosts would otherwise bring one of its own to the same point.
+    // Owned by the window: the panel anchors on it, and each connection the window hosts would otherwise bring its own.
     var quickSwitcherPanel: QuickSwitcherPanelController? {
         splitViewController?.quickSwitcherPanel
     }
@@ -320,10 +260,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
-    /// Owns the connection and database switcher surfaces. The commands present through this
-    /// rather than flipping a flag a toolbar-hosted view has to observe, because that view is
-    /// absent whenever its item is clipped into the overflow menu or removed by the user. It
-    /// belongs to the window for the same reason the panel it drives does.
+    // Commands present through this, not a flag: the toolbar view is gone when its item is in overflow or removed.
     var switcherPresenter: ToolbarSwitcherPresenter? {
         splitViewController?.switcherPresenter
     }
@@ -339,14 +276,9 @@ final class MainContentCoordinator: ObservableObject {
     var deferredRestoreLoadTabId: UUID?
 
     var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
-    var displayOrderCache: [UUID: DisplayOrderCacheEntry] = [:]
-    var displayStateCache: [UUID: DisplayStateCacheEntry] = [:]
-    /// Published because the inspector draws from it: a load that lands, a comment refetch and a
-    /// rename each reach the panel because the view rebuilds its snapshot when this changes.
+    // Published because the inspector rebuilds its snapshot from it (load, comment refetch, rename).
     @Published var tableMetadataCache: [UUID: TableMetadataCacheEntry] = [:]
-    /// Moves on every Table Info invalidation, so a read in flight across one cannot mark the cache
-    /// current: its numbers may predate the change. One counter for the window rather than one per
-    /// tab, because an invalidation can arrive before a tab's first read has made an entry to mark.
+    // Bumped per Table Info invalidation so an in-flight read can't mark the cache current; per window, as it can precede a tab entry.
     var tableMetadataGeneration = 0
     var displayStateClock = 0
 
@@ -365,68 +297,47 @@ final class MainContentCoordinator: ObservableObject {
 
     var importFormatLookup = ImportFormatLookup.live
 
-    /// Routing failures report through here so a test can observe the message instead of raising a
-    /// real alert. `AlertHelper.present` runs application-modal when no window qualifies, and a
-    /// unit test host has no window, so calling it directly parks the main thread in a modal loop
-    /// that nothing can dismiss and no test time limit can interrupt.
+    // Injectable: `AlertHelper.present` goes app-modal with no window, and a unit test host has none, hanging the main thread.
     var presentError: (String, String, NSWindow?) -> Void = { title, message, window in
         AlertHelper.showErrorSheet(title: title, message: message, window: window)
     }
 
     // MARK: - Internal State
 
-    /// Per-tab execution ownership. Replaces a per-window generation counter, a stored per-tab
-    /// `isExecuting` bool and two task handles that a tab retarget participated in none of.
-    ///
-    /// Deliberately observed rather than ``: busy state is derived from
-    /// membership here, so the views that used to read the stored flag have to be able to see it
-    /// change. It is a value type, so every claim, settle and invalidate is a write to this
-    /// property and invalidates its readers.
+    // Published on purpose: busy state is derived from membership here, and every claim, settle and invalidate is a write.
     @Published internal var tabExecution = TabExecutionRegistry()
 
-    /// One in-flight query task per tab, beside the claim registry that owns each tab's result.
-    /// Cancellation is keyed by tab for the same reason ownership is: the window hosts several tabs
-    /// on one connection, and a handle shared between them made every start path a Stop for whoever
-    /// held it.
+    // Keyed by tab: the window hosts several tabs on one connection, and a shared handle made every start a Stop for its holder.
     internal var queryTasks = TabQueryTasks()
     internal var rowCountTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
-    /// Which user-requested exact count currently owns each tab's counting indicator.
+    // Tab id to the user-requested exact count that owns its counting indicator.
     internal var exactCountOwners: [UUID: UUID] = [:]
     internal var tableLoadTasks: [UUID: (token: UUID, task: Task<Void, Never>)] = [:]
 
-    /// Each tab's browse history, keyed by tab id the way the other per-tab caches here are.
-    ///
-    /// Not a field on `QueryTab`: that struct is the persisted shape of a tab, and an entry
-    /// describes rows that may be gone by the next launch. Keeping it out of the struct also keeps
-    /// it out of the hand-written `Equatable`, so a push never re-publishes the tab list.
+    // Not on `QueryTab`: that is the persisted shape, and staying out of its `Equatable` keeps a push from re-publishing tabs.
     internal var navigationHistories: [UUID: TabNavigationHistory] = [:]
     internal var redisDatabaseSwitchTask: Task<Void, Never>?
     private var periodicSaveTask: Task<Void, Never>?
     private var draftSaveTask: Task<Void, Never>?
     private var terminationObserver: NSObjectProtocol?
     internal var postConnectCancellable: AnyCancellable?
-    /// Owned here rather than by the view that asks for it: a view's `task` is cancelled whenever a
-    /// connection switch takes its pane out of the window, and a cancelled first load left the
-    /// object list without anything to load it again.
+    // Owned here, not by the view: a connection switch cancels the view's `task`, and a cancelled first load never reran.
     internal var schemaLoadTask: Task<Void, Never>?
-    /// The driver `schemaLoadTask` reads through. A reconnect installs a new one, and a load still
-    /// running on the old driver says nothing about the catalog the new one sees.
+    // A reconnect installs a new driver, and a load on the old one says nothing about the new catalog.
     internal weak var schemaLoadDriver: (any DatabaseDriver)?
-    /// The coordinator's, not the view's: a session that drops and comes back swaps the content
-    /// view out and in again, and restoring the saved tabs a second time over the live ones replaced
-    /// whatever changed since the last save.
+    // On the coordinator: a dropped session swaps the view, and restoring twice overwrote the live tabs' changes.
     internal var hasRestoredTabs = false
-    /// Set once this coordinator's restore has run, or was not due. A moved tab waits for it,
-    /// so it is checked against, merged into and saved with the saved set.
+    // Set once restore ran or was not due. A moved tab waits for it so it merges into and saves with the saved set.
     internal var hasSettledTabRestore = false
     internal var movesAwaitingRestore: [PendingTabMove] = []
-    /// How many times this connection's content has appeared, a connection switch back included.
+    // Counts every appearance, a switch back to this connection included.
     internal private(set) var activationCount = 0
     private var externalFileModCancellable: AnyCancellable?
     internal lazy var sourceFileDiskChangeMonitor = SourceFileDiskChangeMonitor(tabManager: tabManager)
     private var schemaSwitchCancellable: AnyCancellable?
     private var clearedEditsCancellable: AnyCancellable?
+    private var gridRepaintCancellable: AnyCancellable?
     private var browseContainerCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
@@ -440,75 +351,59 @@ final class MainContentCoordinator: ObservableObject {
     }
     internal private(set) var fileWatcher: DatabaseFileWatcher?
 
-    /// Set during handleTabChange to suppress redundant column-change reconfiguration
+    // Set during handleTabChange to suppress redundant column-change reconfiguration.
     internal var isHandlingTabSwitch = false
     var isUpdatingColumnLayout = false
 
-    /// Guards against re-entrant confirm dialogs (e.g. nested run loop during runModal)
+    // Guards re-entrant confirm dialogs (nested run loop during runModal).
     internal var isShowingConfirmAlert = false
 
-    /// Guards against duplicate safe mode confirmation prompts
     internal var isShowingSafeModePrompt = false
 
-    /// What restoring the last save would do, once it has been planned against the live rows.
     @Published internal var rewindPlan: RewindPlan?
 
-    /// The rebuild a column drag asked for, held while the user reads it.
+    // The rebuild a column drag asked for, held while the user reviews it.
     @Published internal var tableRebuildRequest: TableRebuildReviewRequest?
 
-    /// Continuation for callers that need to await the result of a fire-and-forget save
-    /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
+    // For save-then-close callers. Set before `saveChanges`, resumed by `executeCommitStatements`.
     internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
 
     // MARK: - Window Lifecycle (driven by TabWindowController NSWindowDelegate)
 
-    /// Whether this coordinator's window is the key (focused) window.
-    /// Updated by TabWindowController delegate methods; consumed by
-    /// event handlers (e.g. sidebar table-selection navigation filter).
+    // Updated by TabWindowController; read by event handlers such as the sidebar table-selection filter.
     var isKeyWindow = false
 
-    /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
+    // Scheduled in `handleWindowDidResignKey`, fires 5s later.
     var evictionTask: Task<Void, Never>?
 
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
 
-    /// True once the coordinator's view has appeared (onAppear fired).
-    /// Coordinators that SwiftUI creates during body re-evaluation but never
-    /// adopts into @State are silently discarded — no teardown warning needed.
+    // SwiftUI creates and discards coordinators during body re-evaluation; those never activate and need no teardown warning.
     private let _didActivate = OSAllocatedUnfairLock(initialState: false)
 
-    /// Tracks whether teardown() was called; used by deinit to log missed teardowns
+    // Read by deinit to log missed teardowns.
     private let _didTeardown = OSAllocatedUnfairLock(initialState: false)
 
-    /// Tracks whether teardown has been scheduled (but not yet executed)
-    /// so deinit doesn't warn if SwiftUI deallocates before the delayed Task fires
+    // So deinit doesn't warn if SwiftUI deallocates before the delayed teardown Task fires.
     private let _teardownScheduled = OSAllocatedUnfairLock(initialState: false)
 
-    /// Whether teardown is scheduled or already completed — used by views to skip
-    /// persistence during window close teardown
+    // Views skip persistence during window close teardown.
     var isTearingDown: Bool { _teardownScheduled.withLock { $0 } || _didTeardown.withLock { $0 } }
 
-    /// Set when NSApplication is terminating — suppresses deinit warning since
-    /// SwiftUI does not call onDisappear during app termination
+    // Suppresses the deinit warning: SwiftUI does not call onDisappear during app termination.
     nonisolated private static let _isAppTerminating = OSAllocatedUnfairLock(initialState: false)
     nonisolated static var isAppTerminating: Bool {
         get { _isAppTerminating.withLock { $0 } }
         set { _isAppTerminating.withLock { $0 = newValue } }
     }
 
-    /// Stable instance identity. Used to key the registry so a recycled
-    /// `ObjectIdentifier` from a freshly-allocated coordinator can never
-    /// remove a different instance's entry from a delayed cleanup Task.
+    // Registry key: a recycled `ObjectIdentifier` could let a delayed cleanup Task remove another instance's entry.
     let instanceId = UUID()
 
-    /// Registry of active coordinators for aggregated quit-time persistence.
-    /// Keyed by `instanceId` (UUID) — never by `ObjectIdentifier`, which can
-    /// be recycled across allocations.
+    // For quit-time persistence. Keyed by `instanceId`, never `ObjectIdentifier`, which can be recycled.
     static var activeCoordinators: [UUID: MainContentCoordinator] = [:]
 
-    /// Register this coordinator so quit-time persistence can aggregate tabs.
-    /// Idempotent — repeated registration is a no-op.
     func registerEagerly() {
         Self.activeCoordinators[instanceId] = self
     }
@@ -525,14 +420,7 @@ final class MainContentCoordinator: ObservableObject {
         _didActivate.withLock { $0 }
     }
 
-    /// Every tab the connection has open, across every window hosting it. Tearing a tab off into
-    /// its own window splits one connection's tabs over two coordinators, and the saved set is the
-    /// union: saving from one of them alone writes a partial list over the full one, which is how
-    /// tabs that were never closed get erased.
-    ///
-    /// Deduped by tab id, because `activeCoordinators` also holds the throwaway coordinators
-    /// SwiftUI builds and discards while re-evaluating a body, and those report the same tabs as
-    /// the real one until they deallocate.
+    // Union across windows: saving one window's tabs erased torn-off ones. Deduped, since SwiftUI's throwaway coordinators repeat tabs.
     static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         var seen = Set<UUID>()
         return activeCoordinators.values
@@ -543,8 +431,6 @@ final class MainContentCoordinator: ObservableObject {
             .filter { seen.insert($0.id).inserted }
     }
 
-    /// Resolve transient view state that only the live coordinator knows about
-    /// (sort column names, editor cursor offset) onto the tab before it is serialized.
     func enrichedForPersistence(_ tab: QueryTab) -> QueryTab {
         var enriched = tab
         if enriched.sortState.isSorting {
@@ -558,19 +444,15 @@ final class MainContentCoordinator: ObservableObject {
                 return named
             }
         }
-        // Only when there is a live caret to write. `cursorPositions` starts empty and is fed by
-        // the editor's own change events, so a tab whose editor never became first responder has
-        // none, and writing that absence over the tab's saved caret discards it.
+        // Only with a live caret: a tab whose editor never took focus has no `cursorPositions`, and writing that erased its saved caret.
         if tab.tabType == .query, tab.id == tabManager.selectedTabId,
            let range = cursorPositions.first?.range {
             enriched.restoredCursorOffset = range.location
             enriched.restoredCursorLength = range.length
         }
-        // The grid's own teardown keeps the selection on the tab, but a tab moved to another window
-        // is snapshotted while its grid is still mounted, so that capture has not run yet.
-        if tab.id == tabManager.selectedTabId, let live = mountedGridSelection() {
-            enriched.selectedRowIndices = live.rows
-            enriched.cellSelection = live.cells
+        // The model keeps the selection; a tab moved to another window carries it in the tab.
+        if let store = dataGridEntries[tab.id]?.store {
+            enriched.selectionSnapshot = store.selectionSnapshot
         }
         return enriched
     }
@@ -580,8 +462,6 @@ final class MainContentCoordinator: ObservableObject {
         return buffer.columns.isEmpty ? effectiveResultColumns(for: tab) : buffer.columns
     }
 
-    /// Map persisted sort columns (keyed by name) back to indices into the live column set.
-    /// Columns that no longer exist are dropped, so a renamed or removed column degrades gracefully.
     static func resolveRestoredSortColumns(
         _ persisted: [PersistedSortColumn],
         in columns: [String]
@@ -592,11 +472,7 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// The selection a query tab was left with, as a range to hand straight to the editor.
-    ///
-    /// The editor applies this once through its own controller rather than through the cursor
-    /// binding, so this is a plain read. The value stays on the tab until the editor reports it
-    /// consumed, because `body` runs many times before the text view exists.
+    // A plain read: the value stays on the tab until the editor reports it consumed, since `body` runs before the text view exists.
     func restoredCursorRange(for tabId: UUID) -> NSRange? {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query,
@@ -607,10 +483,7 @@ final class MainContentCoordinator: ObservableObject {
         return NSRange(location: clamped, length: max(0, selectionLength))
     }
 
-    /// The regions collapsed in a query tab.
-    ///
-    /// Folds live on the tab rather than on the window, so switching tabs cannot carry one tab's collapsed regions
-    /// onto another and nothing has to be cleared when a tab appears.
+    // Folds live on the tab, not the window, so a tab switch can't carry one tab's folds onto another.
     func foldRanges(for tabId: UUID) -> [Range<Int>]? {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query else { return nil }
@@ -626,18 +499,13 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// The statement a selected result asked the editor to go to, if one is waiting.
     func pendingStatementJump(for tabId: UUID) -> StatementAnchor? {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query else { return nil }
         return tabManager.tabs[index].pendingStatementJump
     }
 
-    /// Asks the tab's editor to take the reader to `anchor`.
-    ///
-    /// The anchor is stored rather than applied, because the editor owns the text this has to be resolved against and
-    /// may not be mounted yet. It is cleared as soon as an editor consumes it, so selecting the same result again
-    /// asks again rather than being swallowed as an unchanged value.
+    // Stored, not applied: the editor may not be mounted yet. Cleared on consume, so selecting the same result asks again.
     func requestStatementJump(_ anchor: StatementAnchor, in tabId: UUID) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
               tabManager.tabs[index].tabType == .query else { return }
@@ -663,9 +531,7 @@ final class MainContentCoordinator: ObservableObject {
     private static let periodicSaveInterval: Duration = .seconds(30)
     private static let draftSaveDebounce: Duration = .seconds(1)
 
-    /// Persist shortly after the user stops typing. Editing query text changes no tab
-    /// identity, so it drives none of the structural saves, and without this a scratch
-    /// query lives only in memory until the 30 second timer or the quit-time flush.
+    // Typing changes no tab identity, so without this a scratch query lives only in memory until the 30s timer or quit flush.
     func scheduleDraftSave() {
         guard !Self.isAppTerminating, !isTearingDown else { return }
         draftSaveTask?.cancel()
@@ -689,14 +555,12 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// Get selected tab ID from any coordinator for a given connectionId.
     static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
         activeCoordinators.values
             .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
             .tabManager.selectedTabId
     }
 
-    /// Check if this coordinator is the first registered for its connection.
     private func isFirstCoordinatorForConnection() -> Bool {
         Self.activeCoordinators.values
             .first { $0.connectionId == self.connectionId } === self
@@ -712,11 +576,7 @@ final class MainContentCoordinator: ObservableObject {
         }
     }()
 
-    /// Frees the row data of every background tab that can fetch it again, called when this
-    /// coordinator's window stops being key. The selected tab keeps its rows so returning to the
-    /// window costs no refresh, and `canEvictReloadableTableRows` decides the rest: a query tab, a
-    /// tab holding a pinned result, a failed tab and a tab with work in flight all stay resident,
-    /// because none of them would come back on their own.
+    // Called on resign key. The selected tab keeps its rows; `canEvictReloadableTableRows` keeps tabs that can't reload themselves.
     func evictInactiveRowData() {
         for tab in tabManager.tabs {
             evictReloadableTableRows(for: tab.id)
@@ -767,15 +627,13 @@ final class MainContentCoordinator: ObservableObject {
                 self?.browseCursorCoordinator.browseContainerDidChange()
             }
         tabManager.onTabRetargeted = { [weak self] tabId in
-            self?.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+            self?.existingGridModel(forTab: tabId)?.discardEditing()
+            self?.flushColumnLayoutPersistence()
             self?.supersedeExecution(for: tabId)
             self?.releaseRetargetedTabState(for: tabId)
         }
 
-        // Synchronous save at quit time. NotificationCenter with queue: .main
-        // delivers the closure on the main thread, satisfying assumeIsolated's
-        // precondition. The write completes before the process exits — unlike
-        // Task-based saves that need a run loop.
+        // Synchronous: queue .main satisfies assumeIsolated, and the write finishes before exit, unlike Task-based saves.
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -783,12 +641,8 @@ final class MainContentCoordinator: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
-                // Only the first coordinator for this connection saves,
-                // aggregating tabs from all windows to fix last-write-wins bug.
-                // Skip isTearingDown check: during Cmd+Q, onDisappear fires
-                // markTeardownScheduled() before willTerminate, and we still
-                // need to save here.
+                self.flushColumnLayoutPersistence()
+                // First coordinator saves every window's tabs (last-write-wins bug). No isTearingDown check: Cmd+Q marks it before willTerminate.
                 let allTabs = Self.aggregatedTabs(for: self.connectionId)
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
                 self.persistence.saveNowSync(tabs: allTabs, selectedTabId: selectedId)
@@ -822,6 +676,7 @@ final class MainContentCoordinator: ObservableObject {
         self.paginationCoordinator = PaginationCoordinator(parent: self)
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
         clearedEditsCancellable = resumeWhenEditsClear()
+        gridRepaintCancellable = observeChangeManagerForGridRepaint()
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -840,15 +695,12 @@ final class MainContentCoordinator: ObservableObject {
             current = true
             return prior
         }
-        /// This runs on every appearance, and a connection switch is one: it takes this
-        /// connection's panes out of the window and puts them back. Only the first one starts what
-        /// lives as long as the coordinator.
+        // Runs on every appearance, a connection switch included; only the first starts coordinator-lifetime work.
         if !wasAlreadyActive {
             services.schemaProviderRegistry.setLiveScopeProvider(CoordinatorLiveScopeProvider.shared)
             services.schemaProviderRegistry.retain(for: connection.id)
             registerForPersistence()
-            /// Recovery records which connections have a live coordinator, which only changes here
-            /// and in `teardown()`, so a switch has nothing new to write.
+            // Live coordinators change only here and in `teardown()`, so a switch has nothing new to write.
             SessionRecoveryTracker.sync()
             startPeriodicSave()
             startFileWatcherIfNeeded()
@@ -860,7 +712,6 @@ final class MainContentCoordinator: ObservableObject {
         )
     }
 
-    /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
         guard fileWatcher == nil,
               services.pluginManager.connectionMode(for: connection.type) == .fileBased else { return }
@@ -877,19 +728,14 @@ final class MainContentCoordinator: ObservableObject {
         fileWatcher = watcher
     }
 
-    /// Reveals the assistant, building its view model if this is the first time anything asked for
-    /// one. Activation happens here rather than at window open, which is what keeps a window that
-    /// never opens the assistant from reading the whole conversation history off disk.
+    // Activates lazily so a window that never opens the assistant never reads the conversation history off disk.
     func showAssistant() {
-        /// The gate comes first. Activating builds the view model, whose init reads the stored
-        /// conversations, and the pane would then refuse to open it anyway.
+        // Gate first: activating reads the stored conversations, and the pane would refuse to open anyway.
         guard AppSettingsManager.shared.ai.enabled else { return }
         trailingPaneState?.assistant.activate(connection: connection)
         trailingPaneProxy?.showAssistant()
     }
 
-    /// Reveals the inspector on its JSON rendering. The view mode is part of the inspector's own
-    /// state, so "show the row as JSON" is two facts: which surface, and which rendering.
     func showRowAsJSON() {
         trailingPaneState?.inspector.viewMode = .json
         trailingPaneProxy?.showInspector()
@@ -916,8 +762,7 @@ final class MainContentCoordinator: ObservableObject {
         _teardownScheduled.withLock { $0 = false }
     }
 
-    /// Requests the connection-scoped refresh, which every window of this connection
-    /// shares, then applies the window-local follow-up.
+    // The refresh is connection-scoped and shared by every window; the follow-up is window-local.
     func refreshTables(currentDatabaseOnly: Bool = false) async {
         schemaColumns.removeAll()
         await services.schemaRefreshService.refresh(
@@ -954,9 +799,7 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// Opens the viewer rather than fetching here. Inspecting an object should not put its source
-    /// into an editable query buffer, where the next Cmd+Return runs it, and the viewer refetches
-    /// on its own so a restored tab shows the current definition instead of a stale one.
+    // Opens the viewer, not a query buffer: Cmd+Return would run the source, and the viewer refetches the current definition.
     func showObjectSource(_ objectRef: DatabaseObjectRef) {
         let resolved = objectRef.resolvingDatabase(browseDatabaseName)
         let payload = EditorTabPayload(
@@ -984,12 +827,7 @@ final class MainContentCoordinator: ObservableObject {
         WindowManager.shared.openTab(payload: payload)
     }
 
-    /// Drop sidebar state for tables that no longer exist. The selection lives in this
-    /// window's sidebar, so it is pruned per window.
-    /// Explicit cleanup, called when the connection or the window that hosts it goes away, never
-    /// from a view's `onDisappear`: a workspace switch unparents a connection's panes, which is a
-    /// disappearance the connection is expected to come back from. Releases the schema provider
-    /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
+    // Never from `onDisappear`: a workspace switch unparents panes the connection comes back to. Releases synchronously, not via deinit.
     func teardown() {
         let start = Date()
         Self.lifecycleLogger.info(
@@ -1014,10 +852,7 @@ final class MainContentCoordinator: ObservableObject {
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
         cancelAllQueryTasks()
-        /// A cancelled task is not a finished one. `Task.cancel()` is cooperative, so the driver
-        /// call may still be running and will throw on the way out; without this the resulting
-        /// error reaches the ordinary failure path and reports a query that "failed" when what
-        /// actually happened is that the window closed.
+        // `Task.cancel()` is cooperative: the driver call may still throw and report a failure when the window just closed.
         reportEndedExecutions(tabExecution.invalidateAll(reason: .sessionEnded))
         refreshCoalesceTask?.cancel()
         refreshCoalesceTask = nil
@@ -1033,20 +868,16 @@ final class MainContentCoordinator: ObservableObject {
         databaseSearchSession?.stop()
         databaseSearchSession = nil
 
-        dataTabDelegate?.tableViewCoordinator?.releaseData()
+        releaseAllGridModels()
 
         tabSessionRegistry.removeAll()
-        /// The delegate a session owns holds closures the mounted view installed, and those capture
-        /// the view, which holds this coordinator. Dropping the dictionary is not enough to break
-        /// that, so the wiring is released explicitly here as well as at every per-tab drop site.
+        // The session delegate holds view closures that capture this coordinator, so the wiring is released explicitly.
         for session in structureSessions.values { session.releaseViewWiring() }
         structureSessions.removeAll()
         createTableDrafts.removeAll()
         userTypeEditors.removeAll()
         erDiagramModels.removeAll()
         displayFormatsCache.removeAll()
-        displayOrderCache.removeAll()
-        displayStateCache.removeAll()
         tableMetadataCache.removeAll()
         schemaColumns.removeAll()
         columnScopeRequeryTask?.cancel()
@@ -1055,8 +886,7 @@ final class MainContentCoordinator: ObservableObject {
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil
 
-        // Release change manager state — pluginDriver holds a strong reference
-        // to the entire database driver which prevents deallocation
+        // pluginDriver strongly holds the whole database driver, which blocks deallocation.
         changeManager.clearChanges()
         changeManager.pluginDriver = nil
 
@@ -1074,10 +904,7 @@ final class MainContentCoordinator: ObservableObject {
         let connectionId = connection.id
         let alreadyHandled = _didTeardown.withLock { $0 } || _teardownScheduled.withLock { $0 }
 
-        // Never-activated coordinators are throwaway instances created by SwiftUI
-        // during body re-evaluation — @State only keeps the first, rest are discarded.
-        // Retain is paired with `markActivated`, so a never-activated coordinator
-        // never retained the schema provider and must not release it here.
+        // Never-activated coordinators are SwiftUI throwaways that never retained the schema provider, so must not release it.
         guard _didActivate.withLock({ $0 }) else {
             let id = instanceId
             Task { @MainActor in
@@ -1103,7 +930,7 @@ final class MainContentCoordinator: ObservableObject {
 
     // MARK: - Initialization Actions
 
-    /// Synchronous toolbar setup — no I/O, safe to call inline
+    // No I/O, safe to call inline.
     func initializeToolbar() {
         toolbarState.update(from: connection)
 
@@ -1112,15 +939,13 @@ final class MainContentCoordinator: ObservableObject {
         }
     }
 
-    /// Load schema if not already loaded by another window for this connection.
-    /// A second window on a connection, or this view mounting again, finds the schema loaded and
-    /// leaves it alone instead of reloading the autocomplete every window shares.
+    // A second window or a remount finds the schema loaded and leaves the shared autocomplete alone.
     func loadSchemaIfNeeded() async {
         loadSchemaOnActivation()
         await schemaLoadTask?.value
     }
 
-    /// Initialize view with connection info and load schema (legacy — used by first window)
+    // Legacy, used by the first window.
     func initializeView() async {
         initializeToolbar()
         await loadSchemaIfNeeded()
@@ -1137,16 +962,14 @@ final class MainContentCoordinator: ObservableObject {
             traceExecutionBlocked(tabId: tab.id, site: "runQuery")
             return
         }
+        commitActiveGridEdit()
 
         if tab.tabType == .table {
             executeTableTabQueryDirectly(trigger: trigger, viewport: viewport)
             return
         }
 
-        /// The offset says where the SQL sits in the tab's query, so each result can point back at the statement that
-        /// produced it. The selection and the statement at the caret both hand over untrimmed text with an exact
-        /// offset and let the scanner do the trimming, which keeps the two from having to agree about how much
-        /// whitespace was dropped.
+        // The offset lets each result point back at its statement. Both paths pass untrimmed text and let the scanner trim.
         let target = selectionOrStatementAtCursor(in: tab.content.query)
         executeResolvedSQL(
             target.sql, tabIndex: index, bypassRowLimit: bypassRowLimit,
@@ -1154,13 +977,7 @@ final class MainContentCoordinator: ObservableObject {
         )
     }
 
-    /// Runs one statement, named by its own text rather than by where the caret happens to be.
-    ///
-    /// The gutter's run control draws itself from the same scan this executes through, so the control runs the
-    /// statement it sits beside even when the caret is somewhere else entirely. It hands over the SQL rather than a
-    /// range on purpose: the editor's text and the tab's binding are two strings that can differ for a moment, and a
-    /// range resolved against the wrong one truncates silently. Past that it is the ordinary path, so parameters, safe
-    /// mode and the execution gate all apply exactly as they do to any other run.
+    // Takes SQL, not a range: the editor text and the tab binding can briefly differ, and a range on the wrong one truncates silently.
     @discardableResult
     func runStatement(_ sql: String, sourceOffset: Int? = nil) -> Bool {
         guard let (tab, index) = tabManager.selectedTabAndIndex, tab.tabType == .query else { return false }
@@ -1168,18 +985,12 @@ final class MainContentCoordinator: ObservableObject {
             traceExecutionBlocked(tabId: tab.id, site: "runStatement")
             return false
         }
+        commitActiveGridEdit()
 
         return executeResolvedSQL(sql, tabIndex: index, bypassRowLimit: false, sourceOffset: sourceOffset)
     }
 
-    /// Everything both run paths do once the SQL to run has been decided.
-    ///
-    /// Shared so that a statement run from the gutter and a statement run from the caret cannot drift apart on
-    /// parameter handling, which is the half of this that is easy to forget.
-    ///
-    /// Returns whether the SQL was actually dispatched. It is not when the statement carries parameters whose panel
-    /// has yet to be filled in: that opens the panel and runs nothing, and a caller that advances the caret on the
-    /// strength of a run would then be pointing at the wrong statement when the reader presses again.
+    // Returns false when a parameter panel opens instead, so callers don't advance the caret on a run that didn't happen.
     @discardableResult
     private func executeResolvedSQL(
         _ sql: String,
@@ -1225,11 +1036,7 @@ final class MainContentCoordinator: ObservableObject {
         return true
     }
 
-    /// Execute table tab query directly.
-    /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
-    /// checks but still respect safe mode levels that apply to all queries.
-    /// Returns the confirmation task when Safe Mode asks before the load runs.
-    /// A table tab changes source only through `replaceTabContent`, so every run here re-reads its own.
+    // App-built SELECTs skip dangerous-query checks but keep safe mode. Returns the confirmation task when Safe Mode asks first.
     @discardableResult
     func executeTableTabQueryDirectly(
         trigger: TableLoadTrigger = .userInitiated,
@@ -1268,10 +1075,7 @@ final class MainContentCoordinator: ObservableObject {
                     )
                 )
                 isShowingSafeModePrompt = false
-                /// The sheet holds this window, not a link or an agent selecting another table under
-                /// it, and the answer is about the statement it showed. Run on whatever tab was
-                /// selected by then, it put this table's rows under another table's name. The text
-                /// alone does not name the statement: a Redis database switch keeps the same SCAN.
+                // Only on the tab and table the sheet showed: elsewhere it put these rows under another name; SQL alone misses a Redis db switch.
                 let asked = tabManager.tabs.first(where: { $0.id == tabId })
                 guard tabManager.selectedTabId == tabId,
                       let asked,
@@ -1388,7 +1192,7 @@ final class MainContentCoordinator: ObservableObject {
 
         let needsDefinition = tabSessionRegistry.needsDefinition(tabId)
         let needsMetadataFetch = tableName.map { isEditable && !isMetadataCached(tabId: tabId, tableName: $0) } ?? false
-        /// Captured now, while the result this decision was made against is still the active one.
+        // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: tabSessionRegistry.tableRows(for: tabId),
             primaryKeyColumns: tabManager.tabs[index].tableContext.primaryKeyColumns
@@ -1452,20 +1256,14 @@ final class MainContentCoordinator: ObservableObject {
                 let inlineMeta = needsMetadataFetch
                     ? QueryExecutor.inlineMetadata(from: fetchResult.resultColumnMeta, columns: fetchResult.columns)
                     : nil
-                /// After a definition change the rows and the definition commit together, so the grid
-                /// never holds the new columns under the old keys, defaults or generated columns.
+                // Rows and definition commit together after a definition change, so new columns never sit under old keys or defaults.
                 let definition = needsDefinition ? try? await schemaTask?.value : nil
 
                 let applied = await MainActor.run { [weak self] () -> Bool in
                     guard let self else { return false }
                     traceFetchCompleted(traceToken, began: fetchBeganAt, ended: fetchEndedAt, result: fetchResult)
 
-                    // Every write below belongs to whoever owns the tab now. A superseded result
-                    // that cleared the spinner or nilled the task handle would be reporting on a
-                    // query that is still running, so the gate comes before all of them. Settling
-                    // is that gate: it answers and releases in one step, and it comes before the
-                    // cancellation check rather than sharing a guard with it, because a short
-                    // circuit there would leave the tab claimed forever and refusing later runs.
+                    // Settle first: it gates every write below, and sharing a guard with the cancel check would leave the tab claimed forever.
                     guard tabExecution.settle(claim) else {
                         traceStaleResultDropped(traceToken)
                         return false
@@ -1519,21 +1317,14 @@ final class MainContentCoordinator: ObservableObject {
                     )
                     return true
                 }
-                /// Phase 2 writes keys, defaults and a row count onto whatever the tab holds when it
-                /// lands. A result that lost the tab to a retarget would describe its own table on
-                /// the next one, so only the execution that applied its rows may start it.
+                // Phase 2 writes onto whatever the tab holds, so only the execution that applied its rows may start it.
                 guard applied else {
                     schemaTask?.cancel()
                     return
                 }
 
                 if isEditable, let tableName {
-                    /// Committing to phase 2 is what makes the total pending, so it is recorded here
-                    /// rather than inside `resolveRowCount`. On a first open the metadata arm reaches
-                    /// that function only after a Task hop and the schema round trip, and phase 1 has
-                    /// already cleared `isLoading` synchronously, so the tab spends the whole fetch
-                    /// looking settled with no total: the readout states a row count it is about to
-                    /// replace, and `Count Exactly` is offered against a total nobody has yet.
+                    // Marked pending here: phase 1 clears `isLoading` first, so without it the tab looks settled and offers Count Exactly early.
                     tabManager.mutate(tabId: tabId) { $0.pagination.isCountPending = true }
                     launchPhase2(
                         tableName: tableName,
@@ -1571,9 +1362,7 @@ final class MainContentCoordinator: ObservableObject {
         let editorLanguage = services.pluginManager.editorLanguage(for: connection.type)
         let pluginBuildsBrowse = (services.databaseManager.driver(for: connectionId) as? PluginDriverAdapter)?
             .queryBuildingPluginDriver != nil
-        /// An engine whose plugin writes its own browse, or whose language is not SQL, gets no table from a query's
-        /// text, and the name a query tab carries came from an earlier result or an older build, so it can name
-        /// another collection. A pipeline's `_id` can also be a group key that names an unrelated document.
+        // Plugin-built browse or non-SQL: no table from query text; a tab's stored name or a pipeline `_id` can name another collection.
         let usesNoSQLBrowsing = editorLanguage != .sql || pluginBuildsBrowse
         if tab.tabType != .table, usesNoSQLBrowsing {
             return (nil, false)

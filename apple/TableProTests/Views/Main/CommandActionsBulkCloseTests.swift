@@ -29,7 +29,6 @@ struct CommandActionsBulkCloseTests {
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
-            selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
             pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
             pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),
@@ -67,9 +66,7 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - Database scope
 
-    /// A connection keeps one tab list now, so the scope of a database-scoped close is that list.
-    /// These used to spread a connection's tabs over sibling windows and check that the command
-    /// reached across them, which is a shape the app can no longer be in.
+    // A connection keeps one tab list, which is the whole scope of a database-scoped close.
     @Test("a tab on another database is offered for closing")
     func canCloseTabsForOtherDatabasesWhenATabIsForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -95,8 +92,7 @@ struct CommandActionsBulkCloseTests {
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// Another connection's tabs are out of scope by construction rather than by a filter: they
-    /// live in that connection's own tab list, which this command never reads.
+    // Out of scope by construction, not a filter: they live in that connection's own tab list, which this command never reads.
     @Test("another connection's tabs are never a database-scoped target")
     func otherConnectionsAreOutOfScope() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -117,9 +113,7 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - Schema scope
 
-    /// Only `.table` tabs are given a schema, so on a schema-switching engine every query tab
-    /// named no container. Comparing that nil against the browsed name made all of them foreign,
-    /// and the command closed the user's whole editor with no prompt.
+    // Only `.table` tabs get a schema; comparing a query tab's nil to the browsed name closed the whole editor with no prompt.
     @Test("query tabs are never foreign on a schema-switching engine")
     func queryTabsAreNotForeignOnASchemaSwitchingEngine() {
         let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
@@ -151,8 +145,7 @@ struct CommandActionsBulkCloseTests {
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// A tab opened without a database is bound to the entry it was opened in, so it is in this
-    /// database rather than in another one.
+    // A tab opened without a database is bound to the entry it was opened in.
     @Test("a tab with no database of its own is not foreign")
     func tabWithoutADatabaseIsNotForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -164,8 +157,7 @@ struct CommandActionsBulkCloseTests {
         #expect(!current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// Every tab names its entry and keeps it listed, so an untouched scratch tab behind another
-    /// entry is one of the tabs the command closes. Leaving it kept the other entry in the strip.
+    // Every tab keeps its entry listed, so leaving an untouched scratch tab kept the other entry in the strip.
     @Test("an empty scratch tab on another database is closed too")
     func emptyScratchTabOnAnotherDatabaseIsForeign() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -178,7 +170,7 @@ struct CommandActionsBulkCloseTests {
         #expect(current.actions.canCloseTabsForOtherDatabases)
     }
 
-    /// The strip lists one entry, and a close never takes tabs the user cannot see.
+    // The strip lists one entry, and a close never takes tabs the user cannot see.
     @Test("close all and close others act on the entry on screen")
     func closeAllAndOthersStayInTheShownEntry() async {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -197,8 +189,7 @@ struct CommandActionsBulkCloseTests {
         #expect(manager.tabs.map(\.tableContext.databaseName) == ["db_b"])
     }
 
-    /// The enablement flag and the close itself read the same victim list, so this drives the real
-    /// command and checks what survives rather than trusting the boolean.
+    // Enablement and the close share one victim list, so this drives the real command and checks what survives.
     @Test("closing for other schemas keeps the query tabs and closes the foreign table tab")
     func closingForOtherSchemasKeepsQueryTabs() async throws {
         let connection = TestFixtures.makeConnection(database: "ORCL", type: .oracle)
@@ -222,8 +213,7 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - Container wording
 
-    /// Both titles were computed and then never used: the menu items carry hardcoded literals and
-    /// `applyDynamicTitle` had no case for either selector.
+    // Both titles were computed and never used: the items had hardcoded literals and `applyDynamicTitle` had no case for them.
     @Test("container commands are worded for the dimension the engine switches")
     func containerCommandTitlesFollowTheSwitchTarget() {
         let schemaEngine = makeWindow(connection: TestFixtures.makeConnection(database: "ORCL", type: .oracle))
@@ -241,10 +231,7 @@ struct CommandActionsBulkCloseTests {
 
     // MARK: - What a save can reach
 
-    /// The alert and the save read one classifier. A batch close saves what it can reach and leaves
-    /// the rest open, so "is there work" and "can Save have it" have to be the same switch: Save
-    /// used to run on the selected tab whatever the victims were, which on Close Other Tabs and
-    /// Close Tabs for Other Databases is never one of them.
+    // Alert and save share one classifier: Save used to run on the selected tab, which a batch close never targets.
     @Test("a background tab's file is saveable, its grid edits are not")
     func savabilitySeparatesFileWorkFromGridWork() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -267,9 +254,7 @@ struct CommandActionsBulkCloseTests {
         #expect(current.coordinator.savability(of: dirtyFile) == .saveable)
     }
 
-    /// A tab can hold more than one kind at once: a query opened from a file, edited, with unsaved
-    /// cell edits in its result. Answering "saveable" for the file would let a close write the file
-    /// and destroy the grid edits beside it, which is the loss the category exists to prevent.
+    // Calling a file-plus-grid-edits tab saveable would let a close write the file and destroy the grid edits beside it.
     @Test("grid edits outrank a dirty file on a background tab")
     func savabilityPrefersTheKindNoSaveCanReach() throws {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -304,8 +289,6 @@ struct CommandActionsBulkCloseTests {
         #expect(current.coordinator.savability(of: selected) == .nothingAtRisk)
     }
 
-    /// Nothing at risk means no prompt and every victim closes, which is the path a batch close
-    /// takes almost every time.
     @Test("a clean batch closes without asking")
     func cleanBatchNeedsNoPrompt() async {
         let connection = TestFixtures.makeConnection(database: "db_a")

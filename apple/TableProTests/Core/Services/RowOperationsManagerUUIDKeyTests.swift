@@ -241,7 +241,7 @@ extension GlobalStateSuites {
             _ = rows.appendInsertedRow(id: pendingID, values: pendingValues)
             changeManager.recordRowInsertion(rowID: pendingID, values: pendingValues, expressionColumns: [2])
 
-            manager.copySelectedRowsToClipboard(selectedIndices: [0, 1], tableRows: rows)
+            manager.copyRowsToClipboard([.existing(0), pendingID], tableRows: rows)
             let payload = try #require(RecordingClipboard.current?.gridRows)
             #expect(payload.expressionCells == [1: [2]])
 

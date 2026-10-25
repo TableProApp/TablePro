@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Slow queries are server records, so they draw in the data grid and take its theme. The server's
-/// order, slowest first, is kept: the drawn duration is a formatted span that would not sort.
 internal struct SlowQueryListView: View {
     internal let queries: [DashboardSlowQuery]
     internal let error: String?
@@ -11,7 +9,6 @@ internal struct SlowQueryListView: View {
         accessibilityLabel: String(localized: "Slow Queries")
     )
     @StateObject private var selection = StructureListSelection<SlowQueryGridRows.RowID>()
-    @State private var columnLayout = ColumnLayoutState()
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -47,22 +44,17 @@ internal struct SlowQueryListView: View {
     }
 
     private var table: some View {
-        let rows = SlowQueryGridRows.rows(for: queries)
         let selection = selection
-        var hasher = Hasher()
-        hasher.combine(rows)
         return StructureListGrid(
             model: grid,
             columns: SlowQueryGridRows.titles,
             defaultWidths: SlowQueryGridRows.widths,
             minimumWidths: SlowQueryGridRows.minimumWidths,
-            contentKey: hasher.finalize(),
-            rows: { rows },
+            rows: SlowQueryGridRows.rows(for: queries),
             databaseType: databaseType,
-            selectedIDs: { selection.ids },
+            selectedIDs: selection.ids,
             select: { selection.ids = $0 },
-            sortState: nil,
-            columnLayout: $columnLayout
+            sortState: nil
         )
     }
 }

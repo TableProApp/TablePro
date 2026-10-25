@@ -1,8 +1,5 @@
 import Foundation
 
-/// The single registry every slot goes through. A slot exists here because a call site reads it.
-/// The decoder, the encoder and the theme editor all enumerate this list rather than keeping their
-/// own copies.
 public enum ThemeSlot: String, CaseIterable, Sendable {
     case windowBackdrop = "window.background"
 
@@ -27,13 +24,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
     case gridBackground = "dataGrid.background"
     case gridText = "dataGrid.text"
     case gridAlternateRow = "dataGrid.alternateRow"
-    case gridHeaderBackground = "dataGrid.headerBackground"
-    case gridHeaderText = "dataGrid.headerText"
     case gridLine = "dataGrid.gridLine"
-    case gridSelection = "dataGrid.selection"
-    case gridSelectionText = "dataGrid.selectionText"
-    case gridInactiveSelection = "dataGrid.inactiveSelection"
-    case gridFocusBorder = "dataGrid.focusBorder"
     case gridNullValue = "dataGrid.nullValue"
     case gridBoolTrue = "dataGrid.boolTrue"
     case gridBoolFalse = "dataGrid.boolFalse"
@@ -43,7 +34,6 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
     case gridDeleted = "dataGrid.deleted"
     case gridDeletedText = "dataGrid.deletedText"
 
-    /// The group of the file format: the slot's dotted path starts with the group's key.
     public var group: ThemeSlotGroup {
         switch self {
         case .windowBackdrop:
@@ -54,15 +44,13 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType:
             return .syntax
-        case .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
-             .gridLine, .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder,
+        case .gridBackground, .gridText, .gridAlternateRow, .gridLine,
              .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
              .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .dataGrid
         }
     }
 
-    /// Where the theme editor lists the slot.
     public var section: ThemeSlotSection {
         switch self {
         case .windowBackdrop:
@@ -73,50 +61,43 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType:
             return .syntax
-        case .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
-             .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber:
+        case .gridBackground, .gridText, .gridAlternateRow, .gridLine,
+             .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber:
             return .dataGrid
-        case .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder:
-            return .selection
         case .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .changes
         }
     }
 
-    /// Only the backdrop: content slots keep the theme under Increase Contrast, as they always have.
+    // Content keeps the theme under Increase Contrast; only the backdrop yields.
     public var yieldsToIncreasedContrast: Bool {
         group == .window
     }
 
-    /// Fills that sit under everything else. A translucent window color shows the desktop through the
-    /// window, so these never carry alpha.
+    // A translucent fill under everything else would show the desktop through the window.
     public var requiresOpaque: Bool {
         switch self {
-        case .windowBackdrop, .editorBackground, .gridBackground, .gridHeaderBackground:
+        case .windowBackdrop, .editorBackground, .gridBackground:
             return true
         case .editorText, .editorCursor, .editorSelection, .editorCurrentLine, .editorCurrentStatement,
              .editorLineNumber, .editorInvisibles,
              .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType,
-             .gridText, .gridAlternateRow, .gridHeaderText, .gridLine, .gridSelection, .gridSelectionText,
-             .gridInactiveSelection, .gridFocusBorder, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridText, .gridAlternateRow, .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
              .gridRowNumber, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return false
         }
     }
 
-    /// Washes drawn over content, where an alpha channel is the point.
     public var offersOpacity: Bool {
         switch self {
         case .editorSelection, .editorCurrentLine, .editorCurrentStatement, .editorInvisibles,
-             .gridAlternateRow, .gridSelection, .gridInactiveSelection,
-             .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
+             .gridAlternateRow, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return true
         case .windowBackdrop, .editorBackground, .editorText, .editorCursor, .editorLineNumber,
              .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,
              .syntaxNull, .syntaxOperator, .syntaxFunction, .syntaxType,
-             .gridBackground, .gridText, .gridHeaderBackground, .gridHeaderText, .gridLine,
-             .gridSelectionText, .gridFocusBorder, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
+             .gridBackground, .gridText, .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse,
              .gridRowNumber:
             return false
         }
@@ -127,7 +108,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .windowBackdrop, .editorBackground, .gridBackground: return String(localized: "Background")
         case .editorText, .gridText: return String(localized: "Text")
         case .editorCursor: return String(localized: "Cursor")
-        case .editorSelection, .gridSelection: return String(localized: "Selection")
+        case .editorSelection: return String(localized: "Selection")
         case .editorCurrentLine: return String(localized: "Current Line")
         case .editorCurrentStatement: return String(localized: "Current Statement")
         case .editorLineNumber: return String(localized: "Line Number")
@@ -141,12 +122,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .syntaxFunction: return String(localized: "Function")
         case .syntaxType: return String(localized: "Type")
         case .gridAlternateRow: return String(localized: "Alternate Row")
-        case .gridHeaderBackground: return String(localized: "Header Background")
-        case .gridHeaderText: return String(localized: "Header Text")
         case .gridLine: return String(localized: "Grid Line")
-        case .gridSelectionText: return String(localized: "Selected Text")
-        case .gridInactiveSelection: return String(localized: "Inactive Selection")
-        case .gridFocusBorder: return String(localized: "Focus Border")
         case .gridNullValue: return String(localized: "NULL Value")
         case .gridBoolTrue: return String(localized: "Bool True")
         case .gridBoolFalse: return String(localized: "Bool False")
@@ -158,8 +134,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         }
     }
 
-    /// `label` repeats across groups ("Background" three times), so VoiceOver gets the group too.
-    /// Whole phrases, because word order differs between languages.
+    // `label` repeats across groups, so VoiceOver gets whole phrases with the group in them.
     public var accessibilityLabel: String {
         switch self {
         case .windowBackdrop: return String(localized: "Window Background")
@@ -182,13 +157,7 @@ public enum ThemeSlot: String, CaseIterable, Sendable {
         case .gridBackground: return String(localized: "Data Grid Background")
         case .gridText: return String(localized: "Data Grid Text")
         case .gridAlternateRow: return String(localized: "Data Grid Alternate Row")
-        case .gridHeaderBackground: return String(localized: "Data Grid Header Background")
-        case .gridHeaderText: return String(localized: "Data Grid Header Text")
         case .gridLine: return String(localized: "Data Grid Line")
-        case .gridSelection: return String(localized: "Data Grid Selection")
-        case .gridSelectionText: return String(localized: "Data Grid Selected Text")
-        case .gridInactiveSelection: return String(localized: "Data Grid Inactive Selection")
-        case .gridFocusBorder: return String(localized: "Data Grid Focus Border")
         case .gridNullValue: return String(localized: "Data Grid NULL Value")
         case .gridBoolTrue: return String(localized: "Data Grid Bool True")
         case .gridBoolFalse: return String(localized: "Data Grid Bool False")

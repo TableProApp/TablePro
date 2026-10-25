@@ -6,34 +6,16 @@
 import SwiftUI
 import TableProPluginKit
 
-/// The rows a session read, drawn by the app's own data grid.
-///
-/// Read-only, and modelled on `CompareRowGrid`, which is the other place a grid reviews rows it does
-/// not own: a change manager of its own and a column layout held in `@State` so nothing reaches
-/// `FileColumnLayoutPersister`. A `DataGridConfiguration` naming only the database type keeps
-/// `columnLayoutKey` nil, so an agent result can never write into a real table's saved column
-/// widths.
-///
-/// Sorting is answered here rather than announced and dropped. The rows are held in full and there
-/// is no query to re-run, so `TableRowsSorting` puts them in order and the grid redraws; a grid
-/// whose headers move a sort indicator that changes nothing is worse than one that cannot sort.
-///
-/// Drawing rows by hand here was the alternative and it is worse in ways that are not obvious: the
-/// grid already gives type-aware formatting, the Data Grid font (rather than a system text style,
-/// which is the two-font-domain defect), column separators that scale, an accessibility cell tree,
-/// selection and copy. None of that is worth reimplementing beside the real one.
+// The rows a session read, drawn read-only by the app's own grid. They are held in full and there is no
+// query to re-run, so a header click sorts them here.
 internal struct AgentResultRowsView: View {
     internal let runs: [AgentQueryRun]
-    /// Decodes each run once. The pane owns it, so the answer survives a redraw and a sort.
     internal let artifacts: AgentArtifactCache
     internal let connection: DatabaseConnection?
 
-    @State private var changeManager = AnyChangeManager(DataChangeManager())
-    @State private var selectedRows: Set<Int> = []
-    @State private var columnLayout = ColumnLayoutState()
     @State private var selectedRunId: String?
-    @State private var sortState = SortState()
-    @StateObject private var gridDelegate = HeldRowsGridDelegate()
+    @State private var loadedRunId: String?
+    @StateObject private var grid = HeldRowsGridAdapter(configuration: DataGridConfiguration(), sortsHeldRows: true)
 
     var body: some View {
         if runs.isEmpty {
@@ -50,10 +32,6 @@ internal struct AgentResultRowsView: View {
                 runPicker(runs: runs, current: run)
                 Divider()
                 result(for: run)
-            }
-            .onChange(of: run.id) { _ in
-                selectedRows = []
-                sortState = SortState()
             }
         }
     }
@@ -76,14 +54,11 @@ internal struct AgentResultRowsView: View {
         )
     }
 
-    /// Four answers where there used to be two, because "nothing to draw" was four different things
-    /// and the pane said the same sentence for each: a write that changed rows read as a query that
-    /// had matched none.
     @ViewBuilder
     private func result(for run: AgentQueryRun) -> some View {
         switch artifacts.payload(for: run) {
         case .rows(let decoded):
-            grid(decoded, for: run)
+            rowsGrid(decoded, for: run)
         case .noRows:
             state(
                 title: String(localized: "No Rows"),
@@ -105,40 +80,40 @@ internal struct AgentResultRowsView: View {
         }
     }
 
-    private func grid(_ decoded: TableRows, for run: AgentQueryRun) -> some View {
-        let rows = TableRowsSorting.sorted(decoded, by: sortState)
-        return DataGridView(
-            tableRowsProvider: { rows },
-            changeManager: changeManager,
-            isEditable: false,
-            configuration: DataGridConfiguration(
-                databaseType: connection?.type,
-                showRowNumbers: true,
-                supportsColumnCommands: false,
-                supportsValueFilter: false,
-                appliesRowCopyFormat: true
-            ),
-            delegate: gridDelegate,
-            selectedRowIndices: $selectedRows,
-            sortState: $sortState,
-            columnLayout: $columnLayout,
-            contentRevision: contentRevision(for: run)
-        )
-        .onAppear {
-            gridDelegate.onSortStateChanged = { sortState = $0 }
-        }
+    private func rowsGrid(_ decoded: TableRows, for run: AgentQueryRun) -> some View {
+        // task(id:) runs with this body's values; onChange(of:) would run with the previous body's (measured).
+        DataGridView(model: grid.model)
+            .task(id: run.id) { load(decoded, for: run) }
     }
 
-    /// On the grid's background, so the pane keeps one color between a run with rows and one without.
+    // Another run starts with no selection and no sort; the same run keeps both across a remount.
+    private func load(_ decoded: TableRows, for run: AgentQueryRun) {
+        grid.model.configuration = configuration
+        guard loadedRunId != run.id else { return }
+        if loadedRunId != nil {
+            grid.model.clearSelection()
+            grid.showSort(SortState())
+        }
+        loadedRunId = run.id
+        grid.setRows(decoded)
+    }
+
+    private var configuration: DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.traits = DataGridEngineTraits(databaseType: connection?.type)
+        configuration.showRowNumbers = true
+        configuration.supportsValueFilter = false
+        configuration.appliesRowCopyFormat = true
+        configuration.commands = [.freezeColumns, .displayAs]
+        return configuration
+    }
+
     private func state(title: String, systemImage: String, description: String) -> some View {
         UnavailableStateView(title, systemImage: systemImage, description: Text(description))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .gridStandInBackground()
     }
 
-    /// Grouped, because a count is read at a glance and "1,204" is legible where "1204" has to be
-    /// counted. A statement that reports no count at all is one from a tool that answers in the
-    /// bridge's shape without sending one.
     private static func changeSummary(_ rowsAffected: Int?) -> String {
         guard let rowsAffected else {
             return String(localized: "The statement returned no rows to show.")
@@ -150,18 +125,6 @@ internal struct AgentResultRowsView: View {
             ? String(localized: "%@ row changed.")
             : String(localized: "%@ rows changed.")
         return String(format: template, rowsAffected.formatted(.number.grouping(.automatic)))
-    }
-
-    /// Moves whenever the rows the grid should be drawing move, which a sort does without changing
-    /// the run.
-    private func contentRevision(for run: AgentQueryRun) -> Int {
-        var hasher = Hasher()
-        hasher.combine(run.id)
-        for column in sortState.columns {
-            hasher.combine(column.columnIndex)
-            hasher.combine(column.direction)
-        }
-        return hasher.finalize()
     }
 
     private func summary(of sql: String) -> String {

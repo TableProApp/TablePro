@@ -23,8 +23,7 @@ struct QueryResultPresentationTests {
         #expect(presentation.showsErrorBanner == false)
     }
 
-    /// A table tab describes a table whether or not its rows have arrived, so the idle rule above
-    /// must not reach it: retargeting empties the buffer before the replacing fetch starts.
+    // Retargeting empties the buffer before the replacing fetch starts, so the idle rule must not reach a table tab.
     @Test("A table tab with no rows yet still draws its grid")
     func freshTableTabKeepsGrid() {
         var inputs = QueryResultInputs()
@@ -41,9 +40,7 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .executing)
     }
 
-    /// The state every retarget passes through: the buffer was emptied for the new table and its
-    /// first page is in flight. It used to resolve to `.executing`, which drew a blank pane for the
-    /// whole fetch and unmounted the grid.
+    // Every retarget passes through this. It used to resolve to `.executing`, blanking the pane and unmounting the grid.
     @Test("A table tab loading its first page keeps its grid")
     func tableTabLoadingKeepsGrid() {
         var inputs = QueryResultInputs()
@@ -70,8 +67,7 @@ struct QueryResultPresentationTests {
         }
     }
 
-    /// A failed first load leaves no result set, and Dismiss clears the error, which used to leave
-    /// a blank pane that no tab switch reloaded.
+    // A failed first load leaves no result set and Dismiss clears the error; this used to leave a blank pane no tab switch reloaded.
     @Test("A table tab whose failed load was dismissed still draws its grid")
     func dismissedTableFailureKeepsGrid() {
         var inputs = QueryResultInputs()
@@ -90,8 +86,7 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .idle)
     }
 
-    /// Retargeting a tab empties its buffer before the replacing fetch starts. Reporting "no rows"
-    /// there states that the table the reader just opened is empty.
+    // Retargeting empties the buffer first; reporting no rows there says the table just opened is empty.
     @Test("A running fetch over loaded rows keeps drawing them")
     func executingOverLoadedRows() {
         var inputs = QueryResultInputs()
@@ -116,8 +111,7 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .noRows(executionTime: 0.25))
     }
 
-    /// A filter that matched nothing must keep the grid, because the filter chrome above it is the
-    /// only way the reader gets their rows back.
+    // The filter chrome is the only way the reader gets their rows back.
     @Test("A filter that matched nothing keeps the grid")
     func filteredToNothingKeepsGrid() {
         var inputs = QueryResultInputs()
@@ -181,8 +175,7 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).content == .serverOutput(output))
     }
 
-    /// Switching to a result that printed nothing leaves the tab in Output mode until the next install reconciles
-    /// it, and the pane must not go blank in the meantime.
+    // The tab stays in Output mode until the next install reconciles it, and the pane must not go blank meanwhile.
     @Test("Output mode over a result that printed nothing shows the grid")
     func outputModeWithoutOutputFallsBackToTheGrid() {
         var inputs = QueryResultInputs()
@@ -222,16 +215,12 @@ struct QueryResultPresentationTests {
         let presentation = QueryResultPresentation(inputs: inputs)
 
         #expect(presentation.content == .queryPlan)
-        /// The bar stays. It is the only thing carrying the result chooser now, so a plan that
-        /// gave it up could not be switched away from or pinned. What a plan gives up there is the
-        /// row readout, which `ResultStatusModel` drops from `StatusBarSnapshot.isQueryPlan`.
+        // The bar carries the result chooser, so a plan keeps it; `ResultStatusModel` drops only its row readout for a plan.
         #expect(presentation.showsStatusBar)
         #expect(presentation.showsResultSetSelector)
     }
 
-    /// Pin a failure, run something that works, and the tab's own message is cleared while the
-    /// pinned result's is not. Switching back used to resolve the failure as a success, because the
-    /// error result reports no columns.
+    // Switching back used to resolve the pinned failure as a success, because the error result reports no columns.
     @Test("A pinned failure still reads as a failure after a later run succeeds")
     func pinnedFailureStaysAFailure() {
         var inputs = QueryResultInputs()
@@ -246,26 +235,6 @@ struct QueryResultPresentationTests {
         #expect(presentation.showsErrorBanner)
         if case .statementSucceeded = presentation.content {
             Issue.record("A pinned failure must never resolve to the success view")
-        }
-    }
-
-    /// The find bar searches the data grid's coordinator. Switching to a mode that unmounts the
-    /// grid left it on screen over nothing to search.
-    @Test("The find bar follows the mode, not just the tab type")
-    func findBarFollowsMode() {
-        var inputs = QueryResultInputs()
-        inputs.tabType = .table
-        inputs.isFindBarVisible = true
-
-        inputs.viewMode = .data
-        #expect(QueryResultPresentation(inputs: inputs).showsFindBar)
-
-        for mode in [ResultsViewMode.chart, .map, .structure] {
-            inputs.viewMode = mode
-            #expect(
-                QueryResultPresentation(inputs: inputs).showsFindBar == mode.showsFindBar,
-                "find bar must follow ResultsViewMode.showsFindBar for \(mode)"
-            )
         }
     }
 
@@ -328,17 +297,6 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).showsResultSetSelector == false)
     }
 
-    @Test("The find bar belongs to table tabs")
-    func findBarIsTableOnly() {
-        var inputs = QueryResultInputs()
-        inputs.isFindBarVisible = true
-        inputs.tabType = .query
-        #expect(QueryResultPresentation(inputs: inputs).showsFindBar == false)
-
-        inputs.tabType = .table
-        #expect(QueryResultPresentation(inputs: inputs).showsFindBar)
-    }
-
     @Test("Filter chrome follows the mode that can be filtered")
     func filterChromeFollowsMode() {
         var inputs = QueryResultInputs()
@@ -352,7 +310,6 @@ struct QueryResultPresentationTests {
         #expect(QueryResultPresentation(inputs: inputs).showsFilterChrome == false)
     }
 
-    /// The property the old nested `if/else` only had by accident.
     @Test("Every reachable input resolves to exactly one content case")
     func everyStateResolvesOnce() {
         var seen: Set<String> = []

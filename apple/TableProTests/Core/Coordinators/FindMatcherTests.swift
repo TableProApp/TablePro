@@ -4,70 +4,12 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
 struct FindMatcherTests {
-    private let grid: [[String?]] = [
-        ["active", "Alice", nil],
-        ["inactive", "Bob", "note"],
-        ["ACTIVE", "Chloé", "other"],
-    ]
-
-    private func cellText(_ row: Int, _ column: Int) -> String? {
-        guard row >= 0, row < grid.count, column >= 0, column < grid[row].count else { return nil }
-        return grid[row][column]
-    }
-
-    private func run(term: String, searchable: @escaping (Int) -> Bool = { _ in true }) -> [FindMatch] {
-        FindMatcher.matches(
-            term: term,
-            displayRowCount: grid.count,
-            columnCount: 3,
-            isColumnSearchable: searchable,
-            cellText: cellText
-        )
-    }
-
-    @Test("finds every occurrence in row-major order")
-    func rowMajorOrder() {
-        let matches = run(term: "active")
-        #expect(matches == [
-            FindMatch(displayRow: 0, columnIndex: 0),
-            FindMatch(displayRow: 1, columnIndex: 0),
-            FindMatch(displayRow: 2, columnIndex: 0),
-        ])
-    }
-
-    @Test("matching ignores case")
-    func caseInsensitive() {
-        #expect(run(term: "ACTIVE").count == 3)
-        #expect(run(term: "aCtIvE").count == 3)
-    }
-
-    @Test("matching ignores diacritics")
-    func diacriticInsensitive() {
-        #expect(run(term: "chloe") == [FindMatch(displayRow: 2, columnIndex: 1)])
-    }
-
-    @Test("a nil cell never matches")
-    func nilCellsSkipped() {
-        #expect(run(term: "note") == [FindMatch(displayRow: 1, columnIndex: 2)])
-    }
-
-    @Test("an excluded column is never searched")
-    func excludedColumn() {
-        let matches = run(term: "active", searchable: { $0 != 0 })
-        #expect(matches.isEmpty)
-    }
-
-    @Test("an empty or whitespace term matches nothing")
-    func emptyTerm() {
-        #expect(run(term: "").isEmpty)
-        #expect(run(term: "   ").isEmpty)
-    }
-
     @Test("binary column types are not searchable, everything else is")
     func searchableColumnTypes() {
         #expect(FindMatcher.isSearchable(.blob(rawType: "BLOB")) == false)
@@ -90,20 +32,6 @@ struct FindMatcherTests {
         #expect(FindMatcher.isSearchable(.spatial(rawType: "GEOMETRY"), displayFormat: .text) == false)
     }
 
-    @Test("the nearest match to a display row is the first at or after it")
-    func nearestMatch() {
-        let matches = [
-            FindMatch(displayRow: 1, columnIndex: 0),
-            FindMatch(displayRow: 4, columnIndex: 0),
-            FindMatch(displayRow: 9, columnIndex: 0),
-        ]
-        #expect(FindMatcher.nearestMatchIndex(to: 0, in: matches) == 0)
-        #expect(FindMatcher.nearestMatchIndex(to: 4, in: matches) == 1)
-        #expect(FindMatcher.nearestMatchIndex(to: 5, in: matches) == 2)
-        #expect(FindMatcher.nearestMatchIndex(to: 99, in: matches) == 0)
-        #expect(FindMatcher.nearestMatchIndex(to: 0, in: []) == nil)
-    }
-
     @Test("a server search sends only text columns unless the engine's patterns read every scalar column")
     func serverSearchableColumns() {
         let typed: [ColumnType] = [
@@ -121,110 +49,79 @@ struct FindMatcherTests {
     }
 }
 
-struct TabFindStateTests {
-    private func state(matchCount: Int) -> TabFindState {
-        var value = TabFindState(isVisible: true)
-        value.term = "x"
-        value.matches = (0 ..< matchCount).map { FindMatch(displayRow: $0, columnIndex: 0) }
-        return value
-    }
+// The Find menu reaches the selected tab's grid model; each tab's model keeps its own bar (#2667).
+@MainActor
+struct FindCoordinatorRoutingTests {
+    private let fixtures = CoordinatorFixtures()
 
-    @Test("stepping forward wraps around")
-    func stepForwardWraps() {
-        var value = state(matchCount: 3)
-        value.stepForward()
-        #expect(value.currentMatchIndex == 0)
-        value.stepForward()
-        #expect(value.currentMatchIndex == 1)
-        value.currentMatchIndex = 2
-        value.stepForward()
-        #expect(value.currentMatchIndex == 0)
-    }
-
-    @Test("stepping backward from no selection lands on the last match")
-    func stepBackwardWraps() {
-        var value = state(matchCount: 3)
-        value.stepBackward()
-        #expect(value.currentMatchIndex == 2)
-        value.stepBackward()
-        #expect(value.currentMatchIndex == 1)
-    }
-
-    @Test("stepping with no matches does nothing")
-    func stepWithoutMatches() {
-        var value = state(matchCount: 0)
-        value.stepForward()
-        #expect(value.currentMatchIndex == nil)
-        value.stepBackward()
-        #expect(value.currentMatchIndex == nil)
-    }
-
-    @Test("escalation is offered only when rows are unloaded and a term is set")
-    func escalationAvailability() {
-        var value = TabFindState(isVisible: true)
-        value.scope = .pageOfMore
-        #expect(value.canEscalateToAllRows == false)
-        value.term = "abc"
-        #expect(value.canEscalateToAllRows)
-        value.scope = .allRowsLoaded
-        #expect(value.canEscalateToAllRows == false)
-    }
-
-    @Test("clearing matches drops the current index too")
-    func clearMatches() {
-        var value = state(matchCount: 3)
-        value.currentMatchIndex = 2
-        value.clearMatches()
-        #expect(value.matches.isEmpty)
-        #expect(value.currentMatchIndex == nil)
-        #expect(value.currentMatch == nil)
-    }
-
-    /// The bar seeds its field from the selected tab's state, so the term has to stay with the tab it
-    /// was typed in. The other half of #2667, the bar's `.id(tab.id)`, is view identity.
-    @Test("each tab keeps its own find term across a switch")
-    @MainActor
-    func termStaysWithItsTab() {
-        let tabManager = QueryTabManager()
-        let coordinator = MainContentCoordinator(
-            connection: TestFixtures.makeConnection(),
-            tabManager: tabManager,
-            changeManager: DataChangeManager(),
-            toolbarState: ConnectionToolbarState()
+    private func makeTabs() -> (MainContentCoordinator, first: UUID, second: UUID) {
+        let fixture = fixtures.make()
+        let rows = TableRows.from(
+            queryRows: [[.text("alice")], [.text("bob")], [.text("alina")]],
+            columns: ["name"],
+            columnTypes: [.text(rawType: nil)]
         )
-        defer { coordinator.teardown() }
-        let first = QueryTab(title: "Album", query: "", tabType: .table)
-        let second = QueryTab(title: "Artist", query: "", tabType: .table)
-        tabManager.tabs = [first, second]
+        let first = QueryTab(title: "Album", query: "", tabType: .query)
+        let second = QueryTab(title: "Artist", query: "", tabType: .query)
+        fixture.addTab(first, rows: rows)
+        fixture.addTab(second, rows: rows)
+        fixture.tabManager.selectedTabId = first.id
+        return (fixture.coordinator, first.id, second.id)
+    }
 
-        tabManager.selectedTabId = first.id
-        coordinator.findCoordinator.show()
-        coordinator.findCoordinator.setTerm("alice")
-        tabManager.selectedTabId = second.id
-        coordinator.findCoordinator.show()
-        coordinator.findCoordinator.setTerm("berlin")
-        tabManager.selectedTabId = first.id
+    @Test("Find opens the bar on the selected tab's grid only")
+    func findOpensTheSelectedTabsBar() {
+        let (coordinator, first, second) = makeTabs()
 
-        #expect(coordinator.findCoordinator.selectedTabFindState?.term == "alice")
-        #expect(tabManager.tabs.first { $0.id == second.id }?.findState.term == "berlin")
+        coordinator.findCoordinator.showFind()
+
+        #expect(coordinator.gridModel(forTab: first).find.isVisible)
+        #expect(!coordinator.gridModel(forTab: second).find.isVisible)
+    }
+
+    @Test("each tab keeps its own find term across a switch")
+    func termStaysWithItsTab() {
+        let (coordinator, first, second) = makeTabs()
+        coordinator.findCoordinator.showFind()
+        coordinator.activeGridModel?.find.term = "alice"
+        coordinator.tabManager.selectedTabId = second
+        coordinator.findCoordinator.showFind()
+        coordinator.activeGridModel?.find.term = "berlin"
+
+        coordinator.tabManager.selectedTabId = first
+
+        #expect(coordinator.activeGridModel?.find.term == "alice")
+        #expect(coordinator.gridModel(forTab: second).find.term == "berlin")
+    }
+
+    @Test("Find Next and Find Previous step the selected tab's matches")
+    func stepsTheSelectedTabsMatches() throws {
+        let (coordinator, first, _) = makeTabs()
+        let model = coordinator.gridModel(forTab: first)
+        coordinator.findCoordinator.showFind()
+        model.find.term = "ali"
+        model.findQueryDidChange()
+        #expect(model.find.matches.count == 2)
+        #expect(coordinator.findCoordinator.hasActiveFind)
+        let start = try #require(model.find.currentIndex)
+
+        coordinator.findCoordinator.findNext()
+        #expect(model.find.currentIndex != start)
+
+        coordinator.findCoordinator.findPrevious()
+        #expect(model.find.currentIndex == start)
     }
 }
 
-/// The find bar renders only on table tabs, and a table tab pages through `currentPage`, never
-/// through `hasMoreRows`, which is the query-tab truncation flag. Reading the wrong one made every
-/// table tab report its page as the whole table.
+// A table tab pages through `currentPage`; `hasMoreRows` is the query-tab truncation flag.
 struct FindScopeFromPaginationTests {
-    private func hasUnloadedRows(_ state: PaginationState, loadedRowCount: Int) -> Bool {
-        state.hasMoreRows || state.canGoToNextPage(loadedRowCount: loadedRowCount)
-    }
-
     @Test("page 1 of a multi-page table has unloaded rows even though hasMoreRows is false")
     func firstPageOfManyIsPaged() {
         var state = PaginationState(pageSize: 1_000)
         state.totalRowCount = 12_000
         state.currentPage = 1
         #expect(state.hasMoreRows == false)
-        #expect(hasUnloadedRows(state, loadedRowCount: 1_000))
+        #expect(state.hasUnloadedRows(loadedRowCount: 1_000))
     }
 
     @Test("the last page of a table has everything loaded")
@@ -232,7 +129,7 @@ struct FindScopeFromPaginationTests {
         var state = PaginationState(pageSize: 1_000)
         state.totalRowCount = 1_500
         state.currentPage = 2
-        #expect(hasUnloadedRows(state, loadedRowCount: 500) == false)
+        #expect(state.hasUnloadedRows(loadedRowCount: 500) == false)
     }
 
     @Test("a table that fits on one page has everything loaded")
@@ -240,7 +137,7 @@ struct FindScopeFromPaginationTests {
         var state = PaginationState(pageSize: 1_000)
         state.totalRowCount = 40
         state.currentPage = 1
-        #expect(hasUnloadedRows(state, loadedRowCount: 40) == false)
+        #expect(state.hasUnloadedRows(loadedRowCount: 40) == false)
     }
 
     @Test("an unknown row count with a full page is treated as paged, not as complete")
@@ -248,15 +145,15 @@ struct FindScopeFromPaginationTests {
         var state = PaginationState(pageSize: 1_000)
         state.totalRowCount = nil
         state.currentPage = 1
-        #expect(hasUnloadedRows(state, loadedRowCount: 1_000))
-        #expect(hasUnloadedRows(state, loadedRowCount: 200) == false)
+        #expect(state.hasUnloadedRows(loadedRowCount: 1_000))
+        #expect(state.hasUnloadedRows(loadedRowCount: 200) == false)
     }
 
     @Test("a truncated query result still counts as paged")
     func truncatedQueryResult() {
         var state = PaginationState(pageSize: 1_000)
         state.hasMoreRows = true
-        #expect(hasUnloadedRows(state, loadedRowCount: 10))
+        #expect(state.hasUnloadedRows(loadedRowCount: 10))
     }
 }
 

@@ -57,7 +57,7 @@ final class DataFileWindowUITests: UITestCase {
         "xr8AAAD3AQAAGAAAAAAAAAAAAAAAgAFwBAAAeGwvd29ya3NoZWV0cy9zaGVldDIueG1sUEsFBgAAAAAGAAYAiwEAAGUFAAAAAA=="
     ].joined()
 
-    // Measured from the first row's own frame, so it holds at any row height, and past the row-number gutter.
+    // Measured from the first row's own frame, so it holds at any row height, and past the row numbers.
     private func rowPoint(in grid: XCUIElement, row: Int) -> XCUICoordinate {
         let firstRow = grid.tableRows.firstMatch.frame
         let dy = firstRow.minY - grid.frame.minY + firstRow.height * (CGFloat(row) + 0.5)

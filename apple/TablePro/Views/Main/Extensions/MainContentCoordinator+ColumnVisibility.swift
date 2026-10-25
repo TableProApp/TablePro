@@ -42,16 +42,7 @@ extension MainContentCoordinator {
         changeColumnScope { $0 = Set(columns) }
     }
 
-    /// Every route that changes which columns are fetched, behind the same gate the WHERE filter
-    /// uses on the very same `rebuildTableQuery` call.
-    ///
-    /// Hiding or showing a column re-runs the table's query with a different column list, so the
-    /// rows are replaced and any unsaved edit goes with them. Sort, pagination and the WHERE filter
-    /// all confirm before doing that; this was the one reload that did it without asking. (#2667)
-    ///
-    /// The set is mutated inside the approved work, so declining leaves the column list alone as
-    /// well as the edits. Only the first change in a run prompts: confirming clears the changes, so
-    /// every later toggle finds nothing to lose and passes straight through.
+    // Confirms like sort, pagination and the WHERE filter: re-running with a new column list drops unsaved edits (#2667).
     private func changeColumnScope(_ mutate: @escaping (inout Set<String>) -> Void) {
         confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
@@ -77,11 +68,6 @@ extension MainContentCoordinator {
         mutateSelectedTabHiddenColumns(persist: false) { $0 = restored }
     }
 
-    func applyColumnGeometry(from geometry: ColumnLayoutState, toTabId tabId: UUID) {
-        guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        tabManager.mutate(at: index) { $0.columnLayout.applyGeometry(from: geometry) }
-    }
-
     func clearColumnLayoutForSelectedTable() {
         guard let target = selectedColumnLayoutClearTarget() else { return }
         clearColumnLayout(target)
@@ -94,9 +80,11 @@ extension MainContentCoordinator {
     }
 
     func clearColumnLayout(_ target: ColumnLayoutClearTarget) {
-        if tabManager.selectedTabId == target.tabId,
-           dataTabDelegate?.tableViewCoordinator?.columnLayoutKey == target.tableKey {
-            dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
+        if let entry = dataGridEntries[target.tabId],
+           let tab = tabManager.tabs.first(where: { $0.id == target.tabId }),
+           columnLayoutTableKey(for: tab) == target.tableKey {
+            entry.store.discardPendingLayout()
+            entry.model.updateColumnLayout { $0.resetGeometry() }
         }
         FileColumnLayoutPersister.shared.clearGeometry(for: target.tableKey)
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == target.tabId }),
@@ -106,9 +94,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Reset clears the hidden set along with the widths, so it re-queries too and takes the same
-    /// confirmation. The width half is not undone by declining, because nothing about a width can
-    /// invalidate an edit; only the refetch can.
+    // Clearing the hidden set re-queries, so reset confirms too; declining keeps the width reset, since widths cannot void edits.
     func resetColumns() {
         confirmDiscardRestoringRowsIfNeeded(action: .columnVisibility) { [weak self] confirmed in
             guard confirmed, let self else { return }
@@ -118,8 +104,11 @@ extension MainContentCoordinator {
 
     private func applyColumnReset() {
         guard let index = tabManager.selectedTabIndex else { return }
-        dataTabDelegate?.tableViewCoordinator?.resetColumnGeometry()
         let tab = tabManager.tabs[index]
+        if let entry = dataGridEntries[tab.id] {
+            entry.store.discardPendingLayout()
+            entry.model.updateColumnLayout { $0.resetGeometry() }
+        }
         if let key = columnLayoutTableKey(for: tab) {
             FileColumnLayoutPersister.shared.clear(for: key)
         }
@@ -128,7 +117,7 @@ extension MainContentCoordinator {
     }
 
     // A temporary table's layout is not kept: the key would be the permanent table's of the same name.
-    private func columnLayoutTableKey(for tab: QueryTab) -> ColumnLayoutTableKey? {
+    func columnLayoutTableKey(for tab: QueryTab) -> ColumnLayoutTableKey? {
         guard !tab.tableContext.isTemporary, let tableName = tab.tableContext.tableName, !tableName.isEmpty else {
             return nil
         }
@@ -156,19 +145,15 @@ extension MainContentCoordinator {
         guard let index = tabManager.selectedTabIndex else { return }
         var hidden = tabManager.tabs[index].columnLayout.hiddenColumns
         mutate(&hidden)
-        let presentedRunChanged = hidden != tabManager.tabs[index].columnLayout.hiddenColumns
-        tabManager.mutate(at: index) { tab in
-            tab.columnLayout.hiddenColumns = hidden
-            /// A stored cell rectangle is a set of display positions in the presented run, and
-            /// hiding a column renumbers that run. Clamping cannot catch it: a position that is
-            /// still in range now names a different column, so the rectangle would come back
-            /// pointing at data the reader never selected. A mounted grid drops its own selection
-            /// on the same event; this is that rule for a tab whose grid is not mounted. (#2667)
-            guard presentedRunChanged, !tab.cellSelection.isEmpty else { return }
-            tab.cellSelection = .empty
+        guard hidden != tabManager.tabs[index].columnLayout.hiddenColumns else { return }
+        // Through the model first, which rebuilds its columns and keeps the selection by column identity.
+        existingGridModel(forTab: tabManager.tabs[index].id)?.updateColumnLayout { $0.hiddenColumns = hidden }
+        if tabManager.tabs[index].columnLayout.hiddenColumns != hidden {
+            tabManager.mutate(at: index) { $0.columnLayout.hiddenColumns = hidden }
         }
         if persist {
             persistTabHiddenColumns(tabManager.tabs[index])
         }
+        consumePendingColumnJump(forTab: tabManager.tabs[index].id, contentReplaced: false)
     }
 }

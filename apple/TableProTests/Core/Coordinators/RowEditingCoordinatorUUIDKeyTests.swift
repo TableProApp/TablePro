@@ -52,7 +52,7 @@ struct RowEditingCoordinatorUUIDKeyTests {
         return text == text.lowercased() && text != "0b1e7c9a-58f4-4b8e-9c55-1f1c86f0a001"
     }
 
-    /// The reporter's table: `id uuid PRIMARY KEY` with no default, which a new row sent as NULL.
+    // The reporter's table: `id uuid PRIMARY KEY` with no default, which a new row sent as NULL.
     @Test("Add Row on a uuid key with no default stages a fresh UUID in it")
     func addRowPrefillsTheUUIDKey() throws {
         let coordinator = makeCoordinator()
@@ -87,7 +87,7 @@ struct RowEditingCoordinatorUUIDKeyTests {
     func duplicatePrefillsTheUUIDKey() throws {
         let coordinator = makeCoordinator()
 
-        coordinator.duplicateSelectedRow(index: 0)
+        coordinator.duplicateRow(.existing(0))
 
         let row = try #require(lastRow(of: coordinator))
         #expect(isFreshUUID(row.values[0]))

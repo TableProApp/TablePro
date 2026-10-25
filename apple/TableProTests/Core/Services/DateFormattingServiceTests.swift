@@ -88,9 +88,7 @@ struct DateFormattingServiceTests {
     }
 }
 
-/// A wall clock alone does not name an instant, so the offset the database sent is printed with it.
-/// The offset is the literal text off the value, never a pattern token: a token prints the
-/// formatter's zone, which for a value carrying none is the reader's own. (#2702)
+// The offset prints as the literal text off the value, never a pattern token, which would print the reader's zone (#2702).
 @MainActor
 struct DateFormattingServiceTimeZoneTests {
     @Test("An offset-bearing timestamp keeps its offset")
@@ -103,9 +101,7 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(result == "2024-12-31 23:59:59+07")
     }
 
-    /// Every spelling measured coming out of PostgreSQL 17, plus the `Z` the MongoDB and Cassandra
-    /// drivers write. Each is printed as the database wrote it rather than normalised, so the grid
-    /// and a `Cmd+C` of the same cell read the same.
+    // Every spelling measured from PostgreSQL 17, plus the MongoDB and Cassandra `Z`, printed as written so grid and Cmd+C agree.
     @Test("Every offset spelling reaches the cell unchanged")
     func offsetSpellingsAreVerbatim() {
         DateFormattingService.shared.updateFormat(.iso8601)
@@ -188,9 +184,7 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(later == "2024-03-15 09:30:00.789012")
     }
 
-    /// MySQL pads a `DATETIME(6)` to its declared precision on every row, so an all-zero fraction
-    /// is the column's shape rather than the value's, and printing it would widen every row of such
-    /// a column for nothing.
+    // MySQL pads `DATETIME(6)` on every row, so an all-zero fraction is the column's shape and would only widen every row.
     @Test("A fraction of nothing but zeros is not printed")
     func allZeroFractionIsDropped() {
         DateFormattingService.shared.updateFormat(.iso8601)
@@ -203,9 +197,7 @@ struct DateFormattingServiceTimeZoneTests {
         }
     }
 
-    /// The Unix Timestamp display format renders an instant through its own formatter, which must
-    /// never carry the slot: a control character is invisible on screen and still reaches the
-    /// clipboard, Find and the value filter.
+    // A control character is invisible on screen but still reaches the clipboard, Find and the value filter.
     @Test("The instant formatter carries no slot")
     func instantFormatterCarriesNoMarker() {
         let marker = String(DateFormatOption.fractionalSecondsMarker)
@@ -229,8 +221,7 @@ struct DateFormattingServiceTimeZoneTests {
         }
     }
 
-    /// A fraction qualifies the seconds, so it goes where the seconds end. Appending would put it
-    /// after the designator, `11:59:59 PM.123456`.
+    // Appending would put the fraction after the designator: `11:59:59 PM.123456`.
     @Test("A 12-hour format keeps the fraction with the seconds")
     func twelveHourFormatPlacesTheFractionAtTheSeconds() {
         DateFormattingService.shared.updateFormat(.usLong)
@@ -271,8 +262,7 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(onShortFormat == "15/03/2024")
     }
 
-    /// The slot is a control character, so a splice that failed to run would be invisible on screen
-    /// and would still reach the clipboard, Find and the value filter.
+    // The slot is a control character: a failed splice is invisible on screen but reaches the clipboard, Find and the value filter.
     @Test("The marker never survives into a cell")
     func markerNeverReachesACell() {
         let marker = String(DateFormatOption.fractionalSecondsMarker)
@@ -291,8 +281,6 @@ struct DateFormattingServiceTimeZoneTests {
         DateFormattingService.shared.updateFormat(.iso8601)
     }
 
-    /// The marked pattern is derived from the plain one, so the two cannot drift: removing the
-    /// quoted slot has to give the pattern back exactly.
     @Test("The marked pattern is the plain pattern plus a slot")
     func markedPatternMatchesThePlainOne() {
         let slot = "'\(DateFormatOption.fractionalSecondsMarker)'"
@@ -309,8 +297,7 @@ struct DateFormattingServiceTimeZoneTests {
         }
     }
 
-    /// A captured `TimeZone.current` never follows a system time zone change, measured, so the one
-    /// formatter that renders an instant holds `.autoupdatingCurrent` instead.
+    // Measured: a captured `TimeZone.current` never follows a system zone change, so it holds `.autoupdatingCurrent`.
     @Test("An instant renders in the reader's live zone")
     func instantRendersInTheLiveZone() {
         DateFormattingService.shared.updateFormat(.iso8601)
@@ -325,8 +312,6 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(DateFormattingService.shared.format(instant) == control.string(from: instant))
     }
 
-    /// Its zone is fixed but its pattern is not: a Unix-timestamp column has to follow the user's
-    /// chosen date format like every other cell.
     @Test("The instant formatter follows the chosen date format")
     func instantFormatterFollowsTheChosenFormat() {
         let instant = Date(timeIntervalSince1970: 1_700_000_000)
@@ -351,29 +336,23 @@ struct DateFormattingServiceTimeZoneTests {
         #expect(DateFormattingService.shared.systemTimeZoneGeneration > before)
     }
 
-    /// The grid keeps a tab's formatted text while the tab is unmounted, so the generation has to be
-    /// part of what the cache was built from or nothing replaces it.
-    @Test("The display identity moves with the generation")
-    func displayIdentityMovesWithTheGeneration() {
-        func identity(generation: Int) -> DataGridDisplayIdentity {
-            DataGridDisplayIdentity(
-                bufferEpoch: 1,
-                resultSetId: nil,
-                columns: ["ts"],
-                columnTypes: [.timestamp(rawType: "TIMESTAMP")],
-                displayFormats: [nil],
+    // A tab's grid model keeps its formatted text while unmounted, so the generation is one of the inputs it checks.
+    @Test("The display inputs move with the generation")
+    func displayInputsMoveWithTheGeneration() {
+        func inputs(generation: Int) -> DataTabDisplayInputs {
+            DataTabDisplayInputs(
                 dateFormat: .iso8601,
                 nullDisplay: "NULL",
                 smartValueDetection: true,
-                systemTimeZoneGeneration: generation
+                systemTimeZoneGeneration: generation,
+                overridesVersion: 0
             )
         }
-        #expect(identity(generation: 1) == identity(generation: 1))
-        #expect(identity(generation: 1) != identity(generation: 2))
+        #expect(inputs(generation: 1) == inputs(generation: 1))
+        #expect(inputs(generation: 1) != inputs(generation: 2))
     }
 
-    /// The grid opens the cell editor on the raw text, so a value it prints has to be the value the
-    /// write-back reproduces. The suffix travels through the layout for both.
+    // The cell editor opens on the raw text, so the printed value must be what the write-back reproduces.
     @Test("The printed offset is the one the write-back writes")
     func displayAgreesWithTheWriteBack() throws {
         DateFormattingService.shared.updateFormat(.iso8601)

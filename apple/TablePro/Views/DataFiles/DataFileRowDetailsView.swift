@@ -80,7 +80,7 @@ struct DataFileRowDetailsView: View {
         }
         configuredKey = controller.key(forPageRow: row)
         editState.configure(
-            selectedRowIndices: [row],
+            rowIDs: [controller.tableRows.rows[row].id],
             allRows: [values],
             columns: controller.tableRows.columns,
             columnTypes: controller.tableRows.columnTypes

@@ -5,85 +5,87 @@
 
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
-@MainActor
-private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
+// Which cells take the text editor: the gate every way into editing (Return, a click, Tab, an owner) goes through.
 @MainActor
 struct InlineEditEligibilityTests {
-    private func makeCoordinator(columnType: ColumnType, value: String) -> TableViewCoordinator {
-        let coordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StubColumnLayoutPersister()
-        )
-        let tableRows = TableRows.from(
-            queryRows: [[PluginCellValue.text(value)]],
+    private func makeGrid(
+        columnType: ColumnType,
+        value: PluginCellValue,
+        configure: (inout DataGridConfiguration) -> Void = { _ in },
+        unloaded: Bool = false
+    ) -> EditingGrid {
+        var configuration = EditingGrid.editable
+        configure(&configuration)
+        let rows = TableRows.from(
+            queryRows: [[value]],
             columns: ["col"],
-            columnTypes: [columnType]
+            columnTypes: [columnType],
+            unloadedCells: unloaded ? [0: [0: 1_024]] : [:]
         )
-        coordinator.tableRowsProvider = { tableRows }
-        return coordinator
+        return EditingGrid(rows: rows, configuration: configuration)
     }
 
-    @Test("JSON column is eligible for inline editing")
-    func jsonColumnIsInlineEditable() {
-        let coordinator = makeCoordinator(columnType: .json(rawType: "JSON"), value: #"{"k":1}"#)
-        #expect(coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
+    private func editableText(_ grid: EditingGrid) -> String? {
+        guard let cell = grid.controller.editCell(at: GridCoord(row: 0, displayColumn: 0)) else { return nil }
+        return grid.controller.textEditableValue(of: cell)
     }
 
-    @Test("BLOB column is not eligible for inline editing")
-    func blobColumnIsNotInlineEditable() {
-        let coordinator = makeCoordinator(columnType: .blob(rawType: "BLOB"), value: "x")
-        #expect(!coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
+    @Test("A JSON column takes the text editor")
+    func jsonColumnIsEditable() {
+        let grid = makeGrid(columnType: .json(rawType: "JSON"), value: .text(#"{"k":1}"#))
+        defer { grid.tearDown() }
+
+        #expect(editableText(grid) == #"{"k":1}"#)
     }
 
-    @Test("plain text column is eligible for inline editing")
-    func textColumnIsInlineEditable() {
-        let coordinator = makeCoordinator(columnType: .text(rawType: "TEXT"), value: "hello")
-        #expect(coordinator.canStartInlineEdit(row: 0, columnIndex: 0))
+    @Test("A BLOB column does not; its editor is the hex popover")
+    func blobColumnIsNotEditable() {
+        let grid = makeGrid(columnType: .blob(rawType: "BLOB"), value: .text("x"))
+        defer { grid.tearDown() }
+
+        #expect(editableText(grid) == nil)
     }
 
-    private func makeNewRowCoordinator() -> TableViewCoordinator {
-        let coordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StubColumnLayoutPersister()
-        )
-        let tableRows = TableRows.from(
-            queryRows: [[.text("0b8f6c1e-4a7e-4d43-9d0c-2f4c5b6a7e81"), .bytes(Data([1])), .null, .null]],
-            columns: ["id", "photo", "name", "note"],
-            columnTypes: [.text(rawType: "uuid"), .blob(rawType: "bytea"), .text(rawType: "text"), .text(rawType: "text")]
-        )
-        coordinator.tableRowsProvider = { tableRows }
-        return coordinator
+    @Test("Bytes in a text column do not either")
+    func bytesAreNotEditable() {
+        let grid = makeGrid(columnType: .text(rawType: "TEXT"), value: .bytes(Data([0xDE, 0xAD])))
+        defer { grid.tearDown() }
+
+        #expect(editableText(grid) == nil)
     }
 
-    @Test("The caret on a new row passes over the columns it was given a value for")
-    func caretSkipsPrefilledColumns() {
-        let coordinator = makeNewRowCoordinator()
+    @Test("A plain text column takes it, and a NULL opens as empty text")
+    func textColumnIsEditable() {
+        let text = makeGrid(columnType: .text(rawType: "TEXT"), value: .text("hello"))
+        defer { text.tearDown() }
+        let null = makeGrid(columnType: .text(rawType: "TEXT"), value: .null)
+        defer { null.tearDown() }
 
-        #expect(coordinator.firstEditableColumn(displayRow: 0) == 0)
-        #expect(coordinator.firstEditableColumn(displayRow: 0, skipping: [0]) == 2)
-        #expect(coordinator.firstEditableColumn(displayRow: 0, skipping: [0, 2]) == 3)
+        #expect(editableText(text) == "hello")
+        #expect(editableText(null) == "")
     }
 
-    @Test("When every editable column was given a value the caret still opens on the first of them")
-    func caretFallsBackToAPrefilledColumn() {
-        let coordinator = makeNewRowCoordinator()
+    @Test("A read-only grid and a locked column take no text")
+    func readOnlyAndLockedAreNotEditable() {
+        let readOnly = makeGrid(columnType: .text(rawType: "TEXT"), value: .text("a")) { $0.isEditable = false }
+        defer { readOnly.tearDown() }
+        let locked = makeGrid(columnType: .text(rawType: "TEXT"), value: .text("a")) { $0.lockedColumns = ["col"] }
+        defer { locked.tearDown() }
 
-        #expect(coordinator.firstEditableColumn(displayRow: 0, skipping: [0, 2, 3]) == 0)
+        #expect(editableText(readOnly) == nil)
+        #expect(editableText(locked) == nil)
+    }
+
+    // Its NULL stands for a value still on the server, which no edit may replace unread (#3758).
+    @Test("A value the page left on the server takes no text until it loads")
+    func unloadedValueIsNotEditable() {
+        let grid = makeGrid(columnType: .text(rawType: "TEXT"), value: .null, unloaded: true)
+        defer { grid.tearDown() }
+
+        #expect(editableText(grid) == nil)
     }
 }

@@ -55,7 +55,7 @@ final class SelectionSummaryTracker {
         currentSummary = nil
     }
 
-    /// A drag reports every step and a paste every cell, so the calls of one turn share one run.
+    // A drag reports every step and a paste every cell, so the calls of one turn share one run.
     private func scheduleRecompute() {
         guard state != nil else {
             cancel()
@@ -86,29 +86,5 @@ final class SelectionSummaryTracker {
               generation == expected else { return }
         currentSummary = summary
         state.publish(summary, from: owner)
-    }
-}
-
-internal extension TableViewCoordinator {
-    /// Nil while fewer than two cells are selected, which is when the grid reports no summary.
-    func selectionSummaryInput() -> SelectionSummaryInput? {
-        let selection = selectionController.selection
-        guard selection.hasMultipleCells else { return nil }
-        let tableRows = tableRowsProvider()
-        let policy = delegate?.dataGridSummaryColumnPolicy() ?? .derived(
-            columnTypes: tableRows.columnTypes,
-            displayFormats: columnDisplayFormats,
-            columnCount: tableRows.columns.count
-        )
-        return SelectionSummaryInput(
-            selection: selection,
-            tableRows: tableRows,
-            displayIDs: displayIDs,
-            dataColumnsByDisplayPosition: presentedDataColumns,
-            policy: policy,
-            deletedRowIDs: changeManager.deletedRowIDs,
-            insertedRowIDs: changeManager.insertedRowIDs,
-            modifiedCells: changeManager.modifiedCells
-        )
     }
 }

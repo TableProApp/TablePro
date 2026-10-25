@@ -13,13 +13,7 @@ private let navigationHistoryLogger = Logger(subsystem: "com.TablePro", category
 extension MainContentCoordinator {
     // MARK: - Availability
 
-    /// Back is refused once the tab is showing something other than a table, because stepping back
-    /// would have nothing to put on the forward stack in its place.
-    ///
-    /// Unsaved cell edits do NOT refuse it. Going back does replace the tab's content and would
-    /// take them with it, but that is what the discard alert is for, and `step(back:)` routes
-    /// through the same one refresh, sort, pagination and filter already use. Refusing instead left
-    /// Back dim over a destination that still existed, with nothing saying why.
+    // Unsaved cell edits do not refuse Back: `step(back:)` goes through the discard alert; refusing left Back dim with no reason.
     var canNavigateBack: Bool {
         guard let tabId = navigableTabId else { return false }
         return navigationHistories[tabId]?.canGoBack ?? false
@@ -37,12 +31,7 @@ extension MainContentCoordinator {
         return tab.id
     }
 
-    /// The half of `selectedTabHoldsProtectedContent` navigation cannot offer to discard.
-    ///
-    /// Staged structure edits are the only one that survives the `tabType == .table` requirement
-    /// alongside cell edits: `holdsQueryWork` is false off a query tab and the `.createTable` arm
-    /// cannot be reached. They stay a refusal because the discard alert clears `changeManager` and
-    /// nothing else, so offering to discard them would be a promise this path cannot keep.
+    // Staged structure edits block: the discard alert clears only `changeManager`, so offering to discard them is a broken promise.
     private var selectedTabBlocksNavigation: Bool {
         guard let tab = tabManager.selectedTab else { return true }
         return hasStagedStructureEdits(in: tab)
@@ -50,11 +39,7 @@ extension MainContentCoordinator {
 
     // MARK: - Recording
 
-    /// What the selected tab is showing right now, or nil when it is not showing a table.
-    ///
-    /// Capturing and recording are two calls rather than one because a retarget can fail. Recording
-    /// what a tab was showing when it never left would push a duplicate onto Back and, worse, drop
-    /// the whole forward stack for a navigation that did not happen.
+    // Capture and commit are separate because a retarget can fail; recording a non-move dupes Back and drops the forward stack.
     func captureNavigationEntry() -> TabNavigationEntry? {
         guard let tab = tabManager.selectedTab,
               tab.tabType == .table,
@@ -78,31 +63,21 @@ extension MainContentCoordinator {
         )
     }
 
-    /// Records a location the selected tab has now left, once the retarget that left it succeeded.
-    ///
-    /// Every navigation that retargets a tab in place calls this, because those are the only ones
-    /// that overwrite a view the reader has no other route back to. A jump that opens its own tab
-    /// records nothing: the tab it came from is still open, and the new tab starts with an empty
-    /// history, the way Command-clicking a link does.
+    // Only in-place retargets record; a jump that opens its own tab leaves the source open and starts with an empty history.
     func commitNavigationEntry(_ entry: TabNavigationEntry?) {
         guard let entry, let tabId = tabManager.selectedTabId else { return }
         navigationHistories[tabId, default: TabNavigationHistory()].record(entry)
     }
 
-    /// The primary-key values of the row the reader is on, so returning lands on that row rather
-    /// than at the top of the page.
-    ///
-    /// The selected index is a display position, so it is resolved to a row through the grid's own
-    /// mapping before anything is read off it: a per-column value filter makes display order and
-    /// storage order diverge, and indexing the buffer directly would read a different row (#1837).
+    // The key of the row the reader is on, so returning lands on that row rather than at the top (#1837).
     private func capturePrimaryKeyAnchor(for tab: QueryTab) -> [String: String]? {
         let keyColumns = tab.tableContext.primaryKeyColumns
         guard !keyColumns.isEmpty,
-              let gridCoordinator = dataTabDelegate?.tableViewCoordinator,
-              let displayIndex = selectionState.indices.min() else { return nil }
+              let model = existingGridModel(forTab: tab.id),
+              let displayIndex = model.selection.affectedRows.first,
+              let row = model.row(at: displayIndex) else { return nil }
 
-        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-        guard let row = gridCoordinator.displayRow(at: displayIndex, in: tableRows) else { return nil }
+        let tableRows = model.rows
 
         return NavigationRowAnchor.build(
             keyColumns: keyColumns,
@@ -124,13 +99,7 @@ extension MainContentCoordinator {
         step(back: false)
     }
 
-    /// Asks before it discards, through the alert the other reload paths use. With nothing staged
-    /// the guard completes synchronously with `true`, so an ordinary step never defers a turn.
-    ///
-    /// The departing entry is captured *before* the guard on purpose. Discarding clears the change
-    /// records but leaves the edited values in `TableRows`, so a capture afterwards cannot tell a
-    /// staged key from a saved one and would anchor the forward stack on a value the user just
-    /// threw away.
+    // Captures before the discard guard: discarding keeps edited values in `TableRows`, so a later capture anchors on dropped keys.
     private func step(back: Bool) {
         let departing = captureNavigationEntry()
         confirmDiscardChangesIfNeeded(action: .navigation) { [weak self] confirmed in
@@ -139,11 +108,7 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Moves one entry and puts it back on the tab, or leaves the history exactly as it was.
-    ///
-    /// The stacks are mutated on a copy and only written back once the restore has actually landed.
-    /// Moving them first would strand the reader if the retarget failed: the entry they asked for
-    /// would be gone and Forward would point at the view they are still looking at.
+    // Stacks change on a copy, written back only once the restore lands, so a failed retarget leaves the history untouched.
     private func commitStep(back: Bool, from departing: TabNavigationEntry?) {
         guard let tabId = navigableTabId,
               var history = navigationHistories[tabId],
@@ -160,12 +125,7 @@ extension MainContentCoordinator {
         navigationHistoryLogger.debug("navigated to \(entry.tableName, privacy: .public)")
     }
 
-    /// Puts a recorded location back on the selected tab.
-    ///
-    /// The sequence is `reuseActiveTab`'s, so a restore and an ordinary retarget reach the grid the
-    /// same way. The difference is the state written between the retarget and the load: the
-    /// recorded filters instead of the table's saved defaults, and the recorded sort and page
-    /// through the pending fields the first load already knows how to consume.
+    // Follows `reuseActiveTab`'s sequence, but loads the recorded filters, sort and page instead of the table's saved defaults.
     private func restore(_ entry: TabNavigationEntry, in tabId: UUID) -> Bool {
         do {
             try tabManager.replaceTabContent(
@@ -187,9 +147,7 @@ extension MainContentCoordinator {
         discardRowsForRetarget(resultsViewMode: entry.resultsViewMode)
         guard let (tab, tabIndex) = tabManager.selectedTabAndIndex, tab.id == tabId else { return false }
 
-        /// The page is always carried, not only when it is past the first. `replaceTabContent`
-        /// resets pagination to the app's default page size, so a view recorded on page one of a
-        /// 500-row page would otherwise come back in pages of a different size.
+        // Always carry the page: `replaceTabContent` resets to the default page size, so a recorded page would come back resized.
         tabManager.mutate(at: tabIndex) { tab in
             tab.filterState = entry.filterState
             tab.pendingRestoredSort = entry.sortColumns.isEmpty ? nil : entry.sortColumns

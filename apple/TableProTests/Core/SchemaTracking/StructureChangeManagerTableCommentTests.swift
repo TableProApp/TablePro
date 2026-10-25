@@ -36,6 +36,21 @@ struct StructureChangeManagerTableCommentTests {
         }
     }
 
+    private func structureAdapter(_ manager: StructureChangeManager, on tab: StructureTab) -> StructureGridAdapter {
+        let adapter = StructureGridAdapter(
+            structureChangeManager: manager,
+            connection: TestFixtures.makeConnection(type: .postgresql),
+            tableName: "orders",
+            databaseName: "shop",
+            schemaName: nil,
+            objectKind: .table,
+            isSessionBound: false
+        )
+        adapter.store.switchSubTab(to: tab)
+        adapter.refresh()
+        return adapter
+    }
+
     private func rename(_ manager: StructureChangeManager, at row: Int, to name: String) {
         var column = manager.workingColumns[row]
         column.name = name
@@ -186,21 +201,15 @@ struct StructureChangeManagerTableCommentTests {
         let manager = makeManager()
         rename(manager, at: 1, to: "amount")
         manager.stageTableComment("Orders")
-        let delegate = StructureGridDelegate(
-            structureChangeManager: manager,
-            selectedTab: .ddl,
-            connection: TestFixtures.makeConnection(type: .postgresql),
-            tableName: "orders",
-            coordinator: nil
-        )
+        let adapter = structureAdapter(manager, on: .ddl)
 
-        delegate.dataGridUndo()
+        adapter.undo()
         #expect(manager.tableComment.text == "Customer orders")
 
-        delegate.dataGridUndo()
+        adapter.undo()
         #expect(manager.workingColumns[1].name == "amount")
 
-        delegate.dataGridRedo()
+        adapter.redo()
         #expect(manager.tableComment.text == "Orders")
     }
 
@@ -208,15 +217,9 @@ struct StructureChangeManagerTableCommentTests {
     func undoOnTriggersSkipsColumnEdits() {
         let manager = makeManager()
         rename(manager, at: 1, to: "amount")
-        let delegate = StructureGridDelegate(
-            structureChangeManager: manager,
-            selectedTab: .triggers,
-            connection: TestFixtures.makeConnection(type: .postgresql),
-            tableName: "orders",
-            coordinator: nil
-        )
+        let adapter = structureAdapter(manager, on: .triggers)
 
-        delegate.dataGridUndo()
+        adapter.undo()
 
         #expect(manager.workingColumns[1].name == "amount")
     }

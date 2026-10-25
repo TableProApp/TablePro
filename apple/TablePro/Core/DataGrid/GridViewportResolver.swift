@@ -15,7 +15,7 @@ internal struct GridViewportSnapshot: Equatable {
 
     static let top = GridViewportSnapshot(firstVisiblePosition: 0, firstVisibleOffset: 0, firstVisibleKey: nil)
 
-    /// The selection alone, for a re-read that starts at the first row but keeps what is selected.
+    // For a re-read that starts at the first row but keeps what is selected.
     var selectionOnly: GridViewportSnapshot {
         GridViewportSnapshot(firstVisiblePosition: 0, firstVisibleOffset: 0, firstVisibleKey: nil, selectedKeys: selectedKeys)
     }
@@ -65,8 +65,9 @@ internal enum GridViewportResolver {
         isCellModified: (RowID, Int) -> Bool = { _, _ in false }
     ) -> GridViewportSnapshot {
         let isKeyed = !keyColumns.isEmpty && tableRows.count <= keyedRowLimit
+        let order = DataGridRowOrder(filteredIDs: displayIDs, revision: 0)
         func key(_ displayRow: Int) -> [String: String]? {
-            DisplayRowMapping.row(forDisplay: displayRow, displayIDs: displayIDs, in: tableRows)
+            order.row(at: displayRow, in: tableRows)
                 .flatMap { savedKey(of: $0, in: tableRows, keyColumns: keyColumns, isCellModified: isCellModified) }
         }
         return GridViewportSnapshot(
@@ -139,7 +140,7 @@ internal enum GridViewportResolver {
             )
         }
 
-        /// The snapshot counted display positions, which a value filter makes differ from storage.
+        // The snapshot counted display positions, which a value filter makes differ from storage.
         let shown = displayIDs ?? incoming.rows.map(\.id)
         guard !shown.isEmpty else { return .firstRow }
         let position = min(snapshot.firstVisiblePosition, shown.count - 1)
@@ -151,8 +152,7 @@ internal enum GridViewportResolver {
         )
     }
 
-    /// One pass over the incoming rows, so restoring a large selection does not rescan them per row.
-    /// A key that repeats matches nothing, as in `uniqueRow(matching:in:)`.
+    // One pass, so a large selection does not rescan per row; a repeated key matches nothing, as in uniqueRow(matching:in:).
     private static func rows(
         matching keys: [[String: String]],
         in incoming: TableRows,

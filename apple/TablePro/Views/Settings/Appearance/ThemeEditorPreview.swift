@@ -33,8 +33,7 @@ internal struct ThemeEditorPreview: View {
     }
 }
 
-/// A view inside the preview, which never takes clicks or keyboard focus: a focused preview editor
-/// would answer Undo with its own empty history instead of the window's.
+// Never takes clicks or keyboard focus: a focused preview would answer Undo with its own empty history.
 internal protocol ThemePreviewSurface: AnyObject {}
 
 internal extension NSView {
@@ -54,8 +53,6 @@ private final class ThemePreviewHostingView<Content: View>: NSHostingView<Conten
     }
 }
 
-/// Draws its content in the theme's appearance whatever the window's is, so a dark theme previews as
-/// dark from a light Mac.
 private struct ThemePreviewAppearanceHost<Content: View>: NSViewRepresentable {
     let appearance: ThemeAppearance
     @ViewBuilder let content: () -> Content
@@ -75,7 +72,6 @@ private struct ThemePreviewAppearanceHost<Content: View>: NSViewRepresentable {
         }
     }
 
-    /// Increase Contrast is a system setting AppKit applies to these by itself.
     private static func drawingAppearance(for appearance: ThemeAppearance) -> NSAppearance? {
         NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
     }
@@ -97,14 +93,12 @@ internal enum ThemePreviewSample {
 
     private static var text: NSString { sql as NSString }
 
-    /// The first statement, as the editor bands the statement under the caret.
     internal static var statementRange: NSRange {
         let start = text.range(of: "SELECT").location
         let end = text.range(of: ";").location
         return NSRange(location: start, length: end + 1 - start)
     }
 
-    /// A caret on one line for the current-line band and a selection on another.
     internal static var cursorPositions: [CursorPosition] {
         let caretLine = text.range(of: "FROM orders")
         let selection = text.range(of: "'paid'")
@@ -155,7 +149,6 @@ private struct ThemePreviewEditor: View {
     }
 }
 
-/// The statement band is a decoration the host sets, so a read-only listing gets it from here.
 @MainActor
 private final class ThemePreviewStatementBand: TextViewCoordinator {
     func prepareCoordinator(controller: TextViewController) {
@@ -169,8 +162,8 @@ private final class ThemePreviewStatementBand: TextViewCoordinator {
 
 // MARK: - Grid
 
-/// Five rows that put every grid slot on screen: header and row numbers, both stripes, NULL, both
-/// booleans, an unfocused selection, and a modified, a deleted and an inserted row.
+// Five rows that put every grid slot on screen: row numbers, both stripes, NULL, both booleans, an
+// unfocused selection, and a modified, a deleted and an inserted row.
 internal enum ThemePreviewGridSample {
     internal static let selectedRow = 1
     internal static let modifiedRow = 2
@@ -205,6 +198,15 @@ internal enum ThemePreviewGridSample {
         )
     }()
 
+    // A preview: nothing to sort, filter or edit.
+    internal static var configuration: DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.showRowNumbers = true
+        configuration.supportsValueFilter = false
+        configuration.supportsColumnSort = false
+        return configuration
+    }
+
     internal static func visualState(forRow row: Int) -> RowVisualState? {
         switch row {
         case modifiedRow:
@@ -219,38 +221,39 @@ internal enum ThemePreviewGridSample {
     }
 }
 
-@MainActor
-private final class ThemePreviewGridDelegate: DataGridViewDelegate {
-    func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        ThemePreviewGridSample.visualState(forRow: row)
-    }
-}
-
 private struct ThemePreviewGrid: View {
     let scope: ThemeScope
 
-    @State private var changeManager = AnyChangeManager(DataChangeManager())
-    @State private var delegate = ThemePreviewGridDelegate()
-    @State private var selectedRows: Set<Int> = [ThemePreviewGridSample.selectedRow]
-    @State private var sortState = SortState()
-    @State private var columnLayout = ColumnLayoutState()
+    @StateObject private var grid: HeldRowsGridAdapter
 
-    var body: some View {
-        DataGridView(
-            tableRowsProvider: { ThemePreviewGridSample.tableRows },
-            changeManager: changeManager,
-            isEditable: false,
-            configuration: DataGridConfiguration(
-                showRowNumbers: true,
-                supportsColumnCommands: false,
-                supportsValueFilter: false,
-                supportsColumnSort: false
-            ),
-            delegate: delegate,
-            selectedRowIndices: $selectedRows,
-            sortState: $sortState,
-            columnLayout: $columnLayout,
+    init(scope: ThemeScope) {
+        self.scope = scope
+        _grid = StateObject(wrappedValue: HeldRowsGridAdapter(
+            configuration: ThemePreviewGridSample.configuration,
             themeScope: scope
-        )
+        ))
+    }
+
+    // task(id:) runs with this body's scope; onChange(of:) would hand the grid the previous one (measured).
+    var body: some View {
+        DataGridView(model: grid.model)
+            .task(id: ObjectIdentifier(scope)) { load() }
+    }
+
+    private func load() {
+        if grid.model.themeScope !== scope {
+            grid.model.themeScope = scope
+        }
+        guard grid.heldRows.rows.isEmpty else { return }
+        let rows = ThemePreviewGridSample.tableRows
+        var states: [RowID: RowVisualState] = [:]
+        for (index, row) in rows.rows.enumerated() {
+            states[row.id] = ThemePreviewGridSample.visualState(forRow: index)
+        }
+        grid.visualStates = states
+        grid.setRows(rows)
+        if rows.rows.indices.contains(ThemePreviewGridSample.selectedRow) {
+            grid.model.selectRows([rows.rows[ThemePreviewGridSample.selectedRow].id])
+        }
     }
 }

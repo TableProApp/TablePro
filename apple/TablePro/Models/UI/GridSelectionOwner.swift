@@ -2,22 +2,16 @@
 //  GridSelectionOwner.swift
 //  TablePro
 //
-//  Resolves which grid owns the row selection in `GridSelectionState`. The data grid,
-//  the structure grid, and the new-table grid all publish into that one channel, so
-//  every consumer has to agree on whose display positions the indices are.
-//
 
 import Foundation
 
+// Which grid's model holds the selection the inspector, the Edit menu and the status bar read.
 internal enum GridSelectionOwner: Equatable {
     case dataGrid
     case schemaGrid
     case none
 
-    /// The mode arm is an exhaustive switch rather than an exception list, so a mode added later
-    /// cannot compile without saying whose display positions its selection is. It used to name
-    /// `.chart` alone in an if-chain, which meant any new mode fell through to the `tabType`
-    /// switch below and silently claimed the data grid's channel.
+    // An exhaustive switch over the mode, so a mode added later has to say whose selection it shows.
     static func resolve(tabType: TabType?, resultsViewMode: ResultsViewMode?) -> GridSelectionOwner {
         guard let tabType else { return .none }
         if tabType == .createTable { return .schemaGrid }
@@ -27,8 +21,7 @@ internal enum GridSelectionOwner: Equatable {
             case .structure:
                 return .schemaGrid
             case .chart, .output:
-                /// Nothing in a chart or in printed output selects a row, so the indices left over
-                /// from the grid are nobody's.
+                // Nothing in a chart or in printed output selects a row.
                 return .none
             case .data, .json, .map:
                 break
@@ -37,9 +30,7 @@ internal enum GridSelectionOwner: Equatable {
 
         switch tabType {
         case .table, .query:
-            /// Map writes into this channel itself: clicking a shape selects that row, and the
-            /// indices it writes are the data grid's display positions, resolved through
-            /// `DisplayRowMapping`.
+            // Map selects through the same model: a clicked shape selects its row.
             return .dataGrid
         case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory,
              .tableListing:

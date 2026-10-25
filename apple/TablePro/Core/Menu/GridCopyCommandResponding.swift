@@ -16,3 +16,11 @@ import AppKit
     func copyRowsAsInsertStatements(_ sender: Any?)
     func copyRowsAsUpdateStatements(_ sender: Any?)
 }
+
+// Copy Rows, Copy with Headers and Copy as JSON. A focused grid answers for its own selection in any window.
+@MainActor
+@objc protocol GridRowCopyCommandResponding {
+    func copySelectedRows(_ sender: Any?)
+    func copyRowsWithHeaders(_ sender: Any?)
+    func copyRowsAsJson(_ sender: Any?)
+}

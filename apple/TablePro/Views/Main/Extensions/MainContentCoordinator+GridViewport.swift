@@ -6,10 +6,6 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func takeViewportPlacement(forTab tabId: UUID) -> GridViewportPlacement? {
-        tabSessionRegistry.takeViewportPlacement(for: tabId)
-    }
-
     func restoredRowAnchor(forTab tabId: UUID) -> [String: String]? {
         tabManager.tabs.first(where: { $0.id == tabId })?.restoredRowAnchor
     }
@@ -19,14 +15,13 @@ extension MainContentCoordinator {
         tabManager.mutate(tabId: tabId) { $0.restoredRowAnchor = nil }
     }
 
-    /// A query tab's grid stays where AppKit leaves it after a run; only a re-read of its own result
-    /// asks to keep the place and the selection.
+    // A query tab's grid stays where AppKit leaves it after a run; only a re-read of its own result keeps place and selection.
     func isGridMounted(forTab tabId: UUID, acceptsQueryTab: Bool = false) -> Bool {
         guard tabManager.selectedTabId == tabId,
               let tab = tabManager.selectedTab,
               tab.tabType == .table || (acceptsQueryTab && tab.tabType == .query),
               tab.display.resultsViewMode == .data else { return false }
-        return dataTabDelegate?.tableViewCoordinator != nil
+        return existingGridModel(forTab: tabId)?.isMounted == true
     }
 
     func viewportKeyColumns(forTab tabId: UUID) -> [String] {
@@ -42,20 +37,29 @@ extension MainContentCoordinator {
         guard intent == .keepPlace || keepsSelection,
               let tableRows = tabSessionRegistry.existingTableRows(for: tabId),
               !tableRows.rows.isEmpty else { return .top }
-        let sample = intent == .keepPlace ? dataTabDelegate?.tableViewCoordinator?.viewportSample() : nil
+        let model = existingGridModel(forTab: tabId)
+        let sample = intent == .keepPlace ? viewportSample(of: model) : nil
         guard sample != nil || keepsSelection else { return .top }
 
         let snapshot = GridViewportResolver.snapshot(
             of: tableRows,
-            displayIDs: displayIDs(forTab: tabId),
-            firstVisibleDisplayRow: sample?.firstVisibleRow ?? 0,
+            displayIDs: model?.displayedRowIDs,
+            firstVisibleDisplayRow: sample?.row ?? 0,
             firstVisibleOffset: sample?.offset ?? 0,
-            selectedDisplayRows: keepsSelection ? Array(selectionState.indices) : [],
+            selectedDisplayRows: keepsSelection ? Array(model?.selection.affectedRows ?? IndexSet()) : [],
             keyColumns: keyColumns,
             isCellModified: { [changeManager] rowID, column in
                 changeManager.isCellModified(rowID: rowID, columnIndex: column)
             }
         )
         return sample == nil ? snapshot.selectionOnly : snapshot
+    }
+
+    // The anchor the grid last saved; the model has no live read of the first visible row.
+    private func viewportSample(of model: DataGridModel?) -> (row: Int, offset: CGFloat)? {
+        guard let model, let anchor = model.store.viewportAnchor,
+              let rowID = anchor.firstVisibleRow,
+              let row = model.displayIndex(of: rowID) else { return nil }
+        return (row, anchor.firstVisibleOffset)
     }
 }

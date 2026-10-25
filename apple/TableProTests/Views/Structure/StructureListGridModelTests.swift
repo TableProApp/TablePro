@@ -1,202 +1,214 @@
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
 
 @MainActor
-private final class NoLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
+struct StructureListGridModelTests {
+    private let columns = ["Name", "Timing"]
+    private let rows = [
+        StructureListRow(id: "a", values: ["alpha", "BEFORE"]),
+        StructureListRow(id: "b", values: ["beta", "AFTER"]),
+        StructureListRow(id: "c", values: ["gamma", "AFTER"]),
+    ]
 
-extension GlobalStateSuites {
-    @Suite(.recordingClipboard)
-    @MainActor
-    struct StructureListGridModelTests {
-        private let columns = ["Name", "Timing"]
-        private let rows = [
-            StructureListRow(id: "a", values: ["alpha", "BEFORE"]),
-            StructureListRow(id: "b", values: ["beta", "AFTER"]),
-            StructureListRow(id: "c", values: ["gamma", "AFTER"]),
-        ]
+    private func load(
+        _ model: StructureListGridModel<String>,
+        _ rows: [StructureListRow<String>],
+        sortState: SortState? = nil
+    ) {
+        model.load(
+            columns: columns,
+            rows: rows,
+            defaultWidths: [],
+            minimumWidths: [],
+            databaseType: .mysql,
+            sortState: sortState
+        )
+    }
 
-        private func loadedModel(accessibilityLabel: String? = nil) -> StructureListGridModel<String> {
-            let model = StructureListGridModel<String>(accessibilityLabel: accessibilityLabel)
-            _ = model.ensureLoaded(key: 1, columns: columns) { rows }
-            return model
-        }
+    private func loadedModel() -> StructureListGridModel<String> {
+        let model = StructureListGridModel<String>()
+        load(model, rows)
+        return model
+    }
 
-        private func makeCoordinator(tableView: NSTableView? = nil) -> TableViewCoordinator {
-            let coordinator = TableViewCoordinator(
-                changeManager: AnyChangeManager(DataChangeManager()),
-                isEditable: false,
-                selectedRowIndices: .constant([]),
-                delegate: nil,
-                layoutPersister: NoLayoutPersister()
-            )
-            coordinator.tableView = tableView
-            return coordinator
-        }
+    private func displayedIDs(_ model: StructureListGridModel<String>) -> [String] {
+        (0..<model.model.rowCount).compactMap { index in model.model.rowID(at: index).flatMap { model.id(for: $0) } }
+    }
 
-        @Test("Rows are built once per content key, in the order given, as text cells")
-        func buildsRowsOncePerKey() {
-            let model = StructureListGridModel<String>()
-            var builds = 0
-            let loaded = model.ensureLoaded(key: 1, columns: columns) {
-                builds += 1
-                return rows
-            }
-            _ = model.ensureLoaded(key: 1, columns: columns) {
-                builds += 1
-                return rows
-            }
-            #expect(builds == 1)
-            #expect(loaded.columns == columns)
-            #expect(loaded.rows.map { $0.values.map(\.asText) } == rows.map { $0.values.map(Optional.some) })
-            #expect(model.rowIDs == ["a", "b", "c"])
+    private func displayRows(_ model: StructureListGridModel<String>, of ids: Set<String>) -> IndexSet {
+        IndexSet(ids.compactMap { id in model.rowID(for: id).flatMap { model.model.displayIndex(of: $0) } })
+    }
 
-            let reordered = model.ensureLoaded(key: 2, columns: columns) {
-                builds += 1
-                return rows.reversed()
-            }
-            #expect(builds == 2)
-            #expect(reordered.rows.first?.values.first?.asText == "gamma")
-            #expect(model.rowIDs == ["c", "b", "a"])
-        }
+    @Test("Rows load in the order given, as text cells, and the same rows again change nothing")
+    func loadsRowsInOrder() {
+        let model = loadedModel()
+        let revision = model.model.displayRevision
 
-        @Test("A display row and a row id map both ways, and an unknown one maps to nothing")
-        func mapsDisplayRowsAndIDs() {
-            let model = loadedModel()
-            #expect(model.id(atDisplayRow: 1) == "b")
-            #expect(model.id(atDisplayRow: 3) == nil)
-            #expect(model.id(atDisplayRow: -1) == nil)
-            #expect(model.ids(atDisplayRows: [0, 2, 7]) == ["a", "c"])
-            #expect(model.displayRows(of: ["c", "z"]) == [2])
-            #expect(model.displayRows(of: []).isEmpty)
-        }
+        #expect(model.tableRows.columns == columns)
+        #expect(model.tableRows.rows.map { $0.values.map(\.asText) } == rows.map { $0.values.map(Optional.some) })
+        #expect(model.rowIDs == ["a", "b", "c"])
+        #expect(displayedIDs(model) == ["a", "b", "c"])
 
-        @Test("Copying rows writes them as tab-separated lines in display order")
-        func copiesRowsAsTabSeparatedText() throws {
-            let clipboard = try #require(RecordingClipboard.current)
+        load(model, rows)
+        #expect(model.model.displayRevision == revision)
 
-            loadedModel().dataGridCopyRows([2, 0, 9])
+        load(model, rows.reversed())
+        #expect(model.tableRows.rows.first?.values.first?.asText == "gamma")
+        #expect(model.rowIDs == ["c", "b", "a"])
+    }
 
-            #expect(clipboard.text == "alpha\tBEFORE\ngamma\tAFTER")
-        }
+    @Test("An id and its grid row map both ways, and an unknown one maps to nothing")
+    func mapsRowsAndIDs() throws {
+        let model = loadedModel()
+        let second = try #require(model.model.rowID(at: 1))
 
-        @Test("Copying no row leaves the clipboard alone")
-        func copyingNothingWritesNothing() throws {
-            let clipboard = try #require(RecordingClipboard.current)
+        #expect(model.id(for: second) == "b")
+        #expect(model.rowID(for: "b") == second)
+        #expect(model.model.rowID(at: 3) == nil)
+        #expect(model.rowID(for: "z") == nil)
+        #expect(displayRows(model, of: ["c", "z"]) == [2])
+        #expect(displayRows(model, of: []).isEmpty)
+    }
 
-            loadedModel().dataGridCopyRows([])
+    @Test("A list row keeps its grid row across a reload, so a reorder is not a new record")
+    func rowIdentitySurvivesAReorder() throws {
+        let model = loadedModel()
+        let beta = try #require(model.rowID(for: "b"))
 
-            #expect(clipboard.text == nil)
-        }
+        load(model, rows.reversed())
 
-        @Test("A header click reaches the owner of the rows")
-        func forwardsSortToOwner() {
-            let model = loadedModel()
-            var received: SortState?
-            model.onSortStateChanged = { received = $0 }
-            let state = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
+        #expect(model.rowID(for: "b") == beta)
+        #expect(model.model.displayIndex(of: beta) == 1)
+    }
 
-            model.dataGridSortStateChanged(state)
+    @Test("A header sort reaches the owner of the rows")
+    func forwardsSortToOwner() {
+        let model = loadedModel()
+        var received: SortState?
+        model.grid.onSortChange = { received = $0 }
+        let state = SortState(columns: [SortColumn(columnIndex: 1, direction: .descending)], source: .user)
 
-            #expect(received == state)
-        }
+        model.model.setSort(state)
 
-        @Test("Every reload has the selection put back by identity")
-        func rearmsSelectionRestoreOnAttach() {
-            let coordinator = makeCoordinator()
-            coordinator.hasRestoredSelection = true
-            loadedModel().dataGridAttach(tableViewCoordinator: coordinator)
-            #expect(!coordinator.hasRestoredSelection)
-        }
+        #expect(received == state)
+        #expect(model.model.store.sortState == state)
+    }
 
-        @Test("The selection binding maps rows to ids and back")
-        func selectionBindingMapsBothWays() {
-            let model = loadedModel()
-            var ids: Set<String> = ["b"]
-            let selection = model.selection(get: { ids }, set: { ids = $0 })
+    @Test("A nil sort turns header sorting off, and a sort turns it on")
+    func sortStateDecidesHeaderSorting() {
+        let model = StructureListGridModel<String>()
+        load(model, rows)
+        #expect(!model.model.configuration.supportsColumnSort)
 
-            #expect(selection.wrappedValue == [1])
-            selection.wrappedValue = [0, 2]
-            #expect(ids == ["a", "c"])
-        }
+        load(model, rows, sortState: SortState())
+        #expect(model.model.configuration.supportsColumnSort)
+    }
 
-        @Test("Rows published before the grid puts the selection back after a reload leave the ids alone")
-        func dropsPublicationsDuringReload() {
-            let model = loadedModel()
-            let coordinator = makeCoordinator()
-            model.dataGridAttach(tableViewCoordinator: coordinator)
-            var ids: Set<String> = ["a", "b"]
-            let selection = model.selection(get: { ids }, set: { ids = $0 })
+    @Test("The owner's selection maps to grid rows, and a grid selection maps back to ids")
+    func selectionMapsBothWays() throws {
+        let model = loadedModel()
+        var published: [Set<String>] = []
+        model.onSelect = { published.append($0) }
 
-            selection.wrappedValue = [2]
-            #expect(ids == ["a", "b"])
+        model.syncSelection(["b"])
+        #expect(displayRows(model, of: model.selectedIDs) == [1])
+        #expect(published.isEmpty)
 
-            coordinator.hasRestoredSelection = true
-            selection.wrappedValue = [2]
-            #expect(ids == ["c"])
-        }
+        let first = try #require(model.model.rowID(at: 0))
+        let third = try #require(model.model.rowID(at: 2))
+        model.model.selectRows([first, third])
+        #expect(published.last == ["a", "c"])
+        #expect(model.selectedIDs == ["a", "c"])
+    }
 
-        @Test("Republishing the rows the selection already shows keeps the ids a filter hides")
-        func echoKeepsHiddenIDs() {
-            let model = loadedModel()
-            var ids: Set<String> = ["a", "hidden"]
-            let selection = model.selection(get: { ids }, set: { ids = $0 })
+    @Test("A reload that keeps the selected records publishes nothing to the owner")
+    func reloadKeepsTheIDsWithoutPublishing() {
+        let model = loadedModel()
+        var published: [Set<String>] = []
+        model.onSelect = { published.append($0) }
+        model.syncSelection(["a", "b"])
 
-            selection.wrappedValue = [0]
-            #expect(ids == ["a", "hidden"])
-        }
+        load(model, rows.reversed())
 
-        @Test("Default widths fill only the columns the layout has no width for")
-        func defaultWidthsFillMissingColumns() {
-            var stored = ColumnLayoutState()
-            stored.columnWidths["Timing"] = 300
+        #expect(published.isEmpty)
+        #expect(model.selectedIDs == ["a", "b"])
+        #expect(displayRows(model, of: ["a", "b"]) == [1, 2])
+    }
 
-            let layout = StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: [220, 90])
+    // A filtered list republishing what it shows used to drop the selected ids the filter hid.
+    @Test("Syncing ids a filter hides keeps them for the owner")
+    func syncKeepsHiddenIDs() {
+        let model = loadedModel()
+        var published: [Set<String>] = []
+        model.onSelect = { published.append($0) }
 
-            #expect(layout.columnWidths == ["Name": 220, "Timing": 300])
-            #expect(StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: []) == stored)
-        }
+        model.syncSelection(["a", "hidden"])
 
-        @Test("Minimum widths follow the columns by index and name nothing past them")
-        func minimumWidthsFollowColumns() {
-            #expect(StructureListGrid<String>.minimumWidths([140, 70], columns: columns) == ["Name": 140, "Timing": 70])
-            #expect(StructureListGrid<String>.minimumWidths([140], columns: columns) == ["Name": 140])
-            #expect(StructureListGrid<String>.minimumWidths([], columns: columns).isEmpty)
-        }
+        #expect(published.isEmpty)
+        #expect(model.selectedIDs == ["a"])
+    }
 
-        @Test("A spoken value is answered for its display row and column, and nothing else is")
-        func answersSpokenValues() {
-            let model = StructureListGridModel<String>()
-            _ = model.ensureLoaded(key: 1, columns: columns) {
-                [
-                    StructureListRow(id: "a", values: ["alpha", "YES"], spokenValues: [1: "Enabled"]),
-                    StructureListRow(id: "b", values: ["beta", "NO"]),
-                ]
-            }
+    @Test("Default widths fill only the columns the layout has no width for")
+    func defaultWidthsFillMissingColumns() {
+        var stored = ColumnLayoutState()
+        stored.columnWidths["Timing"] = 300
 
-            #expect(model.dataGridAccessibilityText(row: 0, column: 1) == "Enabled")
-            #expect(model.dataGridAccessibilityText(row: 0, column: 0) == nil)
-            #expect(model.dataGridAccessibilityText(row: 1, column: 1) == nil)
-            #expect(model.dataGridAccessibilityText(row: 5, column: 1) == nil)
-        }
+        let layout = StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: [220, 90])
 
-        @Test("The grid is named for the list it shows")
-        func namesTheGrid() {
-            let tableView = NSTableView()
-            tableView.setAccessibilityLabel(String(localized: "Data grid"))
-            let coordinator = makeCoordinator(tableView: tableView)
+        #expect(layout.columnWidths == ["Name": 220, "Timing": 300])
+        #expect(StructureListGrid<String>.layout(stored, columns: columns, defaultWidths: []) == stored)
+    }
 
-            loadedModel(accessibilityLabel: StructureTab.triggers.displayName).dataGridAttach(tableViewCoordinator: coordinator)
+    @Test("A width the reader set survives a reload of the same columns")
+    func readerWidthSurvivesAReload() {
+        let model = StructureListGridModel<String>()
+        model.load(columns: columns, rows: rows, defaultWidths: [220, 90], minimumWidths: [], databaseType: .mysql, sortState: nil)
+        model.model.updateColumnLayout { $0.columnWidths["Name"] = 400 }
 
-            #expect(tableView.accessibilityLabel() == StructureTab.triggers.displayName)
-        }
+        model.load(columns: columns, rows: Array(rows.prefix(2)), defaultWidths: [220, 90], minimumWidths: [], databaseType: .mysql, sortState: nil)
+
+        #expect(model.model.store.columnLayout.columnWidths["Name"] == 400)
+        #expect(model.model.store.layoutScope == .ephemeral)
+    }
+
+    @Test("Minimum widths follow the columns by index and name nothing past them")
+    func minimumWidthsFollowColumns() {
+        #expect(StructureListGrid<String>.minimumWidths([140, 70], columns: columns) == ["Name": 140, "Timing": 70])
+        #expect(StructureListGrid<String>.minimumWidths([140], columns: columns) == ["Name": 140])
+        #expect(StructureListGrid<String>.minimumWidths([], columns: columns).isEmpty)
+    }
+
+    @Test("A spoken value is answered for its row and column, and nothing else is")
+    func answersSpokenValues() throws {
+        let model = StructureListGridModel<String>()
+        load(model, [
+            StructureListRow(id: "a", values: ["alpha", "YES"], spokenValues: [1: "Enabled"]),
+            StructureListRow(id: "b", values: ["beta", "NO"]),
+        ])
+        let first = try #require(model.model.rowID(at: 0))
+        let second = try #require(model.model.rowID(at: 1))
+        let name = try #require(model.model.columns.column(at: 0))
+        let timing = try #require(model.model.columns.column(at: 1))
+
+        #expect(model.grid.gridAccessibilityText(for: first, column: timing) == "Enabled")
+        #expect(model.grid.gridAccessibilityText(for: first, column: name) == nil)
+        #expect(model.grid.gridAccessibilityText(for: second, column: timing) == nil)
+        #expect(model.grid.gridAccessibilityText(for: .existing(99), column: timing) == nil)
+    }
+
+    @Test("The list is read-only, never takes a commit, and offers no row commands")
+    func listIsReadOnly() throws {
+        let model = loadedModel()
+        let first = try #require(model.model.rowID(at: 0))
+        let name = try #require(model.model.columns.column(at: 0))
+
+        #expect(!model.model.configuration.isEditable)
+        #expect(!model.model.commit([DataGridCellEdit(rowID: first, columnID: name.id, value: .enteredText("x"))], actionName: "Edit"))
+        #expect(model.model.configuration.commands == [.freezeColumns])
+        #expect(model.tableRows.rows.first?.values.first?.asText == "alpha")
     }
 }
 
@@ -229,9 +241,7 @@ struct StructureListGridToneTests {
             content: DataGridCellContent(displayText: "active", rawValue: "active", placeholder: placeholder),
             state: DataGridCellState(
                 visualState: visualState,
-                isFocused: false,
                 isEditable: false,
-                isLargeDataset: false,
                 isCurrentFindMatch: isCurrentFindMatch,
                 row: 0,
                 columnIndex: 0
@@ -239,7 +249,6 @@ struct StructureListGridToneTests {
             palette: palette,
             nullDisplayString: "NULL",
             onEmphasizedSelection: onEmphasizedSelection,
-            hasOverlay: false,
             textTone: tone
         )
     }
@@ -253,19 +262,28 @@ struct StructureListGridToneTests {
     }
 
     @Test("A tone is answered for its own cell, and a row without tones answers none")
-    func modelAnswersTonePerCell() {
+    func modelAnswersTonePerCell() throws {
         let model = StructureListGridModel<String>()
-        _ = model.ensureLoaded(key: 1, columns: ["Name", "State"]) {
-            [
+        model.load(
+            columns: ["Name", "State"],
+            rows: [
                 StructureListRow(id: "a", values: ["alpha", "active"], tones: [1: .positive]),
                 StructureListRow(id: "b", values: ["beta", "idle"]),
-            ]
-        }
+            ],
+            defaultWidths: [],
+            minimumWidths: [],
+            databaseType: .mysql,
+            sortState: nil
+        )
+        let first = try #require(model.model.rowID(at: 0))
+        let second = try #require(model.model.rowID(at: 1))
+        let name = try #require(model.model.columns.column(at: 0))
+        let state = try #require(model.model.columns.column(at: 1))
 
-        #expect(model.dataGridTextTone(row: 0, column: 1) == .systemGreen)
-        #expect(model.dataGridTextTone(row: 0, column: 0) == nil)
-        #expect(model.dataGridTextTone(row: 1, column: 1) == nil)
-        #expect(model.dataGridTextTone(row: 5, column: 1) == nil)
+        #expect(model.grid.gridTextTone(for: first, column: state) == .systemGreen)
+        #expect(model.grid.gridTextTone(for: first, column: name) == nil)
+        #expect(model.grid.gridTextTone(for: second, column: state) == nil)
+        #expect(model.grid.gridTextTone(for: .existing(99), column: state) == nil)
     }
 
     @Test("A toned value draws in its tone and turns to the selection text on an emphasized selection")

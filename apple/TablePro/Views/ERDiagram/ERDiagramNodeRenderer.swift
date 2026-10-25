@@ -54,13 +54,7 @@ enum ERDiagramNodeRenderer {
         )
 
         canvas.clip(to: body) {
-            if let headerFill = palette.headerFill {
-                canvas.fill(headerRect, color: headerFill)
-            }
-            // A cluster's hue groups related tables, so it still washes a themed header.
-            if palette.headerFill == nil || clusterColor != nil {
-                canvas.fill(headerRect, color: palette.headerWash(cluster: clusterColor))
-            }
+            canvas.fill(headerRect, color: palette.headerWash(cluster: clusterColor))
         }
 
         canvas.stroke(
@@ -76,7 +70,7 @@ enum ERDiagramNodeRenderer {
         canvas.drawText(
             displayName,
             font: .monospacedSystemFont(ofSize: headerPointSize * scale, weight: .semibold),
-            color: palette.headerText,
+            color: palette.text,
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
             anchor: .leading
         )

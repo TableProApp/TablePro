@@ -28,16 +28,17 @@ struct ServerDashboardGridTests {
         SortState(columns: [SortColumn(columnIndex: column, direction: direction)], source: .user)
     }
 
-    private func gridTable(in view: NSView?) -> KeyHandlingTableView? {
+    private func gridTable(in view: NSView?) -> DataGridTableView? {
         guard let view else { return nil }
-        if let table = view as? KeyHandlingTableView { return table }
+        if let table = view as? DataGridTableView, table.paneKind == .main { return table }
         for subview in view.subviews {
             if let found = gridTable(in: subview) { return found }
         }
         return nil
     }
 
-    private func host(_ view: some View) -> NSWindow {
+    // The list loads its rows in onAppear, which SwiftUI runs on a later turn than the first layout.
+    private func host(_ view: some View) async -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
             styleMask: [.titled],
@@ -46,7 +47,12 @@ struct ServerDashboardGridTests {
         )
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view.frame(width: 800, height: 400))
-        window.contentView?.layoutSubtreeIfNeeded()
+        for _ in 0 ..< 10 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
         return window
     }
 
@@ -107,19 +113,32 @@ struct ServerDashboardGridTests {
     }
 
     @Test("The sessions grid draws the State hue, white on an emphasized selection, and every other cell in the grid text")
-    func sessionsGridDrawsTheStateHue() throws {
+    func sessionsGridDrawsTheStateHue() async throws {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
         viewModel.sessions = sessions
-        let window = host(SessionsTableView(viewModel: viewModel))
+        let window = await host(SessionsTableView(viewModel: viewModel))
         defer {
             viewModel.stopAutoRefresh()
             window.contentView = nil
         }
-        let coordinator = try #require(gridTable(in: window.contentView)?.coordinator)
-        let palette = coordinator.cellRegistry.palette
+        let table = try #require(gridTable(in: window.contentView))
+        let controller = try #require(table.controller)
+        let presenter = controller.presenter
+        let pass = try #require(presenter.makePass(in: table.effectiveAppearance))
+        let palette = pass.palette
         let state = SessionGridColumns.stateColumn
         func textColor(row: Int, column: Int, selected: Bool = false) -> NSColor? {
-            coordinator.cellAppearance(row: row, columnIndex: column, onEmphasizedSelection: selected)?.textColor
+            let model = controller.model
+            guard let rowModel = model.row(at: row),
+                  let gridColumn = model.columns.columns.first(where: { $0.dataIndex == column }) else { return nil }
+            return presenter.appearance(
+                of: rowModel,
+                displayRow: row,
+                column: gridColumn,
+                visualState: presenter.visualState(of: rowModel),
+                pass: pass,
+                onEmphasizedSelection: selected
+            )?.textColor
         }
 
         // Longest first: the idle session, then the two active ones.
@@ -130,7 +149,7 @@ struct ServerDashboardGridTests {
         #expect(textColor(row: 1, column: SessionGridColumns.durationColumn) == palette.text)
     }
 
-    private func headerRedPixels(selecting ids: Set<String>) throws -> Int {
+    private func headerRedPixels(selecting ids: Set<String>) async throws -> Int {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
         viewModel.sessions = sessions
         viewModel.sessionSelection.ids = ids
@@ -145,7 +164,12 @@ struct ServerDashboardGridTests {
             viewModel.stopAutoRefresh()
             window.contentView = nil
         }
-        host.layoutSubtreeIfNeeded()
+        for _ in 0 ..< 10 {
+            host.layoutSubtreeIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
         let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
         let headerRows = Int(36 * CGFloat(bitmap.pixelsHigh) / size.height)
@@ -155,9 +179,9 @@ struct ServerDashboardGridTests {
     }
 
     @Test("Terminate draws its red glyph while it can end the selected session, and the standard glyph while disabled")
-    func terminateGlyphIsRedOnlyWhileEnabled() throws {
-        #expect(try headerRedPixels(selecting: ["10"]) > 0)
-        #expect(try headerRedPixels(selecting: []) == 0)
+    func terminateGlyphIsRedOnlyWhileEnabled() async throws {
+        #expect(try await headerRedPixels(selecting: ["10"]) > 0)
+        #expect(try await headerRedPixels(selecting: []) == 0)
     }
 
     @Test("Cancel and Terminate act on exactly one selected session that is still listed")
@@ -187,10 +211,10 @@ struct ServerDashboardGridTests {
     }
 
     @Test("The sessions pane draws its records in the data grid")
-    func sessionsMountTheDataGrid() throws {
+    func sessionsMountTheDataGrid() async throws {
         let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .mysql, services: .live)
         viewModel.sessions = sessions
-        let window = host(SessionsTableView(viewModel: viewModel))
+        let window = await host(SessionsTableView(viewModel: viewModel))
         defer {
             viewModel.stopAutoRefresh()
             window.contentView = nil
@@ -199,10 +223,28 @@ struct ServerDashboardGridTests {
         #expect(table.numberOfRows == sessions.count)
     }
 
+    @Test("A session selected in the grid becomes the one Cancel and Terminate act on")
+    func gridSelectionReachesTheActionTarget() async throws {
+        let viewModel = ServerDashboardViewModel(connectionId: UUID(), databaseType: .postgresql, services: .live)
+        viewModel.sessions = sessions
+        let window = await host(SessionsTableView(viewModel: viewModel))
+        defer {
+            viewModel.stopAutoRefresh()
+            window.contentView = nil
+        }
+        let table = try #require(gridTable(in: window.contentView))
+
+        // Longest first: the idle session "2", then "10" and "7".
+        table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+
+        #expect(viewModel.sessionSelection.ids == ["10"])
+        #expect(SessionGridColumns.actionTarget(viewModel.sessionSelection.ids, in: viewModel.sessions)?.id == "10")
+    }
+
     @Test("The slow query pane draws its records in the data grid")
-    func slowQueriesMountTheDataGrid() throws {
+    func slowQueriesMountTheDataGrid() async throws {
         let queries = [DashboardSlowQuery(duration: "4s", query: "SELECT SLEEP(4)", user: "app", database: "shop")]
-        let window = host(SlowQueryListView(queries: queries, error: nil, databaseType: .mysql))
+        let window = await host(SlowQueryListView(queries: queries, error: nil, databaseType: .mysql))
         defer { window.contentView = nil }
         let table = try #require(gridTable(in: window.contentView))
         #expect(table.numberOfRows == 1)

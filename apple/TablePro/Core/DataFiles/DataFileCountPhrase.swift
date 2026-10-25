@@ -20,10 +20,6 @@ enum DataFileCountPhrase {
         count == 1 ? String(localized: "1 cell") : String(format: String(localized: "%@ cells"), count.formatted())
     }
 
-    static func matches(_ count: Int) -> String {
-        count == 1 ? String(localized: "1 match") : String(format: String(localized: "%@ matches"), count.formatted())
-    }
-
     static func duplicateRows(_ count: Int) -> String {
         count == 1
             ? String(localized: "1 duplicate row")

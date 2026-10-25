@@ -6,14 +6,7 @@
 import AppKit
 import Foundation
 
-/// Reads live app state into the value objects a script sees.
-///
-/// The scriptable objects stay dumb on purpose: they hold strings and codes, and every question that
-/// needs the running app is answered here. That keeps one place to check when asking what a script
-/// can see, which for a database client is the question that matters.
-///
-/// A connection whose **External Clients** level is Blocked is not listed at all, so a script cannot
-/// discover its name, host or database. `ExternalConnectionDirectory` drops it, the same list MCP reads.
+// The one place a script's view of the app is decided. A Blocked External Clients connection is dropped, the same list MCP reads.
 @MainActor
 internal enum ScriptingSnapshot {
     // MARK: - Connections
@@ -26,14 +19,7 @@ internal enum ScriptingSnapshot {
         connections().first { $0.connectionId == id }
     }
 
-    /// Whether a script may see this connection at all.
-    ///
-    /// Asked again on every path that can reach a connection without having resolved it through
-    /// `connections()` first. `current tab` is the one that can: it starts from the front window,
-    /// not from the element list, so without this a Blocked connection on screen would hand a script
-    /// its tab and, through the tab, its rows.
-    /// Read from storage rather than from the session, because nothing reconciles the level onto a
-    /// live session, and a connection deleted while its session is still up is not visible at all.
+    // Rechecked on paths that skip `connections()` (current tab). Read from storage: nothing syncs the level onto a live session.
     internal static func isVisibleToScripts(connectionId: UUID) -> Bool {
         guard let stored = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId })
         else {
@@ -42,8 +28,6 @@ internal enum ScriptingSnapshot {
         return stored.externalAccess != .blocked
     }
 
-    /// The connection the frontmost window is showing, which is what an unqualified script means by
-    /// "the one I am looking at".
     internal static func currentConnection() -> ScriptConnection? {
         guard let id = frontmostCoordinator()?.connectionId else { return nil }
         return connection(withId: id)
@@ -76,12 +60,7 @@ internal enum ScriptingSnapshot {
         )
     }
 
-    /// Waits for a table tab to appear after asking for it to be opened.
-    ///
-    /// Opening a tab runs through window creation and a connect, neither of which the router waits
-    /// on, so a command that returned immediately would hand the script a reference to nothing. The
-    /// deadline is what turns a connection that never opens into an error the script can catch
-    /// rather than a wait that only ends at AppleScript's own two-minute timeout.
+    // The router doesn't wait on window creation or connect; the deadline beats AppleScript's two-minute timeout with a catchable error.
     internal static func awaitTab(
         connectionId: UUID,
         tableName: String,
@@ -103,10 +82,7 @@ internal enum ScriptingSnapshot {
         return nil
     }
 
-    /// The table name alone is not an identity. Another database or schema on the same connection
-    /// can have a table of the same name already open, and returning that one hands the script a
-    /// reference to rows it did not ask for. A database or schema the script left out means the one
-    /// being browsed, which is where the open put the tab, not any of them.
+    // Name alone isn't identity: a same-named table in another database or schema may be open. Omitted parts mean the browsed one.
     private static func matches(
         _ tab: ScriptTab,
         tableName: String,
@@ -148,10 +124,7 @@ internal enum ScriptingSnapshot {
 
     // MARK: - Results
 
-    /// The rows a tab is showing, or only the ones selected in its grid.
-    ///
-    /// Selection indices are display positions, not indices into the row buffer, so they are
-    /// resolved through `DisplayedResultReader` rather than used to subscript anything.
+    // Selection indices are display positions, so they resolve through `DisplayedResultReader` and never subscript the buffer.
     internal static func result(
         ofTab tabId: UUID,
         connectionId: UUID,
@@ -164,24 +137,15 @@ internal enum ScriptingSnapshot {
             return ScriptResultEncoder.empty()
         }
 
-        /// The live grid only answers for the tab it is mounted in, and only while a data grid owns
-        /// its selection: in Structure or Chart mode those indices belong to the schema grid or are
-        /// left over from the last data grid, and applying them to the row buffer returns unrelated
-        /// rows. Every other tab's selection is the one persisted on the tab itself.
+        // Each data tab's model keeps its own selection, mounted or not, so every tab answers for itself.
         let isSelectedTab = coordinator.tabManager.selectedTabId == tabId
-        let ownsLiveSelection = isSelectedTab && GridSelectionOwner.resolve(
-            tabType: tab.tabType,
-            resultsViewMode: tab.display.resultsViewMode
-        ) == .dataGrid
-        let selected = selectedOnly
-            ? (ownsLiveSelection ? coordinator.selectionState.indices : tab.selectedDisplayRows)
-            : []
+        let selection = coordinator.existingGridModel(forTab: tabId)?.selection.affectedRows ?? IndexSet()
+        let selected = selectedOnly ? Set(selection) : []
         if selectedOnly, selected.isEmpty {
             return ScriptResultEncoder.empty()
         }
 
-        /// A row marked for deletion is still in the buffer and is deliberately not in the result the
-        /// grid is showing, so it is not in what a script reads either.
+        // A row marked for deletion stays in the buffer but not in the grid's result, so a script doesn't read it either.
         let deleted = isSelectedTab
             ? coordinator.changeManager.deletedRowIDs
             : tab.pendingChanges.deletedRowIDs
@@ -223,10 +187,7 @@ internal enum ScriptingSnapshot {
         }
     }
 
-    /// One window hosts several connections, so every one of their coordinators reports the same
-    /// `contentWindow` and picking the first match returns an arbitrary one. `coordinator(forWindow:)`
-    /// asks the window which workspace it is showing, which is the only thing "the one I am looking
-    /// at" can mean.
+    // One window hosts several connections that share `contentWindow`; `coordinator(forWindow:)` asks which workspace it shows.
     private static func frontmostCoordinator() -> MainContentCoordinator? {
         for window in [NSApp.keyWindow, NSApp.mainWindow].compactMap({ $0 }) {
             if let match = MainContentCoordinator.coordinator(forWindow: window) {

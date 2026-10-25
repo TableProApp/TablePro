@@ -39,6 +39,19 @@ struct DataFileControllerTests {
         return controller
     }
 
+    // A cell range on the page, as the grid's selection holds it.
+    private func select(_ cells: [(row: Int, column: Int)], in controller: DataFileController) {
+        let rects = cells.map { GridRect(rows: $0.row...$0.row, columns: $0.column...$0.column) }
+        let active = cells.last.map { GridCoord(row: $0.row, displayColumn: $0.column) }
+        controller.gridModel.setSelection(GridSelection(rectangles: rects, activeCell: active, anchor: active))
+    }
+
+    private func editableGrid(_ controller: DataFileController) -> DataGridModel {
+        let model = controller.gridModel
+        model.configuration.isEditable = true
+        return model
+    }
+
     private func column(_ controller: DataFileController, _ index: Int) -> [String] {
         controller.tableRows.rows.map { row in
             guard case .text(let text) = row.values[index] else { return "" }
@@ -74,7 +87,7 @@ struct DataFileControllerTests {
         #expect(column(controller, 1) == ["Rome"])
     }
 
-    /// Compared as text, "9" sorts after "50" and would be kept too.
+    // Compared as text, "9" sorts after "50" and would be kept too.
     @Test("A cell filter on a number column compares numbers, not text")
     func cellFilterComparesNumbersAsNumbers() async throws {
         let (controller, _) = try await loaded("amount,name\n9,nine\n50,fifty\n100,hundred\n")
@@ -122,13 +135,11 @@ struct DataFileControllerTests {
         #expect(column(controller, 0) == ["y"])
     }
 
-    @Test("Set Cells to Value from the grid writes the cells it resolved, not the focused column")
+    @Test("Set Cells to Value writes the cells the grid selected, not the focused column")
     func setCellsToValueWritesTheGridCells() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Rome\n")
-        let target = try #require(controller.cellTarget(for: [
-            SetValueTarget(displayRow: 0, columnIndex: 1),
-            SetValueTarget(displayRow: 2, columnIndex: 1)
-        ]))
+        select([(row: 0, column: 1), (row: 2, column: 1)], in: controller)
+        let target = try #require(controller.cellTarget())
         #expect(target.cells.map { $0.column } == [controller.columnNames.ids[1]])
         #expect(!target.coversWholeColumns)
 
@@ -154,13 +165,58 @@ struct DataFileControllerTests {
         #expect(column(controller, 1) == ["Paris", "London", "Rome"])
     }
 
+    @Test("A grid command over several cells is one commit and one undo step")
+    func gridCommitIsOneUndoStep() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\nC,Rome\n")
+        let model = editableGrid(controller)
+        let city = try #require(model.columns.column(at: 1))
+        let first = try #require(model.rowID(at: 0))
+        let third = try #require(model.rowID(at: 2))
+        let rowIDs = [first, third]
+        let edits = rowIDs.map { DataGridCellEdit(rowID: $0, columnID: city.id, value: .enteredText("Oslo")) }
+
+        #expect(model.commit(edits, actionName: "Set Value"))
+
+        #expect(column(controller, 1) == ["Oslo", "London", "Oslo"])
+        #expect(undoManager.undoActionName == "Set Value")
+        undoManager.undo()
+        #expect(column(controller, 1) == ["Paris", "London", "Rome"])
+    }
+
+    @Test("A grid edit under a sort lands on the row it was made on")
+    func gridEditUnderSortTargetsItsRow() async throws {
+        let (controller, _) = try await loaded("n,tag\n3,c\n1,a\n2,b\n")
+        controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)]))
+        await controller.waitForPendingWork()
+        #expect(column(controller, 0) == ["1", "2", "3"])
+        let model = editableGrid(controller)
+        let rowID = try #require(model.rowID(at: 2))
+        let tag = try #require(model.columns.column(at: 1))
+
+        #expect(model.commit([DataGridCellEdit(rowID: rowID, columnID: tag.id, value: .enteredText("z"))], actionName: "Edit Cell"))
+
+        #expect(controller.table?.cells(row: 0).map(\.text) == ["3", "z"])
+        #expect(column(controller, 1) == ["a", "b", "z"])
+    }
+
+    @Test("A read-only file takes no commit from the grid")
+    func readOnlyFileRefusesGridCommits() async throws {
+        let controller = try await loaded(workbook: Self.twoSheetWorkbook)
+        let model = controller.gridModel
+        model.configuration.isEditable = true
+        let name = try #require(model.columns.column(at: 0))
+        let rowID = try #require(model.rowID(at: 0))
+
+        #expect(!model.commit([DataGridCellEdit(rowID: rowID, columnID: name.id, value: .enteredText("x"))], actionName: "Edit Cell"))
+        #expect(column(controller, 0) == ["Ann", "Bob", "Cy"])
+    }
+
     @Test("Separate cells in two columns change only those cells, not the rows and columns between them")
     func separateCellsStaySeparate() async throws {
         let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
-        let target = try #require(controller.cellTarget(for: [
-            SetValueTarget(displayRow: 0, columnIndex: 0),
-            SetValueTarget(displayRow: 1, columnIndex: 1)
-        ]))
+        select([(row: 0, column: 0), (row: 1, column: 1)], in: controller)
+        let target = try #require(controller.cellTarget())
+        #expect(!target.coversWholeColumns)
 
         controller.applyCleanup(.setValue("x"), target: target, actionName: "Set Cells to Value")
         await controller.waitForPendingWork()
@@ -190,14 +246,27 @@ struct DataFileControllerTests {
         #expect(controller.table?.cells(row: 1).map(\.text) == ["3", "4", "5"])
     }
 
+    // The file's find searches every row off the main actor; the search has settled when this returns.
+    private func find(_ term: String, in controller: DataFileController) async -> DataGridModel {
+        let model = editableGrid(controller)
+        controller.showFind(replacing: true)
+        model.find.term = term
+        model.findQueryDidChange()
+        await model.findSearchSettled()
+        return model
+    }
+
     @Test("Replace All is one undo step")
     func replaceAllIsOneUndoStep() async throws {
         let (controller, _) = try await loaded("a\nfoo\nfoo bar\nbaz\n")
-        controller.find.text = "foo"
-        controller.find.replacement = "qux"
-        controller.replaceAll()
+        let model = await find("foo", in: controller)
+        model.find.replacement = "qux"
+
+        model.replaceAllMatches()
         await controller.waitForPendingWork()
+
         #expect(column(controller, 0) == ["qux", "qux bar", "baz"])
+        #expect(undoManager.undoActionName == String(localized: "Replace All"))
         controller.undoManager?.undo()
         #expect(column(controller, 0) == ["foo", "foo bar", "baz"])
     }
@@ -205,30 +274,29 @@ struct DataFileControllerTests {
     @Test("Undoing Replace All finds the restored matches again")
     func undoRefreshesFind() async throws {
         let (controller, _) = try await loaded("a\nfoo\nfoo bar\nbaz\n")
-        controller.showFind(replacing: true)
-        controller.find.text = "foo"
-        controller.runFind()
+        let model = await find("foo", in: controller)
+        #expect(model.find.isVisible)
+        #expect(model.find.showsReplace)
+        #expect(model.find.matches.count == 2)
+        model.find.replacement = "qux"
+        model.replaceAllMatches()
         await controller.waitForPendingWork()
-        #expect(controller.find.matches.count == 2)
-        controller.find.replacement = "qux"
-        controller.replaceAll()
-        await controller.waitForPendingWork()
-        #expect(controller.find.matches.isEmpty)
+        await model.findSearchSettled()
+        #expect(model.find.matches.isEmpty)
         controller.undoManager?.undo()
         await controller.waitForPendingWork()
-        #expect(controller.find.matches.count == 2)
+        await model.findSearchSettled()
+        #expect(model.find.matches.count == 2)
     }
 
-    @Test("Cancel stops a running find")
-    func cancelStopsFind() async throws {
-        let (controller, _) = try await loaded("a\nfoo\n")
-        controller.showFind(replacing: false)
-        controller.find.text = "foo"
-        controller.runFind()
-        let running = try #require(controller.findTask)
-        controller.cancelActivity()
-        #expect(running.isCancelled)
-        await controller.waitForPendingWork()
+    @Test("A find match becomes the active cell on the matched column")
+    func findMatchIsTheActiveCell() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,Oslo\n")
+        let model = await find("oslo", in: controller)
+
+        #expect(model.find.matches.count == 1)
+        #expect(model.selection.activeCell == GridCoord(row: 1, displayColumn: 1))
+        #expect(controller.activeCell()?.column == controller.columnNames.ids[1])
     }
 
     @Test("Saving writes untouched rows byte for byte and the edited row once")
@@ -494,8 +562,8 @@ struct DataFileControllerTests {
 
     @Test("Count messages use the singular for one")
     func countMessagesAgreeInNumber() {
-        #expect(DataFileController.replacementMessage(replacements: 1, cells: 1) == "Replaced 1 match in 1 cell.")
-        #expect(DataFileController.replacementMessage(replacements: 12, cells: 3) == "Replaced 12 matches in 3 cells.")
+        #expect(GridFindEngine.replacementMessage(replacements: 1, cells: 1) == "Replaced 1 match in 1 cell.")
+        #expect(GridFindEngine.replacementMessage(replacements: 12, cells: 3) == "Replaced 12 matches in 3 cells.")
         #expect(DataFileController.duplicatesMessage(removed: 1) == "Removed 1 duplicate row.")
         #expect(DataFileController.changedCellsMessage(2) == "Changed 2 cells.")
         #expect(DataFileCountPhrase.raggedRows(1) == "1 row has a different number of fields")
@@ -697,7 +765,7 @@ struct DataFileControllerTests {
         await controller.waitForPendingWork()
         #expect(column(controller, 0) == ["apple", "caf\u{E9}", "zoe"])
         controller.setCell(pageRow: 1, column: 0, text: "漢")
-        controller.selectedRowIndices = []
+        controller.selectRows(pageRows: [])
         let output = url.deletingLastPathComponent().appendingPathComponent("out.csv")
         #expect {
             try controller.write(to: output, typeName: DataFileKind.commaSeparatedType)
@@ -706,6 +774,7 @@ struct DataFileControllerTests {
             return message.contains("Row 2") && message.contains("“name”") && message.contains("“漢”")
         }
         #expect(controller.selectedRowIndices == [1])
+        #expect(controller.gridModel.selectedRowIDs.count == 1)
     }
 
     @Test("An invisible character is named by its code point")

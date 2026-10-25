@@ -2,17 +2,8 @@
 //  CompareRowGrid.swift
 //  TablePro
 //
-//  One table's row differences as rows: every column, the source line over the
-//  target line for a changed row, and the differing cells marked.
-//
-//  The data grid draws it, read-only, so a table of any width costs what the
-//  grid costs rather than a view per cell. Its marks are the grid's own: a row
-//  only in the source is underlined as an inserted row is, a row only in the
-//  target is struck through, and a changed value is underlined on the source
-//  line and struck through on the target line. Each carries a tint as a second
-//  cue and reads to VoiceOver in comparison words, not in editing ones.
-//
 
+import Combine
 import SwiftUI
 import TableProPluginKit
 
@@ -23,7 +14,7 @@ internal struct CompareRowGridLine {
 }
 
 @MainActor
-internal final class CompareRowGridModel: DataGridViewDelegate {
+internal final class CompareRowGridModel: ObservableObject {
     internal static let includeColumn = 0
     internal static let leadingColumnCount = 3
 
@@ -35,17 +26,36 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
         let entryCount: Int
     }
 
+    internal let grid = HeldRowsGridAdapter(configuration: CompareRowGridModel.configuration(databaseType: nil))
     private(set) var lines: [CompareRowGridLine] = []
-    private(set) var tableRows = TableRows()
-    private var states: [RowVisualState] = []
     private var loadedKey: LoadKey?
     private var planId = ""
     private weak var session: CompareSyncSession?
 
-    /// A grid row is a display position, which stops matching the line order as soon as a column's
-    /// value filter narrows the grid, so every row the grid names is resolved back through it.
-    private weak var coordinator: TableViewCoordinator?
+    internal init() {
+        grid.checkboxState = { [weak self] rowID, column in
+            self?.checkboxState(rowID: rowID, column: column)
+        }
+        grid.checkboxChange = { [weak self] isOn, rowIDs, column in
+            self?.setIncluded(isOn, rowIDs: rowIDs, column: column)
+        }
+    }
 
+    internal var model: DataGridModel { grid.model }
+    internal var tableRows: TableRows { grid.heldRows }
+
+    private static func configuration(databaseType: DatabaseType?) -> DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.traits = DataGridEngineTraits(databaseType: databaseType)
+        configuration.showRowNumbers = false
+        configuration.checkboxColumns = [includeColumn]
+        configuration.supportsValueFilter = false
+        configuration.supportsColumnSort = false
+        configuration.commands = [.freezeColumns]
+        return configuration
+    }
+
+    @discardableResult
     internal func ensureLoaded(
         key: LoadKey,
         plan: DataComparePlan,
@@ -53,16 +63,25 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
         session: CompareSyncSession
     ) -> TableRows {
         self.session = session
+        grid.model.configuration = Self.configuration(databaseType: session.source?.databaseType)
         guard loadedKey != key else { return tableRows }
+        // A row is a line of this load, so a selection made against another load names nothing here.
+        if loadedKey != nil {
+            grid.model.clearSelection()
+        }
         loadedKey = key
         planId = plan.id
         lines = entries.flatMap(Self.lines(for:))
         let columns = plan.columnNames
-        states = lines.map { Self.visualState(for: $0, columns: columns) }
-        tableRows = TableRows(
-            rows: ContiguousArray(lines.enumerated().map { index, line in
-                Row(id: .existing(index), values: Self.values(for: line, columns: columns))
-            }),
+        var states: [RowID: RowVisualState] = [:]
+        let rows = ContiguousArray(lines.enumerated().map { index, line -> Row in
+            let rowID = RowID.existing(index)
+            states[rowID] = Self.visualState(for: line, columns: columns)
+            return Row(id: rowID, values: Self.values(for: line, columns: columns))
+        })
+        grid.visualStates = states
+        grid.setRows(TableRows(
+            rows: rows,
             columns: [
                 String(localized: "Include"),
                 String(localized: "Change"),
@@ -70,8 +89,16 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
             ] + columns,
             columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: Self.leadingColumnCount)
                 + plan.columns.map { Self.displayType(for: $0) }
-        )
+        ))
         return tableRows
+    }
+
+    // An exclusion changed from the menu or from Space: the checkboxes repaint, the rows and selection stay.
+    internal func redrawCheckboxes(forLines lineIndexes: [Int]? = nil) {
+        let indexes = lineIndexes ?? Array(lines.indices)
+        grid.redrawCells(Set(indexes.compactMap { line -> CellPosition? in
+            grid.storageIndex(of: .existing(line)).map { CellPosition(row: $0, column: Self.includeColumn) }
+        }))
     }
 
     private static func displayType(for column: CompareColumn) -> ColumnType {
@@ -138,42 +165,24 @@ internal final class CompareRowGridModel: DataGridViewDelegate {
         return values
     }
 
-    private func lineIndex(forDisplayRow row: Int) -> Int? {
-        let index = coordinator?.tableRowsIndex(forDisplayRow: row) ?? row
-        return lines.indices.contains(index) ? index : nil
+    private func lineIndex(of rowID: RowID) -> Int? {
+        guard case .existing(let index) = rowID, lines.indices.contains(index) else { return nil }
+        return index
     }
 
-    // MARK: - DataGridViewDelegate
-
-    internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
-        coordinator = tableViewCoordinator
-    }
-
-    internal func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        guard let index = lineIndex(forDisplayRow: row), states.indices.contains(index) else { return nil }
-        return states[index]
-    }
-
-    internal func dataGridCheckboxState(row: Int, column: Int) -> Bool? {
-        guard column == Self.includeColumn, let index = lineIndex(forDisplayRow: row) else { return nil }
+    private func checkboxState(rowID: RowID, column: DataGridColumn) -> Bool? {
+        guard column.dataIndex == Self.includeColumn, let index = lineIndex(of: rowID) else { return nil }
         let line = lines[index]
         guard line.opensEntry, line.entry.kind.isDifference,
               let session, let plan = session.dataPlans.first(where: { $0.id == planId }) else { return nil }
         return session.isRowIncluded(line.entry, in: plan)
     }
 
-    // The delegate's default copies nothing, which left Copy and Select All then Copy silent on this grid.
-    internal func dataGridCopyRows(_ indices: Set<Int>) {
-        coordinator?.copyRowsAsTSV(at: indices, includeHeaders: false)
-    }
-
-    internal func dataGridSetCheckbox(_ isOn: Bool, rows: IndexSet, column: Int) {
-        guard column == Self.includeColumn, let session else { return }
-        let entries = rows.compactMap { row -> RowDiffEntry? in
-            guard let index = lineIndex(forDisplayRow: row), lines[index].opensEntry else { return nil }
-            return lines[index].entry
-        }
-        session.setRowsIncluded(isOn, entries: entries, planId: planId)
+    private func setIncluded(_ isOn: Bool, rowIDs: [RowID], column: DataGridColumn) {
+        guard column.dataIndex == Self.includeColumn, let session else { return }
+        let indexes = rowIDs.compactMap(lineIndex(of:)).filter { lines[$0].opensEntry }
+        session.setRowsIncluded(isOn, entries: indexes.map { lines[$0].entry }, planId: planId)
+        redrawCheckboxes(forLines: indexes)
     }
 }
 
@@ -183,46 +192,27 @@ internal struct CompareRowGrid: View {
     internal let filter: RowDiffFilter
     internal let entries: [RowDiffEntry]
 
-    @State private var model = CompareRowGridModel()
-    @State private var changeManager = AnyChangeManager(DataChangeManager())
-    @State private var selectedRows: Set<Int> = []
-    @State private var columnLayout = ColumnLayoutState()
+    @StateObject private var model = CompareRowGridModel()
 
-    internal var body: some View {
-        let key = CompareRowGridModel.LoadKey(
+    private var key: CompareRowGridModel.LoadKey {
+        CompareRowGridModel.LoadKey(
             planId: plan.id,
             answer: plan.summary?.answerIdentity,
             columns: plan.columnNames,
             filter: filter,
             entryCount: entries.count
         )
-        let model = model
-        let plan = plan
-        let entries = entries
-        let session = session
-        return DataGridView(
-            tableRowsProvider: { model.ensureLoaded(key: key, plan: plan, entries: entries, session: session) },
-            changeManager: changeManager,
-            isEditable: false,
-            configuration: DataGridConfiguration(
-                databaseType: session.source?.databaseType,
-                showRowNumbers: false,
-                checkboxColumns: [CompareRowGridModel.includeColumn],
-                supportsColumnCommands: false,
-                supportsValueFilter: false,
-                supportsColumnSort: false
-            ),
-            delegate: model,
-            selectedRowIndices: $selectedRows,
-            sortState: .constant(SortState()),
-            columnLayout: $columnLayout,
-            /// The exclusions ride along, so including or excluding every listed row from the menu
-            /// repaints the checkboxes rather than leaving them until the next click or scroll.
-            contentRevision: key.hashValue ^ plan.excludedRowKeys.hashValue
-        )
-        .onChange(of: key) { _ in
-            selectedRows = []
-        }
+    }
+
+    // task(id:) runs with this body's values; onChange(of:) would run with the previous body's (measured).
+    internal var body: some View {
+        DataGridView(model: model.model)
+            .task(id: key) { load() }
+            .onChange(of: plan.excludedRowKeys) { _ in model.redrawCheckboxes() }
+    }
+
+    private func load() {
+        model.ensureLoaded(key: key, plan: plan, entries: entries, session: session)
     }
 }
 

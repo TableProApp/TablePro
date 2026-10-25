@@ -7,6 +7,7 @@ import Foundation
 
 extension MainContentCoordinator {
     func runAllStatements(extraCapabilities: CallerCapabilities = []) {
+        commitActiveGridEdit()
         queryExecutionCoordinator.runAllStatements(extraCapabilities: extraCapabilities)
     }
 

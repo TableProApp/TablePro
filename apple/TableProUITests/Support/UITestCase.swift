@@ -164,6 +164,7 @@ internal class UITestCase: XCTestCase {
             .firstMatch
     }
 
+    // The main table, which publishes every column: the frozen pane over its leading edge is hidden from accessibility.
     internal func dataGrid(in window: XCUIElement) -> XCUIElement {
         window.tables.matching(identifier: "data-grid").firstMatch
     }

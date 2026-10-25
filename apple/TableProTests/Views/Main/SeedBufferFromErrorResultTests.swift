@@ -1,33 +1,17 @@
-// A failed Run All makes an empty error result active and seeds the row buffer from it. The grid
-// skips its whole update while a cell editor or viewer is open, and only a full replace closes
-// them, so a seed that did not take that path left the previous result's headings, row and
-// selection under the error for as long as the viewer stayed up.
-//
-// The grid is a real `DataGridView` in an `NSHostingView`, fed from the coordinator's buffer the
-// way the editor feeds it, because the early return lived in `updateNSView`.
+// A failed Run All makes an empty error result active and seeds the row buffer from it. The old grid
+// skipped its whole update while a cell editor or viewer was open, so the previous result's headings,
+// row and selection stayed under the error. The model forwards every change whatever the view is doing.
 
-import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import Testing
-
-@MainActor
-private final class NoopSeedLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
 
 @MainActor
 private final class SeedFixture {
     let coordinator: MainContentCoordinator
     let tabManager: QueryTabManager
     let tabId: UUID
-    private let delegate = DataTabGridDelegate()
-    private var window: NSWindow?
-    private var host: NSHostingView<DataGridView>?
 
     init(previous: TableRows) {
         tabManager = QueryTabManager()
@@ -41,7 +25,6 @@ private final class SeedFixture {
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
         tabId = tab.id
-        coordinator.dataTabDelegate = delegate
 
         let result = ResultSet(label: "Result 1", tableRows: previous)
         tabManager.mutate(tabId: tabId) { tab in
@@ -51,58 +34,15 @@ private final class SeedFixture {
         coordinator.setActiveTableRows(previous, for: tabId)
     }
 
-    var grid: TableViewCoordinator? {
-        delegate.tableViewCoordinator
-    }
-
-    var tableView: NSTableView? {
-        grid?.tableView
-    }
-
-    var presentedHeadings: [String] {
-        guard let tableView else { return [] }
-        return tableView.tableColumns
-            .filter { !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier }
-            .map(\.headerCell.stringValue)
+    var model: DataGridModel {
+        coordinator.gridModel(forTab: tabId)
     }
 
     var tab: QueryTab? {
         tabManager.tabs.first { $0.id == tabId }
     }
 
-    func mountGrid() async {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 300),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.isReleasedWhenClosed = false
-        let host = NSHostingView(rootView: makeGrid())
-        window.contentView = host
-        self.window = window
-        self.host = host
-        await settle()
-    }
-
-    /// A new root value, the way the editor hands the grid one on every render of the tab.
-    func render() async {
-        host?.rootView = makeGrid()
-        await settle()
-    }
-
-    func openViewer(row: Int) -> Bool {
-        guard let grid, let tableView,
-              let column = tableView.tableColumns.firstIndex(where: {
-                  !$0.isHidden && $0.identifier != ColumnIdentitySchema.rowNumberIdentifier
-              })
-        else { return false }
-        grid.showOverlayViewer(tableView: tableView, row: row, column: column, columnIndex: 0, value: "3")
-        return grid.overlayViewer?.isActive == true
-    }
-
-    /// What a failed Run All does to the tab once its statements have run: the results it produced plus
-    /// an error result, the error result active, and the buffer seeded from it.
+    // What a failed Run All does once its statements ran: the results plus an error result, the error active.
     func failRun() {
         let errorResult = ResultSet(label: "Result 2")
         errorResult.errorMessage = "Statement 2/2 failed: no such table: missing_table"
@@ -115,37 +55,7 @@ private final class SeedFixture {
     }
 
     func close() {
-        grid?.overlayViewer?.dismiss()
-        window?.orderOut(nil)
         coordinator.teardown()
-    }
-
-    private func makeGrid() -> DataGridView {
-        let tabId = tabId
-        return DataGridView(
-            tableRowsProvider: { [coordinator] in
-                coordinator.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
-            },
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: false,
-            configuration: DataGridConfiguration(tabType: .query),
-            delegate: delegate,
-            layoutPersister: NoopSeedLayoutPersister(),
-            selectedRowIndices: .constant([]),
-            sortState: .constant(SortState()),
-            columnLayout: .constant(ColumnLayoutState())
-        )
-    }
-
-    /// Each pass lays out, then waits for one main-queue turn: SwiftUI applies a new root on a later
-    /// run-loop turn, and a main-actor task started by the update runs before the turn comes back.
-    private func settle() async {
-        for _ in 0 ..< 10 {
-            host?.layoutSubtreeIfNeeded()
-            await withCheckedContinuation { continuation in
-                DispatchQueue.main.async { continuation.resume() }
-            }
-        }
     }
 }
 
@@ -157,34 +67,37 @@ struct SeedBufferFromErrorResultTests {
         columnTypes: [.text(rawType: nil)]
     )
 
-    @Test("a failed run over an open cell viewer closes it and takes down the previous headings")
-    func failureOverAnOpenViewerReconcilesTheGrid() async throws {
+    @Test("a failed run under an open cell editor still takes down the previous columns and rows")
+    func failureUnderAnOpenEditorReconcilesTheGrid() throws {
         let fixture = SeedFixture(previous: Self.previous)
         defer { fixture.close() }
-        await fixture.mountGrid()
-        try #require(fixture.presentedHeadings == ["third_col"])
-        try #require(fixture.openViewer(row: 0))
+        let model = fixture.model
+        let mount = DataTabGridMountStub()
+        model.attach(mount)
+        mount.isEditing = true
+        try #require(model.columns.orderedNames == ["third_col"])
 
         fixture.failRun()
-        await fixture.render()
 
-        #expect(fixture.grid?.overlayViewer?.isActive != true)
-        #expect(fixture.presentedHeadings.isEmpty, "got \(fixture.presentedHeadings)")
-        #expect(fixture.tableView?.numberOfRows == 0)
+        #expect(model.columns.isEmpty)
+        #expect(model.rowCount == 0)
+        #expect(mount.changes.contains(.columnsChanged))
+        #expect(mount.changes.last == .reload)
+        withExtendedLifetime(mount) {}
     }
 
     @Test("a failed run drops the row selection the previous result's rows made")
     func failureClearsThePreviousSelection() throws {
         let fixture = SeedFixture(previous: Self.previous)
         defer { fixture.close() }
-        fixture.tabManager.mutate(tabId: fixture.tabId) { tab in
-            tab.selectedRowIndices = [0]
-        }
-        try #require(fixture.tab?.selectedRowIndices == [0])
+        let model = fixture.model
+        model.selectRows([.existing(0)])
+        try #require(model.selectedRowIDs == [.existing(0)])
 
         fixture.failRun()
 
-        #expect(fixture.tab?.selectedRowIndices.isEmpty == true)
+        #expect(model.selection.isEmpty)
+        #expect(fixture.tab?.selectionSnapshot.isEmpty == true)
         #expect(fixture.coordinator.tabSessionRegistry.tableRows(for: fixture.tabId).columns.isEmpty)
     }
 }

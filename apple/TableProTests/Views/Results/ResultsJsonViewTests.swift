@@ -2,10 +2,6 @@
 //  ResultsJsonViewTests.swift
 //  TableProTests
 //
-//  The JSON results view renders the whole result set when nothing is selected, and
-//  narrows to the selected rows otherwise. Selection indices are display positions, so
-//  they are resolved through DisplayRowMapping rather than used to subscript the rows.
-//
 
 import Foundation
 import TableProPluginKit

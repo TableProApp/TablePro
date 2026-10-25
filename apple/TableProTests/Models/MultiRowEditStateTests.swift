@@ -23,7 +23,7 @@ struct MultiRowEditStateTests {
         let sut = MultiRowEditState()
         let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
         sut.configure(
-            selectedRowIndices: selectedIndices,
+            rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
             allRows: rows,
             columns: columns,
             columnTypes: types
@@ -129,7 +129,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -214,7 +214,7 @@ struct MultiRowEditStateTests {
         func missingColumnTypesFallback() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice"]],
                 columns: ["id", "name"],
                 columnTypes: []
@@ -241,7 +241,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with name changed in underlying data but id unchanged
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "UpdatedName", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
@@ -263,7 +263,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with identical data
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
@@ -283,7 +283,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with different columns
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["x", "y"]],
                 columns: ["col_a", "col_b"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil)]
@@ -301,7 +301,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with different selection
             sut.configure(
-                selectedRowIndices: [1],
+                rowIDs: [.existing(1)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
@@ -319,7 +319,7 @@ struct MultiRowEditStateTests {
             #expect(sut.fields.first(where: { $0.columnIndex == 1 })?.originalValue == "{\"reached\":\"07:53\"}")
 
             sut.configure(
-                selectedRowIndices: [1],
+                rowIDs: [.existing(1)],
                 allRows: [["2", "{\"reached\":\"08:40\"}"]],
                 columns: ["id", "payload"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil)]
@@ -340,7 +340,7 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[0].hasEdit == true)
 
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "2", "3"]],
                 columns: ["a", "b", "c"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
@@ -364,7 +364,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -470,7 +470,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -558,7 +558,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -608,7 +608,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -674,7 +674,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -788,7 +788,7 @@ struct MultiRowEditStateTests {
             #expect(callbackCalls[0].value == "__DEFAULT__")
         }
 
-        /// `onFieldChanged` carries a literal, so an expression sent through it would be saved as quoted text.
+        // `onFieldChanged` carries a literal, so an expression sent through it would be saved as quoted text.
         @Test("setFieldToExpression sends the SQL through the expression callback, not as a literal")
         func setFieldToExpressionFiresExpressionCallback() {
             let sut = makeSUT()
@@ -848,7 +848,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types = columnTypes ?? columns.map { _ in ColumnType.text(rawType: nil) }
             sut.configure(
-                selectedRowIndices: selectedIndices,
+                rowIDs: selectedIndices.sorted().map { RowID.existing($0) },
                 allRows: rows,
                 columns: columns,
                 columnTypes: types
@@ -860,7 +860,7 @@ struct MultiRowEditStateTests {
         func marksSpecifiedColumnAsModified() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)],
@@ -874,7 +874,7 @@ struct MultiRowEditStateTests {
         func doesNotMarkUnspecifiedColumns() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)],
@@ -888,7 +888,7 @@ struct MultiRowEditStateTests {
         func multipleExternallyModifiedColumnsAllShowHasEdit() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)],
@@ -908,7 +908,7 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[0].pendingValue == "sidebar-edit")
 
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)],
@@ -925,7 +925,7 @@ struct MultiRowEditStateTests {
         func gridStagedNullIsPendingNull() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [[nil, "Alice"]],
                 columns: ["id", "name"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil)],
@@ -940,7 +940,7 @@ struct MultiRowEditStateTests {
         func gridStagedNullBooleanIsPendingNull() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", nil]],
                 columns: ["id", "active"],
                 columnTypes: [.integer(rawType: "INT"), .boolean(rawType: "TINYINT(1)")],
@@ -953,7 +953,7 @@ struct MultiRowEditStateTests {
         func multipleValuesAreNotPendingNull() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0, 1],
+                rowIDs: [.existing(0), .existing(1)],
                 allRows: [["1", "Alice"], ["2", "Bob"]],
                 columns: ["id", "name"],
                 columnTypes: [.text(rawType: nil), .text(rawType: nil)],
@@ -972,7 +972,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types: [ColumnType] = [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: types
@@ -985,7 +985,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with same data and NO externallyModifiedColumns
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: types
@@ -1000,7 +1000,7 @@ struct MultiRowEditStateTests {
             let sut = MultiRowEditState()
             let types: [ColumnType] = [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: types
@@ -1015,7 +1015,7 @@ struct MultiRowEditStateTests {
 
             // Reconfigure with same selection and rows
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["1", "Alice", "alice@test.com"]],
                 columns: ["id", "name", "email"],
                 columnTypes: types
@@ -1051,7 +1051,7 @@ struct MultiRowEditStateTests {
             #expect(sut.fields.allSatisfy { $0.isSchemaField })
             #expect(sut.fields[2].hasCommittedEdit)
             #expect(sut.fields[0].hasCommittedEdit == false)
-            #expect(sut.selectedRowIndices == [2])
+            #expect(sut.rowIDs.isEmpty)
         }
 
         @Test("A field the owning grid locks is shown without an editor")
@@ -1146,8 +1146,7 @@ struct MultiRowEditStateTests {
             GeometryFieldDescriptor(textEditor: .multiLine, source: .spatialColumn)
         )
 
-        /// The handoff the main window does: the typed cells decide which columns are binary, and
-        /// the fields get each cell as text, bytes as one character per byte.
+        // The main window's handoff: typed cells pick the binary columns, and bytes reach the fields one character per byte.
         private func makeSUT(cells: [[PluginCellValue]], columnTypes: [ColumnType]) -> MultiRowEditState {
             let sut = MultiRowEditState()
             let rows: [[String?]] = cells.map { row in
@@ -1160,7 +1159,7 @@ struct MultiRowEditStateTests {
                 }
             }
             sut.configure(
-                selectedRowIndices: Set(cells.indices),
+                rowIDs: cells.indices.map { RowID.existing($0) },
                 allRows: rows,
                 columns: columnTypes.indices.map { "c\($0)" },
                 columnTypes: columnTypes,
@@ -1175,7 +1174,7 @@ struct MultiRowEditStateTests {
             #expect(MultiRowEditState.binaryColumns(in: cells) == [1])
         }
 
-        /// A binary field commits bytes to every selected row, so one text cell rules the column out.
+        // A binary field commits bytes to every selected row, so one text cell rules the column out.
         @Test("A column mixing bytes and text across the selection is not binary")
         func mixedBytesAndTextIsNotBinary() {
             let cells: [[PluginCellValue]] = [
@@ -1186,7 +1185,6 @@ struct MultiRowEditStateTests {
             #expect(MultiRowEditState.binaryColumns(in: cells) == [0, 2])
         }
 
-        /// NULL in a text geometry column must not turn the field into a hex editor.
         @Test("A column of NULLs alone is not binary")
         func nullOnlyColumnIsNotBinary() {
             #expect(MultiRowEditState.binaryColumns(in: [[.null], [.null]]).isEmpty)
@@ -1212,7 +1210,7 @@ struct MultiRowEditStateTests {
         func binaryColumnsDefaultToNone() {
             let sut = MultiRowEditState()
             sut.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [[String(data: Self.wkbPoint, encoding: .isoLatin1)]],
                 columns: ["geom"],
                 columnTypes: [.spatial(rawType: "POINT")]
@@ -1247,7 +1245,7 @@ struct MultiRowEditStateTests {
             #expect(sut.fields[0].resolvedEditor == Self.geometryHex)
         }
 
-        /// Rows that disagree have no bytes to read, and a blob still never gets a text field.
+        // Rows that disagree have no bytes to read, and a blob still never gets a text field.
         @Test("Binary rows that disagree get the hex editor")
         func disagreeingBinaryRowsResolveToHex() {
             let sut = makeSUT(

@@ -16,17 +16,10 @@ internal struct CreateTableCompositionKey: Hashable {
     let foreignKeys: [EditableForeignKeyDefinition]
 }
 
-/// A table definition in progress, held outside the view that edits it.
-///
-/// A Create Table tab's whole content is unsaved by definition: nothing exists on the server until
-/// the user presses Create. `MainEditorContentView` builds only the selected tab, so leaving the
-/// definition in the view's `@State` meant switching to any other tab and back threw away the table
-/// name, the options and every column the user had defined, with no prompt and nothing in Undo.
 @MainActor
 internal final class CreateTableDraft: ObservableObject {
     internal let changeManager = StructureChangeManager()
 
-    /// A new name answers whatever the driver said about the last one, so its error goes with it.
     @Published internal var tableName = "" {
         didSet {
             guard tableName != oldValue else { return }
@@ -46,6 +39,9 @@ internal final class CreateTableDraft: ObservableObject {
     @Published internal private(set) var composed: CreateTableStatements?
     @Published internal private(set) var compositionFailure: String?
 
+    // Made on the first mount, which knows the connection; held here so the grid outlives the view.
+    internal private(set) var gridAdapter: CreateTableGridAdapter?
+
     private var composedKey: CreateTableCompositionKey?
     private var compositionGeneration = 0
     private var changeManagerForwarding: AnyCancellable?
@@ -55,8 +51,6 @@ internal final class CreateTableDraft: ObservableObject {
             .sink { [weak self] in self?.objectWillChange.send() }
     }
 
-    /// A tab that has only just opened holds no work: the editor seeds one blank column so the grid
-    /// has a row to show, which registers as a pending change without the user having typed anything.
     internal var holdsWork: Bool {
         !tableName.isEmpty
             || ObjectCommentDraft.normalized(tableOptions.comment) != nil
@@ -66,6 +60,13 @@ internal final class CreateTableDraft: ObservableObject {
             || changeManager.workingForeignKeys.contains {
                 !$0.name.isEmpty || !$0.columns.isEmpty || !$0.referencedTable.isEmpty
             }
+    }
+
+    internal func gridAdapter(for connection: DatabaseConnection) -> CreateTableGridAdapter {
+        if let gridAdapter { return gridAdapter }
+        let adapter = CreateTableGridAdapter(structureChangeManager: changeManager, connection: connection)
+        gridAdapter = adapter
+        return adapter
     }
 
     internal static func offersEngineOptions(for databaseType: DatabaseType) -> Bool {
@@ -117,5 +118,13 @@ internal final class CreateTableDraft: ObservableObject {
             guard generation == compositionGeneration else { return }
             compositionFailure = error.localizedDescription
         }
+    }
+}
+
+extension CreateTableDraft: ActiveGridModelProviding {
+    // The definition grid, unless the driver supplied a form of its own.
+    var activeGridModel: DataGridModel? {
+        guard hasResolvedForm, form == nil else { return nil }
+        return gridAdapter?.model
     }
 }

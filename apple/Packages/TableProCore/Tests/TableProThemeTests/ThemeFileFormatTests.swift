@@ -2,8 +2,6 @@ import Foundation
 import TableProTheme
 import Testing
 
-/// Format 3: every color is optional, a slot left out draws its fallback, and the file is refused for
-/// anything that would otherwise load as something its author did not write.
 struct ThemeFileFormatTests {
     private static func data(_ object: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: object)
@@ -80,11 +78,11 @@ struct ThemeFileFormatTests {
     func slotsAreOptional() throws {
         var root = Self.metadata()
         Self.insert("#FF0000", at: ["editor", "syntax", "keyword"], into: &root)
-        Self.insert("#00000080", at: ["dataGrid", "selection"], into: &root)
+        Self.insert("#00000080", at: ["dataGrid", "alternateRow"], into: &root)
 
         let colors = try Self.decode(root).overrides.mapValues(\.hex)
 
-        #expect(colors == [.syntaxKeyword: "#FF0000", .gridSelection: "#00000080"])
+        #expect(colors == [.syntaxKeyword: "#FF0000", .gridAlternateRow: "#00000080"])
     }
 
     @Test("Every slot path is accepted")
@@ -107,7 +105,7 @@ struct ThemeFileFormatTests {
     }
 
     @Test("A fill that must be opaque loads without its alpha, and is written without it", arguments: [
-        ThemeSlot.windowBackdrop, .editorBackground, .gridBackground, .gridHeaderBackground,
+        ThemeSlot.windowBackdrop, .editorBackground, .gridBackground,
     ])
     func opaqueSlotsDropAlphaOnLoad(slot: ThemeSlot) throws {
         let theme = try Self.decode(Self.withColor("#282A3680", at: slot.rawValue.components(separatedBy: ".")))
@@ -117,6 +115,50 @@ struct ThemeFileFormatTests {
         translucent.overrides[slot] = ThemeColor(hex: "#282A3640")
         let reread = try ThemeFileFormat.decode(try ThemeFileFormat.encode(translucent))
         #expect(reread.overrides[slot]?.hex == "#282A36")
+    }
+
+    @Test("A file that still carries the retired header and selection keys loads without them, and saves without them")
+    func retiredKeysAreDropped() throws {
+        let text = """
+        {
+          "appearance": "dark",
+          "author": "Dracula Theme",
+          "dataGrid": {
+            "background": "#282A36",
+            "focusBorder": "#BD93F9",
+            "headerBackground": "#21222C",
+            "headerText": "#F8F8F2",
+            "inactiveSelection": "#44475A80",
+            "selection": "#44475A",
+            "selectionText": "#F8F8F2",
+            "text": "#F8F8F2"
+          },
+          "editor": {"selection": "#44475A"},
+          "id": "user.saved-before",
+          "name": "Saved Before",
+          "schema": 3
+        }
+        """
+
+        let theme = try ThemeFileFormat.decode(Data(text.utf8))
+        let colors = theme.overrides.mapValues(\.hex)
+
+        #expect(colors == [.gridBackground: "#282A36", .gridText: "#F8F8F2", .editorSelection: "#44475A"])
+        let object = try JSONSerialization.jsonObject(with: try ThemeFileFormat.encode(theme))
+        let grid = try #require((object as? [String: Any])?["dataGrid"] as? [String: String])
+        #expect(grid == ["background": "#282A36", "text": "#F8F8F2"])
+    }
+
+    @Test("A retired key is dropped whatever its value, nested or dotted, and only the retired keys are")
+    func onlyRetiredKeysAreDropped() throws {
+        var root = Self.metadata()
+        Self.insert("not a color", at: ["dataGrid", "selection"], into: &root)
+        Self.insert(16_777_215, at: ["dataGrid", "focusBorder"], into: &root)
+        root["dataGrid.headerText"] = "#FFFFFF"
+        #expect(try Self.decode(root).overrides.isEmpty)
+
+        Self.insert("#000000", at: ["dataGrid", "selectionBorder"], into: &root)
+        #expect(try Self.refusal(root) == .unknownKeys(["dataGrid.selectionBorder"]))
     }
 
     @Test("Name and author are trimmed")
@@ -179,8 +221,7 @@ struct ThemeFileFormatTests {
         #expect(error?.localizedDescription.contains("editor.sidebar") == true)
     }
 
-    /// The pane and status groups of format 2 are gone, so a file that still carries them is
-    /// refused rather than loaded with those colors dropped.
+    // Refused rather than loaded with those colors dropped.
     @Test("Format 2 slot groups are refused")
     func formerGroupsAreRefused() throws {
         for path in [["panel", "background"], ["status", "warning"], ["content", "editor", "background"]] {
@@ -189,8 +230,7 @@ struct ThemeFileFormatTests {
         }
     }
 
-    /// A value that is not a string would otherwise be dropped silently, which loads the slot as
-    /// native under a key the author did write.
+    // Dropped silently, the slot would load as native under a key the author did write.
     @Test("A key whose value is not a color string is refused")
     func nonStringValueIsRefused() {
         var unknownNumber = Self.metadata()

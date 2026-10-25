@@ -164,31 +164,29 @@ struct CreateTableDraftCompositionTests {
         "A grid edit reaches whoever observes the draft, so the preview and Create Table follow it",
         arguments: [StructureTab.columns, StructureTab.indexes, StructureTab.foreignKeys]
     )
-    func gridEditPublishesTheDraft(tab: StructureTab) {
+    func gridEditPublishesTheDraft(tab: StructureTab) throws {
         let connection = TestFixtures.makeConnection(type: .postgresql)
         let scope = DatabaseScope(connectionId: connection.id, database: "shop", schema: "reporting")
         let draft = Self.makeDraft(tableName: "sales")
         draft.changeManager.addNewIndex()
         draft.changeManager.addNewForeignKey()
-        let delegate = CreateTableGridDelegate(
-            structureChangeManager: draft.changeManager,
-            structureTab: tab,
-            connection: connection
-        )
-        delegate.orderedFields = StructureRowProvider(
-            changeManager: draft.changeManager,
-            tab: tab,
-            databaseType: connection.type,
-            additionalFields: [.primaryKey],
-            serverSupport: .unrestricted
-        ).orderedColumnFields
+        let adapter = draft.gridAdapter(for: connection)
+        adapter.select(tab)
+        adapter.refresh()
+        let model = adapter.model
+        let rowID = try #require(model.rowID(at: 0))
+        let name = try #require(model.columns.column(at: 0))
         let keyBefore = draft.compositionKey(scope: scope)
 
         var published = 0
         let observation = draft.objectWillChange.sink { published += 1 }
         defer { observation.cancel() }
-        delegate.dataGridDidEditCell(row: 0, column: 0, newValue: "email")
+        let committed = model.commit(
+            [DataGridCellEdit(rowID: rowID, columnID: name.id, value: .enteredText("email"))],
+            actionName: String(localized: "Edit Cell")
+        )
 
+        #expect(committed)
         #expect(published > 0)
         #expect(draft.compositionKey(scope: scope) != keyBefore)
     }

@@ -55,15 +55,15 @@ struct DocumentEditingAvailabilityTests {
     func offeredOnALocatedRow() {
         let coordinator = makeCoordinator()
         #expect(coordinator.documentEditingAvailable)
-        #expect(coordinator.canEditDocument(atDisplayRow: 0))
-        #expect(coordinator.documentLocator(forDisplayRow: 1) == #"{"$numberInt":"2"}"#)
+        #expect(coordinator.canEditDocument(rowID: .existing(0)))
+        #expect(coordinator.documentLocator(for: .existing(1)) == #"{"$numberInt":"2"}"#)
     }
 
     @Test("A row with no locator, or no row at all, is not offered")
     func notOfferedWithoutALocator() {
         let coordinator = makeCoordinator()
-        #expect(!coordinator.canEditDocument(atDisplayRow: 2))
-        #expect(!coordinator.canEditDocument(atDisplayRow: 9))
+        #expect(!coordinator.canEditDocument(rowID: .existing(2)))
+        #expect(!coordinator.canEditDocument(rowID: .existing(9)))
     }
 
     @Test("A value filter resolves the shown row to its own document, not the one at that storage index")
@@ -72,17 +72,20 @@ struct DocumentEditingAvailabilityTests {
         let tabId = try #require(coordinator.tabManager.selectedTab?.id)
         var filter = GridValueFilterState()
         filter.set(ColumnValueFilter(selectedValues: ["Bob"], includesNull: false), columnName: "name", forColumn: 1)
-        coordinator.setValueFilter(filter, forTab: tabId)
+        let model = coordinator.gridModel(forTab: tabId)
+        model.setValueFilter(filter)
 
-        #expect(coordinator.documentLocator(forDisplayRow: 0) == #"{"$numberInt":"2"}"#)
-        #expect(coordinator.documentLocator(forDisplayRow: 1) == #"{"$numberInt":"4"}"#)
+        let shown = (0..<model.rowCount).compactMap { model.rowID(at: $0) }
+        let shownLocators = shown.map { coordinator.documentLocator(for: $0) }
+
+        #expect(shownLocators == [#"{"$numberInt":"2"}"#, #"{"$numberInt":"4"}"#])
     }
 
     @Test("A query tab never offers Edit Document, whatever its rows carry")
     func queryTabIsNotOffered() {
         let coordinator = makeCoordinator(tabType: .query)
         #expect(!coordinator.documentEditingAvailable)
-        #expect(!coordinator.canEditDocument(atDisplayRow: 0))
+        #expect(!coordinator.canEditDocument(rowID: .existing(0)))
     }
 
     @Test("Staged grid edits keep Edit Document away")
@@ -97,20 +100,20 @@ struct DocumentEditingAvailabilityTests {
             originalRow: [.text("2"), .text("Bob")]
         )
         #expect(coordinator.changeManager.hasChanges)
-        #expect(!coordinator.canEditDocument(atDisplayRow: 0))
+        #expect(!coordinator.canEditDocument(rowID: .existing(0)))
     }
 
     @Test("A read-only connection does not offer Edit Document")
     func readOnlyIsRefused() {
         let coordinator = makeCoordinator()
         coordinator.toolbarState.safeModeLevel = .readOnly
-        #expect(!coordinator.canEditDocument(atDisplayRow: 0))
+        #expect(!coordinator.canEditDocument(rowID: .existing(0)))
     }
 
     @Test("An engine that stores rows does not offer it")
     func rowEngineIsRefused() {
         let coordinator = makeCoordinator(type: .postgresql)
-        #expect(!coordinator.canEditDocument(atDisplayRow: 0))
+        #expect(!coordinator.canEditDocument(rowID: .existing(0)))
     }
 
     @Test("The sheet opens on the locator it was given, as an edit of that collection")

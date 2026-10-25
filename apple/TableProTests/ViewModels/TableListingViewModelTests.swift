@@ -1,6 +1,4 @@
-// Show All Tables used to hand the listing statement to an editor tab and run nothing. A listing tab
-// now loads its own rows over a metadata connection, built from the plugin each time, so these cases
-// pin what it asks for, what it commits, and what a refresh, a failure and a late answer leave behind.
+// A listing tab loads its own rows over a metadata connection; these pin what a refresh, a failure and a late answer leave.
 
 import Combine
 import Foundation
@@ -11,7 +9,7 @@ import Testing
 
 private enum ListingReply: Sendable {
     case names([String])
-    /// One page of a listing the driver answers in pages, the way Redis answers `SCAN`.
+    // One page of a listing the driver answers in pages, the way Redis answers `SCAN`.
     case page([String], status: String?)
     case failure(any Error)
 }
@@ -20,8 +18,7 @@ private struct ListingRefused: Error, LocalizedError {
     var errorDescription: String? { "permission denied for view pg_stat_user_tables" }
 }
 
-/// The statements the stub driver was asked to run. The driver runs off the main actor, so the log is
-/// locked rather than isolated.
+// The driver runs off the main actor, so the log is locked rather than isolated.
 private final class ListingQueryLog: @unchecked Sendable {
     private let lock = NSLock()
     private var queries: [String] = []
@@ -35,8 +32,7 @@ private final class ListingQueryLog: @unchecked Sendable {
     }
 }
 
-/// Answers each read with the next scripted reply, and can hold the next read until the test releases
-/// it, the way a driver blocked on the wire holds one.
+// Can hold the next read until the test releases it, the way a driver blocked on the wire holds one.
 @MainActor
 private final class ScriptedListingProvider: ScopedMetadataProviding {
     private let connection: DatabaseConnection
@@ -216,8 +212,7 @@ struct TableListingViewModelTests {
         #expect(names(viewModel.state) == ["customers"])
     }
 
-    /// A driver blocked on the wire finishes after a newer load has, and cancelling its task cannot stop
-    /// it. Whatever it comes back with is older than what is on screen.
+    // A blocked read can finish after a newer load, and cancelling its task cannot stop it.
     @Test("A load a newer one superseded commits nothing, whatever it returns")
     func supersededLoadCommitsNothing() async {
         let outcomes: [ListingReply] = [.names(["stale"]), .failure(ListingRefused()), .failure(CancellationError())]
@@ -238,8 +233,7 @@ struct TableListingViewModelTests {
         }
     }
 
-    /// The pane leaving cancels the load, and coming back has to run it again rather than find a spinner
-    /// with nothing behind it, or an empty grid that reads as no tables.
+    // Coming back must run the load again, not find a spinner with nothing behind it.
     @Test("A cancelled first load settles back to idle and loads again when asked")
     func cancelledLoadRunsAgain() async throws {
         let (viewModel, provider) = makeViewModel()
@@ -264,8 +258,7 @@ struct TableListingViewModelTests {
         #expect(provider.executedQueries.count == 1)
     }
 
-    /// A page passed off as the whole listing read as every table there is, and an empty first page as
-    /// none at all.
+    // A page passed off as the whole listing read as every table there is.
     @Test("A partial listing says so, in the driver's words when it has some")
     func partialListingSaysSo() async {
         let (viewModel, provider) = makeViewModel(databaseType: .redis, slot: .database, pluginListsTables: false)
@@ -289,8 +282,7 @@ struct TableListingViewModelTests {
         #expect(TableListing(rows: TableRows(), isIncomplete: false, statusMessage: "").notice == nil)
     }
 
-    /// Refresh reaches a listing whose tab is not on screen too: asking again for a listing behind
-    /// another tab selects it and refreshes it in the same turn, before its view exists.
+    // A refresh reaches a listing behind another tab before its view exists.
     @Test("A refresh for this tab reloads it, and one for another tab does not")
     func refreshRequestReloadsOnlyThisTab() async throws {
         let (viewModel, provider) = makeViewModel()
@@ -306,8 +298,7 @@ struct TableListingViewModelTests {
         #expect(provider.executedQueries.count == 2)
     }
 
-    /// A closed tab's read can still be blocked on the wire when the tab goes. Whatever it brings back
-    /// belongs to nobody.
+    // A closed tab's read can still be blocked on the wire; whatever it brings back belongs to nobody.
     @Test("A cancelled load commits nothing when its read returns, and loads again when asked")
     func cancelledLoadCommitsNothing() async throws {
         let (viewModel, provider) = makeViewModel()
@@ -355,6 +346,55 @@ struct TableListingViewModelTests {
 
         #expect(closing.state.erased == .idle)
         #expect(store.model(forTab: openId) { closing } === open)
+    }
+
+    // MARK: - Grid
+
+    private func gridNames(_ viewModel: TableListingViewModel) -> [String] {
+        viewModel.grid.model.rows.rows.map { $0.values.first.flatMap { $0.asText } ?? "" }
+    }
+
+    @Test("A landed listing reaches the tab's grid")
+    func listingReachesTheGrid() async {
+        let (viewModel, provider) = makeViewModel()
+        provider.answer(with: .names(["orders", "customers"]))
+
+        await viewModel.reload().value
+
+        #expect(gridNames(viewModel) == ["orders", "customers"])
+        #expect(viewModel.grid.model.rowCount == 2)
+        #expect(viewModel.grid.model.store.layoutScope == .ephemeral)
+    }
+
+    @Test("A header sort orders the listed tables, and the selection stays on the same table")
+    func headerSortOrdersTheHeldRows() async throws {
+        let (viewModel, provider) = makeViewModel()
+        provider.answer(with: .names(["orders", "customers", "accounts"]))
+        await viewModel.reload().value
+        let model = viewModel.grid.model
+        let orders = try #require(model.rowID(at: 0))
+        model.selectRows([orders])
+
+        model.setSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .ascending)], source: .user))
+
+        #expect(gridNames(viewModel) == ["accounts", "customers", "orders"])
+        #expect(model.selectedRowIDs == [orders])
+        #expect(model.displayIndex(of: orders) == 2)
+    }
+
+    @Test("The sort the reader chose orders the next listing too")
+    func sortSurvivesARefresh() async {
+        let (viewModel, provider) = makeViewModel()
+        provider.answer(with: .names(["orders", "customers"]))
+        await viewModel.reload().value
+        let descending = SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)], source: .user)
+        viewModel.grid.model.setSort(descending)
+
+        provider.answer(with: .names(["accounts", "orders", "zones"]))
+        await viewModel.reload().value
+
+        #expect(gridNames(viewModel) == ["zones", "orders", "accounts"])
+        #expect(viewModel.grid.model.store.sortState == descending)
     }
 }
 

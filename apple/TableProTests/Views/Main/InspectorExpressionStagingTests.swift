@@ -52,13 +52,12 @@ struct InspectorExpressionStagingTests {
         coordinator.tabSessionRegistry.tableRows(for: tabId).rows[row].values[column]
     }
 
-    /// Wired the way `MainContentView.updateSidebarEditState` wires the inspector.
+    // Wired the way `MainContentView.updateSidebarEditState` wires the inspector.
     private func configuredEditState(_ tabId: UUID, rows rowIDs: [RowID]) -> MultiRowEditState {
         let tableRows = coordinator.tabSessionRegistry.tableRows(for: tabId)
         let selected = rowIDs.compactMap { tableRows.row(withID: $0) }
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: Set(selected.indices),
             rowIDs: selected.map(\.id),
             allRows: selected.map { $0.values.map(\.asText) },
             expressionCells: selected.map { changeManager.expressionColumns(forRow: $0.id) },
@@ -135,8 +134,7 @@ struct InspectorExpressionStagingTests {
         #expect(value(tabId, row: 0, column: 3) == .text("now()"))
     }
 
-    /// The grid staged `now()` on two rows. Typing over it in the inspector and clearing the field again used to
-    /// re-stage the configured text as a literal, which then saved as the string `'now()'`.
+    // Clearing the field after typing over a staged `now()` used to re-stage the text as the literal `'now()'`.
     @Test("Clearing an inspector edit over SQL the grid staged puts the SQL back")
     func revertRestoresTheExpression() {
         let tabId = makeTable()
@@ -195,8 +193,8 @@ struct InspectorExpressionStagingTests {
 
     @Test("An inspector-only save writes a picked function unquoted")
     func sidebarSaveWritesPickedFunction() throws {
-        _ = makeTable()
-        coordinator.selectionState.indices = [0]
+        let tabId = makeTable()
+        coordinator.gridModel(forTab: tabId).selectRows([.existing(0)])
 
         let statements = try coordinator.sidebarEditStatements(editedFields: [
             InspectorFieldEdit(columnIndex: 2, columnName: "created_at", newValue: "now()", isExpression: true)
@@ -209,8 +207,8 @@ struct InspectorExpressionStagingTests {
 
     @Test("An inspector-only save reads a typed function name as the function on a timestamp, as text elsewhere")
     func sidebarSavePromotesTypedText() throws {
-        _ = makeTable()
-        coordinator.selectionState.indices = [0]
+        let tabId = makeTable()
+        coordinator.gridModel(forTab: tabId).selectRows([.existing(0)])
 
         let timestamp = try #require(try coordinator.sidebarEditStatements(editedFields: [
             InspectorFieldEdit(columnIndex: 2, columnName: "created_at", newValue: "NOW()")

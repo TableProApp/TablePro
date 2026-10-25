@@ -1,25 +1,7 @@
 import AppKit
-import SwiftUI
+@testable import TablePro
 import TableProPluginKit
 import Testing
-
-@testable import TablePro
-
-@MainActor
-private final class NoopFieldRemovalLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-@MainActor
-private final class FieldRemovalRowStore {
-    var tableRows: TableRows
-
-    init(_ tableRows: TableRows) {
-        self.tableRows = tableRows
-    }
-}
 
 extension GlobalStateSuites {
     @Suite(.recordingClipboard)
@@ -27,80 +9,70 @@ extension GlobalStateSuites {
     struct DataGridFieldRemovalTests {
         private static let columns = ["_id", "nick", "deletedAt"]
 
-        private func makeGrid(
-            _ databaseType: DatabaseType = .mongodb
-        ) -> (TableViewCoordinator, FieldRemovalRowStore, DataChangeManager) {
-            let manager = DataChangeManager()
-            manager.configureForTable(
-                tableName: "items",
-                columns: Self.columns,
-                primaryKeyColumns: ["_id"],
-                databaseType: databaseType,
-                generatedColumns: []
+        private func makeGrid(supportsFieldRemoval: Bool = true) -> CommandGrid {
+            var configuration = CommandGrid.editable(databaseType: .mongodb)
+            configuration.traits.supportsFieldRemoval = supportsFieldRemoval
+            return CommandGrid(
+                TableRows.from(
+                    queryRows: [["1", "Ada", .null]],
+                    columns: Self.columns,
+                    columnTypes: Array(repeating: .text(rawType: nil), count: Self.columns.count),
+                    absentCells: [0: [2]]
+                ),
+                configuration: configuration
             )
-            let coordinator = TableViewCoordinator(
-                changeManager: AnyChangeManager(manager),
-                isEditable: true,
-                selectedRowIndices: .constant([]),
-                delegate: nil,
-                layoutPersister: NoopFieldRemovalLayoutPersister()
-            )
-            coordinator.databaseType = databaseType
-            let store = FieldRemovalRowStore(TableRows.from(
-                queryRows: [["1", "Ada", .null]],
-                columns: Self.columns,
-                columnTypes: Array(repeating: .text(rawType: nil), count: Self.columns.count),
-                absentCells: [0: [2]]
-            ))
-            coordinator.tableRowsProvider = { store.tableRows }
-            coordinator.tableRowsMutator = { mutation in mutation(&store.tableRows) }
-            coordinator.updateCache()
-            return (coordinator, store, manager)
         }
 
-        @Test("A missing field reads No Field, not NULL")
-        func missingFieldIsNamed() {
-            let (coordinator, _, _) = makeGrid()
+        private func cell(_ grid: CommandGrid, _ column: Int) throws -> DataGridCommandCell {
+            DataGridCommandCell(rowID: .existing(0), row: 0, column: try #require(grid.model.columns.column(at: column)))
+        }
 
-            #expect(coordinator.accessibilityText(row: 0, columnIndex: 2) == "No Field")
+        @Test("A missing field draws as no field, not as NULL")
+        func missingFieldIsNamed() {
             #expect(DataGridCellContent.placeholder(for: .null, isAbsent: true) == .absent)
             #expect(DataGridCellContent.placeholder(for: .null) == .null)
         }
 
-        @Test("Remove Field takes the field out of the row and stages the removal")
+        @Test("Remove Field takes the field out of the row as one commit")
         func removeFieldStagesTheRemoval() throws {
-            let (coordinator, store, manager) = makeGrid()
+            let grid = makeGrid()
 
-            coordinator.removeField(row: 0, columnIndex: 1)
+            grid.commands.removeField(try cell(grid, 1))
 
-            #expect(store.tableRows.isAbsent(row: 0, column: 1))
-            let cell = try #require(manager.changes.first?.cellChanges.first)
-            #expect(cell.oldValue == "Ada" && !cell.oldIsAbsent)
-            #expect(cell.newIsAbsent)
-            #expect(coordinator.accessibilityText(row: 0, columnIndex: 1) == "No Field")
+            #expect(grid.owner.tableRows.isAbsent(row: 0, column: 1))
+            let edit = try #require(grid.owner.commits.first?.edits.first)
+            #expect(edit.oldValue == "Ada" && !edit.absence.wasAbsent)
+            #expect(edit.absence.isAbsent)
+            #expect(edit.newValue == .null)
+        }
+
+        @Test("The cell's menu offers Remove Field only while the field is there")
+        func menuOffersRemovalOnPresentFields() {
+            let grid = makeGrid()
+
+            #expect(CommandRows.titles(grid.rowMenu(row: 0, displayColumn: 1)).contains(String(localized: "Remove Field")))
+            #expect(!CommandRows.titles(grid.rowMenu(row: 0, displayColumn: 2)).contains(String(localized: "Remove Field")))
         }
 
         @Test("Set NULL on a missing field puts the field back holding null")
         func nullOverMissingFieldIsAnEdit() throws {
-            let (coordinator, store, manager) = makeGrid()
+            let grid = makeGrid()
 
-            coordinator.commitCellEdit(row: 0, columnIndex: 2, newValue: nil)
+            grid.commands.applySetValue(.null, to: [try cell(grid, 2)])
 
-            #expect(!store.tableRows.isAbsent(row: 0, column: 2))
-            let change = try #require(manager.changes.first)
-            #expect(change.absentColumns == [2])
-            let cell = try #require(change.cellChanges.first)
-            #expect(cell.oldIsAbsent && !cell.newIsAbsent)
-            #expect(cell.newValue == .null)
-            #expect(coordinator.accessibilityText(row: 0, columnIndex: 2) == "NULL")
+            #expect(!grid.owner.tableRows.isAbsent(row: 0, column: 2))
+            let edit = try #require(grid.owner.commits.first?.edits.first)
+            #expect(edit.absence.wasAbsent && !edit.absence.isAbsent)
+            #expect(edit.newValue == .null)
         }
 
         @Test("Copy with Headers records which fields each copied row lacked")
         func copyWithHeadersCarriesAbsence() throws {
-            let (coordinator, _, _) = makeGrid()
+            let grid = makeGrid()
             let clipboard = try #require(RecordingClipboard.current)
+            grid.selectRows(0...0)
 
-            coordinator.copyRowsWithHeaders(at: [0])
+            grid.controller.copyRowsWithHeaders(nil)
 
             let payload = try #require(clipboard.gridRows)
             #expect(payload.columns == Self.columns)
@@ -109,14 +81,16 @@ extension GlobalStateSuites {
         }
 
         @Test("An engine that cannot tell a missing field from NULL offers no removal")
-        func removalNeedsTheCapability() {
-            let (coordinator, store, manager) = makeGrid(.mysql)
+        func removalNeedsTheCapability() throws {
+            let grid = makeGrid(supportsFieldRemoval: false)
+            let nick = try cell(grid, 1)
 
-            coordinator.removeField(row: 0, columnIndex: 1)
+            grid.commands.removeField(nick)
 
-            #expect(!coordinator.supportsFieldRemoval)
-            #expect(!store.tableRows.isAbsent(row: 0, column: 1))
-            #expect(!manager.hasChanges)
+            #expect(!grid.commands.canRemoveField(nick))
+            #expect(!grid.owner.tableRows.isAbsent(row: 0, column: 1))
+            #expect(grid.owner.commits.isEmpty)
+            #expect(!CommandRows.titles(grid.rowMenu(row: 0, displayColumn: 1)).contains(String(localized: "Remove Field")))
         }
     }
 }

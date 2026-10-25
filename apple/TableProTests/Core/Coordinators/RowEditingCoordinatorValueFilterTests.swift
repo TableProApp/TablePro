@@ -50,8 +50,13 @@ struct RowEditingCoordinatorValueFilterTests {
             columnName: "name",
             forColumn: 1
         )
-        coordinator.setValueFilter(filter, forTab: tab.id)
+        coordinator.gridModel(forTab: tab.id).setValueFilter(filter)
         return coordinator
+    }
+
+    private func model(_ coordinator: MainContentCoordinator) throws -> DataGridModel {
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        return coordinator.gridModel(forTab: tabId)
     }
 
     private func tableRows(of coordinator: MainContentCoordinator) -> TableRows {
@@ -60,17 +65,18 @@ struct RowEditingCoordinatorValueFilterTests {
     }
 
     @Test("The filter shows the two Bobs, so display positions are not storage indices")
-    func filterNarrowsTheDisplay() {
+    func filterNarrowsTheDisplay() throws {
         let coordinator = makeCoordinator()
 
-        #expect(coordinator.activeGridDisplayIDs == [.existing(1), .existing(3)])
+        #expect(try model(coordinator).displayedRowIDs == [.existing(1), .existing(3)])
     }
 
     @Test("Deleting the second shown row marks id 4, and the DELETE names id 4")
     func deleteMarksTheShownRow() throws {
         let coordinator = makeCoordinator()
+        let shown = try #require(try model(coordinator).rowID(at: 1))
 
-        coordinator.deleteSelectedRows(indices: [1])
+        coordinator.deleteRows([shown])
 
         #expect(coordinator.changeManager.isRowDeleted(.existing(3)))
         #expect(!coordinator.changeManager.isRowDeleted(.existing(1)))
@@ -80,27 +86,31 @@ struct RowEditingCoordinatorValueFilterTests {
     }
 
     @Test("A new row is selected at the position the filter shows it")
-    func addRowSelectsItsDisplayPosition() {
+    func addRowSelectsItsDisplayPosition() throws {
         let coordinator = makeCoordinator()
+        let grid = try model(coordinator)
 
         coordinator.addNewRow()
 
-        let displayIDs = coordinator.activeGridDisplayIDs ?? []
+        let displayIDs = grid.displayedRowIDs ?? []
         #expect(displayIDs.count == 3)
         #expect(displayIDs.last?.isInserted == true)
-        #expect(coordinator.selectionState.indices == [2])
+        #expect(grid.selection.affectedRows == IndexSet(integer: 2))
+        #expect(grid.selectedRowIDs.first == displayIDs.last)
     }
 
     @Test("A duplicated row is selected at the position the filter shows it")
-    func duplicateSelectsItsDisplayPosition() {
+    func duplicateSelectsItsDisplayPosition() throws {
         let coordinator = makeCoordinator()
+        let grid = try model(coordinator)
+        let shown = try #require(grid.rowID(at: 1))
 
-        coordinator.duplicateSelectedRow(index: 1)
+        coordinator.duplicateRow(shown)
 
         let rows = tableRows(of: coordinator)
         #expect(rows.count == 5)
         #expect(rows.rows.last?.values[1] == "Bob")
-        #expect(coordinator.selectionState.indices == [2])
+        #expect(grid.selection.affectedRows == IndexSet(integer: 2))
     }
 
     @Test("Discard puts back the row that was edited, not the one at the same storage offset")

@@ -2,30 +2,19 @@
 //  MainContentView.swift
 //  TablePro
 //
-//  Main content view combining query editor and results table.
-//  Refactored to use coordinator pattern for business logic separation.
-//
-//  Extensions:
-//  - MainContentView+Bindings.swift — computed bindings and trigger types
-//  - MainContentView+EventHandlers.swift — tab/table selection, sidebar edit handling
-//  - MainContentView+Setup.swift — initialization, command actions, database switching
-//  - MainContentView+Helpers.swift — helper methods, inspector context
-//  - MainContentView+Modifiers.swift — toolbar tint, focused command actions, preview
-//
 
 import Combine
 import os
 import SwiftUI
 import TableProPluginKit
 
-/// Main content view - thin presentation layer
 struct MainContentView: View {
     nonisolated static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Properties
 
     let connection: DatabaseConnection
-    /// Payload identifying what this window-tab should display (nil = default query tab)
+    // nil means the default query tab.
     let payload: EditorTabPayload?
 
     // Shared state from parent
@@ -56,9 +45,7 @@ struct MainContentView: View {
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var inspectorContextRefreshTask: Task<Void, Never>?
-    /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
-    /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
 
     // MARK: - Environment
@@ -138,8 +125,7 @@ struct MainContentView: View {
 
     // MARK: - Sheet Content
 
-    /// Connection with the active database from the current session,
-    /// so export/import dialogs see the database the user actually switched to.
+    // Export and import dialogs need the database the user switched to, not the saved one.
     var connectionWithCurrentDatabase: DatabaseConnection {
         var conn = connection
         if let currentDB = DatabaseManager.shared.session(for: connection.id)?.browseDatabase {
@@ -148,9 +134,7 @@ struct MainContentView: View {
         return conn
     }
 
-    /// Exporting a container names the database that container lives in, which is not always the
-    /// one being browsed. The dialog scopes every list and the export itself to this connection's
-    /// database, so naming it here is what makes exporting another database show that database.
+    // Exporting another database's container has to name that database; the dialog scopes everything to this one.
     var exportConnection: DatabaseConnection {
         var conn = connectionWithCurrentDatabase
         if let scoped = coordinator.exportPreselection?.scopedDatabase, !scoped.isEmpty {
@@ -159,11 +143,7 @@ struct MainContentView: View {
         return conn
     }
 
-    /// Returns the appropriate sheet view for the given `ActiveSheet` case.
-    /// Uses a dismissal binding that sets `coordinator.activeSheet = nil` when the
-    /// child view sets `isPresented = false`.
-    /// The transfer sheet is built here rather than inline, because `sheetContent(for:)` is one
-    /// switch over every sheet the window can present and is already at the function length limit.
+    // Its own function: sheetContent(for:) switches over every sheet and is already at the function length limit.
     @ViewBuilder
     func transferSheet(tables: Set<String>, schema: String?, dismiss: Binding<Bool>) -> some View {
         TableTransferSheet(
@@ -183,11 +163,7 @@ struct MainContentView: View {
                     coordinator.activeSheet = nil
                     coordinator.exportPreselection = nil
                     coordinator.exportFormatId = nil
-                    /// Cleared on every dismissal, Cancel included. The request holds the closure
-                    /// that runs the rebuild, and that closure holds the structure view, which
-                    /// holds this coordinator; leaving it set after a cancel keeps the cycle alive
-                    /// for the window's life and offers a stale plan to whatever opens the sheet
-                    /// next.
+                    // Cleared on every dismissal: the request's closure holds this coordinator, so a kept one leaks and offers a stale plan.
                     coordinator.tableRebuildRequest = nil
                 }
             }
@@ -330,9 +306,6 @@ struct MainContentView: View {
         }
     }
 
-    /// Trigger for toolbar pending-changes badge — combines all four sources that
-    /// contribute to `hasPendingChanges`. Replaces four separate handlers that each
-    /// called `updateToolbarPendingState()`.
     private var pendingChangeTrigger: PendingChangeTrigger {
         PendingChangeTrigger(
             hasDataChanges: changeManager.hasChanges,
@@ -348,7 +321,7 @@ struct MainContentView: View {
         )
     }
 
-    /// Split into two halves to help the Swift type checker with the long modifier chain.
+    // Split in two to help the Swift type checker with the long modifier chain.
     private var bodyContent: some View {
         bodyContentCore
             .background {
@@ -365,40 +338,41 @@ struct MainContentView: View {
             })
             .modifier(InspectorValueLoadModifier(
                 inspector: trailingPaneState.inspector,
-                selection: coordinator.selectionState,
+                model: gridSelectionOwner == .dataGrid ? coordinator.activeGridModel : nil,
                 tabId: currentTab?.id,
-                selectsDataRows: gridSelectionOwner == .dataGrid,
                 contentVersion: currentTab?.schemaVersion ?? 0
-            ) { [coordinator] tabId, displayRow in
-                await coordinator.loadInspectorRowValues(tabId: tabId, displayRow: displayRow)
+            ) { [coordinator] tabId, rowID in
+                await coordinator.loadInspectorRowValues(tabId: tabId, rowID: rowID)
             })
-            /// Keyed on the connection alone. The only driver that answers `fetchSessionContexts`
-            /// is Snowflake, which pays two round trips for it, so this must not reload per query.
-            /// It lives with the connection's content rather than with the toolbar control it used
-            /// to feed, because the Database menu is what offers these now and a menu has no view
-            /// to hang a `task` on.
+            .background {
+                if let model = coordinator.activeGridModel {
+                    GridSelectionWatcher(
+                        model: model,
+                        onAttach: { scheduleInspectorUpdate() },
+                        onChange: { handleGridSelectionChange() }
+                    )
+                    .id(ObjectIdentifier(model))
+                }
+            }
+            .onReceive(coordinator.gridCellsEdited) { _ in
+                scheduleInspectorUpdate()
+            }
+            // Keyed on the connection alone: Snowflake, the only driver that answers, pays two round trips for it.
             .task(id: coordinator.toolbarState.connectionState) {
                 await coordinator.loadSessionContexts()
             }
             .onChange(of: inspectorTrigger) { _ in
                 scheduleInspectorUpdate()
             }
-            /// The numbers land after the rows that moved the trigger above, and a comment refetch
-            /// moves nothing else, so the snapshot follows the cache on its own. Only the snapshot:
-            /// the edit state does not depend on them, and rebuilding it would end a typed undo run.
+            // Only the snapshot: rebuilding the edit state would end a typed undo run.
             .onChange(of: tableMetadataForCurrentTab) { _ in
                 updateInspectorContext()
             }
-            /// The JSON rendering draws the snapshot the context carries, and an edit made in the
-            /// fields rendering changes the row under it without moving anything `InspectorTrigger`
-            /// watches. Rebuilding on the switch is enough: the two renderings are never on screen
-            /// together, so the stale snapshot is only ever reached by switching to it.
+            // An edit in the fields rendering moves nothing InspectorTrigger watches; the two renderings are never on screen together.
             .onValueChange(of: \.viewMode, in: trailingPaneState.inspector) { _, _ in
                 updateInspectorContext()
             }
-            /// A value window detached from a field goes on writing while the JSON rendering is the
-            /// one on screen, and it moves nothing the trigger above watches. Debounced, because it
-            /// commits per keystroke and rebuilding the JSON tree cancels the reader's fetches.
+            // Debounced: a detached value window commits per keystroke, and rebuilding the JSON tree cancels the reader's fetches.
             .onReceive(coordinator.inspectorRowContentChanged) { _ in
                 scheduleInspectorContextRefresh()
             }
@@ -478,14 +452,20 @@ struct MainContentView: View {
                 }
                 handleTableSelectionChange(from: oldTables, to: newTables)
             }
-            /// A background reload of the same container must not take a selection out from under
-            /// the user. Every other input re-asserts unconditionally: a container switch above all,
-            /// because a selection made in the container being left is not one in the container
-            /// arriving.
+            // A background reload of the same container must not take the selection out from under the user.
             .onChange(of: tables) { _ in
                 guard coordinator.windowSidebarState.acceptsObjectMarkRefresh else { return }
                 coordinator.syncSidebarObjectSelection()
             }
+    }
+
+    // Any grid's selection counts, a query result's as much as a table's: the setting is "on row select".
+    private func handleGridSelectionChange() {
+        if coordinator.activeGridModel?.selection.isEmpty == false,
+           AppSettingsManager.shared.dataGrid.autoShowInspector {
+            coordinator.trailingPaneProxy?.revealInspectorForSelection()
+        }
+        scheduleInspectorUpdate()
     }
 
     // MARK: - Main Content
@@ -520,31 +500,6 @@ struct MainContentView: View {
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,
-            selectionState: coordinator.selectionState,
-            onCellEdit: { rowIndex, colIndex, value in
-                coordinator.updateCellInTab(
-                    rowIndex: rowIndex, columnIndex: colIndex, value: value)
-                scheduleInspectorUpdate()
-            },
-            onSortStateChanged: { newState in
-                coordinator.handleSortStateChanged(newState)
-            },
-            onAddRow: {
-                coordinator.addNewRow()
-            },
-            onSelectionChange: { newIndices in
-                /// Any grid selection counts, not just a table tab's. The setting is called
-                /// "Auto-show inspector on row select" and both docs pages describe it that way,
-                /// but it was gated on `tabType == .table`, so picking a row in a query result did
-                /// nothing and the setting read as intermittently broken rather than scoped.
-                if !newIndices.isEmpty, AppSettingsManager.shared.dataGrid.autoShowInspector {
-                    coordinator.trailingPaneProxy?.revealInspectorForSelection()
-                }
-                scheduleInspectorUpdate()
-            },
-            onFilterColumn: { columnName in
-                coordinator.addFilterForColumn(columnName)
-            },
             onFirstPage: {
                 coordinator.goToFirstPage()
             },

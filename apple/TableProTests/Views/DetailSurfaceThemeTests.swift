@@ -23,7 +23,7 @@ struct DetailSurfaceThemeTests {
         .gridBackground: ThemeTestFixture.gridHex,
     ]
 
-    /// Under the default pair the surface draws `native`; under its own slot it draws the theme; under every other slot it still draws `native`.
+    // Native under the default pair and under other slots; the theme only under its own slot.
     private func assertSurface(_ view: some View, at point: CGPoint, slot: ThemeSlot, native: NSColor) throws {
         let hex = try #require(Self.slotColors[slot])
         let others = Self.slotColors.filter { $0.key != slot }
@@ -84,7 +84,7 @@ struct DetailSurfaceThemeTests {
         #expect(controller.loadState == .loaded)
         #expect(controller.tableRows.rows.isEmpty)
 
-        let view = DataFileContentView(controller: controller, gridDelegate: DataFileGridDelegate(controller: controller))
+        let view = DataFileContentView(controller: controller)
             .frame(width: Self.size.width, height: Self.size.height)
         try assertSurface(view, at: CGPoint(x: 0.03, y: 0.05), slot: .gridBackground, native: .textBackgroundColor)
     }

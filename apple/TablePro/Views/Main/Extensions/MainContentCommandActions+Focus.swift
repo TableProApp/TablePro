@@ -6,21 +6,16 @@
 import AppKit
 
 internal extension MainContentCommandActions {
-    /// Focus Results goes through the grid's own coordinator rather than naming a view, because the
-    /// grid already owns the call and answers whether it took the keyboard.
-    ///
-    /// A collapsed result pane keeps its grid attached to the window, so focusing without expanding
-    /// first sends the keyboard to a table clipped to nothing.
+    // A collapsed result pane keeps its grid in the window, so focusing it unexpanded hands the keyboard to nothing.
     @discardableResult
     func focusActiveGrid() -> Bool {
         expandResultsIfCollapsed()
-        return coordinator?.dataTabDelegate?.tableViewCoordinator?.focusGrid() ?? false
+        return coordinator?.focusActiveGrid() ?? false
     }
 
-    /// A grid that is not in a window cannot take the keyboard, which is the state a query tab with
-    /// no result, and every result view other than the data grid, leaves behind.
+    // Only a mounted grid can take the keyboard; a query tab with no result and every other result view have none.
     var canFocusActiveGrid: Bool {
-        coordinator?.dataTabDelegate?.tableViewCoordinator?.tableView?.window != nil
+        coordinator?.selectedTabGridModel?.isMounted == true
     }
 
     private func expandResultsIfCollapsed() {

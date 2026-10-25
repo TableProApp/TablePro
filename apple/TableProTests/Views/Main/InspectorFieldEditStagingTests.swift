@@ -39,13 +39,11 @@ struct InspectorFieldEditStagingTests {
             stage(value, column: column, rows: rows, continuity: .typing)
         }
 
-        /// A real `MultiRowEditState` wired the way the inspector wires it, so a field edit takes
-        /// the same route from the editor's binding to the staged change.
+        // Wired the way the inspector wires it, so a field edit takes the same route to the staged change.
         func configuredEditState(rows: [RowID]) -> MultiRowEditState {
             let state = MultiRowEditState()
             let selected = rows.compactMap { tableRows.row(withID: $0) }
             state.configure(
-                selectedRowIndices: Set(selected.indices),
                 rowIDs: selected.map(\.id),
                 allRows: selected.map { $0.values.map(\.asText) },
                 columns: tableRows.columns,
@@ -122,8 +120,7 @@ struct InspectorFieldEditStagingTests {
         #expect(cellChange(fixture, rowID: .existing(1), column: 1)?.newValue == .text("Zed"))
     }
 
-    /// The inspector rebuilds its fields from the same buffer on the next selection change, so an
-    /// edit that never reached it came back showing the value before the edit (#2851).
+    // The inspector rebuilds its fields from the same buffer on the next selection change (#2851).
     @Test("reconfiguring the inspector from the edited row shows the edited value")
     func theInspectorRebuildsFromTheEditedRow() {
         let fixture = makeFixture()
@@ -132,7 +129,6 @@ struct InspectorFieldEditStagingTests {
         let editState = MultiRowEditState()
         let row = fixture.tableRows.rows[1]
         editState.configure(
-            selectedRowIndices: [1],
             rowIDs: [row.id],
             allRows: [row.values.map(\.asText)],
             columns: ["id", "name"],
@@ -153,8 +149,7 @@ struct InspectorFieldEditStagingTests {
         #expect(!fixture.coordinator.changeManager.hasChanges)
     }
 
-    /// Every row used to be recorded with one shared previous value taken from the inspector's
-    /// field, which is nil, and so NULL, whenever the selected rows disagree.
+    // One shared previous value from the inspector's field was nil, so NULL, whenever the rows disagreed.
     @Test("each row in a multi-row edit keeps its own previous value")
     func multiRowEditKeepsEachRowsPreviousValue() {
         let fixture = makeFixture()
@@ -181,8 +176,7 @@ struct InspectorFieldEditStagingTests {
         #expect(!fixture.coordinator.changeManager.hasChanges)
     }
 
-    /// `originalValue` is nil both for a stored NULL and for a selection whose rows disagree, and
-    /// sending that nil as one value wrote NULL into every selected row.
+    // `originalValue` is nil for a stored NULL and for rows that disagree; sent as one value it wrote NULL everywhere.
     @Test("clearing a field the selected rows disagree on puts each row's own value back")
     func clearingAMultiValueFieldRestoresEachRow() {
         let fixture = makeFixture()
@@ -240,8 +234,7 @@ struct InspectorFieldEditStagingTests {
         #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
     }
 
-    /// Rows are named by identity, so an edit staged while a value filter is hiding rows cannot
-    /// land on whatever row sits at the same display position.
+    // Rows are named by identity, so an edit under a value filter cannot land on the row at the same position.
     @Test("a value filter does not move the edit to another row")
     func aValueFilterDoesNotMoveTheEdit() {
         let fixture = makeFixture()
@@ -251,8 +244,9 @@ struct InspectorFieldEditStagingTests {
             columnName: "name",
             forColumn: 1
         )
-        fixture.coordinator.setValueFilter(filter, forTab: fixture.tabId)
-        #expect(fixture.coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+        let model = fixture.coordinator.gridModel(forTab: fixture.tabId)
+        model.setValueFilter(filter)
+        #expect(model.displayedRowIDs == [.existing(1), .existing(2)])
 
         fixture.stage(.text("Zed"), rows: [.existing(2)])
 
@@ -260,8 +254,7 @@ struct InspectorFieldEditStagingTests {
         #expect(fixture.value(row: 1, column: 1) == .text("Bob"))
     }
 
-    /// A `TextField` bound to a string writes its binding per character, so a typed word reached
-    /// the undo stack one character at a time.
+    // A `TextField` writes its binding per character, so a typed word reached the undo stack a character at a time.
     @Test("a typed word is one undo step")
     func typingIsOneUndoStep() {
         let fixture = makeFixture()
@@ -316,8 +309,7 @@ struct InspectorFieldEditStagingTests {
         #expect(!undoManager.canUndo)
     }
 
-    /// A row that already held the typed text joins the run on the keystroke that first changes it,
-    /// with its own starting value.
+    // A row that already held the typed text joins the run on the keystroke that first changes it.
     @Test("a row that only changes later still comes back with the rest")
     func aLateJoiningRowIsRestored() {
         let fixture = makeFixture()

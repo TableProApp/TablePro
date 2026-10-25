@@ -6,18 +6,10 @@
 import Foundation
 import TableProPluginKit
 
-/// What the results pane draws.
-///
-/// One value rather than a nest of conditionals. `MainEditorContentView.resultsSection` used to
-/// decide this inside its own body: a switch over `ResultsViewMode` whose five arms each repeated
-/// the result-set chrome, wrapped around a five-way `if/else if/else` that chose between the
-/// success view, an empty `Spacer`, the no-rows view and the grid. Three of those arms tested
-/// `lastExecutedAt != nil && !isExecuting` with slightly different companions, so the states were
-/// only accidentally exclusive and none of them could be checked without mounting SwiftUI.
+// One value instead of conditionals in the view body, so the states stay exclusive and testable without mounting SwiftUI.
 enum QueryResultContent: Equatable {
-    /// Nothing has run and there is nothing to show.
     case idle
-    /// A fetch is in flight with no loaded buffer to draw under it.
+    // In flight with no loaded buffer to draw under it.
     case executing
     case structure(tableName: String)
     case queryPlan
@@ -25,26 +17,22 @@ enum QueryResultContent: Equatable {
     case map
     case json
     case grid
-    /// Columns came back and no rows did, which is a result rather than an absence.
+    // Columns but no rows: a result, not an absence.
     case noRows(executionTime: TimeInterval?)
-    /// A statement that reports work done rather than rows: INSERT, UPDATE, DDL, and whatever it printed on the
-    /// server, which for a PL/SQL block is usually the point of running it.
+    // INSERT, UPDATE, DDL. The server output is usually the point of running a PL/SQL block.
     case statementSucceeded(
         rowsAffected: Int,
         executionTime: TimeInterval?,
         statusMessage: String?,
         serverOutput: PluginServerOutput
     )
-    /// What a statement that returned rows printed on the server, on its own in Output mode.
+    // What a statement that returned rows printed on the server, shown alone in Output mode.
     case serverOutput(PluginServerOutput)
-    /// The mode draws the loaded buffer and the buffer is empty, so the mode cannot draw.
+    // The mode draws the loaded buffer, and the buffer is empty.
     case unavailable(mode: ResultsViewMode)
 }
 
-/// Everything the results pane needs in order to decide what it is, gathered before any view exists.
-///
-/// A plain struct rather than a `QueryTab`, so the whole state matrix is reachable from a test
-/// without a tab manager, a coordinator or a session registry behind it.
+// A plain struct, not a `QueryTab`, so tests reach every state without a tab manager, coordinator or session registry.
 struct QueryResultInputs: Equatable {
     var tabType: TabType = .query
     var viewMode: ResultsViewMode = .data
@@ -54,14 +42,13 @@ struct QueryResultInputs: Equatable {
     var isExplainResult = false
     var hasActiveResultSet = false
     var resultSetCount = 0
-    /// The active result reported columns. A result with none is a statement that did work.
+    // A result with no columns is a statement that did work.
     var activeResultHasColumns = false
     var activeResultRowsAffected = 0
     var activeResultExecutionTime: TimeInterval?
     var activeResultStatusMessage: String?
     var activeResultServerOutput: PluginServerOutput = .none
-    /// A failed result carries its own message, which outlives the tab's. Pin a failure, run
-    /// something that works, and `executionErrorMessage` is cleared while this one is not.
+    // Outlives the tab's message: pin a failure, run something that works, and only `executionErrorMessage` is cleared.
     var activeResultErrorMessage: String?
     var loadedColumnCount = 0
     var loadedRowCount = 0
@@ -71,25 +58,14 @@ struct QueryResultInputs: Equatable {
     var executionStatusMessage: String?
     var hasAppliedFilters = false
     var isFilterPanelVisible = false
-    var isFindBarVisible = false
 }
 
-/// The whole results pane, resolved from tab state before any view exists.
-///
-/// Pure by design, the way `ResultStatusModel` and `ResultSetPolicy` already are: every branch
-/// the pane can take is decidable from `QueryResultInputs` alone.
+// Pure: every branch is decidable from `QueryResultInputs` alone, like `ResultStatusModel` and `ResultSetPolicy`.
 struct QueryResultPresentation: Equatable {
     let content: QueryResultContent
-    /// The result-set chooser in the status bar. One result needs no chooser, and the structure
-    /// editor is not a result at all.
     let showsResultSetSelector: Bool
     let showsFilterChrome: Bool
-    let showsFindBar: Bool
-    /// Always. A plan used to give the bar up, which was harmless while the deleted strip carried
-    /// the result chooser above it, and would now leave a plan with no way to be switched away from
-    /// or pinned. The plan pane's own chrome is a header, so the bar under it is a footer rather
-    /// than a second header; what the bar gives up for a plan is its row readout, decided in
-    /// `ResultStatusModel` from `StatusBarSnapshot.isQueryPlan`.
+    // Always: a plan without the bar can't be switched away from or pinned. Its row readout hides via `StatusBarSnapshot.isQueryPlan`.
     let showsStatusBar: Bool
     let showsErrorBanner: Bool
 
@@ -97,16 +73,11 @@ struct QueryResultPresentation: Equatable {
         content = Self.resolveContent(inputs)
         showsResultSetSelector = Self.resolvesResultSetSelector(inputs)
         showsFilterChrome = Self.resolvesFilterChrome(inputs)
-        showsFindBar = inputs.isFindBarVisible
-            && inputs.tabType == .table
-            && inputs.viewMode.showsFindBar
         showsStatusBar = true
         showsErrorBanner = Self.resolvedError(inputs) != nil
     }
 
-    /// The error the pane is actually showing. The active result's own message wins, because it
-    /// describes the result on screen; the tab's is the fallback for a failure that produced no
-    /// result set at all.
+    // The active result's message wins since it describes the result on screen; the tab's covers a failure with no result set.
     static func resolvedError(_ inputs: QueryResultInputs) -> String? {
         inputs.activeResultErrorMessage ?? inputs.executionErrorMessage
     }
@@ -119,9 +90,7 @@ struct QueryResultPresentation: Equatable {
 
         if inputs.isExplainResult { return .queryPlan }
 
-        /// A table's grid is its own placeholder, so it stays mounted while the first page loads. A
-        /// retarget empties the buffer before the fetch claims the tab, and dropping the grid there
-        /// blanked the pane for the whole fetch and took the grid's first responder with it.
+        // A table's grid stays mounted while its first page loads: dropping it on a retarget blanked the pane and took first responder.
         if inputs.isExecuting, inputs.loadedColumnCount == 0, !Self.keepsGridWhileLoading(inputs) {
             return .executing
         }
@@ -130,16 +99,12 @@ struct QueryResultPresentation: Equatable {
             return .serverOutput(inputs.activeResultServerOutput)
         }
 
-        /// Ahead of the idle rule below, because these two modes say why they are empty rather
-        /// than going blank: a reader who switched to Chart before running anything is told to run
-        /// something, which is the one thing a blank pane cannot say.
+        // Before the idle rule: Chart and Map say why they are empty, so a reader who switched before running is told to run something.
         if inputs.viewMode == .chart || inputs.viewMode == .map {
             guard inputs.hasActiveResultSet else { return .unavailable(mode: inputs.viewMode) }
         }
 
-        /// A query tab that has never run anything has no result to draw. A table tab does: it
-        /// describes a table whether or not its rows have arrived, which is why the gate names the
-        /// tab type rather than the buffer.
+        // Gated on tab type, not the buffer: a table tab describes its table whether or not its rows have arrived.
         if inputs.tabType == .query,
            !inputs.hasExecuted,
            inputs.loadedColumnCount == 0,
@@ -165,9 +130,7 @@ struct QueryResultPresentation: Equatable {
         }
     }
 
-    /// The three outcomes a finished execution can have that are not a grid of rows. Answered in one
-    /// place so they stay mutually exclusive, which they only were by accident while each arm of the
-    /// old switch retested `hasExecuted && !isExecuting` beside a different companion condition.
+    // One place for the three non-grid outcomes, so they stay mutually exclusive.
     private static func resolveSettledResult(_ inputs: QueryResultInputs) -> QueryResultContent? {
         guard inputs.hasExecuted, !inputs.isExecuting else { return nil }
 
@@ -182,8 +145,7 @@ struct QueryResultPresentation: Equatable {
 
         guard inputs.loadedColumnCount == 0 else { return resolveEmptyRows(inputs) }
         guard resolvedError(inputs) == nil else { return nil }
-        /// A failed table load leaves no result set, and dismissing its banner removes the error, so
-        /// this state is a table that has not loaded rather than a statement that ran.
+        // A failed table load leaves no result set and dismissing its banner clears the error, so this is an unloaded table.
         guard inputs.resultSetCount > 0 else { return inputs.tabType == .table ? nil : .idle }
 
         return .statementSucceeded(
@@ -198,22 +160,14 @@ struct QueryResultPresentation: Equatable {
         inputs.tabType == .table && inputs.viewMode == .data
     }
 
-    /// Columns without rows. A filtered table that filtered everything away keeps the grid, because
-    /// the filter chrome is what the reader needs in order to get their rows back.
+    // A filtered table that filtered everything away keeps the grid: the filter chrome is how the reader gets rows back.
     private static func resolveEmptyRows(_ inputs: QueryResultInputs) -> QueryResultContent? {
         guard inputs.tabType == .query else { return nil }
         guard inputs.loadedRowCount == 0, !inputs.hasAppliedFilters else { return nil }
         return .noRows(executionTime: inputs.activeResultExecutionTime ?? inputs.executionTime)
     }
 
-    /// The same condition the deleted strip used, deliberately.
-    ///
-    /// It would be tempting to hide the chooser at a single result, since its title then says
-    /// nothing the pane does not. But Pin, Unpin and Close live in its menu, and pinning a result
-    /// before re-running is exactly the workflow that matters when there is one result on screen.
-    /// Hiding it there would leave the View menu as the only route to pinning, which is the
-    /// capability the strip existed to offer. The chooser costs no height to keep: it is a control
-    /// inside a bar that is already on screen, which is the whole difference from a 32pt band.
+    // Shown even for one result: Pin, Unpin and Close live in its menu, and it costs no height inside the status bar.
     private static func resolvesResultSetSelector(_ inputs: QueryResultInputs) -> Bool {
         guard inputs.tabType == .query else { return false }
         guard inputs.viewMode != .structure else { return false }

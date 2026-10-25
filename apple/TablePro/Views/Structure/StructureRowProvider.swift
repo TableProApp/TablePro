@@ -1,20 +1,11 @@
-//
-//  StructureRowProvider.swift
-//  TablePro
-//
-//  Adapts structure entities (columns/indexes/FKs) to TableRows for DataGridView
-//
-
 import Foundation
 import TableProPluginKit
 
-/// Sort descriptor for structure grid columns
 struct StructureSortDescriptor {
     let column: Int
     let ascending: Bool
 }
 
-/// Provides structure entities as rows for DataGridView
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
@@ -82,20 +73,10 @@ final class StructureRowProvider {
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
-    /// Every column whose cell opens a menu: the ones with a fixed option list, plus the ones whose
-    /// list the delegate builds per row.
     var dropdownColumns: Set<Int> {
         Set(customDropdownOptions.keys).union(rowDependentDropdownColumns)
     }
 
-    /// Columns whose list is a function of the row, so it cannot live in `customDropdownOptions`.
-    ///
-    /// On the Foreign Keys grid these are Columns (1), Ref Table (2) and Ref Columns (3): the first
-    /// offers the table's own columns, the second the database's tables, and the third the columns
-    /// of whichever table that row names. Every list keeps a `Custom…` entry, so a table the app has
-    /// not loaded is still reachable by typing.
-    ///
-    /// On the Indexes grid it is Type, which lists the row's own type beside the known ones.
     var rowDependentDropdownColumns: Set<Int> {
         switch tab {
         case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
@@ -104,11 +85,8 @@ final class StructureRowProvider {
         }
     }
 
-    /// The Indexes grid's Type column.
     static let indexTypeColumn = 2
 
-    /// The menu an Indexes grid cell opens for `index`, or nil for a column whose list does not
-    /// depend on the row. Shared by the Structure tab and Create Table so the two cannot drift.
     static func indexMenuOptions(
         columnIndex: Int,
         index: EditableIndexDefinition,
@@ -118,20 +96,9 @@ final class StructureRowProvider {
         return GridMenuOption.values(serverSupport.indexTypeChoices(keeping: index.type).map(\.rawValue))
     }
 
-    /// Explicit option lists for every dropdown column, keyed by column index.
-    /// Structure flags are schema properties, not data values, so they always offer
-    /// the same YES/NO pair the grid displays and never a NULL option.
-    ///
-    /// The Default column is the one open vocabulary here: it holds the SQL that follows the
-    /// `DEFAULT` keyword, so its list ends in `Custom…` and the cell still takes typed SQL.
     var customDropdownOptions: [Int: [GridMenuOption]] {
         switch tab {
         case .foreignKeys:
-            /// Offering every action to every engine is how a DuckDB user reached
-            /// `Parser Error: FOREIGN KEY constraints cannot use CASCADE, SET NULL or SET DEFAULT`
-            /// from a menu that presented CASCADE as valid. An engine with no `ON UPDATE` clause at
-            /// all, Oracle among them, still offers NO ACTION so the cell keeps a closed list rather
-            /// than falling back to free text.
             let dialect = ForeignKeyDialect.forType(databaseType)
             let deleteActions = dialect.deleteActions.isEmpty ? [.noAction] : dialect.deleteActions
             let updateActions = dialect.updateActions.isEmpty ? [.noAction] : dialect.updateActions
@@ -164,8 +131,6 @@ final class StructureRowProvider {
 
     static let notGeneratedOption = String(localized: "Not generated")
 
-    /// Every engine that offers a choice is offered both; a driver that supports only one kind
-    /// declares only the fields it can honour and the DDL generator spells the keyword it needs.
     static let generationOptions = [notGeneratedOption] + GenerationKind.allCases.map(\.rawValue)
 
     var typePickerColumns: Set<Int> {
@@ -234,9 +199,6 @@ final class StructureRowProvider {
         return cachedRows[displayRow].sourceIndex
     }
 
-    /// Fields whose working value differs from the value the schema was loaded with.
-    /// An entity that does not exist on the server yet has nothing to compare against,
-    /// so it reports no modified fields and the grid's inserted-row tint carries that state.
     func modifiedFieldIndices(atDisplay displayRow: Int) -> Set<Int> {
         guard let sourceIndex = sourceIndex(atDisplay: displayRow),
               let working = row(at: displayRow),
@@ -401,14 +363,33 @@ final class StructureRowProvider {
     }
 }
 
-// MARK: - Helper to create TableRows
-
 extension StructureRowProvider {
-    /// Creates a TableRows snapshot from structure data
+    // A row is named by its index in the working list, so a search, a sort or the grid's value filter
+    // never changes which definition an edit lands on.
+    static func rowID(forSourceIndex index: Int) -> RowID {
+        .existing(index)
+    }
+
+    static func sourceIndex(of rowID: RowID) -> Int? {
+        guard case .existing(let index) = rowID, index >= 0 else { return nil }
+        return index
+    }
+
+    func displayRow(ofSourceIndex sourceIndex: Int) -> Int? {
+        cachedRows.firstIndex { $0.sourceIndex == sourceIndex }
+    }
+
     func asTableRows() -> TableRows {
-        let typedRows = rows.map { row in row.map(PluginCellValue.fromOptional) }
-        return TableRows.from(
-            queryRows: typedRows,
+        var rows = ContiguousArray<Row>()
+        rows.reserveCapacity(cachedRows.count)
+        for indexed in cachedRows {
+            rows.append(Row(
+                id: Self.rowID(forSourceIndex: indexed.sourceIndex),
+                values: ContiguousArray(indexed.row.map(PluginCellValue.fromOptional))
+            ))
+        }
+        return TableRows(
+            rows: rows,
             columns: columns,
             columnTypes: columnTypes,
             columnNullable: Dictionary(uniqueKeysWithValues: columns.map { ($0, false) })

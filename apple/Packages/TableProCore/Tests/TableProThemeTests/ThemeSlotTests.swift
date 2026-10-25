@@ -23,9 +23,9 @@ struct ThemeSlotTests {
         }
     }
 
-    @Test("The registry holds 35 slots")
+    @Test("The registry holds 29 slots")
     func slotCount() {
-        #expect(ThemeSlot.allCases.count == 35)
+        #expect(ThemeSlot.allCases.count == 29)
     }
 
     @Test("Every slot belongs to exactly one group, listed in registry order")
@@ -44,20 +44,29 @@ struct ThemeSlotTests {
         #expect(sectioned.count == ThemeSlot.allCases.count)
     }
 
-    @Test("The editor sections split the data grid into rows, selection and changes")
+    @Test("The editor sections split the data grid into rows and changes")
     func sectionsSplitTheGrid() {
+        #expect(ThemeSlotSection.allCases == [.window, .editor, .syntax, .dataGrid, .changes])
         #expect(ThemeSlotSection.window.slots == [.windowBackdrop])
         #expect(ThemeSlotSection.editor.slots == ThemeSlotGroup.editor.slots)
         #expect(ThemeSlotSection.syntax.slots == ThemeSlotGroup.syntax.slots)
         #expect(ThemeSlotSection.dataGrid.slots == [
-            .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
+            .gridBackground, .gridText, .gridAlternateRow,
             .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
         ])
-        #expect(ThemeSlotSection.selection.slots == [.gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder])
         #expect(ThemeSlotSection.changes.slots == [.gridModified, .gridInserted, .gridDeleted, .gridDeletedText])
     }
 
-    /// The theme editor lists one section per group in this order, so the window leads it.
+    @Test("Header and selection colors are the system's, so no slot names them")
+    func noHeaderOrSelectionSlot() {
+        for path in [
+            "dataGrid.headerBackground", "dataGrid.headerText", "dataGrid.selection",
+            "dataGrid.selectionText", "dataGrid.inactiveSelection", "dataGrid.focusBorder",
+        ] {
+            #expect(ThemeSlot(rawValue: path) == nil, "\(path)")
+        }
+    }
+
     @Test("The window group comes first and holds only the window background")
     func windowGroupLeads() {
         #expect(ThemeSlotGroup.allCases.first == .window)
@@ -76,16 +85,14 @@ struct ThemeSlotTests {
             #expect(slot.accessibilityLabel.contains(slot.label), "\(slot.rawValue)")
         }
         #expect(ThemeSlot.editorBackground.accessibilityLabel == "Editor Background")
-        #expect(ThemeSlot.gridSelection.accessibilityLabel == "Data Grid Selection")
+        #expect(ThemeSlot.gridAlternateRow.accessibilityLabel == "Data Grid Alternate Row")
         #expect(ThemeSlot.windowBackdrop.accessibilityLabel == "Window Background")
     }
 
     @Test("Only the fills under everything else require an opaque color")
     func opaqueSlots() {
         let opaque = Set(ThemeSlot.allCases.filter { $0.requiresOpaque })
-        #expect(opaque == [
-            .windowBackdrop, .editorBackground, .gridBackground, .gridHeaderBackground,
-        ])
+        #expect(opaque == [.windowBackdrop, .editorBackground, .gridBackground])
     }
 
     @Test("Opacity is offered on the washes and never on a slot that must be opaque")
@@ -93,8 +100,7 @@ struct ThemeSlotTests {
         let translucent = Set(ThemeSlot.allCases.filter { $0.offersOpacity })
         #expect(translucent == [
             .editorSelection, .editorCurrentLine, .editorCurrentStatement, .editorInvisibles,
-            .gridAlternateRow, .gridSelection, .gridInactiveSelection,
-            .gridModified, .gridInserted, .gridDeleted, .gridDeletedText,
+            .gridAlternateRow, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText,
         ])
         for slot in ThemeSlot.allCases {
             #expect(!(slot.offersOpacity && slot.requiresOpaque), "\(slot.rawValue)")

@@ -1,11 +1,3 @@
-//
-//  PrivilegeScopeOutlineThemeTests.swift
-//  TableProTests
-//
-//  The privilege scope outline is a content table, so it takes the data grid's colors and text under
-//  a theme and stays exactly AppKit's, row views included, under a default one.
-//
-
 import AppKit
 import Combine
 @testable import TablePro
@@ -13,8 +5,7 @@ import TableProPluginKit
 import TableProTheme
 import Testing
 
-/// Each test adopts a pair on the shared `ThemeEngine` and restores it in a `defer`. The bodies are
-/// synchronous and `@MainActor`, so nothing else on the main actor runs between the two.
+// Each body is synchronous and `@MainActor`, so nothing else runs under the pair it adopts on the shared engine.
 @MainActor
 struct PrivilegeScopeOutlineThemeTests {
     private struct Mounted {
@@ -24,7 +15,7 @@ struct PrivilegeScopeOutlineThemeTests {
         let coordinator: PrivilegeScopeOutlineCoordinator
     }
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it.
+    // Never ordered front and never closed: `close()` on a test window over-releases it.
     private func mount() throws -> Mounted {
         let viewModel = UsersRolesViewModel(connectionId: UUID(), databaseType: .postgresql)
         viewModel.privilegeTree.showGrantedOnly(scopes: [.database("app"), .database("web")])
@@ -77,7 +68,7 @@ struct PrivilegeScopeOutlineThemeTests {
         }
     }
 
-    @Test("A theme's selection swaps in themed rows and a default theme swaps AppKit's back, keeping the selection")
+    @Test("A theme's background swaps in themed rows and a default theme swaps AppKit's back, keeping the selection")
     func rowClassFollowsTheTheme() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -92,7 +83,7 @@ struct PrivilegeScopeOutlineThemeTests {
             let subscription = mounted.coordinator.viewModel.$selectedScopes.dropFirst().sink { _ in published += 1 }
             defer { subscription.cancel() }
 
-            try ThemeTestFixture.adopt([.gridSelection: "#C8E1FF"], appearance: .light)
+            try ThemeTestFixture.adopt([.gridBackground: "#FAFAFA"], appearance: .light)
             let themed = try #require(mounted.outline.rowView(atRow: 1, makeIfNecessary: true) as? ThemeTableRowView)
             #expect(themed.chrome === chrome)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 1))
@@ -106,25 +97,21 @@ struct PrivilegeScopeOutlineThemeTests {
         }
     }
 
-    @Test("Both columns are records cells, told when their row sits on the theme's selection")
-    func cellsFollowTheThemedSelection() throws {
+    @Test("Both columns are records cells")
+    func bothColumnsAreRecordsCells() throws {
         try ThemeTestFixture.preservingEngine {
-            try ThemeTestFixture.adopt([.gridSelection: "#C8E1FF"], appearance: .light)
+            try ThemeTestFixture.adopt([.gridBackground: "#FAFAFA"], appearance: .light)
             let mounted = try mount()
-            mounted.outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-            let row = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
-            row.isEmphasized = true
 
             for column in 0 ..< mounted.outline.numberOfColumns {
-                let selected = mounted.outline.view(atColumn: column, row: 0, makeIfNecessary: true)
-                let other = mounted.outline.view(atColumn: column, row: 1, makeIfNecessary: true)
-                #expect((selected as? ThemeTableChrome.HostingCell)?.isOnThemedSelection == true)
-                #expect((other as? ThemeTableChrome.HostingCell)?.isOnThemedSelection == false)
+                for row in 0 ..< mounted.outline.numberOfRows {
+                    #expect(mounted.outline.view(atColumn: column, row: row, makeIfNecessary: true) is ThemeTableChrome.HostingCell)
+                }
             }
         }
     }
 
-    @Test("Under a theme the outline takes the grid's background, stripes and selection, and gets its own back")
+    @Test("Under a theme the outline takes the grid's background and stripes, keeps AppKit's selection, and gets its own back")
     func themeAppliesAndRestores() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -135,13 +122,12 @@ struct PrivilegeScopeOutlineThemeTests {
             try ThemeTestFixture.adopt([
                 .gridBackground: "#FAFAFA",
                 .gridAlternateRow: "#F0F0F0",
-                .gridSelection: "#C8E1FF",
             ], appearance: .light)
             #expect(try hex(mounted.outline.backgroundColor) == "#FAFAFA")
             #expect(!mounted.outline.usesAlternatingRowBackgroundColors)
             #expect(try hex(chrome.rowBackgroundColor(forRow: 0)) == "#FAFAFA")
             #expect(try hex(chrome.rowBackgroundColor(forRow: 1)) == "#F0F0F0")
-            #expect(try hex(chrome.selectionColor(emphasized: true)) == "#C8E1FF")
+            #expect(chrome.selectionColor(emphasized: true) == nil)
 
             try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(mounted.outline.backgroundColor == background)

@@ -14,10 +14,7 @@ internal struct CellContext: Equatable {
     let isBinaryValue: Bool
     let isForeignKey: Bool
     let displayFormatOverride: ValueDisplayFormat?
-
-    /// What the value itself turned out to be, resolved once by the caller that holds the typed
-    /// cell. It reaches the resolver rather than being sniffed here so the row inspector, which
-    /// resolves through `CellValueContentDetector` too, cannot reach a different answer.
+    // Resolved by the caller that holds the typed cell, so the row inspector and the grid reach one answer.
     let detectedContent: CellValueContent
 
     init(
@@ -44,7 +41,7 @@ internal struct CellContext: Equatable {
 }
 
 internal enum CellInteractionMode: Equatable {
-    case viewInline(value: String)
+    case viewText(value: String)
     case viewJson
     case viewBlob
     case viewPhpSerialized
@@ -54,7 +51,7 @@ internal enum CellInteractionMode: Equatable {
     case viewVector
 
     case editInline(value: String)
-    case editOverlay(value: String)
+    case editText(value: String)
     case editForeignKey
     case editJson
     case editBlob
@@ -65,6 +62,12 @@ internal enum CellInteractionMode: Equatable {
 }
 
 internal struct CellInteractionResolver {
+    static let inlineLengthLimit = 256
+
+    static func editsInPopover(_ text: String) -> Bool {
+        (text as NSString).length > inlineLengthLimit || text.containsLineBreak
+    }
+
     func resolve(_ context: CellContext) -> CellInteractionMode {
         guard !context.isRowDeleted else { return .blocked }
 
@@ -101,17 +104,14 @@ internal struct CellInteractionResolver {
         }
     }
 
-    /// A writable foreign key column picks from the rows it points at rather than taking a typed
-    /// key on trust. Resolved here rather than ahead of the blob and structured-format branches, so
-    /// a foreign key that is also a blob, JSON or PHP-serialized value keeps the editor its content
-    /// needs, and a read-only cell keeps every viewer it has.
+    // Last, so a foreign key holding a blob or JSON keeps the editor its content needs.
     private func plainText(for context: CellContext, isReadOnly: Bool) -> CellInteractionMode {
         if isReadOnly {
-            return .viewInline(value: context.value ?? "NULL")
+            return .viewText(value: context.value ?? "NULL")
         }
         if context.isForeignKey { return .editForeignKey }
         let value = context.value ?? ""
-        if value.containsLineBreak { return .editOverlay(value: value) }
+        if Self.editsInPopover(value) { return .editText(value: value) }
         return .editInline(value: value)
     }
 

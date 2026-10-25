@@ -1,12 +1,5 @@
-//
-//  NativeDefaultsTests.swift
-//  TableProTests
-//
-//  Default Light and Default Dark have to render exactly like an unthemed NSTextView and
-//  NSTableView, following Accent, Highlight and Increase Contrast. That holds only while every
-//  slot they leave out hands back the system color object itself: a hex default, or a copy
-//  flattened under a hand-built appearance, freezes it.
-//
+// A hex default, or a copy flattened under a hand-built appearance, freezes a system color, so the
+// defaults have to hand back the system color object itself.
 
 import AppKit
 import Foundation
@@ -60,14 +53,10 @@ struct NativeDefaultsTests {
             #expect(theme.color(for: .editorSelection) === NSColor.selectedTextBackgroundColor)
             #expect(theme.color(for: .gridBackground) === NSColor.controlBackgroundColor)
             #expect(theme.color(for: .gridLine) === NSColor.separatorColor)
-            #expect(theme.color(for: .gridHeaderText) === NSColor.headerTextColor)
-            #expect(theme.color(for: .gridSelection) === NSColor.selectedContentBackgroundColor)
-            #expect(theme.color(for: .gridInactiveSelection) === NSColor.unemphasizedSelectedContentBackgroundColor)
-            #expect(theme.color(for: .gridFocusBorder) === NSColor.keyboardFocusIndicatorColor)
+            #expect(theme.color(for: .gridText) === NSColor.labelColor)
         }
     }
 
-    /// macOS 14 draws the caret in the Highlight color, not in the text color.
     @Test("The default caret is the system insertion point color")
     func caretIsTheSystemInsertionPoint() {
         guard #available(macOS 14.0, *) else { return }
@@ -96,11 +85,10 @@ struct NativeDefaultsTests {
         #expect(Self.hex(theme.color(for: .editorBackground)) == "#282A36")
         #expect(theme.color(for: .editorSelection) === NSColor.selectedTextBackgroundColor)
         #expect(theme.color(for: .editorCursor) === ThemeSlot.editorCursor.nativeColor)
-        #expect(theme.color(for: .gridSelection) === NSColor.selectedContentBackgroundColor)
+        #expect(theme.color(for: .gridLine) === NSColor.separatorColor)
         #expect(theme.color(for: .gridBackground) === NSColor.controlBackgroundColor)
     }
 
-    /// Syntax has no system color, so a theme that leaves one out takes its own appearance's default.
     @Test("A syntax slot a theme leaves out takes the same-appearance default")
     func missingSyntaxTakesTheSameAppearanceDefault() throws {
         let dark = try Self.theme(.dark, overriding: [.editorBackground: "#282A36"])
@@ -126,8 +114,8 @@ struct NativeDefaultsTests {
         let partial = ResolvedTheme(definition: try Self.theme(.dark, overriding: [.gridBackground: "#282A36"]))
         #expect(partial.isOverridden(.gridBackground))
         #expect(Self.hex(partial[.gridBackground]) == "#282A36")
-        #expect(!partial.isOverridden(.gridSelection))
-        #expect(partial[.gridSelection] === NSColor.selectedContentBackgroundColor)
+        #expect(!partial.isOverridden(.gridLine))
+        #expect(partial[.gridLine] === NSColor.separatorColor)
     }
 
     @Test("cgColor resolves a system slot inside the appearance it is given")
@@ -199,7 +187,7 @@ struct NativeDefaultsTests {
         }
         aqua.performAsCurrentDrawingAppearance {
             #expect(Self.hex(palette[.editorBackground]) == Self.hex(NSColor.textBackgroundColor))
-            #expect(Self.hex(palette[.gridSelection]) == Self.hex(NSColor.selectedContentBackgroundColor))
+            #expect(Self.hex(palette[.gridBackground]) == Self.hex(NSColor.controlBackgroundColor))
         }
     }
 
@@ -229,7 +217,7 @@ struct NativeDefaultsTests {
 
     // MARK: - Fallback colors
 
-    /// The fallback is not the slot's own native color, so a match proves the fallback is what draws.
+    // The fallback is not the slot's own native color, so a match proves the fallback is what draws.
     @Test("Under the default pair the palette fallback draws the fallback in every appearance")
     func paletteFallbackUnderTheDefaultPair() throws {
         let palette = ThemePalette(revision: 910_004, source: ThemeSource())
@@ -264,8 +252,7 @@ struct NativeDefaultsTests {
         }
     }
 
-    /// `NSAppearance(named:)` hands back plain Dark Aqua for the high-contrast names; only the system
-    /// setting produces one, so the rule is held here rather than through a drawing appearance.
+    // `NSAppearance(named:)` hands back plain Dark Aqua for the high-contrast names.
     @Test("Under Increase Contrast the window background yields to the system and content slots keep the theme")
     func windowBackgroundYieldsToIncreasedContrast() throws {
         let dracula = try Self.bundledTheme("tablepro.dracula")

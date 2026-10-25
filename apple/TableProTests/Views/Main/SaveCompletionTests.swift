@@ -12,9 +12,8 @@ import Foundation
 import TableProPluginKit
 import Testing
 
-/// Enough of a driver for `assemblePendingStatements` to produce SQL. Without one the builder has
-/// no adapter, emits nothing, and `saveChanges` bails at "Could not generate SQL for changes."
-/// before it reaches the inout parameters the cases below are about.
+// Enough of a driver for `assemblePendingStatements` to produce SQL; without one `saveChanges` bails before the
+// inout parameters these cases are about.
 private final class StubSaveDriver: PluginDriverStub, @unchecked Sendable {
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
@@ -39,7 +38,7 @@ struct SaveCompletionTests {
         var conn = TestFixtures.makeConnection(type: type)
         conn.safeModeLevel = safeModeLevel
         let state = SessionStateFactory.create(connection: conn, payload: nil)
-        /// A session with a driver, so the statement builder has an adapter to route through.
+        // A session with a driver, so the statement builder has an adapter to route through.
         DatabaseManager.shared.injectSession(
             ConnectionSession(
                 connection: conn,
@@ -267,16 +266,34 @@ struct SaveCompletionTests {
             tabManager.tabs[index].tableContext.tableName = "users"
         }
 
+        guard let tabId = tabManager.selectedTabId else {
+            Issue.record("expected a selected tab")
+            return
+        }
+        coordinator.setActiveTableRows(
+            TableRows.from(
+                queryRows: [[.text("1"), .text("Alice")]],
+                columns: ["id", "name"],
+                columnTypes: [.text(rawType: nil), .text(rawType: nil)],
+                hasAuthoritativeSchema: true
+            ),
+            for: tabId
+        )
+        let model = coordinator.gridModel(forTab: tabId)
+
         coordinator.addNewRow()
-        #expect(coordinator.selectionState.indices.isEmpty)
+        #expect(model.selection.isEmpty)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).count == 1)
 
-        coordinator.selectionState.indices = [0]
-        coordinator.deleteSelectedRows(indices: Set([0]))
-        #expect(coordinator.selectionState.indices == [0])
+        model.selectRows([.existing(0)])
+        coordinator.deleteRows([.existing(0)])
+        #expect(model.selectedRowIDs == [.existing(0)])
+        #expect(!coordinator.changeManager.isRowDeleted(.existing(0)))
 
-        coordinator.selectionState.indices = []
-        coordinator.duplicateSelectedRow(index: 0)
-        #expect(coordinator.selectionState.indices.isEmpty)
+        model.clearSelection()
+        coordinator.duplicateRow(.existing(0))
+        #expect(model.selection.isEmpty)
+        #expect(coordinator.tabSessionRegistry.tableRows(for: tabId).count == 1)
     }
 
     @Test("row operations allowed by alert level")

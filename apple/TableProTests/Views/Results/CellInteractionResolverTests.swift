@@ -22,22 +22,22 @@ struct CellInteractionResolverReadOnlyTests {
         #expect(resolver.resolve(context) == .blocked)
     }
 
-    @Test("read-only plain text returns viewInline with value")
+    @Test("read-only plain text opens the text viewer with its value")
     func readOnlyPlainTextReturnsViewInline() {
         let context = ContextFactory.make(value: "hello", isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: "hello"))
+        #expect(resolver.resolve(context) == .viewText(value: "hello"))
     }
 
-    @Test("read-only nil value returns viewInline with NULL placeholder")
+    @Test("read-only nil value opens the text viewer on the NULL placeholder")
     func readOnlyNilValueReturnsViewInlineWithNull() {
         let context = ContextFactory.make(value: nil, isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: "NULL"))
+        #expect(resolver.resolve(context) == .viewText(value: "NULL"))
     }
 
-    @Test("read-only multiline text returns viewInline")
+    @Test("read-only multiline text opens the text viewer")
     func readOnlyMultilineReturnsViewInline() {
         let context = ContextFactory.make(value: "line1\nline2", isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: "line1\nline2"))
+        #expect(resolver.resolve(context) == .viewText(value: "line1\nline2"))
     }
 
     @Test("read-only BLOB column returns viewBlob")
@@ -49,19 +49,19 @@ struct CellInteractionResolverReadOnlyTests {
     @Test("read-only JSON column shows its value inline; the chevron opens the JSON viewer")
     func readOnlyJsonColumnShowsInline() {
         let context = ContextFactory.make(value: #"{"k":1}"#, columnType: .json(rawType: "JSON"), isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
+        #expect(resolver.resolve(context) == .viewText(value: #"{"k":1}"#))
     }
 
     @Test("immutable column on editable table follows the read-only inline path")
     func immutableColumnFollowsReadOnlyPath() {
         let context = ContextFactory.make(value: "id-123", isTableEditable: true, isImmutableColumn: true)
-        #expect(resolver.resolve(context) == .viewInline(value: "id-123"))
+        #expect(resolver.resolve(context) == .viewText(value: "id-123"))
     }
 
     @Test("JSON-looking text is not content-routed; it shows inline")
     func jsonLikeTextShowsInline() {
         let context = ContextFactory.make(value: #"{"k":1}"#, columnType: nil, isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: #"{"k":1}"#))
+        #expect(resolver.resolve(context) == .viewText(value: #"{"k":1}"#))
     }
 
     @Test("read-only override .json shows the JSON viewer")
@@ -96,10 +96,20 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editInline(value: "hello"))
     }
 
-    @Test("editable plain multiline returns editOverlay")
-    func editablePlainMultilineReturnsEditOverlay() {
+    @Test("a single-line value past the inline limit edits in the text popover, one at the limit in the cell")
+    func longValueEditsInPopover() {
+        let limit = CellInteractionResolver.inlineLengthLimit
+        let atLimit = String(repeating: "a", count: limit)
+        let pastLimit = atLimit + "a"
+
+        #expect(resolver.resolve(ContextFactory.make(value: atLimit, isTableEditable: true)) == .editInline(value: atLimit))
+        #expect(resolver.resolve(ContextFactory.make(value: pastLimit, isTableEditable: true)) == .editText(value: pastLimit))
+    }
+
+    @Test("editable plain multiline edits in the text popover")
+    func editablePlainMultilineEditsInPopover() {
         let context = ContextFactory.make(value: "line1\nline2", isTableEditable: true)
-        #expect(resolver.resolve(context) == .editOverlay(value: "line1\nline2"))
+        #expect(resolver.resolve(context) == .editText(value: "line1\nline2"))
     }
 
     @Test("editable JSON column edits inline; the chevron opens the JSON editor")
@@ -108,11 +118,11 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editInline(value: #"{"k":1}"#))
     }
 
-    @Test("editable multiline JSON column opens the inline overlay editor")
-    func editableMultilineJsonColumnEditsOverlay() {
+    @Test("editable multiline JSON column edits in the text popover")
+    func editableMultilineJsonColumnEditsInPopover() {
         let value = "{\n\"k\": 1\n}"
         let context = ContextFactory.make(value: value, columnType: .json(rawType: "JSON"), isTableEditable: true)
-        #expect(resolver.resolve(context) == .editOverlay(value: value))
+        #expect(resolver.resolve(context) == .editText(value: value))
     }
 
     @Test("editable BLOB column returns editBlob")
@@ -172,10 +182,10 @@ struct CellInteractionResolverEditableTests {
         #expect(resolver.resolve(context) == .editInline(value: "small"))
     }
 
-    @Test("read-only boolean column returns viewInline")
+    @Test("read-only boolean column opens the text viewer")
     func readOnlyBooleanColumnReturnsViewInline() {
         let context = ContextFactory.make(value: "true", columnType: .boolean(rawType: "BOOL"), isTableEditable: false)
-        #expect(resolver.resolve(context) == .viewInline(value: "true"))
+        #expect(resolver.resolve(context) == .viewText(value: "true"))
     }
 }
 
@@ -292,7 +302,7 @@ struct CellInteractionResolverForeignKeyTests {
         let context = ContextFactory.make(
             value: "42", columnType: .integer(rawType: "INTEGER"), isForeignKey: true
         )
-        #expect(resolver.resolve(context) == .viewInline(value: "42"))
+        #expect(resolver.resolve(context) == .viewText(value: "42"))
     }
 
     @Test("an immutable foreign key column keeps its viewer")
@@ -301,7 +311,7 @@ struct CellInteractionResolverForeignKeyTests {
             value: "42", columnType: .integer(rawType: "INTEGER"),
             isTableEditable: true, isImmutableColumn: true, isForeignKey: true
         )
-        #expect(resolver.resolve(context) == .viewInline(value: "42"))
+        #expect(resolver.resolve(context) == .viewText(value: "42"))
     }
 
     @Test("a deleted row stays blocked on a foreign key column")
@@ -312,8 +322,7 @@ struct CellInteractionResolverForeignKeyTests {
         #expect(resolver.resolve(context) == .blocked)
     }
 
-    /// The picker lists keys, so a cell whose content needs a structured editor keeps that editor:
-    /// the reference is still followed from the arrow and the context menu.
+    // The picker lists keys; the reference is still followed from the arrow and the context menu.
     @Test("a foreign key column holding a blob keeps the blob editor")
     func blobForeignKeyKeepsTheBlobEditor() {
         let context = ContextFactory.make(
@@ -404,7 +413,7 @@ struct CellInteractionResolverImageTests {
         #expect(resolver.resolve(context) == .viewSvg)
     }
 
-    /// Raw Value is how a column opts out of every kind of detection, image included.
+    // Raw Value is how a column opts out of every kind of detection, image included.
     @Test("Display As Raw Value suppresses the SVG viewer")
     func rawOverrideSuppressesSvg() {
         let context = ContextFactory.make(
@@ -414,10 +423,10 @@ struct CellInteractionResolverImageTests {
             displayFormatOverride: .raw,
             detectedContent: .image(.svg)
         )
-        #expect(resolver.resolve(context) == .viewInline(value: markup))
+        #expect(resolver.resolve(context) == .viewText(value: markup))
     }
 
-    /// A binary column keeps the hex popover, which grows an Image segment of its own.
+    // A binary column keeps the hex popover, which grows an Image segment of its own.
     @Test("a raster image in a blob column still opens the blob viewer")
     func rasterInBlobColumnKeepsTheBlobViewer() {
         let context = ContextFactory.make(

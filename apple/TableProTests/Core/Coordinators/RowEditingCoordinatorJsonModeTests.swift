@@ -3,9 +3,7 @@
 //  TableProTests
 //
 //  A row command points the grid at the row it just touched. JSON mode reads that same selection
-//  as "show only these rows", so writing it there collapses the document. The filtered delete and
-//  duplicate paths used to be safe only by accident, because a display order existed only while
-//  the grid was mounted. Now that it survives, the guard has to be explicit. (#2251)
+//  as "show only these rows", so writing it there collapses the document (#2251).
 //
 
 import Foundation
@@ -48,53 +46,63 @@ struct RowEditingCoordinatorJsonModeTests {
             columnName: "name",
             forColumn: 1
         )
-        coordinator.setValueFilter(filter, forTab: tab.id)
+        coordinator.gridModel(forTab: tab.id).setValueFilter(filter)
         return coordinator
     }
 
+    private func model(_ coordinator: MainContentCoordinator) throws -> DataGridModel {
+        let tabId = try #require(coordinator.tabManager.selectedTabId)
+        return coordinator.gridModel(forTab: tabId)
+    }
+
     @Test("the filter narrows the display order, so the filtered delete path is the one that runs")
-    func filteredPathIsReached() {
+    func filteredPathIsReached() throws {
         let coordinator = makeCoordinator(mode: .data)
-        #expect(coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+        #expect(try model(coordinator).displayedRowIDs == [.existing(1), .existing(2)])
     }
 
     @Test("deleting in JSON mode leaves the selection alone")
-    func deleteInJsonModeDoesNotMoveTheSelection() {
+    func deleteInJsonModeDoesNotMoveTheSelection() throws {
         let coordinator = makeCoordinator(mode: .json)
-        coordinator.selectionState.indices = [0, 1]
+        let grid = try model(coordinator)
+        grid.selectRows([.existing(1), .existing(2)])
 
-        coordinator.deleteSelectedRows(indices: [0])
+        coordinator.deleteRows([.existing(1)])
 
-        #expect(coordinator.selectionState.indices == [0, 1])
+        #expect(grid.selectedRowIDs == [.existing(1), .existing(2)])
     }
 
     @Test("deleting in Data mode still moves the selection to the surviving neighbour")
-    func deleteInDataModeMovesTheSelection() {
+    func deleteInDataModeMovesTheSelection() throws {
         let coordinator = makeCoordinator(mode: .data)
-        coordinator.selectionState.indices = [0, 1]
+        let grid = try model(coordinator)
+        grid.selectRows([.existing(1), .existing(2)])
 
-        coordinator.deleteSelectedRows(indices: [0])
+        coordinator.deleteRows([.existing(1)])
 
-        #expect(coordinator.selectionState.indices == [1])
+        #expect(grid.selectedRowIDs == [.existing(2)])
     }
 
     @Test("duplicating in JSON mode leaves the selection alone")
-    func duplicateInJsonModeDoesNotMoveTheSelection() {
+    func duplicateInJsonModeDoesNotMoveTheSelection() throws {
         let coordinator = makeCoordinator(mode: .json)
-        coordinator.selectionState.indices = [1]
+        let grid = try model(coordinator)
+        grid.selectRows([.existing(2)])
 
-        coordinator.duplicateSelectedRow(index: 0)
+        coordinator.duplicateRow(.existing(1))
 
-        #expect(coordinator.selectionState.indices == [1])
+        #expect(grid.selectedRowIDs == [.existing(2)])
     }
 
     @Test("duplicating in Data mode still selects the new row")
-    func duplicateInDataModeSelectsTheNewRow() {
+    func duplicateInDataModeSelectsTheNewRow() throws {
         let coordinator = makeCoordinator(mode: .data)
-        coordinator.selectionState.indices = [0]
+        let grid = try model(coordinator)
+        grid.selectRows([.existing(1)])
 
-        coordinator.duplicateSelectedRow(index: 0)
+        coordinator.duplicateRow(.existing(1))
 
-        #expect(coordinator.selectionState.indices == [2])
+        #expect(grid.selection.affectedRows == IndexSet(integer: 2))
+        #expect(grid.selectedRowIDs.first?.isInserted == true)
     }
 }

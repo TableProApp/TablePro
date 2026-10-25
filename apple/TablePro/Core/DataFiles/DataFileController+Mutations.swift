@@ -69,9 +69,6 @@ extension DataFileController {
         if let message = outcome.message {
             showMessage(message)
         }
-        if find.isVisible, find.hasQuery {
-            runFind()
-        }
     }
 
     private func abandonMutation(error: Error, activityID: UUID) {

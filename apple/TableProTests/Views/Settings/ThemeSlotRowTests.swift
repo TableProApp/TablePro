@@ -47,7 +47,7 @@ struct ThemeSlotRowTests {
         #expect(line(.syntaxString) == "Default Dark color")
         #expect(line(.syntaxOperator) == "Based on Editor Text")
         #expect(line(.gridAlternateRow) == "Based on Data Grid Background")
-        #expect(line(.gridHeaderText) == "System color")
+        #expect(line(.gridBoolTrue) == "System color")
 
         var light = Self.dark
         light.appearance = .light
@@ -97,7 +97,6 @@ struct ThemeSlotRowTests {
         #expect(ThemeContrastNote.message(for: .syntax, in: low) == nil)
     }
 
-    /// The well's alpha slider is offered only where the slot is a wash over content.
     @Test("A slot's well offers opacity only when the slot does")
     func wellOpacityFollowsTheSlot() throws {
         guard #available(macOS 14, *) else { return }
@@ -107,9 +106,7 @@ struct ThemeSlotRowTests {
         }
     }
 
-    /// Activating a well without opacity after one with it turns the shared panel's alpha off, and
-    /// the panel then sends the previous well's color and this one's, both made opaque. Taken as
-    /// picks, they froze a system color into the file.
+    // The panel sends both wells' colors, made opaque, when alpha turns off; taken as picks they froze a system color.
     @Test("Activating a well is not a pick, and a color chosen in the panel still is")
     func activationIsNotAPick() throws {
         guard #available(macOS 14, *) else { return }

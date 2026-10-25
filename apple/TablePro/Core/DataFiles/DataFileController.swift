@@ -47,7 +47,12 @@ final class DataFileController: ObservableObject {
 
     @Published var filterState = TabFilterState()
     @Published var searchText = ""
-    @Published var sortState = SortState()
+    @Published var sortState = SortState() {
+        didSet {
+            guard gridModel.store.sortState != sortState else { return }
+            gridModel.store.sortState = sortState
+        }
+    }
     var sortReferences: [DataFileSortReference] = []
     @Published private(set) var displayKeys: [Int]?
     @Published private(set) var isQueryRunning = false
@@ -56,21 +61,21 @@ final class DataFileController: ObservableObject {
     @Published var pageSize: Int
     @Published private(set) var tableRows = TableRows()
     @Published private(set) var pageRevision = 0
-    @Published var selectedRowIndices: Set<Int> = []
-    @Published var columnLayout = ColumnLayoutState()
+    // The page rows the grid's selection covers, published for the status bar and the row details.
+    @Published private(set) var selectedRowIndices: Set<Int> = []
     @Published var isInspectorVisible = false
 
-    @Published var find = DataFileFindState()
     @Published private(set) var activity: DataFileActivity?
     @Published var statusMessage: String?
 
     let changeManager: DataFileChangeManager
     let anyChangeManager: AnyChangeManager
-    let selectionSummary = SelectionSummaryState()
+    let selectionSummary: SelectionSummaryState
+    let gridModel: DataGridModel
+    let gridAdapter: DataFileGridAdapter
     weak var undoManager: UndoManager?
-    weak var gridCoordinator: TableViewCoordinator?
     var onEdited: (() -> Void)?
-    /// Set while `batchCellEdits` runs, so the cell edits made inside it land as one commit.
+    // Set while `batchCellEdits` runs, so the cell edits made inside it land as one commit.
     var pendingCellEdits: [(key: Int, columnID: TabularColumnID, cell: TabularCell)]?
 
     private(set) var kind: DataFileKind?
@@ -81,8 +86,6 @@ final class DataFileController: ObservableObject {
     private var queryTask: Task<Void, Never>?
     private var mutationTask: Task<Void, Never>?
     private var queryDebounceTask: Task<Void, Never>?
-    var findTask: Task<Void, Never>?
-    var findDebounceTask: Task<Void, Never>?
     var transferTask: Task<Void, Never>?
     private var activityRevealTask: Task<Void, Never>?
     private var messageTask: Task<Void, Never>?
@@ -93,6 +96,39 @@ final class DataFileController: ObservableObject {
         pageSize = max(1, AppSettingsManager.shared.dataGrid.defaultPageSize)
         changeManager = DataFileChangeManager()
         anyChangeManager = AnyChangeManager(changeManager)
+        let summary = SelectionSummaryState()
+        selectionSummary = summary
+        gridModel = DataGridModel(selectionSummary: summary)
+        gridAdapter = DataFileGridAdapter(model: gridModel)
+        gridAdapter.controller = self
+        gridModel.$selectionRevision
+            .sink { [weak self] _ in self?.gridSelectionDidChange() }
+            .store(in: &cancellables)
+    }
+
+    // The grid's column layout is the one home of hidden columns, widths and order.
+    var columnLayout: ColumnLayoutState {
+        get { gridModel.store.columnLayout }
+        set {
+            guard newValue != gridModel.store.columnLayout else { return }
+            objectWillChange.send()
+            gridModel.updateColumnLayout { $0 = newValue }
+        }
+    }
+
+    private func gridSelectionDidChange() {
+        let rows = Set(gridModel.selection.affectedRows.filter { $0 < pageKeys.count })
+        guard rows != selectedRowIndices else { return }
+        selectedRowIndices = rows
+    }
+
+    func selectRows(pageRows: Set<Int>) {
+        let rowIDs = pageRows.sorted().compactMap { key(forPageRow: $0) }.map { RowID.existing($0) }
+        if rowIDs.isEmpty {
+            gridModel.clearSelection()
+        } else {
+            gridModel.selectRows(rowIDs)
+        }
     }
 
     var isEditable: Bool {
@@ -141,9 +177,8 @@ final class DataFileController: ObservableObject {
         await queryDebounceTask?.value
         await queryTask?.value
         await mutationTask?.value
-        await findDebounceTask?.value
-        await findTask?.value
         await transferTask?.value
+        await gridModel.findSearchSettled()
     }
 
     private func performLoad(_ request: DataFileLoadRequest) async {
@@ -198,7 +233,6 @@ final class DataFileController: ObservableObject {
     private func loadSheet(at index: Int) {
         guard let workbook = content?.workbook, let workbookSheet = sheets[index].workbookSheet else { return }
         queryTask?.cancel()
-        findTask?.cancel()
         loadTask?.cancel()
         table = nil
         loadState = .loading
@@ -235,10 +269,11 @@ final class DataFileController: ObservableObject {
         sortReferences = []
         displayKeys = nil
         pageOffset = 0
-        selectedRowIndices = []
+        gridModel.clearSelection()
         refreshColumnNames()
         refreshPage()
         loadState = .loaded
+        gridModel.findDatasetDidChange()
     }
 
     func refreshColumnNames() {
@@ -291,10 +326,12 @@ final class DataFileController: ObservableObject {
     }
 
     func refreshPage() {
+        let previousColumns = tableRows.columns
         guard let table else {
             tableRows = TableRows()
             pageKeys = []
             changeManager.bumpReload()
+            gridModel.reloadHeldRows(columnsChanged: !previousColumns.isEmpty)
             return
         }
         let visible = visibleRowCount
@@ -338,14 +375,14 @@ final class DataFileController: ObservableObject {
             columnNullable: Dictionary(uniqueKeysWithValues: names.map { ($0, holdsNull) })
         )
         changeManager.bumpReload()
-        gridCoordinator?.applyDelta(.fullReplace)
+        gridModel.reloadHeldRows(columnsChanged: previousColumns != names || gridModel.columns.isEmpty)
     }
 
     func goToPage(offsetBy delta: Int) {
         let target = pageOffset + delta * pageSize
         guard target >= 0, target < max(visibleRowCount, 1) else { return }
         pageOffset = target
-        selectedRowIndices = []
+        gridModel.clearSelection()
         refreshPage()
     }
 
@@ -359,15 +396,8 @@ final class DataFileController: ObservableObject {
         }
         let row = position - pageOffset
         guard selecting, row >= 0, row < pageKeys.count else { return }
-        selectedRowIndices = [row]
-        DispatchQueue.main.async { [weak self] in
-            guard let coordinator = self?.gridCoordinator, let tableView = coordinator.tableView,
-                  row < tableView.numberOfRows else { return }
-            coordinator.isApplyingProgrammaticRowSelection = true
-            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            coordinator.isApplyingProgrammaticRowSelection = false
-            tableView.scrollRowToVisible(row)
-        }
+        gridModel.selectRows([.existing(key)])
+        gridModel.reveal(rowID: .existing(key))
     }
 
     func showMessage(_ message: String) {
@@ -414,8 +444,8 @@ final class DataFileController: ObservableObject {
     func cancelActivity() {
         queryTask?.cancel()
         mutationTask?.cancel()
-        findTask?.cancel()
         transferTask?.cancel()
+        gridModel.stopFindSearch()
     }
 
     func tearDown() {
@@ -423,11 +453,10 @@ final class DataFileController: ObservableObject {
         queryTask?.cancel()
         mutationTask?.cancel()
         queryDebounceTask?.cancel()
-        findTask?.cancel()
-        findDebounceTask?.cancel()
         transferTask?.cancel()
         activityRevealTask?.cancel()
         messageTask?.cancel()
+        gridModel.stopFindSearch()
         workingCopy = nil
     }
 
@@ -468,14 +497,17 @@ final class DataFileController: ObservableObject {
 
     func setDisplayKeys(_ keys: [Int]?) {
         displayKeys = keys
+        gridModel.findDatasetDidChange()
     }
 
+    // Every edit, mutation and undo lands here, so find searches the file again.
     func replaceTable(_ newTable: TabularTable) {
         table = newTable
         if sheets.indices.contains(selectedSheetIndex) {
             sheets[selectedSheetIndex].table = newTable
         }
         refreshColumnNames()
+        gridModel.findDatasetDidChange()
     }
 
     func setInferredKind(_ kind: TabularInferredKind, for id: TabularColumnID) {

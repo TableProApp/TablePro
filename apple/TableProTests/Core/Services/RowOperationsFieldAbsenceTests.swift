@@ -91,7 +91,7 @@ extension GlobalStateSuites {
             let clipboard = try #require(RecordingClipboard.current)
             let tableRows = rows([["1", "Ada", .null], ["2", "Bo", .null]], absentCells: [1: [2]])
 
-            manager.copySelectedRowsToClipboard(selectedIndices: [0, 1], tableRows: tableRows, visibleColumnIndices: [2, 1])
+            manager.copyRowsToClipboard([.existing(0), .existing(1)], tableRows: tableRows, visibleColumnIndices: [2, 1])
 
             let payload = try #require(clipboard.gridRows)
             #expect(payload.columns == ["deletedAt", "name"])

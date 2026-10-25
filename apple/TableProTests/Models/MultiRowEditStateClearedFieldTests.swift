@@ -25,7 +25,6 @@ struct MultiRowEditStateClearedFieldTests {
     private func makeState(_ recorder: StagedFieldRecorder) -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: [0],
             rowIDs: [.existing(0)],
             allRows: [["1", "2024-01-01 10:00:00", "Alice", "{\"a\":1}", "2023-12-01 09:00:00"]],
             columns: Self.columns,

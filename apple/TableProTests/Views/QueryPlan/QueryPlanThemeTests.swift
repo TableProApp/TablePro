@@ -1,7 +1,3 @@
-// The plan outline is a records table whose rows stay AppKit's own until a theme draws them, its
-// detail pane and the diagram's steps sit on the grid's slots, and an export renders the scheme and
-// the backdrop the canvas shows.
-
 import AppKit
 import SwiftUI
 @testable import TablePro
@@ -56,8 +52,7 @@ struct QueryPlanThemeTests {
         let coordinator: QueryPlanOutlineCoordinator
     }
 
-    /// Never ordered front and never closed: `close()` on a test window over-releases it. Mounted
-    /// without spinning the run loop, so no other main-actor work runs under a theme a case adopted.
+    // Mounted without spinning the run loop, so no other main-actor work runs under a theme a case adopted.
     private func mountOutline() throws -> MountedOutline {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 480, height: 240),
@@ -102,7 +97,7 @@ struct QueryPlanThemeTests {
         }
     }
 
-    @Test("A theme's selection swaps in themed rows, tells the selected row's cells, and a default theme swaps back")
+    @Test("A theme's background swaps in themed rows that keep AppKit's selection, and a default theme swaps back")
     func outlineRowClassFollowsTheTheme() throws {
         try Fixture.preservingEngine {
             try Fixture.adopt([:], appearance: .light)
@@ -114,14 +109,12 @@ struct QueryPlanThemeTests {
             var selections: [UUID?] = []
             mounted.coordinator.onSelect = { selections.append($0) }
 
-            try Fixture.adopt([.gridSelection: "#2A6F4E", .gridSelectionText: "#FFFFFF"], appearance: .light)
+            try Fixture.adopt([.gridBackground: "#2A6F4E"], appearance: .light)
             let themed = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
             #expect(themed.chrome === chrome)
+            #expect(chrome.selectionColor(emphasized: true) == nil)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 0))
             #expect(mounted.outline.isItemExpanded(try #require(mounted.coordinator.root)))
-            themed.isEmphasized = true
-            let cell = try #require(mounted.outline.view(atColumn: 0, row: 0, makeIfNecessary: true) as? ThemeTableChrome.HostingCell)
-            #expect(cell.isOnThemedSelection)
 
             try Fixture.adopt([:], appearance: .light)
             let native = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true))

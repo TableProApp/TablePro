@@ -6,21 +6,12 @@
 import Combine
 import Foundation
 
-/// The rows of one listing tab, and what the reader did with its grid.
-///
-/// A refresh keeps the rows on screen until new ones land, and a failed refresh keeps them too. A load
-/// that a newer one has superseded, or that was cancelled, commits nothing, whatever it came back with.
 @MainActor
 internal final class TableListingViewModel: ObservableObject {
     @Published private(set) var state: MetadataLoadState<TableListing> = .idle
-    /// Moves each time a load lands, so the grid redraws rows that changed under the same tab.
-    @Published private(set) var revision = 0
 
-    @Published var sortState = SortState()
-    @Published var selectedRows: Set<Int> = []
-    @Published var columnLayout = ColumnLayoutState()
-    let changeManager = AnyChangeManager(DataChangeManager())
-    let gridDelegate = HeldRowsGridDelegate()
+    // Outlives the tab's view, so the sort, the selection and the column widths survive a tab switch.
+    let grid = HeldRowsGridAdapter(configuration: DataGridConfiguration(), sortsHeldRows: true)
 
     private let scope: DatabaseScope
     private let loader: TableListingLoader
@@ -39,16 +30,11 @@ internal final class TableListingViewModel: ObservableObject {
         self.scope = scope
         self.loader = loader
         self.metadataProvider = metadataProvider
-        /// Heard here rather than by the view, which exists only while its tab is selected: asking again for
-        /// a listing in a tab behind another one selects it and refreshes it in the same turn.
         refreshSubscription = refreshRequests
             .filter { $0 == tabId }
             .sink { [weak self] _ in self?.reload() }
-        gridDelegate.onSortStateChanged = { [weak self] in self?.sortState = $0 }
     }
 
-    /// The view's task runs again every time the tab comes back, so a listing already on screen or on its
-    /// way is left alone. A cancelled load settles back to idle, and runs again here.
     @discardableResult
     func loadIfNeeded() -> Task<Void, Never>? {
         guard case .idle = state else { return nil }
@@ -73,7 +59,6 @@ internal final class TableListingViewModel: ObservableObject {
         return task
     }
 
-    /// For a closed tab: its load is left to nobody, and nothing it returns may land.
     func cancel() {
         loadTask?.cancel()
         generation &+= 1
@@ -85,14 +70,12 @@ internal final class TableListingViewModel: ObservableObject {
     private func commit(_ outcome: MetadataFetchOutcome<TableListing>, token: Int) {
         guard token == generation else { return }
         state = state.settled(by: outcome, discardingValue: false)
-        revision &+= 1
+        if case .loaded(let listing) = state {
+            grid.setRows(listing.rows)
+        }
     }
 }
 
-/// The listing models of a window's tabs, kept for as long as their tab is open.
-///
-/// Only the selected tab's view exists, so a model the view held went with every switch to another tab,
-/// and the rows, the sort and the column widths with it, and coming back listed the tables again.
 @MainActor
 internal final class TableListingModelStore {
     private var models: [UUID: TableListingViewModel] = [:]
@@ -106,8 +89,6 @@ internal final class TableListingModelStore {
         return model
     }
 
-    /// A closed tab's load is cancelled rather than left running for nobody on a metadata connection the
-    /// sidebar and the next listing wait on.
     func retainTabs(_ openTabIds: Set<UUID>) {
         for (tabId, model) in models where !openTabIds.contains(tabId) {
             model.cancel()

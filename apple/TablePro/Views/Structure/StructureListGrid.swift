@@ -11,13 +11,13 @@ import TableProPluginKit
 internal struct StructureListRow<ID: Hashable>: Hashable {
     internal let id: ID
     internal let values: [String]
-    /// Keyed by column, for a cell whose drawn text reads wrong aloud, such as YES for Enabled.
+    // Keyed by column, for a cell whose drawn text reads wrong aloud, such as YES for Enabled.
     internal var spokenValues: [Int: String] = [:]
     internal var tones: [Int: StructureListTone] = [:]
 }
 
-/// A status hue on one cell's text. Status hues stay system under every theme, and the text still
-/// turns to the selection text on an emphasized selection, like the rest of the row.
+// Status hues stay system under every theme, and the text still turns to the selection text on an
+// emphasized selection, like the rest of the row.
 internal enum StructureListTone: Hashable {
     case positive
     case caution
@@ -34,139 +34,171 @@ internal enum StructureListTone: Hashable {
     }
 }
 
-/// Selected row ids held by reference: a read made during a SwiftUI update gets a `State` or `Binding` snapshot.
 @MainActor
 internal final class StructureListSelection<ID: Hashable>: ObservableObject {
     @Published internal var ids: Set<ID> = []
 }
 
-/// A read-only Structure list drawn by `DataGridView`. Its configuration names only the database type,
-/// so `columnLayoutKey` stays nil and the list never writes into the table's saved column widths.
+// The grid behind a read-only Structure or dashboard list. Each list row keeps one RowID for as long as
+// its id is listed, so a refresh or a sort keeps the selection on the same record.
 @MainActor
-internal final class StructureListGridModel<ID: Hashable>: ObservableObject, DataGridViewDelegate {
-    internal let changeManager = AnyChangeManager(DataChangeManager())
-    internal var onSortStateChanged: ((SortState) -> Void)?
-    private let accessibilityLabel: String?
+internal final class StructureListGridModel<ID: Hashable>: ObservableObject {
+    internal let grid = HeldRowsGridAdapter(configuration: DataGridConfiguration())
+    internal var onSelect: ((Set<ID>) -> Void)?
 
-    internal private(set) var tableRows = TableRows()
     internal private(set) var rowIDs: [ID] = []
-    private var spokenValues: [[Int: String]] = []
-    private var tones: [[Int: StructureListTone]] = []
-    private var loadedKey: Int?
-    private weak var coordinator: TableViewCoordinator?
+    private var rowIDByID: [ID: RowID] = [:]
+    private var idByRowID: [RowID: ID] = [:]
+    private var nextRowNumber = 0
+    private var loadedColumns: [String]?
+    private var loadedRows: [StructureListRow<ID>]?
+    private var syncedIDs: Set<ID> = []
+    private let accessibilityLabel: String?
 
     internal init(accessibilityLabel: String? = nil) {
         self.accessibilityLabel = accessibilityLabel
+        grid.onSelectionChange = { [weak self] rowIDs in
+            self?.gridSelectionDidChange(rowIDs)
+        }
     }
 
-    internal func ensureLoaded(key: Int, columns: [String], rows: () -> [StructureListRow<ID>]) -> TableRows {
-        var hasher = Hasher()
-        hasher.combine(key)
-        hasher.combine(columns)
-        let combined = hasher.finalize()
-        guard loadedKey != combined else { return tableRows }
-        loadedKey = combined
+    internal var model: DataGridModel { grid.model }
+    internal var tableRows: TableRows { grid.heldRows }
 
-        let listed = rows()
+    internal func load(
+        columns: [String],
+        rows: [StructureListRow<ID>],
+        defaultWidths: [CGFloat],
+        minimumWidths: [CGFloat],
+        databaseType: DatabaseType,
+        sortState: SortState?
+    ) {
+        var configuration = Self.configuration(
+            columns: columns,
+            minimumWidths: minimumWidths,
+            databaseType: databaseType,
+            sorts: sortState != nil
+        )
+        configuration.accessibilityLabel = accessibilityLabel
+        grid.model.configuration = configuration
+        if let sortState {
+            grid.model.store.sortState = sortState
+        }
+        guard loadedColumns != columns || loadedRows != rows else { return }
+        if loadedColumns != columns {
+            grid.model.store.columnLayout = StructureListGrid<ID>.layout(
+                grid.model.store.columnLayout, columns: columns, defaultWidths: defaultWidths
+            )
+        }
+        loadedColumns = columns
+        loadedRows = rows
+        grid.setRows(makeTableRows(for: rows, columns: columns))
+    }
+
+    private static func configuration(
+        columns: [String],
+        minimumWidths: [CGFloat],
+        databaseType: DatabaseType,
+        sorts: Bool
+    ) -> DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.traits = DataGridEngineTraits(databaseType: databaseType)
+        configuration.supportsValueFilter = false
+        configuration.appliesRowCopyFormat = true
+        configuration.supportsColumnSort = sorts
+        configuration.columnMinimumWidths = StructureListGrid<ID>.minimumWidths(minimumWidths, columns: columns)
+        configuration.commands = [.freezeColumns]
+        return configuration
+    }
+
+    private func makeTableRows(for listed: [StructureListRow<ID>], columns: [String]) -> TableRows {
+        var keptRowIDs: [ID: RowID] = [:]
+        var rows = ContiguousArray<Row>()
+        rows.reserveCapacity(listed.count)
+        var tones: [RowID: [Int: NSColor]] = [:]
+        var spoken: [RowID: [Int: String]] = [:]
+        for row in listed {
+            let rowID: RowID
+            if keptRowIDs[row.id] == nil {
+                rowID = rowIDByID[row.id] ?? mintRowID()
+                keptRowIDs[row.id] = rowID
+            } else {
+                rowID = mintRowID()
+            }
+            var values = ContiguousArray(row.values.prefix(columns.count).map(PluginCellValue.text))
+            while values.count < columns.count {
+                values.append(.text(""))
+            }
+            rows.append(Row(id: rowID, values: values))
+            if !row.tones.isEmpty {
+                tones[rowID] = row.tones.mapValues(\.color)
+            }
+            if !row.spokenValues.isEmpty {
+                spoken[rowID] = row.spokenValues
+            }
+        }
+        rowIDByID = keptRowIDs
+        idByRowID = Dictionary(keptRowIDs.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
         rowIDs = listed.map(\.id)
-        spokenValues = listed.map(\.spokenValues)
-        tones = listed.map(\.tones)
-        tableRows = TableRows.from(
-            queryRows: listed.map { $0.values.map(PluginCellValue.text) },
+        grid.textTones = tones
+        grid.spokenTexts = spoken
+        return TableRows(
+            rows: rows,
             columns: columns,
             columnTypes: Array(repeating: .text(rawType: nil), count: columns.count),
             columnNullable: Dictionary(columns.map { ($0, false) }, uniquingKeysWith: { first, _ in first })
         )
-        return tableRows
     }
 
-    internal func rowIndex(forDisplayRow row: Int) -> Int? {
-        guard let index = DisplayRowMapping.rowIndex(forDisplay: row, displayIDs: coordinator?.displayIDs, in: tableRows),
-              rowIDs.indices.contains(index) else { return nil }
-        return index
+    private func mintRowID() -> RowID {
+        defer { nextRowNumber += 1 }
+        return .existing(nextRowNumber)
     }
 
-    internal func id(atDisplayRow row: Int) -> ID? {
-        rowIndex(forDisplayRow: row).map { rowIDs[$0] }
+    internal func id(for rowID: RowID) -> ID? {
+        idByRowID[rowID]
     }
 
-    internal func ids(atDisplayRows rows: Set<Int>) -> Set<ID> {
-        Set(rows.compactMap { id(atDisplayRow: $0) })
+    internal func rowID(for id: ID) -> RowID? {
+        rowIDByID[id]
     }
 
-    internal func displayRows(of ids: Set<ID>) -> Set<Int> {
-        guard !ids.isEmpty else { return [] }
-        let displayIDs = coordinator?.displayIDs
-        return Set(rowIDs.indices.compactMap { index -> Int? in
-            guard ids.contains(rowIDs[index]), tableRows.rows.indices.contains(index) else { return nil }
-            return DisplayRowMapping.displayIndex(forRowID: tableRows.rows[index].id, displayIDs: displayIDs, in: tableRows)
-        })
+    internal var selectedIDs: Set<ID> {
+        Set(grid.model.selectedRowIDs.compactMap { idByRowID[$0] })
     }
 
-    /// The grid's row selection kept by row identity, so a sort, a filter or a refresh moves it with its rows.
-    /// Build it after `ensureLoaded`: the grid reads the positions it held when the binding was built.
-    internal func selection(
-        get selectedIDs: @escaping () -> Set<ID>,
-        set select: @escaping (Set<ID>) -> Void
-    ) -> Binding<Set<Int>> {
-        Binding(
-            get: { self.displayRows(of: selectedIDs()) },
-            set: { rows in
-                // Until the grid puts the selection back after a reload, what it publishes names the rows it showed before.
-                guard self.coordinator?.hasRestoredSelection != false else { return }
-                let current = selectedIDs()
-                guard rows != self.displayRows(of: current) else { return }
-                let selected = self.ids(atDisplayRows: rows)
-                guard selected != current else { return }
-                select(selected)
-            }
-        )
-    }
-
-    internal func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
-        coordinator = tableViewCoordinator
-        if let accessibilityLabel {
-            tableViewCoordinator.tableView?.setAccessibilityLabel(accessibilityLabel)
+    // The owner moved the selection itself.
+    internal func syncSelection(_ ids: Set<ID>) {
+        syncedIDs = ids
+        guard selectedIDs != ids else { return }
+        let rowIDs = ids.compactMap { rowIDByID[$0] }
+        if rowIDs.isEmpty {
+            grid.model.clearSelection()
+        } else {
+            grid.model.selectRows(rowIDs)
         }
-        // A reload drops the table view's selection without a notification, so the selection kept by identity is put back after each one.
-        tableViewCoordinator.hasRestoredSelection = false
     }
 
-    internal func dataGridAccessibilityText(row: Int, column: Int) -> String? {
-        rowIndex(forDisplayRow: row).flatMap { spokenValues[$0][column] }
-    }
-
-    internal func dataGridTextTone(row: Int, column: Int) -> NSColor? {
-        rowIndex(forDisplayRow: row).flatMap { tones[$0][column]?.color }
-    }
-
-    internal func dataGridSortStateChanged(_ state: SortState) {
-        onSortStateChanged?(state)
-    }
-
-    internal func dataGridCopyRows(_ indices: Set<Int>) {
-        let lines = indices.sorted().compactMap { row -> String? in
-            guard let index = rowIndex(forDisplayRow: row) else { return nil }
-            return tableRows.rows[index].values.map { $0.asText ?? "" }.joined(separator: "\t")
-        }
-        guard !lines.isEmpty else { return }
-        ClipboardService.shared.writeText(lines.joined(separator: "\n"))
+    // A filter or a reload that hides selected records shrinks the grid's selection; that is not the user's pick.
+    private func gridSelectionDidChange(_ rowIDs: [RowID]) {
+        let ids = Set(rowIDs.compactMap { idByRowID[$0] })
+        guard ids != syncedIDs.filter({ rowIDByID[$0] != nil }) else { return }
+        syncedIDs = ids
+        onSelect?(ids)
     }
 }
 
-/// A nil `sortState` turns header sorting off. `defaultWidths` and `minimumWidths` follow `columns` by index.
+// A nil `sortState` turns header sorting off. `defaultWidths` and `minimumWidths` follow `columns` by index.
 internal struct StructureListGrid<ID: Hashable>: View {
-    internal let model: StructureListGridModel<ID>
+    @ObservedObject internal var model: StructureListGridModel<ID>
     internal let columns: [String]
     internal var defaultWidths: [CGFloat] = []
     internal var minimumWidths: [CGFloat] = []
-    internal let contentKey: Int
-    internal let rows: () -> [StructureListRow<ID>]
+    internal let rows: [StructureListRow<ID>]
     internal let databaseType: DatabaseType
-    internal let selectedIDs: () -> Set<ID>
+    internal let selectedIDs: Set<ID>
     internal let select: (Set<ID>) -> Void
     internal var sortState: Binding<SortState>?
-    @Binding internal var columnLayout: ColumnLayoutState
 
     internal static func layout(
         _ layout: ColumnLayoutState,
@@ -184,38 +216,31 @@ internal struct StructureListGrid<ID: Hashable>: View {
         Dictionary(zip(columns, widths), uniquingKeysWith: { first, _ in first })
     }
 
+    private struct LoadKey: Equatable {
+        let columns: [String]
+        let rows: [StructureListRow<ID>]
+        let sortState: SortState?
+    }
+
+    // task(id:) runs with this body's values; onChange(of:) would run with the previous body's (measured).
     internal var body: some View {
-        let model = model
-        let columns = columns
-        let defaultWidths = defaultWidths
+        DataGridView(model: model.model)
+            .task(id: LoadKey(columns: columns, rows: rows, sortState: sortState?.wrappedValue)) { load() }
+            .onChange(of: selectedIDs) { model.syncSelection($0) }
+    }
+
+    private func load() {
         let sortState = sortState
-        let tableRows = model.ensureLoaded(key: contentKey, columns: columns, rows: rows)
-        let storedLayout = $columnLayout
-        let layout = Binding(
-            get: { Self.layout(storedLayout.wrappedValue, columns: columns, defaultWidths: defaultWidths) },
-            set: { storedLayout.wrappedValue = $0 }
+        model.onSelect = select
+        model.grid.onSortChange = sortState.map { binding in { binding.wrappedValue = $0 } }
+        model.load(
+            columns: columns,
+            rows: rows,
+            defaultWidths: defaultWidths,
+            minimumWidths: minimumWidths,
+            databaseType: databaseType,
+            sortState: sortState?.wrappedValue
         )
-        return DataGridView(
-            tableRowsProvider: { tableRows },
-            changeManager: model.changeManager,
-            isEditable: false,
-            configuration: DataGridConfiguration(
-                databaseType: databaseType,
-                supportsColumnCommands: false,
-                supportsValueFilter: false,
-                appliesRowCopyFormat: true,
-                supportsColumnSort: sortState != nil,
-                columnMinimumWidths: Self.minimumWidths(minimumWidths, columns: columns)
-            ),
-            delegate: model,
-            selectedRowIndices: model.selection(get: selectedIDs, set: select),
-            sortState: sortState ?? .constant(SortState()),
-            columnLayout: layout,
-            contentRevision: contentKey
-        )
-        .onAppear {
-            guard let sortState else { return }
-            model.onSortStateChanged = { sortState.wrappedValue = $0 }
-        }
+        model.syncSelection(selectedIDs)
     }
 }

@@ -214,7 +214,7 @@ struct TableRowsUnloadedValueTests {
         let placeholder = DataGridCellContent.placeholder(for: .null, unloadedByteCount: 5_242_880)
         #expect(placeholder == .unloaded(byteCount: 5_242_880))
         let text = DataGridCellContent.resolvedDisplayText(
-            "", placeholder: placeholder, isLargeDataset: false, nullDisplayString: "NULL"
+            "", placeholder: placeholder, nullDisplayString: "NULL"
         )
         #expect(text == ByteCountFormatter.string(fromByteCount: 5_242_880, countStyle: .file))
     }

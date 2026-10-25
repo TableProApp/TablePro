@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import SwiftUI
 @testable import TablePro
 import TableProPluginKit
 import TableProTestSupport
@@ -20,7 +19,7 @@ extension GlobalStateSuites {
         func editorFollowsTheSetting() async throws {
             let state = MultiRowEditState()
             state.configure(
-                selectedRowIndices: [0],
+                rowIDs: [.existing(0)],
                 allRows: [["abc\u{200B}", "plain"]],
                 columns: ["marked", "plain"],
                 columnTypes: [.text(rawType: "VARCHAR(20)"), .text(rawType: "VARCHAR(20)")]
@@ -41,9 +40,10 @@ extension GlobalStateSuites {
             .appSettings { $0.dataGrid.showInvisibleCharacters = false }
         )
         func findReadsTheUnmarkedText() {
-            let coordinator = makeCoordinator(values: ["a\rb"])
+            let (model, owner) = makeModel(values: ["a\rb"])
+            defer { withExtendedLifetime(owner) {} }
 
-            #expect(coordinator.runFind(term: "a b").count == 1)
+            #expect(find("a b", in: model).count == 1)
         }
 
         @Test(
@@ -51,28 +51,34 @@ extension GlobalStateSuites {
             .appSettings { $0.dataGrid.showInvisibleCharacters = true }
         )
         func findReadsTheMarkedText() {
-            let coordinator = makeCoordinator(values: ["a\rb"])
+            let (model, owner) = makeModel(values: ["a\rb"])
+            defer { withExtendedLifetime(owner) {} }
 
-            #expect(coordinator.runFind(term: "a b").isEmpty)
-            #expect(coordinator.runFind(term: "b").count == 1)
+            #expect(find("a b", in: model).isEmpty)
+            #expect(find("b", in: model).count == 1)
         }
 
-        private func makeCoordinator(values: [String]) -> TableViewCoordinator {
-            let coordinator = TableViewCoordinator(
-                changeManager: AnyChangeManager(DataChangeManager()),
-                isEditable: true,
-                selectedRowIndices: .constant([]),
-                delegate: nil,
-                layoutPersister: InMemoryColumnLayoutStore()
+        // The model holds its owner weakly, so the caller keeps the owner alive.
+        private func makeModel(values: [String]) -> (DataGridModel, GridTestOwner) {
+            let rows = TableRows.from(
+                queryRows: values.map { [PluginCellValue.text($0)] },
+                columns: ["v"],
+                columnTypes: [.text(rawType: nil)]
             )
-            let rows = ContiguousArray(values.enumerated().map { index, value in
-                Row(id: .existing(index), values: [PluginCellValue.text(value)])
-            })
-            var captured = TableRows(rows: rows, columns: ["v"], columnTypes: [.text(rawType: nil)])
-            coordinator.tableRowsProvider = { captured }
-            coordinator.tableRowsMutator = { (mutation: (inout TableRows) -> Delta) in mutation(&captured) }
-            coordinator.updateCache()
-            return coordinator
+            let owner = GridTestOwner(rows)
+            let model = DataGridModel()
+            model.dataSource = owner
+            model.actions = owner
+            owner.model = model
+            model.reloadRows()
+            return (model, owner)
+        }
+
+        private func find(_ term: String, in model: DataGridModel) -> [GridFindState.Match] {
+            model.showFind()
+            model.find.term = term
+            model.findQueryDidChange()
+            return model.find.matches
         }
     }
 }

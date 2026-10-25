@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import TableProPluginKit
 import Testing
 
@@ -73,8 +74,7 @@ struct CompareRowGridModelTests {
         #expect(state.vocabulary == .comparison)
     }
 
-    /// The grid puts Include, Change and Side ahead of the plan's columns, so `email` at plan index 1
-    /// is grid column 4.
+    // Include, Change and Side lead the plan's columns, so `email` at plan index 1 is grid column 4.
     @Test func testAnUpdateMarksTheSourceModifiedAndTheTargetStruckAtTheDifferingGridColumn() {
         let lines = CompareRowGridModel.lines(for: entry(.update, key: "k1", differingIn: ["email"]))
         let expectedColumn = 1 + CompareRowGridModel.leadingColumnCount
@@ -190,17 +190,17 @@ struct CompareRowGridModelTests {
         #expect(model.lines.count == 3)
     }
 
-    @Test func testTheDelegateHandsBackEachLinesVisualState() throws {
+    @Test func testTheGridIsHandedEachLinesVisualState() throws {
         let session = try makeSession()
         let model = CompareRowGridModel()
         let entries = [entry(.insert, key: "k1"), entry(.update, key: "k2", differingIn: ["email"])]
         _ = model.ensureLoaded(key: key(entryCount: 2), plan: plan(), entries: entries, session: session)
 
-        #expect(model.dataGridVisualState(forRow: 0)?.isInserted == true)
-        #expect(model.dataGridVisualState(forRow: 1)?.modifiedColumns == Set([4]))
-        #expect(model.dataGridVisualState(forRow: 2)?.struckColumns == Set([4]))
-        #expect(model.dataGridVisualState(forRow: 3) == nil)
-        #expect(model.dataGridVisualState(forRow: -1) == nil)
+        #expect(visualState(model, row: 0)?.isInserted == true)
+        #expect(visualState(model, row: 1)?.modifiedColumns == Set([4]))
+        #expect(visualState(model, row: 2)?.struckColumns == Set([4]))
+        #expect(visualState(model, row: 3) == nil)
+        #expect(model.grid.gridVisualState(for: .existing(-1)) == nil)
     }
 
     @Test func testTheIncludeCheckboxShowsOnlyOnTheOpeningLineOfADifference() throws {
@@ -219,9 +219,10 @@ struct CompareRowGridModelTests {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        #expect(model.dataGridCheckboxState(row: 0, column: 1) == nil)
-        #expect(model.dataGridCheckboxState(row: 0, column: 4) == nil)
+        #expect(checkboxState(model, row: 0, column: 1) == nil)
+        #expect(checkboxState(model, row: 0, column: 4) == nil)
         #expect(includeState(model, row: 99) == nil)
+        #expect(model.model.configuration.checkboxColumns == [CompareRowGridModel.includeColumn])
     }
 
     @Test func testTheIncludeCheckboxReflectsARowExcludedInTheSession() throws {
@@ -255,13 +256,13 @@ struct CompareRowGridModelTests {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        model.dataGridSetCheckbox(false, rows: IndexSet([0, 1]), column: CompareRowGridModel.includeColumn)
+        setCheckbox(model, false, rows: [0, 1], column: CompareRowGridModel.includeColumn)
 
         #expect(session.dataPlans.first?.excludedRowKeys == Set(["k1", "k2"]))
         #expect(includeState(model, row: 0) == false)
         #expect(includeState(model, row: 1) == false)
 
-        model.dataGridSetCheckbox(true, rows: IndexSet(integer: 0), column: CompareRowGridModel.includeColumn)
+        setCheckbox(model, true, rows: [0], column: CompareRowGridModel.includeColumn)
 
         #expect(session.dataPlans.first?.excludedRowKeys == Set(["k2"]))
         #expect(includeState(model, row: 0) == true)
@@ -271,7 +272,7 @@ struct CompareRowGridModelTests {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        model.dataGridSetCheckbox(false, rows: IndexSet([0, 1]), column: 1)
+        setCheckbox(model, false, rows: [0, 1], column: 1)
 
         #expect(session.dataPlans.first?.excludedRowKeys == Set<String>())
     }
@@ -280,9 +281,86 @@ struct CompareRowGridModelTests {
         let session = try makeSession()
         let model = loadedModel(session: session)
 
-        model.dataGridSetCheckbox(false, rows: IndexSet([3, 4, 5]), column: CompareRowGridModel.includeColumn)
+        setCheckbox(model, false, rows: [3, 4, 5], column: CompareRowGridModel.includeColumn)
 
         #expect(session.dataPlans.first?.excludedRowKeys == Set<String>())
+    }
+
+    // D6: a toggle redraws the checkbox cells; a content replace there used to drop the selection.
+    @Test func testTogglingTheIncludeCheckboxKeepsTheRowsAndTheSelection() throws {
+        let session = try makeSession()
+        let model = loadedModel(session: session)
+        let grid = model.model
+        let first = try #require(grid.rowID(at: 0))
+        let second = try #require(grid.rowID(at: 1))
+        let selected = [first, second]
+        grid.selectRows(selected)
+        let selection = grid.selection
+        let selectionRevision = grid.selectionRevision
+        let displayRevision = grid.displayRevision
+
+        setCheckbox(model, false, rows: [0, 1], column: CompareRowGridModel.includeColumn)
+
+        #expect(session.dataPlans.first?.excludedRowKeys == Set(["k1", "k2"]))
+        #expect(grid.selection == selection)
+        #expect(grid.selectionRevision == selectionRevision)
+        #expect(grid.displayRevision == displayRevision)
+        #expect(grid.selectedRowIDs == selected)
+    }
+
+    @Test func testANewLoadClearsASelectionMadeAgainstTheOldOne() throws {
+        let session = try makeSession()
+        let model = loadedModel(session: session)
+        let first = try #require(model.model.rowID(at: 0))
+        model.model.selectRows([first])
+
+        model.ensureLoaded(
+            key: key(entryCount: 1), plan: plan(), entries: [entry(.delete, key: "k9")], session: session
+        )
+
+        #expect(model.model.selection.isEmpty)
+        #expect(model.model.rowCount == 1)
+    }
+
+    @Test func testSpaceOnSelectedLinesTogglesTheirCheckboxesAndKeepsTheSelection() async throws {
+        let session = try makeSession()
+        let entries = [
+            entry(.insert, key: "k1"),
+            entry(.update, key: "k2", differingIn: ["email"]),
+            entry(.identical, key: "k3"),
+            entry(.conflict, key: "k4")
+        ]
+        let window = ThemeTestFixture.host(
+            CompareGridHarness(session: session, entries: entries),
+            size: NSSize(width: 800, height: 300)
+        )
+        defer { window.contentView = nil }
+        await Self.settle(window)
+        let table = try #require(Self.mainTable(in: window.contentView))
+        try #require(table.numberOfRows == 6)
+        table.selectRowIndexes(IndexSet([0, 1]), byExtendingSelection: false)
+        let model = try #require(table.controller?.model)
+        try #require(model.selection.affectedRows == IndexSet([0, 1]))
+
+        let space = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: " ",
+            charactersIgnoringModifiers: " ",
+            isARepeat: false,
+            keyCode: KeyCode.space.rawValue
+        ))
+        table.keyDown(with: space)
+        await Self.settle(window)
+
+        #expect(session.dataPlans.first?.excludedRowKeys == Set(["k1", "k2"]))
+        #expect(model.selection.affectedRows == IndexSet([0, 1]))
+        #expect(table.selectedRowIndexes == IndexSet([0, 1]))
+        #expect(table.numberOfRows == 6)
     }
 
     @Test func testSameListsTheRetainedIdenticalRows() {
@@ -444,7 +522,7 @@ struct CompareRowGridModelTests {
         )
     }
 
-    /// Lines 0 insert, 1 and 2 update, 3 identical, 4 and 5 conflict.
+    // Lines 0 insert, 1 and 2 update, 3 identical, 4 and 5 conflict.
     private func loadedModel(session: CompareSyncSession) -> CompareRowGridModel {
         let model = CompareRowGridModel()
         let entries = [
@@ -458,8 +536,47 @@ struct CompareRowGridModelTests {
         return model
     }
 
+    private func gridColumn(_ model: CompareRowGridModel, dataIndex: Int) -> DataGridColumn? {
+        model.model.columns.columns.first { $0.dataIndex == dataIndex }
+    }
+
+    private func visualState(_ model: CompareRowGridModel, row: Int) -> RowVisualState? {
+        model.model.rowID(at: row).flatMap { model.grid.gridVisualState(for: $0) }
+    }
+
+    private func checkboxState(_ model: CompareRowGridModel, row: Int, column dataIndex: Int) -> Bool? {
+        guard let rowID = model.model.rowID(at: row), let column = gridColumn(model, dataIndex: dataIndex) else { return nil }
+        return model.grid.gridCheckboxState(for: rowID, column: column)
+    }
+
     private func includeState(_ model: CompareRowGridModel, row: Int) -> Bool? {
-        model.dataGridCheckboxState(row: row, column: CompareRowGridModel.includeColumn)
+        checkboxState(model, row: row, column: CompareRowGridModel.includeColumn)
+    }
+
+    // The grid's own path: the model hands the selected rows to its actions.
+    private func setCheckbox(_ model: CompareRowGridModel, _ isOn: Bool, rows: [Int], column dataIndex: Int) {
+        guard let column = gridColumn(model, dataIndex: dataIndex) else {
+            Issue.record("No column at data index \(dataIndex)")
+            return
+        }
+        let rowIDs = rows.compactMap { model.model.rowID(at: $0) }
+        model.model.actions?.gridSetCheckbox(isOn, rowIDs: rowIDs, column: column)
+    }
+
+    // SwiftUI applies a change on a later run-loop turn, so each pass lays out and waits one main-queue turn.
+    private static func settle(_ window: NSWindow) async {
+        for _ in 0 ..< 10 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+        }
+    }
+
+    private static func mainTable(in view: NSView?) -> DataGridTableView? {
+        guard let view else { return nil }
+        if let table = view as? DataGridTableView, table.paneKind == .main { return table }
+        return view.subviews.lazy.compactMap { mainTable(in: $0) }.first
     }
 
     private func comparisonState(
@@ -552,9 +669,7 @@ struct CompareRowGridModelTests {
             ),
             state: DataGridCellState(
                 visualState: .empty,
-                isFocused: false,
                 isEditable: false,
-                isLargeDataset: false,
                 row: 0,
                 columnIndex: CompareRowGridModel.includeColumn
             ),
@@ -573,8 +688,19 @@ struct CompareRowGridModelTests {
             ),
             nullDisplayString: "NULL",
             onEmphasizedSelection: false,
-            hasOverlay: false,
             checkboxMark: checkboxMark
         )
+    }
+}
+
+// The plan is read from the session on every render, as the compare window hands the grid the current plan.
+private struct CompareGridHarness: View {
+    @ObservedObject var session: CompareSyncSession
+    let entries: [RowDiffEntry]
+
+    var body: some View {
+        if let plan = session.dataPlans.first {
+            CompareRowGrid(session: session, plan: plan, filter: .all, entries: entries)
+        }
     }
 }

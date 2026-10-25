@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Sessions are server records, so they draw in the data grid and take its theme. The grid has no
-/// per-row buttons, so Cancel and Terminate act on the selected session from the header.
 internal struct SessionsTableView: View {
     @ObservedObject internal var viewModel: ServerDashboardViewModel
     @ObservedObject private var selection: StructureListSelection<String>
@@ -9,7 +7,6 @@ internal struct SessionsTableView: View {
         accessibilityLabel: String(localized: "Active Sessions")
     )
     @State private var sortState = SessionGridColumns.defaultSort
-    @State private var columnLayout = ColumnLayoutState()
 
     internal init(viewModel: ServerDashboardViewModel) {
         _viewModel = ObservedObject(wrappedValue: viewModel)
@@ -86,20 +83,16 @@ internal struct SessionsTableView: View {
     private var table: some View {
         let rows = SessionGridColumns.sorted(viewModel.sessions, by: sortState).map(SessionGridColumns.row(for:))
         let selection = selection
-        var hasher = Hasher()
-        hasher.combine(rows)
         return StructureListGrid(
             model: grid,
             columns: SessionGridColumns.titles,
             defaultWidths: SessionGridColumns.widths,
             minimumWidths: SessionGridColumns.minimumWidths,
-            contentKey: hasher.finalize(),
-            rows: { rows },
+            rows: rows,
             databaseType: viewModel.databaseType,
-            selectedIDs: { selection.ids },
+            selectedIDs: selection.ids,
             select: { selection.ids = $0 },
-            sortState: $sortState,
-            columnLayout: $columnLayout
+            sortState: $sortState
         )
     }
 }

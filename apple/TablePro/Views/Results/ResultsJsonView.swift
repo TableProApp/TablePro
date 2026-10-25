@@ -8,7 +8,7 @@ import TableProPluginKit
 
 internal struct ResultsJsonView: View {
     let tableRows: TableRows
-    let selectedRowIndices: Set<Int>
+    let selectedRowIDs: Set<RowID>
     let displayIDs: [RowID]?
     let deletedRowIDs: Set<RowID>
     let valueFilter: GridValueFilterState
@@ -31,7 +31,7 @@ internal struct ResultsJsonView: View {
 
     init(
         tableRows: TableRows,
-        selectedRowIndices: Set<Int>,
+        selectedRowIDs: Set<RowID>,
         displayIDs: [RowID]?,
         deletedRowIDs: Set<RowID>,
         valueFilter: GridValueFilterState,
@@ -40,7 +40,7 @@ internal struct ResultsJsonView: View {
         columnLayout: ColumnLayoutState
     ) {
         self.tableRows = tableRows
-        self.selectedRowIndices = selectedRowIndices
+        self.selectedRowIDs = selectedRowIDs
         self.displayIDs = displayIDs
         self.deletedRowIDs = deletedRowIDs
         self.valueFilter = valueFilter
@@ -49,16 +49,16 @@ internal struct ResultsJsonView: View {
         self.columnLayout = columnLayout
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
         self._resolvedRowCount = State(
-            initialValue: selectedRowIndices.isEmpty
+            initialValue: selectedRowIDs.isEmpty
                 ? (displayIDs?.count ?? tableRows.count)
-                : selectedRowIndices.count
+                : selectedRowIDs.count
         )
     }
 
     private struct RenderKey: Equatable {
         let dataRevision: Int
         let displayRevision: Int
-        let selectedRowIndices: Set<Int>
+        let selectedRowIDs: Set<RowID>
         let deletedRowIDs: Set<RowID>
         let valueFilter: GridValueFilterState
         let hiddenColumns: Set<String>
@@ -69,7 +69,7 @@ internal struct ResultsJsonView: View {
         RenderKey(
             dataRevision: dataRevision,
             displayRevision: displayRevision,
-            selectedRowIndices: selectedRowIndices,
+            selectedRowIDs: selectedRowIDs,
             deletedRowIDs: deletedRowIDs,
             valueFilter: valueFilter,
             hiddenColumns: columnLayout.hiddenColumns,
@@ -77,10 +77,7 @@ internal struct ResultsJsonView: View {
         )
     }
 
-    /// Says how much of the result is on screen, and why the rest is not.
-    ///
-    /// Rows marked for deletion are left out of the document, so the count has to name them or they
-    /// read as rows that silently went missing.
+    // Deleted rows are left out of the document, so the count names them or they read as silently missing.
     private var rowCountText: String {
         let rowCount = tableRows.count
         if heldBackDeletionCount > 0 {
@@ -211,15 +208,12 @@ internal struct ResultsJsonView: View {
 
     // MARK: - JSON Generation
 
-    /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with an unchanged
-    /// key; re-serializing every row then gives the tree a new root and recomputes its whole
-    /// projection, so a document already rendered for that key is kept. A cancelled render records
-    /// no key, so the next appearance renders it.
+    // Kept per key: a connection switch re-runs task(id:) with the same key, and re-serializing rebuilds the whole tree.
     private func rebuild(for key: RenderKey) async {
         guard renderedKey != key else { return }
         let snapshot = tableRows
         let ids = displayIDs
-        let selectedIndices = selectedRowIndices
+        let selectedIndices = Set(DataGridRowOrder(filteredIDs: ids, revision: 0).displayIndexes(of: selectedRowIDs, in: snapshot))
         let deletedIDs = deletedRowIDs
         let layout = columnLayout
 
@@ -258,7 +252,7 @@ internal struct ResultsJsonView: View {
         let parseResult: Result<JSONTreeNode, JSONTreeParseError>
     }
 
-    /// Renders the rows the grid is showing, through the same serializer as Copy as JSON.
+    // Same serializer as Copy as JSON.
     nonisolated static func computeJson(
         tableRows: TableRows,
         displayIDs: [RowID]?,

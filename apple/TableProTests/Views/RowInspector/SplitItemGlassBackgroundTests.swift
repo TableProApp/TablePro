@@ -24,7 +24,6 @@ struct SplitItemGlassBackgroundTests {
     private func fieldList() -> InspectorFieldListView {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: [0],
             rowIDs: [.existing(0)],
             allRows: [["1", "Still"]],
             absentCells: [[]],

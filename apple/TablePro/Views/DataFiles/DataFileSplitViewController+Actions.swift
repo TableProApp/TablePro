@@ -37,7 +37,7 @@ extension DataFileSplitViewController {
             guard let self else { return }
             _ = self.controller.deleteRows(pageRows: pageRows)
             let remaining = self.controller.tableRows.rows.count
-            self.controller.selectedRowIndices = remaining == 0 ? [] : [min(firstRow, remaining - 1)]
+            self.controller.selectRows(pageRows: remaining == 0 ? [] : [min(firstRow, remaining - 1)])
         }
         guard controller.rowsHaveData(pageRows: pageRows) else {
             proceed()

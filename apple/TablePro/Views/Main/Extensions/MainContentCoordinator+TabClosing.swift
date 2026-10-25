@@ -6,24 +6,12 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// The path that means "the user closed these tabs themselves", which, with moving the last tab
-    /// to another connection, is the consent `clearForUserClosedAllTabs` requires. Every automatic
-    /// path leaves the saved state alone, because an empty tab list can equally mean a session was
-    /// lost or the app is quitting, and treating that as a delete throws away tabs nobody closed.
-    ///
-    /// Closing tabs never closes the window: the window hosts every open connection now, so the
-    /// connection is simply left on its empty state.
-    ///
-    /// Consent to close is not consent to lose work. Callers that can reach a tab holding unsaved
-    /// work ask first, through `MainContentCommandActions.closeTabAwaiting(id:)`.
+    // User-initiated, the consent `clearForUserClosedAllTabs` needs; automatic paths never clear saved tabs.
     func closeTabsByUser(ids: [UUID]) {
-        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        flushColumnLayoutPersistence()
         for id in ids {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
-            /// The closing tab's own save point. A tab switch saves the tab it leaves, but a close
-            /// removes the tab before the selection moves, so nothing else writes the rows the
-            /// reader left in the filter bar. An applied filter was written when it was applied;
-            /// rows that were never applied have only this.
+            // A close removes the tab before the selection moves, so this is the only save of filter rows never applied.
             saveLastFilters(of: tab)
             RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
             releaseResources(of: tab)
@@ -34,18 +22,16 @@ extension MainContentCoordinator {
         persistence.clearForUserClosedAllTabs()
     }
 
-    /// Not a close: the tab is not going away, so nothing goes to Reopen Closed Tab. The source view is
-    /// usually unparented by now, so its structure-change save will not fire and this save is the only one.
+    // Not a close, so nothing goes to Reopen Closed Tab; the unparented source view will not save, so this is the only save.
     internal func takeTabForMove(id: UUID) -> QueryTab? {
         guard canMoveTabToConnection(id),
               let tab = tabManager.tabs.first(where: { $0.id == id }) else { return nil }
         let moved = enrichedForPersistence(tab)
-        /// The live caret is the moved tab's. Closing selects a neighbour without its editor mounting,
-        /// so the save below would otherwise write that caret into the neighbour.
+        // The live caret is the moved tab's: closing selects a neighbour without mounting its editor, so the save would write it there.
         if tabManager.selectedTabId == id {
             cursorPositions = []
         }
-        dataTabDelegate?.tableViewCoordinator?.flushPendingColumnLayoutPersistence()
+        flushColumnLayoutPersistence()
         releaseResources(of: tab)
         releaseExecution(of: tab)
         tabSessionRegistry.unregister(id: id)
@@ -53,29 +39,18 @@ extension MainContentCoordinator {
         cleanupTabCaches(openTabIds: Set(tabManager.tabs.map(\.id)))
         services.schemaProviderRegistry.reclaimUnheldProviders(for: connectionId)
         persistence.saveAggregated()
-        /// Moving the last tab out is the user emptying this connection, the same consent closing it
-        /// gives. Left on disk, the tab would come back here on the next restore as a duplicate.
+        // Moving the last tab out empties the connection like closing it; left on disk, the tab would restore here as a duplicate.
         if Self.aggregatedTabs(for: connectionId).isEmpty {
             persistence.clearForUserClosedAllTabs()
         }
         return moved
     }
 
-    /// The object these tabs show is gone, which is not the user closing them. Nothing goes to Reopen
-    /// Closed Tab, which could only reopen onto an error, and the saved tab set is never cleared,
-    /// because an emptied tab list is not consent to forget it.
+    // Not a user close: nothing goes to Reopen Closed Tab (it would reopen onto an error) and the saved tab set is kept.
     func closeTabsForRemovedObjects(ids: [UUID]) {
-        /// Discarded rather than flushed, which is what the user-close path does. The object is
-        /// gone and the adoption has already cleared its saved settings, so a write from the
-        /// teardown would put the layout back after the clear.
-        ///
-        /// Only when the closed tabs include the selected one, because that is the only tab with a
-        /// mounted grid: a pending width belongs to it, and dropping an unrelated table would
-        /// otherwise throw away a resize the reader had just made somewhere else.
-        if let selectedId = tabManager.selectedTabId, ids.contains(selectedId) {
-            dataTabDelegate?.tableViewCoordinator?.discardPendingColumnLayoutPersistence()
-        }
         for id in ids {
+            // Discarded, not flushed: the object is gone and its saved layout was cleared, so a write would put it back.
+            releaseGridModel(forTab: id, persistingLayout: false)
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
             releaseResources(of: tab)
             releaseExecution(of: tab)
@@ -84,13 +59,12 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Drops the per-tab caches of tabs that are no longer open. Every one of these is keyed by
-    /// tab id, so a stale entry does not merely waste memory: the next tab to be handed that id
-    /// would read another tab's state.
+    // All keyed by tab id, so a stale entry would hand another tab's state to the next tab given that id.
     func cleanupTabCaches(openTabIds: Set<UUID>) {
         prune(&displayFormatsCache, keeping: openTabIds)
-        prune(&displayOrderCache, keeping: openTabIds)
-        prune(&displayStateCache, keeping: openTabIds)
+        for tabId in Array(dataGridEntries.keys) where !openTabIds.contains(tabId) {
+            releaseGridModel(forTab: tabId)
+        }
         prune(&tableMetadataCache, keeping: openTabIds)
         prune(&createTableDrafts, keeping: openTabIds)
         prune(&userTypeEditors, keeping: openTabIds)
@@ -103,21 +77,14 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Rewrites the dictionary only when something has actually gone, because assigning a filtered
-    /// copy back is what a plain `filter` would cost on every tab change.
+    // Rewrites only when something went, so a tab change does not pay for a filtered copy every time.
     private func prune<Value>(_ cache: inout [UUID: Value], keeping openTabIds: Set<UUID>) {
         guard cache.keys.contains(where: { !openTabIds.contains($0) }) else { return }
         cache = cache.filter { openTabIds.contains($0.key) }
     }
 
-    /// A retarget keeps the tab's id and throws away everything the id used to mean, so the
-    /// per-tab caches keyed on that id now describe a table the tab no longer shows. Left behind,
-    /// the structure session goes on reporting staged ALTERs, which raises an unsaved-changes prompt
-    /// naming the previous table and offers to apply its statements from a tab that cannot show
-    /// them. `selectedTabHoldsProtectedContent` is what stops a tab holding real work being
-    /// retargeted at all; this is what keeps the caches honest once one without work has been.
+    // A retarget keeps the id, so stale caches (staged ALTERs) would prompt to apply the previous table's changes.
     func releaseRetargetedTabState(for tabId: UUID) {
-        displayStateCache.removeValue(forKey: tabId)
         tableMetadataCache.removeValue(forKey: tabId)
         tabSessionRegistry.forgetFreshness(for: tabId)
         structureSessions.removeValue(forKey: tabId)?.releaseViewWiring()
@@ -130,15 +97,7 @@ extension MainContentCoordinator {
         toolbarState.hasTypeChanges = false
     }
 
-    /// A closed tab has to take its coordinator-side state with it, and this is the only place that
-    /// can: `handleTabChange` snapshots a tab by looking it up in `tabManager.tabs`, and by the time
-    /// it runs the tab is already gone. So it must happen before `tabManager.closeTab(id:)`, which
-    /// is also what makes the selected-tab test meaningful, since that call reassigns the selection.
-    ///
-    /// Left behind, the change manager keeps the closed tab's edits and the table name they were
-    /// written against. Nothing clears it, so the connection goes on reporting unsaved work with no
-    /// tabs to show for it, and the next Save resolves its scope through `browseScope` and runs
-    /// those statements against whatever database the sidebar has since moved to.
+    // Before `closeTab(id:)`, which hides the tab from `handleTabChange`; stale edits would later save to the wrong database.
     private func releaseResources(of tab: QueryTab) {
         tabsWithStagedPrincipals.remove(tab.id)
         structureSessions.removeValue(forKey: tab.id)?.releaseViewWiring()
@@ -146,7 +105,7 @@ extension MainContentCoordinator {
         userTypeEditors.removeValue(forKey: tab.id)
         erDiagramModels.removeValue(forKey: tab.id)
         navigationHistories.removeValue(forKey: tab.id)
-        displayStateCache.removeValue(forKey: tab.id)
+        releaseGridModel(forTab: tab.id)
         tableMetadataCache.removeValue(forKey: tab.id)
         guard isSelectedTab(tab) else { return }
         changeManager.clearChangesAndUndoHistory()
@@ -156,15 +115,7 @@ extension MainContentCoordinator {
         toolbarState.hasTypeChanges = false
     }
 
-    /// Ends what the tab was running, on the same terms a retarget does.
-    ///
-    /// A closed tab used to keep its claim in the registry, so the window went on reporting the
-    /// work as running until the query it could no longer show came back. Reopen Closed Tab hands
-    /// the restored tab the id it had before, which is enough for the orphan to be mistaken for the
-    /// reopened tab's own load and for that load to be refused as a duplicate.
-    ///
-    /// The query handle is this tab's own, so it goes down with the tab. No ownership check is
-    /// needed any more: a handle keyed by tab cannot belong to another one.
+    // A closed tab kept its registry claim, so a reopened tab with the same id had its load refused as a duplicate.
     internal func releaseExecution(of tab: QueryTab) {
         reportEndedExecutions(tabExecution.invalidate(tab.id, reason: .abandoned).map { [$0] } ?? [])
         cancelTableLoad(for: tab.id)

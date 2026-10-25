@@ -8,7 +8,6 @@ import Foundation
 import os
 import TableProUtilities
 
-/// Manager for query tabs
 @MainActor
 final class QueryTabManager: ObservableObject {
     @Published var tabs: [QueryTab] = [] {
@@ -25,11 +24,7 @@ final class QueryTabManager: ObservableObject {
         }
     }
 
-    /// Every writer of the selection comes through here, which makes this the one place that sees
-    /// every tab the user switches to: a click in the strip, Command 1 to 9, a new tab, a table
-    /// opened from the sidebar, a reopened tab and the neighbour a close lands on alike. A view
-    /// modifier could not stand in for it, because a connection the window is not showing has its
-    /// views unparented.
+    // Every selection writer lands here; a view modifier can't, as a connection the window isn't showing has no views.
     @Published var selectedTabId: UUID? {
         didSet {
             guard selectedTabId != oldValue else { return }
@@ -39,30 +34,19 @@ final class QueryTabManager: ObservableObject {
         }
     }
 
-    /// What a tab's entry is decided by: the database on an engine that switches databases, the
-    /// schema on one that only switches schemas. Nil where the engine switches neither, and every
-    /// tab is in the connection's one entry.
+    // The database or schema, whichever the engine switches; nil when it switches neither and every tab shares one entry.
     let containerTarget: ContainerSwitchTarget?
 
-    /// The connections-strip entry this window shows: the strip lists only that container's tabs,
-    /// plus the ones that name no container. Nil shows every tab.
-    ///
-    /// A switch never closes a tab, it only changes which entry is in front; the tabs of the others
-    /// are kept and come back with their entry.
+    // The strip lists this container's tabs plus unbound ones (nil: all). Switching entries never closes a tab.
     @Published private(set) var visibleContainer: String?
 
-    /// Told when the selection carried the window into another entry, such as a tab picked from
-    /// the recent-tabs list or rebound to another database, so the connection can browse it too.
+    // Fired when a selection carried the window into another entry, so the connection browses it too.
     var onVisibleContainerReconciled: (() -> Void)?
 
     private(set) var containerTabHistory = ContainerTabHistory()
     private var _visibleTabs: [QueryTab]?
 
-    /// Whether the window shows this connection's tabs, in the key window. The window sets it, for
-    /// every connection it hosts at once. Only then is a selection a tab the user switched to: a
-    /// restore that finishes for a connection in the background selects a tab nobody has seen, and
-    /// recording it would send the next Control-Tab there. Coming to the front records the selected
-    /// tab, because the user is now looking at it.
+    // Only a frontmost selection is recorded: a background restore's tab would otherwise become the next Control-Tab target.
     var isFrontmost = false {
         didSet {
             guard isFrontmost != oldValue else { return }
@@ -74,9 +58,7 @@ final class QueryTabManager: ObservableObject {
 
     var pendingFocusTabId: UUID?
 
-    /// When each open tab was last the selected one, as a sequence number rather than a time, so
-    /// two selections in one run-loop turn still order. The sequence is shared by every tab manager
-    /// so a window hosting several connections can order all of their tabs together.
+    // A shared sequence, not a time: two selections in one turn still order, across every connection in the window.
     private(set) var activationSequence: [UUID: UInt64] = [:]
     private static var lastActivationSequence: UInt64 = 0
     private var activationRecordPending = false
@@ -99,9 +81,7 @@ final class QueryTabManager: ObservableObject {
         self.tabSessionRegistry = tabSessionRegistry
     }
 
-    /// Closing a tab used to mean closing its window, because a tab was a window. Selection
-    /// lands on the tab that took its place in the strip, so the pane never blanks while the entry
-    /// still has tabs. An entry left with none shows its empty state rather than another entry's tab.
+    // Selection lands on the tab that took its strip slot; an entry left empty shows its empty state, not another's tab.
     func closeTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasSelected = selectedTab?.id == id
@@ -116,15 +96,7 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = remaining[stripIndex].id
     }
 
-    /// Reorders the strip. A pure permutation: the same tabs, a different order, and the selection
-    /// stays on whichever tab it was on rather than on the position that tab vacated.
-    ///
-    /// `destination` is a position in the strip, which lists one entry's tabs, so the move lands
-    /// beside the strip neighbour it was dropped next to wherever the other entries' tabs sit.
-    ///
-    /// The array is rebuilt and assigned once rather than mutated twice, because `tabs.didSet`
-    /// bumps `tabStructureVersion` and republishes the workspace anchors on every write, and the
-    /// state between a `remove` and an `insert` is a tab list the user never had.
+    // Built and assigned once: each tabs write bumps tabStructureVersion and republishes anchors for a list never shown.
     func moveTab(id: UUID, to destination: Int) {
         let strip = visibleTabs
         guard let source = strip.firstIndex(where: { $0.id == id }) else { return }
@@ -141,8 +113,6 @@ final class QueryTabManager: ObservableObject {
         tabs = reordered
     }
 
-    /// Whether `tab` can move one place in `offset`'s direction, so a menu item can dim instead of
-    /// being offered and doing nothing.
     func canMoveTab(id: UUID, by offset: Int) -> Bool {
         let strip = visibleTabs
         guard let index = strip.firstIndex(where: { $0.id == id }) else { return false }
@@ -160,22 +130,12 @@ final class QueryTabManager: ObservableObject {
         moveTab(id: id, to: index + offset)
     }
 
-    /// Keeps a preview tab, so the next table opened from the sidebar lands in a tab of its own
-    /// instead of replacing this one. The single mutator of `isPreview`: every promotion path,
-    /// the sidebar's, the editor's and the tab strip's, comes through here.
-    ///
-    /// Promotion never reorders. A tab that moves as it is kept would be a different feature,
-    /// which is what pinning is in the editors that offer both.
-    ///
-    /// One way, deliberately. Nothing turns a kept tab back into a preview, so a tab the user
-    /// asked to hold on to cannot be thrown away by a later click.
+    // Sole mutator of isPreview; one way on purpose, so a kept tab can't be thrown away by a later sidebar click.
     func promotePreviewTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }), tabs[index].isPreview else { return }
         mutate(at: index) { $0.isPreview = false }
     }
 
-    /// Whether keeping this tab would change anything, so a menu item can dim rather than be
-    /// offered and do nothing.
     func canPromotePreviewTab(id: UUID) -> Bool {
         tabs.first { $0.id == id }?.isPreview ?? false
     }
@@ -237,10 +197,7 @@ final class QueryTabManager: ObservableObject {
 
     // MARK: - Recency
 
-    /// The tab is recorded once the turn settles, not at each write. Opening a table into another
-    /// connection brings that connection forward and then selects the new tab in the same turn, so
-    /// the tab it was showing is never drawn; recorded as it passed through, it would be what the
-    /// next Control-Tab went back to.
+    // Recorded once the turn settles: opening into another connection selects twice in one turn, the first never drawn.
     private func scheduleActivationRecord() {
         guard isFrontmost, !activationRecordPending else { return }
         activationRecordPending = true
@@ -273,9 +230,7 @@ final class QueryTabManager: ObservableObject {
         }
     }
 
-    /// The workspace rail lists a container while a tab holds it open, so it reloads when
-    /// that set can have changed. Every other tab mutation, a keystroke above all, leaves
-    /// the anchors identical and publishes nothing.
+    // Publishes only when the set of held-open containers can change; a keystroke leaves the anchors identical.
     private func publishAnchorChange(oldTabs: [QueryTab], newTabs: [QueryTab]) {
         guard WorkspaceAnchoring.anchors(in: oldTabs) != WorkspaceAnchoring.anchors(in: newTabs) else {
             return
@@ -323,7 +278,6 @@ final class QueryTabManager: ObservableObject {
 
     // MARK: - Tab Naming
 
-    /// Next "Query N" title based on existing tabs across all windows.
     static func nextQueryTitle(existingTabs: [QueryTab]) -> String {
         let maxNumber = existingTabs
             .filter { $0.tabType == .query }
@@ -397,27 +351,13 @@ final class QueryTabManager: ObservableObject {
         }
     }
 
-    /// A file that is already open is shown, not reloaded over.
-    ///
-    /// Opening it again is a request to look at it, so the buffer is replaced only when there is
-    /// nothing of the user's in it. A tab with unsaved edits keeps them: `setText` on the editor
-    /// resets its storage, so the replacement was not undoable and nothing asked first. The one
-    /// path that does replace a dirty buffer is the file-changed-on-disk banner, which asks.
-    ///
-    /// The baseline moves with the buffer. Writing the text without it left the tab reading as
-    /// dirty against content it had just loaded, and armed the same banner for a change it had
-    /// already taken.
+    // Shown, not reloaded over: setText isn't undoable, so a dirty buffer is kept. The baseline moves with the text.
     private func adoptReopenedFile(at index: Int, content: String, stamp: FileStamp?, encoding: FileTextEncoding?) {
-        /// An unknown baseline is not a licence to replace what the tab holds. `isFileDirty` reads a
-        /// missing one as clean, so without this a tab that never learned what its file said would
-        /// be overwritten by the very check meant to protect it.
+        // isFileDirty reads a missing baseline as clean, so an unknown baseline must not license overwriting the tab.
         guard tabs[index].content.savedFileContent != nil, !tabs[index].content.isFileDirty else { return }
         FileTabBaseline.adopt(text: content, stamp: stamp, encoding: encoding, into: &tabs[index].content)
     }
 
-    /// Take an already-built tab, such as one rebuilt from the recently closed history, rather than
-    /// minting a fresh one. Selecting it drives the window title, toolbar, and persistence through
-    /// the usual `selectedTabId` observation.
     func adoptTab(_ tab: QueryTab, claimFocus: Bool = false) {
         var tab = tab
         bindToVisibleContainer(&tab)
@@ -437,16 +377,12 @@ final class QueryTabManager: ObservableObject {
         _ isPreview: Bool
     ) -> Void)?
 
-    /// Fired the instant a tab stops being about the table it was about. Whoever owns execution
-    /// listens here rather than at the navigation call sites, because a retarget that forgets to
-    /// invalidate is exactly how a finished query paints its rows into a tab showing something else.
+    // Execution owners listen here, not at call sites: a retarget that skipped invalidation painted stale rows into the tab.
     @Published var onTabRetargeted: ((UUID) -> Void)?
 
     @Published var onTableSchemaResolved: ((_ tableName: String, _ databaseName: String, _ schemaName: String) -> Void)?
 
-    /// `objectType` carries what the object is, where the caller knew it, alongside the `isView`
-    /// the callers that know only that much pass. Whoever records the open needs the kind: a
-    /// MariaDB sequence recorded as "not a table" came back as a view and was offered Drop View.
+    // The recorder needs the kind: a MariaDB sequence recorded as "not a table" came back as a view offering Drop View.
     private func notifyTableOpened(
         tableName: String, schemaName: String?, databaseName: String,
         isView: Bool, objectType: TableInfo.TableType?, isPreview: Bool
@@ -454,9 +390,7 @@ final class QueryTabManager: ObservableObject {
         onTableOpened?(tableName, schemaName, databaseName, isView, objectType, isPreview)
     }
 
-    /// A table tab opened before its schema was known was reported without one, so whoever recorded
-    /// that open learns the schema when the tab does. Otherwise the record keeps naming the table in
-    /// whichever schema is browsed when it is next used.
+    // The open was recorded before the schema was known; without this the record follows whichever schema is browsed.
     func adoptResolvedSchema(_ schemaName: String, at index: Int) {
         guard tabs.indices.contains(index) else { return }
         tabs[index].tableContext.schemaName = schemaName
@@ -464,10 +398,7 @@ final class QueryTabManager: ObservableObject {
         onTableSchemaResolved?(tableName, tabs[index].tableContext.databaseName, schemaName)
     }
 
-    /// The tab already showing this table, preferring the selected one.
-    ///
-    /// A table can legitimately hold more than one tab now, so plain array order would send a
-    /// sidebar click on the table you are already looking at to the other copy of it.
+    // Prefers the selected tab: a table can hold several tabs, and array order sent a sidebar click to the other copy.
     func tabShowingTable(
         named tableName: String, databaseName: String, schemaName: String?, isTemporary: Bool = false
     ) -> QueryTab? {
@@ -482,11 +413,7 @@ final class QueryTabManager: ObservableObject {
         return tabs.first(where: matches)
     }
 
-    /// - Parameter allowsDuplicate: `true` when the caller asked for a tab of its own, so a table
-    ///   that is already open gets a second one instead of the existing tab being reselected.
-    ///   "Open in New Tab" means what it says only if this reaches here.
-    /// - Returns: `true` when a tab was created, `false` when an existing one was reselected.
-    ///   Callers that carry per-tab payload state must not write it onto a tab they did not create.
+    // Returns false when an existing tab was reselected: callers must not write per-tab payload onto a tab they didn't create.
     @discardableResult
     func addTableTab(
         tableName: String,
@@ -560,8 +487,7 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    /// `schemaName` is the schema the diagram draws, which on an engine whose entries are schemas
-    /// is the entry the tab belongs to, whichever one is on screen when it opens.
+    // schemaName is the schema drawn; on engines whose entries are schemas it is also the tab's entry.
     func addERDiagramTab(schemaKey: String, databaseName: String = "", schemaName: String? = nil) {
         let tabTitle = String(localized: "ER Diagram")
         var newTab = QueryTab(title: tabTitle, tabType: .erDiagram)
@@ -601,8 +527,6 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    /// One tab per object, so opening the same routine twice returns to the tab already showing
-    /// it, the way opening the same table does.
     func addObjectSourceTab(objectRef: DatabaseObjectRef) {
         if let existing = tabs.first(where: {
             $0.tabType == .objectSource && $0.display.objectRef?.namesSameObject(as: objectRef) == true
@@ -635,8 +559,6 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    /// One listing per database and schema, so asking again for the same tables returns to the tab
-    /// already showing them, the way opening the same table does.
     @discardableResult
     func addTableListingTab(title: String, databaseName: String, schemaName: String?) -> UUID {
         let schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
@@ -658,8 +580,7 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
-    /// The sidebar section's own name for the kind, qualified by the schema on an engine that lists
-    /// tables per schema, where two listings in one database would otherwise share a label.
+    // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
     static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
         guard let schemaName, !schemaName.isEmpty else { return kindTitle }
         return String(format: String(localized: "%@: %@"), kindTitle, schemaName)
@@ -700,9 +621,7 @@ final class QueryTabManager: ObservableObject {
         selectedTabId = newTab.id
     }
 
-    /// Replace the currently selected tab's content with a new table.
-    /// - Returns: `true` if the replacement happened (caller should run the query),
-    ///   `false` if there is no selected tab.
+    // Returns false when no tab is selected; on true the caller runs the query.
     @discardableResult
     func replaceTabContent(
         tableName: String, databaseType: DatabaseType = .mysql,
@@ -732,8 +651,7 @@ final class QueryTabManager: ObservableObject {
         var tab = tabs[selectedIndex]
         tab.tabType = .table
         tab.title = Self.tabTitle(name: tableName, schema: schemaName, databaseType: databaseType)
-        /// Built whole rather than field by field: a field left over describes the previous table,
-        /// and its primary keys were what a keyless table's edits matched rows on.
+        // Built whole: a leftover field describes the previous table, and its primary keys matched a keyless table's edits.
         tab.tableContext = TabTableContext(
             tableName: tableName,
             databaseName: databaseName,
@@ -743,8 +661,7 @@ final class QueryTabManager: ObservableObject {
             objectType: objectType,
             isTemporary: isTemporary
         )
-        /// Fresh for the same reason. A query tab keeps the file it was opened from, and a table
-        /// carried that binding, so Save wrote the table's query into the file.
+        // Fresh too: a query tab keeps its file binding, so a retargeted table's Save wrote its query into that file.
         tab.content = TabQueryContent(query: query)
         tab.schemaVersion += 1
         tab.execution.executionTime = nil
@@ -756,17 +673,14 @@ final class QueryTabManager: ObservableObject {
         tab.display.activeResultSetId = nil
         tab.sortState = SortState()
         tab.restoredSortSource = .unset
-        tab.selectedRowIndices = []
-        tab.cellSelection = .empty
+        tab.selectionSnapshot = .empty
         tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
         tab.filterState = TabFilterState()
         tab.valueFilter = GridValueFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
-        // Retargeting points the tab at a different table, so a restore that has not been consumed
-        // yet describes rows this tab no longer shows. Left behind, it is persisted against the new
-        // table and applied to it on the next launch.
+        // An unconsumed restore describes the old rows; kept, it persists and applies to the new table on the next launch.
         tab.pendingRestoredSort = nil
         tab.restoredPage = nil
         tab.restoredPageSize = nil
@@ -819,7 +733,6 @@ final class QueryTabManager: ObservableObject {
 // MARK: - Visible Container
 
 extension QueryTabManager {
-    /// The tabs the strip lists: the visible entry's, plus the ones that name no container.
     var visibleTabs: [QueryTab] {
         if let cached = _visibleTabs { return cached }
         let listed = tabs.filter(isVisible)
@@ -833,19 +746,13 @@ extension QueryTabManager {
         WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
     }
 
-    /// A tab that names no container belongs to no entry, so every entry shows it: a server
-    /// dashboard, or a query tab on an engine whose query tabs run against whatever is browsed.
+    // A tab naming no container (a server dashboard, a query tab on a browse-following engine) shows in every entry.
     func isVisible(_ tab: QueryTab) -> Bool {
         guard let visibleContainer, let container = containerName(of: tab) else { return true }
         return container == visibleContainer
     }
 
-    /// Puts an entry in front. The selection stays when it is already in that entry, lands on the
-    /// tab last used there otherwise, and on nothing when the entry holds no tab of its own, which
-    /// is the entry's empty state rather than a tab from somewhere else.
-    ///
-    /// It never moves the browse cursor. Whoever moved the cursor calls this, or calls it first and
-    /// moves the cursor after.
+    // Selection stays, falls back to the entry's last-used tab, or clears. Never moves the browse cursor; callers do that.
     func show(container: String?) {
         guard containerTarget != nil else { return }
         let container = container.flatMap { $0.isEmpty ? nil : $0 }
@@ -857,20 +764,14 @@ extension QueryTabManager {
         selectedTabId = landing
     }
 
-    /// A new window's only tab. Its entry is put in front before the tab is selected, so a window
-    /// built around a tab never reads as the user picking a tab in another entry, which would move
-    /// the connection's database on its own.
+    // Entry goes in front before selecting, so a new window never reads as a user pick that moves the database.
     func seed(with tab: QueryTab) {
         tabs = [tab]
         show(container: containerName(of: tab) ?? visibleContainer)
         selectedTabId = tab.id
     }
 
-    /// A tab is bound to the database, or the schema on an engine whose entries are schemas, it was
-    /// opened in. One a caller opened without naming it, such as a New Tab on a schema engine,
-    /// Favorites or Open in Editor, gets the visible entry's. Left unbound it ran against whatever
-    /// the connection browsed next, and picking a tab of another entry moves that: a statement
-    /// typed against one schema would run against the other.
+    // Unbound tabs ran against whatever the connection browsed next, so a statement typed for one schema ran on another.
     func bindToVisibleContainer(_ tab: inout QueryTab) {
         guard let visibleContainer,
               Self.bindsToContainer(tab.tabType),
@@ -886,16 +787,13 @@ extension QueryTabManager {
         }
     }
 
-    /// Where a tab opened without naming a database goes: the entry on screen. The browse cursor
-    /// lags it while a switch to that entry is on its way, and a tab bound to the cursor then would
-    /// take the window straight back to the entry the user just left.
+    // The entry on screen, not the browse cursor, which lags a switch and would pull the window back to the old entry.
     func openingDatabase(browsing browseDatabase: String) -> String {
         guard containerTarget == .database, let visibleContainer else { return browseDatabase }
         return visibleContainer
     }
 
-    /// Restored tabs from before tabs were bound to their entry: they ran against the container the
-    /// connection was on, which is the one the restore lands in.
+    // Tabs from before entry binding ran against the connection's container, which is the one the restore lands in.
     func bindUnboundTabs() {
         guard visibleContainer != nil,
               tabs.contains(where: { Self.bindsToContainer($0.tabType) && containerName(of: $0) == nil })
@@ -907,7 +805,7 @@ extension QueryTabManager {
         tabs = bound
     }
 
-    /// Server-wide tabs answer for the whole connection, so they belong to every entry.
+    // Server-wide tabs answer for the whole connection, so they belong to every entry.
     private static func bindsToContainer(_ type: TabType) -> Bool {
         switch type {
         case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
@@ -934,9 +832,7 @@ extension QueryTabManager {
         return visibleTabs.last?.id
     }
 
-    /// Selecting a tab of another entry, or moving the selected tab into one, takes the window to
-    /// that entry: the selected tab is always one the strip lists. A selection that names a tab not
-    /// in the list yet is the moment inside a close or an adoption, and is left alone.
+    // The selected tab is always listed; a selection naming an unlisted tab is mid close or adoption and left alone.
     fileprivate func reconcileVisibleContainer() {
         guard containerTarget != nil,
               let id = selectedTabId,

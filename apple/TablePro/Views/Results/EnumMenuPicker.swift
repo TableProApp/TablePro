@@ -75,6 +75,17 @@ enum EnumMenuPicker {
         currentCsv: String?,
         onCommit: @escaping (String) -> Void
     ) {
+        let menu = makeSetMenu(allowedValues: allowedValues, currentCsv: currentCsv, onCommit: onCommit)
+        let anchor = NSPoint(x: rect.minX, y: rect.maxY)
+        menu.popUp(positioning: nil, at: anchor, in: view)
+    }
+
+    // menuDidClose runs before the chosen item's action (interaction 1), so each pick commits from its own action.
+    static func makeSetMenu(
+        allowedValues: [String],
+        currentCsv: String?,
+        onCommit: @escaping (String) -> Void
+    ) -> NSMenu {
         let selected = Set(
             (currentCsv ?? "")
                 .split(separator: ",")
@@ -84,39 +95,28 @@ enum EnumMenuPicker {
 
         let menu = NSMenu()
         menu.autoenablesItems = false
-
-        let coordinator = SetSelectionCoordinator(
-            allowedValues: allowedValues,
-            initialSelection: selected,
-            onCommit: onCommit
-        )
+        let selection = SetSelection(allowedValues: allowedValues, selected: selected, onCommit: onCommit)
 
         for value in allowedValues {
-            let item = NSMenuItem(title: value, action: nil, keyEquivalent: "")
-            item.target = coordinator
-            item.action = #selector(SetSelectionCoordinator.toggle(_:))
-            item.representedObject = value
+            let item = NSMenuItem(title: value, action: #selector(ItemTarget.toggle(_:)), keyEquivalent: "")
+            item.target = ItemTarget.shared
+            item.representedObject = SetItemPayload(value: value, selection: selection)
             item.state = selected.contains(value) ? .on : .off
             menu.addItem(item)
         }
 
-        for current in selected where !allowedValues.contains(current) {
+        for current in selected.sorted() where !allowedValues.contains(current) {
             menu.addItem(.separator())
-            let driftItem = NSMenuItem(title: current, action: nil, keyEquivalent: "")
-            driftItem.target = coordinator
-            driftItem.action = #selector(SetSelectionCoordinator.toggle(_:))
-            driftItem.representedObject = current
+            let driftItem = NSMenuItem(title: current, action: #selector(ItemTarget.toggle(_:)), keyEquivalent: "")
+            driftItem.target = ItemTarget.shared
+            driftItem.representedObject = SetItemPayload(value: current, selection: selection)
             driftItem.state = .on
             driftItem.setInformativeImage(NSImage(systemSymbolName: "exclamationmark.triangle.fill",
                                                   accessibilityDescription: nil))
             driftItem.toolTip = String(localized: "Value is not in the declared set.")
             menu.addItem(driftItem)
         }
-
-        menu.delegate = coordinator
-
-        let anchor = NSPoint(x: rect.minX, y: rect.maxY)
-        menu.popUp(positioning: nil, at: anchor, in: view)
+        return menu
     }
 }
 
@@ -133,38 +133,39 @@ private final class ItemTarget: NSObject {
         guard let payload = sender.representedObject as? ItemPayload else { return }
         payload.onCommit(payload.value)
     }
+
+    @objc func toggle(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? SetItemPayload else { return }
+        payload.selection.toggle(payload.value)
+    }
 }
 
-@MainActor
-private final class SetSelectionCoordinator: NSObject, NSMenuDelegate {
-    private let allowedValues: [String]
-    private var selection: Set<String>
-    private let initialSelection: Set<String>
-    private let onCommit: (String) -> Void
-    private var committed = false
+private struct SetItemPayload {
+    let value: String
+    let selection: SetSelection
+}
 
-    init(allowedValues: [String], initialSelection: Set<String>, onCommit: @escaping (String) -> Void) {
+// The declared order first, then any value outside the declaration, so the stored list reads the same each time.
+@MainActor
+private final class SetSelection {
+    private let allowedValues: [String]
+    private let initial: Set<String>
+    private let onCommit: (String) -> Void
+
+    init(allowedValues: [String], selected: Set<String>, onCommit: @escaping (String) -> Void) {
         self.allowedValues = allowedValues
-        self.selection = initialSelection
-        self.initialSelection = initialSelection
+        self.initial = selected
         self.onCommit = onCommit
     }
 
-    @objc func toggle(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? String else { return }
+    func toggle(_ value: String) {
+        var selection = initial
         if selection.contains(value) {
             selection.remove(value)
-            sender.state = .off
         } else {
             selection.insert(value)
-            sender.state = .on
         }
-        committed = true
-    }
-
-    func menuDidClose(_ menu: NSMenu) {
-        guard committed, selection != initialSelection else { return }
-        let ordered = allowedValues.filter(selection.contains)
+        let ordered = allowedValues.filter { selection.contains($0) }
             + selection.filter { !allowedValues.contains($0) }.sorted()
         onCommit(ordered.joined(separator: ","))
     }

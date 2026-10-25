@@ -1,8 +1,9 @@
 import XCTest
 
 final class HeaderSortUITests: UITestCase {
-    // album's titles put the server order, ascending and descending on three different first rows.
-    func testHeaderSortCyclesBothDirectionsAndDontSortSurvivesAReload() throws {
+    // album's titles put the server order, ascending and descending on three different first rows. Artist 2
+    // holds South then East, so a title key behind artist_id shows as East on row 2.
+    func testHeaderClicksFlipTheSortOptionClickAddsAKeyAndDontSortSurvivesAReload() throws {
         let (launch, grid) = try launchWithFixtureTable("album")
         XCTAssertTrue(grid.waitForValue("North", row: 1, column: 2), "album must open in the order the server sent")
 
@@ -14,12 +15,29 @@ final class HeaderSortUITests: UITestCase {
 
         grid.clickHeader("title")
         XCTAssertTrue(
+            grid.waitForValue("Down", row: 1, column: 2),
+            "A third click must flip back to ascending, never return to the server's order"
+        )
+
+        grid.clickHeader("artist_id")
+        XCTAssertTrue(
             grid.waitForValue("North", row: 1, column: 2),
-            "A third click must return to the order the server sent"
+            "A plain click on another header must replace the title sort with artist_id"
+        )
+
+        grid.clickHeader("title", modifiers: .option)
+        XCTAssertTrue(
+            waitForPredicate(timeout: 20) {
+                grid.value(row: 1, column: 2) == "North" && grid.value(row: 2, column: 2) == "East"
+            },
+            "Option-click must add title behind artist_id, row 2 reads '\(grid.value(row: 2, column: 2) ?? "nil")'"
         )
 
         grid.clickHeader("title")
-        XCTAssertTrue(grid.waitForValue("Down", row: 1, column: 2), "A fourth click must sort ascending again")
+        XCTAssertTrue(
+            grid.waitForValue("Down", row: 1, column: 2),
+            "A plain click on the second key must sort by title alone"
+        )
 
         grid.clickHeader("title", rightClick: true)
         let dontSort = contextMenuItem("Don't Sort", in: launch.app)

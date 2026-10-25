@@ -15,13 +15,13 @@ extension MainContentCommandActions {
     }
 
     func editDocument() {
-        guard let displayRow = singleSelectedDataGridRow,
-              let locator = coordinator?.documentLocator(forDisplayRow: displayRow) else { return }
+        guard let rowID = singleSelectedDataGridRowID,
+              let locator = coordinator?.documentLocator(for: rowID) else { return }
         coordinator?.presentEditDocument(locator: locator)
     }
 
     var canEditDocument: Bool {
-        guard let displayRow = singleSelectedDataGridRow else { return false }
-        return coordinator?.canEditDocument(atDisplayRow: displayRow) ?? false
+        guard let rowID = singleSelectedDataGridRowID else { return false }
+        return coordinator?.canEditDocument(rowID: rowID) ?? false
     }
 }

@@ -2,25 +2,15 @@
 //  MainContentCoordinatorGridSelectionTests.swift
 //  TableProTests
 //
-//  A tab's grid selection has to survive the grid being destroyed, which happens on every tab
-//  switch and on every result-mode switch. `handleTabChange` always restored it; nothing ever
-//  captured it, so the restore replayed an empty set over the reader's selection. (#2667)
+//  A tab's grid selection lives on the tab's model, which outlives every mount of its grid, so a
+//  tab switch or a result-mode switch never loses it (#2667).
 //
 
-import AppKit
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
-
-@MainActor
-private final class StubColumnLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
 
 @MainActor
 struct MainContentCoordinatorGridSelectionTests {
@@ -28,9 +18,7 @@ struct MainContentCoordinatorGridSelectionTests {
 
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
         let fixture = fixtures.make()
-        let tabManager = fixture.tabManager
-        let coordinator = fixture.coordinator
-        return (coordinator, tabManager)
+        return (fixture.coordinator, fixture.tabManager)
     }
 
     @discardableResult
@@ -47,10 +35,10 @@ struct MainContentCoordinatorGridSelectionTests {
     private func makeRows(_ count: Int) -> TableRows {
         let rows = ContiguousArray(
             (0..<count).map { index in
-                Row(id: .existing(index), values: [.text("row\(index)")])
+                Row(id: .existing(index), values: [.text("row\(index)"), .text("value\(index)")])
             }
         )
-        return TableRows(rows: rows, columns: ["name"], columnTypes: [.text(rawType: nil)])
+        return TableRows(rows: rows, columns: ["name", "value"], columnTypes: [.text(rawType: nil), .text(rawType: nil)])
     }
 
     private func block(rows: ClosedRange<Int>, columns: ClosedRange<Int>) -> GridSelection {
@@ -61,274 +49,172 @@ struct MainContentCoordinatorGridSelectionTests {
         )
     }
 
-    // MARK: - Capture
-
-    @Test("a grid's teardown keeps its row selection on the tab")
-    func teardownKeepsRowSelection() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addQueryTab(to: tabManager, title: "A")
-
-        coordinator.storeGridSelection(rows: [3, 5, 7], cells: .empty, forTab: tabId)
-
-        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedRowIndices == [3, 5, 7])
-        #expect(tab.cellSelection.isEmpty)
+    private func switchTab(_ coordinator: MainContentCoordinator, from old: UUID, to new: UUID) {
+        coordinator.tabManager.selectedTabId = new
+        coordinator.handleTabChange(from: old, to: new, tabs: coordinator.tabManager.tabs)
     }
 
-    @Test("a grid's teardown keeps its cell rectangle on the tab")
-    func teardownKeepsCellSelection() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addQueryTab(to: tabManager, title: "A")
-        let cells = block(rows: 1...4, columns: 2...3)
+    // MARK: - Across a switch
 
-        coordinator.storeGridSelection(rows: [1], cells: cells, forTab: tabId)
-
-        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.cellSelection == cells)
-    }
-
-    /// The capture is keyed by the tab the grid was built for, not by whichever tab is selected when
-    /// the teardown happens to run. SwiftUI does not order a teardown against the switch that caused
-    /// it, so reading the selected tab here would sometimes write the wrong one.
-    @Test("the capture writes the tab it names, not the selected one")
-    func captureWritesTheNamedTab() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let outgoing = addQueryTab(to: tabManager, title: "A", select: false)
-        let incoming = addQueryTab(to: tabManager, title: "B")
-
-        coordinator.storeGridSelection(rows: [8], cells: .empty, forTab: outgoing)
-
-        let outgoingTab = try #require(tabManager.tabs.first { $0.id == outgoing })
-        let incomingTab = try #require(tabManager.tabs.first { $0.id == incoming })
-        #expect(outgoingTab.selectedRowIndices == [8])
-        #expect(incomingTab.selectedRowIndices.isEmpty)
-    }
-
-    /// The teardown capture is only believable while its tab is still the selected one. On a tab
-    /// switch the shared selection channel is repointed at the incoming tab while the outgoing grid
-    /// is still bound to it, so the outgoing table view is cleared before its teardown runs and the
-    /// capture would store emptiness over what `handleTabChange` just saved (measured).
-    @Test("a teardown after the tab was deselected does not overwrite the saved selection")
-    func teardownAfterDeselectionDoesNotClobber() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabA = addQueryTab(to: tabManager, title: "A")
-        let tabB = addQueryTab(to: tabManager, title: "B")
-        coordinator.storeGridSelection(rows: [4, 6], cells: .empty, forTab: tabA)
-        tabManager.selectedTabId = tabB
-
-        coordinator.storeGridSelectionOnTeardown(rows: [], cells: .empty, forTab: tabA)
-
-        let tab = try #require(tabManager.tabs.first { $0.id == tabA })
-        #expect(tab.selectedRowIndices == [4, 6])
-    }
-
-    /// A result-mode switch destroys the grid without changing tabs, and there the table view still
-    /// holds what the reader selected, so the teardown capture is the one that must land.
-    @Test("a teardown while the tab is still selected is written through")
-    func teardownWhileSelectedIsWritten() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addQueryTab(to: tabManager, title: "A")
-
-        coordinator.storeGridSelectionOnTeardown(rows: [2, 3], cells: .empty, forTab: tabId)
-
-        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedRowIndices == [2, 3])
-    }
-
-    /// The switch itself is what captures the outgoing tab, because by the time that tab's grid is
-    /// torn down its table view has already been cleared through the shared channel.
-    @Test("switching away captures the outgoing tab's live grid selection")
-    func switchingAwayCapturesTheOutgoingSelection() throws {
+    @Test("switching back finds the row selection the tab was left with")
+    func switchingBackKeepsRows() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabA = addQueryTab(to: tabManager, title: "A")
         let tabB = addQueryTab(to: tabManager, title: "B")
         coordinator.setActiveTableRows(makeRows(20), for: tabA)
         coordinator.setActiveTableRows(makeRows(20), for: tabB)
-        tabManager.selectedTabId = tabA
+        coordinator.gridModel(forTab: tabA).selectRows([.existing(4), .existing(6)])
 
-        let tableView = NSTableView()
-        let delegate = DataTabGridDelegate()
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StubColumnLayoutPersister()
-        )
-        gridCoordinator.tableView = tableView
-        delegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = delegate
-        gridCoordinator.selectionController.update(block(rows: 5...8, columns: 0...1))
+        switchTab(coordinator, from: tabB, to: tabA)
 
-        tabManager.selectedTabId = tabB
-        coordinator.handleTabChange(from: tabA, to: tabB, tabs: tabManager.tabs)
-
-        let stored = try #require(tabManager.tabs.first { $0.id == tabA })
-        #expect(stored.cellSelection.rectangles == [GridRect(rows: 5...8, columns: 0...1)])
-        #expect(stored.selectedDisplayRows == [5, 6, 7, 8])
+        #expect(coordinator.activeGridModel?.selectedRowIDs == [.existing(4), .existing(6)])
     }
 
-    // MARK: - Restore
-
-    @Test("switching back restores the row selection the tab was left with")
-    func switchingBackRestoresRows() {
+    // A cell drag selects a block of cells, and restoring it as whole rows would make Copy copy whole rows.
+    @Test("switching back finds the cell rectangle, not only its rows")
+    func switchingBackKeepsTheCellRectangle() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabA = addQueryTab(to: tabManager, title: "A")
         let tabB = addQueryTab(to: tabManager, title: "B")
         coordinator.setActiveTableRows(makeRows(20), for: tabA)
         coordinator.setActiveTableRows(makeRows(20), for: tabB)
+        switchTab(coordinator, from: tabB, to: tabA)
+        coordinator.gridModel(forTab: tabA).setSelection(block(rows: 2...5, columns: 1...1))
 
-        coordinator.storeGridSelection(rows: [4, 6], cells: .empty, forTab: tabA)
-        coordinator.handleTabChange(from: tabA, to: tabB, tabs: tabManager.tabs)
-        #expect(coordinator.selectionState.indices.isEmpty)
+        switchTab(coordinator, from: tabA, to: tabB)
+        switchTab(coordinator, from: tabB, to: tabA)
 
-        coordinator.handleTabChange(from: tabB, to: tabA, tabs: tabManager.tabs)
-
-        #expect(coordinator.selectionState.indices == [4, 6])
-    }
-
-    /// A cell drag pins the table view's row selection to its anchor row, so restoring from the
-    /// stored rows alone would shrink the reader's block to that one row.
-    @Test("switching back restores every row a cell rectangle covers")
-    func switchingBackRestoresCellRectangleRows() {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabA = addQueryTab(to: tabManager, title: "A")
-        let tabB = addQueryTab(to: tabManager, title: "B")
-        coordinator.setActiveTableRows(makeRows(20), for: tabA)
-        coordinator.setActiveTableRows(makeRows(20), for: tabB)
-
-        coordinator.storeGridSelection(rows: [2], cells: block(rows: 2...5, columns: 0...1), forTab: tabA)
-        coordinator.handleTabChange(from: tabA, to: tabB, tabs: tabManager.tabs)
-        coordinator.handleTabChange(from: tabB, to: tabA, tabs: tabManager.tabs)
-
-        #expect(coordinator.selectionState.indices == [2, 3, 4, 5])
+        let selection = coordinator.activeGridModel?.selection
+        #expect(selection?.rectangles == [GridRect(rows: 2...5, columns: 1...1)])
+        #expect(selection?.affectedRows == IndexSet(integersIn: 2...5))
     }
 
     @Test("two tabs keep their own selections across a round trip")
-    func twoTabsKeepTheirOwnSelections() throws {
+    func twoTabsKeepTheirOwnSelections() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabA = addQueryTab(to: tabManager, title: "A")
         let tabB = addQueryTab(to: tabManager, title: "B")
         coordinator.setActiveTableRows(makeRows(20), for: tabA)
         coordinator.setActiveTableRows(makeRows(20), for: tabB)
+        coordinator.gridModel(forTab: tabA).selectRows([.existing(1)])
+        coordinator.gridModel(forTab: tabB).selectRows([.existing(9)])
 
-        coordinator.storeGridSelection(rows: [1], cells: .empty, forTab: tabA)
-        coordinator.storeGridSelection(rows: [9], cells: .empty, forTab: tabB)
+        switchTab(coordinator, from: tabB, to: tabA)
+        #expect(coordinator.activeGridModel?.selectedRowIDs == [.existing(1)])
 
-        coordinator.handleTabChange(from: tabA, to: tabB, tabs: tabManager.tabs)
-        #expect(coordinator.selectionState.indices == [9])
+        switchTab(coordinator, from: tabA, to: tabB)
+        #expect(coordinator.activeGridModel?.selectedRowIDs == [.existing(9)])
+    }
 
-        coordinator.handleTabChange(from: tabB, to: tabA, tabs: tabManager.tabs)
-        #expect(coordinator.selectionState.indices == [1])
+    @Test("a result-mode switch keeps the selection the grid had")
+    func resultModeSwitchKeepsTheSelection() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager, title: "A")
+        coordinator.setActiveTableRows(makeRows(5), for: tabId)
+        coordinator.gridModel(forTab: tabId).selectRows([.existing(3)])
 
-        let stored = try #require(tabManager.tabs.first { $0.id == tabB })
-        #expect(stored.selectedRowIndices == [9])
+        tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = .json }
+        #expect(coordinator.activeGridModel?.selectedRowIDs == [.existing(3)])
+        tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = .data }
+
+        #expect(coordinator.activeGridModel?.selectedRowIDs == [.existing(3)])
+    }
+
+    @Test("the active grid model is the data tab's in Data, JSON and Map, and nobody's in Chart")
+    func activeGridModelFollowsTheResultMode() {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager, title: "A")
+        coordinator.setActiveTableRows(makeRows(3), for: tabId)
+        let model = coordinator.gridModel(forTab: tabId)
+
+        for mode in [ResultsViewMode.data, .json, .map] {
+            tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = mode }
+            #expect(coordinator.activeGridModel === model, "\(mode)")
+        }
+        tabManager.mutate(tabId: tabId) { $0.display.resultsViewMode = .chart }
+        #expect(coordinator.activeGridModel == nil)
     }
 
     // MARK: - Invalidation
 
-    /// Display positions mean nothing against rows that were replaced wholesale, so both halves of
-    /// the stored selection go, not just the rows.
-    @Test("a new result clears the tab's stored cell rectangle too")
-    func newResultClearsStoredCellSelection() throws {
+    // Row ids are positional per page, so a selection means nothing against rows replaced wholesale.
+    @Test("a new result clears the model's selection and its stored snapshot")
+    func newResultClearsTheSelection() {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager, title: "A")
-        coordinator.storeGridSelection(rows: [1], cells: block(rows: 1...3, columns: 0...2), forTab: tabId)
+        coordinator.setActiveTableRows(makeRows(5), for: tabId)
+        let model = coordinator.gridModel(forTab: tabId)
+        model.setSelection(block(rows: 1...3, columns: 0...1))
 
         coordinator.setActiveTableRows(makeRows(5), for: tabId)
 
-        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedRowIndices.isEmpty)
-        #expect(tab.cellSelection.isEmpty)
+        #expect(model.selection.isEmpty)
+        #expect(model.store.selectionSnapshot.isEmpty)
     }
 
-    @Test("retargeting a tab to another table clears its stored selection")
+    @Test("retargeting a tab to another table clears the selection it carries")
     func retargetClearsStoredSelection() throws {
-        let (coordinator, tabManager) = makeCoordinator()
+        let (_, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager, title: "A")
-        coordinator.storeGridSelection(rows: [2], cells: block(rows: 2...2, columns: 0...0), forTab: tabId)
+        tabManager.mutate(tabId: tabId) {
+            $0.selectionSnapshot = GridSelectionSnapshot(rowIDs: [.existing(2)], rectangles: [], activeCell: nil, anchor: nil)
+        }
 
         try tabManager.replaceTabContent(tableName: "orders")
 
         let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedRowIndices.isEmpty)
-        #expect(tab.cellSelection.isEmpty)
-    }
-
-    /// `selectedDisplayRows` gives a stored rectangle precedence, so a later row-only writer has to
-    /// clear it or the rectangle comes back instead of the rows that writer chose.
-    @Test("a stored cell rectangle does not outrank rows a paste selected")
-    func pasteSupersedesAStoredCellRectangle() throws {
-        let (coordinator, tabManager) = makeCoordinator()
-        let tabId = addQueryTab(to: tabManager, title: "A")
-        coordinator.storeGridSelection(rows: [1], cells: block(rows: 1...4, columns: 0...1), forTab: tabId)
-
-        tabManager.mutate(tabId: tabId) { tab in
-            tab.selectedRowIndices = [9]
-            tab.cellSelection = .empty
-        }
-
-        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
-        #expect(tab.selectedDisplayRows == [9])
+        #expect(tab.selectionSnapshot.isEmpty)
     }
 
     // MARK: - Moving a tab to another window
 
-    /// A tab handed to another window is snapshotted while its grid is still mounted, so the
-    /// teardown capture has not run and the tab's own copy is still the one from the last switch.
-    @Test("a tab enriched for another window carries the live grid selection")
-    func enrichedTabCarriesLiveSelection() {
+    @Test("a tab enriched for another window carries its model's selection")
+    func enrichedTabCarriesTheSelection() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let tabId = addQueryTab(to: tabManager, title: "A")
-        let tab = tabManager.tabs[0]
-
-        let tableView = NSTableView()
-        let delegate = DataTabGridDelegate()
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StubColumnLayoutPersister()
-        )
-        gridCoordinator.tableView = tableView
-        delegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = delegate
-        gridCoordinator.selectionController.update(block(rows: 0...2, columns: 0...1))
+        coordinator.setActiveTableRows(makeRows(5), for: tabId)
+        coordinator.gridModel(forTab: tabId).setSelection(block(rows: 0...2, columns: 0...1))
+        let tab = try #require(tabManager.tabs.first { $0.id == tabId })
 
         let enriched = coordinator.enrichedForPersistence(tab)
 
-        #expect(enriched.cellSelection.rectangles == [GridRect(rows: 0...2, columns: 0...1)])
-        #expect(enriched.selectedDisplayRows == [0, 1, 2])
-        #expect(tabId == enriched.id)
+        #expect(enriched.selectionSnapshot.rowIDs == [.existing(0), .existing(1), .existing(2)])
+        #expect(enriched.selectionSnapshot.rectangles.count == 1)
     }
 
-    @Test("a background tab is enriched from its own stored selection, not the mounted grid's")
-    func enrichedBackgroundTabIgnoresMountedGrid() {
+    @Test("a background tab is enriched from its own model, not the selected tab's")
+    func enrichedBackgroundTabUsesItsOwnModel() throws {
         let (coordinator, tabManager) = makeCoordinator()
         let background = addQueryTab(to: tabManager, title: "A", select: false)
-        addQueryTab(to: tabManager, title: "B")
-        coordinator.storeGridSelection(rows: [7], cells: .empty, forTab: background)
+        let selected = addQueryTab(to: tabManager, title: "B")
+        coordinator.setActiveTableRows(makeRows(10), for: background)
+        coordinator.setActiveTableRows(makeRows(10), for: selected)
+        coordinator.gridModel(forTab: background).selectRows([.existing(7)])
+        coordinator.gridModel(forTab: selected).selectRows([.existing(1)])
+        let tab = try #require(tabManager.tabs.first { $0.id == background })
 
-        let tableView = NSTableView()
-        let delegate = DataTabGridDelegate()
-        let gridCoordinator = TableViewCoordinator(
-            changeManager: AnyChangeManager(DataChangeManager()),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: nil,
-            layoutPersister: StubColumnLayoutPersister()
-        )
-        gridCoordinator.tableView = tableView
-        delegate.dataGridAttach(tableViewCoordinator: gridCoordinator)
-        coordinator.dataTabDelegate = delegate
-
-        guard let tab = tabManager.tabs.first(where: { $0.id == background }) else {
-            Issue.record("Expected the background tab to exist")
-            return
-        }
         let enriched = coordinator.enrichedForPersistence(tab)
 
-        #expect(enriched.selectedRowIndices == [7])
+        #expect(enriched.selectionSnapshot.rowIDs == [.existing(7)])
+    }
+
+    // The model's store starts from the selection a tab carried in from another window.
+    @Test("a model created for a tab starts from the selection the tab carries")
+    func modelStartsFromTheCarriedSelection() throws {
+        let (coordinator, tabManager) = makeCoordinator()
+        let tabId = addQueryTab(to: tabManager, title: "A")
+        coordinator.setActiveTableRows(makeRows(5), for: tabId)
+        tabManager.mutate(tabId: tabId) {
+            $0.selectionSnapshot = GridSelectionSnapshot(
+                rowIDs: [.existing(2), .existing(3)],
+                rectangles: [],
+                activeCell: nil,
+                anchor: nil
+            )
+        }
+
+        let model = coordinator.gridModel(forTab: tabId)
+
+        #expect(model.selectedRowIDs == [.existing(2), .existing(3)])
     }
 }

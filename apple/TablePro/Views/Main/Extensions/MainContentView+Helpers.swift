@@ -12,14 +12,7 @@ import TableProPluginKit
 extension MainContentView {
     // MARK: - Helper Methods
 
-    /// What the Table Info load waits for, so it runs again once each of them moves.
-    ///
-    /// The load waits for the tab's rows. Without `hasRows`, a table tab that had just opened ran the
-    /// load before they arrived and never again, so the panel showed no numbers until the inspector
-    /// left the screen and came back. Whether rows arrived, not when: a page, a sort or a filter
-    /// runs the query again without changing the size or the row count, and a read per page would
-    /// count up to 100,001 rows on SQLite and run `collStats` on MongoDB each time. The whole
-    /// identity, not the name, because `tenant_a.orders` and `tenant_b.orders` are two tables.
+    // Keys on whether rows arrived, not when: a read per page would count up to 100,001 SQLite rows or run MongoDB `collStats`.
     struct TableInfoTaskKey: Hashable {
         let tabId: UUID
         let table: TableTabIdentity?
@@ -54,9 +47,7 @@ extension MainContentView {
         toolbarState.syncFromSession(for: connection)
     }
 
-    /// The banner appears without the user doing anything and macOS has no live region for it, so VoiceOver
-    /// hears it only through an announcement. Every window on the session shows the banner, and announcements
-    /// are app-wide, so only the key window speaks.
+    // macOS has no live region for the banner, so it is announced; announcements are app-wide, so only the key window speaks.
     func announceConnectionWarning(_ warning: String?) {
         guard let warning, coordinator.isKeyWindow else { return }
         AccessibilityAnnouncement.post(
@@ -110,8 +101,7 @@ extension MainContentView {
         updateAssistantContext()
     }
 
-    /// Built only once the assistant exists. The grid summary is for the chat, and a window whose
-    /// assistant was never revealed has nothing to tell.
+    // The grid summary is for the chat, so a window whose assistant was never revealed builds nothing.
     func updateAssistantContext() {
         guard trailingPaneState.assistant.isActivated else { return }
         let snapshot = coordinator.assistantEditorSnapshot
@@ -122,15 +112,12 @@ extension MainContentView {
         )
     }
 
-    /// Nil on a tab that has no table of its own. Read from the entry cached for this tab: a single
-    /// latest-wins slot showed a query tab, a dashboard, or a table of the same name in another
-    /// database the numbers of whichever table had loaded last.
+    // Per-tab cache: a single latest-wins slot showed whichever table loaded last, even on a query tab or another database.
     var tableMetadataForCurrentTab: TableMetadata? {
         currentTab.flatMap { coordinator.currentTableMetadata(for: $0) }
     }
 
-    /// The scope a structure row's type picker looks types up in: the tab's own database and
-    /// schema, never the sidebar's, because a tab bound to another database edits that one.
+    // The tab's own database and schema, never the sidebar's: a tab bound to another database edits that one.
     private var structureTypeScope: DatabaseScope? {
         guard let tab = currentTab, tab.tabType == .table || tab.tabType == .createTable else { return nil }
         let database = tab.tableContext.databaseName ?? coordinator.browseDatabaseName
@@ -197,36 +184,58 @@ extension MainContentView {
 // The inspector shows one row's values, so it loads that row's unloaded values while it is on screen.
 internal struct InspectorValueLoadModifier: ViewModifier {
     @ObservedObject var inspector: RowInspectorState
-    @ObservedObject var selection: GridSelectionState
+    let model: DataGridModel?
     let tabId: UUID?
-    let selectsDataRows: Bool
     let contentVersion: Int
-    let load: (UUID, Int) async -> Void
+    let load: (UUID, RowID) async -> Void
 
     func body(content: Content) -> some View {
-        content.task(id: key) {
-            guard let key else { return }
-            await load(key.tabId, key.displayRow)
+        content.background {
+            if let model, let tabId {
+                InspectorValueLoader(
+                    model: model,
+                    isOnScreen: inspector.isOnScreen,
+                    tabId: tabId,
+                    contentVersion: contentVersion,
+                    load: load
+                )
+            }
         }
+    }
+}
+
+// Observes the grid model here, so a selection change redraws this and not the window's content view.
+private struct InspectorValueLoader: View {
+    @ObservedObject var model: DataGridModel
+    let isOnScreen: Bool
+    let tabId: UUID
+    let contentVersion: Int
+    let load: (UUID, RowID) async -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .task(id: key) {
+                guard let key else { return }
+                await load(key.tabId, key.rowID)
+            }
     }
 
     private var key: Key? {
-        guard inspector.isOnScreen, selectsDataRows, let tabId, selection.indices.count == 1,
-              let displayRow = selection.indices.first else { return nil }
-        return Key(tabId: tabId, displayRow: displayRow, contentVersion: contentVersion)
+        guard isOnScreen, model.selection.affectedRows.count == 1,
+              let rowID = model.selectedRowIDs.first else { return nil }
+        return Key(tabId: tabId, rowID: rowID, contentVersion: contentVersion)
     }
 
     struct Key: Hashable {
         let tabId: UUID
-        let displayRow: Int
+        let rowID: RowID
         let contentVersion: Int
     }
 }
 
-/// Runs the Table Info load where the inspector's on-screen state is observed.
-///
-/// `MainContentView` does not observe the inspector, whose context changes on every selection, so a
-/// key built in its body never saw `isOnScreen` move. Observed here, only this modifier redraws.
+// `MainContentView` does not observe the inspector, so a key built in its body never saw `isOnScreen` move.
 internal struct TableInfoLoadModifier: ViewModifier {
     @ObservedObject var inspector: RowInspectorState
     let tab: QueryTab?

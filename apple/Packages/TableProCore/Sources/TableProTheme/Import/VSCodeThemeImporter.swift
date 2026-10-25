@@ -167,7 +167,7 @@ private extension ThemeDefinition {
             switch slot.fallback {
             case .system, .defaultSyntax:
                 continue
-            case .slot, .derived, .paired:
+            case .slot, .derived:
                 var unset = result
                 unset.overrides[slot] = nil
                 if unset.value(for: slot) == result.value(for: slot) {

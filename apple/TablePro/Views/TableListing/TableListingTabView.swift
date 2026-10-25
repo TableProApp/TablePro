@@ -5,9 +5,7 @@
 
 import SwiftUI
 
-/// The tables of one database or schema with what the engine knows about each, drawn by the app's own
-/// data grid. Read-only and complete, so a header click sorts the rows on hand rather than re-running
-/// anything, the way the agent result pane does.
+// Read-only and complete, so a header click sorts the rows on hand rather than re-running anything.
 internal struct TableListingTabView: View {
     @ObservedObject var model: TableListingViewModel
     let databaseType: DatabaseType
@@ -40,7 +38,7 @@ internal struct TableListingTabView: View {
             emptyState(listing)
         case .loaded(let listing):
             VStack(spacing: 0) {
-                grid(listing.rows)
+                rowsGrid
                 if let notice = listing.notice {
                     noticeBar(notice)
                 }
@@ -48,7 +46,6 @@ internal struct TableListingTabView: View {
         }
     }
 
-    /// A page with nothing on it is not an empty database when the driver says more pages follow.
     private func emptyState(_ listing: TableListing) -> some View {
         Group {
             if listing.isIncomplete {
@@ -76,35 +73,18 @@ internal struct TableListingTabView: View {
             .statusBarChrome()
     }
 
-    private func grid(_ loaded: TableRows) -> some View {
-        let rows = TableRowsSorting.sorted(loaded, by: model.sortState)
-        return DataGridView(
-            tableRowsProvider: { rows },
-            changeManager: model.changeManager,
-            isEditable: false,
-            configuration: DataGridConfiguration(
-                databaseType: databaseType,
-                showRowNumbers: true,
-                supportsColumnCommands: false,
-                supportsValueFilter: false,
-                appliesRowCopyFormat: true
-            ),
-            delegate: model.gridDelegate,
-            selectedRowIndices: $model.selectedRows,
-            sortState: $model.sortState,
-            columnLayout: $model.columnLayout,
-            contentRevision: contentRevision
-        )
+    private var rowsGrid: some View {
+        DataGridView(model: model.grid.model)
+            .onAppear { model.grid.model.configuration = configuration }
     }
 
-    /// Moves whenever the rows the grid should draw move: a load lands, or a sort reorders them.
-    private var contentRevision: Int {
-        var hasher = Hasher()
-        hasher.combine(model.revision)
-        for column in model.sortState.columns {
-            hasher.combine(column.columnIndex)
-            hasher.combine(column.direction)
-        }
-        return hasher.finalize()
+    private var configuration: DataGridConfiguration {
+        var configuration = DataGridConfiguration()
+        configuration.traits = DataGridEngineTraits(databaseType: databaseType)
+        configuration.showRowNumbers = true
+        configuration.supportsValueFilter = false
+        configuration.appliesRowCopyFormat = true
+        configuration.commands = [.freezeColumns, .displayAs]
+        return configuration
     }
 }

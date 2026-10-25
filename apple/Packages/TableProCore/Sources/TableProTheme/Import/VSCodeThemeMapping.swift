@@ -22,9 +22,7 @@ private extension VSCodeColorSource {
 }
 
 internal extension ThemeSlot {
-    // An empty list leaves the slot to its fallback. So does a source list that stops short: the
-    // alternate row, the header, the header text, the bools and the selection text are derived by
-    // `fallback` from the background, text and selection, which is what VS Code paints there too.
+    // A list that stops short leaves the slot to `fallback`, which derives the stripe and the bools the way VS Code paints them.
     var vscodeSources: [VSCodeColorSource] {
         switch self {
         case .windowBackdrop:
@@ -84,20 +82,8 @@ internal extension ThemeSlot {
             return [.color("editor.foreground")]
         case .gridAlternateRow:
             return [.color("keybindingTable.rowsBackground"), .color("tree.tableOddRowsBackground")]
-        case .gridHeaderBackground:
-            return [.color("keybindingTable.headerBackground"), .color("tree.tableOddRowsBackground")]
-        case .gridHeaderText:
-            return [.color("foreground")]
         case .gridLine:
             return [.color("tree.tableColumnsBorder")]
-        case .gridSelection:
-            return [.color("list.activeSelectionBackground")]
-        case .gridSelectionText:
-            return [.color("list.activeSelectionForeground")]
-        case .gridInactiveSelection:
-            return [.color("list.inactiveSelectionBackground")]
-        case .gridFocusBorder:
-            return [.color("list.focusOutline"), .color("focusBorder")]
         case .gridNullValue:
             // The grid draws NULL as placeholder text. `descriptionForeground` equals the text color in
             // One Dark Pro, so NULL would not read as absent.

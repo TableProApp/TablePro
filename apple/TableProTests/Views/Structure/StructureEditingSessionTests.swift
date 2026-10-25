@@ -1,14 +1,13 @@
-// A structure tab's staged edits, and the ability to apply them, belong to the tab. Two tabs on
-// one table are two editors, and Save has to reach the work whether or not a structure view is on
-// screen to hear it.
+// A structure tab's staged edits and its Save belong to the tab, whether or not a structure view is on screen.
 
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProTestSupport
 import Testing
 
-/// A save suspends first inside its composition, so a gate there holds it mid-save.
+// A save suspends first inside its composition, so a gate there holds it mid-save.
 private final class StructureSessionDriver: PluginDriverStub, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
     var compositionGate: AsyncGate?
@@ -74,10 +73,7 @@ struct StructureEditingSessionTests {
 
     // MARK: - Two tabs on one table are two editors
 
-    /// The structure view used to take its SwiftUI identity from the table rather than the tab, so
-    /// two tabs on one table shared one view. Its `@State` was seeded from whichever session mounted
-    /// first and never re-seeded, so the grid went on writing into that tab's change manager while
-    /// the close prompt read the other's.
+    // A view keyed by table, not tab, shared one grid between two tabs and wrote into the first one's manager.
     @Test("Two tabs on one table stage into their own change managers")
     func sessionsOnOneTableAreIndependent() {
         let connection = TestFixtures.makeConnection()
@@ -93,22 +89,49 @@ struct StructureEditingSessionTests {
         #expect(!second.changeManager.hasChanges)
     }
 
-    /// The grid the user types into and the edits the close prompt reports have to be the same
-    /// object. They stopped being one when `StructureGridDelegate` was built in the view's `init`
-    /// and parked in `@State`, which SwiftUI seeds only at the first creation of a view identity.
-    @Test("A session's grid delegate writes into that session's change manager")
-    func gridDelegateBelongsToItsSession() {
+    // A grid owner seeded once into a view's `@State` kept writing into the first session to mount.
+    @Test("A session's grid adapter writes into that session's change manager")
+    func gridAdapterBelongsToItsSession() {
         let connection = TestFixtures.makeConnection()
         let first = Self.makeSession(connection: connection)
         let second = Self.makeSession(connection: connection)
 
-        #expect(first.gridDelegate !== second.gridDelegate)
-        #expect(first.gridDelegate.structureChangeManager === first.changeManager)
-        #expect(second.gridDelegate.structureChangeManager === second.changeManager)
+        #expect(first.gridAdapter !== second.gridAdapter)
+        #expect(first.gridModel !== second.gridModel)
+        #expect(first.gridAdapter.structureChangeManager === first.changeManager)
+        #expect(second.gridAdapter.structureChangeManager === second.changeManager)
+        #expect(first.gridAdapter.session === first)
+        #expect(first.gridAdapter.store.session === first)
     }
 
-    /// Where the user was is per tab too. Sharing it meant one tab moving to Indexes moved the
-    /// other, and a trip through the Data view lost the sub-tab, the filter and the sort.
+    @Test("A session's grid model survives the view: the adapter, not a mount, owns it")
+    func gridModelOutlivesTheView() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+        Self.stageAColumn(on: session)
+        session.gridAdapter.refresh()
+        let model = session.gridModel
+
+        #expect(!model.isMounted)
+        #expect(model.rowCount == 1)
+        #expect(session.gridModel === model)
+        #expect(model.dataSource === session.gridAdapter)
+    }
+
+    @Test("The session answers the grid on screen only while a sub-tab shows one")
+    func activeGridModelFollowsTheSubTab() {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection())
+
+        for tab in [StructureTab.columns, .indexes, .foreignKeys, .checkConstraints] {
+            session.selectedTab = tab
+            #expect(session.activeGridModel === session.gridModel, "\(tab.rawValue)")
+        }
+        for tab in [StructureTab.ddl, .parts, .triggers] {
+            session.selectedTab = tab
+            #expect(session.activeGridModel == nil, "\(tab.rawValue)")
+        }
+    }
+
+    // Sharing the place moved one tab to Indexes when the other did, and lost the sub-tab on a Data trip.
     @Test("Each session keeps its own place in the editor")
     func editorPlaceIsPerSession() {
         let connection = TestFixtures.makeConnection()
@@ -120,6 +143,49 @@ struct StructureEditingSessionTests {
 
         #expect(second.selectedTab == .columns)
         #expect(second.searchText.isEmpty)
+    }
+
+    // MARK: - Sub-tab switch
+
+    // The switch used to commit an open edit into the incoming sub-tab's rows.
+    @Test("An edit open when the sub-tab changes commits into the column it was typed on")
+    func openEditCommitsIntoItsOwnSubTab() throws {
+        let session = Self.makeSession(connection: TestFixtures.makeConnection(database: "testdb", type: .mysql))
+        session.changeManager.loadSchema(
+            tableName: "users",
+            columns: ["id", "email"].map {
+                ColumnInfo(name: $0, dataType: "VARCHAR(64)", isNullable: true, isPrimaryKey: false)
+            },
+            indexes: ["ix_id", "ix_email"].map {
+                IndexInfo(name: $0, columns: ["id"], isUnique: false, isPrimary: false, type: "BTREE")
+            },
+            foreignKeys: [],
+            primaryKey: []
+        )
+        session.gridAdapter.refresh()
+        let controller = DataGridViewController(model: session.gridModel)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 400),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        defer {
+            controller.dismantle()
+            window.orderOut(nil)
+        }
+        try #require(controller.beginEditingCell(row: 1, displayColumn: 0))
+        let editor = try #require(controller.editingState.editingCellView.field.currentEditor() as? NSTextView)
+        editor.string = "mail"
+
+        session.selectedTab = .indexes
+        session.gridAdapter.refresh()
+
+        #expect(session.changeManager.workingColumns.map(\.name) == ["id", "mail"])
+        #expect(session.changeManager.workingIndexes.map(\.name) == ["ix_id", "ix_email"])
+        #expect(!session.gridModel.isEditing)
     }
 
     // MARK: - Applying without a mounted view
@@ -140,14 +206,7 @@ struct StructureEditingSessionTests {
         #expect(await session.applyStagedChanges(coordinator: nil) == .nothingToApply)
     }
 
-    /// The save no longer needs a mounted structure view. This is the whole point: `hasUnsavedWork`
-    /// reads the session, so the prompt offering Save can be raised by a tab showing its Data view
-    /// or by a background tab in a batch close, and the save it offers has to reach the work.
-    ///
-    /// The ALTER lands on a pooled connection, not the session driver, because a save runs on the
-    /// schema change route. The pool is seeded here for the same reason it is in
-    /// `DatabaseManagerSchemaChangeRoutingTests`: no plugin loads under XCTest, so a pool left to
-    /// open its own connection reports the driver missing and nothing runs.
+    // hasUnsavedWork reads the session, so Save reaches the work from a Data view or a background tab; the ALTER runs on a seeded pooled connection.
     @Test("A session applies its staged edits with no view mounted")
     func applyRunsWithoutAView() async throws {
         let connection = TestFixtures.makeConnection(database: "testdb")
@@ -183,10 +242,7 @@ struct StructureEditingSessionTests {
         #expect(!session.owesRefetch, "The apply fetches everything again, which answers the change it owed")
     }
 
-    /// The gate's sheet is the one confirmation a save gets, so Cancel there is how a user backs
-    /// out. It leaves the edits staged, runs nothing, and presents nothing: answering it with an
-    /// "Error Applying Changes" sheet was a second dialog for the choice just made, and with no
-    /// window here any sheet would be an application-modal alert this test host never leaves.
+    // Cancel at the gate is the user's own choice: a second error sheet would be a modal alert this host never leaves.
     @Test("Cancelling at the gate keeps the edits staged and runs nothing")
     func cancelAtTheGateKeepsTheEdits() async throws {
         let connection = TestFixtures.makeConnection(database: "testdb")
@@ -258,10 +314,7 @@ struct StructureEditingSessionTests {
         #expect(session.changeManager.hasChanges)
     }
 
-    /// The save composes its statements before it writes, and on MongoDB composing reads the catalog,
-    /// so the gate holds it there. Before the hold, `isApplying` was raised only after composition,
-    /// so a second press passed the guard, and an edit staged meanwhile missed the script and was
-    /// then cleared with the edits that ran.
+    // Before the hold, a second press passed the guard mid-composition and an edit staged meanwhile was cleared unsaved.
     @Test("A save holds its edits from the press: a second Save and a mid-save edit are refused, and it clears only what it wrote")
     func saveHoldsItsSnapshot() async throws {
         let connection = TestFixtures.makeConnection(database: "testdb")
@@ -286,9 +339,7 @@ struct StructureEditingSessionTests {
         let manager = session.changeManager
         let pressed = manager.getChangesArray()
 
-        /// A failed `#require` leaves this save parked at the gate for good. Opening the gate after
-        /// the pool is gone would send it to an error alert with no window to hang on, which is a
-        /// modal run loop the test host never leaves.
+        // A failed #require leaves the save parked at the gate; opening it after the pool is gone raises a windowless alert.
         let first = Task { await session.applyStagedChanges(coordinator: nil) }
         await gate.arrived(1)
 
@@ -319,7 +370,7 @@ struct StructureEditingSessionTests {
         #expect(manager.hasChanges)
     }
 
-    /// Stands in for the connection the pool would open on the scope.
+    // Stands in for the connection the pool would open on the scope.
     private static func seedPooledDriver(
         _ connection: DatabaseConnection,
         scope: DatabaseScope
@@ -331,8 +382,7 @@ struct StructureEditingSessionTests {
         return driver
     }
 
-    /// A tab the server withdraws cannot stay selected, or the editor shows a grid for something
-    /// the server has none of and no segment matches the selection.
+    // A withdrawn tab cannot stay selected: no segment would match it.
     @Test("A session on Constraints moves to Columns when the server withdraws the tab")
     func withdrawnTabMovesSelection() {
         let connection = DatabaseConnection(name: "MySQL", type: .mysql)
@@ -384,8 +434,7 @@ struct StructureEditingSessionTests {
         #expect(session.selectedTab == .columns)
     }
 
-    /// A session left on DDL or Triggers is marked stale by a change made elsewhere, and its next
-    /// mount does not change the selection, so the selection handler never fetches that sub-tab.
+    // A stale session left on DDL or Triggers mounts without a selection change, so nothing else fetches that sub-tab.
     @Test("A mount fetches the sub-tab the user left selected, once, after the ones it baselines from")
     func mountFetchesTheSelectedSubTab() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())
@@ -406,9 +455,7 @@ struct StructureEditingSessionTests {
         #expect(!session.tabsFetchedOnMount.contains(.ddl))
     }
 
-    /// A change made elsewhere while edits are staged cannot be fetched without re-baselining the
-    /// change manager, which throws the edits away. Dropping it instead left a session undone back to
-    /// clean still marked loaded, so it showed the old columns and staged its next edit against them.
+    // A refetch with edits staged would re-baseline and drop them, and dropping the refetch left an undone session showing old columns.
     @Test("A change made while edits are staged is fetched once they are undone, and once only")
     func aChangeOwedWhileEditingIsFetchedOnceTheEditsAreGone() {
         let session = Self.makeSession(connection: TestFixtures.makeConnection())

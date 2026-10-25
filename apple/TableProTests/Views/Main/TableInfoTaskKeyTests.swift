@@ -8,9 +8,7 @@ import Testing
 
 @testable import TablePro
 
-/// The Table Info load runs again only when this key changes, and it waits for the tab's rows. A key
-/// that did not move when the rows arrived left a table tab that had just opened with no numbers
-/// until the inspector left the screen and came back.
+// The Table Info load runs again only when this key changes, and it waits for the tab's rows.
 @MainActor
 struct TableInfoTaskKeyTests {
     private let table = TableTabIdentity(table: "orders", database: "shop", schema: nil)
@@ -35,8 +33,7 @@ struct TableInfoTaskKeyTests {
         #expect(key(tab) != opened)
     }
 
-    /// A page, a sort or a filter runs the query again and changes none of the numbers. A read per
-    /// run would count up to 100,001 rows on SQLite and run `collStats` on MongoDB on every page.
+    // A read per run would count up to 100,001 rows on SQLite and run `collStats` on MongoDB on every page.
     @Test("A page, a sort or a filter does not read the statistics again")
     func rerunKeepsTheKey() {
         var tab = tableTab(executedAt: Date(timeIntervalSince1970: 1))
@@ -59,7 +56,7 @@ struct TableInfoTaskKeyTests {
         var tab = tableTab(executedAt: Date())
         let before = key(tab)
 
-        tab.selectedRowIndices = [3]
+        tab.selectionSnapshot = GridSelectionSnapshot(rowIDs: [.existing(3)], rectangles: [], activeCell: nil, anchor: nil)
         tab.schemaVersion += 1
 
         #expect(key(tab) == before)

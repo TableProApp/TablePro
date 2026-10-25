@@ -1,8 +1,5 @@
 import Foundation
 
-/// A theme is a set of colors for the content views and the window backdrop. A slot it leaves out
-/// draws what its `ThemeSlot.fallback` says, so Default Light and Default Dark declare nothing and
-/// render exactly like a native app, following Accent, Highlight and Increase Contrast.
 public struct ThemeDefinition: Identifiable, Equatable, Sendable {
     public var id: String
     public var name: String
@@ -35,37 +32,29 @@ public struct ThemeDefinition: Identifiable, Equatable, Sendable {
         !isBuiltIn
     }
 
-    /// The file sets this slot. Only the theme editor asks: a derived slot draws a theme color the
-    /// file never wrote, and an explicit selection text draws nothing without a selection.
+    // Only the theme editor asks: a derived slot draws a theme color the file never wrote.
     public func hasExplicitColor(_ slot: ThemeSlot) -> Bool {
         overrides[slot] != nil
     }
 
-    /// The format has no increased-contrast variant, so a slot that yields to Increase Contrast draws
-    /// native there even where the theme sets it.
+    // The format has no increased-contrast variant, so a yielding slot draws native there.
     public func value(for slot: ThemeSlot, highContrast: Bool = false) -> ThemeSlotValue {
         if slot.yieldsToIncreasedContrast, highContrast {
             return .system(slot)
         }
-        if let explicit = overrides[slot], allowsExplicitColor(for: slot, highContrast: highContrast) {
+        if let explicit = overrides[slot] {
             return .themed(slot.requiresOpaque ? explicit.opaque : explicit)
         }
         return fallbackValue(for: slot, highContrast: highContrast)
     }
 
-    /// The slot draws a theme color, set or derived. Every surface that swaps a native drawing path
-    /// for the theme's asks this.
+    // Set or derived. Every surface that swaps a native drawing path for the theme's asks this.
     public func isOverridden(_ slot: ThemeSlot, highContrast: Bool) -> Bool {
         value(for: slot, highContrast: highContrast).isThemed
     }
 
     public func isOverridden(_ slot: ThemeSlot) -> Bool {
         isOverridden(slot, highContrast: false)
-    }
-
-    private func allowsExplicitColor(for slot: ThemeSlot, highContrast: Bool) -> Bool {
-        guard case let .paired(partner, _) = slot.fallback else { return true }
-        return value(for: partner, highContrast: highContrast).isThemed
     }
 
     private func fallbackValue(for slot: ThemeSlot, highContrast: Bool) -> ThemeSlotValue {
@@ -80,16 +69,11 @@ public struct ThemeDefinition: Identifiable, Equatable, Sendable {
         case let .derived(base, rule):
             guard let baseColor = value(for: base, highContrast: highContrast).themedColor else { return .system(slot) }
             return .themed(derive(rule, from: baseColor, highContrast: highContrast))
-        case let .paired(partner, fallback):
-            guard value(for: partner, highContrast: highContrast).isThemed else { return .system(slot) }
-            return value(for: fallback, highContrast: highContrast)
         }
     }
 
     private func derive(_ rule: ThemeDerivationRule, from base: ThemeColor, highContrast: Bool) -> ThemeColor {
         switch rule {
-        case .same:
-            return base
         case let .stripe(toward):
             let target = value(for: toward, highContrast: highContrast).themedColor
                 ?? (appearance == .dark ? .white : .black)

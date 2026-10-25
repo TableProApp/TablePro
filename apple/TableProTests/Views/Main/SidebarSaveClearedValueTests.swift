@@ -38,7 +38,7 @@ struct SidebarSaveClearedValueTests {
             databaseType: .mysql,
             generatedColumns: []
         )
-        coordinator.selectionState.indices = [0]
+        coordinator.gridModel(forTab: tab.id).selectRows([.existing(0)])
         return coordinator
     }
 

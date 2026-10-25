@@ -2,8 +2,6 @@
 //  TableStructureView+DataLoading.swift
 //  TablePro
 //
-//  Data loading and lifecycle callbacks for table structure
-//
 
 import AppKit
 import Combine
@@ -15,12 +13,6 @@ import UniformTypeIdentifiers
 // MARK: - Data Loading
 
 extension TableStructureView {
-    /// Runs once per session, not once per view. The view is rebuilt whenever the tab is deselected
-    /// or switched to Data and back, and `loadSchemaForEditing` re-baselines the change manager,
-    /// which clears every staged edit, its validation errors and its undo stack. So a rebuild reads
-    /// what the session already holds rather than fetching over the top of the user's work.
-    ///
-    /// A genuine refresh still refetches, through `onRefreshData`, which asks before discarding.
     @Sendable
     func loadInitialData() async {
         session.settleOwedRefetch()
@@ -35,8 +27,7 @@ extension TableStructureView {
             guard !Task.isCancelled else { break }
             await loadTabDataIfNeeded(tab)
         }
-        /// A workspace switch cancels this task and SwiftUI restarts it on return, which fetches only
-        /// for a session not yet loaded, so a load cut short here must not count as one.
+        // A workspace switch cancels this task and restarts it on return, so a cut-short load must not count.
         guard !Task.isCancelled else { return }
         await loadTableComment()
         guard !Task.isCancelled else { return }
@@ -119,15 +110,12 @@ extension TableStructureView {
         searchText = ""
         structureSortDescriptor = nil
         sortState = SortState()
-        selectedRows = []
-        displayVersion += 1
+        gridAdapter.refresh()
         Task {
             await loadTabDataIfNeeded(new)
         }
     }
 
-    /// A fetch that lands after edits were staged keeps them and the baseline they were made
-    /// against; the session owes the fetch until they are saved or discarded.
     func adoptFetchedBaseline() {
         guard !structureChangeManager.hasChanges else {
             session.markStructureStale()
@@ -163,7 +151,6 @@ extension TableStructureView {
             return
         }
 
-        // Skip warning if we just saved (within 2 seconds)
         let justSaved = lastSaveTime.map { Date().timeIntervalSince($0) < 2.0 } ?? false
 
         if structureChangeManager.hasChanges && !justSaved {
@@ -182,7 +169,6 @@ extension TableStructureView {
                     await reloadAllTabs()
                 }
             }
-            // If cancelled, do nothing
         } else {
             Task { @MainActor in
                 await reloadAllTabs()
@@ -192,7 +178,7 @@ extension TableStructureView {
 
     private func reloadAllTabs() async {
         session.markEveryTabStale()
-        session.gridDelegate.referenceMenus.invalidateTableLists()
+        gridAdapter.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()
         if selectedTab == .ddl {
@@ -203,8 +189,6 @@ extension TableStructureView {
         }
     }
 
-    /// Commits in a single synchronous block, so the segmented picker re-lays out once instead of per
-    /// tab, and no columns handler re-baselines against a comment that has not landed yet.
     func reloadCoreTabs() async {
         isLoading = true
         errorMessage = nil
@@ -237,13 +221,6 @@ extension TableStructureView {
     }
 }
 
-/// How a structure fetch that did not land ends, read from the error so it can be tested without
-/// mounting the view.
-///
-/// A workspace switch takes the pane out of the window, so SwiftUI cancels the view's `.task` and
-/// starts it again on return. A fetch cut short that way has not failed, and showing it left
-/// "CancellationError" on screen with no way to retry. An error that arrives after the task was
-/// cancelled counts as cancelled too: the next appearance fetches again and shows a real one then.
 internal enum StructureFetchFailure: Equatable {
     case cancelled
     case failed(String)
@@ -256,7 +233,6 @@ internal enum StructureFetchFailure: Equatable {
         }
     }
 
-    /// What the error view says. Nil for a cancelled fetch, which shows nothing.
     internal var message: String? {
         switch self {
         case .cancelled: nil

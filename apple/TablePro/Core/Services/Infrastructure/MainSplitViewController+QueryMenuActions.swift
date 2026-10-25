@@ -74,9 +74,8 @@ extension MainSplitViewController {
         commandActions?.clearResults()
     }
 
-    @objc func previewFKReference(_ sender: Any?) {
-        commandActions?.previewFKReference()
-    }
+    // Declared for the menu item; the focused data grid implements the same selector closer to the first responder.
+    @objc func previewFKReference(_ sender: Any?) {}
 
     @objc func goToFirstPage(_ sender: Any?) {
         commandActions?.goToFirstPage()

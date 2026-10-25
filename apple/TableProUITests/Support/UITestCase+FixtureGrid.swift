@@ -2,7 +2,8 @@ import SQLite3
 import XCTest
 
 // AppKit wraps each cell view in an AXCell that repeats its label and carries no value, so a cell is the
-// cell view, matched by its identifier whatever its type: static text, a combo box for a picker.
+// grid's stand-in view, matched by its identifier whatever its role: static text, a combo box for a picker.
+// The label's row and column count from 1: the row number on screen, page offset included, and the display position.
 internal struct FixtureGrid {
     internal let element: XCUIElement
     internal let app: XCUIApplication
@@ -10,7 +11,7 @@ internal struct FixtureGrid {
 
     internal func cell(row: Int, column: Int) -> XCUIElement {
         element.descendants(matching: .any)
-            .matching(identifier: "DataGridCellAccessibilityView")
+            .matching(identifier: "data-grid-cell")
             .matching(NSPredicate(format: "label BEGINSWITH %@", "Row \(row), column \(column): "))
             .firstMatch
     }
@@ -63,14 +64,17 @@ internal struct FixtureGrid {
         app.typeKey(.return, modifierFlags: [])
     }
 
-    internal func clickHeader(_ column: String, rightClick: Bool = false) {
+    // A plain click sorts by the column alone, an Option-click adds it as another sort key.
+    internal func clickHeader(_ column: String, modifiers: XCUIElement.KeyModifierFlags = [], rightClick: Bool = false) {
         let header = header(column)
         XCTAssertTrue(header.waitToExist(timeout: 20), "The grid must publish a \(column) header")
         let target = point(inside: header.frame)
         if rightClick {
             target.rightClick()
-        } else {
+        } else if modifiers.isEmpty {
             target.click()
+        } else {
+            XCUIElement.perform(withKeyModifiers: modifiers) { target.click() }
         }
     }
 }

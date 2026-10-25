@@ -40,7 +40,7 @@ extension MainContentView {
         if payload == nil || payload?.intent == .restoreOrDefault {
             await coordinator.restoreSavedTabs()
         }
-        /// Before the schema load, which can take seconds, so a move waiting on the restore lands now.
+        // Before the schema load, which can take seconds, so a move waiting on the restore lands now.
         coordinator.settleTabRestore()
         _ = await schemaLoad
     }
@@ -74,10 +74,7 @@ extension MainContentView {
 
     // MARK: - Command Actions Setup
 
-    /// One resolution of what is staged, so the commit control, its verb and Preview SQL's gate
-    /// cannot disagree. The arm this replaces never read `hasPrincipalChanges`, so a Users & Roles
-    /// tab with staged principals left both the toolbar's commit button and Cmd+S dim over work
-    /// `saveChanges()` already knew how to apply.
+    // One resolution of what is staged, so commit, its verb and Preview SQL agree; staged principals once left Cmd+S dim.
     func updateToolbarPendingState() {
         let kind = PendingChangeKind.resolve(
             tabType: tabManager.selectedTab?.tabType,
@@ -90,18 +87,11 @@ extension MainContentView {
         )
         toolbarState.pendingChange = kind
         toolbarState.hasPendingChanges = kind != nil
-        /// Preview SQL asks a narrower question than the commit control: a dirty query file and
-        /// staged principals both raise the commit and neither has grid SQL to show.
+        // Narrower than the commit: a dirty query file and staged principals raise the commit but have no grid SQL to show.
         toolbarState.hasDataPendingChanges = kind == .data || kind == .structure
     }
 
-    /// Update window title, proxy icon, and dirty dot based on the selected tab.
-    ///
-    /// This tree is the browse content, so it names the window as the browse content: `.content`
-    /// and `.browse` are what it is, not guesses. Whether it is the tree on screen is the window's
-    /// question, and its bindings drop a name or a file written from behind an agent conversation.
-    /// The edited dot is still written directly, because the unsaved work it reports is still in
-    /// the window while the conversation is drawn over it.
+    // The edited dot is written directly: the unsaved work it reports stays in the window under an agent conversation.
     func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
         let resolved = WindowTitleResolver.resolveWindow(
@@ -123,7 +113,7 @@ extension MainContentView {
         viewWindow?.isDocumentEdited = selectedTab.map(coordinator.showsUnsavedIndicator) ?? false
     }
 
-    /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
+    // Called by WindowAccessor once the window exists.
     func configureWindow(_ window: NSWindow) {
         let start = Date()
         MainContentView.lifecycleLogger.info(
@@ -159,14 +149,11 @@ extension MainContentView {
     }
 
     func setupCommandActions() {
-        /// Called from `onAppear`, which a connection switch fires again. Building a second set of
-        /// actions left the hidden trailing pane holding the first, so every refresh and connect
-        /// broadcast was handled twice, and both trailing panes were rebuilt on every switch.
+        // `onAppear` refires on a connection switch; a second set of actions handled every broadcast twice and rebuilt both panes.
         guard commandActions == nil else { return }
         let actions = MainContentCommandActions(
             coordinator: coordinator,
             connection: connection,
-            selectionState: coordinator.selectionState,
             selectedTables: Binding(
                 get: { coordinator.windowSidebarState.selectedTables },
                 set: { coordinator.windowSidebarState.selectTables($0) }

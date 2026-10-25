@@ -13,9 +13,6 @@ struct ClickHousePartsView: View {
 
     let tableName: String
 
-    /// The tab's own scope, not the connection alone. ClickHouse switches database by writing one
-    /// field on the shared driver and nothing puts it back, so a statement built from that driver
-    /// names whichever database the sidebar last reached rather than the table on screen.
     let scope: DatabaseScope
     let connection: DatabaseConnection
     let reloadToken: Int
@@ -23,7 +20,6 @@ struct ClickHousePartsView: View {
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var columnLayout = ColumnLayoutState()
     @State private var loadedToken: Int?
     @StateObject private var grid = StructureListGridModel<UUID>(accessibilityLabel: StructureTab.parts.displayName)
     @StateObject private var selection = StructureListSelection<UUID>()
@@ -90,24 +86,17 @@ struct ClickHousePartsView: View {
     }
 
     private var partsTable: some View {
-        let parts = parts
         let selection = selection
-        var hasher = Hasher()
-        for part in parts {
-            hasher.combine(part.id)
-        }
         return StructureListGrid(
             model: grid,
             columns: Self.columnTitles,
             defaultWidths: Self.columnWidths,
             minimumWidths: Self.columnMinimumWidths,
-            contentKey: hasher.finalize(),
-            rows: { parts.map(Self.gridRow(for:)) },
+            rows: parts.map(Self.gridRow(for:)),
             databaseType: connection.type,
-            selectedIDs: { selection.ids },
+            selectedIDs: selection.ids,
             select: { selection.ids = $0 },
-            sortState: nil,
-            columnLayout: $columnLayout
+            sortState: nil
         )
     }
 
@@ -212,12 +201,6 @@ struct ClickHousePartsView: View {
         }
     }
 
-    /// Every statement here names the tab's own database and runs on a driver leased to it, and goes
-    /// through the gate first: a partition drop is data loss, and a connection set to confirm those
-    /// was dropping one on the strength of this view's own alert alone.
-    /// Answers whether the statement actually ran. A denial, a cancelled confirmation or a failure
-    /// leaves the partition where it was, so the caller keeps the user's selection rather than
-    /// clearing it as though the action had gone through.
     @MainActor
     @discardableResult
     private func run(_ sql: String, description: String, kind: OperationKind) async -> Bool {
@@ -273,14 +256,11 @@ struct ClickHousePartsView: View {
 
     // MARK: - Data Loading
 
-    /// A connection switch re-parents the pane and SwiftUI re-runs `task(id:)` with the same token,
-    /// so only a new token, which Refresh issues, fetches the parts again.
     private func loadPartsIfNeeded() async {
         guard loadedToken != reloadToken else { return }
         await loadParts()
     }
 
-    /// A cancelled load commits nothing and records no token, so the next appearance retries it.
     private func loadParts() async {
         let token = reloadToken
         isLoading = true

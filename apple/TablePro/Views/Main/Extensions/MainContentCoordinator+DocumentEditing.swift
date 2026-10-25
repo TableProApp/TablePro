@@ -6,13 +6,7 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Whether the selected tab is a collection whose engine writes whole documents.
-    ///
-    /// One definition for every place that offers Insert Document or Edit Document: the Edit menu,
-    /// the row menu and the empty-space menu. Only a table tab, because the write ends by reloading
-    /// the tab and a query tab's result is not reloaded that way, so the change would not appear. A
-    /// tab with staged grid edits refuses it, because a reload over staged edits asks to discard them
-    /// in a sheet behind this one.
+    // Table tabs only: the write ends by reloading the tab. Staged grid edits refuse it, since that reload would ask to discard them.
     var documentEditingAvailable: Bool {
         guard canEditActiveResult,
               PluginManager.shared.supportsDocumentEditing(for: connection.type),
@@ -34,26 +28,17 @@ extension MainContentCoordinator {
         activeSheet = .documentEditor(DocumentEditorRequest(table: table, scope: scope))
     }
 
-    /// What the driver finds the document on a grid row by, read through the display order so a
-    /// sort or a value filter cannot hand back another row's document. Nil for a row the driver
-    /// gave none, which is a row Edit Document is not offered on.
-    func documentLocator(forDisplayRow displayRow: Int) -> String? {
+    // What the driver finds the row's document by; nil for a row it gave none, where Edit Document is not offered.
+    func documentLocator(for rowID: RowID) -> String? {
         guard documentEditingAvailable, let tab = tabManager.selectedTab else { return nil }
-        let tableRows = tabSessionRegistry.tableRows(for: tab.id)
-        guard let row = DisplayRowMapping.row(
-            forDisplay: displayRow,
-            displayIDs: activeGridDisplayIDs,
-            in: tableRows
-        ) else { return nil }
-        return tableRows.rowLocator(for: row.id)
+        return tabSessionRegistry.tableRows(for: tab.id).rowLocator(for: rowID)
     }
 
-    func canEditDocument(atDisplayRow displayRow: Int) -> Bool {
-        documentLocator(forDisplayRow: displayRow) != nil
+    func canEditDocument(rowID: RowID) -> Bool {
+        documentLocator(for: rowID) != nil
     }
 
-    /// Opens the editor on the document a locator names. The locator is resolved by the caller at
-    /// the moment the command was chosen, so a reload in between cannot move it to another row.
+    // The caller resolves the locator when the command is chosen, so a reload in between can't move it to another row.
     func presentEditDocument(locator: String) {
         guard documentEditingAvailable,
               let table = tabManager.selectedTab?.tableContext.tableName,

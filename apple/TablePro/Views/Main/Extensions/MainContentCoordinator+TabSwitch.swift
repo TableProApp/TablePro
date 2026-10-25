@@ -26,7 +26,13 @@ extension MainContentCoordinator {
             "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"
         )
         isHandlingTabSwitch = true
+        // The change manager holds the outgoing tab's edits until the restore below, so an open cell editor commits there (H2).
+        tabSwitchOutgoingTabId = oldTabId
+        if let oldTabId {
+            commitGridEdit(ofTab: oldTabId)
+        }
         defer {
+            tabSwitchOutgoingTabId = nil
             isHandlingTabSwitch = false
             Self.lifecycleLogger.debug(
                 "[switch] handleTabChange done to=\(newTabId?.uuidString ?? "nil", privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
@@ -37,32 +43,12 @@ extension MainContentCoordinator {
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            /// The second half of the condition is the fix. Gated on `hasChanges` alone, an undo was
-            /// never recorded: the tab kept the snapshot a previous switch had saved, so switching
-            /// back restored the edit the reader had just taken back and the tab went on reporting
-            /// unsaved work. Writing the empty snapshot is what clears it.
-            ///
-            /// Still conditional, because `mutate` takes the element `inout` and so runs the array's
-            /// setter whether or not the block writes: an unconditional write would fire `tabs`'
-            /// `didSet` over every open tab on every switch, for nothing.
-            ///
-            /// Safe to take the snapshot from the change manager here because nothing has repointed
-            /// it yet: every other `configureForTable` and `restoreState` caller is either the
-            /// incoming block below or guarded to the selected tab, and this runs synchronously
-            /// from the selection change with no suspension in between.
+            // Also checks the tab's snapshot: on `hasChanges` alone an undo kept a stale snapshot that restored the undone edit on return.
             if changeManager.hasChanges || tabManager.tabs[oldIndex].pendingChanges.hasChanges {
                 let savedState = changeManager.saveState()
                 tabManager.mutate(at: oldIndex) { $0.pendingChanges = savedState }
             }
-            // One editor serves every query tab, so `cursorPositions` describes the outgoing tab
-            // only until the switch completes. Persistence writes the live caret for the selected
-            // tab alone, so a caret not captured here is gone once the editor has consumed the
-            // tab's restored value.
-            //
-            // Only a tab whose own restored caret is already consumed can be written, because the
-            // query editor subtree has no `.id(tab.id)`: selecting a restored tab reuses the same
-            // editor without re-installing it, so `cursorPositions` can still describe the tab
-            // before it. Overwriting there would destroy the very caret this is meant to keep.
+            // One editor serves every query tab with no `.id(tab.id)`, so write only once this tab's restored caret has been consumed.
             let outgoing = tabManager.tabs[oldIndex]
             if outgoing.tabType == .query,
                outgoing.restoredCursorOffset == nil,
@@ -73,23 +59,16 @@ extension MainContentCoordinator {
                     $0.restoredCursorLength = range.length
                 }
             }
-            /// Before the restore below repoints `selectionState` at the incoming tab. The outgoing
-            /// grid is still mounted and still bound to that shared channel, so the repoint clears
-            /// its table view and its own teardown then has nothing left to report. (#2667)
-            if let live = mountedGridSelection() {
-                storeGridSelection(rows: live.rows, cells: live.cells, forTab: oldId)
-            }
             filterCoordinator.saveLastFilters(of: tabManager.tabs[oldIndex])
         }
         let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
-        // Defer to the next run-loop tick so the synchronous switch path
-        // stays cheap; the sort + budget calculation is non-trivial on
-        // connections with many open tabs.
+        // Deferred a tick: the sort and budget calculation is costly with many open tabs.
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
             Task { @MainActor [weak self] in
                 self?.evictInactiveTabs(excluding: activeIds)
+                self?.pruneGridDisplayCaches()
             }
         }
 
@@ -99,14 +78,11 @@ extension MainContentCoordinator {
             let newTab = tabManager.tabs[newIndex]
             let newRows = tabSessionRegistry.tableRows(for: newId)
 
-            selectionState.indices = newTab.selectedDisplayRows
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
             syncQueryToolbarState(for: newTab)
 
-            /// Consumed once restored. The change manager is the selected tab's edits from here, and
-            /// a copy left on the tab went stale with the first undo: it went on reporting edits the
-            /// reader had taken back, and a reload put off for them never ran.
+            // Consumed once restored: a copy left on the tab went stale with the first undo and kept reporting undone edits.
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
                 changeManager.restoreState(
@@ -119,6 +95,7 @@ extension MainContentCoordinator {
                     columnTypeNames: newRows.columnTypeNames
                 )
                 tabManager.mutate(at: newIndex) { $0.pendingChanges = TabChangeSnapshot() }
+                tabSwitchOutgoingTabId = nil
             } else {
                 changeManager.configureForTable(
                     tableName: newTab.tableContext.tableName ?? "",
@@ -131,6 +108,7 @@ extension MainContentCoordinator {
                     columnTypeNames: newRows.columnTypeNames,
                     triggerReload: false
                 )
+                tabSwitchOutgoingTabId = nil
             }
 
             let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
@@ -138,11 +116,7 @@ extension MainContentCoordinator {
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
-            // No `reloadVersion` bump here. It is the change manager's throw-away-and-fetch-again
-            // signal and it is shared by every tab in the window, so bumping it on a switch told
-            // the incoming grid its rows had changed and made it re-format the whole result. The
-            // reload a switch does need is already forced by the freshly mounted grid's zero row
-            // count, and a real content change still arrives through `configureForTable`. (#2424)
+            // No `reloadVersion` bump: it is window-wide, and bumping it on a switch re-formatted the incoming grid's whole result (#2424).
             let needsReload = needsRowReload(newId)
             lazyLoadCurrentTabIfNeeded()
             TabSwitchTracer.shared.selectionApplied(
@@ -152,10 +126,7 @@ extension MainContentCoordinator {
                 isShowing: { [weak manager = tabManager] in manager?.isShowing(newId) ?? false }
             )
         } else {
-            /// An entry with no tab of its own. The outgoing tab's edits were saved onto it above,
-            /// and the live copy goes: the change manager is the selected tab's, and with none
-            /// selected a Save would write those rows against the database now on screen.
-            selectionState.indices = []
+            // No tab selected: drop the live copy, or a Save would write the outgoing tab's rows against the database now on screen.
             changeManager.configureForTable(
                 tableName: "",
                 columns: [],
@@ -169,6 +140,12 @@ extension MainContentCoordinator {
             toolbarState.isQueryTab = false
             toolbarState.hasQueryText = false
         }
+    }
+
+    private func commitGridEdit(ofTab tabId: UUID) {
+        existingGridModel(forTab: tabId)?.commitEditing()
+        guard let tab = tabManager.tabs.first(where: { $0.id == tabId }) else { return }
+        activeGridModelProvider(for: tab)?.activeGridModel?.commitEditing()
     }
 
     // For a tab that comes on screen without a selection change, before its pane restarts any load.
@@ -189,12 +166,7 @@ extension MainContentCoordinator {
         TableLoadTracer.shared.activeToken(for: tabId) != nil
     }
 
-    /// What the toolbar's Run, Explain, Format and Favorite items validate against.
-    ///
-    /// Execution state is deliberately not among these: `TabExecutionRegistry` is the single answer
-    /// to "is something running", and its own documentation records that a hand-kept mirror of that
-    /// is what let the titlebar report a query which had already ended (#2342). The toolbar reads
-    /// it live through `isSelectedTabExecuting`.
+    // No execution state here: a hand-kept mirror let the titlebar show an ended query (#2342), so the toolbar reads the registry.
     func syncQueryToolbarState(for tab: QueryTab) {
         toolbarState.isQueryTab = tab.tabType == .query
         toolbarState.hasQueryText = tab.tabType == .query && tab.hasQueryText
@@ -209,20 +181,12 @@ extension MainContentCoordinator {
         syncQueryToolbarState(for: tab)
     }
 
-    /// Whether the tab the toolbar is pointed at has a query in flight, asked of the registry each
-    /// time rather than stored.
     var isSelectedTabExecuting: Bool {
         guard let tabId = tabManager.selectedTabId else { return false }
         return tabExecution.isExecuting(tabId)
     }
 
-    /// Whether dropping this tab's rows is safe, which is exactly whether `canAutoLoadTableTab`
-    /// will bring them back. The two answers have to agree: a tab evicted without a route back to
-    /// its rows shows an empty grid until the user refreshes it by hand.
-    ///
-    /// Table tabs qualify because their rows follow from their generated query. Query tabs do not,
-    /// a pinned result shares the buffer it would lose, and a tab with an execution, a load task or
-    /// a page fetch in flight would have the result land on a buffer that moved out from under it.
+    // Must agree with `canAutoLoadTableTab`: a tab evicted with no route back to its rows shows an empty grid until refreshed.
     func canEvictReloadableTableRows(_ tab: QueryTab) -> Bool {
         guard tab.id != tabManager.selectedTabId,
               tab.tabType == .table,
@@ -254,7 +218,7 @@ extension MainContentCoordinator {
             tab.loadEpoch &+= 1
         }
         tabSessionRegistry.evict(for: tabId)
-        displayStateCache.removeValue(forKey: tabId)
+        reloadGridModel(forTab: tabId)
         return true
     }
 

@@ -6,26 +6,16 @@
 import Foundation
 import TableProPluginKit
 
-/// The rows a result tab is showing, in the order it is showing them.
-///
-/// Anything that reads a result outside the grid itself has to answer the same three questions, and
-/// get all three right: display positions are not storage indices once a value filter is on, hidden
-/// and reordered columns are the reader's business too, and a row marked for deletion is in the
-/// buffer but not in the result. `ResultJsonSerializer` answered them for JSON; AppleScript needs
-/// the same answers as values, so they live here and JSON is one encoding of the output.
+// Filtered display order, hidden and moved columns, no deleted rows: JSON and AppleScript read results through here.
 internal enum DisplayedResultReader {
     internal struct Output {
         internal let columns: [String]
         internal let columnTypes: [ColumnType]
         internal let rows: [[PluginCellValue]]
-        /// How many rows were left out because they are marked for deletion.
         internal let skippedDeletedCount: Int
     }
 
-    /// - Parameter selectedDisplayIndices: display positions to narrow to. Empty means every
-    ///   displayed row, which is what an untouched result set shows.
-    /// - Parameter deletedRowIDs: rows marked for deletion but not yet saved.
-    ///   Empty, the default, reads every row.
+    // Empty selectedDisplayIndices means every displayed row.
     internal static func read(
         tableRows: TableRows,
         displayIDs: [RowID]?,
@@ -40,11 +30,10 @@ internal enum DisplayedResultReader {
             positions = selectedDisplayIndices.sorted()
         }
 
+        let order = DataGridRowOrder(filteredIDs: displayIDs, revision: 0)
         var skippedDeleted = 0
         let rows: [[PluginCellValue]] = positions.compactMap { displayIndex in
-            guard let row = DisplayRowMapping.row(
-                forDisplay: displayIndex, displayIDs: displayIDs, in: tableRows
-            ) else { return nil }
+            guard let row = order.row(at: displayIndex, in: tableRows) else { return nil }
             guard !deletedRowIDs.contains(row.id) else {
                 skippedDeleted += 1
                 return nil

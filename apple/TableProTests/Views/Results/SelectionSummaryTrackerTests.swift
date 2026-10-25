@@ -1,27 +1,10 @@
 import AppKit
 import Foundation
-import SwiftUI
 @testable import TablePro
 import TableProNumberFormatting
 import TableProPluginKit
 import TableProTestSupport
 import Testing
-
-@MainActor
-private final class SummaryLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-@MainActor
-private final class SummaryRowStore {
-    var tableRows: TableRows
-
-    init(_ tableRows: TableRows) {
-        self.tableRows = tableRows
-    }
-}
 
 @MainActor
 private final class SummaryInputBox {
@@ -32,7 +15,7 @@ private final class SummaryInputBox {
     }
 }
 
-/// Holds the first computation open until the test lets it go, after it has its result.
+// Holds the first computation open until the test lets it go, after it has its result.
 private actor SummaryComputeGate {
     private var callCount = 0
     private let entered = AsyncGate()
@@ -57,36 +40,68 @@ private actor SummaryComputeGate {
     }
 }
 
+// A mounted grid whose model publishes into a summary state, which the shared fixture's model does not take.
+@MainActor
+private final class SummaryGrid {
+    let owner: GridTestOwner
+    let model: DataGridModel
+    let controller: DataGridViewController
+    let state: SelectionSummaryState?
+    private let window: NSWindow
+
+    init(
+        _ rows: [[PluginCellValue]],
+        types: [ColumnType],
+        state: SelectionSummaryState?,
+        changeManager: DataChangeManager = DataChangeManager()
+    ) {
+        self.state = state
+        owner = GridTestOwner(
+            TableRows.from(queryRows: rows, columns: types.indices.map { "c\($0)" }, columnTypes: types),
+            changeManager: changeManager
+        )
+        owner.appliesCommits = true
+        var configuration = DataGridConfiguration()
+        configuration.isEditable = true
+        model = DataGridModel(configuration: configuration, selectionSummary: state)
+        model.dataSource = owner
+        model.actions = owner
+        owner.model = model
+        model.reloadRows()
+
+        controller = DataGridViewController(model: model)
+        let frame = NSRect(x: 0, y: 0, width: 600, height: 300)
+        window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let content = NSView(frame: frame)
+        window.contentView = content
+        controller.view.frame = content.bounds
+        content.addSubview(controller.view)
+    }
+
+    var tracker: SelectionSummaryTracker { controller.selectionSummaryTracker }
+
+    // The controller attaches its tracker on the turn after it mounts.
+    func attached() async throws {
+        try await waitUntil { self.tracker.state === self.state }
+    }
+
+    func edit(row: Int, to value: DataGridEditValue) {
+        model.commit(
+            [DataGridCellEdit(rowID: .existing(row), columnID: DataGridColumnID(name: "c0", occurrence: 0), value: value)],
+            actionName: "Edit Cell"
+        )
+    }
+
+    func close() {
+        controller.dismantle()
+        window.orderOut(nil)
+    }
+}
+
 @MainActor
 struct SelectionSummaryTrackerTests {
     private static let integer = ColumnType.integer(rawType: "INT")
-
-    private func makeGrid(
-        _ rows: [[PluginCellValue]],
-        types: [ColumnType],
-        state: SelectionSummaryState? = SelectionSummaryState(),
-        changeManager: DataChangeManager = DataChangeManager()
-    ) -> (TableViewCoordinator, SummaryRowStore) {
-        let view = DataGridView(
-            changeManager: AnyChangeManager(changeManager),
-            isEditable: true,
-            layoutPersister: SummaryLayoutPersister(),
-            selectedRowIndices: .constant([]),
-            sortState: .constant(SortState()),
-            columnLayout: .constant(ColumnLayoutState()),
-            selectionSummary: state
-        )
-        let coordinator = view.makeCoordinator()
-        let store = SummaryRowStore(TableRows.from(
-            queryRows: rows,
-            columns: types.indices.map { "c\($0)" },
-            columnTypes: types
-        ))
-        coordinator.tableRowsProvider = { store.tableRows }
-        coordinator.tableRowsMutator = { mutation in mutation(&store.tableRows) }
-        coordinator.updateCache()
-        return (coordinator, store)
-    }
 
     private static func block(rows: ClosedRange<Int>, columns: ClosedRange<Int>) -> GridSelection {
         .single(
@@ -106,88 +121,96 @@ struct SelectionSummaryTrackerTests {
         )
     }
 
-    @Test("widening a selection sideways recomputes, though the selected rows stay the same")
-    func horizontalWideningRecomputes() async {
+    private func makeGrid(
+        _ rows: [[PluginCellValue]] = [[.text("1")], [.text("2")]],
+        types: [ColumnType] = [ColumnType.integer(rawType: "INT")],
+        changeManager: DataChangeManager = DataChangeManager()
+    ) async throws -> (SummaryGrid, SelectionSummaryState) {
         let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid(
-            [[.text("1"), .text("10")], [.text("2"), .text("20")]],
-            types: [Self.integer, Self.integer],
-            state: state
-        )
-        let tracker = coordinator.selectionSummaryTracker
+        let grid = SummaryGrid(rows, types: types, state: state, changeManager: changeManager)
+        try await grid.attached()
+        await grid.tracker.pendingTask?.value
+        return (grid, state)
+    }
 
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("Widening a selection sideways recomputes, though the selected rows stay the same")
+    func horizontalWideningRecomputes() async throws {
+        let (grid, state) = try await makeGrid(
+            [[.text("1"), .text("10")], [.text("2"), .text("20")]],
+            types: [Self.integer, Self.integer]
+        )
+        defer { grid.close() }
+
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 3)
         let narrow = state.summary
 
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...1))
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...1))
         #expect(state.summary == narrow)
-        #expect(tracker.currentSummary == nil)
-        await tracker.pendingTask?.value
+        #expect(grid.tracker.currentSummary == nil)
+        await grid.tracker.pendingTask?.value
 
         #expect(state.summary?.numbers?.sum.decimal == 33)
         #expect(state.summary?.valueCount == 4)
-        #expect(tracker.currentSummary == state.summary)
+        #expect(grid.tracker.currentSummary == state.summary)
     }
 
-    @Test("an edit inside the selection recomputes the summary")
-    func editInsideSelectionRecomputes() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("An edit inside the selection recomputes the summary")
+    func editInsideSelectionRecomputes() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 3)
 
-        coordinator.commitCellEdit(row: 0, columnIndex: 0, newValue: "5")
-        await tracker.pendingTask?.value
+        grid.edit(row: 0, to: .enteredText("5"))
+        await grid.tracker.pendingTask?.value
 
         #expect(state.summary?.numbers?.sum.decimal == 7)
     }
 
-    @Test("a cell set to Default by an edit counts as empty, not as text")
-    func stagedDefaultIsEmpty() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
+    @Test("A cell set to Default by an edit counts as empty, not as text")
+    func stagedDefaultIsEmpty() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
 
-        coordinator.commitCellEdit(row: 1, columnIndex: 0, newValue: PluginCellValue.defaultMarkerText)
-        await tracker.pendingTask?.value
+        grid.edit(row: 1, to: .value(.text(PluginCellValue.defaultMarkerText), isExpression: false))
+        await grid.tracker.pendingTask?.value
 
         #expect(state.summary?.emptyCount == 1)
         #expect(state.summary?.notANumberCount == 0)
         #expect(state.summary?.numbers?.sum.decimal == 1)
     }
 
-    @Test("narrowing to a single cell takes the summary down")
-    func singleCellClears() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("Narrowing to a single cell takes the summary down")
+    func singleCellClears() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary != nil)
 
-        coordinator.selectionController.update(Self.block(rows: 1...1, columns: 0...0))
-        await tracker.pendingTask?.value
+        grid.model.setSelection(Self.block(rows: 1...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
 
         #expect(state.summary == nil)
-        #expect(tracker.currentSummary == nil)
+        #expect(grid.tracker.currentSummary == nil)
     }
 
-    @Test("a grid with no summary state computes nothing")
+    @Test("A grid with no summary state computes nothing")
     func gridWithoutStateComputesNothing() {
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: nil)
+        let grid = SummaryGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: nil)
+        defer { grid.close() }
 
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
 
-        #expect(coordinator.selectionSummaryTracker.pendingTask == nil)
-        #expect(coordinator.selectionSummaryTracker.currentSummary == nil)
+        #expect(grid.tracker.pendingTask == nil)
+        #expect(grid.tracker.currentSummary == nil)
     }
 
-    @Test("a result computed for an older selection is never published")
+    @Test("A result computed for an older selection is never published")
     func staleGenerationNeverPublishes() async {
         let gate = SummaryComputeGate()
         let box = SummaryInputBox(Self.standaloneInput(["1", "2"]))
@@ -210,24 +233,22 @@ struct SelectionSummaryTrackerTests {
         #expect(tracker.currentSummary == state.summary)
     }
 
-    @Test("unmounting the grid takes its summary down and stops it publishing again")
-    func dismantleClearsAndDetaches() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("Unmounting the grid takes its summary down and stops it publishing again")
+    func dismantleClearsAndDetaches() async throws {
+        let (grid, state) = try await makeGrid()
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary != nil)
 
-        DataGridView.dismantleNSView(NSScrollView(), coordinator: coordinator)
-        coordinator.applyDelta(.cellChanged(row: 0, column: 0))
-        await tracker.pendingTask?.value
+        grid.close()
+        grid.model.apply(.cellChanged(row: 0, column: 0))
+        await grid.tracker.pendingTask?.value
 
         #expect(state.summary == nil)
-        #expect(tracker.state == nil)
+        #expect(grid.tracker.state == nil)
     }
 
-    @Test("only the grid that attached last may write the summary")
+    @Test("Only the grid that attached last may write the summary")
     func onlyTheActiveOwnerWrites() {
         let state = SelectionSummaryState()
         let outgoing = UUID()
@@ -257,7 +278,7 @@ struct SelectionSummaryTrackerTests {
         #expect(state.summary == nil)
     }
 
-    @Test("a computation the outgoing grid finishes after the incoming grid attached is dropped")
+    @Test("A computation the outgoing grid finishes after the incoming grid attached is dropped")
     func outgoingCompletionNeverLandsOnTheIncomingGrid() async {
         let gate = SummaryComputeGate()
         let state = SelectionSummaryState()
@@ -282,67 +303,61 @@ struct SelectionSummaryTrackerTests {
         #expect(state.summary?.numbers?.sum.decimal == 30)
     }
 
-    @Test("figures being recomputed stay on screen but are not current, so Copy waits")
-    func recomputeMarksTheFiguresPending() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("Figures being recomputed stay on screen but are not current, so Copy waits")
+    func recomputeMarksTheFiguresPending() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.isCurrent)
 
-        coordinator.commitCellEdit(row: 0, columnIndex: 0, newValue: "5")
+        grid.edit(row: 0, to: .enteredText("5"))
         #expect(!state.isCurrent)
         #expect(state.summary?.numbers?.sum.decimal == 3)
 
-        await tracker.pendingTask?.value
+        await grid.tracker.pendingTask?.value
         #expect(state.isCurrent)
         #expect(state.summary?.numbers?.sum.decimal == 7)
     }
 
-    @Test("a display format on a summed column leaves it counted but not summed, and taking it off sums it again")
-    func displayFormatChangeRecomputes() async {
-        let state = SelectionSummaryState()
-        let (coordinator, _) = makeGrid([[.text("1")], [.text("2")]], types: [Self.integer], state: state)
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...1, columns: 0...0))
-        await tracker.pendingTask?.value
+    @Test("A display format on a summed column leaves it counted but not summed, and taking it off sums it again")
+    func displayFormatChangeRecomputes() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        let column = try #require(grid.model.columns.column(at: 0))
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 3)
 
-        coordinator.updateDisplayFormats([.unixTimestamp])
-        await tracker.pendingTask?.value
+        grid.model.setDisplayFormat(.unixTimestamp, for: column)
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers == nil)
         #expect(state.summary?.valueCount == 2)
         #expect(state.summary?.notANumberCount == 0)
 
-        coordinator.updateDisplayFormats([nil])
-        await tracker.pendingTask?.value
+        grid.model.setDisplayFormat(nil, for: column)
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 3)
     }
 
-    @Test("a row staged for deletion leaves the sum, and Undo Delete puts it back")
-    func stagedDeletionAndUndoDeleteRecompute() async {
-        let state = SelectionSummaryState()
+    @Test("A row staged for deletion leaves the sum, and undoing the delete puts it back")
+    func stagedDeletionAndUndoDeleteRecompute() async throws {
         let manager = DataChangeManager()
-        let (coordinator, _) = makeGrid(
-            [[.text("1")], [.text("2")], [.text("3")]],
-            types: [Self.integer],
-            state: state,
-            changeManager: manager
-        )
-        let tracker = coordinator.selectionSummaryTracker
-        coordinator.selectionController.update(Self.block(rows: 0...2, columns: 0...0))
-        await tracker.pendingTask?.value
+        let (grid, state) = try await makeGrid([[.text("1")], [.text("2")], [.text("3")]], changeManager: manager)
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...2, columns: 0...0))
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 6)
 
         manager.recordRowDeletion(rowID: .existing(1), originalRow: [.text("2")])
-        coordinator.invalidateCachesForUndoRedo()
-        await tracker.pendingTask?.value
+        grid.model.repaintRows([RowID.existing(1)])
+        await grid.tracker.pendingTask?.value
         #expect(state.summary?.numbers?.sum.decimal == 4)
         #expect(state.summary?.valueCount == 2)
 
-        coordinator.undoDeleteRow(at: 1)
-        await tracker.pendingTask?.value
+        manager.undoRowDeletion(rowID: .existing(1))
+        grid.model.repaintRows([RowID.existing(1)])
+        await grid.tracker.pendingTask?.value
         #expect(!manager.isRowDeleted(.existing(1)))
         #expect(state.summary?.numbers?.sum.decimal == 6)
         #expect(state.summary?.valueCount == 3)

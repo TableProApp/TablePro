@@ -3,26 +3,27 @@
 //  TableProTests
 //
 
-import AppKit
 import Foundation
-import SwiftUI
 import TableProPluginKit
 import Testing
 
 @testable import TablePro
 
 @MainActor
-private final class EditedRowLayoutPersister: ColumnLayoutPersisting {
-    func load(for key: ColumnLayoutTableKey) -> ColumnLayoutState? { nil }
-    func save(_ layout: ColumnLayoutState, for key: ColumnLayoutTableKey) {}
-    func clear(for key: ColumnLayoutTableKey) {}
-}
-
-@MainActor
 struct ValueFilterEditedRowTests {
+    @MainActor
     private struct Fixture {
         let coordinator: MainContentCoordinator
         let tabId: UUID
+
+        var model: DataGridModel {
+            coordinator.gridModel(forTab: tabId)
+        }
+
+        // The primary key of the row the grid shows at a position, which is what a write names.
+        func shownKey(at displayRow: Int) -> String? {
+            model.row(at: displayRow)?.values[0].asText
+        }
     }
 
     private func makeFixture() -> Fixture {
@@ -58,8 +59,9 @@ struct ValueFilterEditedRowTests {
             databaseType: .mysql,
             generatedColumns: []
         )
-        coordinator.setValueFilter(nameFilter(["Bob", "Carol"]), forTab: tab.id)
-        return Fixture(coordinator: coordinator, tabId: tab.id)
+        let fixture = Fixture(coordinator: coordinator, tabId: tab.id)
+        fixture.model.setValueFilter(nameFilter(["Bob", "Carol"]))
+        return fixture
     }
 
     private func nameFilter(_ names: Set<String>) -> GridValueFilterState {
@@ -72,56 +74,37 @@ struct ValueFilterEditedRowTests {
         return state
     }
 
-    private func mountGrid(on fixture: Fixture) -> TableViewCoordinator {
-        let coordinator = fixture.coordinator
-        let tabId = fixture.tabId
-        let delegate = DataTabGridDelegate()
-        let grid = TableViewCoordinator(
-            changeManager: AnyChangeManager(coordinator.changeManager),
-            isEditable: true,
-            selectedRowIndices: .constant([]),
-            delegate: delegate,
-            layoutPersister: EditedRowLayoutPersister()
-        )
-        delegate.dataGridAttach(tableViewCoordinator: grid)
-        coordinator.dataTabDelegate = delegate
-        grid.tableRowsProvider = { [weak coordinator] in
-            coordinator?.tabSessionRegistry.existingTableRows(for: tabId) ?? TableRows()
-        }
-        grid.tableRowsMutator = { [weak coordinator] mutate in
-            coordinator?.mutateActiveTableRows(for: tabId) { rows in mutate(&rows) } ?? .none
-        }
-        grid.valueFilterBinding = Binding(
-            get: { coordinator.tabManager.tabs.first { $0.id == tabId }?.valueFilter ?? GridValueFilterState() },
-            set: { coordinator.setValueFilter($0, forTab: tabId) }
-        )
-        grid.displayOrderProvider = { [weak coordinator] in
-            coordinator?.displayIDs(forTab: tabId)
-        }
-        grid.adoptValueFilter(coordinator.tabManager.tabs.first { $0.id == tabId }?.valueFilter ?? GridValueFilterState())
-        grid.recomputeValueFilteredIDs()
-        grid.updateCache()
-        return grid
-    }
-
     private func renameBobInStorage(_ fixture: Fixture, to name: String) {
         fixture.coordinator.mutateActiveTableRows(for: fixture.tabId) { rows in
             rows.edit(row: 1, column: 1, value: .text(name))
         }
     }
 
+    // An inline edit the way the grid commits one: through the model, by row and column identity.
+    private func editBobInTheGrid(_ fixture: Fixture, to name: String) throws {
+        let model = fixture.model
+        model.configuration.isEditable = true
+        let position = try #require(model.columns.displayPosition(ofDataIndex: 1))
+        let column = try #require(model.columns.column(at: position))
+        let committed = model.commit(
+            [DataGridCellEdit(rowID: .existing(1), columnID: column.id, value: .value(.text(name), isExpression: false))],
+            actionName: "Edit"
+        )
+        try #require(committed)
+    }
+
     private func stringParameters(_ statement: ParameterizedStatement) -> [String] {
         statement.parameters.compactMap { $0 as? String }
     }
 
-    @Test("an edit that takes a row out of the filter leaves it at its display position")
+    @Test("an edit that takes a row out of the filter keeps it in the display order")
     func editKeepsTheRowInTheDisplayOrder() {
         let fixture = makeFixture()
-        #expect(fixture.coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+        #expect(fixture.model.displayedRowIDs == [.existing(1), .existing(2)])
 
         renameBobInStorage(fixture, to: "Zed")
 
-        #expect(fixture.coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+        #expect(fixture.model.displayedRowIDs == [.existing(1), .existing(2)])
     }
 
     @Test("the order is resolved when the filter is set, not when a reader first asks for it")
@@ -129,54 +112,44 @@ struct ValueFilterEditedRowTests {
         let fixture = makeFixture()
         renameBobInStorage(fixture, to: "Zed")
 
-        #expect(fixture.coordinator.activeGridDisplayIDs == [.existing(1), .existing(2)])
+        #expect(fixture.model.displayedRowIDs == [.existing(1), .existing(2)])
     }
 
-    @Test("the mounted grid and the owner agree on the display order after an inline edit")
-    func gridAndOwnerAgreeAfterAnInlineEdit() {
+    @Test("the grid and the window read one display order after an inline edit")
+    func gridAndOwnerAgreeAfterAnInlineEdit() throws {
         let fixture = makeFixture()
-        let grid = mountGrid(on: fixture)
 
-        grid.recordCellEdit(row: 0, columnIndex: 1, newValue: .text("Zed"))
-        grid.recomputeValueFilteredIDs()
+        try editBobInTheGrid(fixture, to: "Zed")
 
-        #expect(grid.displayIDs == [.existing(1), .existing(2)])
-        #expect(grid.displayIDs == fixture.coordinator.activeGridDisplayIDs)
-        #expect(grid.displayRow(at: 0)?.values[1] == .text("Zed"))
-    }
-
-    @Test("a grid with an owner shows the owner's order rather than resolving its own")
-    func gridTakesTheOwnersOrder() {
-        let fixture = makeFixture()
-        let grid = mountGrid(on: fixture)
-        grid.displayOrderProvider = { [.existing(2)] }
-
-        grid.recomputeValueFilteredIDs()
-
-        #expect(grid.displayIDs == [.existing(2)])
+        #expect(fixture.coordinator.changeManager.isCellModified(rowID: .existing(1), columnIndex: 1))
+        #expect(fixture.coordinator.tabSessionRegistry.tableRows(for: fixture.tabId).rows[1].values[1] == .text("Zed"))
+        #expect(fixture.coordinator.displayIDs(forTab: fixture.tabId) == fixture.model.displayedRowIDs)
     }
 
     @Test("deleting the row the grid shows after an edit deletes that row and no other")
     func deleteAfterAnEditTargetsTheShownRow() throws {
         let fixture = makeFixture()
-        let grid = mountGrid(on: fixture)
-        grid.recordCellEdit(row: 0, columnIndex: 1, newValue: .text("Zed"))
+        try editBobInTheGrid(fixture, to: "Zed")
+        let shown = try #require(fixture.model.rowID(at: 0))
+        let shownKey = try #require(fixture.shownKey(at: 0))
 
-        fixture.coordinator.deleteSelectedRows(indices: [0])
+        fixture.coordinator.deleteRows([shown])
 
         let deletes = try fixture.coordinator.changeManager.generateSQL()
             .filter { $0.sql.hasPrefix("DELETE") }
         #expect(deletes.count == 1)
         let parameters = deletes.first.map(stringParameters) ?? []
-        #expect(parameters.contains("2"))
-        #expect(!parameters.contains("3"))
+        let otherKeys = Set(["1", "2", "3"]).subtracting([shownKey])
+        #expect(parameters.contains(shownKey))
+        #expect(otherKeys.isDisjoint(with: parameters))
     }
 
     @Test("a row inspector save after an edit updates the row the grid shows")
     func sidebarSaveAfterAnEditTargetsTheShownRow() throws {
         let fixture = makeFixture()
         renameBobInStorage(fixture, to: "Zed")
-        fixture.coordinator.selectionState.indices = [0]
+        fixture.model.setSelection(GridSelectionReducer.single(GridCoord(row: 0, displayColumn: 0)))
+        let shownKey = try #require(fixture.shownKey(at: 0))
 
         let statements = try fixture.coordinator.sidebarEditStatements(
             editedFields: [InspectorFieldEdit(columnIndex: 1, columnName: "name", newValue: "Yan")]
@@ -185,11 +158,12 @@ struct ValueFilterEditedRowTests {
         #expect(statements.count == 1)
         let parameters = statements.first.map(stringParameters) ?? []
         #expect(parameters.contains("Yan"))
-        #expect(parameters.contains("2"))
-        #expect(!parameters.contains("3"))
+        let otherKeys = Set(["1", "2", "3"]).subtracting([shownKey])
+        #expect(parameters.contains(shownKey))
+        #expect(otherKeys.isDisjoint(with: parameters))
     }
 
-    @Test("adding a row re-resolves the order, so the edited row leaves with the next row-set change")
+    @Test("adding a row re-resolves the order over the edited values")
     func addingARowReResolvesTheOrder() {
         let fixture = makeFixture()
         renameBobInStorage(fixture, to: "Zed")
@@ -203,7 +177,7 @@ struct ValueFilterEditedRowTests {
             return
         }
         #expect(insertedID.isInserted)
-        #expect(fixture.coordinator.activeGridDisplayIDs == [RowID.existing(2), insertedID])
+        #expect(fixture.model.displayedRowIDs == [RowID.existing(2), insertedID])
     }
 
     @Test("changing the filter re-resolves the order over the edited values")
@@ -211,8 +185,8 @@ struct ValueFilterEditedRowTests {
         let fixture = makeFixture()
         renameBobInStorage(fixture, to: "Zed")
 
-        fixture.coordinator.setValueFilter(nameFilter(["Zed"]), forTab: fixture.tabId)
+        fixture.model.setValueFilter(nameFilter(["Zed"]))
 
-        #expect(fixture.coordinator.activeGridDisplayIDs == [.existing(1)])
+        #expect(fixture.model.displayedRowIDs == [.existing(1)])
     }
 }

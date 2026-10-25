@@ -22890,6 +22890,9 @@
         }
       }
     },
+    "All Columns" : {
+
+    },
     "All columns visible" : {
       "localizations" : {
         "fr" : {
@@ -158220,6 +158223,9 @@
     "Search Icons" : {
 
     },
+    "Search In" : {
+
+    },
     "Search index %1$@ uses %2$@. Change or drop that search index first, then save again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -158454,6 +158460,9 @@
           }
         }
       }
+    },
+    "Search stopped" : {
+
     },
     "Search tables, views, databases, queries…" : {
       "localizations" : {
@@ -168627,6 +168636,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Clé de tri"
+          }
+        }
+      }
+    },
+    "Sort key %d of %d, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Sort key %1$d of %2$d, %3$@"
           }
         }
       }

@@ -17,7 +17,7 @@ final class ResultStatusBarUITests: UITestCase {
         XCTAssertTrue(grid.tableRows.element(boundBy: 2).waitToExist(timeout: 10), "The result must lay out three rows")
         let summary = window.buttons["result-status-selection-summary"].firstMatch
 
-        // A plain click selects a row, not a cell, so Shift-click has to take its anchor from the focused cell.
+        // A plain click selects the cell, the anchor a Shift-click extends from.
         millisecondsCell(row: 0, in: grid, of: window).click()
         XCTAssertTrue(
             waitForPredicate(timeout: 10) { grid.tableRows.element(boundBy: 0).isSelected },
@@ -26,6 +26,17 @@ final class ResultStatusBarUITests: UITestCase {
         let third = millisecondsCell(row: 2, in: grid, of: window)
         XCUIElement.perform(withKeyModifiers: .shift) { third.click() }
         expectSummary(summary, count: 3, digits: "916900", after: "Shift-click from row 1 to row 3")
+
+        // The menu of a cell outside the selection acts on that cell and leaves the selection where it is.
+        XCTAssertTrue(grid.tableRows.element(boundBy: 3).waitToExist(timeout: 10), "The result must lay out a fourth row")
+        millisecondsCell(row: 3, in: grid, of: window).rightClick()
+        XCTAssertTrue(window.menus.firstMatch.waitToExist(timeout: 10), "A right-click on a cell must open its menu")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(
+            waitForPredicate(timeout: 5) { !window.menus.firstMatch.exists },
+            "Escape must close the cell's menu"
+        )
+        expectSummary(summary, count: 3, digits: "916900", after: "A right-click outside the selection")
 
         millisecondsCell(row: 0, in: grid, of: window).click()
         XCTAssertTrue(

@@ -2,9 +2,6 @@
 //  MainContentView+EventHandlers.swift
 //  TablePro
 //
-//  Extension containing event handler methods for MainContentView.
-//  Extracted to reduce main view complexity.
-//
 
 import os
 import SwiftUI
@@ -29,9 +26,7 @@ extension MainContentView {
         updateWindowTitleAndFileState()
         let t2 = Date()
 
-        /// A tab selection change in a background window is usually a side effect rather than
-        /// navigation, a close refocusing its neighbour above all, and that window re-marks its own
-        /// object tree the moment it becomes key.
+        // In a background window this is usually a side effect (a close refocusing a neighbour); it re-marks once it is key.
         if coordinator.isKeyWindow {
             coordinator.syncSidebarObjectSelection()
         }
@@ -72,7 +67,7 @@ extension MainContentView {
     }
 
     func handleColumnsChange(newColumns: [String]?) {
-        // Skip during tab switch — handleTabChange already configures the change manager
+        // Skip during tab switch: handleTabChange already configures the change manager
         guard !coordinator.isHandlingTabSwitch else { return }
 
         if let newColumns = newColumns {
@@ -140,7 +135,7 @@ extension MainContentView {
         case .skip:
             return
         case .reuseActiveTab:
-            coordinator.selectionState.indices = []
+            coordinator.selectedTabGridModel?.clearSelection()
             coordinator.openTableTab(table, schema: ref.qualifyingSchema)
         case .openNewTab:
             coordinator.openTableTab(table, schema: ref.qualifyingSchema)
@@ -150,9 +145,7 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
-        /// A selection change, a refresh or an undo rebuilds the fields under whatever was being
-        /// typed, so the run it was building ends here rather than folding the next keystroke into
-        /// a step that belongs to another row.
+        // A selection change, refresh or undo rebuilds the fields, so the typed run ends here, not in another row's step.
         coordinator.endInspectorEditRun()
         switch gridSelectionOwner {
         case .schemaGrid:
@@ -165,19 +158,15 @@ extension MainContentView {
             break
         }
 
-        let selectedIndices = coordinator.selectionState.indices
         guard let tab = coordinator.tabManager.selectedTab,
-            !selectedIndices.isEmpty
+              let model = coordinator.activeGridModel,
+              !model.selection.isEmpty
         else {
             clearSidebarEditState()
             return
         }
-        let tableRows = coordinator.tabSessionRegistry.tableRows(for: tab.id)
-
-        let displayIDs = coordinator.activeGridDisplayIDs
-        let selectedRows = selectedIndices.sorted().compactMap {
-            DisplayRowMapping.row(forDisplay: $0, displayIDs: displayIDs, in: tableRows)
-        }
+        let tableRows = model.rows
+        let selectedRows = model.selection.affectedRows.compactMap { model.row(at: $0) }
         let allRows = selectedRows.map { Array($0.values) }
 
         let columnTypes = tableRows.columnTypes.indices.compactMap { tableRows.editingColumnType(at: $0) }
@@ -204,7 +193,6 @@ extension MainContentView {
             }
         }
         trailingPaneState.inspector.editState.configure(
-            selectedRowIndices: selectedIndices,
             rowIDs: selectedRows.map(\.id),
             allRows: stringRows,
             absentCells: selectedRows.map(\.absentColumns),
@@ -266,8 +254,7 @@ extension MainContentView {
             capturedCoordinator.stageInspectorFieldRemoval(columnIndex: columnIndex, rowIDs: rowIDs)
         }
         trailingPaneState.inspector.editState.onDetachedFieldChanged = { columnIndex, newValue, rowIDs, isExpression in
-            /// A value window commits on every keystroke exactly as the field it detached from
-            /// does, so its typing folds into one undo step the same way.
+            // A value window commits per keystroke like its field, so its typing folds into one undo step the same way.
             capturedCoordinator.rowEditingCoordinator.stageInspectorFieldEdit(
                 columnIndex: columnIndex,
                 value: newValue,
@@ -278,13 +265,7 @@ extension MainContentView {
         }
     }
 
-    /// The per-column display formats the grid is applying, in column order.
-    ///
-    /// The inspector had no idea these existed: its values came from a raw pass that decoded bytes
-    /// with `isoLatin1` and passed text straight through, while the dead tuple path beside it
-    /// computed formatted values nothing displayed. Only the editor choice is taken from the
-    /// format; the value stays raw, because a save writes what the editor holds and a formatted
-    /// timestamp written back into an integer column would corrupt it.
+    // Only the editor comes from the format; the value stays raw, since a formatted timestamp saved back would corrupt it.
     private func inspectorDisplayFormats(
         for tab: QueryTab,
         columns: [String],
@@ -294,7 +275,7 @@ extension MainContentView {
         let scope = tab.tableContext.scope(connectionId: coordinator.connection.id)
         let storageKeys = ValueDisplayFormatColumnKey.storageKeys(for: columns)
         let activeFormats = InspectorValueDisplayFormatResolver.activeFormats(
-            from: coordinator.dataTabDelegate?.tableViewCoordinator,
+            from: coordinator.existingGridModel(forTab: tab.id),
             matching: columns
         )
         let storedFormats = activeFormats == nil
@@ -308,10 +289,7 @@ extension MainContentView {
                 columnType: index < types.count ? types[index] : nil,
                 databaseType: coordinator.connection.type
             )
-            /// `.raw` is what the resolver returns for "nobody chose a format", and it is also what
-            /// `FieldEditorResolver` reads as "skip JSON, PHP and image detection". Forwarding it
-            /// would take the content-driven editors away from every column that has no override,
-            /// which is nearly all of them, so absence stays nil.
+            // FieldEditorResolver also reads .raw as skip JSON, PHP and image detection, so no override stays nil.
             return resolved == .raw ? nil : resolved
         }
     }
@@ -330,11 +308,9 @@ extension MainContentView {
         trailingPaneState.inspector.editState.onDetachedFieldChanged = nil
     }
 
-    /// Populate the inspector from the grid that owns a schema selection, and send every
-    /// edit back to it so a change lands in its change manager exactly as an inline
-    /// grid edit does, with one undo step and one pending change.
+    // Edits go back to the owning grid so they land in its change manager with one undo step, like an inline edit.
     private func updateSchemaSidebarEditState() {
-        guard let displayRow = coordinator.selectionState.indices.min(),
+        guard let displayRow = coordinator.activeGridModel?.selection.affectedRows.first,
             let row = selectedInspectorRow
         else {
             clearSidebarEditState()

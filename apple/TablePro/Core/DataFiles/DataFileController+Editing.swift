@@ -45,8 +45,12 @@ extension DataFileController {
     }
 
     func setCell(pageRow: Int, column: Int, text: String?) {
-        guard isEditable, let table, let key = key(forPageRow: pageRow),
-              columnNames.ids.indices.contains(column) else { return }
+        guard let key = key(forPageRow: pageRow) else { return }
+        setCell(key: key, column: column, text: text)
+    }
+
+    func setCell(key: Int, column: Int, text: String?) {
+        guard isEditable, let table, columnNames.ids.indices.contains(column) else { return }
         let id = columnNames.ids[column]
         guard let tabularColumn = table.column(id) else { return }
         let original = table.cell(key: key, column: tabularColumn)
@@ -61,8 +65,7 @@ extension DataFileController {
         commit(updated, actionName: String(localized: "Edit Cell"))
     }
 
-    /// The cell edits made inside `work` are one undo step and one page refresh, rather than a whole page rebuilt
-    /// for every cell of a paste.
+    // One undo step and one page refresh for every cell edit made inside `work`.
     func batchCellEdits(actionName: String, _ work: () -> Void) {
         guard pendingCellEdits == nil else {
             work()
@@ -241,9 +244,10 @@ extension DataFileController {
         } else {
             kindOverrides[id] = nil
         }
-        gridCoordinator?.selectionSummaryTracker.rulesDidChange()
         if sortState.isSorting || !filterState.appliedFilters.isEmpty {
             runQuery()
+        } else {
+            gridModel.summaryRulesDidChange()
         }
     }
 }

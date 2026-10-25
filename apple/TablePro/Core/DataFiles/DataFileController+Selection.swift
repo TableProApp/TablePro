@@ -6,14 +6,12 @@
 import Foundation
 import TableProTabular
 
-/// One column and the rows a command changes in it.
 struct DataFileColumnCells: Equatable, Sendable {
     let column: TabularColumnID
     let keys: [Int]
 }
 
-/// Each column keeps its own rows, so a selection of separate cells changes those cells and not the rows and columns
-/// between them.
+// Each column keeps its own rows, so a selection of separate cells changes those cells and not the ones between them.
 struct DataFileCellTarget: Equatable {
     let cells: [DataFileColumnCells]
     let coversWholeColumns: Bool
@@ -25,28 +23,24 @@ struct DataFileCellTarget: Equatable {
 
 extension DataFileController {
     var gridSelection: GridSelection {
-        gridCoordinator?.selectionController.selection ?? .empty
+        gridModel.selection
+    }
+
+    func columnID(atDisplayPosition position: Int) -> TabularColumnID? {
+        guard let dataIndex = gridModel.columns.dataIndex(atDisplayPosition: position),
+              columnNames.ids.indices.contains(dataIndex) else { return nil }
+        return columnNames.ids[dataIndex]
     }
 
     func selectedColumnIDs() -> [TabularColumnID] {
-        guard let coordinator = gridCoordinator else { return [] }
-        return coordinator.dataColumnIndices(in: gridSelection.columns).compactMap { index in
-            columnNames.ids.indices.contains(index) ? columnNames.ids[index] : nil
-        }
+        gridSelection.columns.compactMap { columnID(atDisplayPosition: $0) }
     }
 
     func activeCell() -> (key: Int, column: TabularColumnID)? {
-        guard let coordinator = gridCoordinator else { return nil }
-        if let active = gridSelection.activeCell {
-            guard let key = key(forPageRow: active.row),
-                  let column = coordinator.dataColumnIndex(atDisplayPosition: active.displayColumn),
-                  columnNames.ids.indices.contains(column) else { return nil }
-            return (key, columnNames.ids[column])
-        }
-        guard let focused = (coordinator.tableView as? KeyHandlingTableView)?.pasteAnchorCell(),
-              let key = key(forPageRow: focused.row),
-              columnNames.ids.indices.contains(focused.column) else { return nil }
-        return (key, columnNames.ids[focused.column])
+        guard let active = gridModel.activeCell,
+              case .existing(let key) = active.rowID,
+              columnNames.ids.indices.contains(active.column.dataIndex) else { return nil }
+        return (key, columnNames.ids[active.column.dataIndex])
     }
 
     func cellTarget(explicitColumn: TabularColumnID? = nil) -> DataFileCellTarget? {
@@ -57,45 +51,32 @@ extension DataFileController {
         if !columns.isEmpty {
             return .wholeColumns(columns, keys: visibleKeys())
         }
-        guard let coordinator = gridCoordinator else { return nil }
-        guard !gridSelection.isEmpty else { return focusedCellTarget() }
-        var pairs: [(column: Int, pageRow: Int)] = []
-        for row in gridSelection.affectedRows {
-            for column in coordinator.dataColumnIndices(in: gridSelection.columns(in: row)) {
-                pairs.append((column: column, pageRow: row))
+        let selection = gridSelection
+        guard !selection.isEmpty else { return focusedCellTarget() }
+        var cells: [(column: TabularColumnID, key: Int)] = []
+        for row in selection.affectedRows {
+            guard let key = key(forPageRow: row) else { continue }
+            for position in selection.columns(in: row) {
+                guard let column = columnID(atDisplayPosition: position) else { continue }
+                cells.append((column: column, key: key))
             }
         }
-        return cellTarget(pairs: pairs)
+        return cellTarget(cells: cells)
     }
 
-    /// The cells the grid resolved, read the way `cellTarget()` reads a selection: whole selected columns cover every
-    /// visible row, and anything else covers those cells only.
-    func cellTarget(for targets: [SetValueTarget]) -> DataFileCellTarget? {
-        guard let target = cellTarget(pairs: targets.map { (column: $0.columnIndex, pageRow: $0.displayRow) }) else {
-            return nil
-        }
-        let wholeColumns = selectedColumnIDs()
-        let columns = target.cells.map(\.column)
-        guard !wholeColumns.isEmpty, Set(columns).isSubset(of: Set(wholeColumns)) else { return target }
-        return .wholeColumns(columns, keys: visibleKeys())
-    }
-
-    private func cellTarget(pairs: [(column: Int, pageRow: Int)]) -> DataFileCellTarget? {
-        var order: [Int] = []
-        var keysByColumn: [Int: [Int]] = [:]
-        var seen: [Int: Set<Int>] = [:]
-        for pair in pairs where columnNames.ids.indices.contains(pair.column) {
-            guard let key = key(forPageRow: pair.pageRow), seen[pair.column, default: []].insert(key).inserted else {
-                continue
+    private func cellTarget(cells: [(column: TabularColumnID, key: Int)]) -> DataFileCellTarget? {
+        var order: [TabularColumnID] = []
+        var keysByColumn: [TabularColumnID: [Int]] = [:]
+        var seen: [TabularColumnID: Set<Int>] = [:]
+        for cell in cells where seen[cell.column, default: []].insert(cell.key).inserted {
+            if keysByColumn[cell.column] == nil {
+                order.append(cell.column)
             }
-            if keysByColumn[pair.column] == nil {
-                order.append(pair.column)
-            }
-            keysByColumn[pair.column, default: []].append(key)
+            keysByColumn[cell.column, default: []].append(cell.key)
         }
         guard !order.isEmpty else { return nil }
-        let cells = order.map { DataFileColumnCells(column: columnNames.ids[$0], keys: keysByColumn[$0] ?? []) }
-        return DataFileCellTarget(cells: cells, coversWholeColumns: false)
+        let targets = order.map { DataFileColumnCells(column: $0, keys: keysByColumn[$0] ?? []) }
+        return DataFileCellTarget(cells: targets, coversWholeColumns: false)
     }
 
     private func focusedCellTarget() -> DataFileCellTarget? {

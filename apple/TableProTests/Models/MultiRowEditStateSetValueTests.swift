@@ -32,7 +32,6 @@ struct MultiRowEditStateSetValueTests {
     ) -> MultiRowEditState {
         let state = MultiRowEditState()
         state.configure(
-            selectedRowIndices: Set(rows.indices),
             rowIDs: rowIDs,
             allRows: rows,
             expressionCells: expressionCells,
@@ -221,7 +220,7 @@ struct MultiRowEditStateSetValueTests {
         #expect(detached.last?.isExpression == false)
     }
 
-    /// The grid staged `now()`; the inspector shows it, the user types over it and then types it back.
+    // The grid staged `now()`; the user types over it in the inspector, then types it back.
     @Test("Clearing a field back to the SQL its rows held sends it back as SQL, not as text")
     func revertKeepsTheExpression() {
         let rowID = RowID.existing(0)
@@ -362,8 +361,7 @@ struct MultiRowEditStateSetValueTests {
         #expect(reverted == generated)
     }
 
-    /// After a per-row edit the inspector is rebuilt with the column modified and its rows disagreeing.
-    /// `configure` wrote `originalValue ?? ""` as the pending value, so the field showed an empty value.
+    // `configure` wrote `originalValue ?? ""` as the pending value, so rows that disagreed showed an empty value.
     @Test("A modified column the rows disagree on reads Multiple values, not an empty pending value")
     func modifiedMultiValuedFieldReadsMultipleValues() {
         let state = makeState(
