@@ -28,7 +28,11 @@ bash scripts/test-gtk-postgres.sh
 
 It streamed 100,000 rows with 2 KiB text cells, navigated backward through every 5,000-row page, reloaded earlier pages from the spool, returned to the first page, and verified that the transaction marker stayed unchanged after visiting other pages.
 
-The first GitHub fast-check run found an empty-page identity regression; it was fixed in `a799f05`. The next run on that commit failed Clippy in newly changed editor functions and a test helper. Those findings were fixed in the incremental-encoding follow-up, and `ci-local.sh full` passed locally afterward. GitHub must rerun checks on the new commit. Forgejo has not run; the maintainer handles that gate. PR #1621 and issue #554 remain open. This evidence does not approve ADR 0025 or close #554.
+The first GitHub fast-check run found an empty-page identity regression; it was fixed in `a799f05`. The next run on that commit failed Clippy in newly changed editor functions and a test helper. Those findings were fixed in the incremental-encoding follow-up, and `ci-local.sh full` passed locally afterward. This historical run record does not approve ADR 0025.
+
+## Follow-up status, October 25, 2026
+
+PR #1660 merged into Linux at `f0ee2e104a3ab5f01ef51ecf2eb1b4f8ea473699`, and #554 was closed at the maintainer's request. At merge time, exact-head GitHub preflight, Fast GTK, Flatpak and Linux PR readiness were still running. The hosted preflight later passed. Check PR #1660 for later GitHub results. The merge-order observation is recorded on [#1543](https://github.com/cozyGarage/BookiE/issues/1543). Forgejo acceptance and maintainer review of ADR 0025 are not established by this report.
 
 The encoder writes MessagePack directly into encrypted 64 KiB chunks and refuses further output once the shared spool quota is exhausted, avoiding a second full-page serialization buffer. Exact arbitrary-precision JSON round trips still require rendering one JSON cell to temporary text during encoding. The existing page itself remains live until the editor acknowledges the append.
 

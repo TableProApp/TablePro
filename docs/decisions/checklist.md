@@ -80,7 +80,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Secret Service credentials | [ADR 0004](0004-libsecret-secret-storage.md), [secret-storage spec](../../specs/secret-storage/spec.md) (draft) |
 | Governed consumer seam (`PolicyGuard`) | [ADR 0016](0016-governed-consumer-seam.md), [governed SQL spec](../../specs/governed-sql/spec.md) (draft) |
 | Server-side cancellation | [ADR 0005](0005-server-side-cancellation.md) |
-| Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted) and [ADR 0025](0025-transient-result-page-spool.md) (proposed); #554 owns same-execution navigation beyond the RAM window |
+| Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted) and [ADR 0025](0025-transient-result-page-spool.md) (proposed); same-execution navigation for fetched PostgreSQL pages landed in #1660. #1032 tracks broader resource and lifecycle acceptance. |
 | Sidebar object tree | [ADR 0012](0012-sidebar-object-tree.md) |
 | Multiple result sets | [ADR 0013](0013-multiple-query-result-sets.md) |
 | Full-table export read snapshot | [ADR 0014](0014-full-table-export-snapshot.md) (not the same as ADR 0015) |
