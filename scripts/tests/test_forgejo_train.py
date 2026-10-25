@@ -41,15 +41,20 @@ def git(cwd, *args):
     ).stdout.strip()
 
 
+def init_git_repo(cwd, *args):
+    git(cwd, "init", *args)
+    git(cwd, "config", "--local", "maintenance.auto", "false")
+
+
 class Fixture:
     def __init__(self, tmp, remote_path="hosts/github.com/cozyGarage/BookiE.git"):
         self.tmp = Path(tmp)
         self.bookie = self.tmp / remote_path
         self.bookie.mkdir(parents=True)
-        git(self.bookie, "init", "--quiet", "--bare", "--initial-branch=linux")
+        init_git_repo(self.bookie, "--quiet", "--bare", "--initial-branch=linux")
         self.repo = self.tmp / "clone"
         self.repo.mkdir()
-        git(self.repo, "init", "--quiet", "--initial-branch=linux")
+        init_git_repo(self.repo, "--quiet", "--initial-branch=linux")
         git(self.repo, "remote", "add", "fork", str(self.bookie))
         (self.repo / ".gitattributes").write_text("src/registry.rs merge=union\n")
         (self.repo / "src").mkdir()
@@ -128,6 +133,10 @@ class ForgejoTrainTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_fixture_git_repositories_disable_automatic_maintenance(self):
+        for repository in (self.fixture.repo, self.fixture.bookie):
+            self.assertEqual(git(repository, "config", "--local", "--get", "maintenance.auto"), "false")
+
     def test_a_formatting_change_confined_to_union_merged_files_is_committed_to_the_train(self):
         result = self.fixture.run("feature-a", "feature-b", fmt_changes="src/registry.rs")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -152,7 +161,7 @@ class ForgejoTrainTests(unittest.TestCase):
     def test_branches_come_from_the_bookie_remote_even_when_origin_points_elsewhere(self):
         decoy = Path(self.tmp.name) / "hosts/upstream/TablePro.git"
         decoy.mkdir(parents=True)
-        git(decoy, "init", "--quiet", "--bare")
+        init_git_repo(decoy, "--quiet", "--bare")
         git(self.fixture.repo, "remote", "add", "origin", str(decoy))
         result = self.fixture.run("feature-a", "feature-b")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -168,9 +177,10 @@ class ForgejoTrainTests(unittest.TestCase):
         self.assertEqual(git(self.fixture.repo, "rev-parse", "HEAD"), original_head)
 
     def test_branches_come_from_github_even_when_the_forgejo_mirror_shares_the_repository_path(self):
-        mirror = Path(self.tmp.name) / "hosts/10.61.0.11/cozyGarage/BookiE.git"
+        mirror = Path(self.tmp.name) / "hosts/forgejo.invalid/cozyGarage/BookiE.git"
+        self.assertEqual(mirror.parts[-3], "forgejo.invalid")
         mirror.mkdir(parents=True)
-        git(mirror, "init", "--quiet", "--bare")
+        init_git_repo(mirror, "--quiet", "--bare")
         git(self.fixture.repo, "remote", "add", "forgejo", str(mirror))
         result = self.fixture.run("feature-a", "feature-b")
         self.assertEqual(result.returncode, 0, result.stderr)
