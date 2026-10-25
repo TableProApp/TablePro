@@ -40,7 +40,7 @@ pub fn present(
         return;
     };
 
-    let dialog = adw::Dialog::builder().title(tr!("Server activity")).build();
+    let dialog = adw::Dialog::builder().title(tr!("Server Activity")).build();
     dialog.set_content_width(900);
     dialog.set_content_height(560);
 

@@ -24,7 +24,7 @@ pub(super) fn primary_menu_model() -> gio::Menu {
     menu.append_section(None, &query_section);
     let history_section = gio::Menu::new();
     history_section.append(Some(&crate::tr!("Query History")), Some("win.show-history"));
-    history_section.append(Some(&crate::tr!("Server activity")), Some("win.show-activity"));
+    history_section.append(Some(&crate::tr!("Server Activity")), Some("win.show-activity"));
     history_section.append(Some(&crate::tr!("Audit Log")), Some("win.show-audit"));
     history_section.append(Some(&crate::tr!("Catalog")), Some("win.show-catalog"));
     history_section.append(Some(&crate::tr!("Explain query")), Some("win.explain-query"));
