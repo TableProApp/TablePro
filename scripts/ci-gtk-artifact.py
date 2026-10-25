@@ -7,9 +7,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
+APP_MANIFEST = ROOT / "apps/linux/app/Cargo.toml"
+TOOLKIT_PACKAGES = ("gtk4", "glib-2.0", "libadwaita-1", "gtksourceview-5")
 
 
 def source_identity():
@@ -30,6 +33,52 @@ def digest(path):
         return hashlib.file_digest(binary, "sha256").hexdigest()
 
 
+def feature_identity():
+    with APP_MANIFEST.open("rb") as manifest_file:
+        manifest = tomllib.load(manifest_file)
+    defaults = manifest.get("features", {}).get("default")
+    if not isinstance(defaults, list) or not all(isinstance(feature, str) for feature in defaults):
+        raise ValueError("Build artifact requires the application's default Cargo features")
+    return {"defaults_enabled": True, "enabled_defaults": sorted(defaults)}
+
+
+def toolkit_identity():
+    identity = {}
+    for package in TOOLKIT_PACKAGES:
+        version = subprocess.check_output(["pkg-config", "--modversion", package], text=True).strip()
+        if not version:
+            raise ValueError(f"Build artifact requires a {package} version")
+        identity[package] = version
+    return identity
+
+
+def version_parts(version):
+    if not isinstance(version, str) or not re.fullmatch(r"\d+(?:\.\d+)*", version):
+        raise ValueError("Build artifact toolkit runtime version is invalid")
+    return tuple(int(part) for part in version.split("."))
+
+
+def version_is_compatible(current, required):
+    current_parts = version_parts(current)
+    required_parts = version_parts(required)
+    if current_parts[0] != required_parts[0]:
+        return False
+    width = max(len(current_parts), len(required_parts))
+    current_parts += (0,) * (width - len(current_parts))
+    required_parts += (0,) * (width - len(required_parts))
+    return current_parts >= required_parts
+
+
+def verify_toolkit_runtime(required, current):
+    if not isinstance(required, dict) or set(required) != set(TOOLKIT_PACKAGES):
+        raise ValueError("Build artifact toolkit runtime identity is incomplete")
+    if not isinstance(current, dict) or set(current) != set(TOOLKIT_PACKAGES):
+        raise ValueError("Build artifact toolkit runtime identity is unavailable")
+    for package in TOOLKIT_PACKAGES:
+        if not version_is_compatible(current[package], required[package]):
+            raise ValueError(f"Build artifact toolkit runtime is incompatible: {package}")
+
+
 def create(binary, output, expected_sha, *, package=False):
     if source_identity() != expected_sha:
         raise ValueError("Build artifact source does not match the requested commit")
@@ -45,10 +94,13 @@ def create(binary, output, expected_sha, *, package=False):
     shutil.copyfile(binary, destination)
     destination.chmod(0o644)
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "artifact_type": "debian-package" if package else "native-binary",
         "source_commit": expected_sha,
         "architecture": platform.machine(),
         "profile": "release-package" if package else "ci",
+        "features": feature_identity(),
+        "toolkit_runtime": None if package else toolkit_identity(),
         "sha256": binary_digest,
     }
     (output / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
@@ -60,8 +112,11 @@ def verify(directory, expected_sha, *, package=False):
     if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 4096:
         raise ValueError("Build artifact requires a small regular manifest")
     manifest = json.loads(manifest_path.read_text())
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
         raise ValueError("Build artifact manifest version is unsupported")
+    artifact_type = "debian-package" if package else "native-binary"
+    if manifest.get("artifact_type") != artifact_type:
+        raise ValueError("Build artifact type does not match this consumer")
     if manifest.get("source_commit") != expected_sha:
         raise ValueError("Build artifact source does not match the requested commit")
     if manifest.get("architecture") != platform.machine():
@@ -69,6 +124,13 @@ def verify(directory, expected_sha, *, package=False):
     profile = "release-package" if package else "ci"
     if manifest.get("profile") != profile:
         raise ValueError(f"Build artifact profile must be {profile}")
+    if manifest.get("features") != feature_identity():
+        raise ValueError("Build artifact feature set does not match this checkout")
+    if package:
+        if manifest.get("toolkit_runtime") is not None:
+            raise ValueError("Package artifact cannot claim a native GTK runtime identity")
+    else:
+        verify_toolkit_runtime(manifest.get("toolkit_runtime"), toolkit_identity())
     binary = directory / ("bookie.deb" if package else "bookie")
     if digest(binary) != manifest.get("sha256"):
         raise ValueError("Build artifact digest does not match its manifest")

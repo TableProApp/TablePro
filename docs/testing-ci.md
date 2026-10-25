@@ -10,6 +10,12 @@ Headless driver, TLS, PostgreSQL release and dump, and socket/SSH jobs start aft
 
 Every job in the Forgejo merge workflow has an explicit timeout. Checkout credentials are supplied to Git as a host-scoped HTTP authorization header for the clone step; they are not embedded in the clone URL or saved in the checkout's `origin` URL. This reduces accidental exposure through process arguments and `.git/config`, but it does not isolate workflow code. `any-host` runners execute branch code on shared hosts with Docker access, so only trusted branch writers may trigger these workflows until a dedicated isolated runner is deployed and accepted. See the [runner maintenance and isolation proposal](proposals/runner-maintenance-and-isolation.md) for the pending deployment work.
 
+### Shared native GTK artifact
+
+On Forgejo merge-workflow runs, `gtk-build` compiles one `tablepro-app` binary for the exact source commit. The `e2e`, `gtk` and `gtk-server` jobs download and verify that artifact instead of compiling their own copy. The manifest records the source commit, SHA-256, architecture, `ci` profile, default app features and GTK, GLib, libadwaita and GtkSourceView versions. A consumer must match the source, architecture, profile and features, and provide the same toolkit major versions at versions at least as new as the build. The distro-floor Debian package has a separate artifact and acceptance path.
+
+Artifact reuse reduces repeated builds but does not by itself establish the time saved. Compare queue, build and total workflow durations across equivalent Forgejo runs before claiming a gate-time improvement; keep every test job and fixture isolated.
+
 The `ubuntu2604-canary` runner executes the headless multi-database TLS fixture job, which builds and starts many containers. Its GTK, libadwaita and GtkSourceView versions are below the supported floor, so GTK jobs stay on eligible hosts.
 
 ### Gating several pull requests at once
