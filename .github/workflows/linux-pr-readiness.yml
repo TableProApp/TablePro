@@ -1,0 +1,34 @@
+name: Linux PR readiness
+
+on:
+  pull_request:
+    branches: [linux]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: linux-pr-readiness-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: Linux PR readiness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Wait for applicable checks on the exact pull request head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check-pr-readiness.py
