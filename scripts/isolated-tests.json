@@ -790,6 +790,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::dispatch_tests::closing_an_idle_session_clears_its_status"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::dispatch_tests::a_transaction_action_refuses_a_changed_connection_identity"
     ],
     [

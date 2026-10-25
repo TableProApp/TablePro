@@ -706,6 +706,7 @@ fn transaction_buttons_close_only_the_idle_owned_session() {
     spin_until(|| fixture.controller.model().session.is_none());
     spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 1);
     assert_eq!(fixture.sessions.commits.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.controller.model().status.label().as_str(), crate::tr!("Session committed"));
     let replacement = fixture.open_transaction();
     assert_ne!(replacement, id);
     fixture
@@ -728,6 +729,24 @@ fn transaction_buttons_close_only_the_idle_owned_session() {
     spin_until(|| fixture.controller.model().session.is_none());
     spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 2);
     assert_eq!(fixture.sessions.rollbacks.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.controller.model().status.label().as_str(), crate::tr!("Session rolled back"));
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn closing_an_idle_session_clears_its_status() {
+    let fixture = EditorFixture::new();
+    fixture.controller.model().session_button.set_active(true);
+    spin_until(|| fixture.controller.model().session.is_some());
+    fixture.controller.model().session_button.set_active(false);
+    spin_until(|| {
+        fixture.sessions.closes.load(Ordering::SeqCst) == 1 && fixture.controller.model().run_button.is_sensitive()
+    });
+
+    assert_ne!(
+        fixture.controller.model().status.label().as_str(),
+        crate::tr!("Closing session…")
+    );
 }
 
 #[test]
