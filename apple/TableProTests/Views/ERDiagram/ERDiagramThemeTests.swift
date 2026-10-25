@@ -29,8 +29,11 @@ struct ERDiagramThemeTests {
     private static let themed: [ThemeSlot: String] = [
         .windowBackdrop: "#1E2030",
         .gridBackground: "#2A6F4E",
+        .gridHeaderBackground: "#7A3B8F",
+        .gridHeaderText: "#F8F8F2",
         .gridText: "#E0E0E0",
         .gridLine: "#6272A4",
+        .gridFocusBorder: "#FF79C6",
     ]
 
     private func appearance(_ name: NSAppearance.Name) throws -> NSAppearance {
@@ -69,17 +72,19 @@ struct ERDiagramThemeTests {
 
             #expect(palette.backdrop == Fixture.baked(.controlBackgroundColor, in: appearance))
             #expect(palette.nodeFill == Fixture.baked(.controlBackgroundColor, in: appearance))
+            #expect(palette.headerFill == nil)
             #expect(palette.headerWash(cluster: nil) == mainAccentWash(in: appearance))
             #expect(palette.headerWash(cluster: .systemGreen) == mainClusterWash(.systemGreen, in: appearance))
             #expect(palette.rule == Fixture.baked(.tertiaryLabelColor, in: appearance))
             #expect(palette.selectionRule == Fixture.baked(.controlAccentColor, in: appearance))
             #expect(palette.edge == mainEdge(in: appearance))
             #expect(palette.text == .labelColor)
+            #expect(palette.headerText == .labelColor)
             #expect(palette.secondaryText == .secondaryLabelColor)
         }
     }
 
-    @Test("A theme colors the tables from the grid's slots and keeps the header wash, selection, meaning hues and connectors system")
+    @Test("A theme colors the tables from the grid's slots, header and focus border included, and keeps meaning hues and connectors system")
     func themeColorsTablesFromGridSlots() throws {
         try Fixture.preservingEngine {
             try Fixture.adopt(Self.themed, appearance: .light)
@@ -88,10 +93,11 @@ struct ERDiagramThemeTests {
 
             #expect(Fixture.hex(palette.backdrop) == "#1E2030")
             #expect(Fixture.hex(palette.nodeFill) == "#2A6F4E")
-            #expect(palette.headerWash(cluster: nil) == mainAccentWash(in: appearance))
+            #expect(Fixture.hex(palette.headerFill) == "#7A3B8F")
             #expect(Fixture.hex(palette.rule) == "#6272A4")
-            #expect(palette.selectionRule == Fixture.baked(.controlAccentColor, in: appearance))
+            #expect(Fixture.hex(palette.selectionRule) == "#FF79C6")
             #expect(HexColor.string(from: palette.text) == "#E0E0E0")
+            #expect(HexColor.string(from: palette.headerText) == "#F8F8F2")
             #expect(palette.secondaryText == .secondaryLabelColor)
             #expect(palette.edge == mainEdge(in: appearance))
             #expect(palette.headerWash(cluster: .systemGreen) == mainClusterWash(.systemGreen, in: appearance))
@@ -114,9 +120,49 @@ struct ERDiagramThemeTests {
             ))
 
             #expect(Fixture.hex(palette.nodeFill) == "#2A6F4E")
+            #expect(palette.headerFill == nil)
             #expect(palette.headerWash(cluster: nil) == mainAccentWash(in: appearance))
             #expect(Fixture.matches(body, try reference(palette.nodeFill)))
             #expect(!Fixture.matches(header, try reference(palette.nodeFill)))
+        }
+    }
+
+    @Test("A header the theme sets fills its own color, even the body's, and takes only a cluster's wash over it")
+    func themedHeaderFillsItsOwnColor() throws {
+        try Fixture.preservingEngine {
+            try Fixture.adopt([.gridBackground: "#2A6F4E", .gridHeaderBackground: "#2A6F4E"], appearance: .light)
+            #expect(Fixture.hex(ERDiagramPalette(appearance: try appearance(.aqua)).headerFill) == "#2A6F4E")
+
+            try Fixture.adopt([.gridHeaderBackground: "#7A3B8F"], appearance: .light)
+            let aqua = try appearance(.aqua)
+            let palette = ERDiagramPalette(appearance: aqua)
+            let headerFill = try #require(palette.headerFill)
+            #expect(Fixture.hex(headerFill) == "#7A3B8F")
+
+            let padding = Int(ERDiagramSceneRenderer.exportPadding)
+            @MainActor func headerPixel(cluster: NSColor?) throws -> NSColor {
+                let (scene, rect) = scene(clusterColor: cluster)
+                let image = try #require(ERDiagramSceneRenderer.image(scene, appearance: aqua, scale: 1))
+                let rep = try #require(image.representations.first as? NSBitmapImageRep)
+                return try #require(Fixture.pixel(
+                    rep, x: padding + Int(rect.maxX) - 20, y: padding + Int(ERDiagramLayout.headerHeight / 2)
+                ))
+            }
+            #expect(Fixture.matches(try headerPixel(cluster: nil), try reference(headerFill)))
+            #expect(!Fixture.matches(try headerPixel(cluster: .systemGreen), try reference(headerFill)))
+        }
+    }
+
+    @Test("A header text the theme leaves out takes the node text, which sits on the same fill")
+    func headerTextFollowsTheNodeText() throws {
+        try Fixture.preservingEngine {
+            try Fixture.adopt([.gridText: "#E0E0E0"], appearance: .light)
+            let aqua = try appearance(.aqua)
+            let palette = ERDiagramPalette(appearance: aqua)
+
+            #expect(HexColor.string(from: palette.text) == "#E0E0E0")
+            #expect(HexColor.string(from: palette.headerText) == "#E0E0E0")
+            #expect(palette.selectionRule == Fixture.baked(.controlAccentColor, in: aqua))
         }
     }
 
@@ -242,6 +288,7 @@ struct ERDiagramThemeTests {
             #expect(!Fixture.matches(header, try reference(palette.nodeFill)))
             if themed {
                 #expect(Fixture.hex(palette.backdrop) == "#1E2030")
+                #expect(Fixture.matches(header, try reference(try #require(palette.headerFill))))
             } else {
                 #expect(palette.backdrop == Fixture.baked(.controlBackgroundColor, in: appearance))
             }

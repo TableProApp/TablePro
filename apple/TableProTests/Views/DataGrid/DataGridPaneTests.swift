@@ -6,6 +6,7 @@
 import AppKit
 @testable import TablePro
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 @MainActor
@@ -23,6 +24,25 @@ struct DataGridPaneTests {
             stop.pointee = true
         }
         return found
+    }
+
+    private func titleColor(_ column: NSTableColumn) -> NSColor? {
+        let title = column.headerCell.attributedStringValue
+        guard title.length > 0 else { return nil }
+        return title.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+    }
+
+    private func isBold(_ column: NSTableColumn) -> Bool {
+        let title = column.headerCell.attributedStringValue
+        guard title.length > 0 else { return false }
+        let font = title.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        return font?.fontDescriptor.symbolicTraits.contains(.bold) == true
+    }
+
+    private func themedGrid(_ overrides: [ThemeSlot: String]) throws -> (HostedDataGrid, ThemeScope) {
+        let scope = ThemeScope.fixed(try ThemeTestFixture.theme(.light, overrides))
+        let grid = HostedDataGrid(rows: GridFixtureRows.people, prepare: { _, model in model.themeScope = scope })
+        return (grid, scope)
     }
 
     private func frozenGrid(count: Int) -> HostedDataGrid {
@@ -188,6 +208,56 @@ struct DataGridPaneTests {
         #expect(grid.model.selection.rectangles == [GridRect(rows: 0...4, columns: 1...1)])
         #expect(grid.main.highlightedTableColumn === name)
         #expect(grid.model.store.sortState.columns.isEmpty)
+    }
+
+    @Test("Each pane's header reads the model's scope, and every heading, the row numbers' too, is a theme header cell")
+    func headersAreThemeHeaders() throws {
+        let (grid, scope) = try themedGrid([.gridHeaderText: "#F8F8F2"])
+        defer { grid.close() }
+
+        for pane in grid.controller.panes {
+            #expect(pane.tableView.headerView === pane.headerView)
+            #expect(pane.headerView.themeScope === scope)
+            #expect(!pane.tableView.tableColumns.isEmpty)
+            #expect(pane.tableView.tableColumns.allSatisfy { $0.headerCell is ThemeTableHeaderCell })
+        }
+    }
+
+    @Test("The headings take the theme's header text, the highlighted one bold, and a filtered one keeps its symbol")
+    func headingsTakeTheThemeHeaderText() throws {
+        let (grid, _) = try themedGrid([.gridHeaderText: "#F8F8F2"])
+        defer { grid.close() }
+        let header = grid.controller.main.headerView
+        let name = try #require(grid.tableColumn(named: "name"))
+        let age = try #require(grid.tableColumn(named: "age"))
+
+        header.viewWillDraw()
+        #expect(ThemeTestFixture.hex(titleColor(name)) == "#F8F8F2")
+        #expect(ThemeTestFixture.hex(titleColor(age)) == "#F8F8F2")
+        #expect(!isBold(name))
+
+        grid.setCurrentEventModifiers(.command)
+        grid.controller.tableView(grid.main, didClick: name)
+        header.viewWillDraw()
+        #expect(grid.main.highlightedTableColumn === name)
+        #expect(isBold(name))
+        #expect(!isBold(age))
+
+        grid.model.setValueFilter(GridFixtureRows.nameFilter(["bob"]))
+        header.viewWillDraw()
+        #expect(hasAttachment(name.headerCell.attributedStringValue))
+        #expect(ThemeTestFixture.hex(titleColor(name)) == "#F8F8F2")
+    }
+
+    @Test("With the header text unset the headings take the system header text color")
+    func unsetHeaderTextIsTheSystemColor() throws {
+        let (grid, _) = try themedGrid([:])
+        defer { grid.close() }
+        let name = try #require(grid.tableColumn(named: "name"))
+
+        grid.controller.main.headerView.viewWillDraw()
+
+        #expect(titleColor(name) == NSColor.headerTextColor)
     }
 
     // MARK: - Frozen pane

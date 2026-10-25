@@ -28,7 +28,7 @@ struct PrivilegeScopeOutlineView: NSViewRepresentable {
         outlineView.allowsMultipleSelection = true
         outlineView.allowsEmptySelection = true
         outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.headerView = NSTableHeaderView()
+        outlineView.headerView = ThemeTableHeaderView()
         outlineView.allowsColumnResizing = true
         outlineView.autosaveName = SplitViewAutosaveName.current("com.TablePro.usersRoles.scopeOutline")
         // Without a name AppKit still saves, under "NSTableView Columns v3 (null)" in the standard domain.

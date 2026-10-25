@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 extension DataGridViewController {
     // The sort entries the current result carries a column for, resolved by name: a stale index would put the
@@ -176,11 +177,10 @@ extension DataGridViewController {
         paragraph.alignment = cell.alignment
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: NSColor.headerTextColor,
             .paragraphStyle: paragraph,
         ]
         let title = NSMutableAttributedString(string: column.name + " ", attributes: attributes)
-        if let funnel = Self.filterFunnel(for: font) {
+        if let funnel = Self.filterFunnel(for: font, color: model.themeScope.resolved[.gridHeaderText]) {
             let attachment = NSAttributedString(attachment: funnel)
             let marked = NSMutableAttributedString(attributedString: attachment)
             marked.addAttributes(attributes, range: NSRange(location: 0, length: marked.length))
@@ -189,10 +189,10 @@ extension DataGridViewController {
         cell.attributedStringValue = title
     }
 
-    // Drawn in the header's own text color, so the funnel never turns white on an inactive selection (F1).
-    private static func filterFunnel(for font: NSFont) -> NSTextAttachment? {
+    // A symbol image keeps the color it was built with, so it takes the header text color here.
+    private static func filterFunnel(for font: NSFont, color: NSColor) -> NSTextAttachment? {
         let configuration = NSImage.SymbolConfiguration(pointSize: font.pointSize, weight: .regular)
-            .applying(.init(hierarchicalColor: .headerTextColor))
+            .applying(.init(hierarchicalColor: color))
         guard let image = NSImage(
             systemSymbolName: "line.3.horizontal.decrease.circle.fill",
             accessibilityDescription: String(localized: "Filtered")

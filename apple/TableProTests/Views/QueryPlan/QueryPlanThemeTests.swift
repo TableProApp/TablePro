@@ -77,53 +77,65 @@ struct QueryPlanThemeTests {
         #expect(mounted.outline.autosaveTableColumns == (mounted.outline.autosaveName != nil))
     }
 
-    @Test("Under the default pair the outline's rows are AppKit's own row view, and its cells are records cells")
-    func outlineRowsAreNativeByDefault() throws {
+    @Test("Under the default pair the outline's rows are themed rows drawing the system selection, and its cells are records cells")
+    func outlineRowsDrawTheSystemSelectionByDefault() throws {
         try Fixture.preservingEngine {
             try Fixture.adopt([:], appearance: .light)
             let mounted = try mountOutline()
             let chrome = try #require(mounted.coordinator.themeChrome)
             #expect(chrome.family == .records)
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
+            #expect(chrome.selectionColor(emphasized: false) === NSColor.unemphasizedSelectedContentBackgroundColor)
 
             let root = try #require(mounted.coordinator.root)
-            #expect(mounted.coordinator.outlineView(mounted.outline, rowViewForItem: root) == nil)
+            #expect(mounted.coordinator.outlineView(mounted.outline, rowViewForItem: root) is ThemeTableRowView)
             #expect(mounted.outline.numberOfRows == 3)
             for row in 0 ..< mounted.outline.numberOfRows {
-                let rowView = try #require(mounted.outline.rowView(atRow: row, makeIfNecessary: true))
-                #expect(type(of: rowView) == NSTableRowView.self)
+                let rowView = try #require(mounted.outline.rowView(atRow: row, makeIfNecessary: true) as? ThemeTableRowView)
+                #expect(rowView.chrome === chrome)
                 #expect(mounted.outline.view(atColumn: 0, row: row, makeIfNecessary: true) is ThemeTableChrome.HostingCell)
             }
             mounted.window.contentView = nil
         }
     }
 
-    @Test("A theme's background swaps in themed rows that keep AppKit's selection, and a default theme swaps back")
-    func outlineRowClassFollowsTheTheme() throws {
+    @Test("A theme change restyles the outline's rows in place, keeping the selection and the expansion")
+    func outlineRowsSurviveThemeChanges() throws {
         try Fixture.preservingEngine {
             try Fixture.adopt([:], appearance: .light)
             let mounted = try mountOutline()
             let chrome = try #require(mounted.coordinator.themeChrome)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 0))
-            _ = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true))
+            let row = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
 
             var selections: [UUID?] = []
             mounted.coordinator.onSelect = { selections.append($0) }
 
-            try Fixture.adopt([.gridBackground: "#2A6F4E"], appearance: .light)
-            let themed = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
-            #expect(themed.chrome === chrome)
-            #expect(chrome.selectionColor(emphasized: true) == nil)
+            try Fixture.adopt([.gridBackground: "#2A6F4E", .gridSelection: "#6272A4"], appearance: .light)
+            #expect(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) === row)
+            #expect(row.chrome === chrome)
+            #expect(Fixture.hex(chrome.selectionColor(emphasized: true)) == "#6272A4")
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 0))
             #expect(mounted.outline.isItemExpanded(try #require(mounted.coordinator.root)))
 
             try Fixture.adopt([:], appearance: .light)
-            let native = try #require(mounted.outline.rowView(atRow: 0, makeIfNecessary: true))
-            #expect(type(of: native) == NSTableRowView.self)
+            #expect(mounted.outline.rowView(atRow: 0, makeIfNecessary: true) === row)
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 0))
             #expect(mounted.outline.numberOfRows == 3)
-            #expect(selections.isEmpty, "the rebuild reported \(selections.count) selection changes")
+            #expect(selections.isEmpty, "the theme change reported \(selections.count) selection changes")
             mounted.window.contentView = nil
         }
+    }
+
+    @Test("The outline's header is a theme header, and every column a theme header cell")
+    func outlineHeaderIsAThemeHeader() throws {
+        let mounted = try mountOutline()
+        defer { mounted.window.contentView = nil }
+
+        #expect(mounted.outline.headerView is ThemeTableHeaderView)
+        #expect(!mounted.outline.tableColumns.isEmpty)
+        #expect(mounted.outline.tableColumns.allSatisfy { $0.headerCell is ThemeTableHeaderCell })
     }
 
     @Test("Under the default pair the outline stays AppKit's; under a theme it takes the grid's colors")
@@ -187,6 +199,25 @@ struct QueryPlanThemeTests {
             let themed = try #require(Fixture.render(step, colorScheme: .light))
             let themedInterior = try #require(Fixture.pixel(themed, x: themed.pixelsWide - 6, y: themed.pixelsHigh / 2))
             #expect(Fixture.matches(themedInterior, themeColor, tolerance: 0.1), "drew \(themedInterior)")
+        }
+    }
+
+    @Test("A selected step's outline is the accent color by default and the theme's focus border under a theme")
+    func selectedStepTakesTheFocusBorder() throws {
+        try Fixture.preservingEngine {
+            let step = QueryPlanDiagramNodeView(node: node("Seq Scan"), isSelected: true)
+
+            try Fixture.adopt([:], appearance: .light)
+            let native = try #require(Fixture.render(step, colorScheme: .light, scale: 2))
+            #expect(Fixture.count(in: native, where: Fixture.isMagenta) == 0)
+
+            try Fixture.adopt([.gridFocusBorder: "#FF00FF"], appearance: .light)
+            let themed = try #require(Fixture.render(step, colorScheme: .light, scale: 2))
+            #expect(Fixture.count(in: themed, where: Fixture.isMagenta) > 0)
+
+            let unselected = QueryPlanDiagramNodeView(node: node("Seq Scan"), isSelected: false)
+            let plain = try #require(Fixture.render(unselected, colorScheme: .light, scale: 2))
+            #expect(Fixture.count(in: plain, where: Fixture.isMagenta) == 0)
         }
     }
 

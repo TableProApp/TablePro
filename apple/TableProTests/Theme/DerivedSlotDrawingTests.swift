@@ -38,11 +38,43 @@ struct DerivedSlotDrawingTests {
         }
     }
 
+    // MARK: - Header and selection
+
+    @Test("The header and selection take nothing from the grid's background, text or each other")
+    func headerAndSelectionDeriveNothing() throws {
+        let theme = try ThemeTestFixture.theme(.dark, [
+            .gridBackground: "#282A36",
+            .gridText: "#F8F8F2",
+            .gridSelection: "#44475A",
+        ])
+        let resolved = ResolvedTheme(definition: theme)
+
+        #expect(!resolved.isOverridden(.gridHeaderBackground))
+        #expect(resolved[.gridHeaderBackground] === NSColor.controlBackgroundColor)
+        #expect(!resolved.isOverridden(.gridHeaderText))
+        #expect(resolved[.gridHeaderText] === NSColor.headerTextColor)
+        #expect(!resolved.isOverridden(.gridSelectionText))
+        #expect(resolved[.gridSelectionText] === NSColor.alternateSelectedControlTextColor)
+        #expect(!resolved.isOverridden(.gridInactiveSelection))
+        #expect(resolved[.gridInactiveSelection] === NSColor.unemphasizedSelectedContentBackgroundColor)
+        #expect(!resolved.isOverridden(.gridFocusBorder))
+        #expect(resolved[.gridFocusBorder] === NSColor.keyboardFocusIndicatorColor)
+    }
+
     // MARK: - Cell palette
 
     private func cellPalette() throws -> DataGridCellPalette {
         let aqua = try #require(NSAppearance(named: .aqua))
         return ThemeScope.live.dataGridCellPalette(in: aqua)
+    }
+
+    @Test("A theme's selection without a selected text keeps the system's selected text in the grid")
+    func selectionTextIsNotPairedWithTheSelection() throws {
+        try ThemeTestFixture.adopting([.gridSelection: "#44475A", .gridText: "#F8F8F2"], appearance: .light) {
+            let palette = try cellPalette()
+            #expect(palette.selectionText === NSColor.alternateSelectedControlTextColor)
+            #expect(palette.focusBorder === NSColor.keyboardFocusIndicatorColor)
+        }
     }
 
     @Test("Bools follow the theme's grid text")

@@ -5,17 +5,19 @@
 
 import AppKit
 @testable import TablePro
+import TableProTheme
 import Testing
 
 @MainActor
 struct DataGridActiveCellBorderTests {
     // Whole-point widths, so every column edge lands on a pixel of a 1x bitmap.
-    private func makeGrid() -> HostedDataGrid {
+    private func makeGrid(scope: ThemeScope = .live) -> HostedDataGrid {
         var layout = ColumnLayoutState()
         layout.columnWidths = ["id": 80, "name": 120, "age": 80]
         let grid = HostedDataGrid(
             rows: GridFixtureRows.people,
-            store: InMemoryDataGridStateStore(columnLayout: layout)
+            store: InMemoryDataGridStateStore(columnLayout: layout),
+            prepare: { _, model in model.themeScope = scope }
         )
         grid.model.setSelection(GridSelectionReducer.single(GridCoord(row: 0, displayColumn: 1)))
         grid.layout()
@@ -61,6 +63,14 @@ struct DataGridActiveCellBorderTests {
 
     private func pixel(_ bitmap: NSBitmapImageRep, x: Int) throws -> NSColor {
         try #require(bitmap.colorAt(x: x, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+    }
+
+    private func isGreen(_ color: NSColor) -> Bool {
+        color.alphaComponent > 0.5 && color.greenComponent > 0.75 && color.redComponent < 0.45 && color.blueComponent < 0.45
+    }
+
+    private func scope(_ overrides: [ThemeSlot: String]) throws -> ThemeScope {
+        .fixed(try ThemeTestFixture.theme(.light, overrides))
     }
 
     private func differs(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
@@ -129,5 +139,45 @@ struct DataGridActiveCellBorderTests {
         let border = try pixel(bitmap, x: edge)
         let fill = try pixel(bitmap, x: edge + 2)
         #expect(!differs(border, fill))
+    }
+
+    // MARK: - Theme
+
+    @Test("With focus the selection fills in the theme's selection and the active cell takes the theme's selected text")
+    func focusedSelectionTakesTheTheme() throws {
+        let grid = makeGrid(scope: try scope([
+            .gridSelection: "#00FF00",
+            .gridSelectionText: "#FF00FF",
+            .gridFocusBorder: "#0000FF",
+        ]))
+        defer { grid.close() }
+        #expect(grid.focus())
+
+        let (rowView, bitmap) = try render(row: 0, in: grid)
+        let edge = try leadingEdge(ofDisplayPosition: 1, in: grid, rowView: rowView)
+
+        let border = try pixel(bitmap, x: edge)
+        let fill = try pixel(bitmap, x: edge + 2)
+        #expect(ThemeTestFixture.isMagenta(border), "border drew \(border)")
+        #expect(isGreen(fill), "fill drew \(fill)")
+    }
+
+    @Test("Without focus the selection fills in the theme's inactive selection and the active cell takes the theme's focus border")
+    func unfocusedSelectionTakesTheTheme() throws {
+        let grid = makeGrid(scope: try scope([
+            .gridInactiveSelection: "#00FF00",
+            .gridFocusBorder: "#FF00FF",
+            .gridSelectionText: "#0000FF",
+        ]))
+        defer { grid.close() }
+        #expect(!grid.controller.gridHasFocus)
+
+        let (rowView, bitmap) = try render(row: 0, in: grid)
+        let edge = try leadingEdge(ofDisplayPosition: 1, in: grid, rowView: rowView)
+
+        let border = try pixel(bitmap, x: edge)
+        let fill = try pixel(bitmap, x: edge + 2)
+        #expect(ThemeTestFixture.isMagenta(border), "border drew \(border)")
+        #expect(isGreen(fill), "fill drew \(fill)")
     }
 }

@@ -21,7 +21,9 @@ struct DataGridPendingChangeMarkTests {
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
-        findMatchTint: .systemOrange
+        findMatchTint: .systemOrange,
+        selectionText: .alternateSelectedControlTextColor,
+        focusBorder: .keyboardFocusIndicatorColor
     )
 
     private static let deleted = RowVisualState(isDeleted: true, isInserted: false, modifiedColumns: [])

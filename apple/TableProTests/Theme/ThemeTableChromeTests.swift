@@ -159,9 +159,14 @@ struct ThemeTableChromeTests {
         return row
     }
 
+    private func center(of row: NSTableRowView) throws -> NSColor {
+        let rep = try pixels(of: row)
+        return try color(in: rep, x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)
+    }
+
     // MARK: - Table properties
 
-    @Test("Under the default theme the table, its stripes and its scroll view stay AppKit's own")
+    @Test("Under the default theme the table, its stripes and its scroll view stay AppKit's own, and a records table's selection is the system's")
     func defaultThemeTouchesNothing() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -178,13 +183,19 @@ struct ThemeTableChromeTests {
                 #expect(table.scrollView.drawsBackground == drawsBackground)
                 #expect(!chrome.isBackgroundThemed)
                 #expect(chrome.rowBackgroundColor(forRow: 1) == nil)
-                #expect(chrome.selectionColor(emphasized: true) == nil)
-                #expect(chrome.selectionColor(emphasized: false) == nil)
+                switch family {
+                case .records:
+                    #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
+                    #expect(chrome.selectionColor(emphasized: false) === NSColor.unemphasizedSelectedContentBackgroundColor)
+                case .code:
+                    #expect(chrome.selectionColor(emphasized: true) == nil)
+                    #expect(chrome.selectionColor(emphasized: false) == nil)
+                }
             }
         }
     }
 
-    @Test("A records table takes the grid's background, stripes and grid line, keeps AppKit's selection, and gets its own back")
+    @Test("A records table takes the grid's background, stripes, grid line and selection, and gets its own back")
     func recordsFamilyThemesAndRestores() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -198,7 +209,9 @@ struct ThemeTableChromeTests {
                 .gridBackground: "#FAFAFA",
                 .gridAlternateRow: "#F0F0F0",
                 .gridLine: "#DDDDDD",
-                .editorSelection: "#C8E1FF",
+                .gridSelection: "#C8E1FF",
+                .gridInactiveSelection: "#E0E0E0",
+                .editorSelection: "#FF00FF",
             ], appearance: .light)
             #expect(try hex(table.tableView.backgroundColor) == "#FAFAFA")
             #expect(try hex(table.tableView.gridColor) == "#DDDDDD")
@@ -206,8 +219,8 @@ struct ThemeTableChromeTests {
             #expect(!table.scrollView.drawsBackground)
             #expect(try hex(chrome.rowBackgroundColor(forRow: 0)) == "#FAFAFA")
             #expect(try hex(chrome.rowBackgroundColor(forRow: 1)) == "#F0F0F0")
-            #expect(chrome.selectionColor(emphasized: true) == nil)
-            #expect(chrome.selectionColor(emphasized: false) == nil)
+            #expect(try hex(chrome.selectionColor(emphasized: true)) == "#C8E1FF")
+            #expect(try hex(chrome.selectionColor(emphasized: false)) == "#E0E0E0")
 
             try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(table.tableView.backgroundColor == background)
@@ -215,6 +228,8 @@ struct ThemeTableChromeTests {
             #expect(table.tableView.usesAlternatingRowBackgroundColors)
             #expect(table.scrollView.drawsBackground == drawsBackground)
             #expect(chrome.rowBackgroundColor(forRow: 1) == nil)
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
+            #expect(chrome.selectionColor(emphasized: false) === NSColor.unemphasizedSelectedContentBackgroundColor)
         }
     }
 
@@ -251,12 +266,12 @@ struct ThemeTableChromeTests {
 
     // MARK: - Row drawing
 
-    @Test("Under the default theme the rows are AppKit's own row view and draw what a stock table draws")
-    func defaultRowsAreNative() throws {
+    @Test("Under the default theme a code table's rows are AppKit's own row view and draw what a stock table draws")
+    func defaultCodeRowsAreNative() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
             let table = makeTable(alternates: false)
-            let chrome = attach(.records, to: table)
+            let chrome = attach(.code, to: table)
             let stock = makeTable(alternates: false, source: StockTableSource())
             stock.tableView.reloadData()
             stock.tableView.layoutSubtreeIfNeeded()
@@ -277,14 +292,35 @@ struct ThemeTableChromeTests {
         }
     }
 
-    @Test("A theme that colors the rows swaps in the themed row class, and a default theme swaps AppKit's back")
-    func rowClassFollowsTheTheme() throws {
+    @Test("Under the default theme a records table's rows draw the system selection, and its text still flips")
+    func defaultRecordsRowsDrawTheSystemSelection() throws {
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([:], appearance: .light)
+            let table = makeTable(style: .fullWidth, alternates: false)
+            let chrome = attach(.records, to: table)
+            defer { withExtendedLifetime(chrome) {} }
+
+            #expect(chrome.themesRows)
+            let row = try #require(table.tableView.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
+            #expect(row.chrome === chrome)
+
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
+            // An offscreen cache draws AppKit's selection shape with partial coverage, so the hue is what it can pin.
+            let drawn = try selectedRowPixels(in: table)
+            let fill = try color(in: drawn, x: drawn.pixelsWide / 2, y: drawn.pixelsHigh / 2)
+            #expect(fill.blueComponent > fill.redComponent + 0.4, "drew \(fill)")
+            #expect(row.interiorBackgroundStyle == .emphasized)
+        }
+    }
+
+    @Test("A theme that colors a code table's rows swaps in the themed row class, and a default theme swaps AppKit's back")
+    func codeRowClassFollowsTheTheme() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
             let source = ChromeTableSource()
             source.rowCount = 40
             let table = makeTable(source: source)
-            let chrome = attach(.records, to: table)
+            let chrome = attach(.code, to: table)
             table.tableView.selectRowIndexes(IndexSet(integer: 12), byExtendingSelection: false)
             table.tableView.scroll(NSPoint(x: 0, y: 240))
             table.tableView.layoutSubtreeIfNeeded()
@@ -292,7 +328,7 @@ struct ThemeTableChromeTests {
             #expect(origin.y > 0)
             #expect(type(of: try #require(table.tableView.rowView(atRow: 12, makeIfNecessary: true))) == NSTableRowView.self)
 
-            for overrides in [[ThemeSlot.gridBackground: "#FAFAFA"], [.gridAlternateRow: "#F0F0F0"]] {
+            for overrides in [[ThemeSlot.editorBackground: "#FAFAFA"], [.editorSelection: "#C8E1FF"]] {
                 try ThemeTestFixture.adopt(overrides, appearance: .light)
                 #expect(chrome.themesRows)
                 let themedRow = try #require(table.tableView.rowView(atRow: 12, makeIfNecessary: true) as? ThemeTableRowView)
@@ -309,15 +345,45 @@ struct ThemeTableChromeTests {
         }
     }
 
-    @Test("A theme that only colors the grid text, lines or the editor's selection keeps AppKit's row view in a records table")
-    func textOnlyThemeKeepsNativeRows() throws {
+    @Test("A records table keeps its themed rows through every theme change, so it never rebuilds them")
+    func recordsRowsSurviveThemeChanges() throws {
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([:], appearance: .light)
+            let source = ChromeTableSource()
+            source.rowCount = 40
+            let table = makeTable(source: source)
+            let chrome = attach(.records, to: table)
+            table.tableView.selectRowIndexes(IndexSet(integer: 12), byExtendingSelection: false)
+            table.tableView.scroll(NSPoint(x: 0, y: 240))
+            table.tableView.layoutSubtreeIfNeeded()
+            let origin = table.scrollView.contentView.bounds.origin
+            let row = try #require(table.tableView.rowView(atRow: 12, makeIfNecessary: true) as? ThemeTableRowView)
+
+            for overrides in [[ThemeSlot.gridBackground: "#FAFAFA"], [.gridSelection: "#C8E1FF"], [:]] {
+                try ThemeTestFixture.adopt(overrides, appearance: .light)
+                #expect(chrome.themesRows)
+                #expect(table.tableView.rowView(atRow: 12, makeIfNecessary: true) === row)
+                #expect(table.tableView.selectedRowIndexes == IndexSet(integer: 12))
+                #expect(table.scrollView.contentView.bounds.origin == origin)
+            }
+        }
+    }
+
+    @Test("A theme that colors only grid slots keeps AppKit's row view in a code table")
+    func gridOnlyThemeKeepsNativeCodeRows() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
             let table = makeTable()
-            let chrome = attach(.records, to: table)
+            let chrome = attach(.code, to: table)
 
-            try ThemeTestFixture.adopt([.gridText: "#112233", .gridLine: "#DDDDDD", .editorSelection: "#FF00FF"], appearance: .light)
+            try ThemeTestFixture.adopt([
+                .gridText: "#112233",
+                .gridLine: "#DDDDDD",
+                .gridSelection: "#FF00FF",
+                .gridInactiveSelection: "#00FF00",
+            ], appearance: .light)
             #expect(!chrome.themesRows)
+            #expect(chrome.selectionColor(emphasized: true) == nil)
             #expect(type(of: try #require(table.tableView.rowView(atRow: 0, makeIfNecessary: true))) == NSTableRowView.self)
         }
     }
@@ -331,12 +397,33 @@ struct ThemeTableChromeTests {
             let row = ThemeTableRowView(frame: Self.rowFrame)
             row.chrome = chrome
 
-            let rep = try pixels(of: selected(row))
-            let center = try color(in: rep, x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)
+            let drawn = try center(of: selected(row))
             let magenta = try cached(HexColor.color("#FF00FF"))
-            #expect(matches(center, magenta), "drew \(center), theme \(magenta)")
+            #expect(matches(drawn, magenta), "drew \(drawn), theme \(magenta)")
             #expect(row.interiorBackgroundStyle == .normal)
             withExtendedLifetime(chrome) {}
+        }
+    }
+
+    @Test("A records row fills in the grid selection, the inactive selection once it loses emphasis, and keeps AppKit's text style")
+    func recordsSelectionDrawsTheGridSlots() throws {
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt([.gridSelection: "#FF00FF", .gridInactiveSelection: "#00FF00"], appearance: .light)
+            let table = makeTable()
+            let chrome = attach(.records, to: table)
+            defer { withExtendedLifetime(chrome) {} }
+            let row = ThemeTableRowView(frame: Self.rowFrame)
+            row.chrome = chrome
+
+            let emphasized = try center(of: selected(row))
+            let magenta = try cached(HexColor.color("#FF00FF"))
+            #expect(matches(emphasized, magenta), "drew \(emphasized), theme \(magenta)")
+            #expect(row.interiorBackgroundStyle == .emphasized)
+
+            row.isEmphasized = false
+            let inactive = try center(of: row)
+            let green = try cached(HexColor.color("#00FF00"))
+            #expect(matches(inactive, green), "drew \(inactive), theme \(green)")
         }
     }
 
@@ -350,51 +437,50 @@ struct ThemeTableChromeTests {
             let native = try selectedRowPixels(in: nativeTable)
             let accent = try color(in: native, x: native.pixelsWide / 2, y: native.pixelsHigh / 2)
 
-            try ThemeTestFixture.adopt([.editorSelection: "#FF00FF"], appearance: .light)
-            let themedTable = makeTable(style: .inset, alternates: false)
-            let themedChrome = attach(.code, to: themedTable)
-            let themed = try selectedRowPixels(in: themedTable)
-            withExtendedLifetime(themedChrome) {}
-            let magenta = try color(in: themed, x: themed.pixelsWide / 2, y: themed.pixelsHigh / 2)
-            #expect(!matches(magenta, accent))
-            #expect(magenta.redComponent > 0.8 && magenta.greenComponent < 0.5 && magenta.blueComponent > 0.8, "\(magenta)")
+            for family in [ThemeTableChrome.Family.code, .records] {
+                try ThemeTestFixture.adopt([.editorSelection: "#FF00FF", .gridSelection: "#FF00FF"], appearance: .light)
+                let themedTable = makeTable(style: .inset, alternates: false)
+                let themedChrome = attach(family, to: themedTable)
+                let themed = try selectedRowPixels(in: themedTable)
+                withExtendedLifetime(themedChrome) {}
+                let magenta = try color(in: themed, x: themed.pixelsWide / 2, y: themed.pixelsHigh / 2)
+                #expect(!matches(magenta, accent))
+                #expect(magenta.redComponent > 0.8 && magenta.greenComponent < 0.5 && magenta.blueComponent > 0.8, "\(magenta)")
 
-            let middle = native.pixelsHigh / 2
-            var nativeCovered = 0
-            var themedCovered = 0
-            for x in 0..<native.pixelsWide {
-                if matches(try color(in: native, x: x, y: middle), accent) { nativeCovered += 1 }
-                if matches(try color(in: themed, x: x, y: middle), magenta) { themedCovered += 1 }
+                let middle = native.pixelsHigh / 2
+                var nativeCovered = 0
+                var themedCovered = 0
+                for x in 0..<native.pixelsWide {
+                    if matches(try color(in: native, x: x, y: middle), accent) { nativeCovered += 1 }
+                    if matches(try color(in: themed, x: x, y: middle), magenta) { themedCovered += 1 }
+                }
+                #expect(nativeCovered > 0)
+                #expect(abs(nativeCovered - themedCovered) <= 2, "\(family): native \(nativeCovered), themed \(themedCovered)")
+                #expect(
+                    matches(try color(in: native, x: 0, y: middle), accent) == matches(try color(in: themed, x: 0, y: middle), magenta)
+                )
             }
-            #expect(nativeCovered > 0)
-            #expect(abs(nativeCovered - themedCovered) <= 2, "native \(nativeCovered), themed \(themedCovered)")
-            #expect(
-                matches(try color(in: native, x: 0, y: middle), accent) == matches(try color(in: themed, x: 0, y: middle), magenta)
-            )
         }
     }
 
-    @Test("Under a theme a records table's selection is still AppKit's, and its text still flips")
-    func recordsSelectionStaysNative() throws {
+    @Test("Under a theme a records table's selection takes the grid selection, not the editor's, and its text still flips")
+    func recordsSelectionTakesTheGridSlot() throws {
         try ThemeTestFixture.preservingEngine {
-            try ThemeTestFixture.adopt([:], appearance: .light)
-            let nativeTable = makeTable(style: .inset, alternates: false, source: DrawPathTableSource())
-            nativeTable.tableView.reloadData()
-            nativeTable.tableView.layoutSubtreeIfNeeded()
-            let native = try selectedRowPixels(in: nativeTable)
-
-            try ThemeTestFixture.adopt([.gridBackground: "#FAFAFA", .gridText: "#112233", .editorSelection: "#FF00FF"], appearance: .light)
-            let themedTable = makeTable(style: .inset, alternates: false)
+            try ThemeTestFixture.adopt([
+                .gridBackground: "#FAFAFA",
+                .gridText: "#112233",
+                .gridSelection: "#FF00FF",
+                .editorSelection: "#00FF00",
+            ], appearance: .light)
+            let themedTable = makeTable(style: .fullWidth, alternates: false)
             let chrome = attach(.records, to: themedTable)
             defer { withExtendedLifetime(chrome) {} }
             let themed = try selectedRowPixels(in: themedTable)
             let row = try #require(themedTable.tableView.rowView(atRow: 0, makeIfNecessary: true) as? ThemeTableRowView)
 
-            #expect(chrome.selectionColor(emphasized: true) == nil)
-            #expect(chrome.selectionColor(emphasized: false) == nil)
-            let x = native.pixelsWide / 2
-            let y = native.pixelsHigh / 2
-            #expect(matches(try color(in: themed, x: x, y: y), try color(in: native, x: x, y: y)))
+            #expect(try hex(chrome.selectionColor(emphasized: true)) == "#FF00FF")
+            let fill = try color(in: themed, x: themed.pixelsWide / 2, y: themed.pixelsHigh / 2)
+            #expect(fill.redComponent > 0.8 && fill.greenComponent < 0.5 && fill.blueComponent > 0.8, "drew \(fill)")
             #expect(row.interiorBackgroundStyle == .emphasized)
         }
     }
@@ -428,15 +514,16 @@ struct ThemeTableChromeTests {
         Rectangle().frame(width: 8, height: 8)
     }
 
-    @Test("Text slots resolve: grid text by default, none on AppKit's emphasized selection")
+    @Test("Text slots resolve: grid text when the theme sets it, the selected text on the emphasized selection")
     func recordsTextSlotFollowsTheRow() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(ThemeTableChrome.recordsTextSlot(onEmphasizedSelection: false, highContrast: false) == nil)
+            #expect(ThemeTableChrome.recordsTextSlot(onEmphasizedSelection: true, highContrast: false) == .gridSelectionText)
 
             try ThemeTestFixture.adopt([.gridText: "#FF0000"], appearance: .light)
             #expect(ThemeTableChrome.recordsTextSlot(onEmphasizedSelection: false, highContrast: false) == .gridText)
-            #expect(ThemeTableChrome.recordsTextSlot(onEmphasizedSelection: true, highContrast: false) == nil)
+            #expect(ThemeTableChrome.recordsTextSlot(onEmphasizedSelection: true, highContrast: false) == .gridSelectionText)
         }
     }
 
@@ -476,9 +563,8 @@ struct ThemeTableChromeTests {
         }
     }
 
-    // AppKit's emphasized selection is the accent color, which a theme's text is not chosen to sit on.
-    @Test("On AppKit's emphasized selection a records cell keeps its own text, which flips with the row")
-    func nativeEmphasizedSelectionKeepsTheFlip() throws {
+    @Test("On the emphasized selection a records cell with no selected text set draws the system's, as a stock cell does")
+    func emphasizedSelectionWithoutSelectedTextIsTheSystems() throws {
         guard #available(macOS 14, *) else { return }
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt(ThemeTestFixture.pair([.gridText: "#FF0000"]), appearance: .light)
@@ -488,6 +574,19 @@ struct ThemeTableChromeTests {
             let native = try center(plainSwatch.environment(\.backgroundProminence, .increased))
             #expect(matches(flipped, native), "drew \(flipped), native \(native)")
             #expect(!matches(flipped, try reference("#FF0000")))
+        }
+    }
+
+    @Test("On the emphasized selection a records cell takes the theme's selected text")
+    func emphasizedSelectionTakesTheSelectedText() throws {
+        guard #available(macOS 14, *) else { return }
+        try ThemeTestFixture.preservingEngine {
+            try ThemeTestFixture.adopt(ThemeTestFixture.pair([.gridText: "#FF0000", .gridSelectionText: "#00AA00"]), appearance: .light)
+            let cell = swatchCell(in: makeTable())
+
+            let onSelection = try center(cell.rootView.environment(\.backgroundProminence, .increased))
+            #expect(matches(onSelection, try reference("#00AA00")), "drew \(onSelection)")
+            #expect(matches(try center(cell.rootView), try reference("#FF0000")))
         }
     }
 }

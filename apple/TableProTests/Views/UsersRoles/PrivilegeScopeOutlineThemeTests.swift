@@ -46,7 +46,7 @@ struct PrivilegeScopeOutlineThemeTests {
         return hex
     }
 
-    @Test("Under the default theme the outline keeps AppKit's background, stripes and selection")
+    @Test("Under the default theme the outline keeps AppKit's background and stripes, and its rows draw the system selection")
     func defaultThemeTouchesNothing() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -59,17 +59,18 @@ struct PrivilegeScopeOutlineThemeTests {
             #expect(mounted.outline.usesAlternatingRowBackgroundColors)
             #expect(!mounted.scrollView.drawsBackground)
             #expect(!chrome.isBackgroundThemed)
-            #expect(chrome.selectionColor(emphasized: true) == nil)
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
+            #expect(chrome.selectionColor(emphasized: false) === NSColor.unemphasizedSelectedContentBackgroundColor)
             #expect(mounted.outline.numberOfRows == 2)
             for row in 0 ..< mounted.outline.numberOfRows {
-                let rowView = try #require(mounted.outline.rowView(atRow: row, makeIfNecessary: true))
-                #expect(type(of: rowView) == NSTableRowView.self)
+                let rowView = try #require(mounted.outline.rowView(atRow: row, makeIfNecessary: true) as? ThemeTableRowView)
+                #expect(rowView.chrome === chrome)
             }
         }
     }
 
-    @Test("A theme's background swaps in themed rows and a default theme swaps AppKit's back, keeping the selection")
-    func rowClassFollowsTheTheme() throws {
+    @Test("A theme change restyles the rows in place, keeping the selection")
+    func rowsSurviveThemeChanges() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
             let mounted = try mount()
@@ -77,23 +78,22 @@ struct PrivilegeScopeOutlineThemeTests {
             mounted.outline.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
             let selectedScopes = mounted.coordinator.viewModel.selectedScopes
             #expect(selectedScopes.count == 1)
-            _ = try #require(mounted.outline.rowView(atRow: 1, makeIfNecessary: true))
+            let row = try #require(mounted.outline.rowView(atRow: 1, makeIfNecessary: true) as? ThemeTableRowView)
 
             var published = 0
             let subscription = mounted.coordinator.viewModel.$selectedScopes.dropFirst().sink { _ in published += 1 }
             defer { subscription.cancel() }
 
-            try ThemeTestFixture.adopt([.gridBackground: "#FAFAFA"], appearance: .light)
-            let themed = try #require(mounted.outline.rowView(atRow: 1, makeIfNecessary: true) as? ThemeTableRowView)
-            #expect(themed.chrome === chrome)
+            try ThemeTestFixture.adopt([.gridBackground: "#FAFAFA", .gridSelection: "#C8E1FF"], appearance: .light)
+            #expect(mounted.outline.rowView(atRow: 1, makeIfNecessary: true) === row)
+            #expect(row.chrome === chrome)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 1))
 
             try ThemeTestFixture.adopt([:], appearance: .light)
-            let native = try #require(mounted.outline.rowView(atRow: 1, makeIfNecessary: true))
-            #expect(type(of: native) == NSTableRowView.self)
+            #expect(mounted.outline.rowView(atRow: 1, makeIfNecessary: true) === row)
             #expect(mounted.outline.selectedRowIndexes == IndexSet(integer: 1))
             #expect(mounted.coordinator.viewModel.selectedScopes == selectedScopes)
-            #expect(published == 0, "the rebuild republished the selection \(published) times")
+            #expect(published == 0, "the theme change republished the selection \(published) times")
         }
     }
 
@@ -111,7 +111,7 @@ struct PrivilegeScopeOutlineThemeTests {
         }
     }
 
-    @Test("Under a theme the outline takes the grid's background and stripes, keeps AppKit's selection, and gets its own back")
+    @Test("Under a theme the outline takes the grid's background, stripes and selection, and gets its own back")
     func themeAppliesAndRestores() throws {
         try ThemeTestFixture.preservingEngine {
             try ThemeTestFixture.adopt([:], appearance: .light)
@@ -122,18 +122,31 @@ struct PrivilegeScopeOutlineThemeTests {
             try ThemeTestFixture.adopt([
                 .gridBackground: "#FAFAFA",
                 .gridAlternateRow: "#F0F0F0",
+                .gridSelection: "#C8E1FF",
+                .gridInactiveSelection: "#E0E0E0",
             ], appearance: .light)
             #expect(try hex(mounted.outline.backgroundColor) == "#FAFAFA")
             #expect(!mounted.outline.usesAlternatingRowBackgroundColors)
             #expect(try hex(chrome.rowBackgroundColor(forRow: 0)) == "#FAFAFA")
             #expect(try hex(chrome.rowBackgroundColor(forRow: 1)) == "#F0F0F0")
-            #expect(chrome.selectionColor(emphasized: true) == nil)
+            #expect(try hex(chrome.selectionColor(emphasized: true)) == "#C8E1FF")
+            #expect(try hex(chrome.selectionColor(emphasized: false)) == "#E0E0E0")
 
             try ThemeTestFixture.adopt([:], appearance: .light)
             #expect(mounted.outline.backgroundColor == background)
             #expect(mounted.outline.usesAlternatingRowBackgroundColors)
             #expect(!mounted.scrollView.drawsBackground)
             #expect(chrome.rowBackgroundColor(forRow: 1) == nil)
+            #expect(chrome.selectionColor(emphasized: true) === NSColor.selectedContentBackgroundColor)
         }
+    }
+
+    @Test("The outline's header is a theme header, and both columns theme header cells")
+    func headerIsAThemeHeader() throws {
+        let mounted = try mount()
+
+        #expect(mounted.outline.headerView is ThemeTableHeaderView)
+        #expect(mounted.outline.tableColumns.count == 2)
+        #expect(mounted.outline.tableColumns.allSatisfy { $0.headerCell is ThemeTableHeaderCell })
     }
 }

@@ -22,7 +22,8 @@ struct DataGridInvisibleCharacterTests {
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
         findMatchTint: .systemYellow,
-        selectionText: .white
+        selectionText: .white,
+        focusBorder: .keyboardFocusIndicatorColor
     )
 
     private func resolve(

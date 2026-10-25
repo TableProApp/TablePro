@@ -171,6 +171,8 @@ struct QueryPlanArrowsView: View {
 
 struct QueryPlanDiagramNodeView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var contrast
+    @ObservedObject private var themeEngine = ThemeEngine.shared
 
     let node: QueryPlanNode
     let isSelected: Bool
@@ -245,7 +247,9 @@ struct QueryPlanDiagramNodeView: View {
         node.severity?.tint(differentiateWithoutColor: differentiateWithoutColor) ?? .secondary
     }
 
-    private var stroke: Color {
-        isSelected ? .accentColor : tint
+    // The grid outlines its active cell with the focus border, so a selected step does too.
+    private var stroke: AnyShapeStyle {
+        guard isSelected else { return AnyShapeStyle(tint) }
+        return ThemeShapeStyle.style(.gridFocusBorder, native: Color.accentColor, engine: themeEngine, contrast: contrast)
     }
 }

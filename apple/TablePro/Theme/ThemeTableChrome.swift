@@ -31,10 +31,9 @@ internal final class ThemeTableChrome {
             }
         }
 
-        // A records table's selection is always the system's, as the data grid's is.
-        internal var selection: ThemeSlot? {
+        internal func selection(emphasized: Bool) -> ThemeSlot {
             switch self {
-            case .records: return nil
+            case .records: return emphasized ? .gridSelection : .gridInactiveSelection
             case .code: return .editorSelection
             }
         }
@@ -48,7 +47,8 @@ internal final class ThemeTableChrome {
     internal let family: Family
     internal let scope: ThemeScope
 
-    // A row class that overrides a drawing method loses AppKit's layer-backed selection, so it is used only while needed.
+    // A records table always draws its theme's selection. A code table takes the overriding row class only while the
+    // theme needs it, since that class loses AppKit's layer-backed selection.
     internal private(set) var themesRows = false
 
     internal private(set) var isRebuildingRows = false
@@ -99,14 +99,19 @@ internal final class ThemeTableChrome {
         return palette[alternate]
     }
 
-    internal func selectionColor(emphasized _: Bool) -> NSColor? {
-        guard let slot = family.selection else { return nil }
+    // A records table draws the theme's selection as the data grid does; a code table recolors AppKit's only while
+    // the theme sets `editor.selection`, since its text keeps the editor's colors on it.
+    internal func selectionColor(emphasized: Bool) -> NSColor? {
         let resolved = scope.resolved
-        return resolved.isOverridden(slot) ? resolved[slot] : nil
+        let slot = family.selection(emphasized: emphasized)
+        switch family {
+        case .records: return resolved[slot]
+        case .code: return resolved.isOverridden(slot) ? resolved[slot] : nil
+        }
     }
 
-    private func isOnThemedSelection(_ rowView: NSTableRowView) -> Bool {
-        rowView.isSelected && selectionColor(emphasized: rowView.isEmphasized) != nil
+    private func isOnRecoloredCodeSelection(_ rowView: NSTableRowView) -> Bool {
+        family == .code && rowView.isSelected && selectionColor(emphasized: rowView.isEmphasized) != nil
     }
 
     private func restyle() {
@@ -115,8 +120,9 @@ internal final class ThemeTableChrome {
         let backgroundSlots = [family.background] + [family.alternateRow].compactMap { $0 }
         applyBackground(to: tableView, themed: backgroundSlots.contains { resolved.isOverridden($0) })
         applyGridColor(to: tableView, themed: family.gridLine.map { resolved.isOverridden($0) } ?? false)
-        themesRows = isBackgroundThemed || family.selection.map { resolved.isOverridden($0) } ?? false
+        themesRows = isBackgroundThemed || selectionColor(emphasized: true) != nil
         tableView.needsDisplay = true
+        tableView.headerView?.needsDisplay = true
         tableView.enumerateAvailableRowViews { rowView, _ in
             rowView.needsDisplay = true
         }
@@ -256,9 +262,9 @@ internal extension ThemeTableChrome {
         context.restoreGState()
     }
 
-    // A theme picks its selection to sit behind its own text, so the text does not flip to white.
+    // An editor selection sits behind the editor's own text, so the text does not flip to white.
     func interiorBackgroundStyle(of rowView: NSTableRowView, native: NSView.BackgroundStyle) -> NSView.BackgroundStyle {
-        isOnThemedSelection(rowView) ? .normal : native
+        isOnRecoloredCodeSelection(rowView) ? .normal : native
     }
 }
 
@@ -291,13 +297,13 @@ internal final class ThemeTableRowView: NSTableRowView, ThemeTableRowDrawing {
 // MARK: - Records cell text
 
 internal extension ThemeTableChrome {
-    // Nil keeps the cell's own hierarchical text, which turns white on AppKit's emphasized selection.
+    // Nil keeps the cell's own hierarchical text.
     static func recordsTextSlot(
         onEmphasizedSelection: Bool,
         highContrast: Bool,
         scope: ThemeScope = .live
     ) -> ThemeSlot? {
-        guard !onEmphasizedSelection else { return nil }
+        guard !onEmphasizedSelection else { return .gridSelectionText }
         return scope.activeTheme.isOverridden(.gridText, highContrast: highContrast) ? .gridText : nil
     }
 

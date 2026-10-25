@@ -82,8 +82,20 @@ internal extension ThemeSlot {
             return [.color("editor.foreground")]
         case .gridAlternateRow:
             return [.color("keybindingTable.rowsBackground"), .color("tree.tableOddRowsBackground")]
+        case .gridHeaderBackground:
+            return [.color("keybindingTable.headerBackground"), .color("tree.tableOddRowsBackground")]
+        case .gridHeaderText:
+            return [.color("foreground")]
         case .gridLine:
             return [.color("tree.tableColumnsBorder")]
+        case .gridSelection:
+            return [.color("list.activeSelectionBackground")]
+        case .gridSelectionText:
+            return [.color("list.activeSelectionForeground")]
+        case .gridInactiveSelection:
+            return [.color("list.inactiveSelectionBackground")]
+        case .gridFocusBorder:
+            return [.color("list.focusOutline"), .color("focusBorder")]
         case .gridNullValue:
             // The grid draws NULL as placeholder text. `descriptionForeground` equals the text color in
             // One Dark Pro, so NULL would not read as absent.

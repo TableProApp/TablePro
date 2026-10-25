@@ -8,11 +8,17 @@
     "boolTrue": "#A3BE8C",
     "deleted": "#BF616A26",
     "deletedText": "#BF616A80",
+    "focusBorder": "#88C0D0",
     "gridLine": "#434C5E",
+    "headerBackground": "#3B4252",
+    "headerText": "#D8DEE9",
+    "inactiveSelection": "#434C5E80",
     "inserted": "#A3BE8C26",
     "modified": "#EBCB8B4D",
     "nullValue": "#4C566A",
     "rowNumber": "#4C566A",
+    "selection": "#434C5E",
+    "selectionText": "#ECEFF4",
     "text": "#D8DEE9"
   },
   "editor": {

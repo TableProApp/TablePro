@@ -1,6 +1,5 @@
 import Foundation
 
-// Removing a slot never bumps it: the slot's key joins `ThemeFileFormat.retiredKeys`.
 public enum ThemeSchema {
     public static let current = 3
 }
@@ -25,16 +24,6 @@ public enum ThemeIdentifier {
 // Foundation keeps the first of two equal keys at one level, so that duplicate cannot be seen.
 public enum ThemeFileFormat {
     public static let maximumTextLength = 100
-
-    // Removed slots: a file that still carries one loads without it.
-    static let retiredKeys: Set<String> = [
-        "dataGrid.headerBackground",
-        "dataGrid.headerText",
-        "dataGrid.selection",
-        "dataGrid.selectionText",
-        "dataGrid.inactiveSelection",
-        "dataGrid.focusBorder",
-    ]
 
     public enum TextPolicy: Sendable {
         // A file someone picked, and every record another Mac sent.
@@ -137,7 +126,6 @@ public enum ThemeFileFormat {
         let leaves = root
             .filter { MetadataKey(rawValue: $0.key) == nil }
             .flatMap { key, node in node.leaves(prefix: key) }
-            .filter { !retiredKeys.contains($0.path) }
             .sorted { $0.path < $1.path }
 
         var parsed: [ThemeSlot: ThemeColor] = [:]

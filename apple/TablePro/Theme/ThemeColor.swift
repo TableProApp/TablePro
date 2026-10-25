@@ -62,7 +62,13 @@ internal extension ThemeSlot {
         case .gridBackground: return .controlBackgroundColor
         case .gridText, .gridBoolTrue, .gridBoolFalse: return .labelColor
         case .gridAlternateRow: return NativeThemeColors.alternateRow
+        case .gridHeaderBackground: return .controlBackgroundColor
+        case .gridHeaderText: return .headerTextColor
         case .gridLine: return .separatorColor
+        case .gridSelection: return .selectedContentBackgroundColor
+        case .gridSelectionText: return .alternateSelectedControlTextColor
+        case .gridInactiveSelection: return .unemphasizedSelectedContentBackgroundColor
+        case .gridFocusBorder: return .keyboardFocusIndicatorColor
         case .gridNullValue: return .secondaryLabelColor
         case .gridRowNumber: return .secondaryLabelColor
         case .gridModified: return NativeThemeColors.modifiedRow

@@ -728,7 +728,9 @@ struct CompareRowGridModelTests {
                 rowNumberText: .secondaryLabelColor,
                 deletedRowText: .systemRed,
                 modifiedColumnTint: .systemYellow,
-                findMatchTint: .systemOrange
+                findMatchTint: .systemOrange,
+                selectionText: .alternateSelectedControlTextColor,
+                focusBorder: .keyboardFocusIndicatorColor
             ),
             nullDisplayString: "NULL",
             onEmphasizedSelection: false,

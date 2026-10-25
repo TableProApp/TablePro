@@ -116,6 +116,7 @@ final class QueryPlanOutlineCoordinator: NSObject, NSOutlineViewDataSource, NSOu
 
         for column in QueryPlanOutlineColumn.allCases {
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
+            tableColumn.headerCell = ThemeTableHeaderCell()
             tableColumn.title = column.title(metric: metric)
             tableColumn.width = column.width
             tableColumn.minWidth = column.minimumWidth

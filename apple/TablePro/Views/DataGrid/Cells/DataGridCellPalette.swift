@@ -22,6 +22,7 @@ struct DataGridCellPalette: Equatable {
     let findMatchTint: NSColor
     let findMatchText: NSColor
     let selectionText: NSColor
+    let focusBorder: NSColor
 
     init(
         regularFont: NSFont,
@@ -37,7 +38,8 @@ struct DataGridCellPalette: Equatable {
         modifiedColumnTint: NSColor,
         findMatchTint: NSColor,
         findMatchText: NSColor = DataGridCellPalette.findMatchTextColor,
-        selectionText: NSColor = .alternateSelectedControlTextColor
+        selectionText: NSColor,
+        focusBorder: NSColor
     ) {
         self.regularFont = regularFont
         self.italicFont = italicFont
@@ -53,21 +55,8 @@ struct DataGridCellPalette: Equatable {
         self.findMatchTint = findMatchTint
         self.findMatchText = findMatchText
         self.selectionText = selectionText
+        self.focusBorder = focusBorder
     }
-
-    static let placeholder = DataGridCellPalette(
-        regularFont: .systemFont(ofSize: NSFont.systemFontSize),
-        italicFont: .systemFont(ofSize: NSFont.systemFontSize),
-        mediumFont: .systemFont(ofSize: NSFont.systemFontSize, weight: .medium),
-        text: .labelColor,
-        placeholderText: .secondaryLabelColor,
-        booleanTrueText: .labelColor,
-        booleanFalseText: .labelColor,
-        rowNumberText: .secondaryLabelColor,
-        deletedRowText: .secondaryLabelColor,
-        modifiedColumnTint: .systemYellow,
-        findMatchTint: .findHighlightColor
-    )
 
     // NSTextFinder draws its find indicator as a light bubble in every appearance, so the text on it is light-appearance text.
     static let findMatchTextColor: NSColor = {
@@ -103,7 +92,9 @@ extension ThemeScope {
             rowNumberText: resolved[.gridRowNumber],
             deletedRowText: Self.resolvedTint(.gridDeletedText, of: resolved, in: appearance),
             modifiedColumnTint: Self.resolvedTint(.gridModified, of: resolved, in: appearance),
-            findMatchTint: .findHighlightColor
+            findMatchTint: .findHighlightColor,
+            selectionText: resolved[.gridSelectionText],
+            focusBorder: resolved[.gridFocusBorder]
         )
     }
 

@@ -5,14 +5,18 @@
 
 import AppKit
 
-// The stock header. It overrides only the menu, resolved from the event, and the per-step repaint drawn cells need.
+// The menu is resolved from the event, and drawn cells need a repaint on each step of a column drag.
 @MainActor
-final class DataGridHeaderView: NSTableHeaderView {
+final class DataGridHeaderView: ThemeTableHeaderView {
     var paneKind: DataGridPane.Kind = .main
     private var bodyFollowsColumnDrag = false
 
     private var controller: DataGridViewController? {
         (tableView as? DataGridTableView)?.controller
+    }
+
+    override var themeScope: ThemeScope {
+        controller?.model.themeScope ?? .live
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

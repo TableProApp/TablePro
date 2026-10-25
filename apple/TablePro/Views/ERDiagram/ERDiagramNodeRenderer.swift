@@ -54,7 +54,12 @@ enum ERDiagramNodeRenderer {
         )
 
         canvas.clip(to: body) {
-            canvas.fill(headerRect, color: palette.headerWash(cluster: clusterColor))
+            if let headerFill = palette.headerFill {
+                canvas.fill(headerRect, color: headerFill)
+            }
+            if palette.headerFill == nil || clusterColor != nil {
+                canvas.fill(headerRect, color: palette.headerWash(cluster: clusterColor))
+            }
         }
 
         canvas.stroke(
@@ -70,7 +75,7 @@ enum ERDiagramNodeRenderer {
         canvas.drawText(
             displayName,
             font: .monospacedSystemFont(ofSize: headerPointSize * scale, weight: .semibold),
-            color: palette.text,
+            color: palette.headerText,
             at: CGPoint(x: rect.minX + headerTextXOffset, y: rect.minY + headerHeight / 2),
             anchor: .leading
         )

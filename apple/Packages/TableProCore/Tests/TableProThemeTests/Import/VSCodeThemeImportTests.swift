@@ -135,13 +135,14 @@ struct VSCodeThemeImportTests {
         #expect(dark.hex(.editorText) == nil)
     }
 
-    @Test("The three fills nothing themed sits under are flattened; washes keep their alpha")
+    @Test("The four fills nothing themed sits under are flattened; washes keep their alpha")
     func opaqueSlotsAreFlattened() throws {
         let theme = try Self.theme(
             """
             {"type": "dark", "colors": {
               "editor.background": "#20406080",
               "editorPane.background": "#FFFFFF33",
+              "keybindingTable.headerBackground": "#FFFFFF1A",
               "editor.selectionBackground": "#3050A080",
               "keybindingTable.rowsBackground": "#FFFFFF0A"
             }}
@@ -153,6 +154,7 @@ struct VSCodeThemeImportTests {
         #expect(theme.overrides[.editorBackground] == editor)
         #expect(theme.overrides[.gridBackground] == editor)
         #expect(theme.overrides[.windowBackdrop] == ThemeColor(red: 255, green: 255, blue: 255, alpha: 0x33).composited(over: editor))
+        #expect(theme.overrides[.gridHeaderBackground] == ThemeColor(red: 255, green: 255, blue: 255, alpha: 0x1A).composited(over: editor))
         for slot in ThemeSlot.allCases where slot.requiresOpaque {
             #expect(theme.overrides[slot]?.isOpaque == true, "\(slot)")
         }
@@ -176,22 +178,23 @@ struct VSCodeThemeImportTests {
         #expect(theme.value(for: .gridBoolTrue) == .themed(ThemeColor(red: 0xE0, green: 0xE0, blue: 0xE0)))
     }
 
-    @Test("A VS Code theme's list selection, focus and table header colors import nothing: those stay the system's")
-    func selectionAndHeaderColorsImportNothing() throws {
+    @Test("A VS Code theme's table header, list selection and focus colors import as set, even where they match the grid")
+    func selectionAndHeaderColorsImport() throws {
         let theme = try Self.theme(
             """
             {"colors": {"editor.background": "#202020", "editor.foreground": "#E0E0E0",
               "list.activeSelectionBackground": "#0050A0", "list.activeSelectionForeground": "#FFFFFF",
               "list.inactiveSelectionBackground": "#00305080", "list.focusOutline": "#0080FF",
-              "focusBorder": "#3366FF", "keybindingTable.headerBackground": "#2A2A2A", "foreground": "#C0C0C0"}}
+              "focusBorder": "#3366FF", "keybindingTable.headerBackground": "#202020", "foreground": "#E0E0E0"}}
             """
         )
-        let imported = Set(theme.overrides.values.map(\.hex))
 
-        for hex in ["#0050A0", "#FFFFFF", "#00305080", "#0080FF", "#3366FF", "#2A2A2A", "#C0C0C0"] {
-            #expect(!imported.contains(hex), "\(hex)")
-        }
-        #expect(theme.hex(.gridBackground) == "#202020")
+        #expect(theme.hex(.gridHeaderBackground) == "#202020")
+        #expect(theme.hex(.gridHeaderText) == "#E0E0E0")
+        #expect(theme.hex(.gridSelection) == "#0050A0")
+        #expect(theme.hex(.gridSelectionText) == "#FFFFFF")
+        #expect(theme.hex(.gridInactiveSelection) == "#00305080")
+        #expect(theme.hex(.gridFocusBorder) == "#0080FF")
     }
 
     @Test("An imported theme survives the TablePro format unchanged")

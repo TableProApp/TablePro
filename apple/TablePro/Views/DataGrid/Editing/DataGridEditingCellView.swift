@@ -86,7 +86,7 @@ final class DataGridEditingCellView: NSTableCellView {
         bounds.fill()
         let path = NSBezierPath(rect: bounds.insetBy(dx: Self.borderWidth / 2, dy: Self.borderWidth / 2))
         path.lineWidth = Self.borderWidth
-        NSColor.keyboardFocusIndicatorColor.setStroke()
+        scope.palette[.gridFocusBorder].setStroke()
         path.stroke()
     }
 }

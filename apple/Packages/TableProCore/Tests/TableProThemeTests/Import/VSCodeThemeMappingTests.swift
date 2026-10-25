@@ -19,8 +19,15 @@ struct VSCodeThemeMappingTests {
       "editorLineNumber.foreground": "#808080",
       "editorWhitespace.foreground": "#404040",
       "keybindingTable.rowsBackground": "#252525",
+      "keybindingTable.headerBackground": "#2A2A2A",
       "tree.tableOddRowsBackground": "#999999",
+      "foreground": "#C0C0C0",
       "tree.tableColumnsBorder": "#303030",
+      "list.activeSelectionBackground": "#0050A0",
+      "list.activeSelectionForeground": "#FFFFFF",
+      "list.inactiveSelectionBackground": "#00305080",
+      "list.focusOutline": "#0080FF",
+      "focusBorder": "#999999",
       "input.placeholderForeground": "#707070",
       "gitDecoration.modifiedResourceForeground": "#E0C000",
       "diffEditor.insertedLineBackground": "#00FF0020",
@@ -66,7 +73,13 @@ struct VSCodeThemeMappingTests {
         case .gridBackground: return "#202020"
         case .gridText: return "#E0E0E0"
         case .gridAlternateRow: return "#252525"
+        case .gridHeaderBackground: return "#2A2A2A"
+        case .gridHeaderText: return "#C0C0C0"
         case .gridLine: return "#303030"
+        case .gridSelection: return "#0050A0"
+        case .gridSelectionText: return "#FFFFFF"
+        case .gridInactiveSelection: return "#00305080"
+        case .gridFocusBorder: return "#0080FF"
         case .gridNullValue: return "#707070"
         case .gridBoolTrue: return "#C00009"
         case .gridBoolFalse: return "#C0000A"
@@ -87,6 +100,8 @@ struct VSCodeThemeMappingTests {
       "editor.lineHighlightBorder": "#E0E0E0",
       "tree.tableOddRowsBackground": "#00000008",
       "foreground": "#404040",
+      "focusBorder": "#3366FF",
+      "list.activeSelectionForeground": "#FFFFFF",
       "diffEditor.insertedTextBackground": "#00AA0033",
       "diffEditor.removedTextBackground": "#AA000033"
     }, "tokenColors": [
@@ -117,7 +132,14 @@ struct VSCodeThemeMappingTests {
         case .gridBackground: return "#F8F8F8"
         case .gridText: return "#202020"
         case .gridAlternateRow: return "#00000008"
+        // #00000008 flattened over #F8F8F8.
+        case .gridHeaderBackground: return "#F0F0F0"
+        case .gridHeaderText: return "#404040"
         case .gridLine: return nil
+        case .gridSelection: return nil
+        case .gridSelectionText: return "#FFFFFF"
+        case .gridInactiveSelection: return nil
+        case .gridFocusBorder: return "#3366FF"
         case .gridNullValue: return "#40404080"
         case .gridBoolTrue: return nil
         case .gridBoolFalse: return nil

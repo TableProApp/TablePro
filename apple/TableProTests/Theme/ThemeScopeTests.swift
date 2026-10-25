@@ -44,6 +44,7 @@ struct ThemeScopeTests {
             appearance: .dark,
             overrides: [
                 .gridBackground: try ThemeColor(validating: "#282A36"),
+                .gridSelection: try ThemeColor(validating: "#6272A4"),
                 .editorSelection: try ThemeColor(validating: "#44475A"),
                 .editorBackground: try ThemeColor(validating: "#1B3A2C"),
                 .editorText: try ThemeColor(validating: "#F8F8F2"),
@@ -67,7 +68,8 @@ struct ThemeScopeTests {
             #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .aqua) == "#282A36")
             #expect(ThemeTestFixture.hex(table.tableView.backgroundColor, in: .darkAqua) == "#282A36")
             #expect(ThemeTestFixture.hex(chrome.rowBackgroundColor(forRow: 1), in: .aqua) == "#31333E")
-            #expect(chrome.selectionColor(emphasized: true) == nil)
+            #expect(ThemeTestFixture.hex(chrome.selectionColor(emphasized: true)) == "#6272A4")
+            #expect(chrome.selectionColor(emphasized: false) === NSColor.unemphasizedSelectedContentBackgroundColor)
             #expect(!table.scrollView.drawsBackground)
             #expect(engine.pair == pairBefore)
             #expect(engine.revision == revisionBefore)

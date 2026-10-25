@@ -21,7 +21,6 @@ paths:
 - **`ThemeSlot` is the one registry.** A slot exists only while a view reads it: removing its last reader removes the slot.
 - `isOverridden(_:)` means the slot draws a theme color, set or derived: ask it before swapping a native drawing path (a code table's selection, the caret). Only the theme editor asks `hasExplicitColor(_:)`.
 - **Adding a slot bumps `ThemeSchema.current`.** `ThemeFileFormat` reads only the current schema: an older or newer one, or an unknown key, is refused rather than loaded without colors its author wrote, so a bump stops every older file from loading. The bump renames the sync content kind (Sync).
-- **Removing a slot never bumps the schema.** Its key joins `ThemeFileFormat.retiredKeys`, which the decoder drops, so a file that still carries it loads without it.
 - **An imported file is untrusted.** `ThemeFileImporter` checks the size before it reads, mints a fresh id every time, and never follows a VS Code `include` out of the file's folder.
 
 ## Reading colors
@@ -29,7 +28,7 @@ paths:
 - **A scoped carrier reads through its `ThemeScope`, never `ThemeEngine.shared`.** Only the theme editor preview uses `.fixed(_:)`, and a new definition is a new scope.
 - `palette.color(_:otherwise:)` returns a new object on every call: never compare it to skip a write. Bake `resolved` into a `CGColor` only inside the drawing view's appearance (`resolved.cgColor(_:otherwise:in:)`).
 - **Hold every AppKit carrier** (`ThemeTextViewStyle`, `ThemeTableChrome`, never on a source list) **as a stored property.** Its subscription and row views hold it weakly, so one held in a local stops at the first theme change.
-- **Header and selection are always the system's.** No slot colors a table header, a records row's selection or its selected text, or the data grid's active-cell border, so they follow Accent, focus and Increase Contrast. `ThemeTableChrome` never replaces a header; only a code table recolors its selection, with `editor.selection`.
+- **A records table's header and selection have one drawing path.** The header band, its titles, the selection, the inactive selection, selected text and the data grid's active-cell border always draw `dataGrid.headerBackground`, `headerText`, `selection`, `inactiveSelection`, `selectionText` and `focusBorder`; an unset slot resolves to the system color. AppKit's header cell paints an opaque band and colors a title only from its attributes, so a records header is a `ThemeTableHeaderView` with `ThemeTableHeaderCell` columns: the cell paints the band and AppKit's interior draws the title and sort arrow, which the view styles before each draw. A code table recolors its selection with `editor.selection` only while the theme sets it.
 - **A theme change has to reach the view.** SwiftUI caches `Color(nsColor:)` by object identity, so a view reading the engine holds `@ObservedObject private var themeEngine = ThemeEngine.shared`; an AppKit view that bakes a color re-bakes on `AppEvents.shared.themeChanged`. `withAlphaComponent` on a system color outside `NSColor(name:dynamicProvider:)` freezes it.
 - **No theme color on selectable-row text**: it does not turn white on the emphasized selection. Never put `.themeForeground` on a container of selectable rows; `ThemeTableChrome.recordsTextSlot(...)` picks a records cell's slot.
 

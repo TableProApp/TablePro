@@ -31,7 +31,7 @@ struct QueryPlanOutlineView: NSViewRepresentable {
         outlineView.allowsMultipleSelection = false
         outlineView.allowsEmptySelection = true
         outlineView.usesAlternatingRowBackgroundColors = true
-        outlineView.headerView = NSTableHeaderView()
+        outlineView.headerView = ThemeTableHeaderView()
         outlineView.allowsColumnResizing = true
         // Bumped when the magnitude column landed. Measured: with a saved layout from the
         // four-column era, AppKit restores the known columns in their saved order and appends

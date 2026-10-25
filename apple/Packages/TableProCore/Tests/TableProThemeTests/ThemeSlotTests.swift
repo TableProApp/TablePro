@@ -23,9 +23,9 @@ struct ThemeSlotTests {
         }
     }
 
-    @Test("The registry holds 29 slots")
+    @Test("The registry holds 35 slots")
     func slotCount() {
-        #expect(ThemeSlot.allCases.count == 29)
+        #expect(ThemeSlot.allCases.count == 35)
     }
 
     @Test("Every slot belongs to exactly one group, listed in registry order")
@@ -44,26 +44,33 @@ struct ThemeSlotTests {
         #expect(sectioned.count == ThemeSlot.allCases.count)
     }
 
-    @Test("The editor sections split the data grid into rows and changes")
+    @Test("The editor sections split the data grid into rows, selection and changes")
     func sectionsSplitTheGrid() {
-        #expect(ThemeSlotSection.allCases == [.window, .editor, .syntax, .dataGrid, .changes])
+        #expect(ThemeSlotSection.allCases == [.window, .editor, .syntax, .dataGrid, .selection, .changes])
         #expect(ThemeSlotSection.window.slots == [.windowBackdrop])
         #expect(ThemeSlotSection.editor.slots == ThemeSlotGroup.editor.slots)
         #expect(ThemeSlotSection.syntax.slots == ThemeSlotGroup.syntax.slots)
         #expect(ThemeSlotSection.dataGrid.slots == [
-            .gridBackground, .gridText, .gridAlternateRow,
+            .gridBackground, .gridText, .gridAlternateRow, .gridHeaderBackground, .gridHeaderText,
             .gridLine, .gridNullValue, .gridBoolTrue, .gridBoolFalse, .gridRowNumber,
         ])
+        #expect(ThemeSlotSection.selection.slots == [.gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder])
         #expect(ThemeSlotSection.changes.slots == [.gridModified, .gridInserted, .gridDeleted, .gridDeletedText])
     }
 
-    @Test("Header and selection colors are the system's, so no slot names them")
-    func noHeaderOrSelectionSlot() {
-        for path in [
-            "dataGrid.headerBackground", "dataGrid.headerText", "dataGrid.selection",
-            "dataGrid.selectionText", "dataGrid.inactiveSelection", "dataGrid.focusBorder",
-        ] {
-            #expect(ThemeSlot(rawValue: path) == nil, "\(path)")
+    @Test("The header and selection slots sit under the data grid key")
+    func headerAndSelectionSlots() {
+        let expected: [String: ThemeSlot] = [
+            "dataGrid.headerBackground": .gridHeaderBackground,
+            "dataGrid.headerText": .gridHeaderText,
+            "dataGrid.selection": .gridSelection,
+            "dataGrid.selectionText": .gridSelectionText,
+            "dataGrid.inactiveSelection": .gridInactiveSelection,
+            "dataGrid.focusBorder": .gridFocusBorder,
+        ]
+        for (path, slot) in expected {
+            #expect(ThemeSlot(rawValue: path) == slot, "\(path)")
+            #expect(slot.group == .dataGrid, "\(path)")
         }
     }
 
@@ -86,13 +93,15 @@ struct ThemeSlotTests {
         }
         #expect(ThemeSlot.editorBackground.accessibilityLabel == "Editor Background")
         #expect(ThemeSlot.gridAlternateRow.accessibilityLabel == "Data Grid Alternate Row")
+        #expect(ThemeSlot.gridSelection.accessibilityLabel == "Data Grid Selection")
+        #expect(ThemeSlot.gridSelectionText.accessibilityLabel == "Data Grid Selected Text")
         #expect(ThemeSlot.windowBackdrop.accessibilityLabel == "Window Background")
     }
 
     @Test("Only the fills under everything else require an opaque color")
     func opaqueSlots() {
         let opaque = Set(ThemeSlot.allCases.filter { $0.requiresOpaque })
-        #expect(opaque == [.windowBackdrop, .editorBackground, .gridBackground])
+        #expect(opaque == [.windowBackdrop, .editorBackground, .gridBackground, .gridHeaderBackground])
     }
 
     @Test("Opacity is offered on the washes and never on a slot that must be opaque")
@@ -100,7 +109,8 @@ struct ThemeSlotTests {
         let translucent = Set(ThemeSlot.allCases.filter { $0.offersOpacity })
         #expect(translucent == [
             .editorSelection, .editorCurrentLine, .editorCurrentStatement, .editorInvisibles,
-            .gridAlternateRow, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText,
+            .gridAlternateRow, .gridSelection, .gridInactiveSelection,
+            .gridModified, .gridInserted, .gridDeleted, .gridDeletedText,
         ])
         for slot in ThemeSlot.allCases {
             #expect(!(slot.offersOpacity && slot.requiresOpaque), "\(slot.rawValue)")

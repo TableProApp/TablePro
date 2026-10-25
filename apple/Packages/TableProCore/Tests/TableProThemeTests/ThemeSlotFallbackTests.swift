@@ -44,7 +44,13 @@ struct ThemeSlotFallbackTests {
         .gridBackground: .system,
         .gridText: .system,
         .gridAlternateRow: .derived(base: .gridBackground, rule: .stripe(toward: .gridText)),
+        .gridHeaderBackground: .system,
+        .gridHeaderText: .system,
         .gridLine: .system,
+        .gridSelection: .system,
+        .gridSelectionText: .system,
+        .gridInactiveSelection: .system,
+        .gridFocusBorder: .system,
         .gridNullValue: .system,
         .gridBoolTrue: .slot(.gridText),
         .gridBoolFalse: .slot(.gridText),
@@ -148,6 +154,37 @@ struct ThemeSlotFallbackTests {
     func explicitBeatsDerived() throws {
         let theme = try Self.theme(.light, [.gridBackground: "#FDF6E3", .gridAlternateRow: "#EEE8D5"])
         #expect(theme.value(for: .gridAlternateRow) == .themed(Self.color("#EEE8D5")))
+    }
+
+    // MARK: - Header and selection
+
+    private static let headerAndSelection: [ThemeSlot] = [
+        .gridHeaderBackground, .gridHeaderText, .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder,
+    ]
+
+    @Test("Header and selection stay native under a themed grid until the theme sets them")
+    func headerAndSelectionStayNative() throws {
+        let theme = try Self.theme(.dark, [.gridBackground: "#282A36", .gridText: "#F8F8F2"])
+        for slot in Self.headerAndSelection {
+            #expect(theme.value(for: slot) == .system(slot), "\(slot.rawValue)")
+            #expect(!theme.isOverridden(slot), "\(slot.rawValue)")
+        }
+    }
+
+    @Test("Each header and selection color draws as set, whatever the others are")
+    func headerAndSelectionDrawAsSet() throws {
+        let theme = try Self.theme(.dark, [
+            .gridHeaderBackground: "#21222C80", .gridHeaderText: "#F8F8F2", .gridSelectionText: "#50FA7B",
+            .gridInactiveSelection: "#44475A80", .gridFocusBorder: "#BD93F9",
+        ])
+
+        #expect(theme.value(for: .gridHeaderBackground) == .themed(Self.color("#21222C")))
+        #expect(theme.value(for: .gridHeaderText) == .themed(Self.color("#F8F8F2")))
+        #expect(theme.value(for: .gridSelectionText) == .themed(Self.color("#50FA7B")))
+        #expect(theme.value(for: .gridInactiveSelection) == .themed(Self.color("#44475A80")))
+        #expect(theme.value(for: .gridFocusBorder) == .themed(Self.color("#BD93F9")))
+        #expect(theme.value(for: .gridSelection) == .system(.gridSelection))
+        #expect(theme.isOverridden(.gridSelectionText, highContrast: true))
     }
 
     // MARK: - Slot fallbacks

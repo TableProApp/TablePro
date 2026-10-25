@@ -196,7 +196,7 @@ private struct DashboardTileContentView: View {
                             ForEach(Array(table.columns.enumerated()), id: \.offset) { _, column in
                                 Text(verbatim: column)
                                     .fontWeight(.semibold)
-                                    .themeForeground(.gridText, native: HierarchicalShapeStyle.secondary)
+                                    .themeForeground(.gridHeaderText, native: HierarchicalShapeStyle.secondary)
                             }
                         }
                         ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in

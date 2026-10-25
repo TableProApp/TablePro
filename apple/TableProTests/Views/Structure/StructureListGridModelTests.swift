@@ -226,7 +226,8 @@ struct StructureListGridToneTests {
         deletedRowText: .systemPink,
         modifiedColumnTint: .systemYellow,
         findMatchTint: .systemOrange,
-        selectionText: .systemIndigo
+        selectionText: .systemIndigo,
+        focusBorder: .keyboardFocusIndicatorColor
     )
 
     private func appearance(

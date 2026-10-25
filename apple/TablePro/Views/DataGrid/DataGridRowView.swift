@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProTheme
 
 // Draws its pane's cells: NSTableView mounts a view for every column of every prepared row, which at 200 columns
 // costs 45 ms a frame against 1.5 ms drawn (probe P1).
@@ -102,8 +103,7 @@ final class DataGridRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard isSelected, let controller, let gridTable else { return }
         let row = rowIndex
-        let color: NSColor = isEmphasized ? .selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor
-        color.setFill()
+        controller.model.themeScope.resolved[isEmphasized ? .gridSelection : .gridInactiveSelection].setFill()
         for rect in controller.selectionRects(forRow: row, in: gridTable, within: convert(dirtyRect, to: gridTable)) {
             let local = convert(rect, from: gridTable)
             let band = NSRect(x: local.minX, y: bounds.minY, width: local.width, height: bounds.height)

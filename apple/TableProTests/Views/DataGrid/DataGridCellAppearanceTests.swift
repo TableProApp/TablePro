@@ -6,6 +6,7 @@
 import AppKit
 @testable import TablePro
 import TableProPluginKit
+import TableProTheme
 import Testing
 
 @MainActor
@@ -21,7 +22,9 @@ struct DataGridCellAppearanceTests {
         rowNumberText: .secondaryLabelColor,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
-        findMatchTint: .systemOrange
+        findMatchTint: .systemOrange,
+        selectionText: .alternateSelectedControlTextColor,
+        focusBorder: .keyboardFocusIndicatorColor
     )
 
     private let themedPalette = DataGridCellPalette(
@@ -35,7 +38,9 @@ struct DataGridCellAppearanceTests {
         rowNumberText: .systemTeal,
         deletedRowText: .systemRed,
         modifiedColumnTint: .systemYellow,
-        findMatchTint: .systemOrange
+        findMatchTint: .systemOrange,
+        selectionText: .systemIndigo,
+        focusBorder: .systemMint
     )
 
     private func resolve(
@@ -375,7 +380,6 @@ struct DataGridCellAppearanceTests {
         #expect(appearance.textColor == .labelColor)
     }
 
-    // Changed on purpose: the selected text is always the system's, so it no longer takes a theme color.
     @Test("Selection, deletion and a find match outrank the boolean color")
     func booleanColorYieldsToState() {
         let selected = resolve(kind: .boolean, text: "1", rawValue: "1", onEmphasizedSelection: true, palette: themedPalette)
@@ -388,33 +392,49 @@ struct DataGridCellAppearanceTests {
         )
         let found = resolve(kind: .boolean, text: "1", rawValue: "1", isCurrentFindMatch: true, palette: themedPalette)
 
-        #expect(selected.textColor == .alternateSelectedControlTextColor)
+        #expect(selected.textColor == .systemIndigo)
         #expect(deleted.textColor == .systemRed)
         #expect(found.textColor == themedPalette.findMatchText)
     }
 
     // MARK: - Selection
 
-    @Test("A selected cell's text takes the system's selected text color")
-    func nativeSelectionColors() {
+    @Test("A selected cell's text takes the palette's selected text color")
+    func selectionTakesThePaletteSelectedText() {
         let selected = resolve(onEmphasizedSelection: true)
+        let themed = resolve(onEmphasizedSelection: true, palette: themedPalette)
         let unselected = resolve()
 
-        #expect(selected.textColor == .alternateSelectedControlTextColor)
+        #expect(selected.textColor == palette.selectionText)
+        #expect(themed.textColor == .systemIndigo)
         #expect(unselected.textColor == .labelColor)
     }
 
-    // Changed on purpose: the selection text slot is gone, so a theme cannot reach a selected cell.
-    @Test("A theme that overrides every slot leaves the selected text to the system")
-    func themeNeverReachesSelectedText() throws {
+    @Test("A theme's selected text and focus border reach the grid's palette")
+    func themeReachesSelectedTextAndFocusBorder() throws {
         let aqua = try #require(NSAppearance(named: .aqua))
-        let palette = try ThemeTestFixture.withEverySlotOverridden {
-            ThemeScope.live.dataGridCellPalette(in: aqua)
-        }
+        let scope = ThemeScope.fixed(try ThemeTestFixture.theme(.light, [
+            .gridSelectionText: "#00AA00",
+            .gridFocusBorder: "#FF79C6",
+        ]))
+        let palette = scope.dataGridCellPalette(in: aqua)
         let selected = resolve(onEmphasizedSelection: true, palette: palette)
 
-        #expect(palette.selectionText == .alternateSelectedControlTextColor)
-        #expect(selected.textColor == .alternateSelectedControlTextColor)
-        #expect(resolve(palette: palette).textColor != .alternateSelectedControlTextColor)
+        #expect(ThemeTestFixture.hex(palette.selectionText) == "#00AA00")
+        #expect(ThemeTestFixture.hex(palette.focusBorder) == "#FF79C6")
+        #expect(selected.textColor === palette.selectionText)
+        #expect(resolve(palette: palette).textColor !== palette.selectionText)
+        #expect(palette.rowNumberColor(for: .empty, onEmphasizedSelection: true) === palette.selectionText)
+        #expect(palette.rowNumberColor(for: .empty, onEmphasizedSelection: false) === palette.rowNumberText)
+    }
+
+    @Test("With the slots unset the grid's palette carries the system's selected text and focus ring colors")
+    func unsetSlotsGiveTheSystemColors() throws {
+        let aqua = try #require(NSAppearance(named: .aqua))
+        let palette = ThemeScope.fixed(BuiltInThemes.light).dataGridCellPalette(in: aqua)
+
+        #expect(palette.selectionText === NSColor.alternateSelectedControlTextColor)
+        #expect(palette.focusBorder === NSColor.keyboardFocusIndicatorColor)
+        #expect(resolve(onEmphasizedSelection: true, palette: palette).textColor === NSColor.alternateSelectedControlTextColor)
     }
 }

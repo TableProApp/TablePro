@@ -106,6 +106,7 @@ final class DataGridPane {
         if let existing = columnsByID[id] { return existing }
         let identifier = NSUserInterfaceItemIdentifier("DataGrid.column.\(id.stringValue)")
         let column = NSTableColumn(identifier: identifier)
+        column.headerCell = ThemeTableHeaderCell()
         column.minWidth = DataGridMetrics.dataColumnMinWidth
         column.maxWidth = DataGridMetrics.dataColumnMaxWidth
         column.resizingMask = .userResizingMask
@@ -117,6 +118,7 @@ final class DataGridPane {
     func pooledRowNumberColumn() -> NSTableColumn {
         if let rowNumberColumn { return rowNumberColumn }
         let column = NSTableColumn(identifier: Self.rowNumberIdentifier)
+        column.headerCell = ThemeTableHeaderCell()
         column.title = "#"
         column.isEditable = false
         column.resizingMask = []

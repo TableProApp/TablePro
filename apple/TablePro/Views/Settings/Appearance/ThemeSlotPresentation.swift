@@ -86,7 +86,7 @@ internal enum ThemeContrastNote {
         switch section {
         case .editor: return (.editorText, .editorBackground)
         case .dataGrid: return (.gridText, .gridBackground)
-        case .window, .syntax, .changes: return nil
+        case .window, .syntax, .selection, .changes: return nil
         }
     }
 

@@ -134,7 +134,7 @@ extension DataGridViewController {
     }
 
     // An inner stroke, 2 pt while the grid has focus and 1 pt otherwise: a focus ring from a row view loses its top
-    // and bottom (critic B M5). On an emphasized fill it takes the selected text color, which stays visible there.
+    // and bottom. On an emphasized fill it takes the selected text color, which stays visible there.
     private func drawActiveCellBorder(of view: NSView, table: DataGridTableView, pane: DataGridPane, line: DrawnRow) {
         guard let active = line.pass.selection.activeCell, active.row == line.row,
               editedCell != active,
@@ -148,7 +148,7 @@ extension DataGridViewController {
             height: view.bounds.height
         )
         let onFill = line.isEmphasized && line.selected.contains(active.displayColumn)
-        let color = onFill ? line.pass.palette.selectionText : NSColor.keyboardFocusIndicatorColor
+        let color = onFill ? line.pass.palette.selectionText : line.pass.palette.focusBorder
         let path = NSBezierPath(rect: cellRect.insetBy(dx: lineWidth / 2, dy: lineWidth / 2))
         path.lineWidth = lineWidth
         color.setStroke()

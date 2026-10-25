@@ -54,6 +54,12 @@ struct NativeDefaultsTests {
             #expect(theme.color(for: .gridBackground) === NSColor.controlBackgroundColor)
             #expect(theme.color(for: .gridLine) === NSColor.separatorColor)
             #expect(theme.color(for: .gridText) === NSColor.labelColor)
+            #expect(theme.color(for: .gridHeaderBackground) === NSColor.controlBackgroundColor)
+            #expect(theme.color(for: .gridHeaderText) === NSColor.headerTextColor)
+            #expect(theme.color(for: .gridSelection) === NSColor.selectedContentBackgroundColor)
+            #expect(theme.color(for: .gridSelectionText) === NSColor.alternateSelectedControlTextColor)
+            #expect(theme.color(for: .gridInactiveSelection) === NSColor.unemphasizedSelectedContentBackgroundColor)
+            #expect(theme.color(for: .gridFocusBorder) === NSColor.keyboardFocusIndicatorColor)
         }
     }
 
@@ -86,6 +92,7 @@ struct NativeDefaultsTests {
         #expect(theme.color(for: .editorSelection) === NSColor.selectedTextBackgroundColor)
         #expect(theme.color(for: .editorCursor) === ThemeSlot.editorCursor.nativeColor)
         #expect(theme.color(for: .gridLine) === NSColor.separatorColor)
+        #expect(theme.color(for: .gridSelection) === NSColor.selectedContentBackgroundColor)
         #expect(theme.color(for: .gridBackground) === NSColor.controlBackgroundColor)
     }
 
@@ -116,6 +123,8 @@ struct NativeDefaultsTests {
         #expect(Self.hex(partial[.gridBackground]) == "#282A36")
         #expect(!partial.isOverridden(.gridLine))
         #expect(partial[.gridLine] === NSColor.separatorColor)
+        #expect(!partial.isOverridden(.gridSelection))
+        #expect(partial[.gridSelection] === NSColor.selectedContentBackgroundColor)
     }
 
     @Test("cgColor resolves a system slot inside the appearance it is given")
@@ -188,6 +197,35 @@ struct NativeDefaultsTests {
         aqua.performAsCurrentDrawingAppearance {
             #expect(Self.hex(palette[.editorBackground]) == Self.hex(NSColor.textBackgroundColor))
             #expect(Self.hex(palette[.gridBackground]) == Self.hex(NSColor.controlBackgroundColor))
+            #expect(Self.hex(palette[.gridSelection]) == Self.hex(NSColor.selectedContentBackgroundColor))
+        }
+    }
+
+    @Test("Dracula colors the grid's header, selection and focus border in Dark Aqua and leaves Aqua to the system")
+    func draculaPaletteResolvesItsHeaderAndSelection() throws {
+        let source = ThemeSource()
+        source.update(ThemePair(light: BuiltInThemes.light, dark: try Self.bundledTheme("tablepro.dracula")))
+        let palette = ThemePalette(revision: 910_006, source: source)
+        let aqua = try #require(NSAppearance(named: .aqua))
+        let darkAqua = try #require(NSAppearance(named: .darkAqua))
+        let expected: [ThemeSlot: String] = [
+            .gridHeaderBackground: "#21222C",
+            .gridHeaderText: "#F8F8F2",
+            .gridSelection: "#44475A",
+            .gridSelectionText: "#F8F8F2",
+            .gridInactiveSelection: "#44475A80",
+            .gridFocusBorder: "#BD93F9",
+        ]
+
+        darkAqua.performAsCurrentDrawingAppearance {
+            for (slot, hex) in expected {
+                #expect(Self.hex(palette[slot]) == hex, "\(slot.rawValue)")
+            }
+        }
+        aqua.performAsCurrentDrawingAppearance {
+            for slot in expected.keys {
+                #expect(Self.hex(palette[slot]) == Self.hex(slot.nativeColor), "\(slot.rawValue)")
+            }
         }
     }
 

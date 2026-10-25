@@ -7,10 +7,13 @@ internal struct ERDiagramPalette {
     internal let appearance: NSAppearance
     internal let backdrop: CGColor
     internal let nodeFill: CGColor
+    // Nil keeps the accent wash a table header has always had.
+    internal let headerFill: CGColor?
     internal let rule: CGColor
     internal let selectionRule: CGColor
     internal let edge: CGColor
     internal let text: NSColor
+    internal let headerText: NSColor
     internal let secondaryText: NSColor
     internal let insertedRow: CGColor
     internal let modifiedRow: CGColor
@@ -35,10 +38,15 @@ internal struct ERDiagramPalette {
 
         backdrop = Self.bake(color(.windowBackdrop, otherwise: .controlBackgroundColor), in: appearance)
         nodeFill = Self.bake(color(.gridBackground, otherwise: .controlBackgroundColor), in: appearance)
+        headerFill = theme.isOverridden(.gridHeaderBackground, in: appearance)
+            ? Self.bake(theme.color(for: .gridHeaderBackground), in: appearance)
+            : nil
         rule = Self.bake(color(.gridLine, otherwise: .tertiaryLabelColor), in: appearance)
-        selectionRule = Self.bake(.controlAccentColor, in: appearance)
+        // The grid outlines its active cell with the focus border, so a selected table does too.
+        selectionRule = Self.bake(color(.gridFocusBorder, otherwise: .controlAccentColor), in: appearance)
         edge = Self.wash(.secondaryLabelColor, alpha: Self.edgeAlpha, in: appearance)
         text = color(.gridText, otherwise: .labelColor)
+        headerText = color(.gridHeaderText, otherwise: text)
         secondaryText = .secondaryLabelColor
         insertedRow = Self.bake(color(.gridInserted, otherwise: NativeThemeColors.insertedRow), in: appearance)
         modifiedRow = Self.bake(color(.gridModified, otherwise: NativeThemeColors.modifiedRow), in: appearance)

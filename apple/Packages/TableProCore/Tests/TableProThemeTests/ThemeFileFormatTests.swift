@@ -105,7 +105,7 @@ struct ThemeFileFormatTests {
     }
 
     @Test("A fill that must be opaque loads without its alpha, and is written without it", arguments: [
-        ThemeSlot.windowBackdrop, .editorBackground, .gridBackground,
+        ThemeSlot.windowBackdrop, .editorBackground, .gridBackground, .gridHeaderBackground,
     ])
     func opaqueSlotsDropAlphaOnLoad(slot: ThemeSlot) throws {
         let theme = try Self.decode(Self.withColor("#282A3680", at: slot.rawValue.components(separatedBy: ".")))
@@ -117,8 +117,8 @@ struct ThemeFileFormatTests {
         #expect(reread.overrides[slot]?.hex == "#282A36")
     }
 
-    @Test("A file that still carries the retired header and selection keys loads without them, and saves without them")
-    func retiredKeysAreDropped() throws {
+    @Test("A file with header and selection keys loads them as colors, and saves them back")
+    func headerAndSelectionKeysLoad() throws {
         let text = """
         {
           "appearance": "dark",
@@ -143,22 +143,33 @@ struct ThemeFileFormatTests {
         let theme = try ThemeFileFormat.decode(Data(text.utf8))
         let colors = theme.overrides.mapValues(\.hex)
 
-        #expect(colors == [.gridBackground: "#282A36", .gridText: "#F8F8F2", .editorSelection: "#44475A"])
+        #expect(colors == [
+            .gridBackground: "#282A36", .gridText: "#F8F8F2", .editorSelection: "#44475A",
+            .gridFocusBorder: "#BD93F9", .gridHeaderBackground: "#21222C", .gridHeaderText: "#F8F8F2",
+            .gridInactiveSelection: "#44475A80", .gridSelection: "#44475A", .gridSelectionText: "#F8F8F2",
+        ])
         let object = try JSONSerialization.jsonObject(with: try ThemeFileFormat.encode(theme))
         let grid = try #require((object as? [String: Any])?["dataGrid"] as? [String: String])
-        #expect(grid == ["background": "#282A36", "text": "#F8F8F2"])
+        #expect(grid == [
+            "background": "#282A36", "focusBorder": "#BD93F9", "headerBackground": "#21222C", "headerText": "#F8F8F2",
+            "inactiveSelection": "#44475A80", "selection": "#44475A", "selectionText": "#F8F8F2", "text": "#F8F8F2",
+        ])
+        #expect(try ThemeFileFormat.decode(try ThemeFileFormat.encode(theme)) == theme)
     }
 
-    @Test("A retired key is dropped whatever its value, nested or dotted, and only the retired keys are")
-    func onlyRetiredKeysAreDropped() throws {
-        var root = Self.metadata()
-        Self.insert("not a color", at: ["dataGrid", "selection"], into: &root)
-        Self.insert(16_777_215, at: ["dataGrid", "focusBorder"], into: &root)
-        root["dataGrid.headerText"] = "#FFFFFF"
-        #expect(try Self.decode(root).overrides.isEmpty)
+    @Test("A header or selection key is checked like any other slot")
+    func headerAndSelectionKeysAreChecked() throws {
+        #expect(try Self.refusal(Self.withColor("not a color", at: ["dataGrid", "selection"])) == .invalidColor("not a color"))
 
-        Self.insert("#000000", at: ["dataGrid", "selectionBorder"], into: &root)
-        #expect(try Self.refusal(root) == .unknownKeys(["dataGrid.selectionBorder"]))
+        var numeric = Self.metadata()
+        Self.insert(16_777_215, at: ["dataGrid", "focusBorder"], into: &numeric)
+        #expect(try Self.refusal(numeric) == .invalidColor("dataGrid.focusBorder"))
+
+        var twice = Self.withColor("#000000", at: ["dataGrid", "headerText"])
+        twice["dataGrid.headerText"] = "#FFFFFF"
+        #expect(try Self.refusal(twice) == .duplicateKey("dataGrid.headerText"))
+
+        #expect(try Self.refusal(Self.withColor("#000000", at: ["dataGrid", "selectionBorder"])) == .unknownKeys(["dataGrid.selectionBorder"]))
     }
 
     @Test("Name and author are trimmed")

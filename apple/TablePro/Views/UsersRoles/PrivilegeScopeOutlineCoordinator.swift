@@ -45,12 +45,14 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
         // The pane's minimum thickness is 240pt, so the two columns must fit inside that or the
         // summary is clipped away entirely.
         let scope = NSTableColumn(identifier: Self.scopeColumn)
+        scope.headerCell = ThemeTableHeaderCell()
         scope.title = String(localized: "Object")
         scope.width = 150
         scope.minWidth = 110
         outlineView.addTableColumn(scope)
 
         let summary = NSTableColumn(identifier: Self.summaryColumn)
+        summary.headerCell = ThemeTableHeaderCell()
         summary.title = String(localized: "Privileges")
         summary.width = 130
         summary.minWidth = 90

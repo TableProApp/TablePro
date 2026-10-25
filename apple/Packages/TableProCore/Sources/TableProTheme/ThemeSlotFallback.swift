@@ -25,7 +25,8 @@ public extension ThemeSlot {
         case .windowBackdrop,
              .editorBackground, .editorText, .editorCursor, .editorSelection,
              .editorCurrentLine, .editorCurrentStatement, .editorLineNumber, .editorInvisibles,
-             .gridBackground, .gridText, .gridLine,
+             .gridBackground, .gridText, .gridHeaderBackground, .gridHeaderText, .gridLine,
+             .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder,
              .gridNullValue, .gridRowNumber, .gridModified, .gridInserted, .gridDeleted, .gridDeletedText:
             return .system
         case .syntaxKeyword, .syntaxString, .syntaxNumber, .syntaxComment,

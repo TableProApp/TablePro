@@ -48,6 +48,10 @@ struct ThemeSlotRowTests {
         #expect(line(.syntaxOperator) == "Based on Editor Text")
         #expect(line(.gridAlternateRow) == "Based on Data Grid Background")
         #expect(line(.gridBoolTrue) == "System color")
+        for slot in [ThemeSlot.gridHeaderBackground, .gridHeaderText, .gridSelection, .gridSelectionText, .gridInactiveSelection, .gridFocusBorder] {
+            #expect(line(slot) == "System color", "\(slot.rawValue)")
+            #expect(ThemeSlotPresentation(slot: slot, theme: Self.dark).resetTitle == "Use System Color", "\(slot.rawValue)")
+        }
 
         var light = Self.dark
         light.appearance = .light

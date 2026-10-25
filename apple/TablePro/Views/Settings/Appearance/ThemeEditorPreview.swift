@@ -162,8 +162,8 @@ private final class ThemePreviewStatementBand: TextViewCoordinator {
 
 // MARK: - Grid
 
-// Five rows that put every grid slot on screen: row numbers, both stripes, NULL, both booleans, an
-// unfocused selection, and a modified, a deleted and an inserted row.
+// Five rows that put every grid slot on screen: header and row numbers, both stripes, NULL, both booleans,
+// an unfocused selection, and a modified, a deleted and an inserted row.
 internal enum ThemePreviewGridSample {
     internal static let selectedRow = 1
     internal static let modifiedRow = 2
