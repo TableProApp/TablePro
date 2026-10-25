@@ -2,11 +2,14 @@ use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 
 use super::stream_pages::{StreamTerminal, StreamedResult};
+pub(super) mod stream_result_view;
 use super::{StatementIdentity, StatementOutcome, StatementOutcomeKind};
 use crate::ui::grid::local_filter::{LocalResultSettingsStore, ResultViewKey};
 use crate::ui::grid::{GridMsg, TabGridContext, build_column_view};
 use sha2::{Digest, Sha256};
 use std::future::Future;
+use stream_result_view::build_streamed_result_widget;
+use tablepro_app_services::stream_result_spool::{StreamResultSpool, StreamResultSpoolManager};
 use tablepro_core::sql_syntax::script::{BatchErrorPolicy, LexicalSettings};
 use tablepro_core::{DriverError, OperationControl, QueryResult};
 
@@ -90,10 +93,12 @@ pub(crate) enum StreamUpdate {
         sql_preview: String,
         sql: String,
         params: Vec<tablepro_core::Value>,
+        spool: StreamResultSpool,
     },
     Page {
         sequence: u64,
         page: std::sync::Arc<QueryResult>,
+        spooled: bool,
     },
 }
 
@@ -134,16 +139,34 @@ pub(crate) async fn run_statements(
     .await
 }
 
+#[cfg(test)]
 pub(crate) async fn run_statements_with_stream<S, F, Fut>(run: StatementRun<'_, S>, stream_update: F) -> ScriptRunResult
 where
     S: Fn(&str),
     F: FnMut(StreamUpdate) -> Fut,
     Fut: Future<Output = bool>,
 {
-    crate::services::approval_wait::track(run_tracked_statements(run, stream_update)).await
+    run_statements_with_spool_manager(run, StreamResultSpoolManager::default(), stream_update).await
 }
 
-async fn run_tracked_statements<S, F, Fut>(run: StatementRun<'_, S>, mut stream_update: F) -> ScriptRunResult
+pub(crate) async fn run_statements_with_spool_manager<S, F, Fut>(
+    run: StatementRun<'_, S>,
+    stream_spool_manager: StreamResultSpoolManager,
+    stream_update: F,
+) -> ScriptRunResult
+where
+    S: Fn(&str),
+    F: FnMut(StreamUpdate) -> Fut,
+    Fut: Future<Output = bool>,
+{
+    crate::services::approval_wait::track(run_tracked_statements(run, stream_spool_manager, stream_update)).await
+}
+
+async fn run_tracked_statements<S, F, Fut>(
+    run: StatementRun<'_, S>,
+    stream_spool_manager: StreamResultSpoolManager,
+    mut stream_update: F,
+) -> ScriptRunResult
 where
     S: Fn(&str),
     F: FnMut(StreamUpdate) -> Fut,
@@ -159,10 +182,8 @@ where
         settings_check,
         succeeded,
     } = run;
-    let (single_statement, stops_on_error) = (statements.len() == 1, error_policy == BatchErrorPolicy::StopScript);
-    let last_index = statements.len().saturating_sub(1);
-    let mut out = Vec::with_capacity(statements.len());
-    let mut skip = None;
+    let (single_statement, stops_on_error, last_index) = run_options(statements.len(), error_policy);
+    let (mut out, mut skip) = (Vec::with_capacity(statements.len()), None);
     for (statement_index, sql) in statements.into_iter().enumerate() {
         let identity = statement_identity(statement_index, &sql);
         let preview = sql_preview(&sql);
@@ -190,6 +211,7 @@ where
             sql: &sql,
             started,
             control,
+            spool_manager: stream_spool_manager.clone(),
         };
         let kind = match run_statement(attempt, &mut stream_update, &succeeded).await {
             Ok(kind) => kind,
@@ -209,6 +231,14 @@ where
         }
     }
     ScriptRunResult::Completed(out)
+}
+
+fn run_options(statement_count: usize, error_policy: BatchErrorPolicy) -> (bool, bool, usize) {
+    (
+        statement_count == 1,
+        error_policy == BatchErrorPolicy::StopScript,
+        statement_count.saturating_sub(1),
+    )
 }
 
 fn skipped_outcome(identity: StatementIdentity, preview: String, reason: Option<String>) -> StatementOutcome {
@@ -358,6 +388,7 @@ struct StreamAttempt<'a> {
     sql: &'a str,
     started: std::time::Instant,
     control: &'a OperationControl,
+    spool_manager: StreamResultSpoolManager,
 }
 
 async fn stream_statement_if_supported<F, Fut>(
@@ -372,6 +403,15 @@ where
     if !attempt.single_statement || !stream_candidate(attempt.bound_sql, attempt.driver_id) {
         return Ok(None);
     }
+    let spool = attempt.spool_manager.create().map_err(|_| {
+        Box::new(StatementOutcome {
+            identity: attempt.identity,
+            sql_preview: attempt.preview.clone(),
+            elapsed_ms: attempt.started.elapsed().as_millis(),
+            kind: StatementOutcomeKind::Error(crate::tr!("Temporary result storage is unavailable.").into()),
+            pinned: false,
+        })
+    })?;
     match attempt
         .target
         .open_query_cursor(attempt.bound_sql, attempt.bound_params, attempt.control)
@@ -387,6 +427,7 @@ where
                     bound_params: attempt.bound_params.to_vec(),
                     sql: attempt.sql,
                     control: attempt.control,
+                    spool,
                 },
                 stream_update,
                 succeeded,
@@ -422,6 +463,7 @@ struct StreamExecution<'a> {
     bound_params: Vec<tablepro_core::Value>,
     sql: &'a str,
     control: &'a OperationControl,
+    spool: StreamResultSpool,
 }
 
 async fn run_streamed_statement<F, Fut>(
@@ -441,6 +483,7 @@ where
         bound_params,
         sql,
         control,
+        spool,
     } = execution;
     let sent = bound_sql.clone();
     let started = stream_update(StreamUpdate::Started {
@@ -448,17 +491,19 @@ where
         sql_preview: preview,
         sql: bound_sql,
         params: bound_params,
+        spool: spool.clone(),
     })
     .await;
     if !started {
         finish_stream_cursor(cursor, true).await;
         return ScriptRunResult::Streamed(StreamTerminal::Cancelled);
     }
-    fetch_stream_pages(cursor, (sql, &sent), control, stream_update, succeeded).await
+    fetch_stream_pages(cursor, spool, (sql, &sent), control, stream_update, succeeded).await
 }
 
 async fn fetch_stream_pages<F, Fut>(
     cursor: super::session_mode::StatementCursor,
+    spool: StreamResultSpool,
     (sql, sent): (&str, &str),
     control: &OperationControl,
     stream_update: &mut F,
@@ -487,10 +532,13 @@ where
             }
         };
         let has_next_page = page.has_next_page;
-        let truncated = page.result.truncated;
+        let page = std::sync::Arc::new(page.result);
+        let truncated = page.truncated;
+        let spooled = spool.append_page(sequence, page.clone()).await.is_ok();
         if !stream_update(StreamUpdate::Page {
             sequence,
-            page: std::sync::Arc::new(page.result),
+            page,
+            spooled,
         })
         .await
         {
@@ -498,6 +546,13 @@ where
             return ScriptRunResult::Streamed(StreamTerminal::Cancelled);
         }
         sequence = sequence.saturating_add(1);
+        if !spooled {
+            finish_stream_cursor(cursor, true).await;
+            return ScriptRunResult::Streamed(StreamTerminal::Failed(
+                crate::tr!("BookiE could not keep the complete result in temporary storage. The received rows remain available.")
+                    .into(),
+            ));
+        }
         if truncated {
             finish_stream_cursor(cursor, true).await;
             return ScriptRunResult::Streamed(StreamTerminal::Failed(
@@ -577,6 +632,7 @@ fn build_outcome_widget(
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
     settings_store: LocalResultSettingsStore,
+    sender: Option<&relm4::ComponentSender<super::SqlEditor>>,
 ) -> gtk::Widget {
     match &o.kind {
         StatementOutcomeKind::Rows(result_sets) if result_sets.len() > 1 => {
@@ -602,7 +658,7 @@ fn build_outcome_widget(
                 .upcast()
         }
         StatementOutcomeKind::Streamed(result) => {
-            build_streamed_result_widget(o, result, grid_sender, connection_id, database, settings_store)
+            build_streamed_result_widget(o, result, grid_sender, connection_id, database, settings_store, sender)
         }
         StatementOutcomeKind::Error(msg) => error_page(o.identity.statement_index, msg).upcast(),
         StatementOutcomeKind::NotRun => adw::StatusPage::builder()
@@ -612,125 +668,6 @@ fn build_outcome_widget(
             .vexpand(true)
             .build()
             .upcast(),
-    }
-}
-
-fn build_streamed_result_widget(
-    outcome: &StatementOutcome,
-    result: &StreamedResult,
-    grid_sender: &relm4::Sender<GridMsg>,
-    connection_id: Option<uuid::Uuid>,
-    database: std::sync::Arc<crate::services::database_service::DatabaseService>,
-    settings_store: LocalResultSettingsStore,
-) -> gtk::Widget {
-    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    let page_switcher = gtk::Stack::builder().vexpand(true).hexpand(true).build();
-    for (position, (page_index, page)) in result.page_indices.iter().copied().zip(&result.pages).enumerate() {
-        let widget = build_stream_page_widget(
-            page,
-            grid_sender,
-            connection_id,
-            database.clone(),
-            settings_store.clone(),
-            result_view_key(outcome.identity, page_index as usize),
-        );
-        widget.set_widget_name(&super::stream_view::page_widget_name(page_index));
-        page_switcher.add_titled(
-            &widget,
-            Some(widget.widget_name().as_str()),
-            &stream_page_label(result, position),
-        );
-    }
-    if let Some(page) = stream_terminal_page(result, outcome.identity.statement_index) {
-        page_switcher.add_titled(&page, Some("status"), &crate::tr!("Status"));
-    }
-    if let Some(last) = page_switcher.last_child() {
-        page_switcher.set_visible_child(&last);
-    }
-    let progress = gtk::Label::new(Some(&stream_progress_text(result)));
-    progress.set_wrap(true);
-    if matches!(result.terminal, StreamTerminal::Loading) {
-        page_switcher.set_widget_name(super::stream_view::LIVE_PAGES);
-        progress.set_widget_name(super::stream_view::LIVE_PROGRESS);
-    }
-    holder.append(&progress);
-    if let Some(request) = result.export.clone() {
-        let export = gtk::Button::with_label(&crate::tr!("Export all rows…"));
-        export.add_css_class("flat");
-        export.connect_clicked({
-            let grid_sender = grid_sender.clone();
-            move |_| {
-                let _ = grid_sender.send(GridMsg::ExportStreamedResults(request.clone()));
-            }
-        });
-        holder.append(&export);
-        holder.append(&gtk::Label::new(Some(&crate::tr!(
-            "The query will run again through a guarded cursor."
-        ))));
-    }
-    holder.append(&super::stream_view::build_pager(&page_switcher));
-    holder.append(&page_switcher);
-    holder.upcast()
-}
-
-pub(super) fn stream_progress_text(result: &StreamedResult) -> String {
-    let rows = crate::trn!("Received {rows} row", "Received {rows} rows", result.total_rows)
-        .replace("{rows}", &result.total_rows.to_string());
-    let pages = crate::trn!("{pages} page", "{pages} pages", result.total_pages)
-        .replace("{pages}", &result.total_pages.to_string());
-    let received = format!("{rows} · {pages}");
-    let retained: usize = result.pages.iter().map(|page| page.rows.len()).sum();
-    if retained == result.total_rows {
-        return received;
-    }
-    let notice = crate::tr!("Retained rows {start}-{end}. Earlier rows are no longer available.")
-        .replace(
-            "{start}",
-            &result.total_rows.saturating_sub(retained).saturating_add(1).to_string(),
-        )
-        .replace("{end}", &result.total_rows.to_string());
-    format!("{received}\n{notice}")
-}
-
-pub(super) fn stream_page_label(result: &StreamedResult, position: usize) -> String {
-    let Some(page) = result.pages.get(position).filter(|page| !page.rows.is_empty()) else {
-        return crate::tr!("Rows 0");
-    };
-    let retained: usize = result.pages.iter().map(|page| page.rows.len()).sum();
-    let preceding: usize = result.pages.iter().take(position).map(|page| page.rows.len()).sum();
-    let start = result
-        .total_rows
-        .saturating_sub(retained)
-        .saturating_add(preceding)
-        .saturating_add(1);
-    let end = start.saturating_add(page.rows.len().saturating_sub(1));
-    crate::tr!("Rows {start}-{end}")
-        .replace("{start}", &start.to_string())
-        .replace("{end}", &end.to_string())
-}
-
-fn stream_terminal_page(result: &StreamedResult, statement_index: usize) -> Option<gtk::Widget> {
-    match &result.terminal {
-        StreamTerminal::Loading | StreamTerminal::Complete => None,
-        StreamTerminal::Failed(message) => Some(error_page(statement_index, message).upcast()),
-        StreamTerminal::Cancelled => Some(
-            adw::StatusPage::builder()
-                .title(crate::tr!("Query cancelled"))
-                .description(crate::tr!("Only retained rows remain available."))
-                .icon_name("process-stop-symbolic")
-                .vexpand(true)
-                .build()
-                .upcast(),
-        ),
-        StreamTerminal::TimedOut => Some(
-            adw::StatusPage::builder()
-                .title(crate::tr!("Query timed out"))
-                .description(crate::tr!("Only retained rows remain available."))
-                .icon_name("dialog-warning-symbolic")
-                .vexpand(true)
-                .build()
-                .upcast(),
-        ),
     }
 }
 
@@ -835,7 +772,7 @@ fn error_page(idx: usize, message: &super::StatementFailure) -> gtk::Box {
     holder
 }
 
-pub(super) fn build_stream_page_widget(
+pub(in crate::ui::editor) fn build_stream_page_widget(
     result: &std::sync::Arc<tablepro_core::QueryResult>,
     grid_sender: &relm4::Sender<GridMsg>,
     connection_id: Option<uuid::Uuid>,
@@ -1085,6 +1022,7 @@ pub(crate) fn render_outcomes(
     connection_id: Option<uuid::Uuid>,
     database: std::sync::Arc<crate::services::database_service::DatabaseService>,
     settings_store: LocalResultSettingsStore,
+    sender: Option<&relm4::ComponentSender<super::SqlEditor>>,
 ) {
     settings_store.retain(&result_view_keys(outcomes));
     if outcomes.is_empty() {
@@ -1098,13 +1036,27 @@ pub(crate) fn render_outcomes(
         return;
     }
     if outcomes.len() == 1 {
-        let widget = build_outcome_widget(&outcomes[0], grid_sender, connection_id, database, settings_store);
+        let widget = build_outcome_widget(
+            &outcomes[0],
+            grid_sender,
+            connection_id,
+            database,
+            settings_store,
+            sender,
+        );
         holder.append(&widget);
         return;
     }
     let stack = adw::ViewStack::new();
     for (idx, o) in outcomes.iter().enumerate() {
-        let widget = build_outcome_widget(o, grid_sender, connection_id, database.clone(), settings_store.clone());
+        let widget = build_outcome_widget(
+            o,
+            grid_sender,
+            connection_id,
+            database.clone(),
+            settings_store.clone(),
+            sender,
+        );
         let icon = result_tab_icon(&o.kind);
         let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(o), icon);
         if !o.sql_preview.is_empty() {
@@ -1119,7 +1071,7 @@ pub(crate) fn render_outcomes(
     }
 }
 
-pub(super) fn result_view_key(identity: StatementIdentity, result_set_index: usize) -> ResultViewKey {
+pub(in crate::ui::editor) fn result_view_key(identity: StatementIdentity, result_set_index: usize) -> ResultViewKey {
     ResultViewKey {
         statement_identity: identity,
         result_set_index,
@@ -1136,9 +1088,11 @@ fn result_view_keys(outcomes: &[StatementOutcome]) -> std::collections::HashSet<
                 .map(|(index, _)| result_view_key(outcome.identity, index))
                 .collect::<Vec<_>>(),
             StatementOutcomeKind::Streamed(result) => result
-                .page_indices
+                .page_row_counts
                 .iter()
-                .map(|page_index| result_view_key(outcome.identity, *page_index as usize))
+                .enumerate()
+                .filter(|&(_, row_count)| *row_count > 0)
+                .map(|(page_index, _)| result_view_key(outcome.identity, page_index))
                 .collect::<Vec<_>>(),
             StatementOutcomeKind::Error(_) | StatementOutcomeKind::NotRun => Vec::new(),
         })

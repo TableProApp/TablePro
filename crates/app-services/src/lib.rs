@@ -16,6 +16,7 @@ pub mod recent_tabs;
 pub mod request_generation;
 pub mod single_flight;
 pub mod state_file;
+pub mod stream_result_spool;
 pub mod structure_tracker;
 pub mod window_state;
 pub mod workspace;

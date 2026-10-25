@@ -61,6 +61,7 @@ Other options and why they were rejected.
 | [0022](0022-release-notes-from-merge-commits.md) | Release notes come from merge commits | Accepted; workflow wiring pending | A `Release-Note:` trailer on each squash commit replaces edits to `CHANGELOG.md`; notes are assembled at release. |
 | [0023](0023-system-openssh-transport-boundaries.md) | System OpenSSH transport boundaries | Accepted | Askpass answers only exact prompts, forced client options, no global state, and no `core` dependency in the ssh crate. |
 | [0024](0024-keyed-grid-writes-check-what-they-overwrite.md) | Keyed grid writes check what they overwrite | Accepted | Relational updates compare edited columns' original values and must affect exactly one row; MongoDB guards by field and row; deletes and ABA are limits. |
+| [0025](0025-transient-result-page-spool.md) | Keep fetched result pages in a transient spool | Proposed | A private, bounded, encrypted spool would make every fetched PostgreSQL page revisitable without retaining all rows in RAM or rerunning SQL. |
 
 Three records use "snapshot" for different things: ADR 0011 a read-only snapshot session, ADR 0014 the read snapshot a full export holds, and ADR 0015 a saved copy of a database.
 

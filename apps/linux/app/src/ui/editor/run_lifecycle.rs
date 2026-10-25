@@ -174,6 +174,7 @@ impl SqlEditor {
             self.connection_id,
             self.database.clone(),
             self.result_view_settings.clone(),
+            Some(sender),
         );
     }
 

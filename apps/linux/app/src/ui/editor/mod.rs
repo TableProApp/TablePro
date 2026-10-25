@@ -58,7 +58,9 @@ pub use schema::derive_tab_label;
 pub(crate) use session_mode::{StreamSession, query_cursor_export_factory};
 pub use statement_cursor::grammar_for;
 
-use outcomes::{ScriptRunResult, StatementRun, StreamUpdate, clear_box, render_outcomes, run_statements_with_stream};
+use outcomes::{
+    ScriptRunResult, StatementRun, StreamUpdate, clear_box, render_outcomes, run_statements_with_spool_manager,
+};
 use run_generation::{RunGeneration, RunTerminal};
 use schema::{apply_editor_preferences, apply_editor_scheme};
 use sql_text::{export_name_for_query, read_sql_text, text_to_run, toggle_line_comment};
@@ -186,23 +188,7 @@ pub enum SqlEditorInput {
         generation: u64,
         outcomes: Vec<StatementOutcome>,
     },
-    StreamStarted {
-        generation: u64,
-        identity: StatementIdentity,
-        sql_preview: String,
-        export_query: Option<crate::ui::export_dialog::StreamExportQuery>,
-        accepted: tokio::sync::oneshot::Sender<bool>,
-    },
-    StreamPage {
-        generation: u64,
-        sequence: u64,
-        page: std::sync::Arc<QueryResult>,
-        accepted: tokio::sync::oneshot::Sender<bool>,
-    },
-    StreamFinished {
-        generation: u64,
-        terminal: StreamTerminal,
-    },
+    Stream(streaming::Input),
     RunWithLongerTimeout,
     ShowCancelled(u64),
     ShowTimedOut {
@@ -867,30 +853,13 @@ impl SimpleComponent for SqlEditor {
                 }
             }
 
-            SqlEditorInput::TogglePin => self.toggle_pin(),
+            SqlEditorInput::TogglePin => self.toggle_pin(&sender),
             SqlEditorInput::Panel(action) => self.panel.apply(action),
             SqlEditorInput::NavigateError(target) => self.navigate_error(target),
 
             SqlEditorInput::ShowOutcomes { generation, outcomes } => self.on_outcomes(generation, outcomes, &sender),
 
-            SqlEditorInput::StreamStarted {
-                generation,
-                identity,
-                sql_preview,
-                export_query,
-                accepted,
-            } => self.on_stream_started(generation, identity, sql_preview, export_query, accepted),
-
-            SqlEditorInput::StreamPage {
-                generation,
-                sequence,
-                page,
-                accepted,
-            } => self.on_stream_page(generation, sequence, page, accepted),
-
-            SqlEditorInput::StreamFinished { generation, terminal } => {
-                self.on_stream_finished(generation, terminal, &sender);
-            }
+            SqlEditorInput::Stream(input) => self.on_stream_input(input, &sender),
 
             SqlEditorInput::ShowCancelled(generation) => {
                 let Some((terminal, context)) = self.finish_run(generation, &sender) else {
@@ -912,7 +881,7 @@ impl SimpleComponent for SqlEditor {
                     .icon_name("process-stop-symbolic")
                     .vexpand(true)
                     .build();
-                self.show_pins_above(&cancelled_page);
+                self.show_pins_above(&cancelled_page, &sender);
             }
 
             SqlEditorInput::ShowTimedOut { generation, secs } => {
@@ -939,7 +908,7 @@ impl SimpleComponent for SqlEditor {
                     .icon_name("dialog-warning-symbolic")
                     .vexpand(true)
                     .build();
-                self.show_pins_above(&page);
+                self.show_pins_above(&page, &sender);
                 self.panel.show_timeout(&reason);
             }
 
@@ -1068,6 +1037,7 @@ impl SqlEditor {
             .map(|context| context.metadata.driver_id.clone())
             .unwrap_or_default();
         let export_driver_id = driver_id.clone();
+        let stream_spool_manager = self.database.stream_result_spool_manager();
         let target = self.statement_target(conn);
         let lexing_source = self.lexing_source();
         let export_session = StreamSession::of(&target);
@@ -1099,41 +1069,50 @@ impl SqlEditor {
                                     sql_preview,
                                     sql,
                                     params,
+                                    spool,
                                 } => {
                                     let (accepted, delivered) = tokio::sync::oneshot::channel();
-                                    sender.input(SqlEditorInput::StreamStarted {
-                                        generation,
-                                        identity,
-                                        sql_preview,
-                                        export_query: export_origin.map(|origin| {
-                                            crate::ui::export_dialog::StreamExportQuery {
-                                                origin,
-                                                driver_id: export_driver_id.clone(),
-                                                sql,
-                                                params,
-                                                timeout_secs,
-                                                suggested_name: export_suggested_name.clone(),
-                                                session: export_session.clone(),
-                                            }
-                                        }),
-                                        accepted,
-                                    });
+                                    sender.input(SqlEditorInput::Stream(streaming::Input::Started(
+                                        streaming::StreamStart {
+                                            generation,
+                                            identity,
+                                            sql_preview,
+                                            export_query: export_origin.map(|origin| {
+                                                crate::ui::export_dialog::StreamExportQuery {
+                                                    origin,
+                                                    driver_id: export_driver_id.clone(),
+                                                    sql,
+                                                    params,
+                                                    timeout_secs,
+                                                    suggested_name: export_suggested_name.clone(),
+                                                    session: export_session.clone(),
+                                                }
+                                            }),
+                                            spool,
+                                            accepted,
+                                        },
+                                    )));
                                     delivered.await.unwrap_or(false)
                                 }
-                                StreamUpdate::Page { sequence, page } => {
+                                StreamUpdate::Page {
+                                    sequence,
+                                    page,
+                                    spooled,
+                                } => {
                                     let (accepted, delivered) = tokio::sync::oneshot::channel();
-                                    sender.input(SqlEditorInput::StreamPage {
+                                    sender.input(SqlEditorInput::Stream(streaming::Input::Page {
                                         generation,
                                         sequence,
                                         page,
+                                        spooled,
                                         accepted,
-                                    });
+                                    }));
                                     delivered.await.unwrap_or(false)
                                 }
                             }
                         }) as std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>
                     };
-                    let msg = match run_statements_with_stream(
+                    let msg = match run_statements_with_spool_manager(
                         StatementRun {
                             target: target.clone(),
                             statements: planned.statements,
@@ -1144,6 +1123,7 @@ impl SqlEditor {
                             settings_check: planned.settings_check,
                             succeeded,
                         },
+                        stream_spool_manager,
                         stream_update,
                     )
                     .await
@@ -1153,7 +1133,9 @@ impl SqlEditor {
                             generation,
                             secs: timeout_secs,
                         },
-                        ScriptRunResult::Streamed(terminal) => SqlEditorInput::StreamFinished { generation, terminal },
+                        ScriptRunResult::Streamed(terminal) => {
+                            SqlEditorInput::Stream(streaming::Input::Finished { generation, terminal })
+                        }
                         ScriptRunResult::Completed(outcomes) => {
                             let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
                             let n_ok = outcomes

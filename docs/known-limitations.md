@@ -17,9 +17,15 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   Single-statement PostgreSQL `SELECT`s in the SQL editor stream cursor pages
   through Core and PolicyGuard, retaining them while estimated row storage stays
   within 64 MiB and always keeping the newest page, even if it alone exceeds the
-  estimate. A wide result exceeded the budget and
-  evicted older pages, so results larger than the cache budget can still lose
-  access to earlier rows. The received-row summary identifies the retained
+  estimate. [ADR 0025](decisions/0025-transient-result-page-spool.md) describes
+  the bounded, private spool implemented on `ux/stream-result-spool`, so fetched
+  pages remain revisitable after they leave the RAM cache. The stream stops with
+  an incomplete-result status if the shared spool quota, per-result page cap or
+  temporary storage fails; pages already stored remain available while their
+  result owners stay open.
+  Local preflight and the installed 100,000-row PostgreSQL GTK scenario pass;
+  Forgejo acceptance remains pending under #554.
+  The received-row summary identifies the retained
   range; row ranges are positions in the result, not database row identifiers.
   Incoming decoding, concurrent snapshots, pins, widgets and allocator retention
   remain outside this cache estimate, which is not a process-memory ceiling.

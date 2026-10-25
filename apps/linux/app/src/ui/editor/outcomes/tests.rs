@@ -494,7 +494,7 @@ fn streamed_update(
         Box::pin(async move {
             match update {
                 StreamUpdate::Started { .. } => true,
-                StreamUpdate::Page { sequence, page } => {
+                StreamUpdate::Page { sequence, page, .. } => {
                     let fetched = counters.fetched.load(std::sync::atomic::Ordering::SeqCst);
                     if fetched != sequence as usize + 1 {
                         return false;
@@ -516,7 +516,7 @@ fn record_streamed_pages(
         Box::pin(async move {
             match update {
                 StreamUpdate::Started { .. } => true,
-                StreamUpdate::Page { sequence, page } => {
+                StreamUpdate::Page { sequence, page, .. } => {
                     received.lock().unwrap().push((sequence, page.rows.clone()));
                     true
                 }
@@ -619,13 +619,27 @@ fn streamed_result_pages(
     terminal: StreamTerminal,
 ) -> gtk::Stack {
     let page_indices = (first_page..first_page.saturating_add(pages.len() as u64)).collect();
+    let columns = pages.first().map_or_else(Vec::new, |page| page.columns.clone());
+    let page_row_counts = (0..total_pages)
+        .map(|index| {
+            if index >= first_page && index < first_page.saturating_add(pages.len() as u64) {
+                pages[(index - first_page) as usize].rows.len()
+            } else {
+                1
+            }
+        })
+        .collect();
     let streamed = StreamedResult {
         pages,
         page_indices,
+        page_row_counts,
+        columns,
         total_pages,
         total_rows,
         terminal,
         export: None,
+        generation: 0,
+        spool: None,
     };
     let outcome = super::StatementOutcome {
         identity: StatementIdentity::default(),
@@ -642,6 +656,7 @@ fn streamed_result_pages(
         None,
         std::sync::Arc::new(crate::services::database_service::DatabaseService::new_isolated()),
         Default::default(),
+        None,
     );
     widget.last_child().unwrap().downcast().unwrap()
 }
@@ -941,67 +956,6 @@ fn guarded_query_export_failure_rolls_back_and_keeps_the_database_error() {
 }
 
 #[test]
-#[ignore = "requires an isolated GTK display"]
-fn exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values() {
-    relm4::adw::init().unwrap();
-    let (_runtime, database, origin) = stream_export_origin();
-    let page = std::sync::Arc::new(cursor_page(&[1, 2], true).result);
-    let request = crate::ui::export_dialog::StreamExportRequest {
-        query: crate::ui::export_dialog::StreamExportQuery {
-            origin: origin.clone(),
-            driver_id: "sqlite".into(),
-            sql: "SELECT id FROM items WHERE id > ?".into(),
-            params: vec![tablepro_core::Value::Int(0)],
-            timeout_secs: 30,
-            suggested_name: "items".into(),
-            session: None,
-        },
-        columns: page.columns.clone(),
-    };
-    let streamed = StreamedResult {
-        pages: vec![page],
-        page_indices: vec![2],
-        total_pages: 4,
-        total_rows: tablepro_core::MAX_QUERY_CURSOR_PAGE_ROWS * 3 + 2,
-        terminal: StreamTerminal::Loading,
-        export: Some(request.clone()),
-    };
-    let outcome = super::StatementOutcome {
-        identity: StatementIdentity {
-            statement_index: 0,
-            digest: [7; 32],
-        },
-        sql_preview: "SELECT id FROM items".into(),
-        elapsed_ms: 0,
-        kind: StatementOutcomeKind::Streamed(Box::new(streamed.clone())),
-        pinned: false,
-    };
-    let (grid_sender, receiver) = relm4::channel::<crate::ui::grid::GridMsg>();
-    let widget = super::build_streamed_result_widget(
-        &outcome,
-        &streamed,
-        &grid_sender,
-        Some(origin.id),
-        database,
-        Default::default(),
-    );
-
-    let button = stream_export_button(&widget).unwrap();
-    button.emit_clicked();
-    let Some(crate::ui::grid::GridMsg::ExportStreamedResults(export)) = receiver.recv_sync() else {
-        panic!("the export action must carry a full query export request");
-    };
-
-    assert_eq!(export.query.origin, origin);
-    assert_eq!(export.query.sql, "SELECT id FROM items WHERE id > ?");
-    assert_eq!(export.query.params, [tablepro_core::Value::Int(0)]);
-    assert_eq!(export.query.suggested_name, "items");
-    assert_eq!(export.columns[0].name, "id");
-    assert_eq!(streamed.pages.len(), 1);
-    assert!(streamed.total_rows > streamed.pages[0].rows.len());
-}
-
-#[test]
 fn sql_preview_collapses_whitespace_and_truncates() {
     let preview = sql_preview("SELECT *\n  FROM   users\n  WHERE id = 1");
     assert_eq!(preview, "SELECT * FROM users WHERE id = 1");
@@ -1050,10 +1004,14 @@ fn streamed_kind(terminal: StreamTerminal) -> StatementOutcomeKind {
     StatementOutcomeKind::Streamed(Box::new(StreamedResult {
         pages: Vec::new(),
         page_indices: Vec::new(),
+        page_row_counts: Vec::new(),
+        columns: Vec::new(),
         total_pages: 0,
         total_rows: 0,
         terminal,
         export: None,
+        generation: 0,
+        spool: None,
     }))
 }
 
@@ -1171,24 +1129,8 @@ mod fetch_errors;
 mod error_view_tests;
 use error_view_tests::contains_label;
 
-#[test]
-fn streamed_progress_pluralizes_rows_and_pages_independently() {
-    for (rows, pages, expected) in [
-        (0usize, 0u64, "Received 0 rows · 0 pages"),
-        (1, 1, "Received 1 row · 1 page"),
-        (1, 2, "Received 1 row · 2 pages"),
-        (2, 1, "Received 2 rows · 1 page"),
-        (2, 2, "Received 2 rows · 2 pages"),
-    ] {
-        let result = super::super::StreamedResult {
-            pages: vec![std::sync::Arc::new(cursor_page(&vec![1; rows], false).result)],
-            page_indices: vec![pages.saturating_sub(1)],
-            total_pages: pages,
-            total_rows: rows,
-            terminal: super::super::StreamTerminal::Complete,
-            export: None,
-        };
-        let text = super::stream_progress_text(&result);
-        assert_eq!(text, expected);
-    }
-}
+#[path = "tests/streamed_progress.rs"]
+mod streamed_progress;
+
+#[path = "tests/export_partial_view.rs"]
+mod export_partial_view;

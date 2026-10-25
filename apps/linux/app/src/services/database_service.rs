@@ -212,6 +212,7 @@ pub struct DatabaseService {
     unresolved_connection_ids: Arc<HashSet<Uuid>>,
     approval: Mutex<Arc<dyn tablepro_policy::ApprovalSink>>,
     ssh_environment: Mutex<SshEnvironment>,
+    stream_result_spools: tablepro_app_services::stream_result_spool::StreamResultSpoolManager,
     #[cfg(test)]
     _audit_temp_dir: Option<tempfile::TempDir>,
 }
@@ -263,6 +264,7 @@ impl DatabaseService {
             unresolved_connection_ids: audit.unresolved_connection_ids,
             approval: Mutex::new(Arc::new(DenyApprovalSink)),
             ssh_environment: Mutex::new(SshEnvironment::builtin(tablepro_ssh::UnknownHostKey::Refuse)),
+            stream_result_spools: tablepro_app_services::stream_result_spool::StreamResultSpoolManager::default(),
             #[cfg(test)]
             _audit_temp_dir: audit_temp_dir,
         }
@@ -270,6 +272,10 @@ impl DatabaseService {
 
     pub fn audit_available(&self) -> bool {
         self.audit_available
+    }
+
+    pub fn stream_result_spool_manager(&self) -> tablepro_app_services::stream_result_spool::StreamResultSpoolManager {
+        self.stream_result_spools.clone()
     }
 
     pub fn policy_available(&self) -> bool {

@@ -505,7 +505,7 @@
     [
       "tablepro-app",
       "--lib",
-      "ui::editor::outcomes::tests::exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values"
+      "ui::editor::outcomes::tests::export_partial_view::exporting_after_partial_view_uses_the_guarded_query_and_its_bind_values"
     ],
     [
       "tablepro-app",
@@ -756,6 +756,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::stream_view::tests::a_stream_page_retired_before_a_frame_does_not_build_a_grid"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::stream_view::tests::a_loaded_page_replaces_only_its_matching_generation_placeholder"
     ],
     [
       "tablepro-app",
