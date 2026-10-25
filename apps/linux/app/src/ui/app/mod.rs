@@ -112,6 +112,7 @@ pub struct App {
     sidebar_tables: Vec<tablepro_core::TableInfo>,
     catalog_generation: std::cell::Cell<u64>,
     catalog_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
+    catalog_dialog_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     schema_fetch_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     database_list_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     content_holder: adw::ToolbarView,
@@ -550,6 +551,7 @@ impl SimpleComponent for App {
             sidebar_tables: Vec::new(),
             catalog_generation: std::cell::Cell::new(0),
             catalog_cancel: Default::default(),
+            catalog_dialog_cancel: Default::default(),
             schema_fetch_cancel: Default::default(),
             database_list_cancel: Default::default(),
             content_holder: widgets.content_holder.clone(),
@@ -1022,6 +1024,7 @@ impl SimpleComponent for App {
                 self.connection_id,
                 &self.database,
                 &self.preferences,
+                self.catalog_dialog_cancel.borrow().clone(),
             ),
             AppMsg::ExplainActiveQuery => self.on_explain_active_query(),
             AppMsg::ShowPreferences => super::preferences::present(

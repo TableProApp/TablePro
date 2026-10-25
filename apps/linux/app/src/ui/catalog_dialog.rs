@@ -9,12 +9,14 @@ use tablepro_core::{CATALOG_OBJECT_LIMIT, CatalogObject, CatalogObjectKind, Driv
 
 use crate::services::database_service::DatabaseService;
 use crate::services::preferences::PreferencesStore;
+use crate::services::request_generation::replace_scoped_in_flight;
 use crate::tr;
 
 struct CatalogSource {
     connection: uuid::Uuid,
     database: std::sync::Arc<DatabaseService>,
     preferences: PreferencesStore,
+    connection_scope: CancellationToken,
     in_flight: Rc<RefCell<CancellationToken>>,
 }
 
@@ -23,6 +25,7 @@ pub fn present(
     connection_id: Option<uuid::Uuid>,
     database: &std::sync::Arc<DatabaseService>,
     preferences: &PreferencesStore,
+    connection_scope: CancellationToken,
 ) {
     let Some(connection) = connection_id.filter(|id| database.metadata(*id).is_some()) else {
         let alert = adw::AlertDialog::new(
@@ -37,7 +40,8 @@ pub fn present(
         connection,
         database: database.clone(),
         preferences: preferences.clone(),
-        in_flight: Rc::new(RefCell::new(CancellationToken::new())),
+        connection_scope: connection_scope.clone(),
+        in_flight: Rc::new(RefCell::new(connection_scope.child_token())),
     });
     let dialog = adw::Dialog::builder().title(tr!("Catalog")).build();
     dialog.set_content_width(720);
@@ -140,7 +144,7 @@ fn load(
     status: &gtk::Label,
 ) {
     list.remove_all();
-    let token = replace_in_flight(&source.in_flight);
+    let token = replace_scoped_in_flight(&source.in_flight, &source.connection_scope);
     let Some(conn) = source.database.get(source.connection) else {
         status.set_text(&tr!("Connection closed."));
         return;
@@ -174,13 +178,6 @@ fn object_row(object: &CatalogObject) -> adw::ActionRow {
         .title(glib::markup_escape_text(&object.name))
         .subtitle(glib::markup_escape_text(&subtitle))
         .build()
-}
-
-fn replace_in_flight(current: &RefCell<CancellationToken>) -> CancellationToken {
-    current.borrow().cancel();
-    let next = CancellationToken::new();
-    *current.borrow_mut() = next.clone();
-    next
 }
 
 fn kind_label(kind: CatalogObjectKind) -> String {

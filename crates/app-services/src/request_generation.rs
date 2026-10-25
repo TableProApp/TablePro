@@ -11,6 +11,16 @@ pub fn replace_in_flight(
     next
 }
 
+pub fn replace_scoped_in_flight(
+    current: &std::cell::RefCell<tokio_util::sync::CancellationToken>,
+    owner: &tokio_util::sync::CancellationToken,
+) -> tokio_util::sync::CancellationToken {
+    current.borrow().cancel();
+    let next = owner.child_token();
+    *current.borrow_mut() = next.clone();
+    next
+}
+
 #[derive(Debug, Default)]
 pub struct LatestApplied {
     issued: std::cell::Cell<u64>,
@@ -53,6 +63,21 @@ mod tests {
         let third = replace_in_flight(&slot);
         assert!(second.is_cancelled());
         assert!(!third.is_cancelled());
+    }
+
+    #[test]
+    fn replacing_a_scoped_request_and_retiring_its_owner_cancel_only_that_scope() {
+        let slot = std::cell::RefCell::new(tokio_util::sync::CancellationToken::new());
+        let owner = tokio_util::sync::CancellationToken::new();
+        let first = replace_scoped_in_flight(&slot, &owner);
+        let second = replace_scoped_in_flight(&slot, &owner);
+        assert!(first.is_cancelled());
+        assert!(!second.is_cancelled());
+        owner.cancel();
+        assert!(second.is_cancelled());
+        let next_owner = tokio_util::sync::CancellationToken::new();
+        let next = replace_scoped_in_flight(&slot, &next_owner);
+        assert!(!next.is_cancelled());
     }
 
     #[test]
