@@ -931,7 +931,7 @@ impl App {
         let Some(conn) = origin.connection(&self.database) else {
             return;
         };
-        self.reset_schema_fetches();
+        self.schema_index.borrow_mut().invalidate_columns();
         let affected: Vec<Uuid> = self
             .workspace_tabs
             .borrow()

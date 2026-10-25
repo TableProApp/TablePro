@@ -208,7 +208,6 @@ impl App {
         // Persist + tear down workspace tabs before dropping the
         // connection (persist needs the active connection_id).
         self.teardown_workspace_tabs();
-        self.reset_schema_fetches();
         self.table_names.clear();
         self.schema_index.borrow_mut().clear();
         // Drop reopen-stack entries — they reference tables in the

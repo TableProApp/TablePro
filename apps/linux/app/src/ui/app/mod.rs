@@ -113,7 +113,6 @@ pub struct App {
     catalog_generation: std::cell::Cell<u64>,
     catalog_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     catalog_dialog_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
-    schema_fetch_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     database_list_cancel: std::cell::RefCell<tokio_util::sync::CancellationToken>,
     content_holder: adw::ToolbarView,
     history_paned: gtk::Paned,
@@ -158,9 +157,6 @@ pub struct App {
     favorites_order: crate::services::request_generation::LatestApplied,
     /// Tables and their columns for schema-aware editor completion.
     schema_index: std::rc::Rc<std::cell::RefCell<crate::ui::editor::SchemaIndex>>,
-    /// Tables whose columns are already requested, so cursor movement
-    /// does not re-issue the same fetch.
-    requested_columns: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<String>>>,
     history_dialog: Option<Controller<HistoryDialog>>,
     saved_queries_dialog: Option<Controller<crate::ui::saved_queries_dialog::SavedQueriesDialog>>,
     welcome_view: Controller<WelcomeView>,
@@ -552,7 +548,6 @@ impl SimpleComponent for App {
             catalog_generation: std::cell::Cell::new(0),
             catalog_cancel: Default::default(),
             catalog_dialog_cancel: Default::default(),
-            schema_fetch_cancel: Default::default(),
             database_list_cancel: Default::default(),
             content_holder: widgets.content_holder.clone(),
             history_paned: gtk::Paned::builder()
@@ -587,7 +582,6 @@ impl SimpleComponent for App {
             favorites: Vec::new(),
             favorites_order: crate::services::request_generation::LatestApplied::default(),
             schema_index: std::rc::Rc::new(std::cell::RefCell::new(crate::ui::editor::SchemaIndex::default())),
-            requested_columns: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new())),
             history_dialog: None,
             saved_queries_dialog: None,
             welcome_view,
@@ -1152,6 +1146,7 @@ impl SimpleComponent for App {
     /// and history-prune timers keep firing on the process-wide main
     /// context, until this runs (H12).
     fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        self.schema_index.borrow_mut().invalidate_columns();
         if let Some(id) = self.connection_id.take() {
             self.database.close(id);
             crate::services::window_registry::unregister(id);

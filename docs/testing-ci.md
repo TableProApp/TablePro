@@ -33,7 +33,7 @@ Commit `ci/forgejo-train.json` on that branch with this shape, replacing the SHA
 {"version": 1, "base": "BASE_SHA", "members": [{"number": 1197, "sha": "FIRST_HEAD_SHA"}, {"number": 1201, "sha": "SECOND_HEAD_SHA"}]}
 ```
 
-Open one aggregate PR against `linux`, listing the constituents and any train-owned changes. Its body also carries every constituent's `Release-Note:` lines (or a single `Release-Note: none` when none has one), because the squash commit body is the PR body ([ADR 0022](decisions/0022-release-notes-from-merge-commits.md)); `check-forgejo-train.py` refuses a train whose body drops one. Its GitHub checks must pass too. Use the following checks with the actual train PR number and Forgejo run ID:
+Open one aggregate PR against `linux`, listing the constituents and any train-owned changes. Its body also carries every constituent's `Release-Note:` lines (or a single `Release-Note: none` when none has one), because the squash commit body is the PR body ([ADR 0022](decisions/0022-release-notes-from-merge-commits.md)); `check-forgejo-train.py` refuses a train whose body drops one. The aggregate must pass every required GitHub check, including checks for the combined files. It also checks each constituent's exact head. A constituent may omit `harness` and `workflow-lint`, which are path-filtered checks; the aggregate must pass both on the combined tree. Every other required check is mandatory on each constituent. Any failed or pending non-reference check blocks the train. A workflow may skip unrelated jobs and non-gating reference scans remain informational. Use the following checks with the actual train PR number and Forgejo run ID:
 
 ```bash
 python3 scripts/check-forgejo-train.py TRAIN_PR --phase gate

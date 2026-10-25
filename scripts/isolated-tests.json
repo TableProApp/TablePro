@@ -580,6 +580,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::completion_provider::tests::dropping_one_editor_completion_view_keeps_shared_columns_for_another"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::completion_provider::tests::retired_proposals_do_not_edit_the_buffer"
     ],
     [

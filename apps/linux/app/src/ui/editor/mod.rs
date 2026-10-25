@@ -53,7 +53,7 @@ use crate::services::database_service::ConnectionMetadata;
 use crate::ui::grid::GridMsg;
 
 pub use completion::{SchemaIndex, SchemaRequest};
-pub(crate) use completion_identifiers::{catalog_reference, split_table_reference, table_key};
+pub(crate) use completion_identifiers::catalog_reference;
 pub use schema::derive_tab_label;
 pub(crate) use session_mode::{StreamSession, query_cursor_export_factory};
 pub use statement_cursor::grammar_for;

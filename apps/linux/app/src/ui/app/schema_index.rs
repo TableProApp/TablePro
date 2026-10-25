@@ -1,7 +1,7 @@
 use relm4::{ComponentController, ComponentSender};
 
 use super::{App, AppMsg};
-use crate::ui::editor::{catalog_reference, split_table_reference, table_key};
+use crate::ui::editor::catalog_reference;
 
 impl App {
     pub(super) fn set_completion_tables(
@@ -23,17 +23,8 @@ impl App {
         };
         let pending: Vec<crate::ui::editor::SchemaRequest> = {
             let mut index = self.schema_index.borrow_mut();
-            if index.sync_connection(&identity) {
-                index.invalidate_columns();
-                self.cancel_schema_fetches();
-            }
-            let mut requested = self.requested_columns.borrow_mut();
-            tables
-                .into_iter()
-                .filter(|table| index.needs_columns(table))
-                .filter(|table| table_key(table, index.grammar).is_some_and(|key| requested.insert(key)))
-                .map(|table| index.request(table))
-                .collect()
+            index.sync_connection(&identity);
+            index.request_missing_columns(tables)
         };
         if pending.is_empty() {
             return;
@@ -41,7 +32,7 @@ impl App {
         let timeout_secs =
             crate::services::operation_control::timeout_for(&self.preferences, &self.database, self.connection_id);
         let sender_clone = sender.clone();
-        let token = self.schema_fetch_cancel.borrow().clone();
+        let token = self.schema_index.borrow().column_request_token();
         let grammar = self.schema_index.borrow().grammar;
         sender.command(move |_, shutdown| {
             shutdown
@@ -50,31 +41,19 @@ impl App {
                         if token.is_cancelled() {
                             break;
                         }
-                        let Some((schema, table)) = split_table_reference(&request.table, grammar) else {
-                            sender_clone.input(AppMsg::SchemaColumnsFetched(request, Err(())));
-                            continue;
-                        };
-                        let control = crate::services::operation_control::bounded_with(timeout_secs, token.clone());
-                        let result = conn
-                            .fetch_columns_controlled(schema.as_deref(), &table, &control)
-                            .await
-                            .map(|columns| columns.into_iter().map(|column| column.name).collect())
-                            .map_err(|_| ());
-                        sender_clone.input(AppMsg::SchemaColumnsFetched(request, result));
+                        let (request, columns) = tablepro_app_services::completion::fetch_column_names(
+                            conn.clone(),
+                            request,
+                            grammar,
+                            timeout_secs,
+                            token.clone(),
+                        )
+                        .await;
+                        sender_clone.input(AppMsg::SchemaColumnsFetched(request, columns));
                     }
                 })
                 .drop_on_shutdown()
         });
-    }
-
-    pub(super) fn reset_schema_fetches(&self) {
-        self.schema_index.borrow_mut().invalidate_columns();
-        self.cancel_schema_fetches();
-    }
-
-    fn cancel_schema_fetches(&self) {
-        self.requested_columns.borrow_mut().clear();
-        crate::services::request_generation::replace_in_flight(&self.schema_fetch_cancel);
     }
 
     pub(super) fn on_schema_columns_fetched(
@@ -85,30 +64,14 @@ impl App {
         let Some(identity) = self.connection_id.and_then(|id| self.database.identity(id)) else {
             return;
         };
-        let Some(key) = table_key(&request.table, self.schema_index.borrow().grammar) else {
-            return;
-        };
-        let mut index = self.schema_index.borrow_mut();
-        if index.sync_connection(&identity) {
-            index.invalidate_columns();
-            self.cancel_schema_fetches();
-        }
-        if !index.accepts(&request) {
-            return;
-        }
-        match columns {
-            Ok(columns) => index.set_columns(&request.table, columns),
-            Err(()) => {
-                self.requested_columns.borrow_mut().remove(&key);
-            }
-        }
+        self.schema_index
+            .borrow_mut()
+            .complete_column_request_for_connection(&identity, &request, columns);
     }
 
     pub(super) fn refresh_schema_index(&self) {
-        if let Some(identity) = self.connection_id.and_then(|id| self.database.identity(id))
-            && self.schema_index.borrow_mut().sync_connection(&identity)
-        {
-            self.reset_schema_fetches();
+        if let Some(identity) = self.connection_id.and_then(|id| self.database.identity(id)) {
+            self.schema_index.borrow_mut().sync_connection(&identity);
         }
         self.schema_index.borrow_mut().grammar = self
             .current_driver_id
@@ -137,7 +100,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::split_table_reference;
+    use tablepro_app_services::completion_identifiers::split_table_reference;
     use tablepro_core::sql_syntax::SqlGrammar;
 
     #[test]
