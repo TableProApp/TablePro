@@ -154,7 +154,7 @@ async fn value_contract_mssql_max_values_survive_connection_session_and_consumer
 
     let display = crate::ui::grid::value_to_display_text(&ordinary.rows[0][1]);
     assert!(display.starts_with(&"Ω".repeat(10_000)));
-    assert!(display.ends_with("… (+22767 more chars)"));
+    assert!(display.ends_with("… (+45534 more bytes)"));
     assert_eq!(
         crate::ui::grid::value_to_display_text(&ordinary.rows[0][3]),
         "<65534 bytes>"

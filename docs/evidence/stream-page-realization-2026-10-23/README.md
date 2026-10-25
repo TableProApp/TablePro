@@ -116,7 +116,7 @@ The owned app's RSS/high-water RSS were 388952/450964 KiB before export and 3911
 
 The initial SQL used `chr(10)`, which is outside the existing cursor-function allowlist and exercised the ordinary query path. Its streaming expectation failed. The corrected SQL uses a literal newline and leaves policy unchanged. Pointer and keyboard attempts to open the full-value copy menu did not produce the expected menu, so clipboard verification remains incomplete; passing CSV verification is not clipboard acceptance.
 
-The preview contains 533 characters including its byte-count suffix, yet its measured height is 1827 pixels. A character cap alone does not bound multiline row height. [Issue 1531](https://github.com/cozyGarage/BookiE/issues/1531) tracks a focused compact-preview fix with a failing height regression, full-value preservation and navigation acceptance. The pointer probe used the cell centre, which was outside the visible row area; no separate pointer-routing defect is established.
+The preview contains 533 characters including its byte-count suffix, yet its measured height is 1827 pixels. A character cap alone does not bound multiline row height. The earlier reference to #1531 was incorrect: repository history assigns that number to an unrelated PluginKit change. A local follow-up regression now verifies that line separators are rendered as visible markers in the display-only sample while the original value remains unchanged ([test](../../../apps/linux/app/src/ui/grid/display.rs)). The pointer probe used the cell centre, which was outside the visible row area; no separate pointer-routing defect is established.
 
 ## Post-merge status
 

@@ -1028,7 +1028,7 @@ mod tests {
         window.present();
         let editors = wait_for_editors(view.upcast_ref(), 1);
         let cell = editor_at(&editors, 0);
-        assert!(cell.text().contains("more chars"), "display text should stay truncated");
+        assert!(cell.text().contains("more bytes"), "display text should stay truncated");
 
         super::super::editing::enter_edit_mode(cell);
         assert!(cell.is_editing());
