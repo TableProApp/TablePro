@@ -28,15 +28,18 @@ jobs:
       - name: Set up Go for pinned workflow validator
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
         with:
-          go-version: 1.25.0
+          go-version: 1.25.12
       - name: Install pinned workflow validator
+        working-directory: scripts/tools/actionlint
         env:
-          GOTOOLCHAIN: go1.25.12
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          GOBIN: ${{ runner.temp }}/actionlint
+          GOFLAGS: -mod=readonly
+          GOTOOLCHAIN: local
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint
+          echo "$GOBIN" >> "$GITHUB_PATH"
       - name: Validate Linux workflows and embedded shell
         run: |
-          actionlint_bin="$(go env GOPATH)/bin"
-          export PATH="$actionlint_bin:$PATH"
           python3 scripts/run-test-layer.py workflow-lint
       - name: Retain workflow diagnostics
         if: always()

@@ -23,6 +23,21 @@ port_spec.loader.exec_module(port_helper)
 
 
 class CiWorkflowTests(unittest.TestCase):
+    def test_actionlint_uses_a_read_only_go_module_lock(self):
+        workflow = (ROOT / ".github/workflows/linux-ci-contracts.yml").read_text()
+        module = (ROOT / "scripts/tools/actionlint/go.mod").read_text()
+        sums = ROOT / "scripts/tools/actionlint/go.sum"
+        self.assertIn("go-version: 1.25.12", workflow)
+        self.assertIn("working-directory: scripts/tools/actionlint", workflow)
+        self.assertIn("GOFLAGS: -mod=readonly", workflow)
+        self.assertIn("GOTOOLCHAIN: local", workflow)
+        self.assertIn("go install github.com/rhysd/actionlint/cmd/actionlint", workflow)
+        self.assertNotIn("actionlint/cmd/actionlint@", workflow)
+        self.assertIn("go 1.25.12", module)
+        self.assertIn("tool github.com/rhysd/actionlint/cmd/actionlint", module)
+        self.assertIn("github.com/rhysd/actionlint v1.7.12", module)
+        self.assertTrue(sums.is_file())
+        self.assertGreater(sums.stat().st_size, 0)
     def test_headless_fixtures_wait_for_cheap_checks_without_serializing_behind_widgets(self):
         workflow = (ROOT / ".forgejo/workflows/ci.yml").read_text()
         expected = {"guards", "clippy", "unit", "sandbox"}
