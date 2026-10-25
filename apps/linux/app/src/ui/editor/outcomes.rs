@@ -315,12 +315,12 @@ fn bind_statement_for_run(
     identity: StatementIdentity,
     preview: String,
 ) -> Result<crate::services::query_parameters::BoundStatement, Box<StatementOutcome>> {
-    crate::services::query_parameters::bind_statement(sql, driver_id, parameter_values).map_err(|reason| {
+    crate::services::query_parameters::bind_statement(sql, driver_id, parameter_values).map_err(|error| {
         Box::new(StatementOutcome {
             identity,
             sql_preview: preview,
             elapsed_ms: 0,
-            kind: StatementOutcomeKind::Error(reason.into()),
+            kind: StatementOutcomeKind::Error(crate::ui::parameters_dialog::error_message(error).into()),
             pinned: false,
         })
     })

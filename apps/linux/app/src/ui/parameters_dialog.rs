@@ -6,13 +6,22 @@ use relm4::adw::prelude::*;
 use relm4::{adw, gtk};
 use tablepro_core::{ParameterKind, Value};
 
-use crate::services::query_parameters;
+use crate::services::query_parameters::{self, QueryParameterError};
 use crate::tr;
 
 const RUN_RESPONSE: &str = "run";
 const CANCEL_RESPONSE: &str = "cancel";
 
 type ValueSink = Rc<dyn Fn(HashMap<String, Value>)>;
+
+pub(crate) fn error_message(error: QueryParameterError) -> String {
+    match error {
+        QueryParameterError::MissingValue { name } => tr!("No value for parameter {name}").replace("{name}", &name),
+        QueryParameterError::InvalidValue { name, reason } => tr!("{name}: {reason}")
+            .replace("{name}", &name)
+            .replace("{reason}", &reason),
+    }
+}
 
 pub fn present<F>(parent: &impl IsA<gtk::Window>, names: &[String], on_values: F)
 where
@@ -83,12 +92,37 @@ fn present_form(window: &gtk::Window, names: Vec<String>, on_values: ValueSink, 
             .collect();
         match query_parameters::collect_values(&entries) {
             Ok(values) => on_values(values),
-            Err(reason) => present_form(&window_for_retry, names.clone(), on_values.clone(), Some(reason)),
+            Err(error) => present_form(
+                &window_for_retry,
+                names.clone(),
+                on_values.clone(),
+                Some(error_message(error)),
+            ),
         }
     });
 
     dialog.present(Some(window));
     if let Some(entry) = first_entry {
         entry.grab_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tablepro_app_services::query_parameters::QueryParameterError;
+
+    use super::error_message;
+
+    #[test]
+    fn parameter_errors_keep_the_affected_name_and_reason_at_the_ui_boundary() {
+        let missing = error_message(QueryParameterError::MissingValue { name: "user_id".into() });
+        let invalid = error_message(QueryParameterError::InvalidValue {
+            name: "count".into(),
+            reason: "not a whole number".into(),
+        });
+
+        assert!(missing.contains("user_id"));
+        assert!(invalid.contains("count"));
+        assert!(invalid.contains("not a whole number"));
     }
 }
