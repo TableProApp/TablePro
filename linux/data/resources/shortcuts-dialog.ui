@@ -205,45 +205,99 @@
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-edit">
-            <property name="title" translatable="yes">Edit a Cell or Toggle a Check Box</property>
+          <object class="AdwShortcutsItem" id="grid-edit">
+            <property name="title" translatable="yes">Edit a Cell</property>
             <property name="accelerator">F2 Return</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-toggle">
-            <property name="title" translatable="yes">Toggle a Check Box</property>
+          <object class="AdwShortcutsItem" id="grid-toggle">
+            <property name="title" translatable="yes">Toggle a Boolean Cell</property>
             <property name="accelerator">space</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-menu">
+          <object class="AdwShortcutsItem" id="grid-menu">
             <property name="title" translatable="yes">Show the Cell Menu</property>
             <property name="accelerator">Menu &lt;Shift&gt;F10</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-set-null">
+          <object class="AdwShortcutsItem" id="grid-set-null">
             <property name="title" translatable="yes">Set Cell to NULL</property>
             <property name="accelerator">&lt;Primary&gt;BackSpace</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-open-referenced-row">
+          <object class="AdwShortcutsItem" id="grid-follow-reference">
             <property name="title" translatable="yes">Open the Referenced Row</property>
             <property name="accelerator">&lt;Primary&gt;j</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-widen-column">
+          <object class="AdwShortcutsItem" id="grid-widen-column">
             <property name="title" translatable="yes">Widen Column</property>
             <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Right</property>
           </object>
         </child>
         <child>
-          <object class="AdwShortcutsItem" id="cell-narrow-column">
+          <object class="AdwShortcutsItem" id="grid-narrow-column">
             <property name="title" translatable="yes">Narrow Column</property>
             <property name="accelerator">&lt;Shift&gt;&lt;Alt&gt;Left</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-insert-row">
+            <property name="title" translatable="yes">Insert Row</property>
+            <property name="accelerator">&lt;Primary&gt;n</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-delete-rows">
+            <property name="title" translatable="yes">Mark Rows for Deletion</property>
+            <property name="accelerator">Delete</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-copy">
+            <property name="title" translatable="yes">Copy the Cell or the Selected Rows</property>
+            <property name="accelerator">&lt;Primary&gt;c</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-paste">
+            <property name="title" translatable="yes">Paste</property>
+            <property name="accelerator">&lt;Primary&gt;v</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-clear-selection">
+            <property name="title" translatable="yes">Clear the Multi-Row Selection</property>
+            <property name="accelerator">Escape</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-show-details">
+            <property name="title" translatable="yes">Show or Hide Row Details</property>
+            <property name="accelerator">&lt;Alt&gt;Return</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-find">
+            <property name="title" translatable="yes">Find in Rows</property>
+            <property name="accelerator">&lt;Primary&gt;f</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-find-next">
+            <property name="title" translatable="yes">Next Match</property>
+            <property name="accelerator">&lt;Primary&gt;g</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-find-previous">
+            <property name="title" translatable="yes">Previous Match</property>
+            <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;g</property>
           </object>
         </child>
         <child>
@@ -272,38 +326,8 @@
         </child>
         <child>
           <object class="AdwShortcutsItem" id="cell-editor-save-text">
-            <property name="title" translatable="yes">Save a Multi-Line Value</property>
+            <property name="title" translatable="yes">Save the Value in Row Details</property>
             <property name="accelerator">&lt;Primary&gt;Return</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="browse-insert-row">
-            <property name="title" translatable="yes">Insert Row</property>
-            <property name="accelerator">&lt;Primary&gt;n</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="browse-delete-rows">
-            <property name="title" translatable="yes">Mark Rows for Deletion</property>
-            <property name="accelerator">Delete</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="browse-copy-rows">
-            <property name="title" translatable="yes">Copy Selected Rows as TSV</property>
-            <property name="accelerator">&lt;Primary&gt;c</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="browse-paste-rows">
-            <property name="title" translatable="yes">Paste Rows</property>
-            <property name="accelerator">&lt;Primary&gt;v</property>
-          </object>
-        </child>
-        <child>
-          <object class="AdwShortcutsItem" id="browse-clear-selection">
-            <property name="title" translatable="yes">Clear the Multi-Row Selection</property>
-            <property name="accelerator">Escape</property>
           </object>
         </child>
       </object>

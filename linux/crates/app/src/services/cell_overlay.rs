@@ -13,8 +13,6 @@ pub struct CellOverlay {
     /// draft's cell is always the tracker's.
     pub pending: Option<CellInput>,
     pub state: CellState,
-    /// The row produced the statement a save just failed on.
-    pub error_flash: bool,
 }
 
 /// What tints a cell, without its pending value: every bind asks this
@@ -24,7 +22,6 @@ pub struct CellOverlay {
 pub struct CellMarks {
     pub row_deleted: bool,
     pub state: CellState,
-    pub error_flash: bool,
 }
 
 #[cfg(test)]

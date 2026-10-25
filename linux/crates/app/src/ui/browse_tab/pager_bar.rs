@@ -301,8 +301,6 @@ impl PagerBar {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use gtk4::AccessibleProperty;
 
     use super::*;
@@ -316,7 +314,6 @@ mod tests {
 
     fn page(start_ordinal: u64, row_count: usize) -> PageState {
         PageState {
-            result_columns: Arc::from([]),
             row_count,
             start_ordinal,
             filtered: false,

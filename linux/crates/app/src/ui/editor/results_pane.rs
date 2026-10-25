@@ -6,12 +6,32 @@ use libadwaita as adw;
 use super::result_item::ResultItem;
 use super::run_log::{EntryKind, RunLogEntry};
 use super::sidebar_policy::{self, SidebarState};
+use crate::ui::data_grid::DataGrid;
 
 /// How many results keep their page once shown, so going back to one
 /// keeps its scroll position without every line holding a page.
 const PAGES_KEPT: usize = 8;
 
-type PageBuilder = Box<dyn Fn(u32) -> Option<gtk4::Widget>>;
+type PageBuilder = Box<dyn Fn(u32) -> Option<ResultPage>>;
+
+/// What a line of the results list shows, and the grid on it when it
+/// shows rows.
+pub struct ResultPage {
+    pub widget: gtk4::Widget,
+    pub grid: Option<DataGrid>,
+}
+
+impl ResultPage {
+    pub fn plain(widget: gtk4::Widget) -> Self {
+        Self { widget, grid: None }
+    }
+}
+
+/// A built page's line, and its grid.
+struct KeptPage {
+    index: u32,
+    grid: Option<DataGrid>,
+}
 
 mod imp {
     use std::cell::{Cell, RefCell};
@@ -31,6 +51,8 @@ mod imp {
         #[template_child]
         pub summary_label: TemplateChild<gtk4::Label>,
         #[template_child]
+        pub details_toggle: TemplateChild<gtk4::ToggleButton>,
+        #[template_child]
         pub transaction_bar: TemplateChild<gtk4::Box>,
         #[template_child]
         pub transaction_label: TemplateChild<gtk4::Label>,
@@ -49,7 +71,7 @@ mod imp {
         pub sidebar: Cell<SidebarState>,
         pub page_builder: RefCell<Option<PageBuilder>>,
         /// The lines whose page is built, most recently shown first.
-        pub built: RefCell<VecDeque<u32>>,
+        pub(super) built: RefCell<VecDeque<KeptPage>>,
     }
 
     #[glib::object_subclass]
@@ -72,6 +94,11 @@ mod imp {
             self.parent_constructed();
             let pane = self.obj();
             self.sidebar_toggle.set_icon_name(crate::ui::icons::SIDEBAR_SHOW);
+            // The header's buttons find actions through the muxers above
+            // them when they are parented, so the pane needs its own before
+            // a result's grid actions go in it.
+            pane.insert_action_group("grid", None::<&gio::ActionGroup>);
+            crate::ui::a11y::announce_key_shortcuts(&*self.details_toggle, "grid.show-details");
             // The toggle is the way back to a collapsed list, so the two
             // can never disagree about whether it shows.
             self.sidebar_toggle
@@ -134,12 +161,13 @@ impl ResultsPane {
         if let Some(items) = imp.items.get() {
             items.remove_all();
         }
-        for index in imp.built.take() {
-            if let Some(page) = imp.stack.child_by_name(&page_name(index)) {
+        for kept in imp.built.take() {
+            if let Some(page) = imp.stack.child_by_name(&page_name(kept.index)) {
                 imp.stack.remove(&page);
             }
         }
         imp.stack.set_visible_child_name("empty");
+        self.show_grid(None);
         imp.sidebar.set(SidebarState::default());
         imp.sidebar_toggle.set_visible(false);
         imp.split_view.set_show_sidebar(false);
@@ -148,7 +176,7 @@ impl ResultsPane {
 
     /// A page is built when its line is first shown, so a script with
     /// thousands of statements builds one, not thousands.
-    pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<gtk4::Widget> + 'static) {
+    pub fn set_page_builder(&self, builder: impl Fn(u32) -> Option<ResultPage> + 'static) {
         self.imp().page_builder.replace(Some(Box::new(builder)));
     }
 
@@ -225,35 +253,48 @@ impl ResultsPane {
             return;
         }
         imp.stack.set_visible_child_name(&page_name(index));
+        let grid = imp.built.borrow().front().and_then(|kept| kept.grid.clone());
+        self.show_grid(grid.as_ref());
         // A collapsed list covers the result it just picked.
         if imp.split_view.is_collapsed() {
             imp.split_view.set_show_sidebar(false);
         }
     }
 
+    /// The header's buttons name `grid.*`, so they act on the grid of the
+    /// result on screen.
+    fn show_grid(&self, grid: Option<&DataGrid>) {
+        let actions = grid.map(DataGrid::actions);
+        self.insert_action_group("grid", actions.as_ref());
+        self.imp().details_toggle.set_visible(grid.is_some());
+    }
+
+    /// Put the page of line `index` first among the kept ones, building
+    /// it when it is not kept.
     fn keep_page(&self, index: u32) -> bool {
         let imp = self.imp();
         {
             let mut built = imp.built.borrow_mut();
-            if let Some(position) = built.iter().position(|kept| *kept == index) {
-                built.remove(position);
-                built.push_front(index);
+            if let Some(position) = built.iter().position(|kept| kept.index == index) {
+                if let Some(kept) = built.remove(position) {
+                    built.push_front(kept);
+                }
                 return true;
             }
         }
         let page = imp.page_builder.borrow().as_ref().and_then(|build| build(index));
-        let Some(page) = page else {
+        let Some(ResultPage { widget, grid }) = page else {
             return false;
         };
-        imp.stack.add_named(&page, Some(&page_name(index)));
-        let evicted: Vec<u32> = {
+        imp.stack.add_named(&widget, Some(&page_name(index)));
+        let evicted: Vec<KeptPage> = {
             let mut built = imp.built.borrow_mut();
-            built.push_front(index);
+            built.push_front(KeptPage { index, grid });
             let keep = built.len().min(PAGES_KEPT);
             built.drain(keep..).collect()
         };
         for oldest in evicted {
-            if let Some(page) = imp.stack.child_by_name(&page_name(oldest)) {
+            if let Some(page) = imp.stack.child_by_name(&page_name(oldest.index)) {
                 imp.stack.remove(&page);
             }
         }
@@ -347,7 +388,7 @@ mod tests {
     fn pane() -> ResultsPane {
         crate::register_test_resources();
         let pane = ResultsPane::default();
-        pane.set_page_builder(|index| Some(gtk4::Label::new(Some(&index.to_string())).upcast()));
+        pane.set_page_builder(|index| Some(ResultPage::plain(gtk4::Label::new(Some(&index.to_string())).upcast())));
         pane
     }
 
@@ -475,10 +516,25 @@ mod tests {
     fn the_list_toggle_has_an_accessible_name() {
         let pane = pane();
 
-        assert!(gtk4::test_accessible_has_property(
-            &pane.imp().sidebar_toggle.get(),
-            gtk4::AccessibleProperty::Label
-        ));
+        for toggle in [pane.imp().sidebar_toggle.get(), pane.imp().details_toggle.get()] {
+            assert!(gtk4::test_accessible_has_property(
+                &toggle,
+                gtk4::AccessibleProperty::Label
+            ));
+        }
+    }
+
+    #[gtk4::test]
+    fn a_result_with_no_grid_offers_no_row_details() {
+        let pane = pane();
+
+        pane.append(&[command()]);
+
+        assert!(!pane.imp().details_toggle.is_visible());
+        assert!(
+            pane.activate_action("grid.show-details", None).is_err(),
+            "the pane reaches a grid it does not show"
+        );
     }
 
     #[gtk4::test]

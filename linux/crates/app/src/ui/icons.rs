@@ -42,6 +42,7 @@ pub const SECURITY_HIGH: &str = "security-high-symbolic";
 pub const STARRED: &str = "starred-symbolic";
 pub const STATEMENT_PENDING: &str = "statement-pending-symbolic";
 pub const SIDEBAR_SHOW: &str = "sidebar-show-symbolic";
+pub const SIDEBAR_SHOW_RIGHT: &str = "sidebar-show-right-symbolic";
 /// Not in Adwaita; GtkSourceView installs it, for its own snippet
 /// completion.
 pub const SNIPPET: &str = "completion-snippet-symbolic";
@@ -66,6 +67,7 @@ pub const VIEW_SORT_ASCENDING: &str = "view-sort-ascending-symbolic";
 pub const WEATHER_OVERCAST: &str = "weather-overcast-symbolic";
 pub const WEB_BROWSER: &str = "web-browser-symbolic";
 pub const WINDOW_CLOSE: &str = "window-close-symbolic";
+pub const X_OFFICE_CALENDAR: &str = "x-office-calendar-symbolic";
 pub const ZOOM_FIT_BEST: &str = "zoom-fit-best-symbolic";
 pub const ZOOM_IN: &str = "zoom-in-symbolic";
 pub const ZOOM_OUT: &str = "zoom-out-symbolic";
@@ -115,6 +117,7 @@ pub const ALL: &[&str] = &[
     PROCESS_STOP,
     SECURITY_HIGH,
     SIDEBAR_SHOW,
+    SIDEBAR_SHOW_RIGHT,
     SNIPPET,
     STARRED,
     STATEMENT_PENDING,
@@ -139,6 +142,7 @@ pub const ALL: &[&str] = &[
     WEATHER_OVERCAST,
     WEB_BROWSER,
     WINDOW_CLOSE,
+    X_OFFICE_CALENDAR,
     ZOOM_FIT_BEST,
     ZOOM_IN,
     ZOOM_OUT,

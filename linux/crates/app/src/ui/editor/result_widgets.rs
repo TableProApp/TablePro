@@ -1,11 +1,11 @@
 use gtk4::prelude::*;
 use libadwaita as adw;
 
+use super::results_pane::ResultPage;
 use super::run_log::{EntryKind, RunLogEntry};
 use crate::ui::export::ExportSource;
-use crate::ui::grid::GridSink;
 use crate::ui::icons;
-use crate::ui::result_pane::result_set_page;
+use crate::ui::result_pane::{ResultGridDeps, result_set_page};
 
 /// What a page's buttons reach in the editor.
 pub struct PageActions<G, E, F> {
@@ -28,15 +28,13 @@ pub struct FixHook<F> {
     pub available: gtk4::gio::SimpleAction,
 }
 
-/// The widget the results list's `index`th line shows. `in_clause` is
-/// false where the engine has no SQL to copy rows into.
-pub fn entry_widget<G, E, F>(
+/// The page the results list's `index`th line shows.
+pub(crate) fn entry_widget<G, E, F>(
     index: usize,
     entry: &RunLogEntry,
-    grid_sink: &GridSink,
-    in_clause: bool,
+    grid_deps: &ResultGridDeps,
     actions: PageActions<G, E, F>,
-) -> gtk4::Widget
+) -> ResultPage
 where
     G: Fn(usize) + 'static,
     E: Fn(ExportSource) + 'static,
@@ -47,14 +45,14 @@ where
         export_all,
         fix,
     } = actions;
-    match &entry.kind {
-        EntryKind::ResultSet(result) => result_set_page(
-            result,
-            &result.summary.tab_label(index),
-            grid_sink.clone(),
-            in_clause,
-            export_all,
-        ),
+    let widget = match &entry.kind {
+        EntryKind::ResultSet(result) => {
+            let (widget, grid) = result_set_page(result, &result.summary.tab_label(index), grid_deps, export_all);
+            return ResultPage {
+                widget,
+                grid: Some(grid),
+            };
+        }
         EntryKind::Command { rows_affected } => {
             let title = match rows_affected {
                 Some(rows) => crate::i18n::ngettext_f(
@@ -106,7 +104,8 @@ where
             icons::STATEMENT_PENDING,
         )
         .upcast(),
-    }
+    };
+    ResultPage::plain(widget)
 }
 
 /// A failed statement's page: Go to Error where the server says where,
@@ -168,9 +167,29 @@ fn status_page(title: &str, description: &str, icon: &str) -> adw::StatusPage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::AppRuntime;
+    use crate::test_support::MemorySettings;
 
-    fn sink() -> GridSink {
-        std::rc::Rc::new(|_| {})
+    /// What a result grid reads, and what keeps it alive for the test.
+    struct GridDeps {
+        deps: ResultGridDeps,
+        _settings: MemorySettings,
+        _runtime: AppRuntime,
+    }
+
+    fn grid_deps() -> GridDeps {
+        crate::register_test_resources();
+        let settings = MemorySettings::new();
+        let runtime = crate::test_support::test_runtime();
+        GridDeps {
+            deps: ResultGridDeps {
+                settings: settings.get().clone(),
+                tasks: runtime.tasks(),
+                dialect: None,
+            },
+            _settings: settings,
+            _runtime: runtime,
+        }
     }
 
     fn actions<G: Fn(usize) + 'static>(
@@ -198,12 +217,15 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(1, &entry, &sink(), true, actions(|_| {}));
+        let deps = grid_deps();
 
-        let grid = crate::test_support::first_descendant_of_type::<gtk4::ColumnView>(&widget).expect("the grid");
+        let page = entry_widget(1, &entry, &deps.deps, actions(|_| {}));
+
+        let grid = page.grid.expect("the grid");
+        assert!(grid.is_ancestor(&page.widget));
         assert_eq!(name, "Result 2 (0)");
         assert!(gtk4::test_accessible_has_property(
-            &grid,
+            &grid.column_view(),
             gtk4::AccessibleProperty::Label
         ));
     }
@@ -219,9 +241,10 @@ mod tests {
             preview: String::new(),
         };
 
-        let widget = entry_widget(0, &entry, &sink(), true, actions(|_| {}));
+        let page = entry_widget(0, &entry, &grid_deps().deps, actions(|_| {}));
 
-        let page = widget.downcast::<adw::StatusPage>().expect("a status page");
+        assert!(page.grid.is_none());
+        let page = page.widget.downcast::<adw::StatusPage>().expect("a status page");
         assert_eq!(
             page.description().as_deref(),
             Some("column &lt;b&gt;name&lt;/b&gt; &amp; more")
@@ -241,14 +264,13 @@ mod tests {
         let reached = std::rc::Rc::new(std::cell::Cell::new(None));
         let seen = reached.clone();
 
-        let widget = entry_widget(
+        let page = entry_widget(
             0,
             &entry,
-            &sink(),
-            true,
+            &grid_deps().deps,
             actions(move |position| seen.set(Some(position))),
         );
-        let page = widget.downcast::<adw::StatusPage>().expect("a status page");
+        let page = page.widget.downcast::<adw::StatusPage>().expect("a status page");
         let button = page.child().and_downcast::<gtk4::Button>().expect("Go to Error");
         button.emit_clicked();
 
@@ -272,8 +294,7 @@ mod tests {
         let widget = entry_widget(
             0,
             &entry,
-            &sink(),
-            true,
+            &grid_deps().deps,
             PageActions {
                 go_to_error: |_| {},
                 export_all: |_| {},
@@ -282,7 +303,8 @@ mod tests {
                     available: available.clone(),
                 }),
             },
-        );
+        )
+        .widget;
         let fix = crate::test_support::descendants(&widget)
             .into_iter()
             .filter_map(|widget| widget.downcast::<gtk4::Button>().ok())

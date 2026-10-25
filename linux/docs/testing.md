@@ -491,7 +491,7 @@ What a person checks on a desktop because no suite can, each with the date it la
 
 ### Display scales
 
-The app at 100, 125, 150, 175 and 200% on GNOME Wayland, at 200% on X11, on two monitors at different scales with the window moved from one to the other while a table, an editor and an ER diagram tab are open, on KDE Plasma Wayland at 125 and 150% with the Adwaita style, and at 150% with Large Text. At each scale: grid text, row height, header, pager and saved column widths; the focused cell ring, the selection and the pending insert, edit and delete tints; the SQL editor's text, gutter and completion list; the sidebar, the connect dialog, Preferences, the save alert, the main menu and About; the app icon and the three symbolic icons in `data/resources/icons`.
+The app at 100, 125, 150, 175 and 200% on GNOME Wayland, at 200% on X11, on two monitors at different scales with the window moved from one to the other while a table, an editor and an ER diagram tab are open, on KDE Plasma Wayland at 125 and 150% with the Adwaita style, and at 150% with Large Text. At each scale: grid text, row height, header, pager and saved column widths; the focused cell ring, the selection, the row number column with its pending icons, and the marks on changed and deleted values; the SQL editor's text, gutter and completion list; the sidebar, the connect dialog, Preferences, the save alert, the main menu and About; the app icon and the three symbolic icons in `data/resources/icons`.
 
 #### 2026-10-24
 

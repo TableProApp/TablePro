@@ -8,7 +8,7 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use tokio_util::sync::CancellationToken;
 
 use super::*;
-use crate::test_support::{FakeSession, test_runtime, wait_until};
+use crate::test_support::{FakeSession, MemorySettings, drain_main_context, test_runtime, wait_until};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -30,7 +30,13 @@ fn list_page(from: i64, to: i64, next: Option<&str>) -> KeyPage {
     }
 }
 
-fn opened(script: ConnectionScript) -> (KeyTab, FakeSession, crate::runtime::AppRuntime) {
+/// What a test tab runs on, held for the test's length.
+struct Held {
+    _runtime: crate::runtime::AppRuntime,
+    _settings: MemorySettings,
+}
+
+fn opened(script: ConnectionScript) -> (KeyTab, FakeSession, Held) {
     reopened(script, [])
 }
 
@@ -39,17 +45,36 @@ fn opened(script: ConnectionScript) -> (KeyTab, FakeSession, crate::runtime::App
 fn reopened(
     script: ConnectionScript,
     reconnects: impl IntoIterator<Item = FakeEstablish>,
-) -> (KeyTab, FakeSession, crate::runtime::AppRuntime) {
+) -> (KeyTab, FakeSession, Held) {
     adw::init().expect("libadwaita initialises under the test backend");
+    crate::register_test_resources();
     let runtime = test_runtime();
+    let settings = MemorySettings::new();
     let fake = FakeSession::start(script, reconnects, runtime.tasks());
     let tab = KeyTab::new(KeyTabInit {
         key: "queue".to_owned(),
         session: fake.session.clone(),
         tasks: runtime.tasks(),
+        settings: settings.get().clone(),
         first_load: FirstLoad::Now,
     });
-    (tab, fake, runtime)
+    let held = Held {
+        _runtime: runtime,
+        _settings: settings,
+    };
+    (tab, fake, held)
+}
+
+/// The second column of each row, in the order the grid shows them.
+fn shown_elements(tab: &KeyTab) -> Vec<String> {
+    tab.grid()
+        .shown_rows()
+        .iter()
+        .filter_map(|row| match row.cells()?.get(1)? {
+            Value::Text(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 #[gtk4::test]
@@ -151,6 +176,60 @@ fn a_key_written_over_with_another_type_is_read_again() {
         "3 bytes",
         "an expiry the server would not give was shown"
     );
+}
+
+/// A reread lands in the grid the tab had, under the sort the user set.
+#[gtk4::test]
+fn a_refresh_keeps_the_grid_and_its_sort() {
+    let mut script = ConnectionScript::default();
+    script.read_key.once(FakeReply::ok(Some(list_page(0, 2, Some("2")))));
+    script.read_key.always(FakeReply::ok(Some(list_page(0, 3, None))));
+    let (tab, _fake, _runtime) = opened(script);
+    wait_until(WAIT, || tab.rows() == 2).expect("the first window");
+    let grid = tab.grid().clone();
+    grid.set_sort(Some((1, false)));
+    assert_eq!(shown_elements(&tab), ["element1", "element0"]);
+
+    tab.refresh();
+
+    wait_until(WAIT, || tab.rows() == 3).expect("the key read again");
+    assert_eq!(tab.grid(), &grid, "the reread built another grid");
+    assert!(grid.is_sorted(), "the reread dropped the sort");
+    assert_eq!(shown_elements(&tab), ["element2", "element1", "element0"]);
+}
+
+/// The header's Row Details toggle reaches the tab's grid.
+#[gtk4::test]
+fn row_details_reaches_the_key_s_grid() {
+    let mut script = ConnectionScript::default();
+    script.read_key.always(FakeReply::ok(Some(list_page(0, 2, None))));
+    let (tab, _fake, _runtime) = opened(script);
+    // Wide enough that the grid keeps its detail pane beside the rows.
+    let _window = crate::test_support::OwnedWindow::presented(
+        gtk::Window::builder()
+            .default_width(1200)
+            .default_height(700)
+            .child(tab.widget())
+            .build(),
+    );
+    wait_until(WAIT, || tab.rows() == 2 && tab.grid().width() > 0).expect("the first window, laid out");
+    let toggle = crate::test_support::descendants(tab.widget())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::ToggleButton>().ok())
+        .find(|toggle| toggle.action_name().as_deref() == Some("grid.show-details"))
+        .expect("the Row Details toggle");
+    wait_until(WAIT, || toggle.is_sensitive()).expect("the toggle reaches the grid");
+
+    toggle.emit_clicked();
+    drain_main_context();
+
+    let shown = tab
+        .grid()
+        .actions()
+        .action_state("show-details")
+        .and_then(|state| state.get::<bool>());
+    assert_eq!(shown, Some(true));
+    assert!(toggle.is_active());
 }
 
 #[gtk4::test]

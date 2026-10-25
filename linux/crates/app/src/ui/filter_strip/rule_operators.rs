@@ -45,7 +45,7 @@ impl FilterVocabulary {
         Self { dialect }
     }
 
-    pub(super) fn operators(&self, column: &ColumnInfo) -> &'static [FilterOp] {
+    pub(crate) fn operators(&self, column: &ColumnInfo) -> &'static [FilterOp] {
         match &self.dialect {
             Some(dialect) => dialect.filter_operators(column),
             None => tablepro_core::operators_for(&column.column_type.kind),

@@ -74,6 +74,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0024](0024-multi-cursor-on-text-marks.md) | Multiple cursors on text marks, in the app | Accepted | The SQL editor's view, a GtkSourceView subclass, keeps extra cursors as GtkTextMark pairs, runs GTK's own commands once per cursor and repeats committed text from `end-user-action`, so one undo takes back every cursor's edit. |
 | [0025](0025-bundled-duckdb.md) | DuckDB built from the duckdb crate's bundled sources | Accepted | No PPA or COPR target but Ubuntu 26.10 ships libduckdb, so DuckDB 1.5.6 is compiled from the crate on every channel, with no extension fetched or loaded on its own. |
 | [0026](0026-documents-in-the-table-tab.md) | Document collections open in the table tab, and their statements are shell calls | Accepted | A document engine states `DataModel::Document`, lists collections as tables, opens them in the table tab, and every builder writes a mongosh call with bound values through a document arm chosen by the grammar. |
+| [0027](0027-one-data-grid.md) | One data grid on GtkColumnView, with rows and a focused cell | Accepted | Every surface shows rows in one `DataGrid`: row selection plus a focused cell, stable row slots, a row number column, values as text and a row detail pane. |
 
 0011 is not used. It was reserved for the DDL decision, which was recorded as 0010, and docs cite ADRs by number, so the later ones keep theirs.
 

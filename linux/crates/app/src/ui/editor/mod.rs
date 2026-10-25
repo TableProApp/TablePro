@@ -53,14 +53,15 @@ pub(crate) use self::editor_file::file_name;
 use self::editor_view::EditorView;
 use self::imp::RunningScript;
 use self::result_widgets::PageActions;
+use self::results_pane::ResultPage;
 use self::run_log::{EntryKind, RunEvent, RunLog};
 use self::run_scope::ScopedText;
 use self::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, plan_batches, run_in_tab};
 pub(crate) use self::transaction_dirty::OpenTransaction;
-use super::clipboard::{CopyRequest, InClauseRows};
+use super::data_grid::{DialectSource, GridRequest};
 use super::export::{ExportOffer, ExportOrigin, ExportQuery, ExportSource};
-use super::grid::{GridMsg, GridSink, present_row_json};
 use super::handler_guard::HandlerGuard;
+use super::result_pane::ResultGridDeps;
 use super::write_confirmation::{self, WriteConfirmation};
 use crate::services::active_session::ActiveSession;
 use crate::services::history_service::HistoryService;
@@ -565,9 +566,9 @@ impl SqlEditor {
         imp.results.append(log.entries().get(from..).unwrap_or_default());
     }
 
-    fn result_page(&self, index: u32) -> Option<gtk4::Widget> {
+    fn result_page(&self, index: u32) -> Option<ResultPage> {
         let imp = self.imp();
-        let grid_sink = imp.grid_sink.get()?;
+        let grid_deps = self.result_grid_deps()?;
         let log = imp.log.borrow();
         let entry = log.as_ref()?.entries().get(usize::try_from(index).ok()?)?;
         let (errors, exports) = (self.downgrade(), self.downgrade());
@@ -599,13 +600,47 @@ impl SqlEditor {
                 available,
             }),
         };
-        Some(result_widgets::entry_widget(
-            usize::try_from(index).ok()?,
-            entry,
-            grid_sink,
-            self.grammar().is_sql(),
-            actions,
-        ))
+        let page = result_widgets::entry_widget(usize::try_from(index).ok()?, entry, &grid_deps, actions);
+        if let Some(grid) = &page.grid {
+            let editor = self.downgrade();
+            grid.connect_request(move |_, request| {
+                if let Some(editor) = editor.upgrade() {
+                    editor.grid_request(index, request);
+                }
+            });
+        }
+        Some(page)
+    }
+
+    /// What a result grid reads: copies of IN lists take the dialect of
+    /// the server the editor runs on at the time of the copy.
+    fn result_grid_deps(&self) -> Option<ResultGridDeps> {
+        let deps = self.deps()?;
+        let session = deps.session.clone();
+        let dialect: DialectSource = Rc::new(move || {
+            session
+                .get()?
+                .current_dialect()
+                .filter(|dialect| dialect.grammar().is_sql())
+        });
+        Some(ResultGridDeps {
+            settings: deps.settings.clone(),
+            tasks: deps.tasks.clone(),
+            dialect: Some(dialect),
+        })
+    }
+
+    /// What the grid of the result on line `index` asks of the editor;
+    /// copies, IN lists and row JSON are the grid's own.
+    fn grid_request(&self, index: u32, request: GridRequest) {
+        match request {
+            GridRequest::Export(shown) => self.offer_export(index, shown),
+            GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
+            GridRequest::Sort(_)
+            | GridRequest::FollowReference(_)
+            | GridRequest::FilterByValue(_)
+            | GridRequest::PendingChanged => {}
+        }
     }
 
     fn finish_run(
@@ -805,64 +840,12 @@ impl SqlEditor {
         imp.menu_button.set_icon_name(crate::ui::icons::VIEW_MORE);
     }
 
-    /// Result pages, and the context-menu actions from their grids.
+    /// Each result's page, built when its line is first shown.
     fn connect_grid(&self) {
         let weak = self.downgrade();
         self.imp()
             .results
             .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
-        let weak = self.downgrade();
-        let sink: GridSink = std::rc::Rc::new(move |message| {
-            let Some(editor) = weak.upgrade() else {
-                return;
-            };
-            match message {
-                GridMsg::Copy(request) => editor.copy(request),
-                GridMsg::CopyInClause(values) => editor.copy_in_clause(values),
-                GridMsg::ShowRowJson(request) => {
-                    if let Some(tasks) = editor.deps().map(|deps| deps.tasks.clone()) {
-                        let parent = editor.clone().upcast();
-                        glib::spawn_future_local(async move {
-                            present_row_json(parent, tasks, request).await;
-                        });
-                    }
-                }
-                GridMsg::ShowToast(text) => editor.emit_by_name::<()>("toast", &[&text]),
-                GridMsg::ExportResults(shown) => {
-                    if let Some(index) = editor.imp().results.selected() {
-                        editor.offer_export(index, shown);
-                    }
-                }
-                _ => {}
-            }
-        });
-        let _ = self.imp().grid_sink.set(sink);
-    }
-
-    /// Render a copy from a result grid off the GTK thread, and toast
-    /// how it went.
-    fn copy(&self, request: CopyRequest) {
-        let Some(tasks) = self.deps().map(|deps| deps.tasks.clone()) else {
-            return;
-        };
-        let editor = self.downgrade();
-        crate::ui::clipboard::copy_rows(self, &tasks, request, move |text| {
-            if let Some(editor) = editor.upgrade() {
-                editor.emit_by_name::<()>("toast", &[&text]);
-            }
-        });
-    }
-
-    /// An IN list in the spelling of the server the editor runs on.
-    fn copy_in_clause(&self, values: InClauseRows) {
-        let dialect = self
-            .deps()
-            .and_then(|deps| deps.session.get())
-            .and_then(|session| session.current_dialect());
-        match dialect {
-            Some(dialect) => self.copy(CopyRequest::InClause { dialect, values }),
-            None => self.emit_by_name::<()>("toast", &[&crate::i18n::gettext("Connect to a database first.")]),
-        }
     }
 
     /// Ask the window to export the result on line `index`: the rows

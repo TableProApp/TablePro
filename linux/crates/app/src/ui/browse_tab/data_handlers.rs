@@ -3,16 +3,18 @@ use std::sync::Arc;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tablepro_core::column::ResultColumn;
+use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_core::sql_syntax::mongo::is_addressable_field;
 use tablepro_core::{ColumnInfo, QueryResult};
 use tablepro_session::LinkGeneration;
 
-use super::browse_actions::install_grid_shortcuts;
 use super::columns_fetch::ColumnFreshness;
-use super::selection_handlers::{selected_rows, show_delete_availability, update_selection_chrome};
 use super::{BrowseModel, BrowseTabOutput, DataInput, Effects, PageReply, PageState, PageView, loading_description};
 use crate::services::change_tracker::pk_identity;
+use crate::services::grid::{GridColumn, RowKeyBuilder, grid_columns};
 use crate::services::save_batch::SaveTarget;
-use crate::ui::grid::{GridContent, GridRowIndex, RowKeyBuilder, RowObject, build_column_view, data_columns};
+use crate::ui::data_grid::{EditRules, RowData};
 use crate::ui::tab_load::{ContentPage, LoadFailure, LoadPresentation};
 
 impl BrowseModel {
@@ -32,7 +34,6 @@ impl BrowseModel {
             DataInput::Command(command) => self.on_command(command, fx),
             DataInput::LinkChanged(generation) => self.on_link_changed(generation, fx),
             DataInput::SchemaChanged => {
-                self.capture_selection();
                 self.begin_read(fx);
                 self.stop_count(true);
                 self.reload_from_columns(ColumnFreshness::Cached);
@@ -51,6 +52,7 @@ impl BrowseModel {
         self.filter_strip.set_dialect(self.dialect.clone());
         if !self.sorts_rows() {
             self.current_sort = None;
+            self.grid.set_sort(None);
         }
         self.retry_failed(fx);
     }
@@ -98,12 +100,28 @@ impl BrowseModel {
             }
         }
         self.widgets.stale_banner.show(presentation.stale.as_ref());
+        self.show_grid_actions();
         self.sync_pager_buttons();
         self.sync_total_chrome();
-        self.sync_delete_action();
+        self.sync_selection();
         if self.tab_loading != presentation.tab_loading {
             self.tab_loading = presentation.tab_loading;
             fx.output(BrowseTabOutput::LoadingChanged(presentation.tab_loading));
+        }
+    }
+
+    /// The grid's actions reach the tab's buttons only while its rows are
+    /// on screen: rows behind the loading or the error page are not what
+    /// the table holds under the tab's filter.
+    fn show_grid_actions(&mut self) {
+        let shown = self.load.has_content();
+        if self.grid_actions_shown == shown {
+            return;
+        }
+        self.grid_actions_shown = shown;
+        if let Some(tab) = self.this.upgrade() {
+            let actions = shown.then(|| self.grid.actions());
+            tab.insert_action_group("grid", actions.as_ref());
         }
     }
 
@@ -127,27 +145,30 @@ impl BrowseModel {
     /// banner; with no rows, or rows of another page, the error page says
     /// why. The paginator stays, so the user can go back.
     pub(super) fn on_load_failed(&mut self, failure: LoadFailure, fx: &mut Effects) {
-        self.pending_restore = None;
         let presentation = self.load.fail(failure);
         self.present(presentation, fx);
     }
 
     pub(super) fn on_columns_loaded(&mut self, columns: Vec<ColumnInfo>, fx: &mut Effects) {
-        // A page read under other columns would put their names in the
-        // headers, so the grid waits for the page read under these.
         if self.current_columns != columns {
             self.page = None;
             self.shown_view = None;
-            self.drop_grid(fx);
             self.pager.forget_paging_states();
+            self.current_columns = columns.clone();
+            // The grid takes the new columns before the tracker does, so an
+            // edit still open is filed under the columns it was typed in.
+            // A page read under the old ones would put their names in the
+            // headers, so the rows wait for the page read under these.
+            let catalog: Vec<ResultColumn> = columns.iter().map(ColumnInfo::result_column).collect();
+            self.show_columns(self.grid_columns_for(&catalog));
+            let presentation = self.load.drop_content();
+            self.present(presentation, fx);
         }
-        self.current_columns = columns.clone();
-        self.rebase_confirming_delete(fx);
         let delta = self.tracker.set_target(SaveTarget {
             table: self.table_ref(),
             columns: columns.clone(),
         });
-        self.apply_tracker_delta(&delta, fx);
+        self.grid.apply_delta(&delta);
         self.refresh_crud_buttons();
         // Operator lists narrow per type, so the strip rebuilds against
         // the new columns.
@@ -155,10 +176,10 @@ impl BrowseModel {
         self.render_grid_if_ready(fx);
     }
 
-    /// Take the page apart into rows the store owns. Each row's cells
+    /// Take the page apart into rows the grid owns. Each row's cells
     /// move into it, and the identity cells after them name the row and
     /// are dropped, so nothing past the visible columns reaches a copy
-    /// or an export. The tab's drafts stay on top.
+    /// or an export.
     pub(super) fn on_rows_loaded(&mut self, offset: u64, reply: PageReply, fx: &mut Effects) {
         let PageReply {
             position,
@@ -173,27 +194,24 @@ impl BrowseModel {
         // names it here too.
         let keys = RowKeyBuilder::for_page(&pk_identity(&self.current_columns), &self.current_columns, &layout);
         let row_count = rows.len();
-        let drafts = self.tracker.drafts();
-        let mut objects = Vec::with_capacity(drafts.len() + row_count);
-        objects.extend(drafts.iter().rev().map(|draft| RowObject::draft(draft.draft_id)));
         let visible_end = layout.visible.end;
-        objects.extend(rows.into_iter().map(|mut cells| {
-            let identity = cells.split_off(visible_end.min(cells.len()));
-            let key = keys.as_ref().and_then(|keys| keys.key_for(&cells, &identity));
-            RowObject::persisted(key, cells.into())
-        }));
-        let result_columns = match columns.len() == layout.visible.len() {
-            true => columns,
-            false => columns.get(layout.visible.clone()).map(Arc::from).unwrap_or_default(),
-        };
+        let rows: Vec<RowData> = rows
+            .into_iter()
+            .map(|mut cells| {
+                let identity = cells.split_off(visible_end.min(cells.len()));
+                let key = keys.as_ref().and_then(|keys| keys.key_for(&cells, &identity));
+                RowData::persisted(key, cells.into())
+            })
+            .collect();
+        let visible = columns.get(layout.visible.clone()).unwrap_or_default();
+        self.show_columns(self.grid_columns_for(visible));
         self.page = Some(PageState {
-            result_columns,
             row_count,
             start_ordinal: offset,
             filtered: !self.current_filter.is_empty(),
         });
         self.shown_view = Some(self.page_view());
-        self.show_page(objects, fx);
+        self.show_page(rows, offset, fx);
     }
 
     fn page_view(&self) -> PageView {
@@ -205,114 +223,51 @@ impl BrowseModel {
         }
     }
 
+    /// The grid's columns for `result`, each with the catalogue entry at
+    /// its place. A document's field whose name a filter, a sort or an
+    /// update cannot spell takes none of them (ADR 0026).
+    fn grid_columns_for(&self, result: &[ResultColumn]) -> Arc<[GridColumn]> {
+        let documents = self
+            .dialect
+            .as_ref()
+            .is_some_and(|dialect| dialect.grammar() == SqlGrammar::Mongo);
+        grid_columns(result, &self.current_columns, |name| {
+            !documents || is_addressable_field(name)
+        })
+    }
+
+    /// Give the grid `columns` when it shows others. Its rows go with the
+    /// columns they were read under.
+    fn show_columns(&self, columns: Arc<[GridColumn]>) {
+        if *self.grid.grid_columns() == *columns {
+            return;
+        }
+        let rules = EditRules {
+            identity: pk_identity(&self.current_columns),
+            policy: self.edit_policy(),
+        };
+        self.grid.set_columns(columns, self.grid_sorting(), Some(rules));
+    }
+
     /// The columns came back the same, so the page on screen still
     /// stands under them: only the chrome follows.
     fn render_grid_if_ready(&mut self, fx: &mut Effects) {
-        if self.page.is_none() || !self.column_view_matches_current_columns() {
+        if self.page.is_none() {
             return;
         }
         self.refresh_grid_chrome();
         fx.output(BrowseTabOutput::StateChanged);
     }
 
-    /// Put a page's rows on screen. Under the same columns the store
-    /// takes them in one splice, which the column view sees as a single
-    /// change; otherwise the view is built for them.
-    fn show_page(&mut self, rows: Vec<RowObject>, fx: &mut Effects) {
-        let Some(page) = self.page.as_ref() else {
-            return;
-        };
-        if self.column_view_matches_current_columns()
-            && let Some(store) = self.list_store()
-        {
-            store.splice(0, store.n_items(), &rows);
-            self.reindex_rows();
-            self.sync_selection();
-            self.refresh_grid_chrome();
-            let presentation = self.load.succeed();
-            self.present(presentation, fx);
-            self.restore_selection();
-            fx.output(BrowseTabOutput::StateChanged);
-            return;
-        }
-
-        clear_box(&self.widgets.grid_holder);
-        let content = GridContent {
-            columns: page.result_columns.clone(),
-            rows,
-        };
-        let (column_view, selection) = build_column_view(
-            content,
-            &self.current_columns,
-            self.grid_sink.clone(),
-            self.grid_sorting(),
-            self.grid_context(),
-        );
-        // A screen reader names the grid as the tab does.
-        column_view.update_property(&[gtk::accessible::Property::Label(&self.table_label())]);
-        self.current_selection = Some(selection);
-        self.current_column_view = Some(column_view.clone());
-        self.view_columns = data_columns(&column_view);
-        self.rendered_columns = self.current_columns.clone();
-
-        // The selection model is new per rebuild, so the previous
-        // handler goes with the old one. The tab holds the selection, so
-        // the handler holds the tab's widgets weakly.
-        if let Some(sel) = self.current_selection.as_ref() {
-            let label = self.widgets.selection_label.downgrade();
-            let button = self.widgets.delete_button.downgrade();
-            let actions = self.actions.clone();
-            let read_only = self.read_only;
-            sel.connect_selection_changed(move |sel, _, _| {
-                let (Some(label), Some(button)) = (label.upgrade(), button.upgrade()) else {
-                    return;
-                };
-                let n = u32::try_from(sel.selection().size()).unwrap_or(u32::MAX);
-                update_selection_chrome(&label, n);
-                actions.follow_selection(n);
-                show_delete_availability(&actions.delete_rows, &button, &selected_rows(sel), read_only);
-            });
-        }
-        install_grid_shortcuts(&column_view);
-
-        self.reindex_rows();
-        self.sync_selection();
-
-        let scrolled = gtk::ScrolledWindow::builder()
-            .child(&column_view)
-            .hexpand(true)
-            .vexpand(true)
-            .build();
-        self.widgets.grid_holder.append(&scrolled);
+    /// Put a page's rows on screen. They take the slots the grid has, so
+    /// no row or cell widget is built again, and the selection and the
+    /// focused cell stay on their rows by key.
+    fn show_page(&mut self, rows: Vec<RowData>, row_base: u64, fx: &mut Effects) {
+        self.grid.replace_rows(rows, row_base);
         self.refresh_grid_chrome();
         let presentation = self.load.succeed();
         self.present(presentation, fx);
-        self.restore_selection();
         fx.output(BrowseTabOutput::StateChanged);
-    }
-
-    /// The grid was built for columns the table no longer has, so it
-    /// goes before a click or a key in it lands on a moved column.
-    fn drop_grid(&mut self, fx: &mut Effects) {
-        if self.current_column_view.take().is_none() {
-            return;
-        }
-        clear_box(&self.widgets.grid_holder);
-        self.current_selection = None;
-        self.view_columns.clear();
-        self.rendered_columns.clear();
-        self.row_index = GridRowIndex::default();
-        self.pending_restore = None;
-        self.sync_selection();
-        let presentation = self.load.drop_content();
-        self.present(presentation, fx);
-    }
-
-    fn reindex_rows(&mut self) {
-        match self.list_store() {
-            Some(store) => self.row_index.rebuild(&store),
-            None => self.row_index = GridRowIndex::default(),
-        }
     }
 
     /// Paginator label, button sensitivity and stack child: chrome that
@@ -322,11 +277,5 @@ impl BrowseModel {
         self.sync_pager_buttons();
         self.sync_total_chrome();
         self.suppress_combo_emit.set(false);
-    }
-}
-
-fn clear_box(b: &gtk::Box) {
-    while let Some(child) = b.first_child() {
-        b.remove(&child);
     }
 }

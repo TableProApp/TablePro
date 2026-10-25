@@ -357,6 +357,29 @@ fn apply_emits_the_rules_and_sql_as_edited() {
     assert!(!strip.revealed(), "Apply left the strip open");
 }
 
+/// Filter by Value adds to the rules shown and applies them with the
+/// strip open, where the user sees why the rows changed.
+#[gtk4::test]
+fn a_rule_added_from_a_cell_applies_with_the_others_and_shows_the_strip() {
+    let strip = Hosted::new(strip_with(vec![rule("a")]));
+    let applied = applied(&strip);
+    let mut by_value = rule("b");
+    by_value.value = Some(FilterValue::Single("7".to_owned()));
+
+    strip.add_and_apply(by_value.clone());
+
+    assert_eq!(
+        applied.take(),
+        [FilterSet {
+            rules: vec![rule("a"), by_value],
+            ..FilterSet::default()
+        }]
+    );
+    assert!(strip.revealed(), "the strip that says why the rows changed is hidden");
+    assert!(strip.imp().rules_expander.is_expanded());
+    assert_eq!(rows(&strip).len(), 2);
+}
+
 #[gtk4::test]
 fn enter_in_the_sql_field_applies() {
     let strip = strip_with(Vec::new());

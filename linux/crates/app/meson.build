@@ -114,7 +114,7 @@ test(
   args: gtk_args + [
     '--lib',
     '--',
-    'ui::grid::',
+    'ui::data_grid::',
     'ui::diagram::',
     'ui::editor::editor_view::',
     'ui::window_geometry::',

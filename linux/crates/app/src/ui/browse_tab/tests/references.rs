@@ -13,8 +13,8 @@ use tablepro_test_support::{CallCounters, FakeReply};
 
 use super::{Harness, TableFilter, WAIT, column, rows, serving_table, text};
 use crate::test_support::{drain_main_context, wait_until};
-use crate::ui::browse_tab::BrowseTabInput;
-use crate::ui::grid::{GridMsg, TableKeys};
+use crate::ui::browse_tab::GridInput;
+use crate::ui::data_grid::{GridRequest, TableKeys};
 
 fn name_key() -> OutboundForeignKey {
     OutboundForeignKey {
@@ -148,7 +148,7 @@ fn a_reference_the_grid_follows_goes_to_the_window() {
 
     harness
         .tab()
-        .send(BrowseTabInput::from(GridMsg::FollowReference(reference.clone())));
+        .send(GridInput::Request(GridRequest::FollowReference(reference.clone())));
 
     assert_eq!(*asked.borrow(), [reference]);
 }

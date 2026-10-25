@@ -77,7 +77,10 @@ impl BrowseModel {
                 }
                 self.failed.record(BrowseRequestKind::Keys, &value);
                 match value {
-                    Ok(keys) => self.keys.set(keys),
+                    Ok(keys) => {
+                        self.keys.set(keys);
+                        self.grid.keys_changed();
+                    }
                     Err(error) => {
                         if error != OperationError::Cancelled {
                             tracing::warn!(category = ?error.category(), "browse foreign keys failed");

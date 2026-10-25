@@ -9,7 +9,7 @@ The app's data goes to the store its shape calls for. The `storage` crate owns t
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
 | Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
 | Editor tab text | one file per tab | `DraftStore` |
-| Open tabs, open sessions, column widths, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
+| Open tabs, open sessions, column layouts, filters | JSON files the app crate writes | `WorkspaceStore`, `OpenSessions`, `crates/app/src/persistence/` |
 
 [Where files go](#where-files-go) has the paths.
 
@@ -94,7 +94,7 @@ leaves nothing unreachable behind when a step fails:
    entry stays: an entry with no secrets only asks for them again, while a
    secret with no entry is orphaned in the keyring.
 2. The entry in `connections.json`.
-3. Everything kept for it: column widths, filters, the saved tabs with any
+3. Everything kept for it: column layouts, filters, the saved tabs with any
    copy Reset moved aside, the editor drafts (`WorkspaceStore::purge`), the
    saved queries, and the query history when the user turned that on. A
    failure here is reported and does not bring the entry back.
@@ -120,7 +120,7 @@ nothing reaches outside it.
 | Accessor | Path |
 |---|---|
 | `connections_file()` | `$XDG_CONFIG_HOME/<dir>/connections.json` |
-| `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json` |
+| `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json`: each table's column layout (order, hidden columns, widths the user set), version 2; a version 1 file of widths alone is upgraded on read |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
 | `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
@@ -328,7 +328,7 @@ Three points worth knowing:
 
 Preference rows bind straight to the schema with `settings.gio().bind(key, &row, prop)`, so a change reaches every open view through `changed::<key>` without a save step.
 
-High-churn keyed data stays in files: column widths, per-table filters and workspace tabs are unbounded maps, which is not what GSettings is for.
+High-churn keyed data stays in files: column layouts, per-table filters and workspace tabs are unbounded maps, which is not what GSettings is for.
 
 ## Errors
 

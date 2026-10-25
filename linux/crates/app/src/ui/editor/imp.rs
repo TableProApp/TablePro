@@ -17,7 +17,6 @@ use super::results_pane::ResultsPane;
 use super::run_log::RunLog;
 use super::transaction_dirty::OpenTransaction;
 use super::vim_mode::VimMode;
-use crate::ui::grid::GridSink;
 use crate::ui::handler_guard::HandlerGuard;
 
 /// A run in flight: its cancel switch, and the loop that brings its
@@ -59,7 +58,6 @@ pub struct SqlEditor {
     pub slot: Arc<EditorSessionSlot>,
     pub running: RefCell<Option<RunningScript>>,
     pub log: RefCell<Option<RunLog>>,
-    pub grid_sink: OnceCell<GridSink>,
     /// Whether the last run left a transaction open, as last reported.
     pub transaction_dirty: Cell<bool>,
     pub open_transaction: Cell<Option<OpenTransaction>>,

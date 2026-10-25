@@ -1,8 +1,11 @@
-use gtk4::gdk;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::prelude::*;
+use gtk4::{gdk, graphene};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConnectionExt as _, KEY_PRESS_EVENT, KEY_RELEASE_EVENT};
+use x11rb::protocol::xproto::{
+    BUTTON_PRESS_EVENT, BUTTON_RELEASE_EVENT, ConnectionExt as _, KEY_PRESS_EVENT, KEY_RELEASE_EVENT,
+    MOTION_NOTIFY_EVENT,
+};
 use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
 
@@ -10,9 +13,9 @@ use super::KeyInjectionError;
 
 const X11_DISPLAY: &str = "GdkX11Display";
 
-/// Presses keys through XTEST, which the X server delivers as it does a
-/// keyboard's, so the press meets every capture, class and bubble
-/// handler in the order GTK runs them. GDK focuses a presented window
+/// Presses keys and clicks through XTEST, which the X server delivers as it
+/// does a keyboard's and a mouse's, so the event meets every capture, class
+/// and bubble handler in the order GTK runs them. GDK focuses a presented window
 /// itself when no window manager runs, as under Xvfb.
 pub(crate) struct KeyInjector {
     connection: RustConnection,
@@ -65,6 +68,48 @@ impl KeyInjector {
         self.connection.flush()?;
         // A round trip, so the server has taken every event before the
         // test waits for what they do.
+        self.connection.get_input_focus()?.reply()?;
+        Ok(())
+    }
+
+    /// Click the primary button `count` times at `at` in `widget`'s own
+    /// coordinates, in the window that has the keyboard. A widget not laid
+    /// out yet sits at the window's corner, so it is refused.
+    pub(crate) fn click(
+        &self,
+        widget: &impl IsA<gtk4::Widget>,
+        at: (f32, f32),
+        count: u8,
+    ) -> Result<(), KeyInjectionError> {
+        let widget = widget.as_ref();
+        if !widget.is_mapped() || widget.width() <= 0 {
+            return Err(KeyInjectionError::NotShown);
+        }
+        let native = widget.native().ok_or(KeyInjectionError::NotShown)?;
+        let point = widget
+            .compute_point(&native, &graphene::Point::new(at.0, at.1))
+            .ok_or(KeyInjectionError::NotShown)?;
+        let (left, top) = native.surface_transform();
+        let scale = f64::from(native.surface().map_or(1, |surface| surface.scale_factor()));
+        let window = self.connection.get_input_focus()?.reply()?.focus;
+        let root = self
+            .connection
+            .setup()
+            .roots
+            .first()
+            .map(|screen| screen.root)
+            .ok_or(KeyInjectionError::NotShown)?;
+        let origin = self.connection.translate_coordinates(window, root, 0, 0)?.reply()?;
+        let on_root = |origin: i16, logical: f64| origin.saturating_add((logical * scale).round() as i16);
+        let x = on_root(origin.dst_x, f64::from(point.x()) + left);
+        let y = on_root(origin.dst_y, f64::from(point.y()) + top);
+        self.connection
+            .xtest_fake_input(MOTION_NOTIFY_EVENT, 0, x11rb::CURRENT_TIME, root, x, y, 0)?;
+        for _ in 0..count {
+            self.fake(BUTTON_PRESS_EVENT, 1)?;
+            self.fake(BUTTON_RELEASE_EVENT, 1)?;
+        }
+        self.connection.flush()?;
         self.connection.get_input_focus()?.reply()?;
         Ok(())
     }

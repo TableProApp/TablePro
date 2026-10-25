@@ -12,18 +12,19 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{gio, glib};
 use libadwaita as adw;
-use libadwaita::prelude::*;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
 use tablepro_core::meta::KeyKind;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
+use tablepro_storage::AppSettings;
 
+use crate::services::grid::grid_columns;
+use crate::ui::data_grid::{DataGrid, GridConfig, GridRequest, GridSorting, RowData};
 use crate::ui::export::{ExportOffer, ExportOrigin, ExportSource};
-use crate::ui::grid::{GridMsg, GridSink, RowObject, build_result_grid, present_row_json};
 use crate::ui::tab_load::{ContentLoad, ContentPage, FirstLoad, LoadFailure, LoadPresentation, StaleBanner};
 
 pub(crate) use self::key_summary::key_kind_name;
@@ -31,6 +32,8 @@ pub(crate) use self::key_summary::key_kind_name;
 const LOADING: &str = "loading";
 const CONTENT: &str = "content";
 const ERROR: &str = "error";
+const ROWS: &str = "rows";
+const UNREADABLE: &str = "unreadable";
 
 /// What a key tab asks of the workspace around it.
 #[derive(Debug)]
@@ -48,6 +51,8 @@ pub(crate) struct KeyTabInit {
     pub key: String,
     pub session: Arc<Session>,
     pub tasks: Tasks,
+    /// Read by the grid's detail pane, for the editor colour scheme.
+    pub settings: Rc<AppSettings>,
     pub first_load: FirstLoad,
 }
 
@@ -66,7 +71,11 @@ struct Inner {
     banner: StaleBanner,
     type_label: gtk::Label,
     summary: gtk::Label,
-    body: adw::Bin,
+    /// The grid, or the page for a type the tab does not read.
+    body: gtk::Stack,
+    unreadable: adw::StatusPage,
+    /// One grid for the tab's life: a reread keeps its sort.
+    grid: DataGrid,
     footer: gtk::Label,
     more: gtk::Button,
     state: RefCell<State>,
@@ -96,7 +105,6 @@ struct State {
 struct Shown {
     kind: KeyKind,
     columns: Arc<[ResultColumn]>,
-    store: gio::ListStore,
     rows: u64,
     length: Option<u64>,
     next: Option<KeyCursor>,
@@ -122,6 +130,7 @@ impl KeyTab {
             key,
             session,
             tasks,
+            settings,
             first_load,
         } = init;
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -148,7 +157,9 @@ impl KeyTab {
         retry.add_css_class("pill");
         error.set_child(Some(&retry));
         stack.add_named(&error, Some(ERROR));
-        let (content, parts) = content_page();
+        let grid = key_grid(&key, settings, tasks.clone());
+        root.insert_action_group("grid", Some(&grid.actions()));
+        let (content, parts) = content_page(&grid);
         stack.add_named(&content, Some(CONTENT));
 
         let inner = Rc::new_cyclic(|this: &Weak<Inner>| {
@@ -167,6 +178,8 @@ impl KeyTab {
                 type_label: parts.type_label,
                 summary: parts.summary,
                 body: parts.body,
+                unreadable: parts.unreadable,
+                grid,
                 footer: parts.footer,
                 more: parts.more,
                 state: RefCell::new(State::default()),
@@ -189,6 +202,12 @@ impl KeyTab {
             },
         );
         inner.link_watch.replace(Some(watch));
+        let weak = Rc::downgrade(&inner);
+        inner.grid.connect_request(move |_, request| {
+            if let Some(inner) = weak.upgrade() {
+                inner.grid_request(request);
+            }
+        });
         let weak = Rc::downgrade(&inner);
         retry.connect_clicked(move |_| reload(&weak));
         let weak = Rc::downgrade(&inner);
@@ -231,18 +250,42 @@ impl KeyTab {
     }
 }
 
+/// A key's entries are read a window at a time, so they sort and search
+/// on the client; nothing in them is edited.
+fn key_grid(key: &str, settings: Rc<AppSettings>, tasks: Tasks) -> DataGrid {
+    let grid = DataGrid::new(GridConfig {
+        columns: Arc::from([]),
+        sorting: GridSorting::Client,
+        rules: None,
+        tracker: None,
+        settings,
+        layout: None,
+        references: None,
+        dialect: None,
+        table: None,
+        find: true,
+        filter_by_value: false,
+        tasks,
+        label: key.to_owned(),
+    });
+    grid.set_hexpand(true);
+    grid.set_vexpand(true);
+    grid
+}
+
 struct ContentParts {
     type_label: gtk::Label,
     summary: gtk::Label,
     refresh: gtk::Button,
-    body: adw::Bin,
+    body: gtk::Stack,
+    unreadable: adw::StatusPage,
     footer: gtk::Label,
     more: gtk::Button,
 }
 
 /// The key's type and what it holds over its entries, and how many of
 /// them the tab holds under them.
-fn content_page() -> (gtk::Box, ContentParts) {
+fn content_page(grid: &DataGrid) -> (gtk::Box, ContentParts) {
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -263,10 +306,27 @@ fn content_page() -> (gtk::Box, ContentParts) {
     let refresh = gtk::Button::builder().icon_name(crate::ui::icons::VIEW_REFRESH).build();
     refresh.add_css_class("flat");
     crate::ui::a11y::describe_icon_button(&refresh, &crate::i18n::gettext("Refresh"), None);
+    let details = gtk::ToggleButton::builder()
+        .icon_name(crate::ui::icons::SIDEBAR_SHOW_RIGHT)
+        .action_name("grid.show-details")
+        .build();
+    details.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(
+        &details,
+        &crate::i18n::gettext("Row Details"),
+        Some("grid.show-details"),
+    );
     header.append(&type_label);
     header.append(&summary);
+    header.append(&details);
     header.append(&refresh);
-    let body = adw::Bin::builder().vexpand(true).build();
+    let body = gtk::Stack::builder().vexpand(true).build();
+    body.add_named(grid, Some(ROWS));
+    let unreadable = adw::StatusPage::builder()
+        .icon_name(crate::ui::icons::TEXT_X_GENERIC)
+        .title(crate::i18n::gettext("No Viewer for This Type"))
+        .build();
+    body.add_named(&unreadable, Some(UNREADABLE));
     let footer_bar = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(12)
@@ -297,6 +357,7 @@ fn content_page() -> (gtk::Box, ContentParts) {
             summary,
             refresh,
             body,
+            unreadable,
             footer,
             more,
         },
@@ -462,17 +523,14 @@ impl Inner {
         presentation
     }
 
-    /// The key's first window, in a grid of its own: another type than
-    /// the last read has other columns.
+    /// The key's first window. Another type than the last read has other
+    /// columns; the same columns keep the grid's sort.
     fn show(self: &Rc<Self>, page: KeyPage) {
         let kind = key_kind_name(page.kind);
         self.type_label.set_label(&kind);
         self.show_summary(&page);
         if page.kind == KeyKind::Other {
-            self.body.set_child(Some(&unreadable_type(&page.type_name)));
-            self.footer.set_label("");
-            self.more.set_visible(false);
-            self.state.borrow_mut().shown = None;
+            self.show_unreadable(&page.type_name);
             return;
         }
         let columns = page.rows.columns.clone();
@@ -481,22 +539,15 @@ impl Inner {
         let mut seen = matches!(page.kind, KeyKind::Hash | KeyKind::Set).then(HashSet::new);
         let rows = new_rows(page.rows.rows, seen.as_mut());
         let count = rows.len() as u64;
-        let (view, selection) = build_result_grid(columns.clone(), rows, self.grid_sink(), false);
-        view.update_property(&[gtk::accessible::Property::Label(&self.key)]);
-        let store = store_of(&selection);
-        let scrolled = gtk::ScrolledWindow::builder()
-            .child(&view)
-            .hexpand(true)
-            .vexpand(true)
-            .build();
-        self.body.set_child(Some(&scrolled));
-        let Some(store) = store else {
-            return;
-        };
+        if !shows_columns(&self.grid, &columns) {
+            self.grid
+                .set_columns(grid_columns(&columns, &[], |_| true), GridSorting::Client, None);
+        }
+        self.grid.replace_rows(rows, 0);
+        self.body.set_visible_child_name(ROWS);
         self.state.borrow_mut().shown = Some(Shown {
             kind: page.kind,
             columns,
-            store,
             rows: count,
             length: page.length,
             next: page.next,
@@ -526,20 +577,37 @@ impl Inner {
             return false;
         }
         self.show_summary(&page);
-        {
+        let rows = {
             let mut state = self.state.borrow_mut();
             let Some(shown) = state.shown.as_mut() else {
                 return false;
             };
             let rows = new_rows(page.rows.rows, shown.seen.as_mut());
             shown.rows += rows.len() as u64;
-            shown.store.splice(shown.store.n_items(), 0, &rows);
             shown.length = page.length;
             shown.next = page.next;
             shown.appending = false;
-        }
+            rows
+        };
+        self.grid.append_rows(rows);
         self.show_footer(kind);
         true
+    }
+
+    /// A type the tab does not read: its name, and no rows.
+    fn show_unreadable(&self, type_name: &str) {
+        let description = crate::i18n::gettext_f(
+            "TablePro does not read values of type {type}. Read it with the module's own commands in a query tab.",
+            &[("type", type_name)],
+        );
+        // The page reads its description as markup.
+        self.unreadable
+            .set_description(Some(&glib::markup_escape_text(&description)));
+        self.body.set_visible_child_name(UNREADABLE);
+        self.grid.clear_rows();
+        self.footer.set_label("");
+        self.more.set_visible(false);
+        self.state.borrow_mut().shown = None;
     }
 
     /// The key's length and expiry as the last window read them.
@@ -578,36 +646,21 @@ impl Inner {
         self.more.set_sensitive(!shown.appending && !state.replacing);
     }
 
-    /// The grid's copies, its row as JSON and its export.
-    fn grid_sink(self: &Rc<Self>) -> GridSink {
-        let this = Rc::downgrade(self);
-        Rc::new(move |message| {
-            let Some(inner) = this.upgrade() else {
-                return;
-            };
-            match message {
-                GridMsg::Copy(request) => {
-                    let toasts = Rc::downgrade(&inner);
-                    crate::ui::clipboard::copy_rows(&inner.root, &inner.tasks, request, move |text| {
-                        if let Some(inner) = toasts.upgrade() {
-                            inner.emit(KeyTabEvent::Toast(text.to_owned()));
-                        }
-                    });
-                }
-                GridMsg::ShowRowJson(request) => {
-                    let (parent, tasks) = (inner.root.clone().upcast(), inner.tasks.clone());
-                    glib::spawn_future_local(async move { present_row_json(parent, tasks, request).await });
-                }
-                GridMsg::ShowToast(text) => inner.emit(KeyTabEvent::Toast(text)),
-                GridMsg::ExportResults(rows) => inner.export(rows),
-                _ => {}
-            }
-        })
+    /// What the grid asks of the tab; copies and row JSON are the
+    /// grid's own.
+    fn grid_request(&self, request: GridRequest) {
+        match request {
+            GridRequest::Export(rows) => self.export(rows),
+            GridRequest::Toast(text) => self.emit(KeyTabEvent::Toast(text)),
+            GridRequest::Sort(_)
+            | GridRequest::FollowReference(_)
+            | GridRequest::FilterByValue(_)
+            | GridRequest::PendingChanged => {}
+        }
     }
 
     fn export(&self, rows: ExportSource) {
-        let columns = self.state.borrow().shown.as_ref().map(|shown| shown.columns.clone());
-        if columns.is_none() {
+        if self.state.borrow().shown.is_none() {
             return;
         }
         self.emit(KeyTabEvent::Export(Box::new(ExportOffer {
@@ -653,17 +706,26 @@ impl Inner {
     }
 }
 
-/// The bytes a string's cell holds.
 /// The grid's rows for a window, leaving out an entry `seen` already
 /// holds. A list keeps every element, equal ones too.
-fn new_rows(rows: Vec<Vec<tablepro_core::Value>>, mut seen: Option<&mut HashSet<Vec<u8>>>) -> Vec<RowObject> {
+fn new_rows(rows: Vec<Vec<tablepro_core::Value>>, mut seen: Option<&mut HashSet<Vec<u8>>>) -> Vec<RowData> {
     rows.into_iter()
         .filter(|cells| match (seen.as_deref_mut(), entry_name(cells.first())) {
             (Some(seen), Some(name)) => seen.insert(name),
             _ => true,
         })
-        .map(|cells| RowObject::result(cells.into()))
+        .map(|cells| RowData::result(cells.into()))
         .collect()
+}
+
+/// Whether the grid's columns are `columns`, so new rows can go under
+/// them without a rebuild.
+fn shows_columns(grid: &DataGrid, columns: &[ResultColumn]) -> bool {
+    let shown = grid.grid_columns();
+    shown.len() == columns.len()
+        && shown.iter().zip(columns).all(|(grid_column, column)| {
+            grid_column.name == column.name && grid_column.column_type == column.column_type
+        })
 }
 
 /// A hash's field or a set's member, as the bytes Redis holds.
@@ -675,39 +737,13 @@ fn entry_name(cell: Option<&tablepro_core::Value>) -> Option<Vec<u8>> {
     }
 }
 
+/// The bytes a string's cell holds.
 fn cell_bytes(cell: Option<&tablepro_core::Value>) -> u64 {
     match cell {
         Some(tablepro_core::Value::Text(text)) => text.len() as u64,
         Some(tablepro_core::Value::Bytes(bytes)) => bytes.len() as u64,
         _ => 0,
     }
-}
-
-/// The store a result grid's rows are in, under its sorter.
-fn store_of(selection: &gtk::MultiSelection) -> Option<gio::ListStore> {
-    let model = selection.model()?;
-    if let Ok(store) = model.clone().downcast::<gio::ListStore>() {
-        return Some(store);
-    }
-    model
-        .downcast::<gtk::SortListModel>()
-        .ok()?
-        .model()?
-        .downcast::<gio::ListStore>()
-        .ok()
-}
-
-/// A module's type, such as a JSON document, which the tab names and
-/// leaves to the editor.
-fn unreadable_type(type_name: &str) -> adw::StatusPage {
-    adw::StatusPage::builder()
-        .icon_name(crate::ui::icons::TEXT_X_GENERIC)
-        .title(crate::i18n::gettext("No Viewer for This Type"))
-        .description(glib::markup_escape_text(&crate::i18n::gettext_f(
-            "TablePro does not read values of type {type}. Read it with the module's own commands in a query tab.",
-            &[("type", type_name)],
-        )))
-        .build()
 }
 
 #[cfg(test)]
@@ -734,12 +770,11 @@ impl KeyTab {
 
     /// The rows the grid holds.
     pub(crate) fn rows(&self) -> u32 {
-        self.inner
-            .state
-            .borrow()
-            .shown
-            .as_ref()
-            .map_or(0, |shown| shown.store.n_items())
+        self.inner.grid.row_count()
+    }
+
+    pub(crate) fn grid(&self) -> &DataGrid {
+        &self.inner.grid
     }
 
     pub(crate) fn offers_more(&self) -> bool {

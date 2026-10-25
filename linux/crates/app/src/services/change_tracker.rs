@@ -97,23 +97,12 @@ pub enum RowState {
 }
 
 /// Which grid row a change came from, so a save that fails at one
-/// statement can scroll to and flash the row the user edited.
+/// statement can scroll to and mark the row the user edited.
 #[derive(Debug, Clone)]
 pub enum StatementSource {
     Insert { draft_id: u64 },
     Update { row_key: RowKey },
     Delete { row_key: RowKey },
-}
-
-/// A flash `flash_error_row` started.
-#[derive(Debug, Clone, PartialEq)]
-#[must_use = "the row a flash replaced keeps its mark until it is redrawn"]
-pub struct ErrorFlash {
-    /// Goes back to `clear_error_row_if` when the flash ends.
-    pub generation: u64,
-    /// Another row's flash this one cut short. That flash's own timer
-    /// no longer clears it, so its row needs a redraw now.
-    pub replaced: Option<RowKey>,
 }
 
 /// The save that is running: where its edits end, and the value it
@@ -146,11 +135,9 @@ pub struct TabChangeTracker {
     redo: VecDeque<UndoOp>,
     next_draft_id: u64,
     next_touch: Touch,
-    /// Row behind the statement the last save failed on.
+    /// Row behind the statement the last save failed on, until it is
+    /// changed or saved again.
     error_row: Option<RowKey>,
-    // A flash that starts inside an older flash's timeout must not be
-    // cleared by that older timer.
-    error_row_gen: u64,
     /// The table and columns the tab last read, which a save is planned
     /// against. Every column position the tracker holds is one in these.
     target: Option<SaveTarget>,
@@ -169,7 +156,7 @@ impl TabChangeTracker {
     /// An edit the running save holds back comes back as a redraw of its
     /// row, so the grid stops showing what was typed into it.
     pub fn apply(&mut self, edit: TrackerEdit) -> TrackerDelta {
-        match edit {
+        let delta = match edit {
             TrackerEdit::DeleteRows { persisted, drafts } => self.delete_rows(persisted, drafts),
             edit if self.edit_is_in_flight(&edit) => self.delta(edit.row_keys()),
             TrackerEdit::Cell {
@@ -180,7 +167,9 @@ impl TabChangeTracker {
             } => self.track_cell_edit(row_key, col, original, value),
             TrackerEdit::DraftCell { draft_id, col, input } => self.track_draft_cell_edit(draft_id, col, input),
             TrackerEdit::InsertDrafts { rows } => self.track_insert(rows),
-        }
+        };
+        self.unmark_changed_error_row(&delta);
+        delta
     }
 
     /// An edit that would change what the running save already sent.
@@ -198,6 +187,12 @@ impl TabChangeTracker {
             }
             TrackerEdit::InsertDrafts { .. } => false,
         }
+    }
+
+    /// Whether the running save writes `col` of `row_key`, or inserts or
+    /// deletes the row.
+    pub fn cell_is_saving(&self, row_key: &RowKey, col: usize) -> bool {
+        self.is_being_written(&(row_key.clone(), col)) || self.row_in_flight(row_key)
     }
 
     fn draft_in_flight(&self, draft_id: u64) -> bool {
@@ -444,6 +439,7 @@ impl TabChangeTracker {
             UndoOp::Insert { drafts } => self.remove_drafts(drafts),
             UndoOp::Delete { steps } => self.put_delete_marks(steps, true),
         };
+        self.unmark_changed_error_row(&delta);
         self.redo.push_back(op);
         Some(delta)
     }
@@ -467,6 +463,7 @@ impl TabChangeTracker {
             UndoOp::Insert { drafts } => self.put_drafts(drafts.clone()),
             UndoOp::Delete { steps } => self.put_delete_marks(steps, false),
         };
+        self.unmark_changed_error_row(&delta);
         self.undo.push_back(op);
         Some(delta)
     }
@@ -500,17 +497,18 @@ impl TabChangeTracker {
         self.set_aside.clear();
         self.undo.clear();
         self.redo.clear();
-        TrackerDelta {
+        let delta = TrackerDelta {
             removed_drafts,
             ..self.delta(rows)
-        }
+        };
+        self.unmark_changed_error_row(&delta);
+        delta
     }
 
     pub fn cell_overlay(&self, row_key: &RowKey, col: usize) -> CellOverlay {
         CellOverlay {
             pending: self.pending_input(row_key, col),
             state: self.cell_state(row_key, col),
-            error_flash: self.is_error_row(row_key),
         }
     }
 
@@ -518,7 +516,6 @@ impl TabChangeTracker {
         CellMarks {
             row_deleted: self.deletes.contains_key(row_key),
             state: self.cell_state(row_key, col),
-            error_flash: self.is_error_row(row_key),
         }
     }
 
@@ -577,29 +574,23 @@ impl TabChangeTracker {
         &self.drafts
     }
 
-    /// Mark the row a failed save points at.
-    pub fn flash_error_row(&mut self, key: RowKey) -> ErrorFlash {
-        self.error_row_gen = self.error_row_gen.wrapping_add(1);
-        let replaced = self.error_row.take().filter(|previous| *previous != key);
-        self.error_row = Some(key);
-        ErrorFlash {
-            generation: self.error_row_gen,
-            replaced,
-        }
+    /// Mark the row a failed save points at. The row marked before, if
+    /// another, loses its mark, so both draw again.
+    pub fn mark_error_row(&mut self, key: RowKey) -> TrackerDelta {
+        let replaced = self.error_row.replace(key.clone()).filter(|previous| *previous != key);
+        self.delta(std::iter::once(key).chain(replaced).collect())
     }
 
     pub fn is_error_row(&self, key: &RowKey) -> bool {
         self.error_row.as_ref() == Some(key)
     }
 
-    /// Clear the flash unless a newer one has started. Returns whether
-    /// it cleared, so the caller knows the row needs a redraw.
-    pub fn clear_error_row_if(&mut self, generation: u64) -> bool {
-        if self.error_row_gen != generation {
-            return false;
+    /// A change to the marked row is the user's answer to the failure,
+    /// so the row no longer reads as not saved.
+    fn unmark_changed_error_row(&mut self, delta: &TrackerDelta) {
+        if self.error_row.as_ref().is_some_and(|row| delta.changed.contains(row)) {
+            self.error_row = None;
         }
-        self.error_row = None;
-        true
     }
 
     /// A draft's values, with a cell left to the server as NULL.
@@ -867,6 +858,7 @@ impl TabChangeTracker {
             return Ok(None);
         };
         let snapshot = SaveSnapshot(self.next_touch);
+        self.error_row = None;
         let written = self
             .updates
             .iter()
@@ -2160,35 +2152,76 @@ mod tests {
     }
 
     #[test]
-    fn an_older_flash_timer_does_not_clear_a_newer_flash() {
+    fn a_failed_row_keeps_its_mark_until_it_is_changed() {
         let mut t = TabChangeTracker::default();
-        let first = rk(&[Value::Int(1)]);
-        let second = RowKey::Draft(3);
-        let old = t.flash_error_row(first.clone()).generation;
-        let new = t.flash_error_row(second.clone()).generation;
+        let failed = rk(&[Value::Int(1)]);
+        let other = rk(&[Value::Int(2)]);
+        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
 
-        assert!(!t.clear_error_row_if(old));
-        assert!(t.cell_overlay(&second, 0).error_flash);
-        assert!(!t.cell_overlay(&first, 0).error_flash);
-        assert!(t.clear_error_row_if(new));
-        assert!(!t.cell_overlay(&second, 0).error_flash);
+        let marked = t.mark_error_row(failed.clone());
+        assert_eq!(marked.changed, std::slice::from_ref(&failed));
+        let _ = t.apply(TrackerEdit::Cell {
+            row_key: other,
+            col: 1,
+            original: text("c"),
+            value: text("d"),
+        });
+        assert!(t.is_error_row(&failed), "an edit of another row took the mark off");
+
+        let _ = t.apply(TrackerEdit::Cell {
+            row_key: failed.clone(),
+            col: 1,
+            original: text("a"),
+            value: text("e"),
+        });
+        assert!(!t.is_error_row(&failed));
     }
 
     #[test]
-    fn a_flash_names_the_row_whose_flash_it_cut_short() {
+    fn undo_and_discard_of_the_failed_row_take_its_mark_off() {
+        let mut t = TabChangeTracker::default();
+        let failed = rk(&[Value::Int(1)]);
+        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
+        let _ = t.mark_error_row(failed.clone());
+
+        let _ = t.undo();
+        assert!(!t.is_error_row(&failed), "an undo of the row left it marked");
+
+        let draft = RowKey::Draft(insert(&mut t, vec![Value::Null, text("x")]));
+        let _ = t.mark_error_row(draft.clone());
+        let _ = t.discard();
+        assert!(!t.is_error_row(&draft), "a discard left a row marked");
+    }
+
+    #[test]
+    fn a_new_failed_row_takes_the_mark_and_redraws_the_one_it_replaced() {
         let mut t = TabChangeTracker::default();
         let first = rk(&[Value::Int(1)]);
         let second = RowKey::Draft(3);
 
-        assert_eq!(t.flash_error_row(first.clone()).replaced, None);
-        assert_eq!(t.flash_error_row(first.clone()).replaced, None, "a row replaced itself");
-        assert_eq!(t.flash_error_row(second.clone()).replaced, Some(first));
-        let ended = t.flash_error_row(second).generation;
-        assert!(t.clear_error_row_if(ended));
+        assert_eq!(t.mark_error_row(first.clone()).changed, std::slice::from_ref(&first));
         assert_eq!(
-            t.flash_error_row(RowKey::Draft(4)).replaced,
-            None,
-            "an ended flash was replaced"
+            t.mark_error_row(first.clone()).changed,
+            std::slice::from_ref(&first),
+            "a row replaced itself"
         );
+        assert_eq!(
+            t.mark_error_row(second.clone()).changed,
+            [second.clone(), first.clone()]
+        );
+        assert!(t.is_error_row(&second));
+        assert!(!t.is_error_row(&first));
+    }
+
+    #[test]
+    fn starting_a_save_takes_the_mark_off() {
+        let mut t = saving_on(vec![pk_col("id"), data_col("name")]);
+        let failed = rk(&[Value::Int(1)]);
+        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
+        let _ = t.mark_error_row(failed.clone());
+
+        assert!(t.begin_save().is_ok_and(|batch| batch.is_some()));
+
+        assert!(!t.is_error_row(&failed));
     }
 }

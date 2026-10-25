@@ -8,13 +8,13 @@ use libadwaita as adw;
 use tablepro_core::{ColumnInfo, DriverError, LossPhase, QueryResult, Value};
 use tablepro_test_support::{CallCounters, FakeReply};
 
-use super::super::{ClipboardInput, PagingInput};
+use super::super::{GridInput, PagingInput};
 use super::{
-    Harness, Shown, WAIT, column, column_view, delete_action, full_page, header_titles, key, not_null_name, rows,
-    serving_table, text, toasts,
+    Harness, Shown, WAIT, column, column_view, full_page, header_titles, key, not_null_name, rows, serving_table, text,
+    toasts,
 };
 use crate::test_support::{after_next_frame, drain_main_context, wait_until};
-use crate::ui::grid::GridCell;
+use crate::ui::data_grid::GridCell;
 
 fn banner(harness: &Harness) -> adw::Banner {
     harness.tab().imp().stale_banner.get()
@@ -179,15 +179,8 @@ fn refresh_restores_multi_row_selection_and_focus_by_key() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown().len() == 5).expect("the first page");
     let shown = Shown::new(harness.tab());
-    let view = column_view(harness.tab());
-    let name = crate::ui::grid::data_columns(&view)
-        .into_iter()
-        .nth(1)
-        .expect("the name column");
-    view.scroll_to(3, Some(&name), gtk4::ListScrollFlags::FOCUS, None);
-    view.grab_focus();
+    super::focus_cell(&harness, 3, 1);
     let focused_cell = || gtk4::prelude::GtkWindowExt::focus(&shown.0).and_then(|focus| GridCell::from_focus(&focus));
-    wait_until(WAIT, || focused_cell().is_some_and(|cell| cell.position() == Some(3))).expect("a cell takes the focus");
     let selection = harness.selection();
     let picked = gtk4::Bitset::new_empty();
     picked.add(1);
@@ -198,14 +191,9 @@ fn refresh_restores_multi_row_selection_and_focus_by_key() {
     wait_until(WAIT, || harness.shown().len() == 6).expect("the refreshed page");
     after_next_frame(&shown.0);
 
-    let selected: Vec<_> = crate::ui::grid::selected_positions(&harness.selection())
-        .into_iter()
-        .map(|position| harness.grid_row(position).key().cloned())
-        .collect();
-    assert_eq!(selected, [Some(key(1)), Some(key(3))]);
+    assert_eq!(selected_keys(&harness), [Some(key(1)), Some(key(3))]);
     wait_until(WAIT, || {
-        focused_cell()
-            .is_some_and(|cell| cell.column() == 1 && cell.row().and_then(|row| row.key().cloned()) == Some(key(3)))
+        focused_cell().is_some_and(|cell| cell.column() == 1 && cell.row().and_then(|row| row.key()) == Some(key(3)))
     })
     .expect("the focus did not come back to the cell it was in");
 }
@@ -230,12 +218,8 @@ fn a_selection_is_not_put_back_after_a_failed_refresh() {
     wait_until(WAIT, || !banner(&harness).is_revealed()).expect("the second refresh");
     drain_main_context();
 
-    let selected: Vec<_> = crate::ui::grid::selected_positions(&harness.selection())
-        .into_iter()
-        .map(|position| harness.grid_row(position).key().cloned())
-        .collect();
     assert_eq!(
-        selected,
+        selected_keys(&harness),
         [Some(key(2))],
         "the selection from before the failed refresh came back"
     );
@@ -391,7 +375,8 @@ fn the_rows_behind_the_error_page_take_no_action() {
     let harness = Harness::open(script, []);
     wait_until(WAIT, || harness.shown() == text(&["unfiltered"])).expect("the first page");
     harness.selection().select_item(0, true);
-    assert!(delete_action(harness.tab()).is_enabled());
+    drain_main_context();
+    assert!(harness.grid_enabled("delete-rows"));
     let exported = Rc::new(RefCell::new(0));
     let sink = exported.clone();
     harness
@@ -401,16 +386,18 @@ fn the_rows_behind_the_error_page_take_no_action() {
 
     harness.tab().send(PagingInput::FilterApplied(not_null_name()));
     wait_until(WAIT, || harness.visible_page().as_deref() == Some("error")).expect("the error page");
-    harness.tab().send(ClipboardInput::Export(None));
+    harness.tab().send(GridInput::Export);
 
     assert_eq!(*exported.borrow(), 0, "Export wrote rows the filter does not match");
-    assert!(
-        !copy_rows_action(harness.tab()).is_enabled(),
-        "Copy stayed on for rows behind the error page"
-    );
+    for action in ["grid.copy", "grid.delete-rows", "grid.insert-row"] {
+        assert!(
+            harness.tab().activate_action(action, None).is_err(),
+            "{action} still reached rows behind the error page"
+        );
+    }
     assert_eq!(*toasts.borrow(), ["Nothing to export"]);
     assert!(
-        !delete_action(harness.tab()).is_enabled(),
+        !harness.tab().imp().delete_button.is_sensitive(),
         "Delete stayed on for rows behind the error page"
     );
     assert_eq!(harness.tab().imp().pager_bar.imp().paginator_label.label(), "");
@@ -515,10 +502,7 @@ fn a_failed_column_read_leaves_no_read_for_a_later_one_to_start() {
     harness.tab().send(PagingInput::Refresh);
     wait_until(WAIT, || banner(&harness).is_revealed()).expect("the failed refresh");
 
-    harness.tab().send(PagingInput::SortChanged {
-        col_idx: 0,
-        ascending: false,
-    });
+    harness.grid().sort_by(Some((0, false)));
     wait_until(WAIT, || harness.shown() == text(&["back"])).expect("the page after the columns were read again");
     std::thread::sleep(Duration::from_millis(200));
     drain_main_context();
@@ -531,14 +515,8 @@ fn a_failed_column_read_leaves_no_read_for_a_later_one_to_start() {
     );
 }
 
-fn copy_rows_action(tab: &super::super::BrowseTab) -> gtk4::gio::SimpleAction {
-    use gtk4::subclass::prelude::ObjectSubclassIsExt;
-    tab.imp()
-        .model
-        .borrow()
-        .as_ref()
-        .map(|model| model.actions.copy_rows.clone())
-        .expect("the tab has a model")
+fn selected_keys(harness: &Harness) -> Vec<Option<crate::services::change_tracker::RowKey>> {
+    harness.grid().selected_rows().iter().map(|row| row.key()).collect()
 }
 
 /// The status page reads its description as markup, where the `&`

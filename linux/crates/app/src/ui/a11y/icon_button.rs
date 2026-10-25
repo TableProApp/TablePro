@@ -34,7 +34,7 @@ mod tests {
     fn icon_button_gets_label_tooltip_and_its_actions_keys() {
         let button = gtk::Button::from_icon_name("list-add-symbolic");
 
-        describe_icon_button(&button, "Insert Row", Some("browse.insert-row"));
+        describe_icon_button(&button, "Insert Row", Some("grid.insert-row"));
 
         assert_eq!(button.tooltip_text().as_deref(), Some("Insert Row"));
         assert!(gtk::test_accessible_has_property(&button, AccessibleProperty::Label));

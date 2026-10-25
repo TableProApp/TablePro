@@ -45,7 +45,7 @@ Pass `--platform linux`, which a Linux machine picks by default. Every step runs
 
 ## Screen
 
-Run the app from the tree with `meson devenv -C _build ./crates/app/tablepro` inside `linux/`. A development build uses its own application ID and data directories, so it never touches an installed one; point the `XDG_*_HOME` variables at a scratch directory as well when the shot must not show the user's real connections. Nothing drives the app from a script yet: only `app.*` actions reach D-Bus, and the window's actions do not. Launch it in the state the shot needs and capture with the `org.freedesktop.portal.Screenshot` portal, which GNOME allows for an unsandboxed caller; `org.gnome.Shell.Screenshot` refuses. The portal captures the whole screen, so crop to the window. Dark and light: `ADW_DEBUG_COLOR_SCHEME=force-dark` or `force-light`.
+Run the app from the tree with `meson devenv -C _build ./crates/app/tablepro` inside `linux/`. A development build uses its own application ID and data directories, so it never touches an installed one; point the `XDG_*_HOME` variables at a scratch directory as well when the shot must not show the user's real connections. Nothing drives the app from a script yet: only `app.*` actions reach D-Bus, and the window's actions do not. Launch it in the state the shot needs and capture with the `org.freedesktop.portal.Screenshot` portal, which GNOME allows for an unsandboxed caller; `org.gnome.Shell.Screenshot` refuses. The portal captures the whole screen, so crop to the window. Dark and light: `ADW_DEBUG_COLOR_SCHEME=prefer-dark` or `prefer-light`; libadwaita ignores any other value.
 
 ## Ship
 

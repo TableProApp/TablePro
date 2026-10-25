@@ -12,7 +12,9 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/assistant-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/browse-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-dialog.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/data-grid.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connect-failed-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/column-chooser.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/connecting-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/diagram-tab.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/export-operations-button.ui</file>
@@ -32,6 +34,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-ai-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-mcp-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/results-pane.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/row-detail-pane.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/session-window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/sql-editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/database-file-row.ui</file>

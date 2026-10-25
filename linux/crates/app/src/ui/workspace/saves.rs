@@ -98,10 +98,10 @@ impl WorkspaceModel {
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins));
             }
             (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {
-                // The row behind the failing step is flashed before the
+                // The row behind the failing step is marked before the
                 // error shows, so the user sees which one it was.
                 if let Some(source) = failing {
-                    self.dispatch_to_tab(tab, browse_tab::SaveInput::FlashErrorRow(source));
+                    self.dispatch_to_tab(tab, browse_tab::SaveInput::MarkErrorRow(source));
                 }
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
             }

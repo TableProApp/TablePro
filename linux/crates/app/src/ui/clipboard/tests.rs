@@ -14,8 +14,8 @@ use tablepro_core::meta::TableRef;
 use tablepro_test_support::FakeDialect;
 
 use super::*;
+use crate::services::grid::RowSnapshot;
 use crate::test_support::{finish_on_main, test_runtime, wait_until};
-use crate::ui::grid::RowSnapshot;
 
 const WAIT: Duration = Duration::from_secs(30);
 

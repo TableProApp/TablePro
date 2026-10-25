@@ -80,6 +80,22 @@
                     </child>
                   </object>
                 </child>
+                <child>
+                  <!-- The pane inserts the shown result's grid actions as
+                       grid, and hides this while the result has no grid. -->
+                  <object class="GtkToggleButton" id="details_toggle">
+                    <property name="icon-name">sidebar-show-right-symbolic</property>
+                    <property name="tooltip-text" translatable="yes">Row Details</property>
+                    <property name="action-name">grid.show-details</property>
+                    <property name="visible">false</property>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                    <accessibility>
+                      <property name="label" translatable="yes">Row Details</property>
+                    </accessibility>
+                  </object>
+                </child>
               </object>
             </child>
             <property name="content">

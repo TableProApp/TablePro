@@ -141,27 +141,24 @@ fn table_row(window: &gtk4::Widget, name: &str) -> Option<(gtk4::ListView, u32)>
         })
 }
 
-/// Edit a cell the way a double-click, typing and Enter do.
+/// Edit a cell the way Return on the focused cell, typing and Enter do.
 async fn edit_cell(window: &gtk4::Widget, from: &str, to: &str) -> Result<(), String> {
     let cell = until(&format!("the cell showing {from}"), || cell_showing(window, from)).await?;
-    let gesture = edit_gesture(&cell).ok_or_else(|| format!("the cell showing {from} takes no double-click"))?;
-    gesture.emit_by_name::<()>("pressed", &[&2i32, &1.0f64, &1.0f64]);
+    // The column view's own cell widget around ours is what takes focus.
+    let focusable = cell
+        .parent()
+        .ok_or_else(|| format!("the cell showing {from} is in no grid"))?;
+    if !focusable.grab_focus() {
+        return Err(format!("the cell showing {from} takes no focus"));
+    }
+    cell.activate_action("grid.edit", None)
+        .map_err(|error| format!("grid.edit: {error}"))?;
     let field = until("the cell's editor", || first_of::<gtk4::Text>(&cell)).await?;
     field.set_text(to);
     field.emit_by_name::<()>("activate", &[]);
     until(&format!("the cell showing {to}"), || cell_showing(window, to))
         .await
         .map(drop)
-}
-
-fn edit_gesture(cell: &gtk4::Widget) -> Option<gtk4::GestureClick> {
-    let controllers = cell.observe_controllers();
-    (0..controllers.n_items())
-        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::GestureClick>())
-        .find(|gesture| {
-            gesture.button() == gtk4::gdk::BUTTON_PRIMARY
-                && gesture.propagation_phase() == gtk4::PropagationPhase::Capture
-        })
 }
 
 fn cell_showing(root: &gtk4::Widget, text: &str) -> Option<gtk4::Widget> {

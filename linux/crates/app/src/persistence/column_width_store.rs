@@ -1,34 +1,32 @@
-use std::rc::Rc;
-
 use tablepro_session::runtime::Tasks;
 use uuid::Uuid;
 
-use super::StateFile;
-use super::column_widths_document::ColumnWidthsDocument;
+use super::ColumnLayoutStore;
 
 /// The widths the user dragged, remembered per connection, schema and
-/// table.
+/// table. It reads and writes the widths of the layouts in the same file,
+/// so a width and the rest of a table's layout never overwrite each other.
 #[derive(Clone)]
 pub struct ColumnWidthStore {
-    file: Rc<StateFile<ColumnWidthsDocument>>,
+    layouts: ColumnLayoutStore,
 }
 
 impl ColumnWidthStore {
     pub fn load(path: std::path::PathBuf, tasks: &Tasks) -> Self {
         Self {
-            file: Rc::new(StateFile::load(path, tasks)),
+            layouts: ColumnLayoutStore::load(path, tasks),
         }
     }
 
+    /// The layouts this store keeps the widths of, for a grid that keeps a
+    /// table's whole layout.
+    pub fn layouts(&self) -> &ColumnLayoutStore {
+        &self.layouts
+    }
+
     pub fn width(&self, connection_id: Uuid, schema: Option<&str>, table: &str, column: &str) -> Option<i32> {
-        self.file.read(|document| {
-            document
-                .connections
-                .get(&connection_id.to_string())?
-                .get(schema_key(schema))?
-                .get(table)?
-                .get(column)
-                .copied()
+        self.layouts.read(connection_id, schema, table, |layout| {
+            layout.and_then(|layout| layout.widths.get(column).copied())
         })
     }
 
@@ -38,52 +36,27 @@ impl ColumnWidthStore {
         if width <= 0 {
             return;
         }
-        self.file.update(|document| {
-            let slot = document
-                .connections
-                .entry(connection_id.to_string())
-                .or_default()
-                .entry(schema_key(schema).to_owned())
-                .or_default()
-                .entry(table.to_owned())
-                .or_default()
-                .entry(column.to_owned())
-                .or_default();
-            if *slot == width {
-                return false;
-            }
-            *slot = width;
-            true
+        self.layouts.change(connection_id, schema, table, |layout| {
+            layout.widths.insert(column.to_owned(), width) != Some(width)
         });
     }
 
     /// Drop the column's width, so it opens at its default again.
     pub fn forget(&self, connection_id: Uuid, schema: Option<&str>, table: &str, column: &str) {
-        self.file.update(|document| {
-            document
-                .connections
-                .get_mut(&connection_id.to_string())
-                .and_then(|schemas| schemas.get_mut(schema_key(schema)))
-                .and_then(|tables| tables.get_mut(table))
-                .is_some_and(|columns| columns.remove(column).is_some())
+        self.layouts.change(connection_id, schema, table, |layout| {
+            layout.widths.remove(column).is_some()
         });
     }
 
     /// Drop everything for a connection the user deleted, so the file
     /// does not grow with entries nothing can reach.
     pub fn forget_connection(&self, connection_id: Uuid) {
-        self.file
-            .update(|document| document.connections.remove(&connection_id.to_string()).is_some());
+        self.layouts.forget_connection(connection_id);
     }
 
     pub fn flush(&self) -> impl Future<Output = ()> + Send + use<> {
-        self.file.flush()
+        self.layouts.flush()
     }
-}
-
-/// `None` is stored as the empty string so every JSON key is concrete.
-fn schema_key(schema: Option<&str>) -> &str {
-    schema.unwrap_or("")
 }
 
 #[cfg(test)]
@@ -166,5 +139,27 @@ mod tests {
         let reopened = ColumnWidthStore::load(path, &paused_tasks());
 
         assert_eq!(reopened.width(id, Some("public"), "users", "name"), Some(240));
+    }
+
+    #[tokio::test]
+    async fn a_width_merges_into_the_tables_layout() {
+        use crate::services::grid::{ColumnLayout, LayoutSlot};
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root);
+        let id = Uuid::new_v4();
+        let arranged = ColumnLayout::default()
+            .with_order(vec![LayoutSlot::Column("email".to_owned()), LayoutSlot::RowNumbers])
+            .with_hidden("secret", true);
+        store.layouts().save(id, None, "users", &arranged);
+
+        store.record(id, None, "users", "email", 200);
+        store.forget(id, None, "users", "missing");
+
+        assert_eq!(
+            store.layouts().layout(id, None, "users"),
+            arranged.with_width("email", 200),
+            "the order and the hidden column stay"
+        );
     }
 }

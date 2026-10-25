@@ -5,7 +5,7 @@ use gtk4::gdk;
 use gtk4::prelude::*;
 
 use super::descendants;
-use crate::application::{ACCELERATORS, AcceleratorScope, ShortcutOwner, keypad_twins};
+use crate::application::{ShortcutOwner, keypad_twins};
 
 /// A key with its modifiers, keyval lowered as GtkKeyvalTrigger stores it.
 pub(crate) type Keystroke = (gdk::Key, gdk::ModifierType);
@@ -106,19 +106,5 @@ pub(crate) fn class_keys_on_focus_paths(
         .iter()
         .filter(|widget| !skip(widget))
         .flat_map(class_binding_keys)
-        .collect()
-}
-
-/// Every key the table gives `owner`, with keypad twins for the ones it
-/// installs.
-pub(crate) fn table_keys(owner: ShortcutOwner) -> HashSet<Keystroke> {
-    ACCELERATORS
-        .iter()
-        .filter(|entry| match entry.scope {
-            AcceleratorScope::Local { owner: of, .. } | AcceleratorScope::Component(of) => of == owner,
-            AcceleratorScope::Application | AcceleratorScope::Stock => false,
-        })
-        .flat_map(|entry| entry.triggers.iter())
-        .flat_map(|accel| keystrokes_with_twins(accel))
         .collect()
 }

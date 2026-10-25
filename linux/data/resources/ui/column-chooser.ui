@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProColumnChooser" parent="AdwDialog">
+    <property name="title" translatable="yes">Columns</property>
+    <property name="content-width">360</property>
+    <property name="content-height">480</property>
+    <property name="focus-widget">search_entry</property>
+    <property name="child">
+      <object class="AdwToolbarView">
+        <child type="top">
+          <object class="AdwHeaderBar"/>
+        </child>
+        <child type="top">
+          <object class="GtkBox">
+            <style>
+              <class name="toolbar"/>
+            </style>
+            <child>
+              <object class="GtkSearchEntry" id="search_entry">
+                <property name="hexpand">true</property>
+                <property name="placeholder-text" translatable="yes">Search Columns</property>
+                <accessibility>
+                  <property name="label" translatable="yes">Search Columns</property>
+                </accessibility>
+              </object>
+            </child>
+          </object>
+        </child>
+        <property name="content">
+          <object class="GtkStack" id="stack">
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">list</property>
+                <property name="child">
+                  <object class="GtkScrolledWindow">
+                    <property name="hscrollbar-policy">never</property>
+                    <property name="vexpand">true</property>
+                    <property name="child">
+                      <object class="GtkListView" id="list_view">
+                        <style>
+                          <class name="rich-list"/>
+                        </style>
+                        <accessibility>
+                          <property name="label" translatable="yes">Columns</property>
+                        </accessibility>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">empty</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">edit-find-symbolic</property>
+                    <property name="title" translatable="yes">No Matches</property>
+                    <style>
+                      <class name="compact"/>
+                    </style>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </property>
+        <child type="bottom">
+          <object class="GtkActionBar">
+            <child type="start">
+              <object class="GtkButton" id="reset_button">
+                <property name="label" translatable="yes">Reset Columns</property>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkButton" id="show_all_button">
+                <property name="label" translatable="yes">Show All</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

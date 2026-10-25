@@ -203,7 +203,7 @@ mod tests {
         ExportSource::Rows {
             columns: Vec::new().into(),
             rows: (0..rows)
-                .map(|_| crate::ui::grid::RowSnapshot::new(Vec::new().into(), Vec::new()))
+                .map(|_| crate::services::grid::RowSnapshot::new(Vec::new().into(), Vec::new()))
                 .collect(),
         }
     }

@@ -99,7 +99,7 @@
             <child type="start">
               <object class="GtkButton" id="insert_button">
                 <property name="icon-name">list-add-symbolic</property>
-                <property name="action-name">browse.insert-row</property>
+                <property name="action-name">grid.insert-row</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -108,7 +108,7 @@
             <child type="start">
               <object class="GtkButton" id="delete_button">
                 <property name="icon-name">list-remove-symbolic</property>
-                <property name="action-name">browse.delete-rows</property>
+                <property name="action-name">grid.delete-rows</property>
                 <style>
                   <class name="flat"/>
                 </style>
@@ -127,6 +127,19 @@
                   <class name="accent"/>
                   <class name="caption-heading"/>
                 </style>
+              </object>
+            </child>
+            <child type="end">
+              <object class="GtkToggleButton" id="details_toggle">
+                <property name="icon-name">sidebar-show-right-symbolic</property>
+                <property name="tooltip-text" translatable="yes">Row Details</property>
+                <property name="action-name">grid.show-details</property>
+                <style>
+                  <class name="flat"/>
+                </style>
+                <accessibility>
+                  <property name="label" translatable="yes">Row Details</property>
+                </accessibility>
               </object>
             </child>
             <child type="end">

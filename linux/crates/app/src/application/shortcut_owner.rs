@@ -1,11 +1,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShortcutOwner {
     BrowseTab,
-    /// The browse tab's column view.
-    BrowseGrid,
-    /// A focused grid cell, through the grid's capture-phase controller.
+    /// A data grid's column view, ahead of the list's own key bindings.
     GridCell,
-    /// A cell's open inline, multi-line or date editor.
+    /// A data grid's column view, after a focused editor had its turn.
+    Grid,
+    /// A grid's inline editor, or its detail pane's value editor.
     CellEditor,
     /// The SQL editor's source view.
     SqlEditor,

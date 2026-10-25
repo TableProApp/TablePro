@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.22"/>
+  <requires lib="libadwaita" version="1.9"/>
+  <template class="TableProDataGrid" parent="AdwBin">
+    <property name="child">
+      <object class="AdwBreakpointBin">
+        <!-- Small enough to fit under each host's own bars at the host's
+             smallest size. -->
+        <property name="width-request">200</property>
+        <property name="height-request">80</property>
+        <child>
+          <!-- The HIG's utility pane overlaps the rows once there is no
+               room to show it beside them. -->
+          <object class="AdwBreakpoint">
+            <condition>max-width: 560sp</condition>
+            <setter object="split_view" property="collapsed">True</setter>
+          </object>
+        </child>
+        <property name="child">
+          <object class="AdwOverlaySplitView" id="split_view">
+            <property name="sidebar-position">end</property>
+            <property name="show-sidebar">false</property>
+            <property name="min-sidebar-width">260</property>
+            <property name="max-sidebar-width">420</property>
+            <property name="sidebar-width-fraction">0.32</property>
+            <property name="content">
+              <object class="GtkBox">
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkSearchBar" id="search_bar">
+                    <property name="child">
+                      <object class="GtkBox">
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkSearchEntry" id="search_entry">
+                            <property name="hexpand">true</property>
+                            <property name="placeholder-text" translatable="yes">Find in Rows</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="match_label">
+                            <style>
+                              <class name="dimmed"/>
+                              <class name="numeric"/>
+                            </style>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <style>
+                              <class name="linked"/>
+                            </style>
+                            <child>
+                              <object class="GtkButton" id="find_previous">
+                                <property name="icon-name">go-up-symbolic</property>
+                                <property name="action-name">grid.find-previous</property>
+                                <property name="tooltip-text" translatable="yes">Previous Match</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Previous Match</property>
+                                </accessibility>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkButton" id="find_next">
+                                <property name="icon-name">go-down-symbolic</property>
+                                <property name="action-name">grid.find-next</property>
+                                <property name="tooltip-text" translatable="yes">Next Match</property>
+                                <accessibility>
+                                  <property name="label" translatable="yes">Next Match</property>
+                                </accessibility>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </child>
+                <child>
+                  <!-- The placeholder is drawn over the rows rather than in
+                       their place, so the view stays mapped and keeps its
+                       row widgets while it holds no row. -->
+                  <object class="GtkOverlay">
+                    <property name="vexpand">true</property>
+                    <property name="child">
+                      <object class="GtkScrolledWindow" id="scrolled">
+                        <property name="child">
+                          <object class="GtkColumnView" id="column_view">
+                            <property name="show-row-separators">true</property>
+                            <property name="show-column-separators">true</property>
+                            <property name="tab-behavior">cell</property>
+                            <property name="enable-rubberband">true</property>
+                            <property name="has-tooltip">true</property>
+                            <style>
+                              <class name="data-table"/>
+                            </style>
+                          </object>
+                        </property>
+                      </object>
+                    </property>
+                    <child type="overlay">
+                      <object class="AdwStatusPage" id="empty_page">
+                        <property name="title" translatable="yes">No Rows</property>
+                        <property name="visible">false</property>
+                        <property name="can-target">false</property>
+                        <style>
+                          <class name="compact"/>
+                        </style>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <property name="sidebar">
+              <object class="TableProRowDetailPane" id="detail_pane"/>
+            </property>
+          </object>
+        </property>
+      </object>
+    </property>
+  </template>
+</interface>

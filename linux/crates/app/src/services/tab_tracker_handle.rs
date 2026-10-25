@@ -6,7 +6,7 @@ use tablepro_core::edit::CellInput;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::cell_overlay::{CellMarks, CellOverlay};
-use super::change_tracker::{DraftRow, ErrorFlash, RowKey, RowState, TabChangeTracker, TrackedChanges};
+use super::change_tracker::{DraftRow, RowKey, RowState, TabChangeTracker, TrackedChanges};
 use super::save_batch::{SaveBatch, SaveTarget};
 use super::tracker_delta::TrackerDelta;
 use super::tracker_edit::TrackerEdit;
@@ -38,6 +38,10 @@ impl TabTrackerHandle {
     #[must_use = "the grid shows stale rows until the delta is applied"]
     pub fn apply(&self, edit: TrackerEdit) -> TrackerDelta {
         self.0.borrow_mut().apply(edit)
+    }
+
+    pub fn cell_is_saving(&self, row_key: &RowKey, col: usize) -> bool {
+        self.0.borrow().cell_is_saving(row_key, col)
     }
 
     /// Whether `apply` would hold the edit back for the running save.
@@ -96,12 +100,9 @@ impl TabTrackerHandle {
         self.0.borrow_mut().discard()
     }
 
-    pub fn flash_error_row(&self, row_key: RowKey) -> ErrorFlash {
-        self.0.borrow_mut().flash_error_row(row_key)
-    }
-
-    pub fn clear_error_row_if(&self, generation: u64) -> bool {
-        self.0.borrow_mut().clear_error_row_if(generation)
+    #[must_use = "the grid shows stale rows until the delta is applied"]
+    pub fn mark_error_row(&self, row_key: RowKey) -> TrackerDelta {
+        self.0.borrow_mut().mark_error_row(row_key)
     }
 
     pub fn is_error_row(&self, row_key: &RowKey) -> bool {
@@ -187,6 +188,19 @@ mod tests {
 
     fn rolled_back() -> SaveOutcome {
         SaveOutcome::RolledBack(RollbackCause::Driver(DriverError::server("no")))
+    }
+
+    #[test]
+    fn a_cell_the_save_writes_is_saving_until_it_settles() {
+        let tracker = edited();
+        assert!(!tracker.cell_is_saving(&row(1), 1));
+        let batch = tracker.begin_save().expect("a save").expect("changes to save");
+
+        assert!(tracker.cell_is_saving(&row(1), 1));
+        assert!(!tracker.cell_is_saving(&row(1), 0), "a cell the save leaves alone");
+        assert!(!tracker.cell_is_saving(&row(4), 1), "a row the save leaves alone");
+        let _ = tracker.settle_save(&SaveOutcome::Committed { rows: Some(1) }, batch.snapshot);
+        assert!(!tracker.cell_is_saving(&row(1), 1));
     }
 
     #[test]

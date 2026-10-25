@@ -7,18 +7,22 @@ use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_core::FilterSet;
 use tablepro_core::dialect::SqlDialect;
+use tablepro_core::meta::TableRef;
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_session::Session;
+use tablepro_session::runtime::Tasks;
+use tablepro_storage::AppSettings;
 
 use super::browse_tab_widgets::BrowseTabWidgets;
 use super::pager_bar::PagerRequest;
 use super::pending_changes_bar::PendingChangesRequest;
-use super::{
-    BrowseTab, BrowseTabInput, ClipboardInput, PAGE_SIZE_OPTIONS, PagingInput, SaveInput, loading_description,
-};
+use super::{BrowseTab, BrowseTabInput, GridInput, PAGE_SIZE_OPTIONS, PagingInput, SaveInput, loading_description};
 use crate::i18n::gettext;
+use crate::persistence::ColumnLayoutStore;
+use crate::services::tab_tracker_handle::TabTrackerHandle;
+use crate::ui::data_grid::{DataGrid, DialectSource, GridConfig, GridSorting, KeysHandle, LayoutBinding};
 use crate::ui::filter_strip::FilterStrip;
 use crate::ui::format::format_thousands;
-use crate::ui::grid::GridSink;
 use crate::ui::tab_load::StaleBanner;
 
 pub(super) struct LayoutInit<'a> {
@@ -40,7 +44,6 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
     connect_controls(tab, page_sizes.clone());
     BrowseTabWidgets {
         inner_stack: imp.inner_stack.get(),
-        grid_holder: imp.grid_holder.get(),
         loading_page: imp.loading_page.get(),
         error_page: imp.error_page.get(),
         stale_banner: StaleBanner::new(imp.stale_banner.get(), sender(tab, || PagingInput::Refresh)),
@@ -101,16 +104,80 @@ pub(super) fn filter_strip(tab: &BrowseTab, initial: &FilterSet, dialect: Option
     strip
 }
 
-/// Handled at once: a tracked change redraws the cells bound to its
-/// row in place, so the cell that sent it is still there for the Tab
-/// that ended the edit to move focus from.
-pub(super) fn grid_sink(tab: &BrowseTab) -> GridSink {
-    let tab = tab.downgrade();
-    Rc::new(move |msg| {
-        if let Some(tab) = tab.upgrade() {
-            tab.send(BrowseTabInput::from(msg));
+/// What the tab's grid is built from.
+pub(super) struct GridInit {
+    pub(super) table: TableRef,
+    pub(super) label: String,
+    pub(super) connection_id: Option<uuid::Uuid>,
+    pub(super) sorting: GridSorting,
+    pub(super) tracker: TabTrackerHandle,
+    pub(super) settings: Rc<AppSettings>,
+    pub(super) layouts: ColumnLayoutStore,
+    pub(super) keys: KeysHandle,
+    /// Held weakly: the session outlives its tabs, and a grid must not
+    /// keep a closed one.
+    pub(super) session: std::sync::Weak<Session>,
+    pub(super) tasks: Tasks,
+}
+
+/// The grid the tab shows its rows in for its whole life. It starts with
+/// no columns; each read of another column set gives it new ones. Its
+/// `grid` actions reach the tab's buttons through the tab.
+pub(super) fn grid(tab: &BrowseTab, init: GridInit) -> DataGrid {
+    let session = init.session;
+    let dialect: DialectSource = Rc::new(move || session.upgrade()?.current_dialect());
+    let layout = init.connection_id.map(|connection_id| LayoutBinding {
+        store: init.layouts,
+        connection_id,
+        schema: init.table.schema.clone(),
+        table: init.table.name.clone(),
+    });
+    let grid = DataGrid::new(GridConfig {
+        columns: Arc::from([]),
+        sorting: init.sorting,
+        rules: None,
+        tracker: Some(init.tracker),
+        settings: init.settings,
+        layout,
+        references: Some(init.keys),
+        dialect: Some(dialect),
+        table: Some(init.table),
+        // Ctrl+F is the filter strip's in a table tab.
+        find: false,
+        filter_by_value: true,
+        tasks: init.tasks,
+        label: init.label,
+    });
+    grid.set_vexpand(true);
+    grid.set_hexpand(true);
+    let imp = tab.imp();
+    imp.grid_holder.append(&grid);
+    let _ = imp.grid.set(grid.clone());
+    connect_grid(tab, &grid);
+    grid
+}
+
+/// Only queued: the grid emits these while it writes its rows, and the
+/// tab may be handling an input that set it off.
+fn connect_grid(tab: &BrowseTab, grid: &DataGrid) {
+    let weak = tab.downgrade();
+    grid.connect_request(move |_, request| {
+        if let Some(tab) = weak.upgrade() {
+            tab.send(GridInput::Request(request));
         }
-    })
+    });
+    let weak = tab.downgrade();
+    grid.connect_selection_changed(move |_| {
+        if let Some(tab) = weak.upgrade() {
+            tab.send(GridInput::SelectionChanged);
+        }
+    });
+    let weak = tab.downgrade();
+    grid.connect_editing_changed(move |_| {
+        if let Some(tab) = weak.upgrade() {
+            tab.send(GridInput::EditingChanged);
+        }
+    });
 }
 
 /// The usual sizes, and the tab's own when Preferences or a saved tab
@@ -166,7 +233,7 @@ fn connect_controls(tab: &BrowseTab, page_sizes: Vec<u64>) {
     ] {
         imp.pending_bar.connect_request(request, move |_| send());
     }
-    let export = sender(tab, || ClipboardInput::Export(None));
+    let export = sender(tab, || GridInput::Export);
     imp.export_button.connect_clicked(move |_| export());
     let retry = sender(tab, || PagingInput::Refresh);
     imp.retry_button.connect_clicked(move |_| retry());

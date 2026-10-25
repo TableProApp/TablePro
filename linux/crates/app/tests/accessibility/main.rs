@@ -294,28 +294,21 @@ fn open_filter_strip(window: &adw::ApplicationWindow) -> Result<(), String> {
     })
 }
 
-/// The editor of the cell that shows `CELL`, opened from its menu the
-/// way the Menu key opens it.
+/// The editor of the cell that shows `CELL`, opened the way F2 opens it
+/// on the focused cell.
 fn open_cell_editor(window: &adw::ApplicationWindow) -> Result<(), String> {
     let cell = widgets_of(window.upcast_ref(), "TableProGridCell")
         .into_iter()
         .find(|cell| shows_text(cell, CELL))
         .ok_or("no cell shows the row")?;
-    let controllers = cell.observe_controllers();
-    let menu = (0..controllers.n_items())
-        .filter_map(|index| controllers.item(index).and_downcast::<gtk4::GestureClick>())
-        .find(|gesture| gesture.button() == 3)
-        .ok_or("the cell has no menu")?;
-    menu.emit_by_name::<()>("pressed", &[&1i32, &1.0f64, &1.0f64]);
-    for popover in descendants(window.upcast_ref())
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk4::PopoverMenu>().ok())
-    {
-        popover.popdown();
+    // The column view's own cell widget around ours is what takes focus.
+    let focusable = cell.parent().ok_or("the cell is not in the column view")?;
+    if !focusable.grab_focus() {
+        return Err("the cell takes no focus".to_owned());
     }
     drain_main_context();
-    cell.activate_action("cell.edit", None)
-        .map_err(|error| format!("cell.edit: {error}"))?;
+    cell.activate_action("grid.edit", None)
+        .map_err(|error| format!("grid.edit: {error}"))?;
     wait_until("the cell's editor", || {
         descendants(&cell)
             .iter()

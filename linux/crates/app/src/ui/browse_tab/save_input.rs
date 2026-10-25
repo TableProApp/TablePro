@@ -1,5 +1,5 @@
 use crate::services::change_origins::ChangeOrigins;
-use crate::services::change_tracker::{RowKey, StatementSource};
+use crate::services::change_tracker::StatementSource;
 
 /// What changes where the tab's save stands: Save, Discard, Stop Saving
 /// and how the window's save of the tab went.
@@ -22,7 +22,7 @@ pub(crate) enum SaveInput {
     /// The save may have landed. The changes stay, and the tracker
     /// refuses to save them again until the table is read again.
     SaveOutcomeUnknown(String),
-    FlashErrorRow(StatementSource),
-    /// The flash on a failed statement's row ran its course.
-    ErrorFlashEnded(RowKey),
+    /// The row behind the statement the save failed on, which keeps its
+    /// mark until it is changed or saved again.
+    MarkErrorRow(StatementSource),
 }

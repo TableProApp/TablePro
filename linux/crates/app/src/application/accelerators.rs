@@ -7,7 +7,7 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    AssistantComposer, BrowseGrid, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, GridCell, HistoryRow,
+    AssistantComposer, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell, HistoryRow,
     InlineSuggestion, PickerPage, PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
@@ -156,16 +156,70 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Listed(BrowseTable),
     ),
     stock("list.move", &["Up", "Down", "Left", "Right"], Listed(DataGrid)),
-    component(GridCell, "cell.edit", &["F2", "Return"], Listed(DataGrid)),
-    component(GridCell, "cell.toggle", &["space"], Listed(DataGrid)),
-    component(GridCell, "cell.menu", &["Menu", "<Shift>F10"], Listed(DataGrid)),
-    component(GridCell, "cell.set-null", &["<Primary>BackSpace"], Listed(DataGrid)),
-    component(GridCell, "cell.open-referenced-row", &["<Primary>j"], Listed(DataGrid)),
+    // The data grid's keys. Each goes through the `grid` action it names,
+    // so a disabled action lets its key go on. GtkListFactoryWidget binds
+    // Return, Space and Menu in its class and stops them, so those are
+    // taken in the capture phase; the rest wait for a focused editor.
+    local(GridCell, CAPTURE, "grid.edit", &["F2", "Return"], Listed(DataGrid)),
+    local(GridCell, CAPTURE, "grid.toggle", &["space"], Listed(DataGrid)),
+    local(
+        GridCell,
+        CAPTURE,
+        "grid.menu",
+        &["Menu", "<Shift>F10"],
+        Listed(DataGrid),
+    ),
+    local(
+        GridCell,
+        CAPTURE,
+        "grid.set-null",
+        &["<Primary>BackSpace"],
+        Listed(DataGrid),
+    ),
+    local(
+        GridCell,
+        CAPTURE,
+        "grid.follow-reference",
+        &["<Primary>j"],
+        Listed(DataGrid),
+    ),
     // GtkTreeView's keys for its focused header. A column view's header
     // takes no focus, so they act on the focused cell's column.
-    component(GridCell, "cell.widen-column", &["<Shift><Alt>Right"], Listed(DataGrid)),
-    component(GridCell, "cell.narrow-column", &["<Shift><Alt>Left"], Listed(DataGrid)),
+    local(
+        GridCell,
+        CAPTURE,
+        "grid.widen-column",
+        &["<Shift><Alt>Right"],
+        Listed(DataGrid),
+    ),
+    local(
+        GridCell,
+        CAPTURE,
+        "grid.narrow-column",
+        &["<Shift><Alt>Left"],
+        Listed(DataGrid),
+    ),
+    local(Grid, BUBBLE, "grid.insert-row", &["<Primary>n"], Listed(DataGrid)),
+    local(Grid, BUBBLE, "grid.delete-rows", &["Delete"], Listed(DataGrid)),
+    local(Grid, BUBBLE, "grid.copy", &["<Primary>c"], Listed(DataGrid)),
+    local(Grid, BUBBLE, "grid.paste", &["<Primary>v"], Listed(DataGrid)),
+    local(Grid, BUBBLE, "grid.clear-selection", &["Escape"], Listed(DataGrid)),
+    // The HIG's Properties key: F9 already shows the sidebar.
+    local(Grid, BUBBLE, "grid.show-details", &["<Alt>Return"], Listed(DataGrid)),
+    // Off in a grid with no find, so in the table tab Ctrl+F goes on to
+    // the tab's filter.
+    local(Grid, BUBBLE, "grid.find", &["<Primary>f"], Listed(DataGrid)),
+    local(Grid, BUBBLE, "grid.find-next", &["<Primary>g"], Listed(DataGrid)),
+    local(
+        Grid,
+        BUBBLE,
+        "grid.find-previous",
+        &["<Primary><Shift>g"],
+        Listed(DataGrid),
+    ),
     stock("text.activate", &["Return"], Listed(DataGrid)),
+    // The inline editor and the detail pane's value editor read these
+    // themselves, to leave a key to an open preedit.
     component(CellEditor, "cell-editor.cancel", &["Escape"], Listed(DataGrid)),
     component(CellEditor, "cell-editor.next", &["Tab"], Listed(DataGrid)),
     component(CellEditor, "cell-editor.previous", &["<Shift>Tab"], Listed(DataGrid)),
@@ -176,35 +230,6 @@ pub const ACCELERATORS: &[Accelerator] = &[
         Listed(DataGrid),
     ),
     component(CellEditor, "cell-editor.pick-date", &["space"], Unlisted),
-    local(
-        BrowseGrid,
-        BUBBLE,
-        "browse.insert-row",
-        &["<Primary>n"],
-        Listed(DataGrid),
-    ),
-    local(BrowseGrid, BUBBLE, "browse.delete-rows", &["Delete"], Listed(DataGrid)),
-    local(
-        BrowseGrid,
-        BUBBLE,
-        "browse.copy-rows",
-        &["<Primary>c"],
-        Listed(DataGrid),
-    ),
-    local(
-        BrowseGrid,
-        BUBBLE,
-        "browse.paste-rows",
-        &["<Primary>v"],
-        Listed(DataGrid),
-    ),
-    local(
-        BrowseGrid,
-        BUBBLE,
-        "browse.clear-selection",
-        &["Escape"],
-        Listed(DataGrid),
-    ),
     local(
         SqlEditor,
         CAPTURE,
@@ -502,8 +527,8 @@ pub fn local_shortcut_controller(owner: ShortcutOwner) -> gtk::ShortcutControlle
 pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
     match owner {
         BrowseTab => "tablepro-browse-tab-shortcuts",
-        BrowseGrid => "tablepro-browse-grid-shortcuts",
         GridCell => "tablepro-grid-cell-shortcuts",
+        Grid => "tablepro-grid-shortcuts",
         CellEditor => "tablepro-cell-editor-shortcuts",
         SqlEditor => "tablepro-sql-editor-shortcuts",
         SqlEditorCursors => "tablepro-sql-editor-cursor-shortcuts",
@@ -819,16 +844,17 @@ mod tests {
         };
 
         assert_eq!(
-            accel(&menu_item("Set to NULL", "cell.set-null")).as_deref(),
+            accel(&menu_item("Set to NULL", "grid.set-null")).as_deref(),
             Some("<Primary>BackSpace")
         );
-        assert_eq!(accel(&menu_item("Edit Cell", "cell.edit")).as_deref(), Some("F2"));
+        assert_eq!(accel(&menu_item("Edit Cell", "grid.edit")).as_deref(), Some("F2"));
         assert_eq!(
             accel(&menu_item("New Window", "app.new-window")),
             None,
             "GTK shows its own"
         );
-        assert_eq!(accel(&menu_item("Copy", "cell.copy")), None);
+        assert_eq!(accel(&menu_item("Copy", "grid.copy")).as_deref(), Some("<Primary>c"));
+        assert_eq!(accel(&menu_item("Copy as JSON", "grid.copy-json")), None);
     }
 
     #[gtk4::test]

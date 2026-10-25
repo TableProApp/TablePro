@@ -465,7 +465,7 @@ pub(super) mod tests {
     /// filter strip.
     #[gtk4::test]
     fn an_open_table_tab_fits_the_window_floor() {
-        use crate::ui::browse_tab::{BrowseTab, EditInput, PagingInput};
+        use crate::ui::browse_tab::{BrowseTab, PagingInput};
         let test = TestWindow::with_script(
             "TableFloor",
             Script {
@@ -490,11 +490,9 @@ pub(super) mod tests {
             .expect("a table tab");
         let tab = page.child().downcast::<BrowseTab>().expect("a browse tab");
         let wait = Duration::from_secs(10);
-        wait_until(wait, || {
-            descendants(&tab).iter().any(|widget| widget.is::<gtk::ColumnView>())
-        })
-        .expect("the tab's rows");
-        tab.send(EditInput::InsertRow);
+        wait_until(wait, || tab.grid().row_count() > 0).expect("the tab's rows");
+        tab.activate_action("grid.insert-row", None)
+            .expect("the tab inserts rows");
         let content =
             crate::test_support::first_descendant_of_type::<adw::ToolbarView>(&tab).expect("the tab's toolbar view");
         let needs = || {

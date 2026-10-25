@@ -4,7 +4,7 @@ use tablepro_core::column::ResultColumn;
 use tablepro_session::Session;
 
 use super::ExportQuery;
-use crate::ui::grid::RowSnapshot;
+use crate::services::grid::RowSnapshot;
 
 /// Where an export reads its rows.
 #[derive(Debug, Clone)]

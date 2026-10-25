@@ -8,6 +8,8 @@ pub(crate) enum KeyInjectionError {
     Reply(#[from] x11rb::errors::ReplyError),
     #[error("no keycode carries keysym {0:#x}")]
     KeysymNotMapped(u32),
+    #[error("the widget is not on screen")]
+    NotShown,
     /// XTEST reaches GDK only through an X11 display; set GDK_BACKEND=x11.
     #[error("the display is {0}, not X11")]
     NotX11(String),

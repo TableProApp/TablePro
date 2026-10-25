@@ -10,7 +10,12 @@ impl BrowseModel {
     pub(super) fn on_paging(&mut self, input: PagingInput, fx: &mut Effects) {
         match input {
             PagingInput::Refresh => self.reload(fx),
-            PagingInput::RequestRefresh => fx.output(BrowseTabOutput::RefreshRequested),
+            // The window asks first when the tab has unsaved changes, and
+            // what is typed in an open editor is one of them.
+            PagingInput::RequestRefresh => {
+                self.grid.commit_edit();
+                fx.output(BrowseTabOutput::RefreshRequested);
+            }
             PagingInput::ToggleFilterStrip => self.filter_strip.toggle(),
             PagingInput::ShowFilterStrip => self.filter_strip.open(),
             PagingInput::FilterApplied(set) => self.apply_filter(set, fx),
@@ -18,8 +23,6 @@ impl BrowseModel {
             PagingInput::PrevPage => self.turn_page(self.pager.prev(), fx),
             PagingInput::NextPage => self.turn_page(self.pager.next(self.rows_on_page()), fx),
             PagingInput::LastPage => self.turn_page(self.pager.last(&self.total), fx),
-            PagingInput::SortChanged { col_idx, ascending } => self.sort_by(Some((col_idx, ascending)), fx),
-            PagingInput::SortCleared => self.sort_by(None, fx),
             PagingInput::PageSizeChanged(size) => {
                 if self.suppress_combo_emit.get() || self.pager.page_size() == size {
                     return;
@@ -37,7 +40,6 @@ impl BrowseModel {
     /// tab, then the page and the count built from them. The rows on
     /// screen stay until the new page lands.
     pub(super) fn reload(&mut self, fx: &mut Effects) {
-        self.capture_selection();
         self.begin_read(fx);
         self.stop_count(true);
         self.reload_from_columns(ColumnFreshness::Refetch);
@@ -63,15 +65,15 @@ impl BrowseModel {
         fx.output(BrowseTabOutput::StateChanged);
     }
 
-    fn sort_by(&mut self, next: Option<(usize, bool)>, fx: &mut Effects) {
-        // The sorter notifies twice for one click on a new column
-        // (column, then order), with the same final pair.
+    /// A sort the headers did not make, which they show too.
+    /// Read the first page in `next` order.
+    pub(super) fn sort_by(&mut self, next: Option<(usize, bool)>, fx: &mut Effects) {
+        // One header click can report the same sort twice.
         if self.current_sort == next {
             return;
         }
         self.current_sort = next;
         self.pager.restart();
-        self.capture_selection();
         self.fetch(BrowseRequestKind::Page, fx);
         fx.output(BrowseTabOutput::StateChanged);
     }

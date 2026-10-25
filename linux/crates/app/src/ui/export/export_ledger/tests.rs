@@ -18,9 +18,9 @@ use tablepro_session::runtime::CountingHold;
 use tablepro_test_support::{ConnectionScript, FakeReply, StreamEnd};
 
 use super::*;
+use crate::services::grid::RowSnapshot;
 use crate::test_support::{FakeSession, descendants, finish_on_main, first_descendant_of_type, wait_until};
 use crate::ui::export::{AbortOutcome, ExpectedRows, ExportFormat, ExportOperationsButton, RowFormat, TableExport};
-use crate::ui::grid::RowSnapshot;
 use crate::workspace::{InhibitTarget, WorkOutcome, answer, visible_alert};
 
 const WAIT: Duration = Duration::from_secs(20);

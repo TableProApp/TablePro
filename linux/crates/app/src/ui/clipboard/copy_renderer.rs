@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use super::clipboard_writer::holds_nul;
 use super::{ClipboardFormat, ClipboardPayload};
-use crate::ui::grid::RowSnapshot;
+use crate::services::grid::RowSnapshot;
 
 /// What a copy holds, taken on the GTK thread and rendered off it.
 #[derive(Debug)]

@@ -38,7 +38,7 @@ mod imp {
     impl ObjectImpl for DataBrowserGroup {
         fn constructed(&self) {
             self.parent_constructed();
-            let threshold = crate::ui::browse_tab::BULK_DELETE_CONFIRM_THRESHOLD;
+            let threshold = crate::ui::data_grid::BULK_DELETE_CONFIRM_THRESHOLD;
             self.confirm_row.set_subtitle(&crate::i18n::ngettext_f(
                 "Ask before deleting {n} or more rows at once",
                 "Ask before deleting {n} or more rows at once",

@@ -10,8 +10,8 @@ use tablepro_session::{OperationError, OperationKind};
 use super::columns_fetch::{ColumnFreshness, load_columns};
 use super::{BrowseCommand, BrowseModel, BrowseRequestKind, ColumnsReply, DataInput, Effects, PageReply};
 use crate::runtime::{RequestTicket, Stamped};
+use crate::ui::data_grid::TableKeys;
 use crate::ui::export::TableExport;
-use crate::ui::grid::TableKeys;
 use crate::ui::tab_load::LoadFailure;
 
 /// What a page or a count reads, copied off the tab so the work owns

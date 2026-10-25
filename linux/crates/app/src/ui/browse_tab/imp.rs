@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
@@ -14,6 +14,7 @@ use tablepro_session::runtime::WatchForwarder;
 use super::pager_bar::PagerBar;
 use super::pending_changes_bar::PendingChangesBar;
 use super::{BrowseModel, BrowseTabInput};
+use crate::ui::data_grid::DataGrid;
 
 #[derive(Default, gtk::CompositeTemplate)]
 #[template(resource = "/app/tablepro/TablePro/ui/browse-tab.ui")]
@@ -49,6 +50,8 @@ pub struct BrowseTab {
     #[template_child]
     pub export_button: TemplateChild<gtk::Button>,
     #[template_child]
+    pub details_toggle: TemplateChild<gtk::ToggleButton>,
+    #[template_child]
     pub filter_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub filter_badge: TemplateChild<gtk::Label>,
@@ -57,6 +60,9 @@ pub struct BrowseTab {
     #[template_child]
     pub pending_bar: TemplateChild<PendingChangesBar>,
 
+    /// The tab's one grid, reachable while an input is being handled
+    /// and the model is borrowed.
+    pub(super) grid: OnceCell<DataGrid>,
     pub(super) model: RefCell<Option<BrowseModel>>,
     pub(super) queue: RefCell<VecDeque<BrowseTabInput>>,
     pub(super) dispatching: Cell<bool>,

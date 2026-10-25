@@ -21,8 +21,6 @@ fn label_with(page: &PageState, total: &RowTotal, format: impl Fn(u64) -> String
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::ui::format::Thousands;
 
@@ -33,7 +31,6 @@ mod tests {
     fn labelled(start: u64, rows: usize, filtered: bool, total: &RowTotal) -> String {
         let english = Thousands::for_posix_locale("en_US.UTF-8");
         let page = PageState {
-            result_columns: Arc::from([]),
             row_count: rows,
             start_ordinal: start,
             filtered,

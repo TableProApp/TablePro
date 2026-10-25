@@ -7,7 +7,6 @@ use crate::ui::tab_load::StaleBanner;
 
 pub(super) struct BrowseTabWidgets {
     pub(super) inner_stack: gtk::Stack,
-    pub(super) grid_holder: gtk::Box,
     pub(super) loading_page: adw::StatusPage,
     pub(super) error_page: adw::StatusPage,
     pub(super) stale_banner: StaleBanner,

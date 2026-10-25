@@ -8,7 +8,7 @@ use tablepro_session::{OperationError, OperationKind, Session};
 use tokio_util::sync::CancellationToken;
 
 use super::{ExportQuery, ExportSinkParts};
-use crate::ui::grid::RowSnapshot;
+use crate::services::grid::RowSnapshot;
 
 /// Rows a producer encodes before it looks at the cancel again.
 const ROWS_PER_BATCH: usize = 256;

@@ -11,6 +11,7 @@ use tablepro_test_support::{ConnectionScript, FakeEditorSession, FakeReply, Fake
 use super::*;
 use crate::services::history_preferences::HistoryPreferences;
 use crate::test_support::{MemorySettings, SignalLog, wait_until};
+use crate::ui::data_grid::DataGrid;
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -592,49 +593,6 @@ fn a_dropped_file_goes_in_at_the_cursor_as_one_undo_step() {
 }
 
 #[gtk4::test]
-fn a_copy_from_a_result_grid_reaches_the_clipboard() {
-    use tablepro_core::column::{ColumnType, ResultColumn};
-
-    use tablepro_core::Value;
-
-    use crate::ui::clipboard::{CopyKind, CopyRequest};
-    use crate::ui::grid::RowSnapshot;
-
-    let harness = editor_with(answering(), "SELECT 1");
-    let toasts = Rc::new(std::cell::RefCell::new(Vec::new()));
-    let sink = toasts.clone();
-    harness
-        .editor
-        .connect_toast(move |_, text| sink.borrow_mut().push(text));
-    let grid = harness.editor.imp().grid_sink.get().expect("the grid's sink").clone();
-    let clipboard = harness.editor.clipboard();
-    clipboard.set_text("before");
-    let columns: std::sync::Arc<[ResultColumn]> = ["a", "b"]
-        .iter()
-        .map(|name| ResultColumn::new(*name, ColumnType::untyped_text("text")))
-        .collect();
-    let rows = vec![
-        RowSnapshot::new(vec![Value::Int(1), Value::Text("x".into())].into(), Vec::new()),
-        RowSnapshot::new(vec![Value::Int(2), Value::Text("y".into())].into(), Vec::new()),
-    ];
-
-    grid(GridMsg::Copy(CopyRequest::Rows {
-        columns,
-        rows,
-        kind: CopyKind::Rows,
-    }));
-    wait_until(WAIT, || !toasts.borrow().is_empty()).expect("the copy to land");
-
-    assert_eq!(*toasts.borrow(), ["Copied 2 rows".to_owned()]);
-    assert!(clipboard.formats().contain_mime_type("text/tab-separated-values"));
-    let text: Option<String> = clipboard
-        .content()
-        .and_then(|content| content.value(String::static_type()).ok())
-        .and_then(|value| value.get().ok());
-    assert_eq!(text.as_deref(), Some("1\tx\n2\ty\n"));
-}
-
-#[gtk4::test]
 fn closing_the_tab_closes_its_connection() {
     let harness = editor_with(answering(), "SELECT 1");
     run_and_wait(&harness);
@@ -786,6 +744,98 @@ fn shown_banner(harness: &Harness) -> adw::Banner {
         .visible_child()
         .expect("a result page");
     crate::test_support::first_descendant_of_type::<adw::Banner>(&page).expect("the page's banner")
+}
+
+/// The grid on the result page on show.
+fn shown_grid(harness: &Harness) -> DataGrid {
+    let page = harness
+        .editor
+        .imp()
+        .results
+        .imp()
+        .stack
+        .visible_child()
+        .expect("a result page");
+    crate::test_support::first_descendant_of_type::<DataGrid>(&page).expect("the page's grid")
+}
+
+/// Run what `accel` does in `grid`, as a key press reaching the grid's
+/// own controller would. `true` when the grid took the key.
+fn press_in_grid(grid: &DataGrid, accel: &str) -> bool {
+    use crate::test_support::shortcut_keys::{keystroke, owner_controller, shortcuts, trigger_keys};
+    let controller = owner_controller(grid, crate::application::ShortcutOwner::Grid).expect("the grid's keys");
+    shortcuts(&controller)
+        .into_iter()
+        .find(|shortcut| {
+            shortcut
+                .trigger()
+                .is_some_and(|trigger| trigger_keys(&trigger).contains(&keystroke(accel)))
+        })
+        .and_then(|shortcut| shortcut.action())
+        .expect("the grid binds the key")
+        .activate(gtk4::ShortcutActionFlags::empty(), grid, None)
+}
+
+fn details_shown(grid: &DataGrid) -> bool {
+    grid.actions()
+        .action_state("show-details")
+        .and_then(|state| state.get::<bool>())
+        .unwrap_or(false)
+}
+
+/// D2: a result grid copies on Ctrl+C, and the editor says how it went.
+#[gtk4::test]
+fn ctrl_c_copies_from_a_result_grid() {
+    let mut runs = Replies::default();
+    runs.always(result_set(2, Some(2), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM t");
+    let _window = shown(&harness);
+    run_and_wait(&harness);
+    let toasts = SignalLog::connect(&harness.editor, "toast", |values| {
+        values[1].get::<String>().expect("a message")
+    });
+    let grid = shown_grid(&harness);
+    let clipboard = grid.clipboard();
+    clipboard.set_text("before");
+
+    grid.selection().select_all();
+    assert!(press_in_grid(&grid, "<Primary>c"), "Ctrl+C went by");
+    wait_until(WAIT, || toasts.count() > 0).expect("the copy to land");
+
+    assert_eq!(toasts.take(), ["Copied 2 rows".to_owned()]);
+    assert!(clipboard.formats().contain_mime_type("text/tab-separated-values"));
+    let text: Option<String> = clipboard
+        .content()
+        .and_then(|content| content.value(String::static_type()).ok())
+        .and_then(|value| value.get().ok());
+    assert_eq!(text.as_deref(), Some("0\n1\n"));
+}
+
+/// The pane's Row Details toggle acts on the grid of the result on
+/// screen, and shows that grid's state.
+#[gtk4::test]
+fn row_details_reaches_the_shown_result_s_grid() {
+    let mut runs = Replies::default();
+    runs.always(result_set(2, Some(2), Truncation::Complete));
+    let harness = editor_with(runs, "SELECT n FROM a; SELECT n FROM b");
+    let _window = shown(&harness);
+    run_and_wait(&harness);
+    let results = &harness.editor.imp().results;
+    let toggle = results.imp().details_toggle.get();
+    results.select(0);
+    let first = shown_grid(&harness);
+    results.select(1);
+    let second = shown_grid(&harness);
+
+    assert!(toggle.is_visible());
+    wait_until(WAIT, || toggle.is_sensitive()).expect("the toggle reaches the grid");
+    toggle.emit_clicked();
+
+    assert!(details_shown(&second), "the shown grid kept its details closed");
+    assert!(!details_shown(&first), "a grid off screen opened its details");
+    assert!(toggle.is_active());
+    results.select(0);
+    assert!(!toggle.is_active(), "the toggle kept the other grid's state");
 }
 
 #[gtk4::test]

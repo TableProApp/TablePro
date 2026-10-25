@@ -25,7 +25,8 @@ use tablepro_core::dialect::SqlDialect;
 use tablepro_core::{ColumnInfo, Combinator, FilterRule, FilterSet, FilterValue};
 
 use self::filter_rule_object::FilterRuleObject;
-use self::rule_operators::{FilterVocabulary, operators_for};
+pub(crate) use self::rule_operators::FilterVocabulary;
+use self::rule_operators::operators_for;
 pub(super) use self::rule_row::FilterRuleRow;
 
 glib::wrapper! {
@@ -152,6 +153,16 @@ impl FilterStrip {
                 .collect(),
             extra_sql: (!text.trim().is_empty()).then(|| text.to_string()),
         }
+    }
+
+    /// Add `rule` to the rules shown and apply them, as a cell's Filter by
+    /// Value does. The strip shows, so the user sees why the rows changed,
+    /// and the focus stays where it was.
+    pub fn add_and_apply(&self, rule: FilterRule) {
+        self.rules().append(&FilterRuleObject::new(rule));
+        self.imp().rules_expander.set_expanded(true);
+        self.set_revealed(true);
+        self.emit_by_name::<()>("applied", &[&glib::BoxedAnyObject::new(self.filter())]);
     }
 
     /// The user applied a filter, or cleared it.

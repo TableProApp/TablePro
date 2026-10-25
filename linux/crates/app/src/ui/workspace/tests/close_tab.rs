@@ -11,9 +11,9 @@ use uuid::Uuid;
 
 use super::super::{OpenMode, WorkspaceInput};
 use crate::runtime::DeliverInput;
-use crate::test_support::{after_next_frame, descendants, drain_main_context, wait_until};
+use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::browse_tab::BrowseTab;
-use crate::ui::grid::GridCell;
+use crate::ui::data_grid::GridCell;
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::workspace::{answer, visible_alert};
 
@@ -80,29 +80,28 @@ fn open_table(test: &TestWindow, name: &str) -> (Uuid, BrowseTab) {
 }
 
 /// Give the keyboard focus to the name of the first row.
-fn focus_name(test: &TestWindow, tab: &BrowseTab) -> GridCell {
-    let mut grid = None;
+fn focus_name(tab: &BrowseTab) -> GridCell {
+    let grid = tab.grid();
+    wait_until(WAIT, || grid.row_count() == 2).expect("the rows");
+    let mut focused = None;
     wait_until(WAIT, || {
-        grid = descendants(tab)
-            .into_iter()
-            .find_map(|widget| widget.downcast::<gtk::ColumnView>().ok())
-            .filter(|view| view.model().is_some_and(|model| model.n_items() == 2));
-        grid.is_some()
-    })
-    .expect("the rows");
-    let view = grid.expect("the grid");
-    let name = crate::ui::grid::data_columns(&view)
-        .into_iter()
-        .nth(1)
-        .expect("the name column");
-    view.scroll_to(0, Some(&name), gtk::ListScrollFlags::FOCUS, None);
-    view.grab_focus();
-    let focused = || gtk::prelude::GtkWindowExt::focus(&test.window).and_then(|focus| GridCell::from_focus(&focus));
-    wait_until(WAIT, || {
-        focused().is_some_and(|cell| cell.position() == Some(0) && cell.column() == 1)
+        focused = grid.focus_cell(0, 1);
+        focused.is_some()
     })
     .expect("the cell takes the focus");
-    focused().expect("the focused cell")
+    focused.expect("the focused cell")
+}
+
+/// Open the name's one-line editor and type over it, leaving it open.
+fn type_a_name(tab: &BrowseTab) -> GridCell {
+    let cell = focus_name(tab);
+    let grid = tab.grid();
+    assert!(grid.edit().edit_cell(&cell), "the name took no edit");
+    grid.edit()
+        .open_text()
+        .expect("a one-line field")
+        .set_text("Ada Lovelace");
+    cell
 }
 
 /// What was typed is an unsaved change like any other, so the close asks
@@ -112,9 +111,7 @@ fn focus_name(test: &TestWindow, tab: &BrowseTab) -> GridCell {
 fn closing_a_tab_while_a_cell_is_edited_asks_about_the_edit() {
     let test = TestWindow::connected_with("CloseWhileEditing", serving_tables);
     let (id, tab) = open_table(&test, "users");
-    let cell = focus_name(&test, &tab);
-    crate::ui::grid::begin_edit(&cell);
-    cell.inline_text().expect("a one-line field").set_text("Ada Lovelace");
+    let cell = type_a_name(&tab);
 
     let previous = glib::log_set_always_fatal(glib::LogLevels::LEVEL_CRITICAL);
     WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
@@ -138,9 +135,12 @@ fn closing_a_tab_while_a_cell_is_edited_asks_about_the_edit() {
 fn closing_the_window_while_a_cell_is_edited_asks_about_the_edit() {
     let test = TestWindow::connected_with("CloseWindowWhileEditing", serving_tables);
     let (id, tab) = open_table(&test, "users");
-    let cell = focus_name(&test, &tab);
-    crate::ui::grid::begin_edit(&cell);
-    cell.inline_text().expect("a one-line field").set_text("Ada Lovelace");
+    let cell = type_a_name(&tab);
+    assert_eq!(
+        test.workspace().row_tracker(id).map(|tracker| tracker.pending_count()),
+        Some(0),
+        "the edit counted before the close committed it"
+    );
 
     test.window.close();
 
@@ -150,6 +150,7 @@ fn closing_the_window_while_a_cell_is_edited_asks_about_the_edit() {
     assert!(answer(&test.window, "cancel"));
     drain_main_context();
     assert_eq!(test.app.windows().len(), 1, "Cancel closed the window");
+    assert!(!cell.is_editing());
 }
 
 /// The focus leaves the tab before it goes. GTK 4.22 leaks a focus that
@@ -161,7 +162,7 @@ fn a_tab_closed_with_the_focus_in_it_is_freed_when_the_next_takes_none() {
     let (_, next) = open_table(&test, "orders");
     next.set_can_focus(false);
     let (_, tab) = open_table(&test, "users");
-    drop(focus_name(&test, &tab));
+    drop(focus_name(&tab));
     let closed = tab.downgrade();
     drop(tab);
 

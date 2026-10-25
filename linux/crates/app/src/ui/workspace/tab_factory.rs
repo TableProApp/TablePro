@@ -298,6 +298,7 @@ impl TabFactory {
             session,
             tasks: parts.context.tasks.clone(),
             first_load,
+            settings: parts.settings.clone(),
         });
         let page = self.append(tab.widget(), id, None);
         let follow = follow_loading(&page, tab.is_loading());

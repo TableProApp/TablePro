@@ -179,7 +179,7 @@ mod tests {
         )
         .expect("style.css is embedded at the resource base path");
 
-        assert!(String::from_utf8_lossy(&data).contains(".tp-cell-modified"));
+        assert!(String::from_utf8_lossy(&data).contains(".tp-connection-tag"));
     }
 
     #[gtk4::test]
