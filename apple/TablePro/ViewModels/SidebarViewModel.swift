@@ -101,7 +101,8 @@ final class SidebarViewModel: ObservableObject {
         searchTextObservation = sharedState.onMainActorChange { [weak self] in
             guard let self else { return }
             self.scheduleFilterQueryUpdate(oldValue: self.filterQuery)
-            // The schema filter lives there too, and an edit to it during a search selects another listing.
+            self.noteFilterFieldFocus()
+            // The field's focus and the schema filter live there too: focus starts a search, and a filter edit selects another listing.
             self.loadAllSchemaTablesForSearch()
         }
     }
@@ -111,8 +112,30 @@ final class SidebarViewModel: ObservableObject {
             invalidateFilterCaches()
             if filterQuery.isEmpty { listingMatchesMemo.removeAll() }
             // Once per search, not per keystroke: a failed or partly unlisted listing was read again on every refinement.
-            if oldValue.isEmpty { listingDemand.reset() }
+            if oldValue.isEmpty {
+                if searchStartedAtFocus {
+                    searchStartedAtFocus = false
+                } else {
+                    listingDemand.reset()
+                }
+            }
             loadAllSchemaTablesForSearch()
+        }
+    }
+
+    private var wasFilterFieldFocused = false
+    // A search starts at focus or at its first character, whichever comes first, and asks for a listing once.
+    private var searchStartedAtFocus = false
+
+    private func noteFilterFieldFocus() {
+        let isFocused = sharedState.isFilterFieldFocused
+        guard isFocused != wasFilterFieldFocused else { return }
+        wasFilterFieldFocused = isFocused
+        if isFocused, filterQuery.isEmpty {
+            listingDemand.reset()
+            searchStartedAtFocus = true
+        } else if !isFocused {
+            searchStartedAtFocus = false
         }
     }
 
@@ -570,7 +593,8 @@ final class SidebarViewModel: ObservableObject {
     /// for them. It is asked for here rather than by the outline, because a flat list with no local
     /// match shows "No Results" in place of the outline, which then never sees the search at all.
     private func loadAllSchemaTablesForSearch() {
-        guard !filterQuery.isEmpty else { return }
+        // A focused field is a search about to start, and its first keystroke would otherwise wait out the read.
+        guard !filterQuery.isEmpty || sharedState.isFilterFieldFocused else { return }
         let service = DatabaseTreeMetadataService.shared
         let connectionId = connectionId
         loadAttachedSchemaObjectsForSearch(service: service)

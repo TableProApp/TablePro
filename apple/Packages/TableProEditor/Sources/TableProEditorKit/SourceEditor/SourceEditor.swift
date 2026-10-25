@@ -100,12 +100,16 @@ public struct SourceEditor: NSViewControllerRepresentable {
     public typealias NSViewControllerType = TextViewController
 
     public func makeNSViewController(context: Context) -> TextViewController {
+        makeController(coordinator: context.coordinator)
+    }
+
+    func makeController(coordinator: Coordinator) -> TextViewController {
         let controller = TextViewController(
             string: "",
             language: language,
             configuration: configuration,
             cursorPositions: state.cursorPositions ?? [],
-            highlightProviders: context.coordinator.highlightProviders,
+            highlightProviders: coordinator.highlightProviders,
             foldProvider: foldProvider,
             undoManager: undoManager,
             coordinators: coordinators,
@@ -124,7 +128,7 @@ public struct SourceEditor: NSViewControllerRepresentable {
             controller.setCursorPositions(state.cursorPositions ?? [])
         }
 
-        context.coordinator.setController(controller)
+        coordinator.setController(controller)
         return controller
     }
 
@@ -152,24 +156,28 @@ public struct SourceEditor: NSViewControllerRepresentable {
     }
 
     public func updateNSViewController(_ controller: TextViewController, context: Context) {
+        update(controller, coordinator: context.coordinator)
+    }
+
+    func update(_ controller: TextViewController, coordinator: Coordinator) {
         controller.completionDelegate = completionDelegate
 
-        context.coordinator.updateHighlightProviders(highlightProviders)
+        coordinator.updateHighlightProviders(highlightProviders)
 
-        context.coordinator.textSync.text = text
+        coordinator.textSync.text = text
         if case .binding(let binding) = text {
-            context.coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
+            coordinator.textSync.applyRepresentableText(binding.wrappedValue, controller: controller)
         }
 
-        if !context.coordinator.phase.consumePendingEditorChange() {
-            context.coordinator.phase.applyRepresentableValue {
-                updateControllerWithState(state, controller: controller, coordinator: context.coordinator)
+        if !coordinator.phase.consumePendingEditorChange() {
+            coordinator.phase.applyRepresentableValue {
+                updateControllerWithState(state, controller: controller, coordinator: coordinator)
             }
         }
 
         // Do manual diffing to reduce the amount of reloads.
         // This helps a lot in view performance, as it otherwise gets triggered on each environment change.
-        guard !paramsAreEqual(controller: controller, coordinator: context.coordinator) else {
+        guard !paramsAreEqual(controller: controller, coordinator: coordinator) else {
             return
         }
 
@@ -177,10 +185,9 @@ public struct SourceEditor: NSViewControllerRepresentable {
             controller.language = language
         }
         controller.configuration = configuration
-        updateHighlighting(controller, coordinator: context.coordinator)
+        updateHighlighting(controller, coordinator: coordinator)
 
         controller.reloadUI()
-        return
     }
 
     /// Compares against ``Coordinator/lastSyncedState``, never the editor's live state, which runs ahead of the binding

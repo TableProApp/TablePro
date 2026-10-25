@@ -12,7 +12,7 @@ internal final class SidebarContainerViewController: NSViewController {
     /// Which list the rows below show. Window chrome like the field under it, so it stands through
     /// a connection switch and follows the connection on screen.
     private let scopeControl = SidebarScopeControl()
-    private let searchField = NSSearchField()
+    private let searchField = SidebarFilterField()
     /// Sidebar chrome, like the field it shares a row with, so it survives a connection switch and
     /// writes settings that are not scoped to one. Hidden on the Favorites tab, whose list draws
     /// none of what these options settle.
@@ -121,6 +121,7 @@ internal final class SidebarContainerViewController: NSViewController {
         searchField.controlSize = .regular
         searchField.sendsSearchStringImmediately = true
         searchField.delegate = self
+        searchField.onFocus = { [weak self] in self?.writeFilterFocus(true) }
         searchField.setAccessibilityIdentifier("sidebar-filter")
         searchField.setAccessibilityLabel(String(localized: "Filter"))
 
@@ -234,6 +235,8 @@ internal final class SidebarContainerViewController: NSViewController {
         /// being repointed at a different one.
         filterPopover?.close()
         filterPopover = nil
+        // The connection the field leaves would never hear its editing end.
+        if state !== sidebarState { writeFilterFocus(false) }
         self.sidebarState = state
         guard let state else {
             /// `syncFromState` is the only writer of these, and it cannot run without a state, so
@@ -328,6 +331,10 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         writeSearchText("")
     }
 
+    func controlTextDidEndEditing(_ obj: Notification) {
+        writeFilterFocus(false)
+    }
+
     /// Down from the filter field hands focus to the list.
     ///
     /// It names the list rather than asking the key view loop for whatever comes next. With the
@@ -349,6 +356,24 @@ extension SidebarContainerViewController: NSSearchFieldDelegate {
         case .favorites:
             sidebarState.favoritesSearchText = text
         }
+    }
+
+    // Favorites filters its own list and never reads the all-schema listing, so only Tables marks focus.
+    private func writeFilterFocus(_ isFocused: Bool) {
+        guard let sidebarState, sidebarState.isFilterFieldFocused != isFocused else { return }
+        guard !isFocused || sidebarState.selectedSidebarTab == .tables else { return }
+        sidebarState.isFilterFieldFocused = isFocused
+    }
+}
+
+// The delegate hears of editing only from the first keystroke, and a search starts at focus.
+private final class SidebarFilterField: NSSearchField {
+    var onFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { onFocus?() }
+        return became
     }
 }
 

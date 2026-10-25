@@ -29,10 +29,33 @@ struct DatabaseTreeRenderInputs: Equatable {
     }
 
     struct Listing: Equatable {
-        let phase: MetadataLoadPhase
+        // Every reader in the outline takes idle and loading alike, so a read starting draws nothing new.
+        enum Outcome: Equatable {
+            case pending
+            case loaded
+            case failed
+        }
+
+        let outcome: Outcome
         let tables: SameRows<TableInfo>
         let unlisted: Set<String>
         let covered: CatalogTableListing.SchemaSelection?
+
+        init(_ state: MetadataLoadState<CatalogTableListing.Result>, covered: CatalogTableListing.SchemaSelection?) {
+            switch state {
+            case .idle, .loading: outcome = .pending
+            case .loaded: outcome = .loaded
+            case .failed: outcome = .failed
+            }
+            tables = SameRows(rows: state.value?.tables ?? [])
+            unlisted = state.value?.unlistedSchemas ?? []
+            self.covered = covered
+        }
+
+        // Draws the same as a database with no listing entry.
+        var isUnread: Bool {
+            outcome == .pending && covered == nil
+        }
     }
 
     struct TemporaryTables: Equatable {
@@ -91,12 +114,11 @@ struct DatabaseTreeRenderInputs: Equatable {
         }
         var listings: [DatabaseKey: Listing] = [:]
         for (key, state) in treeMetadata.allSchemaTablesState where key.connectionId == connectionId {
-            listings[key] = Listing(
-                phase: state.erased,
-                tables: SameRows(rows: state.value?.tables ?? []),
-                unlisted: state.value?.unlistedSchemas ?? [],
-                covered: treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: key.database)
+            let listing = Listing(
+                state, covered: treeMetadata.allSchemaTablesSelection(connectionId: connectionId, database: key.database)
             )
+            // A first read adds its key as it starts, which must not count as a change either.
+            if !listing.isUnread { listings[key] = listing }
         }
         self.databases = Rows(treeMetadata.databaseListState(for: connectionId))
         self.schemaLists = Self.slice(treeMetadata.schemaList, where: { $0.connectionId == connectionId }) { Rows($0) }

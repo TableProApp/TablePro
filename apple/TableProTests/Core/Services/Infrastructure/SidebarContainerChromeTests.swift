@@ -42,4 +42,90 @@ struct SidebarContainerChromeTests {
 
         #expect(controller.isFilterEnabled)
     }
+
+    @MainActor
+    private struct FilterHost {
+        let controller: SidebarContainerViewController
+        let window: NSWindow
+
+        init(state: SharedSidebarState) {
+            controller = SidebarContainerViewController()
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 280, height: 600),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.isReleasedWhenClosed = false
+            controller.view.frame = NSRect(x: 0, y: 0, width: 280, height: 600)
+            window.contentView?.addSubview(controller.view)
+            controller.updateSidebarState(state)
+        }
+
+        var isFilterEditing: Bool {
+            controller.view.firstDescendant(of: NSSearchField.self)?.currentEditor() != nil
+        }
+
+        func tearDown() {
+            _ = window.makeFirstResponder(nil)
+            controller.updateSidebarState(nil)
+            controller.view.removeFromSuperview()
+        }
+    }
+
+    @Test("Focusing the filter on Tables marks a search started, and ending the edit clears it")
+    func tablesFocusIsMarkedUntilEditingEnds() {
+        let state = SharedSidebarState()
+        let host = FilterHost(state: state)
+        defer { host.tearDown() }
+
+        host.controller.focusSearchField()
+        #expect(host.isFilterEditing)
+        #expect(state.isFilterFieldFocused)
+
+        #expect(host.window.makeFirstResponder(nil))
+        #expect(!state.isFilterFieldFocused)
+    }
+
+    @Test("Focusing the filter on Favorites marks nothing, since that list never reads the all-schema listing")
+    func favoritesFocusIsNotMarked() {
+        let state = SharedSidebarState()
+        state.selectedSidebarTab = .favorites
+        let host = FilterHost(state: state)
+        defer { host.tearDown() }
+
+        host.controller.focusSearchField()
+
+        #expect(host.isFilterEditing)
+        #expect(!state.isFilterFieldFocused)
+    }
+
+    @Test("The focus stays through a rebind to the same connection and leaves with the field for another")
+    func focusLeavesWithTheField() {
+        let first = SharedSidebarState()
+        let second = SharedSidebarState()
+        let host = FilterHost(state: first)
+        defer { host.tearDown() }
+        host.controller.focusSearchField()
+
+        host.controller.updateSidebarState(first)
+        #expect(first.isFilterFieldFocused)
+
+        host.controller.updateSidebarState(second)
+        #expect(!first.isFilterFieldFocused)
+        #expect(!second.isFilterFieldFocused)
+    }
+
+    @Test("Losing the session clears the focus the field marked")
+    func losingTheSessionClearsTheFocus() {
+        let state = SharedSidebarState()
+        let host = FilterHost(state: state)
+        defer { host.tearDown() }
+        host.controller.focusSearchField()
+        #expect(state.isFilterFieldFocused)
+
+        host.controller.updateSidebarState(nil)
+
+        #expect(!state.isFilterFieldFocused)
+    }
 }

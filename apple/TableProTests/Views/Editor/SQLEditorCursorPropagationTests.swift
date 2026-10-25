@@ -2,7 +2,6 @@
 // focus is elsewhere (find navigation, a jump to a result's statement) still has to reach it.
 
 import AppKit
-import Combine
 import SwiftUI
 import TableProEditorKit
 import TableProTestSupport
@@ -13,23 +12,9 @@ import Testing
 
 @MainActor
 struct SQLEditorCursorPropagationTests {
-    private final class Model: ObservableObject {
-        @Published var text = "SELECT 1 AS a;\nSELECT 2 AS b;\nSELECT 3 AS zz;"
-        @Published var cursorPositions: [CursorPosition] = []
-        @Published var vimMode: VimMode = .normal
-    }
-
-    private struct Host: View {
-        @ObservedObject var model: Model
-
-        var body: some View {
-            SQLEditorView(
-                text: $model.text,
-                cursorPositions: $model.cursorPositions,
-                databaseType: .sqlite,
-                vimMode: $model.vimMode
-            )
-        }
+    private final class Model {
+        var text = "SELECT 1 AS a;\nSELECT 2 AS b;\nSELECT 3 AS zz;"
+        var cursorPositions: [CursorPosition] = []
     }
 
     private func settle(_ window: NSWindow, until condition: () -> Bool) async throws {
@@ -39,18 +24,12 @@ struct SQLEditorCursorPropagationTests {
         }
     }
 
-    private func textView(in view: NSView?) -> TextView? {
-        guard let view else { return nil }
-        if let textView = view as? TextView { return textView }
-        for subview in view.subviews {
-            if let found = textView(in: subview) { return found }
-        }
-        return nil
-    }
-
-    @Test("A caret moved while the editor is not first responder reaches the binding")
-    func caretMovedWithoutFocusReachesTheBinding() async throws {
-        let model = Model()
+    private func mount(_ model: Model) -> (SQLEditorController, NSWindow) {
+        let editor = SQLEditorController(input: SQLEditorInput(
+            text: Binding(get: { model.text }, set: { model.text = $0 }),
+            cursorPositions: Binding(get: { model.cursorPositions }, set: { model.cursorPositions = $0 }),
+            databaseType: .sqlite
+        ))
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
             styleMask: [.titled],
@@ -58,18 +37,47 @@ struct SQLEditorCursorPropagationTests {
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: Host(model: model))
-        defer { window.orderOut(nil) }
-        try await settle(window) { textView(in: window.contentView)?.window != nil }
+        window.contentView = editor.textViewController.view
+        return (editor, window)
+    }
 
-        let editor = try #require(textView(in: window.contentView))
+    @Test("A caret moved while the editor is not first responder reaches the binding")
+    func caretMovedWithoutFocusReachesTheBinding() async throws {
+        let model = Model()
+        let (editor, window) = mount(model)
+        defer { editor.teardown() }
+        defer { window.orderOut(nil) }
+        let textView = try #require(editor.textViewController.textView)
+        try await settle(window) { textView.window != nil }
+
         _ = window.makeFirstResponder(nil)
-        try #require(window.firstResponder !== editor)
+        try #require(window.firstResponder !== textView)
 
         let match = NSRange(location: 42, length: 2)
-        editor.selectionManager.setSelectedRange(match)
-        try await settle(window) { model.cursorPositions.map(\.range) == [match] }
+        textView.selectionManager.setSelectedRange(match)
+        try await settle(window) { model.cursorPositions.map { $0.range } == [match] }
 
-        #expect(model.cursorPositions.map(\.range) == [match])
+        #expect(model.cursorPositions.map { $0.range } == [match])
+    }
+
+    @Test("Typing and replacing a selection report the caret the edit left, with the edited text")
+    func editCaretReachesTheBinding() async throws {
+        let model = Model()
+        let (editor, window) = mount(model)
+        defer { editor.teardown() }
+        defer { window.orderOut(nil) }
+        let textView = try #require(editor.textViewController.textView)
+        try await settle(window) { textView.window != nil }
+        _ = window.makeFirstResponder(textView)
+
+        textView.selectionManager.setSelectedRange(NSRange(location: 14, length: 0))
+        textView.replaceCharacters(in: NSRange(location: 14, length: 0), with: "--")
+        #expect(model.text.hasPrefix("SELECT 1 AS a;--"))
+        #expect(model.cursorPositions.map { $0.range } == [NSRange(location: 16, length: 0)])
+
+        textView.selectionManager.setSelectedRange(NSRange(location: 7, length: 1))
+        textView.replaceCharacters(in: NSRange(location: 7, length: 1), with: "42")
+        #expect(model.text.hasPrefix("SELECT 42 AS a;--"))
+        #expect(model.cursorPositions.map { $0.range } == [NSRange(location: 9, length: 0)])
     }
 }

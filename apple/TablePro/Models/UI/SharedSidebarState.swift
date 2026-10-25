@@ -28,6 +28,7 @@ final class SharedSidebarState: ObservableObject {
 
     @Published var searchText: String = ""
     @Published var favoritesSearchText: String = ""
+    @Published var isFilterFieldFocused = false
 
     @Published var recentTables: [RecentTableEntry] = []
 

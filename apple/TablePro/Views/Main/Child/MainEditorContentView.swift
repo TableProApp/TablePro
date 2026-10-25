@@ -39,7 +39,7 @@ struct MainEditorContentView: View {
     /// A query tab nests its own editor/results split, whose two minimums are required constraints.
     /// The drawer's own minimum has to clear their sum, or dragging the drawer down asks AppKit to
     /// satisfy a height the content it contains cannot reach.
-    static let tabContentMinimumHeight = VerticalCollapsibleSplitView<EmptyView, EmptyView>.combinedMinimumThickness
+    static let tabContentMinimumHeight = CollapsibleSplitController.combinedMinimumThickness
 
     // MARK: - Dependencies
 
@@ -114,25 +114,33 @@ struct MainEditorContentView: View {
     // MARK: - Body
 
     var body: some View {
-        VerticalCollapsibleSplitView(
-            isBottomCollapsed: Binding(
+        EditorAreaHost(input: EditorAreaInput(
+            content: editorAreaContent,
+            history: AnyView(HistoryPanelView(coordinator: coordinator)),
+            isHistoryCollapsed: Binding(
                 get: { !historyState.isVisible },
                 set: { historyState.isVisible = !$0 }
             ),
-            autosaveName: SplitViewAutosaveName.historyDrawer(connectionId: connectionId),
-            topMinimumThickness: Self.tabContentMinimumHeight,
-            bottomMinimumThickness: 180,
-            topContent: {
-                if let tab = tabManager.selectedTab {
-                    tabContent(for: tab)
-                } else {
-                    emptyStateView
-                }
-            },
-            bottomContent: {
-                HistoryPanelView(coordinator: coordinator)
+            historyAutosaveName: SplitViewAutosaveName.historyDrawer(connectionId: connectionId),
+            contentMinimumHeight: Self.tabContentMinimumHeight
+        ))
+        .onAppear {
+            if let tabId = selectedQueryTab?.id {
+                coordinator.clearRestoredCursor(for: tabId)
             }
-        )
+        }
+        // The editor applies a tab's saved selection when the query tab appears; it is then spent.
+        .onChange(of: selectedQueryTab?.id == nil) { isNotQuery in
+            guard !isNotQuery, let tabId = selectedQueryTab?.id else { return }
+            coordinator.clearRestoredCursor(for: tabId)
+        }
+        .task(id: selectedQueryScope) {
+            guard let selectedQueryScope else { return }
+            await SchemaProviderRegistry.shared.prepare(
+                for: selectedQueryScope,
+                connection: coordinator.connection
+            )
+        }
         .onAppear {
             if historyState.isVisible {
                 if #available(macOS 14.0, *) {
@@ -227,11 +235,28 @@ struct MainEditorContentView: View {
 
     // MARK: - Tab Content
 
+    private var selectedQueryTab: QueryTab? {
+        guard let tab = tabManager.selectedTab, tab.tabType == .query else { return nil }
+        return tab
+    }
+
+    private var selectedQueryScope: DatabaseScope? {
+        selectedQueryTab.flatMap { coordinator.scope(for: $0) }
+    }
+
+    private var editorAreaContent: EditorAreaContent {
+        guard let tab = tabManager.selectedTab else { return .view(AnyView(emptyStateView)) }
+        if tab.tabType == .query {
+            return .query(queryTabInput(tab: tab))
+        }
+        return .view(AnyView(tabContent(for: tab)))
+    }
+
     @ViewBuilder
     private func tabContent(for tab: QueryTab) -> some View {
         switch tab.tabType {
         case .query:
-            queryTabContent(tab: tab)
+            EmptyView()
         case .table:
             tableTabContent(tab: tab)
         case .createTable:
@@ -496,103 +521,6 @@ struct MainEditorContentView: View {
               ContainerChangeRerunPolicy.reruns(showing: tabManager.selectedTab?.display.activeResultSet) else { return }
         /// The statement at the caret may not be the one that produced the rows, so a write asks first.
         coordinator.runQuery(viewport: .firstRow, extraCapabilities: .confirmsWrites)
-    }
-
-    // MARK: - Query Tab Content
-
-    @ViewBuilder
-    private func queryTabContent(tab: QueryTab) -> some View {
-        let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
-        let queryScope = coordinator.scope(for: tab)
-        VerticalCollapsibleSplitView(
-            isBottomCollapsed: Binding(
-                get: { tab.display.isResultsCollapsed },
-                set: { collapsed in
-                    _ = coordinator.tabManager.mutate(tabId: tab.id) { $0.display.isResultsCollapsed = collapsed }
-                }
-            ),
-            autosaveName: SplitViewAutosaveName.querySplit(connectionId: connectionId),
-            topContent: {
-                VStack(spacing: 0) {
-                    if let change = tab.content.diskChange,
-                       let url = tab.content.sourceFileURL {
-                        SourceFileDiskChangeBanner(
-                            fileName: url.lastPathComponent,
-                            change: change,
-                            onReload: { coordinator.commandActions?.reloadFileFromDisk(tabId: tab.id, url: url) },
-                            onSaveAs: { coordinator.commandActions?.saveFileAs() },
-                            onDismiss: { dismissDiskChangeBanner(tabId: tab.id) }
-                        )
-                        Divider()
-                    }
-                    QueryEditorView(
-                        queryText: queryTextBinding(for: tab),
-                        cursorPositions: $coordinator.cursorPositions,
-                        parameters: parameterBinding(for: tab),
-                        isParameterPanelVisible: parameterVisibilityBinding(for: tab),
-                        schemaProvider: queryScope.map { SchemaProviderRegistry.shared.getOrCreate(for: $0) },
-                        databaseType: coordinator.connection.type,
-                        databaseScope: queryScope,
-                        connectionId: coordinator.connection.id,
-                        tabID: tab.id,
-                        sourceFileURL: tab.content.sourceFileURL,
-                        claimFocusOnAppear: claimFocus,
-                        onFocusClaimed: {
-                            if coordinator.tabManager.pendingFocusTabId == tab.id {
-                                coordinator.tabManager.pendingFocusTabId = nil
-                            }
-                        },
-                        restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
-                        pendingStatementJump: coordinator.pendingStatementJump(for: tab.id),
-                        onStatementJumpHandled: { coordinator.clearPendingStatementJump(for: tab.id) },
-                        restoredFoldRanges: coordinator.foldRanges(for: tab.id),
-                        onFoldRangesChanged: { ranges in
-                            coordinator.recordFoldRanges(ranges, for: tab.id)
-                        },
-                        onCloseTab: {
-                            coordinator.commandActions?.closeTab()
-                        },
-                        onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
-                        onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
-                        isExecuting: coordinator.tabExecution.isExecuting(tab.id),
-                        currentAIAvailability: { coordinator.aiQueryActionAvailability },
-                        onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },
-                        onSaveAsFavorite: { text in
-                            guard !text.isEmpty else { return }
-                            coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
-                        },
-                        scope: scopeBarModel(for: tab),
-                        commands: commandAvailability(for: tab),
-                        showsHistoryTip: showsHistoryTip,
-                        onRun: { coordinator.runQuery(viewport: .firstRow) },
-                        onRunAllStatements: { coordinator.runAllStatements() },
-                        onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
-                        onStop: { coordinator.stopExecution(for: tab.id) },
-                        onExplain: { variant in coordinator.runExplain(variant: variant) },
-                        onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
-                        onSaveAsFavoriteCommand: { coordinator.saveCurrentQueryAsFavorite() },
-                        onClearQuery: { coordinator.commandActions?.clearQuery() },
-                        onClearResults: { coordinator.clearActiveQueryResults() },
-                        onContainerChanged: { name in changeContainer(for: tab, to: name) }
-                    )
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            },
-            bottomContent: {
-                resultsSection(tab: tab)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        )
-        .onAppear {
-            coordinator.clearRestoredCursor(for: tab.id)
-        }
-        .task(id: queryScope) {
-            guard let queryScope else { return }
-            await SchemaProviderRegistry.shared.prepare(
-                for: queryScope,
-                connection: coordinator.connection
-            )
-        }
     }
 
     private func dismissDiskChangeBanner(tabId: UUID) {
@@ -1376,5 +1304,107 @@ fileprivate extension MainEditorContentView {
             }
         }
         .id(tab.id)
+    }
+}
+
+// MARK: - Query Tab Content
+
+extension MainEditorContentView {
+    private func queryTabInput(tab: QueryTab) -> QueryTabInput {
+        let claimFocus = coordinator.tabManager.pendingFocusTabId == tab.id
+        let queryScope = coordinator.scope(for: tab)
+        let scope = scopeBarModel(for: tab)
+        let commands = commandAvailability(for: tab)
+        let isExecuting = coordinator.tabExecution.isExecuting(tab.id)
+        let showsHistoryTip = showsHistoryTip
+        let parameters = parameterBinding(for: tab)
+        let isParameterPanelVisible = parameterVisibilityBinding(for: tab)
+        let header: (VimMode?) -> AnyView = { vimMode in
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                if let change = tab.content.diskChange,
+                   let url = tab.content.sourceFileURL {
+                    SourceFileDiskChangeBanner(
+                        fileName: url.lastPathComponent,
+                        change: change,
+                        onReload: { coordinator.commandActions?.reloadFileFromDisk(tabId: tab.id, url: url) },
+                        onSaveAs: { coordinator.commandActions?.saveFileAs() },
+                        onDismiss: { dismissDiskChangeBanner(tabId: tab.id) }
+                    )
+                    Divider()
+                }
+                QueryEditorBar(
+                    scope: scope,
+                    commands: commands,
+                    isExecuting: isExecuting,
+                    vimMode: vimMode,
+                    showsHistoryTip: showsHistoryTip,
+                    onAIAction: { action in coordinator.runAIQueryAction(action, target: .selectionOrStatementAtCursor) },
+                    onRun: { coordinator.runQuery(viewport: .firstRow) },
+                    onRunAllStatements: { coordinator.runAllStatements() },
+                    onRunWithoutLimit: { coordinator.runQuery(viewport: .firstRow, bypassRowLimit: true) },
+                    onStop: { coordinator.stopExecution(for: tab.id) },
+                    onExplain: { variant in coordinator.runExplain(variant: variant) },
+                    onFormat: { EditorEventRouter.shared.performFormatSQLForKeyWindow() },
+                    onSaveAsFavorite: { coordinator.saveCurrentQueryAsFavorite() },
+                    onClearQuery: { coordinator.commandActions?.clearQuery() },
+                    onClearResults: { coordinator.clearActiveQueryResults() },
+                    onContainerChanged: { name in changeContainer(for: tab, to: name) }
+                )
+                Divider()
+                if isParameterPanelVisible.wrappedValue && !parameters.wrappedValue.isEmpty {
+                    QueryParameterPanelView(
+                        parameters: parameters,
+                        onDismiss: { isParameterPanelVisible.wrappedValue = false }
+                    )
+                    Divider()
+                }
+            })
+        }
+        let editor = SQLEditorInput(
+            text: queryTextBinding(for: tab),
+            cursorPositions: $coordinator.cursorPositions,
+            schemaProvider: queryScope.map { SchemaProviderRegistry.shared.getOrCreate(for: $0) },
+            databaseType: coordinator.connection.type,
+            databaseScope: queryScope,
+            connectionId: coordinator.connection.id,
+            tabID: tab.id,
+            sourceFileURL: tab.content.sourceFileURL,
+            claimFocusOnAppear: claimFocus,
+            onFocusClaimed: {
+                if coordinator.tabManager.pendingFocusTabId == tab.id {
+                    coordinator.tabManager.pendingFocusTabId = nil
+                }
+            },
+            restoredCursorRange: coordinator.restoredCursorRange(for: tab.id),
+            pendingStatementJump: coordinator.pendingStatementJump(for: tab.id),
+            onStatementJumpHandled: { coordinator.clearPendingStatementJump(for: tab.id) },
+            restoredFoldRanges: coordinator.foldRanges(for: tab.id),
+            onFoldRangesChanged: { ranges in
+                coordinator.recordFoldRanges(ranges, for: tab.id)
+            },
+            onCloseTab: {
+                coordinator.commandActions?.closeTab()
+            },
+            onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
+            onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
+            isExecuting: isExecuting,
+            currentAIAvailability: { coordinator.aiQueryActionAvailability },
+            onAIAction: { action, target in coordinator.runAIQueryAction(action, target: target) },
+            onSaveAsFavorite: { text in
+                guard !text.isEmpty else { return }
+                coordinator.favoriteDialogQuery = FavoriteDialogQuery(query: text)
+            }
+        )
+        return QueryTabInput(
+            pane: QueryEditorPaneInput(header: header, editor: editor),
+            results: AnyView(resultsSection(tab: tab).frame(maxWidth: .infinity, maxHeight: .infinity)),
+            isResultsCollapsed: Binding(
+                get: { tab.display.isResultsCollapsed },
+                set: { collapsed in
+                    _ = coordinator.tabManager.mutate(tabId: tab.id) { $0.display.isResultsCollapsed = collapsed }
+                }
+            ),
+            resultsAutosaveName: SplitViewAutosaveName.querySplit(connectionId: connectionId)
+        )
     }
 }
