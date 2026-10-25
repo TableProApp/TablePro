@@ -1,0 +1,30 @@
+{
+  "source_commit": "58805ca17fcf4e450a43cde9207287741bbaa53d",
+  "source_ref": "linux at 58805ca17fcf4e450a43cde9207287741bbaa53d; built from local branch ux/issue-1272-native-wayland",
+  "profile": "release",
+  "binary_sha256": "b3bd15294ee4c259bc17704cb04babb010c9ae73a361990309545d1671010d60",
+  "binary_build_id_sha1": "53aab9cd3f0ad0e7123e6801df3b6df93d28c5ae",
+  "toolchain": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+  "toolkits": {
+    "gtk4": "4.24.1",
+    "libadwaita": "1.10.0",
+    "gtksourceview": "5.22.0"
+  },
+  "host": "Arch Linux / Omarchy, x86_64, kernel 7.2.8-9-omarchy",
+  "logical_cpus": 16,
+  "display": "native Wayland, Hyprland 0.56.2, 1920x1200, scale 1.0, AT-SPI",
+  "postgres_image": "postgres:16",
+  "postgres_image_id": "sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97",
+  "postgres_version": "16.15 (Debian 16.15-1.pgdg13+2)",
+  "query": "SELECT * FROM big",
+  "columns": 10,
+  "rows": 2000000,
+  "retained_rows_reported": 145000,
+  "retained_row_range": "1855001-2000000",
+  "retention_policy_source": "crates/core/src/query.rs: MAX_QUERY_RESULT_BYTES = 67108864; apps/linux/app/src/ui/editor/stream_pages.rs evicts oldest pages while over the byte budget",
+  "profile_sha256": "a2c47436a76860f8528877b352e05d6f59d9d152f18dfed5ac0d97af705b45c7",
+  "gtk_safety_sha256": "ae92ae385f89349bf12a6fb4e9530dbc87a2951d640a8313b2f24582dc1411ed",
+  "gtk_input_sha256": "ec17ba9788df98ce414fc03eacc08e0f451f2b0917e892ddde3b8860e56f5b41",
+  "stream_probe_sha256": "557c53b8e73ceb13a11546c42b7bb651415cdca76dc1276373f00fc82cf942e8"
+}

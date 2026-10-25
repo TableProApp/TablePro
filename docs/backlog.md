@@ -82,7 +82,7 @@ The native workflow improvements are tracked by [UI-44 / #1349](https://github.c
 
 | Row | What |
 |---|---|
-| PERF-2, PERF-7, PERF-8 | PostgreSQL streams retain pages within the 64 MiB estimated-row budget and keep the newest page; evicted earlier pages cannot be revisited. Candidate-specific narrow and wide 100,000-row observations are recorded in [ADR 0011](decisions/0011-paged-query-results.md#implementation-status). #1032 tracks broader ownership and memory-budget acceptance; #554 tracks access to results that exceed the in-memory budget. Other engines and comparable memory profiling still need qualification. |
+| PERF-2, PERF-7, PERF-8 | PostgreSQL streams retain pages within the 64 MiB estimated-row budget and keep the newest page; evicted earlier pages cannot be revisited. Candidate-specific 100,000-row observations and the October 25 native Wayland two-million-row profile are recorded in [ADR 0011](decisions/0011-paged-query-results.md#implementation-status). #1032 tracks broader ownership and memory-budget acceptance; #554 tracks access to results that exceed the in-memory budget. Other engines and comparable memory profiling still need qualification. |
 | PERF-3 | MongoDB browse on large collections | Compatible `_id` forward keyset seek landed in #493; supported server-side sorting landed in #837. Reverse and last-page navigation, explicitly sorted pages, and keyless deep pages still use offset pagination; installed and representative-network acceptance remain |
 | PERF-4 | Server time next to elapsed time |
 

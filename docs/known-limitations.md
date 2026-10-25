@@ -34,6 +34,9 @@ This page records current branch behavior, including changes made after 0.2.0 wa
   145,216 KiB for the narrow query and 298,024 KiB for the wide query in their
   respective samples. The [installed profile](evidence/native-wayland-profile-2026-10-24/README.md)
   records the binary hash, environment, page screenshots and sampling limits.
+  A source-built release profile on native Wayland then received 2 million rows
+  and retained rows 1,855,001–2,000,000; earlier rows were unavailable. This is
+  not installed-package acceptance. See the [October 25 profile](evidence/postgres-stream-native-wayland-2026-10-25/README.md).
   This single-query result does not measure the pinned-stream stress case, normal
   workloads or the complete process ceiling. Other engines and unsupported
   statement shapes remain materialized. Broader resource, lifecycle and
