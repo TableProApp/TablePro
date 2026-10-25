@@ -82,7 +82,36 @@ class DispatchedCheckTests(unittest.TestCase):
         pages = [{'check_runs': [run]} for run in (self.runs if runs is None else runs)]
         with patch.object(TRAIN.subprocess, 'run', return_value=result), \
                 patch.object(TRAIN, 'command', return_value=json.dumps(pages)):
-            TRAIN.check_open(self.pr)
+            TRAIN.check_open(self.pr, is_aggregate=True)
+
+    def test_member_may_omit_path_filtered_contract_checks_that_aggregate_reruns(self):
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.checks))
+        with patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                patch.object(TRAIN, 'command', return_value=json.dumps([{'check_runs': []}])):
+            TRAIN.check_open(self.pr, is_aggregate=False)
+
+    def test_aggregate_still_requires_path_filtered_contract_checks(self):
+        result = subprocess.CompletedProcess([], 0, json.dumps(self.checks))
+        with patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                patch.object(TRAIN, 'command', return_value=json.dumps([{'check_runs': []}])):
+            with self.assertRaises(ValueError):
+                TRAIN.check_open(self.pr, is_aggregate=True)
+
+    def test_a_reported_failure_for_optional_member_contract_check_is_rejected(self):
+        for state in ('FAILURE', 'PENDING', 'CANCELLED'):
+            checks = self.checks + [{'name': 'harness', 'state': state, 'workflow': 'Linux CI contracts'}]
+            result = subprocess.CompletedProcess([], 0, json.dumps(checks))
+            with self.subTest(state=state), patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                    self.assertRaises(ValueError):
+                TRAIN.check_open(self.pr, is_aggregate=False)
+
+    def test_member_still_requires_every_other_required_check(self):
+        checks = [check for check in self.checks if check['name'] != 'Linux regression gate']
+        result = subprocess.CompletedProcess([], 0, json.dumps(checks))
+        with patch.object(TRAIN.subprocess, 'run', return_value=result), \
+                patch.object(TRAIN, 'command', return_value=json.dumps([{'check_runs': []}])):
+            with self.assertRaises(ValueError):
+                TRAIN.check_open(self.pr, is_aggregate=False)
 
     def test_successful_dispatched_checks_at_the_pinned_commit_complete_the_required_checks(self):
         self.validate()
@@ -110,7 +139,7 @@ class DispatchedCheckTests(unittest.TestCase):
         with patch.object(TRAIN.subprocess, 'run', return_value=result), \
                 patch.object(TRAIN, 'command', side_effect=subprocess.CalledProcessError(1, ['gh', 'api'])), \
                 self.assertRaises(subprocess.CalledProcessError):
-            TRAIN.check_open(self.pr)
+            TRAIN.check_open(self.pr, is_aggregate=True)
 
 
 class TrainIntegrationTests(unittest.TestCase):

@@ -21,6 +21,7 @@ REQUIRED_CHECKS = {
     'Security (supply-chain)', 'flatpak-builder (default)',
     'Preflight and sandbox tier (no GTK app)', 'Fast checks (GTK)',
 }
+MEMBER_REQUIRED_CHECKS = REQUIRED_CHECKS - {'harness', 'workflow-lint'}
 
 
 def command(*args):
@@ -65,10 +66,10 @@ def check_release_notes(aggregate_body, member_bodies):
             'no constituent has a release note, so the aggregate PR must say `Release-Note: none`')
 
 
-def check_results(checks):
+def check_results(checks, required_checks=REQUIRED_CHECKS):
     successful = {c['name'] for c in checks if c['state'] == 'SUCCESS'}
-    require(REQUIRED_CHECKS <= successful, 'missing or unsuccessful required GitHub checks: '
-            + ', '.join(sorted(REQUIRED_CHECKS - successful)))
+    require(required_checks <= successful, 'missing or unsuccessful required GitHub checks: '
+            + ', '.join(sorted(required_checks - successful)))
     for check in checks:
         reference = check['name'] == 'SonarCloud Code Analysis' or check.get('workflow') in {'Sonar Rust', 'CodeQL'}
         require(reference or check['state'] in {'SUCCESS', 'SKIPPED'},
@@ -86,20 +87,20 @@ def pull_request(number):
                               'number,headRefOid,baseRefName,state,isDraft,reviewDecision,mergeCommit,mergeable,body'))
 
 
-def github_checks(number, head):
+def github_checks(number, head, required_checks=REQUIRED_CHECKS):
     result = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', REPOSITORY,
                              '--json', 'name,state,workflow'], text=True, capture_output=True)
     require(result.returncode in {0, 1, 8}, 'could not read GitHub checks')
     checks = json.loads(result.stdout)
     present = {check['name'] for check in checks}
-    if REQUIRED_CHECKS <= present:
+    if required_checks <= present:
         return checks
     endpoint = f'repos/{REPOSITORY}/commits/{head}/check-runs?filter=latest&per_page=100'
     pages = json.loads(command('gh', 'api', '--paginate', '--slurp', endpoint))
     runs = [run for page in pages for run in page['check_runs']]
     for run in sorted(runs, key=lambda item: item['id'], reverse=True):
         name = run['name']
-        if name in present or name not in REQUIRED_CHECKS or run.get('app', {}).get('slug') != 'github-actions':
+        if name in present or name not in required_checks or run.get('app', {}).get('slug') != 'github-actions':
             continue
         require(run.get('head_sha') == head, 'commit check does not match pinned PR head')
         state = (run.get('conclusion') or 'pending').upper() if run['status'] == 'completed' else 'PENDING'
@@ -113,12 +114,13 @@ def fetch_head(remote, pr):
     require(command('git', 'rev-parse', 'FETCH_HEAD') == pr['headRefOid'], 'PR head moved while fetching')
 
 
-def check_open(pr):
+def check_open(pr, *, is_aggregate):
     require(pr['state'] == 'OPEN' and not pr['isDraft'], f"PR #{pr['number']} is not an open ready PR")
     require(pr['baseRefName'] == 'linux', 'constituent and aggregate PRs must target linux')
     require(pr['reviewDecision'] != 'CHANGES_REQUESTED', f"PR #{pr['number']} has requested changes")
     require(pr['mergeable'] == 'MERGEABLE', f"PR #{pr['number']} is not confirmed mergeable")
-    check_results(github_checks(pr['number'], pr['headRefOid']))
+    required_checks = REQUIRED_CHECKS if is_aggregate else MEMBER_REQUIRED_CHECKS
+    check_results(github_checks(pr['number'], pr['headRefOid'], required_checks), required_checks)
 
 
 def check_integration(base, head, members):
@@ -182,12 +184,12 @@ def main():
         print(f'train #{args.pr}: merged tree matches gated head {head}')
         return
     require(linux_head() == manifest['base'], 'linux moved; rebuild and gate a new train')
-    check_open(aggregate)
+    check_open(aggregate, is_aggregate=True)
     member_bodies = {}
     for member in members:
         pr = pull_request(member['number'])
         require(pr['headRefOid'] == member['sha'], f"constituent #{member['number']} moved")
-        check_open(pr)
+        check_open(pr, is_aggregate=False)
         member_bodies[member['number']] = pr.get('body', '')
     check_release_notes(aggregate.get('body', ''), member_bodies)
     for member in members:
