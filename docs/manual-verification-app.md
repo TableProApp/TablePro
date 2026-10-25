@@ -17,6 +17,14 @@ Run the core grid/editor/connection screens in light, dark, high-contrast light 
 
 For an observed failure, record the action, expected and actual behavior, theme/scale/size, screenshot, binary SHA and owning issue. Add an automated behavior regression where possible; keep rendered acceptance here. Coordinate checklist edits with open UX PRs before landing.
 
+## Active grid edit ownership ([#1029](https://github.com/cozyGarage/BookiE/issues/1029))
+
+These manual cases cover input-method composition and the full-value editor popover. The automated active-edit scenarios cover ordinary text entry and tab-close actions; they do not establish these input paths.
+
+- [ ] Given a writable test table with two distinguishable rows, edit a text cell using the installed input method and compose a non-ASCII value. Commit the composition, then move focus to another cell and to a toolbar action. Save the draft and verify the database contains the exact composed Unicode value once, while the sibling row is unchanged.
+- [ ] Given a dirty cell with its full-value editor popover visible, attempt to close the table tab. The close must be refused while the popover owns the editor; the popover and draft remain available, and the database is unchanged. Dismiss the popover, then verify the normal Save, Discard and Cancel outcomes for the draft.
+- [ ] Record the input method and version, app build, database fixture, stored values before and after, and any refusal or prompt shown. Follow the [shared manual evidence rules](manual-verification-0.2-features.md).
+
 ## Catalog window
 
 Main menu, then Catalog, on a PostgreSQL connection with a few objects of each kind.
