@@ -63,11 +63,25 @@ fn open_label(open_for: Duration) -> String {
         return crate::tr!("Session · transaction open");
     }
     let age = if minutes < 60 {
-        format!("{minutes} min")
+        minute_label(minutes)
     } else {
-        format!("{} h {} min", minutes / 60, minutes % 60)
+        let hours = hour_label(minutes / 60);
+        let remainder = minutes % 60;
+        if remainder == 0 {
+            hours
+        } else {
+            format!("{hours} {}", minute_label(remainder))
+        }
     };
     format!("{} · {age}", crate::tr!("Session · transaction open"))
+}
+
+fn minute_label(count: u64) -> String {
+    crate::trn!("{n} minute", "{n} minutes", count).replace("{n}", &count.to_string())
+}
+
+fn hour_label(count: u64) -> String {
+    crate::trn!("{n} hour", "{n} hours", count).replace("{n}", &count.to_string())
 }
 
 #[cfg(test)]
@@ -86,11 +100,19 @@ mod tests {
         );
         assert_eq!(
             clock.label_at(start + Duration::from_secs(60)),
-            "Session · transaction open · 1 min"
+            "Session · transaction open · 1 minute"
         );
         assert_eq!(
             clock.label_at(start + Duration::from_secs(75 * 60)),
-            "Session · transaction open · 1 h 15 min"
+            "Session · transaction open · 1 hour 15 minutes"
+        );
+        assert_eq!(
+            clock.label_at(start + Duration::from_secs(61 * 60)),
+            "Session · transaction open · 1 hour 1 minute"
+        );
+        assert_eq!(
+            clock.label_at(start + Duration::from_secs(120 * 60)),
+            "Session · transaction open · 2 hours"
         );
     }
 
@@ -102,7 +124,7 @@ mod tests {
         clock.set_open(true, start + Duration::from_secs(300));
         assert_eq!(
             clock.label_at(start + Duration::from_secs(300)),
-            "Session · transaction open · 5 min"
+            "Session · transaction open · 5 minutes"
         );
         clock.set_open(false, start + Duration::from_secs(301));
         assert_eq!(clock.label_at(start + Duration::from_secs(400)), "Session");
