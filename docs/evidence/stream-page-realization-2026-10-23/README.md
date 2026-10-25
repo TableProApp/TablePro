@@ -32,7 +32,7 @@ The [completion assertion](check-completion.py) rejects the baseline timeout rec
 
 The optimization allows up to 50 ms before a newly selected page constructs its grid. This trades a short presentation delay for avoiding work on transient pages. Exact stored values, page limits and operation deadlines remain unchanged. Faster streams can finish before an intermediate page stays visible long enough to build; the final retained pages and pager were verified.
 
-The work has local validation only. It has no Forgejo or merge acceptance. Native Wayland appearance, long-term retention diagnosis, other engines and the memory cost of an open large SQL file remain separate work.
+This evidence packet records local validation, not a Forgejo run identity. The page-realization change and its retained-page follow-up are merged in [#1530](https://github.com/cozyGarage/BookiE/pull/1530) and [#1568](https://github.com/cozyGarage/BookiE/pull/1568). Native Wayland appearance, long-term retention diagnosis, other engines and the memory cost of an open large SQL file remain separate work.
 
 ## Ten-cycle retention and idle check
 
@@ -105,7 +105,7 @@ The immutable [stack build](stack-build.json) passed full preflight (2073 unit a
 
 The [ten-cycle stack workload](stream-2m-stack-ten-cycles.json) and [summary](stack-ten-cycle-summary.json) completed twenty million decoded rows. Query times were 4.070–4.162 seconds, averaging 4.098 seconds and 3.006 CPU seconds. Post-close RSS rose from 233220 to 242100 KiB, about 8.7 MiB; the last three observations differed by 4 KiB. This is less growth than earlier notebook runs, but initial RSS and native caches vary between processes. It does not establish a permanent plateau or absence of other leaks.
 
-Three [pager cycles](stream-2m-stack-pager.json) completed in 4.110, 4.106 and 4.195 seconds, visiting every retained page in both directions and checking each range and first value. Five [cancellation cycles](cancellation-stack.json) reported confirmed cancellation, recovered in 0.328–0.380 seconds, left no active or idle-in-transaction client connections, and returned the expected next query value. Three [wide-value cycles](wide-50k-stack.json) completed all 50000 rows with 8192-byte text prefixes and correctly reported retained rows 45001–50000. Exact oversized-cell clipboard contents and native Wayland appearance remain unverified; the later export probe below verifies full CSV output. No Forgejo acceptance is claimed for this stack revision.
+Three [pager cycles](stream-2m-stack-pager.json) completed in 4.110, 4.106 and 4.195 seconds, visiting every retained page in both directions and checking each range and first value. Five [cancellation cycles](cancellation-stack.json) reported confirmed cancellation, recovered in 0.328–0.380 seconds, left no active or idle-in-transaction client connections, and returned the expected next query value. Three [wide-value cycles](wide-50k-stack.json) completed all 50000 rows with 8192-byte text prefixes and correctly reported retained rows 45001–50000. Exact oversized-cell clipboard contents and native Wayland appearance remain unverified; the later export probe below verifies full CSV output. The [validation record](validation.json) states that Forgejo was not run for this local evidence packet; the implementation later merged in [#1530](https://github.com/cozyGarage/BookiE/pull/1530).
 
 
 ## Exact wide-value export
@@ -117,3 +117,9 @@ The owned app's RSS/high-water RSS were 388952/450964 KiB before export and 3911
 The initial SQL used `chr(10)`, which is outside the existing cursor-function allowlist and exercised the ordinary query path. Its streaming expectation failed. The corrected SQL uses a literal newline and leaves policy unchanged. Pointer and keyboard attempts to open the full-value copy menu did not produce the expected menu, so clipboard verification remains incomplete; passing CSV verification is not clipboard acceptance.
 
 The preview contains 533 characters including its byte-count suffix, yet its measured height is 1827 pixels. A character cap alone does not bound multiline row height. [Issue 1531](https://github.com/cozyGarage/BookiE/issues/1531) tracks a focused compact-preview fix with a failing height regression, full-value preservation and navigation acceptance. The pointer probe used the cell centre, which was outside the visible row area; no separate pointer-routing defect is established.
+
+## Post-merge status
+
+The two-million-row completion and retained-page acceptance for [issue 1523](https://github.com/cozyGarage/BookiE/issues/1523) is implemented in merged PRs [#1530](https://github.com/cozyGarage/BookiE/pull/1530) and [#1568](https://github.com/cozyGarage/BookiE/pull/1568). The historical `validation.json` remains unchanged: its `forgejo: not run` and `publication: local validation; Forgejo pending` fields describe the evidence run when it was recorded, not the later merge state.
+
+This acceptance does not prove a permanent memory plateau or leak freedom. Current-source streaming and native-package follow-up remains tracked by [issue 1272](https://github.com/cozyGarage/BookiE/issues/1272) and its [current-source evidence](../postgres-stream-current-2026-10-24/README.md).

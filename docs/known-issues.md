@@ -8,7 +8,6 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 
 | ID | Issue | Lane |
 | --- | --- | --- |
-| PERF-1523 | [#1523](https://github.com/cozyGarage/BookiE/issues/1523) | UX |
 | UI-44 | [#1349](https://github.com/cozyGarage/BookiE/issues/1349) | UX |
 | UI-41 | [#1333](https://github.com/cozyGarage/BookiE/issues/1333) | UX |
 | UI-42 | [#1332](https://github.com/cozyGarage/BookiE/issues/1332) | UX |
