@@ -50,214 +50,221 @@
           <object class="GtkStackPage">
             <property name="name">row</property>
             <property name="child">
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <child>
+              <!-- A grid can be shorter than the fields and the value
+                   need, so the row scrolls rather than being cut off. -->
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="child">
                   <object class="GtkBox">
-                    <property name="spacing">6</property>
-                    <property name="margin-top">6</property>
-                    <property name="margin-bottom">6</property>
-                    <property name="margin-start">12</property>
-                    <property name="margin-end">6</property>
+                    <property name="orientation">vertical</property>
                     <child>
                       <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <property name="hexpand">true</property>
-                        <property name="valign">center</property>
+                        <property name="spacing">6</property>
+                        <property name="margin-top">6</property>
+                        <property name="margin-bottom">6</property>
+                        <property name="margin-start">12</property>
+                        <property name="margin-end">6</property>
                         <child>
-                          <object class="GtkLabel" id="title_label">
-                            <property name="xalign">0</property>
-                            <property name="ellipsize">end</property>
+                          <object class="GtkBox">
+                            <property name="orientation">vertical</property>
+                            <property name="hexpand">true</property>
+                            <property name="valign">center</property>
+                            <child>
+                              <object class="GtkLabel" id="title_label">
+                                <property name="xalign">0</property>
+                                <property name="ellipsize">end</property>
+                                <style>
+                                  <class name="heading"/>
+                                </style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox" id="state_box">
+                                <property name="spacing">4</property>
+                                <property name="visible">false</property>
+                                <child>
+                                  <object class="GtkImage" id="state_icon">
+                                    <property name="pixel-size">16</property>
+                                    <property name="accessible-role">presentation</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="state_label">
+                                    <property name="xalign">0</property>
+                                    <property name="ellipsize">end</property>
+                                    <style>
+                                      <class name="caption"/>
+                                      <class name="dimmed"/>
+                                    </style>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkButton" id="close_button">
+                            <property name="icon-name">window-close-symbolic</property>
+                            <property name="valign">center</property>
+                            <property name="tooltip-text" translatable="yes">Close Row Details</property>
+                            <accessibility>
+                              <property name="label" translatable="yes">Close Row Details</property>
+                            </accessibility>
                             <style>
-                              <class name="heading"/>
+                              <class name="flat"/>
+                              <class name="circular"/>
                             </style>
                           </object>
                         </child>
-                        <child>
-                          <object class="GtkBox" id="state_box">
-                            <property name="spacing">4</property>
-                            <property name="visible">false</property>
-                            <child>
-                              <object class="GtkImage" id="state_icon">
-                                <property name="pixel-size">16</property>
-                                <property name="accessible-role">presentation</property>
-                              </object>
-                            </child>
-                            <child>
-                              <object class="GtkLabel" id="state_label">
-                                <property name="xalign">0</property>
-                                <property name="ellipsize">end</property>
-                                <style>
-                                  <class name="caption"/>
-                                  <class name="dimmed"/>
-                                </style>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkButton" id="close_button">
-                        <property name="icon-name">window-close-symbolic</property>
-                        <property name="valign">center</property>
-                        <property name="tooltip-text" translatable="yes">Close Row Details</property>
-                        <accessibility>
-                          <property name="label" translatable="yes">Close Row Details</property>
-                        </accessibility>
-                        <style>
-                          <class name="flat"/>
-                          <class name="circular"/>
-                        </style>
-                      </object>
+                      <object class="GtkSeparator"/>
                     </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkSeparator"/>
-                </child>
-                <child>
-                  <object class="GtkPaned">
-                    <property name="orientation">vertical</property>
-                    <property name="vexpand">true</property>
-                    <property name="shrink-start-child">false</property>
-                    <property name="shrink-end-child">false</property>
-                    <property name="start-child">
-                      <object class="GtkScrolledWindow">
-                        <property name="hscrollbar-policy">never</property>
-                        <property name="min-content-height">120</property>
-                        <property name="child">
-                          <object class="GtkListView" id="field_list">
-                            <accessibility>
-                              <property name="label" translatable="yes">Fields</property>
-                            </accessibility>
+                    <child>
+                      <object class="GtkPaned">
+                        <property name="orientation">vertical</property>
+                        <property name="vexpand">true</property>
+                        <property name="shrink-start-child">false</property>
+                        <property name="shrink-end-child">false</property>
+                        <property name="start-child">
+                          <object class="GtkScrolledWindow">
+                            <property name="hscrollbar-policy">never</property>
+                            <property name="min-content-height">120</property>
+                            <property name="child">
+                              <object class="GtkListView" id="field_list">
+                                <accessibility>
+                                  <property name="label" translatable="yes">Fields</property>
+                                </accessibility>
+                              </object>
+                            </property>
                           </object>
                         </property>
-                      </object>
-                    </property>
-                    <property name="end-child">
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <child>
+                        <property name="end-child">
                           <object class="GtkBox">
-                            <property name="spacing">6</property>
-                            <property name="margin-top">6</property>
-                            <property name="margin-bottom">6</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">6</property>
+                            <property name="orientation">vertical</property>
                             <child>
-                              <object class="GtkLabel" id="field_label">
-                                <property name="hexpand">true</property>
-                                <property name="xalign">0</property>
-                                <property name="ellipsize">end</property>
-                                <style>
-                                  <class name="caption-heading"/>
-                                </style>
+                              <object class="GtkBox">
+                                <property name="spacing">6</property>
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">6</property>
+                                <child>
+                                  <object class="GtkLabel" id="field_label">
+                                    <property name="hexpand">true</property>
+                                    <property name="xalign">0</property>
+                                    <property name="ellipsize">end</property>
+                                    <style>
+                                      <class name="caption-heading"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuButton" id="calendar_button">
+                                    <property name="icon-name">x-office-calendar-symbolic</property>
+                                    <property name="visible">false</property>
+                                    <property name="tooltip-text" translatable="yes">Pick a Date</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">Pick a Date</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                    <property name="popover">
+                                      <object class="GtkPopover" id="calendar_popover">
+                                        <property name="child">
+                                          <object class="GtkCalendar" id="calendar">
+                                            <accessibility>
+                                              <property name="label" translatable="yes">Pick a Date</property>
+                                            </accessibility>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkMenuButton" id="value_menu_button">
+                                    <property name="icon-name">view-more-symbolic</property>
+                                    <property name="menu-model">value_menu</property>
+                                    <property name="tooltip-text" translatable="yes">More Actions</property>
+                                    <accessibility>
+                                      <property name="label" translatable="yes">More Actions</property>
+                                    </accessibility>
+                                    <style>
+                                      <class name="flat"/>
+                                    </style>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkMenuButton" id="calendar_button">
-                                <property name="icon-name">x-office-calendar-symbolic</property>
-                                <property name="visible">false</property>
-                                <property name="tooltip-text" translatable="yes">Pick a Date</property>
-                                <accessibility>
-                                  <property name="label" translatable="yes">Pick a Date</property>
-                                </accessibility>
-                                <style>
-                                  <class name="flat"/>
-                                </style>
-                                <property name="popover">
-                                  <object class="GtkPopover" id="calendar_popover">
+                              <!-- A text view has no placeholder of its own, so
+                                   one is drawn over it while it is empty. -->
+                              <object class="GtkOverlay">
+                                <property name="vexpand">true</property>
+                                <property name="child">
+                                  <object class="GtkScrolledWindow">
+                                    <property name="hscrollbar-policy">never</property>
+                                    <property name="min-content-height">120</property>
                                     <property name="child">
-                                      <object class="GtkCalendar" id="calendar">
-                                        <accessibility>
-                                          <property name="label" translatable="yes">Pick a Date</property>
-                                        </accessibility>
+                                      <object class="GtkSourceView" id="value_view">
+                                        <property name="monospace">true</property>
+                                        <property name="wrap-mode">word-char</property>
+                                        <property name="auto-indent">true</property>
+                                        <property name="top-margin">6</property>
+                                        <property name="bottom-margin">6</property>
+                                        <property name="left-margin">12</property>
+                                        <property name="right-margin">12</property>
+                                        <property name="buffer">
+                                          <object class="GtkSourceBuffer" id="value_buffer"/>
+                                        </property>
                                       </object>
                                     </property>
                                   </object>
                                 </property>
+                                <child type="overlay">
+                                  <object class="GtkLabel" id="placeholder_label">
+                                    <property name="halign">start</property>
+                                    <property name="valign">start</property>
+                                    <property name="margin-top">6</property>
+                                    <property name="margin-start">12</property>
+                                    <property name="can-target">false</property>
+                                    <property name="visible">false</property>
+                                    <property name="accessible-role">presentation</property>
+                                    <attributes>
+                                      <attribute name="style" value="italic"/>
+                                    </attributes>
+                                    <style>
+                                      <class name="monospace"/>
+                                      <class name="dimmed"/>
+                                    </style>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child>
-                              <object class="GtkMenuButton" id="value_menu_button">
-                                <property name="icon-name">view-more-symbolic</property>
-                                <property name="menu-model">value_menu</property>
-                                <property name="tooltip-text" translatable="yes">More Actions</property>
-                                <accessibility>
-                                  <property name="label" translatable="yes">More Actions</property>
-                                </accessibility>
-                                <style>
-                                  <class name="flat"/>
-                                </style>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                        <child>
-                          <!-- A text view has no placeholder of its own, so
-                               one is drawn over it while it is empty. -->
-                          <object class="GtkOverlay">
-                            <property name="vexpand">true</property>
-                            <property name="child">
-                              <object class="GtkScrolledWindow">
-                                <property name="hscrollbar-policy">never</property>
-                                <property name="min-content-height">120</property>
-                                <property name="child">
-                                  <object class="GtkSourceView" id="value_view">
-                                    <property name="monospace">true</property>
-                                    <property name="wrap-mode">word-char</property>
-                                    <property name="auto-indent">true</property>
-                                    <property name="top-margin">6</property>
-                                    <property name="bottom-margin">6</property>
-                                    <property name="left-margin">12</property>
-                                    <property name="right-margin">12</property>
-                                    <property name="buffer">
-                                      <object class="GtkSourceBuffer" id="value_buffer"/>
-                                    </property>
-                                  </object>
-                                </property>
-                              </object>
-                            </property>
-                            <child type="overlay">
-                              <object class="GtkLabel" id="placeholder_label">
-                                <property name="halign">start</property>
-                                <property name="valign">start</property>
-                                <property name="margin-top">6</property>
-                                <property name="margin-start">12</property>
-                                <property name="can-target">false</property>
+                              <object class="GtkLabel" id="message_label">
+                                <property name="xalign">0</property>
+                                <property name="wrap">true</property>
+                                <property name="wrap-mode">word-char</property>
                                 <property name="visible">false</property>
-                                <property name="accessible-role">presentation</property>
-                                <attributes>
-                                  <attribute name="style" value="italic"/>
-                                </attributes>
+                                <property name="margin-top">6</property>
+                                <property name="margin-bottom">6</property>
+                                <property name="margin-start">12</property>
+                                <property name="margin-end">12</property>
                                 <style>
-                                  <class name="monospace"/>
-                                  <class name="dimmed"/>
+                                  <class name="caption"/>
                                 </style>
                               </object>
                             </child>
                           </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel" id="message_label">
-                            <property name="xalign">0</property>
-                            <property name="wrap">true</property>
-                            <property name="wrap-mode">word-char</property>
-                            <property name="visible">false</property>
-                            <property name="margin-top">6</property>
-                            <property name="margin-bottom">6</property>
-                            <property name="margin-start">12</property>
-                            <property name="margin-end">12</property>
-                            <style>
-                              <class name="caption"/>
-                            </style>
-                          </object>
-                        </child>
+                        </property>
                       </object>
-                    </property>
+                    </child>
                   </object>
-                </child>
+                </property>
               </object>
             </property>
           </object>

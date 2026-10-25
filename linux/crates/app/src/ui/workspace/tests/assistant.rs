@@ -48,6 +48,25 @@ fn choosing_a_provider_brings_the_toggle_and_the_key_shows_the_pane() {
     assert!(!imp.assistant_split.shows_sidebar(), "the pane stayed with no provider");
 }
 
+/// A window that narrows past a breakpoint and widens again leaves the
+/// assistant as the user left it.
+#[gtk4::test]
+fn crossing_a_breakpoint_neither_opens_nor_closes_the_assistant() {
+    let test = TestWindow::connected("AssistantPinned");
+    let workspace = test.workspace();
+    let split = workspace.imp().assistant_split.get();
+    for collapsed in [true, false] {
+        split.set_collapsed(collapsed);
+        assert!(!split.shows_sidebar(), "the assistant opened unasked");
+    }
+
+    split.set_show_sidebar(true);
+    for collapsed in [true, false] {
+        split.set_collapsed(collapsed);
+        assert!(split.shows_sidebar(), "the assistant closed unasked");
+    }
+}
+
 #[gtk4::test]
 fn insert_goes_to_the_editor_in_front_or_a_new_one() {
     let test = TestWindow::connected("AssistantInsert");

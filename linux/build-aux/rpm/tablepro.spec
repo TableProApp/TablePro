@@ -148,7 +148,9 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/app.tablepro.TablePro
 export CARGO_PROFILE_RELEASE_LTO=thin
 export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # %%meson_test expands to lines of its own; shrink joins them to this one.
-%{shrink:xvfb-run -a dbus-run-session -- %meson_test}
+# Fedora's xvfb-run screen is 640x480, which the app-scale-2 test halves
+# below the smallest screen the app supports; this is Debian's default.
+%{shrink:xvfb-run -a -s "-screen 0 1280x1024x24" dbus-run-session -- %meson_test}
 %endif
 
 %files -f %{name}.lang

@@ -112,6 +112,10 @@
                       <object class="AdwOverlaySplitView" id="assistant_split">
                         <property name="sidebar-position">end</property>
                         <property name="show-sidebar">false</property>
+                        <!-- Only the user opens and closes the assistant:
+                             unpinned, crossing a breakpoint would hide it or
+                             open it unasked. -->
+                        <property name="pin-sidebar">true</property>
                         <property name="min-sidebar-width">300</property>
                         <property name="max-sidebar-width">440</property>
                         <property name="sidebar-width-fraction">0.32</property>

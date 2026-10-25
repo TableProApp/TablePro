@@ -803,6 +803,41 @@ fn row_details_from_a_row_menu_shows_that_row() {
     assert_eq!(pane.typed_text(), "B");
 }
 
+/// A grid that narrows past its breakpoint and widens again leaves Row
+/// Details as the user left it.
+#[gtk4::test]
+fn crossing_the_breakpoint_neither_opens_nor_closes_row_details() {
+    let grid = Grid::open(two_text_columns(), two_text_values());
+    let split_view = grid.grid.imp().split_view.get();
+    for collapsed in [true, false] {
+        split_view.set_collapsed(collapsed);
+        assert!(!split_view.shows_sidebar(), "Row Details opened unasked");
+    }
+
+    grid.activate("show-details");
+    for collapsed in [true, false] {
+        split_view.set_collapsed(collapsed);
+        assert!(split_view.shows_sidebar(), "Row Details closed unasked");
+    }
+}
+
+/// Row Details scrolls in a short grid rather than making the grid need
+/// more height than its rows, which a host at its smallest cuts off.
+#[gtk4::test]
+fn row_details_never_make_the_grid_taller() {
+    let (grid, pane) = opened(two_text_columns(), two_text_values());
+    take_keyboard(&grid);
+    grid.focus(0, 1);
+    pane.imp().message_label.set_label("a long reason");
+    pane.imp().message_label.set_visible(true);
+    let split_view = grid.grid.imp().split_view.get();
+    let high = |widget: &gtk::Widget| widget.measure(gtk::Orientation::Vertical, -1).0;
+
+    let (rows, details) = (high(&split_view.content().expect("the rows")), high(pane.upcast_ref()));
+
+    assert!(details <= rows, "Row Details need {details} px high, the rows {rows}");
+}
+
 /// Alt+Return closes Row Details from inside the pane, where the keyboard
 /// is once a field was picked.
 #[gtk4::test]

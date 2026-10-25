@@ -21,6 +21,9 @@
           <object class="AdwOverlaySplitView" id="split_view">
             <property name="sidebar-position">end</property>
             <property name="show-sidebar">false</property>
+            <!-- Only the user opens and closes the pane: unpinned, crossing
+                 the breakpoint would hide it or open it unasked. -->
+            <property name="pin-sidebar">true</property>
             <property name="min-sidebar-width">260</property>
             <property name="max-sidebar-width">420</property>
             <property name="sidebar-width-fraction">0.32</property>
