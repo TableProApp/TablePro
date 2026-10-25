@@ -1,0 +1,79 @@
+{
+  "source_commit": "24acc4e84ec3e48c931670e2bf60d7f3dc2b863e",
+  "cpu_and_rss": {
+    "method": "Uninstrumented process CPU ticks and smaps RSS/PSS deltas, sampled from workload start until accessible result header appeared",
+    "large_text_result_8_mib": {
+      "runs": 1,
+      "payload_bytes": 8388608,
+      "wall_seconds": 0.9764,
+      "application_cpu_seconds": 0.98,
+      "rss_delta_kib": 23380,
+      "pss_delta_kib": 22976
+    },
+    "keyless_table_browse_8_mib": {
+      "runs": 1,
+      "payload_bytes": 8388608,
+      "display_characters": 10023,
+      "wall_seconds": 0.4962,
+      "application_cpu_seconds": 0.46,
+      "rss_delta_kib": 20128,
+      "pss_delta_kib": 19030
+    },
+    "keyless_table_browse_16_mib": {
+      "runs": 1,
+      "payload_bytes": 16777216,
+      "display_characters": 10024,
+      "wall_seconds": 0.484,
+      "application_cpu_seconds": 0.46,
+      "rss_delta_kib": 35576,
+      "pss_delta_kib": 34394
+    },
+    "wide_sql_result": {
+      "rows": 100,
+      "columns": 257,
+      "runs": [
+        {
+          "wall_seconds": 8.7219,
+          "application_cpu_seconds": 9.05,
+          "rss_delta_kib": 404152,
+          "pss_delta_kib": 403748
+        },
+        {
+          "wall_seconds": 8.7841,
+          "application_cpu_seconds": 9.1,
+          "rss_delta_kib": 406044,
+          "pss_delta_kib": 405640
+        },
+        {
+          "wall_seconds": 8.6654,
+          "application_cpu_seconds": 9.0,
+          "rss_delta_kib": 405968,
+          "pss_delta_kib": 405564
+        }
+      ],
+      "median_wall_seconds": 8.7219,
+      "median_application_cpu_seconds": 9.05,
+      "median_rss_delta_kib": 405968,
+      "median_pss_delta_kib": 405564
+    }
+  },
+  "heaptrack": {
+    "method": "Separate fresh application process per workload; LD_PRELOAD heaptrack capture, interpreted with heaptrack_interpret and heaptrack_print",
+    "large_text_result_8_mib": {
+      "raw_sha256": "1e2d7e3e3a8e3df2c571f1e22a390cde4a7c23d661a66df08515753736898eff",
+      "interpreted_sha256": "7fba7c7a6b5c64b2dd55de4520a4c0d6d716b3022b428b2f80cd9146526684f7",
+      "allocation_calls": 3112580,
+      "temporary_allocations": 399208,
+      "peak_heap_mib": 62.81,
+      "peak_rss_including_profiler_mib": 270.62
+    },
+    "wide_sql_result_100_by_257": {
+      "raw_sha256": "4523f8dc3f4dabeaa9e6a9645da3b1fed920100ab1e8aeefc45c01a17261b074",
+      "interpreted_sha256": "38902bbbbcaf7473fb003f34de2b0f9816adf3daf2cadb143577097bfdf0409b",
+      "allocation_calls": 19832688,
+      "temporary_allocations": 2052305,
+      "peak_heap_mib": 390.53,
+      "peak_rss_including_profiler_mib": 666.78
+    }
+  }
+}

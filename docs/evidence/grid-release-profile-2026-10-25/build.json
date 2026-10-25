@@ -1,0 +1,17 @@
+{
+  "source_commit": "24acc4e84ec3e48c931670e2bf60d7f3dc2b863e",
+  "build_command": "cargo build --release --locked -p tablepro-app --bin tablepro-app",
+  "profile": "release",
+  "binary_sha256": "6b17ef4ac283cc400a473ca5f2d9892c875388fbc17874a88c2c42f94216ed40",
+  "cargo_lock_sha256": "224c278ad1bca46bc62a3894696e5bc3bb3458d90e516efac3a37e211479e225",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "host": "Arch Linux x86_64, Linux 7.2.8-9-omarchy",
+  "toolkits": {
+    "gtk4": "4.24.1",
+    "libadwaita": "1.10.0",
+    "gtksourceview": "5.22.0"
+  },
+  "display": "Xvfb 1280x1024, X11, Cairo renderer, isolated D-Bus and AT-SPI",
+  "database": "temporary synthetic SQLite fixture; no external database rows changed",
+  "binary_profiled": "target/release/tablepro-app"
+}
