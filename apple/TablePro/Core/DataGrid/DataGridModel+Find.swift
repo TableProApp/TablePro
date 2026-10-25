@@ -176,8 +176,13 @@ extension DataGridModel {
         findQueryDidChange()
     }
 
+    // The server matches the plain term in any column, ignoring case; any other option would change what it finds.
+    var searchAllRowsKeepsTheOptions: Bool {
+        find.options == GridFindState.Options()
+    }
+
     func searchAllRows() {
-        guard offersSearchAllRows, let actions else { return }
+        guard offersSearchAllRows, searchAllRowsKeepsTheOptions, let actions else { return }
         let term = find.term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty else { return }
         hideFind()

@@ -186,7 +186,8 @@ struct DataGridFindBar: View {
 
     // Only when this page has no match, so the bar stays short while matches are on screen.
     private var showsSearchAllRows: Bool {
-        capabilities.offersSearchAllRows && model.hasFindTerm && find.problem == nil && find.matches.isEmpty
+        capabilities.offersSearchAllRows && model.searchAllRowsKeepsTheOptions && model.hasFindTerm
+            && find.problem == nil && find.matches.isEmpty
     }
 
     // Use Selection for Find searches on its own, so only typing goes through the delay.

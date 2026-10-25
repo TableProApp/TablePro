@@ -198,6 +198,13 @@ extension StructureGridAdapter {
         ClipboardService.shared.writeText(json)
     }
 
+    // The grid's own Copy reaches the definitions too, so a paste in this tab stages them again.
+    func gridCopyRows(_ rowIDs: [RowID]) -> Bool {
+        guard showsGrid, !rowIDs.isEmpty else { return false }
+        copyRows(rowIDs)
+        return true
+    }
+
     // The definitions ride on the structure pasteboard type, so Paste can stage them again.
     func copyRows(_ rowIDs: [RowID]) {
         guard showsGrid, !rowIDs.isEmpty else { return }

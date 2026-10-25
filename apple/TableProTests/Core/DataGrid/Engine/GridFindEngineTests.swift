@@ -524,6 +524,21 @@ struct DataGridModelFindTests {
         #expect(offered.find.isVisible == false)
     }
 
+    @Test("Search All Rows waits for plain options, since the server matches the term as typed in any column")
+    func searchAllRowsNeedsPlainOptions() {
+        let (model, owner) = mount { $0.commands = [.searchAllRows] }
+        search(model, "^zzz$")
+        model.find.options.usesRegularExpression = true
+
+        model.searchAllRows()
+        #expect(owner.searchedTerms.isEmpty)
+        #expect(!model.searchAllRowsKeepsTheOptions)
+
+        model.find.options.usesRegularExpression = false
+        model.searchAllRows()
+        #expect(owner.searchedTerms == ["^zzz$"])
+    }
+
     @Test("New rows under an open bar are searched again")
     func reloadSearchesTheNewRows() {
         let (model, owner) = mount()
