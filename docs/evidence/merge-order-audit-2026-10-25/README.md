@@ -17,19 +17,19 @@ The script classified `skipped` as complete for this screening calculation. That
 
 ## Result
 
-The scan returned 163 PRs with at least one changed path outside the docs-only exclusion and 27 docs-only PRs. It found no GitHub API errors. Of the 163 code or mixed PRs, 115 had at least one recorded context pending at merge, failed before merge, or first starting after merge. All 115 candidates have at least one changed path outside the docs-only exclusion in the second path fetch; that fetch had no API errors. The snapshot in [`screening-candidates.json`](screening-candidates.json) preserves each candidate's changed paths, PR number, title, head commit, merge time, and observed non-complete context timestamps.
+The scan returned 163 PRs with at least one changed path outside the docs-only exclusion and 27 docs-only PRs. It found no GitHub API errors. Of the 163 code or mixed PRs, 115 had at least one recorded context pending at merge, failed before merge, or first starting after merge. Across those candidates, the snapshot records 440 such context observations: 235 not started at merge, 196 pending at merge and 9 failed at merge. A PR can contribute more than one observation. All 115 candidates have at least one changed path outside the docs-only exclusion in the second path fetch; that fetch had no API errors. The snapshot in [`screening-candidates.json`](screening-candidates.json) preserves each candidate's changed paths, PR number, title, head commit, merge time, and observed non-complete context timestamps.
 
 The Git history has two edits to these workflow files in the scan window: [`5edcf3c3d`](https://github.com/cozyGarage/BookiE/commit/5edcf3c3d62af404fee825b24ba126fde48c7c72) raises the GTK/Flatpak toolkit floor and [`669635a06`](https://github.com/cozyGarage/BookiE/commit/669635a062adcbd33532ae86e6647f4ad932b236) hardens checkout credentials. Neither changes the `push` or `pull_request` path filters. Thus all 115 candidates match the recorded non-doc path filter for these workflows. This still does not establish whether a context was mandatory under the GitHub ruleset at each historical merge.
 
-This is a screening list, not 115 individually verified policy violations. The scan did not establish required-check configuration at each historical merge, automation or maintainer intent, nor Forgejo outcomes. The 27 docs-only PRs were excluded from these four code-gate contexts; this does not audit the separate lightweight documentation checks.
+The 115 entries are verified GitHub check-order findings for these observed contexts and exact PR heads, not 115 product defects. The scan did not establish historical required-check configuration, automation or maintainer intent, nor Forgejo outcomes. The 27 docs-only PRs were excluded from these four code-gate contexts; this does not audit the separate lightweight documentation checks.
 
 Four cases have separate exact-head evidence in the issue comments: [#1338, #1340, #1443 and #1607](https://github.com/cozyGarage/BookiE/issues/1543#issuecomment-6394448599). For those cases, GitHub check timing shows merges occurred before all observed GitHub checks completed. The available evidence does not prove whether the corresponding Forgejo gates passed.
 
 ## Next work
 
-1. Review the screening candidates against each PR's changed paths and the workflow conditions in effect at that merge.
-2. Recover Forgejo run IDs and results for confirmed cases where the historical records still exist.
-3. Decide and implement a merge control that requires applicable GitHub checks and trustworthy Forgejo acceptance before merging. The October 25 ruleset inspection found no required-status-check or deployment rule; no repository settings were changed during this audit.
-4. Close #1543 only after the historical review and the chosen control's behavior are evidenced.
+1. Recover Forgejo run IDs and results for the historical cases where records still exist.
+2. Confirm whether required-check rules changed during the reviewed period. The current October 25 ruleset has no required-status-check or deployment rule.
+3. Choose and implement a merge control that requires applicable GitHub checks and trustworthy Forgejo acceptance before merging. No repository settings were changed during this audit.
+4. Close #1543 after the Forgejo review and chosen control's behavior are evidenced.
 
 The JSON is a dated API snapshot, not a live issue list. Recheck current repository rules, workflows, PR records and issue state before acting on it.
