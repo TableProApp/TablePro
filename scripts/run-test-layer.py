@@ -90,7 +90,7 @@ def execution_evidence(kind, output):
         return len(counts) == 1 and int(counts[0]) > 0 and outcomes == ["OK"]
     output = re.sub(r"\x1b\[[0-9;]*m", "", output)
     libtest = [
-        (row[0] == "ok" and row[2] == "0", int(row[1]))
+        (re.fullmatch(r"(?:ok)+", row[0]) is not None and row[2] == "0", int(row[1]))
         for row in re.findall(r"test result: (\w+)\. (\d+) passed; (\d+) failed;", output)
     ]
     nextest = [

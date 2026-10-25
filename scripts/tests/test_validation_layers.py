@@ -123,6 +123,15 @@ class LayerRunnerTests(unittest.TestCase):
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 0 tests in 0.01s\n\nOK\n"))
         self.assertFalse(runner.execution_evidence("python-tests", "Ran 3 tests in 0.01s\n\nOK (skipped=1)\n"))
 
+    def test_interleaved_libtest_success_marker_still_proves_execution(self):
+        output = (
+            "test tokens::tests::existing_token_file_is_rejected ... "
+            "test result: okok. 1 passed; 0 failed; 0 ignored; 0 measured; 65 filtered out"
+        )
+
+        self.assertTrue(runner.execution_evidence("rust-tests", output))
+        self.assertFalse(runner.execution_evidence("rust-tests", output.replace("okok.", "okFAILED.")))
+
     def test_python_evidence_rejects_mixed_suite_outcomes_even_if_the_wrapper_exits_zero(self):
         success = "Ran 1 test in 0.01s\n\nOK\n"
         for other in (
