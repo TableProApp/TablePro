@@ -305,7 +305,7 @@ jobs:
 
   driver:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     env:
@@ -525,7 +525,7 @@ jobs:
           cargo build --locked -p tablepro-app --features duckdb
   pg-release:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     env:
@@ -558,7 +558,7 @@ jobs:
 
   pg-dump:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox]
     if: github.event_name != 'pull_request'
     timeout-minutes: 30
     env:
@@ -588,7 +588,7 @@ jobs:
 
   socket-ssh:
     runs-on: any-host
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     env:
@@ -676,7 +676,7 @@ jobs:
           cd src && bash scripts/test-gtk-${{ matrix.server }}.sh
   driver-tls:
     runs-on: ubuntu2604-canary
-    needs: [guards, clippy, unit, sandbox, widgets]
+    needs: [guards, clippy, unit, sandbox]
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     env:

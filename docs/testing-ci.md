@@ -6,6 +6,8 @@ Part of [testing](testing.md), which holds the test tiers, runner and fixtures.
 
 Where each check runs is owned by [CI tiers in the validation playbook](validation-playbook.md#ci-tiers). GitHub runs the cheap tier on pull requests; Forgejo runs the merge tier on branch pushes. Documentation-only changes skip the heavy path. Do not treat a skipped GitHub merge-tier job as a pass.
 
+Headless driver, TLS, PostgreSQL release and dump, and socket/SSH jobs start after guards, Clippy, unit and sandbox pass. They do not wait for widget tests. Widgets remain a required job, and GUI jobs retain their widget dependencies. Every tier must still pass for merge acceptance.
+
 Every job in the Forgejo merge workflow has an explicit timeout. Checkout credentials are supplied to Git as a host-scoped HTTP authorization header for the clone step; they are not embedded in the clone URL or saved in the checkout's `origin` URL. This reduces accidental exposure through process arguments and `.git/config`, but it does not isolate workflow code. `any-host` runners execute branch code on shared hosts with Docker access, so only trusted branch writers may trigger these workflows until a dedicated isolated runner is deployed and accepted. See the [runner maintenance and isolation proposal](proposals/runner-maintenance-and-isolation.md) for the pending deployment work.
 
 The `ubuntu2604-canary` runner executes the headless multi-database TLS fixture job, which builds and starts many containers. Its GTK, libadwaita and GtkSourceView versions are below the supported floor, so GTK jobs stay on eligible hosts.
