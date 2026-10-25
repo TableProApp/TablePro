@@ -1,0 +1,24 @@
+{
+  "source_commit": "16d9e9f55b66c90d7746ea7fc541614cb5910e0a",
+  "profile": "release",
+  "binary": "target/installed-release/usr/bin/tablepro",
+  "binary_sha256": "793b0e2f51fbe059f0f10b0b1e1752e44b6bdf8f3caa5368b7c90c079e19a10a",
+  "toolchain": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "toolkits": [
+    "4.24.1",
+    "1.10.0",
+    "5.22.0"
+  ],
+  "host": "Linux 7.2.8-9-omarchy x86_64 GNU/Linux",
+  "logical_cpus": 16,
+  "display": "private Xvfb / X11 / Cairo / AT-SPI",
+  "postgres_image": "postgres:16-alpine",
+  "postgres_image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+  "query": "SELECT * FROM big",
+  "columns": 10,
+  "rows": 2000000,
+  "fixture_script_sha256": "2f259ba8c66d60ba9bd6b12e62927b26ca9d605bec35da428fc57100d7029a39",
+  "gtk_runner_sha256": "854525ab2b7f93771e3ace60daa23189d0327fe50da0bc08730de8f92349a68c",
+  "stream_probe_sha256": "557c53b8e73ceb13a11546c42b7bb651415cdca76dc1276373f00fc82cf942e8",
+  "cancellation_probe_sha256": "b07e5e581edd88e41660b4232d0368fb4226f9dc3c2ce3c92cb4c4d4208e15bd"
+}

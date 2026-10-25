@@ -1,0 +1,47 @@
+{
+  "stream_cycles": 8,
+  "received_rows_each": 2000000,
+  "retained_range_each": "1,980,001-2,000,000",
+  "elapsed_seconds": {
+    "min": 4.725137329020072,
+    "median": 4.800661814486375,
+    "max": 4.9645026789512485
+  },
+  "peak_rss_kib": {
+    "min": 359200,
+    "median": 379320.0,
+    "max": 381864
+  },
+  "post_close_rss_kib": {
+    "min": 360808,
+    "median": 379000.0,
+    "max": 381544
+  },
+  "rows_and_completion_verified": true,
+  "cancellation_cycles": 5,
+  "confirmed_cancellations": 4,
+  "unknown_outcomes": 1,
+  "cancellation_seconds": {
+    "min": 0.3222096679965034,
+    "max": 0.37356371205532923
+  },
+  "server_active_or_open_transaction_clients_after_each_cancel": [
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "follow_up_query_values": [
+    700,
+    701,
+    702,
+    703,
+    704
+  ],
+  "application_cpu_seconds_until_terminal_sample": {
+    "min": 3.830000000000002,
+    "median": 3.8400000000000016,
+    "max": 3.91
+  }
+}

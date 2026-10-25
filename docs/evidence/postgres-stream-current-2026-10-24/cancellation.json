@@ -1,0 +1,57 @@
+[
+  {
+    "cycle": 1,
+    "terminal": "unknown",
+    "cancellation_seconds": 0.4952601929544471,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 700,
+    "memory_kib": [
+      192252,
+      192252
+    ]
+  },
+  {
+    "cycle": 2,
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.5596215969999321,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 701,
+    "memory_kib": [
+      192432,
+      192432
+    ]
+  },
+  {
+    "cycle": 3,
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.5094764009700157,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 702,
+    "memory_kib": [
+      196516,
+      196516
+    ]
+  },
+  {
+    "cycle": 4,
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.38882887904765084,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 703,
+    "memory_kib": [
+      198868,
+      198868
+    ]
+  },
+  {
+    "cycle": 5,
+    "terminal": "cancelled",
+    "cancellation_seconds": 0.9913648940273561,
+    "active_or_open_transaction_clients": 0,
+    "next_query_value": 704,
+    "memory_kib": [
+      198864,
+      198864
+    ]
+  }
+]
