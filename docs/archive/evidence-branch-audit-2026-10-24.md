@@ -90,6 +90,10 @@ Fifty data-only packets with no exact-name external hit moved to `docs/archive/e
 
 A current schema-1 identity scan across active and archived evidence finds 49 manifests without a commit identity or usable source digest (18 active, 31 archived). Issues [#1537](https://github.com/cozyGarage/BookiE/issues/1537), [#1540](https://github.com/cozyGarage/BookiE/issues/1540), and [#1542](https://github.com/cozyGarage/BookiE/issues/1542) remain open. The body of #1540 still reports 48, so reconcile its count against this 49-manifest scan before closing it. No issue or manifest metadata was changed.
 
+## Follow-up count reconciliation at Linux `f115dd12`, October 25
+
+Re-running the identity scan with the validator's `is_test_layer_report` rule excludes the active B4 rollback test-layer report, which records its tested commit in the report's `commit` field. The remaining inventory is 48 packets without a source commit or usable source digest: 17 active and 31 archived. The earlier 49 count included that pinned test-layer report. Issue [#1540](https://github.com/cozyGarage/BookiE/issues/1540) now records this count and the reason for the difference. Legacy `baseline_commit` values and partial source-file fingerprints remain insufficient to establish the full tested working tree.
+
 ## Follow-up after evidence triage at Linux `cc0f1cac1e6ccc08d752a23eb0b80ace8a6e1bf9`, October 24
 
 The staged audit tree contains 2,202 files in 292 active evidence packets (17,338,724 bytes) and 1,226 files in 262 archived packets (5,463,922 bytes), plus seven loose active files. Together these paths contain 3,428 tracked files and 554 packet directories totaling 22,802,646 bytes. The active evidence validator checks 164 schema-version-1 manifests and reports 70 historical/source-drift warnings; the archived packets contain 219 schema-version-1 manifests and report 155 warnings. Across both locations, 383 schema-version-1 manifests have 225 warnings. These figures describe the staged audit index; regenerate them from the final migration source before publishing evidence elsewhere.
