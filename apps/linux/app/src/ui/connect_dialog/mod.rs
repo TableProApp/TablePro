@@ -212,7 +212,7 @@ impl Component for ConnectDialog {
             .text("localhost")
             .build();
         let port_row = adw::ActionRow::builder().title(crate::tr!("Port")).build();
-        let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+        let port = controls::port_input();
         controls::center_in_row(&port);
         port.update_property(&[gtk::accessible::Property::Label(&crate::tr!("Port"))]);
         port_row.add_suffix(&port);

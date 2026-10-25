@@ -147,6 +147,12 @@ fn timeout_row(title: &str, subtitle: &str, maximum: f64) -> (adw::ActionRow, gt
     (row, input)
 }
 
+pub(super) fn port_input() -> gtk::SpinButton {
+    let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+    port.set_width_chars(6);
+    port
+}
+
 pub(super) fn timeout_value(seconds: f64) -> Option<u32> {
     let whole = seconds.round();
     (whole >= 1.0).then(|| whole.min(f64::from(u32::MAX)) as u32)
@@ -213,6 +219,19 @@ mod tests {
         drop(row);
         drop(selection);
         assert!(popup.upgrade().is_none(), "discarded choice row retains its popup");
+    }
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn port_input_reserves_room_for_a_five_digit_port() {
+        gtk::init().unwrap();
+        let port = port_input();
+        port.set_value(65535.0);
+        assert_eq!(
+            port.width_chars(),
+            6,
+            "maximum TCP port does not have a readable margin"
+        );
     }
 
     #[test]

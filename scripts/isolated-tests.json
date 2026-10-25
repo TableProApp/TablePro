@@ -1005,6 +1005,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::connect_dialog::controls::tests::port_input_reserves_room_for_a_five_digit_port"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::dispatch_tests::confirmed_session_rollbacks_retire_gutter_marks_and_stale_callbacks_do_not"
     ],
     [
