@@ -2,6 +2,8 @@ use relm4::{ComponentSender, adw, gtk};
 
 use tablepro_core::{ColumnInfo, QueryResult};
 
+use crate::ui::count_format::format_thousands;
+
 use super::*;
 
 impl BrowseTab {
@@ -98,7 +100,10 @@ impl BrowseTab {
         // "Rows:" label inline (below) the dropdown's purpose is
         // obvious without needing a tooltip, matching how Evince
         // labels its zoom dropdown.
-        let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
+        let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS
+            .iter()
+            .map(|n| format_thousands(u128::from(*n)))
+            .collect();
         let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
         let page_size_combo = gtk::DropDown::from_strings(&page_size_strs);
         let initial_idx = PAGE_SIZE_OPTIONS
@@ -501,9 +506,14 @@ fn paginator_summary(result: &QueryResult, offset: u64, total: Option<u64>) -> S
         (false, false) => crate::tr!("Rows {start} – {end}"),
     };
     template
-        .replace("{start}", &format_thousands(offset + 1))
-        .replace("{end}", &format_thousands(offset + n_rows as u64))
-        .replace("{total}", &total.map(format_thousands).unwrap_or_default())
+        .replace("{start}", &format_thousands(u128::from(offset + 1)))
+        .replace("{end}", &format_thousands(u128::from(offset + n_rows as u64)))
+        .replace(
+            "{total}",
+            &total
+                .map(|count| format_thousands(u128::from(count)))
+                .unwrap_or_default(),
+        )
 }
 
 pub(super) fn next_page_offset(
@@ -573,20 +583,6 @@ pub(super) fn clear_box(b: &gtk::Box) {
         b.remove(&child);
     }
 }
-pub(super) fn format_thousands(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
-}
-
 /// Bundle of widgets returned by `build_paginator` so the builder
 /// signature stays narrow.
 pub(super) struct Paginator {

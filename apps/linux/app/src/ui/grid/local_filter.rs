@@ -253,20 +253,28 @@ fn update_status(state: &LocalResultViewState) {
     }
     state.clear_button.set_visible(true);
     let visible = state.store.as_ref().map_or(0, |store| store.n_items());
-    let visible_text = visible.to_string();
-    let loaded_text = state.result.rows.len().to_string();
-    let mut summary = crate::tr!("Showing {visible} of {loaded} loaded rows")
-        .replace("{visible}", &visible_text)
-        .replace("{loaded}", &loaded_text);
+    state.status.set_text(&filter_summary(
+        u128::from(visible),
+        state.result.rows.len() as u128,
+        state.result.truncated,
+    ));
     if state.result.truncated {
         state.status.add_css_class("warning");
-        summary.push_str(" · ");
-        summary.push_str(&crate::tr!("result truncated"));
     } else {
         state.status.remove_css_class("warning");
     }
-    state.status.set_text(&summary);
     state.controls.set_visible(true);
+}
+
+fn filter_summary(visible: u128, loaded: u128, truncated: bool) -> String {
+    let mut summary = crate::tr!("Showing {visible} of {loaded} loaded rows")
+        .replace("{visible}", &crate::ui::count_format::format_thousands(visible))
+        .replace("{loaded}", &crate::ui::count_format::format_thousands(loaded));
+    if truncated {
+        summary.push_str(" · ");
+        summary.push_str(&crate::tr!("result truncated"));
+    }
+    summary
 }
 
 fn truncation_notice(sorted: bool, loaded_rows: usize) -> String {
@@ -274,7 +282,10 @@ fn truncation_notice(sorted: bool, loaded_rows: usize) -> String {
         return crate::tr!("Sorted the loaded rows only; the result is truncated. Use ORDER BY for the full result.");
     }
     crate::tr!("Only the first {loaded} rows were loaded; the result is truncated. Narrow the query to see the rest.")
-        .replace("{loaded}", &loaded_rows.to_string())
+        .replace(
+            "{loaded}",
+            &crate::ui::count_format::format_thousands(loaded_rows as u128),
+        )
 }
 
 fn same_filter_value(left: &Value, right: &Value) -> bool {
@@ -305,12 +316,24 @@ mod tests {
     use gtk4::prelude::*;
     use tablepro_core::{ColumnInfo, QueryResult, Value};
 
-    use super::{LocalResultSettingsStore, LocalResultView, ResultViewKey, matching_source_indices, truncation_notice};
+    use super::{
+        LocalResultSettingsStore, LocalResultView, ResultViewKey, filter_summary, matching_source_indices,
+        truncation_notice,
+    };
+
+    #[test]
+    fn large_local_result_counts_use_the_same_grouping_as_the_paginator() {
+        assert_eq!(filter_summary(1, 215_804, false), "Showing 1 of 215,804 loaded rows");
+        assert_eq!(
+            filter_summary(1_000, 215_804, true),
+            "Showing 1,000 of 215,804 loaded rows · result truncated"
+        );
+    }
 
     #[test]
     fn an_unsorted_truncated_result_states_how_many_rows_were_loaded() {
         let notice = truncation_notice(false, 215_804);
-        assert!(notice.contains("215804"), "{notice}");
+        assert!(notice.contains("215,804"), "{notice}");
         assert!(notice.contains("truncated"), "{notice}");
         assert!(truncation_notice(true, 215_804).contains("ORDER BY"));
     }

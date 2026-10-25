@@ -3,6 +3,7 @@ use relm4::gtk::gio;
 use relm4::{adw, gtk};
 
 use crate::services::preferences::{ColorSchemePref, NullDisplayPref, PreferencesStore, ThemePref};
+use crate::ui::count_format::format_thousands;
 
 /// Must match `browse_tab`'s own `PAGE_SIZE_OPTIONS` (duplicated there and
 /// in `workspace_state.rs`, the same way those two already duplicate each
@@ -10,20 +11,6 @@ use crate::services::preferences::{ColorSchemePref, NullDisplayPref, Preferences
 /// default outside it would silently snap back to 1,000 on restart instead
 /// of the value chosen here.
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
-
-fn format_thousands(n: u64) -> String {
-    let s = n.to_string();
-    let bytes = s.as_bytes();
-    let len = bytes.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(*b as char);
-    }
-    out
-}
 
 pub fn present(
     parent: &impl IsA<gtk::Widget>,
@@ -63,7 +50,10 @@ pub fn present(
     let page_size_row = adw::ComboRow::new();
     page_size_row.set_title(&crate::tr!("Default page size"));
     page_size_row.set_subtitle(&crate::tr!("Rows fetched per request when browsing a table"));
-    let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
+    let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS
+        .iter()
+        .map(|n| format_thousands(u128::from(*n)))
+        .collect();
     let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
     page_size_row.set_model(Some(&gtk::StringList::new(&page_size_strs)));
     let initial_page_size_idx = PAGE_SIZE_OPTIONS
