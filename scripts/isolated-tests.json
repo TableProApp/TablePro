@@ -200,6 +200,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::theme::tests::given_gruvbox_when_warning_text_is_styled_then_it_is_distinct_and_readable"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::app::workspace_overview::tests::the_tab_overview_hides_duplicate_window_close_controls"
     ],
     [
