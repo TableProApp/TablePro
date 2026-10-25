@@ -35,8 +35,8 @@ extension FindViewController {
         viewModel.isShowingFindPanel = true
 
         // Smooth out the animation by placing the find panel just outside the correct position before animating.
-        findPanel.isHidden = false
-        findPanelVerticalConstraint.constant = resolvedTopPadding - viewModel.panelHeight
+        installFindPanel().isHidden = false
+        findPanelVerticalConstraint?.constant = resolvedTopPadding - viewModel.panelHeight
 
         view.layoutSubtreeIfNeeded()
 
@@ -65,13 +65,13 @@ extension FindViewController {
     /// - Sets the text view to be the first responder.
     func hideFindPanel(animated: Bool = true) {
         viewModel.isShowingFindPanel = false
-        _ = findPanel.resignFirstResponder()
+        _ = findPanel?.resignFirstResponder()
 
         conditionalAnimated(animated) {
             viewModel.target?.findPanelWillHide(panelHeight: viewModel.panelHeight)
             setFindPanelConstraintHide()
         } onComplete: { [weak self] in
-            self?.findPanel.isHidden = true
+            self?.findPanel?.isHidden = true
             self?.viewModel.isFocused = false
         }
 
@@ -120,7 +120,7 @@ extension FindViewController {
     /// Sets the find panel constraint to show the find panel.
     /// Can be animated using implicit animation.
     func setFindPanelConstraintShow() {
-        // Update the find panel's top to be equal to the view's top.
+        guard let findPanelVerticalConstraint else { return }
         findPanelVerticalConstraint.constant = resolvedTopPadding
         findPanelVerticalConstraint.isActive = true
     }
@@ -128,8 +128,7 @@ extension FindViewController {
     /// Sets the find panel constraint to hide the find panel.
     /// Can be animated using implicit animation.
     func setFindPanelConstraintHide() {
-        // Update the find panel's top anchor to be equal to it's negative height, hiding it above the view.
-
+        guard let findPanelVerticalConstraint else { return }
         // SwiftUI hates us. It refuses to move views outside of the safe are if they don't have the `.ignoresSafeArea`
         // modifier, but with that modifier on it refuses to allow it to be animated outside the safe area.
         // The only way I found to fix it was to multiply the height by 3 here.

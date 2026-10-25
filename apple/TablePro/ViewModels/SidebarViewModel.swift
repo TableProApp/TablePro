@@ -110,7 +110,8 @@ final class SidebarViewModel: ObservableObject {
         didSet {
             invalidateFilterCaches()
             if filterQuery.isEmpty { listingMatchesMemo.removeAll() }
-            listingDemand.reset()
+            // Once per search, not per keystroke: a failed or partly unlisted listing was read again on every refinement.
+            if oldValue.isEmpty { listingDemand.reset() }
             loadAllSchemaTablesForSearch()
         }
     }

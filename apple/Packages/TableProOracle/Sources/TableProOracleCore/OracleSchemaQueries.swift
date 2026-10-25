@@ -168,22 +168,17 @@ public enum OracleSchemaQueries {
         "ALTER SESSION SET CURRENT_SCHEMA = \(quoteIdentifier(schema))"
     }
 
-    /// `ALL_PART_TABLES` carries the partition count without reading a LONG column, which this
-    /// driver cannot decode. Its `INTERVAL` column is the flag for interval partitioning, where the
-    /// count is a placeholder for a range the server extends on demand rather than a number of
-    /// partitions that exist, so those report no count instead of a fabricated one.
-    ///
-    /// Being partitioned is projected separately from the count for exactly that reason: an
-    /// interval-partitioned table has partitions and no count to state, and reading the missing
-    /// count as "not partitioned" would take its partitions out of the tree.
+    // The count comes from `partitionCounts(owners:)`: joining `ALL_PART_TABLES` here made every hard
+    // parse of a 100-schema listing cost 0.5 to 2.4 s of server CPU, against 0.1 to 0.3 s without it.
+    // Being partitioned is projected apart from the count, since an interval-partitioned table has
+    // partitions and no count to state.
     public static func tables(schema: String) -> String {
         let owner = escapeLiteral(schema)
         return """
             SELECT t.table_name, 'BASE TABLE' AS table_type,
-                   CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END AS is_partitioned,
-                   CASE WHEN pt.interval IS NULL THEN pt.partition_count END AS partition_count
+                   CASE WHEN t.partitioned = 'YES' THEN 'Y' ELSE 'N' END AS is_partitioned,
+                   NULL AS partition_count
             FROM \(OracleDictionary.allTables) t
-            LEFT JOIN \(OracleDictionary.allPartTables) pt ON pt.owner = t.owner AND pt.table_name = t.table_name
             WHERE t.owner = '\(owner)'
             UNION ALL
             SELECT view_name, 'VIEW', 'N', NULL FROM \(OracleDictionary.allViews) WHERE owner = '\(owner)'
@@ -201,16 +196,56 @@ public enum OracleSchemaQueries {
             let owners = chunk.map { "'\(escapeLiteral($0))'" }.joined(separator: ", ")
             return """
                 SELECT t.table_name, 'BASE TABLE' AS table_type,
-                       CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END AS is_partitioned,
-                       CASE WHEN pt.interval IS NULL THEN pt.partition_count END AS partition_count,
+                       CASE WHEN t.partitioned = 'YES' THEN 'Y' ELSE 'N' END AS is_partitioned,
+                       NULL AS partition_count,
                        t.owner
                 FROM \(OracleDictionary.allTables) t
-                LEFT JOIN \(OracleDictionary.allPartTables) pt ON pt.owner = t.owner AND pt.table_name = t.table_name
                 WHERE t.owner IN (\(owners))
                 UNION ALL
                 SELECT view_name, 'VIEW', 'N', NULL, owner FROM \(OracleDictionary.allViews) WHERE owner IN (\(owners))
                 ORDER BY 5, 1
                 """
+        }
+    }
+
+    // `ALL_PART_TABLES` states the count without reading a LONG column, which this driver cannot
+    // decode. An interval-partitioned table's count is a placeholder for the range the server extends
+    // on demand, so it reports none.
+    public static func partitionCounts(owners: [String]) -> [String] {
+        stride(from: 0, to: owners.count, by: maxOwnersPerTableListing).map { start in
+            let chunk = owners[start..<min(start + maxOwnersPerTableListing, owners.count)]
+            let list = chunk.map { "'\(escapeLiteral($0))'" }.joined(separator: ", ")
+            return """
+                SELECT owner, table_name, CASE WHEN interval IS NULL THEN partition_count END AS partition_count
+                FROM \(OracleDictionary.allPartTables)
+                WHERE owner IN (\(list))
+                """
+        }
+    }
+
+    // A one-schema listing does not project the owner, so its rows count as `defaultOwner`'s.
+    public static func ownersWithPartitionedTables(in rows: [OracleTableRow], defaultOwner: String?) -> [String] {
+        let owners = rows.lazy.filter(\.isPartitioned).compactMap { $0.schema ?? defaultOwner }
+        return Array(Set(owners)).sorted()
+    }
+
+    public static func applyingPartitionCounts(
+        _ countRows: [[OracleRawCell]],
+        to rows: [OracleTableRow],
+        defaultOwner: String?
+    ) -> [OracleTableRow] {
+        var counts: [String: [String: Int]] = [:]
+        for row in countRows {
+            guard let owner = row[safe: 0]?.stringValue,
+                  let table = row[safe: 1]?.stringValue,
+                  let count = row[safe: 2]?.stringValue.flatMap(Int.init) else { continue }
+            counts[owner, default: [:]][table] = count
+        }
+        return rows.map { row in
+            guard row.isPartitioned,
+                  let owner = row.schema ?? defaultOwner,
+                  let count = counts[owner]?[row.name] else { return row }
+            return OracleTableRow(name: row.name, isView: row.isView, isPartitioned: true, partitionCount: count, schema: row.schema)
         }
     }
 

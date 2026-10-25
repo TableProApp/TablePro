@@ -106,6 +106,38 @@ struct SidebarSchemaFilterTests {
         await disconnect(connection)
     }
 
+    @Test("A failed listing is asked for once per search, not again on every refinement")
+    func failedListingIsAskedForOncePerSearch() async throws {
+        let (connection, driver) = connect { driver in
+            driver.allSchemaTablesError = DatabaseError.queryFailed("listing timed out")
+        }
+        let viewModel = SidebarViewModel(
+            selectedTables: .constant([]),
+            pendingTruncates: .constant([]),
+            pendingDeletes: .constant([]),
+            tableOperationOptions: .constant([:]),
+            databaseType: .pglite,
+            connectionId: connection.id
+        )
+
+        for query in ["t", "ti", "tim"] {
+            viewModel.searchText = query
+            try await waitUntil { viewModel.filterQuery == query }
+            try await waitUntil {
+                if case .failed = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop") { return true }
+                return false
+            }
+        }
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+
+        viewModel.searchText = ""
+        try await waitUntil { viewModel.filterQuery.isEmpty }
+        viewModel.searchText = "o"
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 2 }
+        viewModel.searchText = ""
+        await disconnect(connection)
+    }
+
     @Test("Sidebar search and Open Quickly share one listing for one filter, read schema by schema")
     func sidebarAndOpenQuicklyReadOnce() async throws {
         let (connection, driver) = connect { driver in

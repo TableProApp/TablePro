@@ -23,8 +23,10 @@ final class FindViewController: NSViewController {
     }
 
     var childView: NSView
-    var findPanel: FindPanelHostingView
-    var findPanelVerticalConstraint: NSLayoutConstraint!
+    // Built on first show, as NSTextFinder builds its find bar: a hidden hosting view is still laid out, and
+    // SwiftUI inserting its controls forces a layout of the whole editor around them.
+    private(set) var findPanel: FindPanelHostingView?
+    private(set) var findPanelVerticalConstraint: NSLayoutConstraint?
 
     /// The 'real' top padding amount.
     /// Is equal to ``topPadding`` if set, or the view's top safe area inset if not.
@@ -35,7 +37,6 @@ final class FindViewController: NSViewController {
     init(target: FindPanelTarget, childView: NSView) {
         viewModel = FindPanelViewModel(target: target)
         self.childView = childView
-        findPanel = FindPanelHostingView(viewModel: viewModel)
         super.init(nibName: nil, bundle: nil)
         viewModel.dismiss = { [weak self] in
             self?.hideFindPanel()
@@ -63,21 +64,8 @@ final class FindViewController: NSViewController {
         /// scopes its hover tracking and the ribbons' accessibility elements.
         view.clipsToBounds = true
         view.addSubview(childView)
-        // Ordered above the content so the panel wins hit-testing as well as drawing.
-        // `zPosition` alone only affects drawing, which left clicks falling through to the
-        // text view underneath.
-        view.addSubview(findPanel, positioned: .above, relativeTo: childView)
-        findPanel.wantsLayer = true
-
-        findPanelVerticalConstraint = findPanel.topAnchor.constraint(equalTo: view.topAnchor)
 
         NSLayoutConstraint.activate([
-            // Constrain find panel
-            findPanelVerticalConstraint,
-            findPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            findPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            // Constrain child view
             childView.topAnchor.constraint(equalTo: view.topAnchor),
             childView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             childView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -87,12 +75,33 @@ final class FindViewController: NSViewController {
 
     override func viewWillAppear() {
         super.viewWillAppear()
-        if viewModel.isShowingFindPanel { // Update constraints for initial state
-            findPanel.isHidden = false
-            setFindPanelConstraintShow()
-        } else {
-            findPanel.isHidden = true
-            setFindPanelConstraintHide()
+        guard viewModel.isShowingFindPanel else { return }
+        installFindPanel().isHidden = false
+        setFindPanelConstraintShow()
+    }
+
+    @discardableResult
+    func installFindPanel() -> FindPanelHostingView {
+        if let findPanel { return findPanel }
+        let panel = FindPanelHostingView(viewModel: viewModel)
+        // Ordered above the content so the panel wins hit-testing as well as drawing.
+        // `zPosition` alone only affects drawing, which left clicks falling through to the
+        // text view underneath.
+        view.addSubview(panel, positioned: .above, relativeTo: childView)
+        panel.wantsLayer = true
+        let top = panel.topAnchor.constraint(equalTo: view.topAnchor)
+        NSLayoutConstraint.activate([
+            top,
+            panel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            panel.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        findPanel = panel
+        findPanelVerticalConstraint = top
+        setFindPanelConstraintHide()
+        // The panel's onChange searches a term typed into it; one set before it existed has not been searched.
+        if !viewModel.findText.isEmpty {
+            viewModel.find()
         }
+        return panel
     }
 }

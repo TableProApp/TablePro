@@ -500,17 +500,35 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let result = try await rawQuery(OracleSchemaQueries.tables(schema: effectiveSchema(schema)))
-        return result.rows.compactMap(OracleSchemaQueries.parseTableRow).map(Self.tableInfo)
+        let owner = effectiveSchema(schema)
+        let result = try await rawQuery(OracleSchemaQueries.tables(schema: owner))
+        let rows = result.rows.compactMap(OracleSchemaQueries.parseTableRow)
+        return await withPartitionCounts(rows, defaultOwner: owner).map(Self.tableInfo)
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
-        var tables: [PluginTableInfo] = []
+        var rows: [OracleTableRow] = []
         for query in OracleSchemaQueries.tables(inSchemas: schemas) {
             let result = try await rawQuery(query)
-            tables += result.rows.compactMap(OracleSchemaQueries.parseTableRow).map(Self.tableInfo)
+            rows += result.rows.compactMap(OracleSchemaQueries.parseTableRow)
         }
-        return tables
+        return await withPartitionCounts(rows, defaultOwner: nil).map(Self.tableInfo)
+    }
+
+    // The count only labels a row, so a failed read leaves the listing without counts rather than failing it.
+    private func withPartitionCounts(_ rows: [OracleTableRow], defaultOwner: String?) async -> [OracleTableRow] {
+        let owners = OracleSchemaQueries.ownersWithPartitionedTables(in: rows, defaultOwner: defaultOwner)
+        guard !owners.isEmpty else { return rows }
+        var countRows: [[OracleRawCell]] = []
+        do {
+            for query in OracleSchemaQueries.partitionCounts(owners: owners) {
+                countRows += try await rawQuery(query).rows
+            }
+        } catch {
+            Self.logger.warning("Partition counts could not be read: \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            return rows
+        }
+        return OracleSchemaQueries.applyingPartitionCounts(countRows, to: rows, defaultOwner: defaultOwner)
     }
 
     private static func tableInfo(_ row: OracleTableRow) -> PluginTableInfo {

@@ -180,7 +180,7 @@ internal struct EditorKeyMonitorCompositionTests {
         Mock.beginComposition("le", in: editor.textView)
         let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
-        #expect(finder.findPanel.handleKeyDown(escape) === escape)
+        #expect(try #require(finder.findPanel).handleKeyDown(escape) === escape)
         #expect(finder.viewModel.isShowingFindPanel)
     }
 
@@ -202,7 +202,7 @@ internal struct EditorKeyMonitorCompositionTests {
         try #require(fieldEditor.hasMarkedText())
         let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
-        #expect(finder.findPanel.handleKeyDown(escape) === escape)
+        #expect(try #require(finder.findPanel).handleKeyDown(escape) === escape)
         #expect(finder.viewModel.isShowingFindPanel)
     }
 
@@ -215,7 +215,7 @@ internal struct EditorKeyMonitorCompositionTests {
         _ = window.makeFirstResponder(editor.textView)
         let escape = try #require(Mock.keyDown(keyCode: kVK_Escape, characters: "\u{1b}", in: window))
 
-        #expect(finder.findPanel.handleKeyDown(escape) == nil)
+        #expect(try #require(finder.findPanel).handleKeyDown(escape) == nil)
         #expect(finder.viewModel.isShowingFindPanel == false)
     }
 

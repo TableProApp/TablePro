@@ -131,11 +131,13 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     /// The tables of schemas other than the browsed one arrive after the rest of the catalog, so a
     /// search that finds nothing yet is still loading rather than a miss.
     var isLoadingTables: Bool {
-        isLoadingBrowseCatalog || isListingInFlight
+        isLoadingBrowseCatalog || isListingInFlight || isSharedListingLoading
     }
 
     @Published private var isLoadingBrowseCatalog = false
     @Published private var isListingInFlight = false
+    // A listing the sidebar or another reader started is one this panel never requests itself.
+    @Published private var isSharedListingLoading = false
     @Published private(set) var isLoadingCrossConnections = false
     @Published private(set) var isLoadingCrossConnectionQueries = false
     @Published private(set) var crossConnectionQueryContentRevision = 0
@@ -463,6 +465,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
     }
 
     private func refreshListingDemand() {
+        if sharedListingIsLoading() { isSharedListingLoading = true }
         guard hasLoadedBrowseCatalog, let tableSource, tableSource.listsTablesPerSchema,
               let database = tableSource.database,
               Self.wantsAllSchemaListing(
@@ -1170,6 +1173,18 @@ extension QuickSwitcherViewModel {
         pendingTableMerge = false
         if refreshesListing { refreshListingDemand() }
         if mergesTables { await rebuildTableItemsIfNeeded() }
+        // Lowered only after the rebuild, so the rows a landed listing brings are in before the spinner goes.
+        if isSharedListingLoading, !sharedListingIsLoading() { isSharedListingLoading = false }
+    }
+
+    private func sharedListingIsLoading() -> Bool {
+        guard let tableSource, tableSource.listsTablesPerSchema, let database = tableSource.database else { return false }
+        if case .loading = DatabaseTreeMetadataService.shared.allSchemaTablesLoadState(
+            connectionId: connectionId, database: database
+        ) {
+            return true
+        }
+        return false
     }
 
     // A call that finds a build of the same inputs running waits for that one instead of starting another.

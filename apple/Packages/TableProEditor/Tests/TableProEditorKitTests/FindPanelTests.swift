@@ -56,6 +56,33 @@ struct FindPanelTests {
         #expect(model.panelHeight == 54)
     }
 
+    @Test("The find panel is built on its first show, not with the editor, and kept after it hides")
+    func findPanelIsBuiltOnFirstShow() {
+        #expect(viewController.findPanel == nil)
+        #expect(!viewController.view.subviews.contains { $0 is FindPanelHostingView })
+
+        viewController.showFindPanel(animated: false)
+        let panel = viewController.findPanel
+        #expect(panel?.superview === viewController.view)
+        #expect(panel?.isHidden == false)
+
+        viewController.hideFindPanel(animated: false)
+        #expect(viewController.findPanel === panel)
+        #expect(panel?.isHidden == true)
+    }
+
+    @Test("A term set before the panel was first shown is searched when it opens")
+    func termSetBeforeFirstShowIsSearched() {
+        let target = MockPanelTarget(text: "SELECT 1; SELECT 2")
+        let controller = FindViewController(target: target, childView: NSView())
+        controller.loadView()
+        controller.viewModel.findText = "SELECT"
+
+        controller.showFindPanel(animated: false)
+
+        #expect(controller.viewModel.matchCount == 2)
+    }
+
     @Test func findPanelShowsOnCommandF() async throws {
         // Show find panel
         viewController.showFindPanel()
