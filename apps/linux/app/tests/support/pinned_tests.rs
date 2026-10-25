@@ -194,6 +194,42 @@ fn the_oldest_pins_are_dropped_past_the_limit() {
 }
 
 #[test]
+#[ignore = "app-server isolated regression"]
+fn evicting_old_stream_pins_releases_their_pages_and_unpin_releases_the_rest() {
+    let mut pins = PinnedResults::default();
+    let mut pages = Vec::new();
+    for index in 0..=MAX_PINNED {
+        let result = page(&[index as i64]);
+        pages.push(Arc::downgrade(&result));
+        let mut cache = super::super::stream_pages::StreamPageCache::default();
+        cache.append(0, result).expect("append streamed page");
+        let outcome = StatementOutcome {
+            kind: StatementOutcomeKind::Streamed(Box::new(
+                cache.snapshot(super::super::stream_pages::StreamTerminal::Complete, None),
+            )),
+            ..rows(&format!("SELECT {index}"))
+        };
+
+        pins.show(vec![outcome]);
+        pins.pin_last();
+    }
+
+    assert!(pages[0].upgrade().is_none());
+    assert!(pages[1..].iter().all(|page| page.upgrade().is_some()));
+
+    let latest = pins.unpin_all();
+
+    assert!(pages[..MAX_PINNED].iter().all(|page| page.upgrade().is_none()));
+    assert!(pages[MAX_PINNED].upgrade().is_some());
+    drop(latest);
+    assert!(pages[MAX_PINNED].upgrade().is_some());
+
+    pins.show(vec![rows("SELECT after")]);
+
+    assert!(pages.iter().all(|page| page.upgrade().is_none()));
+}
+
+#[test]
 fn unpinning_returns_the_latest_run_alone() {
     let mut pins = PinnedResults::default();
     pins.show(vec![rows("SELECT 1")]);

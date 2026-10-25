@@ -183,6 +183,7 @@ class CiWorkflowTests(unittest.TestCase):
                 "value_contract_mssql_server_owned_columns_use_native_defaults_across_consumers",
                 "value_contract_postgres_csv_import_preserves_explicit_identity_values",
                 "an_evicted_stream_page_stays_alive_while_pinned_and_releases_after_unpin",
+                "evicting_old_stream_pins_releases_their_pages_and_unpin_releases_the_rest",
             },
         )
         workflow = (ROOT / ".github/workflows/build-linux.yml").read_text()

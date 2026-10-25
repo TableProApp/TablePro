@@ -58,6 +58,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::pinned::tests::evicting_old_stream_pins_releases_their_pages_and_unpin_releases_the_rest"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::browse_tab::value_parse::mongodb_integer_width::value_contract_mongodb_int32_grid_edit_preserves_integer_width"
     ],
     [
