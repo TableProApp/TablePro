@@ -515,15 +515,7 @@ impl SimpleComponent for StructureTab {
         } else {
             sourceview5::Buffer::new(None)
         };
-        let sql_view = sourceview5::View::with_buffer(&sql_buffer);
-        sql_view.set_editable(false);
-        sql_view.set_monospace(true);
-        sql_view.set_wrap_mode(gtk::WrapMode::Word);
-        sql_view.set_top_margin(6);
-        sql_view.set_left_margin(6);
-        sql_view.set_right_margin(6);
-        sql_view.set_bottom_margin(6);
-        crate::ui::theme::style_editor(&sql_view);
+        let sql_view = build_sql_preview_view(&sql_buffer);
         let sql_scroll = gtk::ScrolledWindow::builder().child(&sql_view).vexpand(true).build();
         // Copy SQL toolbar — saves the user from clicking into the
         // sourceview, Ctrl+A, Ctrl+C every time they want to paste
@@ -1057,5 +1049,36 @@ impl SimpleComponent for StructureTab {
                 });
             }
         }
+    }
+}
+
+fn build_sql_preview_view(buffer: &sourceview5::Buffer) -> sourceview5::View {
+    let view = sourceview5::View::with_buffer(buffer);
+    view.set_editable(false);
+    view.set_cursor_visible(false);
+    view.set_monospace(true);
+    view.set_wrap_mode(gtk::WrapMode::Word);
+    view.set_top_margin(6);
+    view.set_left_margin(6);
+    view.set_right_margin(6);
+    view.set_bottom_margin(6);
+    crate::ui::theme::style_editor(&view);
+    view
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires an isolated GTK display"]
+    fn sql_preview_is_read_only_without_a_visible_cursor() {
+        gtk::init().unwrap();
+        let buffer = sourceview5::Buffer::new(None);
+
+        let view = build_sql_preview_view(&buffer);
+
+        assert!(!view.is_editable());
+        assert!(!view.is_cursor_visible());
     }
 }
