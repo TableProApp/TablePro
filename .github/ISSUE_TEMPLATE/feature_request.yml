@@ -25,6 +25,18 @@ body:
       required: true
 
   - type: textarea
+    id: acceptance_scenarios
+    attributes:
+      label: User-visible acceptance scenarios
+      description: State observable outcomes with Given, When, and Then.
+      placeholder: |
+        Given <starting state>
+        When <user action>
+        Then <observable outcome>
+    validations:
+      required: true
+
+  - type: textarea
     id: alternatives
     attributes:
       label: Alternatives considered

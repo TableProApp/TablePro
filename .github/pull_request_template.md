@@ -13,7 +13,7 @@ Release-Note: none
 
 ## Reproduction and regression proof
 
-For a behavior change, give the smallest trigger and what happened before the fix. Name the regression test, or explain which existing behavior the test pins.
+For a behavior change, include the issue's user-visible Given / When / Then scenario and the smallest trigger. Name the regression test that verifies each observable outcome, or describe the manual acceptance step when automation cannot cover it. State what happened before the fix.
 
 ## Validation
 

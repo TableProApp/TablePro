@@ -26,6 +26,7 @@ These rows remained open after the 0.2.0 delivery decision and are now part of t
 | B4-7, B4-16, B4-22 | [#566](https://github.com/cozyGarage/BookiE/issues/566) | B4 | Finish installed acceptance for tunnel audit, session invalidation, and bundle audit |
 | TEST-31 | [#556](https://github.com/cozyGarage/BookiE/issues/556) | UX | Triage intermittent installed GTK runs and gather the required full-run evidence |
 | TEST-32 | [#594](https://github.com/cozyGarage/BookiE/issues/594) | UX | Review test-oracle provenance independently of production code |
+| TEST-33 | [#1634](https://github.com/cozyGarage/BookiE/issues/1634) | UX | Prompt for Given/When/Then acceptance in feature and pull request templates; pin prompts with the repository harness |
 | TEST-6 | [#575](https://github.com/cozyGarage/BookiE/issues/575) | Maintainer | Triage and run the remaining manual verification checklist |
 | PKG-1 | [#574](https://github.com/cozyGarage/BookiE/issues/574) | Maintainer | Verify native Wayland install, upgrade, and rollback on Arch/Hyprland |
 
