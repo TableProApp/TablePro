@@ -15,6 +15,8 @@ name = "workspace_save_io"
 harness = false
 
 [dependencies]
+aes-gcm.workspace = true
+getrandom.workspace = true
 tablepro-core = { path = "../core" }
 tablepro-dump = { path = "../dump" }
 tablepro-policy = { path = "../policy" }
@@ -25,17 +27,18 @@ thiserror.workspace = true
 serde.workspace = true
 tracing.workspace = true
 serde_json.workspace = true
+secrecy.workspace = true
+tempfile.workspace = true
+rmp-serde.workspace = true
+rust_decimal.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rust_decimal.workspace = true
 async-trait.workspace = true
-secrecy.workspace = true
 tablepro-driver-postgres = { path = "../drivers/postgres" }
 tablepro-ssh = { path = "../ssh" }
-tempfile.workspace = true
 testcontainers.workspace = true
 testcontainers-modules = { workspace = true, features = ["postgres"] }
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }

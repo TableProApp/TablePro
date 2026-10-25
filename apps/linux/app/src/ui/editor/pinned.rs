@@ -79,7 +79,7 @@ impl SqlEditor {
         self.panel.refresh_errors(self.pinned.latest());
     }
 
-    pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>) {
+    pub(super) fn show_pins_above(&mut self, page: &impl IsA<gtk::Widget>, sender: &relm4::ComponentSender<Self>) {
         clear_results_box(&self.results_holder);
         let pins = self.pinned.show(Vec::new());
         if !pins.is_empty() {
@@ -90,13 +90,14 @@ impl SqlEditor {
                 self.connection_id,
                 self.database.clone(),
                 self.result_view_settings.clone(),
+                Some(sender),
             );
         }
         self.results_holder.append(page);
         self.refresh_pin_button();
     }
 
-    pub(super) fn toggle_pin(&mut self) {
+    pub(super) fn toggle_pin(&mut self, sender: &relm4::ComponentSender<Self>) {
         if self.pinned.is_pinned() {
             let remaining = self.pinned.unpin_all();
             self.refresh_pin_button();
@@ -108,6 +109,7 @@ impl SqlEditor {
                 self.connection_id,
                 self.database.clone(),
                 self.result_view_settings.clone(),
+                Some(sender),
             );
             return;
         }

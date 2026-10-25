@@ -46,6 +46,7 @@ fn append_live_page(
             target.connection_id,
             target.database.clone(),
             target.settings_store.clone(),
+            None,
         ));
         return;
     }
@@ -91,7 +92,7 @@ fn streamed_widgets_keep_small_pages_and_release_cancelled_results_on_close() {
     }
     clear(&holder);
     let outcome = make_outcome(cache.snapshot(StreamTerminal::Cancelled, None));
-    holder.append(&build_outcome_widget(&outcome, &sender, None, database, settings));
+    holder.append(&build_outcome_widget(&outcome, &sender, None, database, settings, None));
     drop(outcome);
     drop(cache);
     assert_eq!(

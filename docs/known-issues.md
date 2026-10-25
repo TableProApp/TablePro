@@ -59,11 +59,11 @@ This page is an index of ledger IDs to issues. Do not track evidence, owners or 
 | TEST-34 | [#1649](https://github.com/cozyGarage/BookiE/issues/1649) | UX |
 | DOC-3 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
 | DOC-5 | [#561](https://github.com/cozyGarage/BookiE/issues/561) | Maintainer |
-| PERF-2 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | B4 |
+| PERF-2 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | UX |
 | PERF-3 | [#555](https://github.com/cozyGarage/BookiE/issues/555) | B3 |
 | PERF-4 | [#550](https://github.com/cozyGarage/BookiE/issues/550) | B3 |
-| PERF-7 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | B4 |
-| PERF-8 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | B4 |
+| PERF-7 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | UX |
+| PERF-8 | [#554](https://github.com/cozyGarage/BookiE/issues/554) | UX |
 | PERF-9 | [#596](https://github.com/cozyGarage/BookiE/issues/596) | B3 |
 | PERF-10 | [#597](https://github.com/cozyGarage/BookiE/issues/597) | B3 |
 | AUD-2 | [#598](https://github.com/cozyGarage/BookiE/issues/598) | B4 |

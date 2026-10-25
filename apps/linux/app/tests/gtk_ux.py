@@ -1,6 +1,7 @@
 import ctypes
 import json
 import os
+import re
 import select
 import shutil
 import subprocess
@@ -1295,37 +1296,48 @@ GLib.MainLoop().run()
         ui.press_x11_key("Escape")
         wait_for_adw_dialog("name", present=False)
 
-    def postgres_large_stream_pages_show_retained_range_and_navigate(database, base):
-        container = os.environ["TABLEPRO_GTK_POSTGRES_CONTAINER"]
-        subprocess.run(
-            [
-                "docker", "exec", container, "psql", "--username=postgres", "--dbname=bookie_test",
-                "--set=ON_ERROR_STOP=1", "--command",
-                "CREATE TABLE pager_rows AS SELECT value AS id, repeat('x', 4500) AS payload "
-                "FROM generate_series(1, 15000) AS value",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+    def postgres_large_stream_pages_round_trip_from_spool(database, base):
         ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
         ui.wait_for_frame_containing(f"{ui.POSTGRES_CONNECTION_NAME} — BookiE")
         ui.invoke(ui.wait_for_node(name="Open SQL editor"))
         ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
-        ui.run_sql("SELECT id, payload FROM pager_rows ORDER BY id")
-        ui.wait_for_node_containing("Retained rows 5001-15000", timeout=120)
-        ui.wait_for_node_containing("Rows 10001-15000", timeout=120)
-        ui.wait_for_node(name="10001")
+        ui.run_sql(
+            "SELECT value AS id, md5(transaction_timestamp()::text) AS run_marker, "
+            "repeat('x', 2048) AS payload FROM generate_series(1, 100000) AS value"
+        )
+        deadline = time.monotonic() + 120
+        first_run_marker = None
+        while time.monotonic() < deadline and first_run_marker is None:
+            application = ui.application_node()
+            if application is not None:
+                first_run_marker = next(
+                    (
+                        ui.node_name(node)
+                        for node in ui.descendants(application)
+                        if ui.node_role(node) == pyatspi.ROLE_LABEL
+                        and re.fullmatch(r"[0-9a-f]{32}", ui.node_name(node))
+                    ),
+                    None,
+                )
+            if first_run_marker is None:
+                time.sleep(ui.POLL_SECONDS)
+        assert first_run_marker is not None, "the first streamed page never exposed its run marker"
+        ui.wait_for_node_containing("Rows 95001-100000", timeout=120)
+        ui.wait_for_node(name="95001")
         scheme = os.environ.get("ADW_DEBUG_COLOR_SCHEME", "prefer-light")
-        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-retained-last-page")
-        ui.invoke(ui.wait_for_node(name="Previous page", role=pyatspi.ROLE_PUSH_BUTTON))
-        ui.wait_for_node_containing("Rows 5001-10000", timeout=10)
-        ui.wait_for_node(name="5001")
-        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-retained-previous-page")
+        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-all-pages-last-page")
+        for first_id in range(90001, 0, -5000):
+            ui.invoke(ui.wait_for_node(name="Previous page", role=pyatspi.ROLE_PUSH_BUTTON))
+            ui.wait_for_node_containing(f"Rows {first_id}-{first_id + 4999}", timeout=30)
+            ui.wait_for_node(name=str(first_id), timeout=30)
+        ui.wait_for_node(name="1")
+        ui.wait_for_node(name=first_run_marker, role=pyatspi.ROLE_LABEL, timeout=120)
+        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-all-pages-first-page")
         ui.invoke(ui.wait_for_node(name="Next page", role=pyatspi.ROLE_PUSH_BUTTON))
-        ui.wait_for_node_containing("Rows 10001-15000", timeout=10)
-        ui.wait_for_node(name="10001")
+        ui.wait_for_node_containing("Rows 5001-10000", timeout=30)
+        ui.invoke(ui.wait_for_node(name="Previous page", role=pyatspi.ROLE_PUSH_BUTTON))
+        ui.wait_for_node_containing("Rows 1-5000", timeout=30)
+        ui.wait_for_node(name=first_run_marker, role=pyatspi.ROLE_LABEL, timeout=120)
 
     def postgres_hidden_projection_refresh_and_edit_preserve_hidden_value(database, base):
         ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
@@ -2172,7 +2184,7 @@ GLib.MainLoop().run()
         result.append(postgres_hidden_projection_refresh_and_edit_preserve_hidden_value)
         result.append(postgres_reopened_browse_tab_keeps_its_schema_after_switching)
         result.append(postgres_grid_edit_and_delete_commit_to_the_server)
-        result.append(postgres_large_stream_pages_show_retained_range_and_navigate)
+        result.append(postgres_large_stream_pages_round_trip_from_spool)
         result.append(postgres_enum_grid_edit_preserves_native_label_and_siblings)
         result.append(postgres_database_switcher_reconnects_to_the_chosen_database)
     if os.environ.get("TABLEPRO_GTK_POSTGRES_MTLS_PORT"):

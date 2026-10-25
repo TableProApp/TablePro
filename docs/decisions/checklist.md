@@ -22,7 +22,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Datastore & persistence model | Decided | Desktop client, not a hosted store. XDG files plus Secret Service. [ADR 0004](0004-libsecret-secret-storage.md), [ADR 0009](0009-persistence-and-identity-compatibility.md). |
 | Schema evolution & migrations | Decided | Compatible adapters and recoverable migrations for saved state. [ADR 0009](0009-persistence-and-identity-compatibility.md). |
 | Async, eventing & background jobs | Decided | Relm4 messages and component-scoped commands. No product job queue. [ADR 0003](0003-relm4-architecture.md). |
-| Caching | N/A | No general application cache layer. Browse pages and SQL results remain owned by their tabs under separate bounds. |
+| Caching | Partial | No general application cache layer. Browse pages and SQL results remain owned by their tabs under separate bounds; streamed query page spooling is implemented on `ux/stream-result-spool`, with [ADR 0025](0025-transient-result-page-spool.md) proposed pending gates. |
 | Numerical / semantic compatibility | Decided | Native type and value preservation. [ADR 0007](0007-type-and-value-preservation.md). |
 
 ## Interfaces and contracts
@@ -80,7 +80,7 @@ Last full review against the ADR index, code and living docs: 2026-10-20. The re
 | Secret Service credentials | [ADR 0004](0004-libsecret-secret-storage.md), [secret-storage spec](../../specs/secret-storage/spec.md) (draft) |
 | Governed consumer seam (`PolicyGuard`) | [ADR 0016](0016-governed-consumer-seam.md), [governed SQL spec](../../specs/governed-sql/spec.md) (draft) |
 | Server-side cancellation | [ADR 0005](0005-server-side-cancellation.md) |
-| Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted; PostgreSQL editor support has landed; broader memory acceptance remains open under #554) |
+| Cursor-paged editor results | [ADR 0011](0011-paged-query-results.md) (accepted) and [ADR 0025](0025-transient-result-page-spool.md) (proposed); #554 owns same-execution navigation beyond the RAM window |
 | Sidebar object tree | [ADR 0012](0012-sidebar-object-tree.md) |
 | Multiple result sets | [ADR 0013](0013-multiple-query-result-sets.md) |
 | Full-table export read snapshot | [ADR 0014](0014-full-table-export-snapshot.md) (not the same as ADR 0015) |
@@ -119,7 +119,7 @@ Recorded so a contributor does not reopen them without new evidence. Each row ci
 | SSH and capability specs | Architect | Review [specs/](../../specs/README.md); when a spec and the code disagree, fix the spec. The `PolicyGuard` decision is [ADR 0016](0016-governed-consumer-seam.md); the governed SQL spec is still a draft |
 | Security baseline ADR | Architect | Extract from AGENTS security invariants only if a contestable choice remains |
 | Accessibility / WCAG claim | Maintainer | Ledger DOC-3; do not claim AA from Adwaita alone |
-| Data retention | Product | Leave open until legal or product answers |
+| Other data retention | Product | Query-result spool retention is defined in proposed [ADR 0025](0025-transient-result-page-spool.md); resolve any remaining retention policy with legal or product |
 | Timed write unlock for production connections | Architect | Needs an amendment to [ADR 0016](0016-governed-consumer-seam.md) before any work; the production marker stays a display cue |
 | SOCKS5 proxy for database connections | Product | Adapt only, low priority. Needs a threat review and a DNS-leak rule first ([dbx features review](../archive/tablepro-dbx-review-2026-10-20/d-dbx-features.md)) |
 | SQLite loadable extensions | Architect | Security-sensitive; needs an explicit extension-loading decision before exposure ([feature comparison](../0.2-feature-comparison.md)) |

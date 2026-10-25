@@ -2,11 +2,49 @@ use super::stream_pages::{StreamPageCache, StreamTerminal};
 use super::*;
 use relm4::ComponentSender;
 
+pub(in crate::ui) enum Input {
+    Started(StreamStart),
+    Page {
+        generation: u64,
+        sequence: u64,
+        page: std::sync::Arc<QueryResult>,
+        spooled: bool,
+        accepted: tokio::sync::oneshot::Sender<bool>,
+    },
+    LoadPage {
+        generation: u64,
+        index: u64,
+        identity: StatementIdentity,
+        spool: tablepro_app_services::stream_result_spool::StreamResultSpool,
+        columns: Vec<tablepro_core::ColumnInfo>,
+    },
+    PageLoaded {
+        generation: u64,
+        index: u64,
+        identity: StatementIdentity,
+        result: Result<std::sync::Arc<QueryResult>, String>,
+    },
+    Finished {
+        generation: u64,
+        terminal: StreamTerminal,
+    },
+}
+
+pub(in crate::ui) struct StreamStart {
+    pub(super) generation: u64,
+    pub(super) identity: StatementIdentity,
+    pub(super) sql_preview: String,
+    pub(super) export_query: Option<crate::ui::export_dialog::StreamExportQuery>,
+    pub(super) spool: tablepro_app_services::stream_result_spool::StreamResultSpool,
+    pub(super) accepted: tokio::sync::oneshot::Sender<bool>,
+}
+
 pub(super) struct ActiveStream {
     generation: u64,
     identity: StatementIdentity,
     sql_preview: String,
     export_query: Option<crate::ui::export_dialog::StreamExportQuery>,
+    spool: tablepro_app_services::stream_result_spool::StreamResultSpool,
     cache: StreamPageCache,
     error: Option<String>,
 }
@@ -17,7 +55,12 @@ impl ActiveStream {
             identity: self.identity,
             sql_preview: self.sql_preview.clone(),
             elapsed_ms: 0,
-            kind: StatementOutcomeKind::Streamed(Box::new(self.cache.snapshot(terminal, self.export_query.clone()))),
+            kind: StatementOutcomeKind::Streamed(Box::new(self.cache.snapshot_with_spool(
+                terminal,
+                self.export_query.clone(),
+                self.generation,
+                Some(self.spool.clone()),
+            ))),
             pinned: false,
         }
     }
@@ -30,15 +73,61 @@ fn take_stream_for_generation(streaming: &mut Option<ActiveStream>, generation: 
     None
 }
 
+impl std::fmt::Debug for Input {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("stream input")
+    }
+}
+
 impl SqlEditor {
-    pub(super) fn on_stream_started(
-        &mut self,
-        generation: u64,
-        identity: StatementIdentity,
-        sql_preview: String,
-        export_query: Option<crate::ui::export_dialog::StreamExportQuery>,
-        accepted: tokio::sync::oneshot::Sender<bool>,
-    ) {
+    pub(super) fn on_stream_input(&mut self, input: Input, sender: &ComponentSender<Self>) {
+        match input {
+            Input::Started(start) => self.on_stream_started(start, sender),
+            Input::Page {
+                generation,
+                sequence,
+                page,
+                spooled,
+                accepted,
+            } => self.on_stream_page(generation, sequence, page, spooled, accepted, sender),
+            Input::LoadPage {
+                generation,
+                index,
+                identity,
+                spool,
+                columns,
+            } => load_stream_page(sender, generation, index, identity, spool, columns),
+            Input::PageLoaded {
+                generation,
+                index,
+                identity,
+                result,
+            } => super::stream_view::complete_page_load(
+                super::stream_view::PageLoadContext {
+                    holder: &self.results_holder,
+                    generation,
+                    index,
+                    identity,
+                    grid_sender: &self.grid_sender,
+                    connection_id: self.connection_id,
+                    database: self.database.clone(),
+                    settings_store: self.result_view_settings.clone(),
+                },
+                result,
+            ),
+            Input::Finished { generation, terminal } => self.on_stream_finished(generation, terminal, sender),
+        }
+    }
+
+    pub(super) fn on_stream_started(&mut self, start: StreamStart, sender: &ComponentSender<Self>) {
+        let StreamStart {
+            generation,
+            identity,
+            sql_preview,
+            export_query,
+            spool,
+            accepted,
+        } = start;
         if !self.run_generation.accepts(generation) {
             let _ = accepted.send(false);
             return;
@@ -48,12 +137,13 @@ impl SqlEditor {
             identity,
             sql_preview,
             export_query,
+            spool,
             cache: StreamPageCache::default(),
             error: None,
         });
         if self.results_holder.first_child().is_none() {
             let loading = waiting_for_stream_page();
-            self.show_pins_above(&loading);
+            self.show_pins_above(&loading, sender);
         }
         let _ = accepted.send(true);
     }
@@ -63,7 +153,9 @@ impl SqlEditor {
         generation: u64,
         sequence: u64,
         page: std::sync::Arc<QueryResult>,
+        spooled: bool,
         accepted: tokio::sync::oneshot::Sender<bool>,
+        sender: &ComponentSender<Self>,
     ) {
         if !self.run_generation.accepts(generation) {
             let _ = accepted.send(false);
@@ -90,8 +182,18 @@ impl SqlEditor {
                 let _ = accepted.send(false);
                 return;
             }
+            if !spooled {
+                stream.error = Some(crate::tr!(
+                    "BookiE could not keep the complete result in temporary storage. The received rows remain available."
+                ));
+            }
             (stream.outcome(StreamTerminal::Loading), stream.cache.total_rows())
         };
+        self.show_stream_page(outcome, total_rows, sender);
+        let _ = accepted.send(true);
+    }
+
+    fn show_stream_page(&mut self, outcome: StatementOutcome, total_rows: usize, sender: &ComponentSender<Self>) {
         let shown = self.pinned.show(vec![outcome.clone()]);
         self.refresh_pin_button();
         let target = super::stream_view::LiveStreamTarget {
@@ -106,24 +208,20 @@ impl SqlEditor {
             }
             _ => false,
         };
-        if updated {
-            self.status
-                .set_label(&crate::tr!("Received {n} rows").replace("{n}", &total_rows.to_string()));
-            let _ = accepted.send(true);
-            return;
+        if !updated {
+            clear_results_box(&self.results_holder);
+            render_outcomes(
+                &self.results_holder,
+                &shown,
+                &self.grid_sender,
+                self.connection_id,
+                self.database.clone(),
+                self.result_view_settings.clone(),
+                Some(sender),
+            );
         }
-        clear_results_box(&self.results_holder);
-        render_outcomes(
-            &self.results_holder,
-            &shown,
-            &self.grid_sender,
-            self.connection_id,
-            self.database.clone(),
-            self.result_view_settings.clone(),
-        );
         self.status
             .set_label(&crate::tr!("Received {n} rows").replace("{n}", &total_rows.to_string()));
-        let _ = accepted.send(true);
     }
 
     pub(super) fn on_stream_finished(
@@ -188,8 +286,36 @@ impl SqlEditor {
             self.connection_id,
             self.database.clone(),
             self.result_view_settings.clone(),
+            Some(sender),
         );
     }
+}
+
+fn load_stream_page(
+    sender: &ComponentSender<SqlEditor>,
+    generation: u64,
+    index: u64,
+    identity: StatementIdentity,
+    spool: tablepro_app_services::stream_result_spool::StreamResultSpool,
+    columns: Vec<tablepro_core::ColumnInfo>,
+) {
+    let loader = sender.clone();
+    sender.command(move |_, shutdown| {
+        shutdown
+            .register(async move {
+                let result = spool
+                    .load_page(index, columns)
+                    .await
+                    .map_err(|_| crate::tr!("The saved result page could not be read.").to_string());
+                loader.input(SqlEditorInput::Stream(Input::PageLoaded {
+                    generation,
+                    index,
+                    identity,
+                    result,
+                }));
+            })
+            .drop_on_shutdown()
+    });
 }
 
 fn waiting_for_stream_page() -> adw::StatusPage {
@@ -211,6 +337,9 @@ mod tests {
             identity: StatementIdentity::default(),
             sql_preview: "SELECT 2".into(),
             export_query: None,
+            spool: tablepro_app_services::stream_result_spool::StreamResultSpoolManager::default()
+                .create()
+                .expect("test spool"),
             cache: StreamPageCache::default(),
             error: None,
         });

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 
+use tablepro_app_services::stream_result_spool::StreamResultSpool;
 use tablepro_core::{ColumnInfo, MAX_QUERY_RESULT_BYTES, QueryResult};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -23,10 +24,14 @@ pub enum StreamTerminal {
 pub struct StreamedResult {
     pub(super) pages: Vec<Arc<QueryResult>>,
     pub(super) page_indices: Vec<u64>,
+    pub(super) page_row_counts: Vec<usize>,
+    pub(super) columns: Vec<ColumnInfo>,
     pub(super) total_pages: u64,
     pub(super) total_rows: usize,
     pub(super) terminal: StreamTerminal,
     pub(super) export: Option<crate::ui::export_dialog::StreamExportRequest>,
+    pub(super) generation: u64,
+    pub(super) spool: Option<StreamResultSpool>,
 }
 
 #[derive(Default)]
@@ -36,6 +41,7 @@ pub(super) struct StreamPageCache {
     columns: Option<Vec<ColumnInfo>>,
     next_page: u64,
     empty_pages: u64,
+    page_row_counts: Vec<usize>,
     total_rows: usize,
 }
 
@@ -53,6 +59,7 @@ impl StreamPageCache {
         if self.columns.is_none() {
             self.columns = Some(result.columns.clone());
         }
+        self.page_row_counts.push(result.rows.len());
         if index > 0 && result.rows.is_empty() {
             self.next_page = self.next_page.saturating_add(1);
             self.empty_pages = self.empty_pages.saturating_add(1);
@@ -90,10 +97,21 @@ impl StreamPageCache {
         self.columns.as_deref()
     }
 
+    #[cfg(test)]
     pub(super) fn snapshot(
         &self,
         terminal: StreamTerminal,
         query: Option<crate::ui::export_dialog::StreamExportQuery>,
+    ) -> StreamedResult {
+        self.snapshot_with_spool(terminal, query, 0, None)
+    }
+
+    pub(super) fn snapshot_with_spool(
+        &self,
+        terminal: StreamTerminal,
+        query: Option<crate::ui::export_dialog::StreamExportQuery>,
+        generation: u64,
+        spool: Option<StreamResultSpool>,
     ) -> StreamedResult {
         let export = query
             .zip(self.columns.clone())
@@ -101,10 +119,14 @@ impl StreamPageCache {
         StreamedResult {
             pages: self.pages.iter().map(|(_, page, _)| page.clone()).collect(),
             page_indices: self.pages.iter().map(|(index, _, _)| *index).collect(),
+            page_row_counts: self.page_row_counts.clone(),
+            columns: self.columns.clone().unwrap_or_default(),
             total_pages: self.next_page.saturating_sub(self.empty_pages),
             total_rows: self.total_rows,
             terminal,
             export,
+            generation,
+            spool,
         }
     }
 }
@@ -177,6 +199,7 @@ mod tests {
         assert_eq!(snapshot.page_indices, vec![1, 2]);
         assert_eq!(snapshot.total_rows, 3);
         assert_eq!(snapshot.total_pages, 3);
+        assert_eq!(snapshot.page_row_counts, vec![1, 1, 1]);
         assert_eq!(snapshot.pages[0].rows[0][0], Value::Text("x".repeat(24 * 1024 * 1024)));
     }
 
