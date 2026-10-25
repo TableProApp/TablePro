@@ -21,8 +21,11 @@ fn activate(provider: &Provider, context: &sourceview5::CompletionContext, sql: 
     let model = glib::MainContext::default()
         .block_on(provider.populate_future(context))
         .unwrap();
-    let proposal = (0..model.n_items())
+    let proposals: Vec<Proposal> = (0..model.n_items())
         .filter_map(|item| model.item(item)?.downcast::<Proposal>().ok())
+        .collect();
+    let proposal = proposals
+        .iter()
         .find(|proposal| {
             proposal
                 .imp()
@@ -30,7 +33,16 @@ fn activate(provider: &Provider, context: &sourceview5::CompletionContext, sql: 
                 .get()
                 .is_some_and(|insertion| insertion.sql == sql)
         })
-        .unwrap();
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "completion {sql:?} missing; available: {:?}",
+                proposals
+                    .iter()
+                    .filter_map(|proposal| proposal.imp().insertion.get().map(|insertion| insertion.sql.clone()))
+                    .collect::<Vec<_>>()
+            )
+        });
     provider.activate(context, &proposal);
     let buffer = context.buffer().unwrap();
     let (start, end) = buffer.bounds();
@@ -106,6 +118,39 @@ fn proposals_preserve_aliases_and_replace_only_the_identifier() {
     buffer.undo();
     let (start, end) = buffer.bounds();
     assert_eq!(buffer.text(&start, &end, true).as_str(), sql);
+}
+
+#[test]
+#[ignore = "requires an isolated GTK display"]
+fn dropping_one_editor_completion_view_keeps_shared_columns_for_another() {
+    gtk::init().unwrap();
+    let index = Rc::new(RefCell::new(SchemaIndex::default()));
+    index.borrow_mut().grammar = Some(SqlGrammar::PostgreSql);
+    index.borrow_mut().set_tables(vec!["\"Users\"".into()]);
+    let sql = "SELECT u.i FROM \"Users\" u";
+    let cursor = "SELECT u.i".len();
+    let (first_view, first_provider, first_context) = fixture(sql, cursor, index.clone());
+    let (_second_view, second_provider, second_context) = fixture(sql, cursor, index.clone());
+    let request = index
+        .borrow_mut()
+        .request_missing_columns(vec!["\"Users\"".into()])
+        .remove(0);
+    let token = index.borrow().column_request_token();
+
+    drop(first_context);
+    drop(first_provider);
+    drop(first_view);
+
+    assert!(!token.is_cancelled());
+    assert!(
+        index
+            .borrow_mut()
+            .complete_column_request(&request, Ok(vec!["id".into()]))
+    );
+    assert_eq!(
+        activate(&second_provider, &second_context, "\"id\""),
+        "SELECT u.\"id\" FROM \"Users\" u"
+    );
 }
 
 #[test]
