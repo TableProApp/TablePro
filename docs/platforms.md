@@ -25,6 +25,8 @@ GitHub published [`linux-v0.2.0`](https://github.com/cozyGarage/BookiE/releases/
 
 The release also includes an Arch debug package, `bookie.pot` and `SHA256SUMS`. The Debian package keeps the `tablepro` filename because it was built from the release tag. The 0.2.0 Flatpak bundle uses GNOME 50; the current branch manifest uses GNOME 51, so the published bundle does not qualify the current toolkit floor.
 
+GitHub published `linux-v0.2.0` as a non-prerelease on 2026-10-23. The `linux-v0.2.0` tag and already-published assets retain the AppStream entry that shipped with that source (`development`, dated 2026-10-21). The current `linux` branch corrects that entry to `stable`, dated 2026-10-23. This source correction affects future builds from `linux`; it does not move the tag or replace published assets.
+
 The 0.2.0 release did not publish a Fedora package, AUR package, Flathub listing, 32-bit package or ARM package. The published AppImage's `AppRun` sources a GTK hook that defaults to `GDK_BACKEND=wayland,x11`; its exact-asset Wayland behavior remains unverified because the recorded desktop run used a different PR artifact ([manual verification](archive/manual-verification-runs-2026-10-21.md#appimage-run-on-2026-10-21)). Published artifacts prove availability, not installation or desktop acceptance on every distribution; see PKG-1 and PKG-2 below.
 
 The release tag used the GNOME 50 native-library line (GTK 4.22, GLib 2.88, libadwaita 1.9 and GtkSourceView 5.18). [ADR 0021](decisions/0021-toolkit-floor.md) raised the current branch floor after publication. Do not treat the 0.2.0 package as a build of the current `linux` tree.
