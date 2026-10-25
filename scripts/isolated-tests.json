@@ -735,6 +735,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::editor::dispatch_tests::toolbar_operability_tests::narrow_editor_run_and_cancel_buttons_dispatch_inside_their_layout"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::editor::dispatch_tests::dropping_an_editor_releases_its_source_view_and_buffer"
     ],
     [
