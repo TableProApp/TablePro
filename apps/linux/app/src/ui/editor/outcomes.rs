@@ -1070,6 +1070,14 @@ fn build_result_drop_down(stack: &adw::ViewStack, outcomes: &[StatementOutcome])
     drop_down
 }
 
+fn result_tab_icon(kind: &StatementOutcomeKind) -> &'static str {
+    match kind {
+        StatementOutcomeKind::Rows(_) | StatementOutcomeKind::Streamed(_) => "view-grid-symbolic",
+        StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
+        StatementOutcomeKind::NotRun => "media-playback-stop-symbolic",
+    }
+}
+
 pub(crate) fn render_outcomes(
     holder: &gtk::Box,
     outcomes: &[StatementOutcome],
@@ -1097,11 +1105,7 @@ pub(crate) fn render_outcomes(
     let stack = adw::ViewStack::new();
     for (idx, o) in outcomes.iter().enumerate() {
         let widget = build_outcome_widget(o, grid_sender, connection_id, database.clone(), settings_store.clone());
-        let icon = match &o.kind {
-            StatementOutcomeKind::Rows(_) | StatementOutcomeKind::Streamed(_) => "view-grid-symbolic",
-            StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
-            StatementOutcomeKind::NotRun => "emblem-synchronizing-symbolic",
-        };
+        let icon = result_tab_icon(&o.kind);
         let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(o), icon);
         if !o.sql_preview.is_empty() {
             widget.set_tooltip_text(Some(&o.sql_preview));
@@ -1147,6 +1151,10 @@ mod lexing_tests;
 #[cfg(test)]
 #[path = "outcomes/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "outcomes/result_tab_icon_tests.rs"]
+mod result_tab_icon_tests;
 
 #[cfg(test)]
 #[path = "outcomes/lifetime_tests.rs"]
