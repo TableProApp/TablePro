@@ -31,27 +31,33 @@ impl App {
         match first {
             LaunchArgument::Uri(uri) => self.present_connection_url_dialog(sender, Some(&uri)),
             LaunchArgument::Path(path) => match classify_file(&path) {
-                Ok(file) => self.open_database_file(file.driver_id, file.path, sender),
+                Ok(file) => self.open_database_file(file, sender),
                 Err(OpenRejection::Missing(path)) => self
                     .show_toast(&crate::tr!("{path} does not exist.").replace("{path}", &path.display().to_string())),
                 Err(OpenRejection::NotADatabase(path)) => self.show_toast(
                     &crate::tr!("{path} is not a SQLite or DuckDB database file.")
                         .replace("{path}", &path.display().to_string()),
                 ),
+                Err(OpenRejection::NonUtf8Path(_)) => self.show_toast(&crate::tr!(
+                    "BookiE cannot open this database because its path contains non-UTF-8 bytes."
+                )),
             },
         }
     }
 
-    fn open_database_file(&self, driver_id: &'static str, path: std::path::PathBuf, sender: ComponentSender<Self>) {
-        if self.registry.get(driver_id).is_none() {
-            self.show_toast(&crate::tr!("This BookiE build has no {driver} driver.").replace("{driver}", driver_id));
+    fn open_database_file(&self, file: crate::services::open_request::DatabaseFile, sender: ComponentSender<Self>) {
+        if self.registry.get(file.driver_id()).is_none() {
+            self.show_toast(
+                &crate::tr!("This BookiE build has no {driver} driver.").replace("{driver}", file.driver_id()),
+            );
             return;
         }
         let reply = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
-                    let database = path.display().to_string();
+                    let database = file.database_path().to_owned();
+                    let driver_id = file.driver_id();
                     let existing = tablepro_storage::load_connections().await.unwrap_or_default();
                     let saved = match existing
                         .into_iter()
@@ -59,7 +65,7 @@ impl App {
                     {
                         Some(saved) => saved,
                         None => {
-                            let saved = file_connection(driver_id, &path);
+                            let saved = file_connection(&file);
                             if let Err(error) = crate::services::connection_save_turn::run(
                                 tablepro_storage::save_connections(std::slice::from_ref(&saved)),
                             )
