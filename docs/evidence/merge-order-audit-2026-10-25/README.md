@@ -21,15 +21,16 @@ The scan returned 163 PRs with at least one changed path outside the docs-only e
 
 The Git history has two edits to these workflow files in the scan window: [`5edcf3c3d`](https://github.com/cozyGarage/BookiE/commit/5edcf3c3d62af404fee825b24ba126fde48c7c72) raises the GTK/Flatpak toolkit floor and [`669635a06`](https://github.com/cozyGarage/BookiE/commit/669635a062adcbd33532ae86e6647f4ad932b236) hardens checkout credentials. Neither changes the `push` or `pull_request` path filters. Thus all 115 candidates match the recorded non-doc path filter for these workflows. This still does not establish whether a context was mandatory under the GitHub ruleset at each historical merge.
 
-The 115 entries are verified GitHub check-order findings for these observed contexts and exact PR heads, not 115 product defects. The scan did not establish historical required-check configuration, automation or maintainer intent, nor Forgejo outcomes. The 27 docs-only PRs were excluded from these four code-gate contexts; this does not audit the separate lightweight documentation checks.
+The 115 entries are verified GitHub check-order findings for these observed contexts and exact PR heads, not 115 product defects. The API timestamps below show that the current ruleset predates the observed merges, but do not prove whether classic branch protection was temporarily configured and removed. The scan does not identify who or what initiated each merge, nor establish Forgejo outcomes. The 27 docs-only PRs were excluded from these four code-gate contexts; this does not audit the separate lightweight documentation checks.
 
 Four cases have separate exact-head evidence in the issue comments: [#1338, #1340, #1443 and #1607](https://github.com/cozyGarage/BookiE/issues/1543#issuecomment-6394448599). For those cases, GitHub check timing shows merges occurred before all observed GitHub checks completed. The available evidence does not prove whether the corresponding Forgejo gates passed.
+
+The GitHub API reports that the sole current repository ruleset, `protect linux` (ID `25505952`), was created at `2026-10-20T22:54:19.717+02:00` and last updated at `2026-10-20T22:54:19.745+02:00`. It has only `deletion` and `non_fast_forward` rules, no bypass actors, and applies to `refs/heads/linux`. Its recorded creation and update predate every merge in the scan window. The classic branch-protection endpoint currently returns 404. This is strong evidence that the current ruleset did not block the observed merges; it does not establish whether classic protection was temporarily configured and removed, because no historical settings audit was available.
 
 ## Next work
 
 1. Recover Forgejo run IDs and results for the historical cases where records still exist.
-2. Confirm whether required-check rules changed during the reviewed period. The current October 25 ruleset has no required-status-check or deployment rule.
-3. Choose and implement a merge control that requires applicable GitHub checks and trustworthy Forgejo acceptance before merging. No repository settings were changed during this audit.
-4. Close #1543 after the Forgejo review and chosen control's behavior are evidenced.
+2. Choose and implement a merge control that requires applicable GitHub checks and trustworthy Forgejo acceptance before merging. No repository settings were changed during this audit.
+3. Close #1543 after the Forgejo review and chosen control's behavior are evidenced.
 
 The JSON is a dated API snapshot, not a live issue list. Recheck current repository rules, workflows, PR records and issue state before acting on it.
