@@ -1061,7 +1061,14 @@ def run_scenario(binary, scenario):
                     check=False,
                 )
         if process is not None:
-            stderr += stop_application(process)
+            try:
+                stderr += stop_application(process)
+            except AssertionError as error:
+                stderr += str(error)
+                if failure is None:
+                    failure = error
+        if failure is None and "does not have a minimum size" in stderr:
+            failure = AssertionError(f"a window with breakpoints has no minimum size:\n{stderr}")
         if artifact_dir is not None:
             (artifact_dir / f"{scenario.__name__}-stderr.txt").write_text(stderr, encoding="utf-8")
             (artifact_dir / f"{scenario.__name__}-result.json").write_text(json.dumps({
@@ -1071,8 +1078,6 @@ def run_scenario(binary, scenario):
         shutil.rmtree(base, ignore_errors=True)
     if failure is not None:
         raise AssertionError(f"{failure}\napplication stderr:\n{stderr}") from failure
-    if "does not have a minimum size" in stderr:
-        raise AssertionError(f"a window with breakpoints has no minimum size:\n{stderr}")
 
 
 def dismissed_approval_denies(database, _base):
