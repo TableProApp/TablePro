@@ -706,7 +706,10 @@ fn transaction_buttons_close_only_the_idle_owned_session() {
     spin_until(|| fixture.controller.model().session.is_none());
     spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 1);
     assert_eq!(fixture.sessions.commits.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.controller.model().status.label().as_str(), crate::tr!("Session committed"));
+    assert_eq!(
+        fixture.controller.model().status.label().as_str(),
+        crate::tr!("Session committed")
+    );
     let replacement = fixture.open_transaction();
     assert_ne!(replacement, id);
     fixture
@@ -729,7 +732,10 @@ fn transaction_buttons_close_only_the_idle_owned_session() {
     spin_until(|| fixture.controller.model().session.is_none());
     spin_until(|| fixture.sessions.closes.load(Ordering::SeqCst) == 2);
     assert_eq!(fixture.sessions.rollbacks.load(Ordering::SeqCst), 1);
-    assert_eq!(fixture.controller.model().status.label().as_str(), crate::tr!("Session rolled back"));
+    assert_eq!(
+        fixture.controller.model().status.label().as_str(),
+        crate::tr!("Session rolled back")
+    );
 }
 
 #[test]
