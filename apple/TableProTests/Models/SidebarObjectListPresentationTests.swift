@@ -13,15 +13,27 @@ struct SidebarObjectListPresentationTests {
         hasActiveFilter: Bool = false,
         hasAnyMatch: Bool = true,
         hasOutlastedGrace: Bool = true,
-        needsDatabaseSelection: Bool = false
+        needsDatabaseSelection: Bool = false,
+        awaitsSearchListing: Bool = false
     ) -> SidebarObjectListPresentation {
         SidebarObjectListPresentation.resolve(
             state: state,
             hasActiveFilter: hasActiveFilter,
             hasAnyMatch: hasAnyMatch,
             hasOutlastedGrace: hasOutlastedGrace,
-            needsDatabaseSelection: needsDatabaseSelection
+            needsDatabaseSelection: needsDatabaseSelection,
+            awaitsSearchListing: awaitsSearchListing
         )
+    }
+
+    @Test("A search with no match yet waits for the other schemas' listing instead of reporting a miss")
+    func searchAwaitingTheListingIsNotAMiss() {
+        #expect(resolve(.loaded([table("users")]), hasActiveFilter: true, hasAnyMatch: false, awaitsSearchListing: true) == .loading)
+        #expect(resolve(
+            .loaded([table("users")]), hasActiveFilter: true, hasAnyMatch: false, hasOutlastedGrace: false, awaitsSearchListing: true
+        ) == .preparing)
+        #expect(resolve(.loaded([table("users")]), hasActiveFilter: true, hasAnyMatch: false) == .noMatch)
+        #expect(resolve(.loaded([table("users")]), hasActiveFilter: true, hasAnyMatch: true, awaitsSearchListing: true) == .list)
     }
 
     // MARK: - No database selected

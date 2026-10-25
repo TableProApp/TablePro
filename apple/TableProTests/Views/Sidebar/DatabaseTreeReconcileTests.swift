@@ -162,6 +162,56 @@ struct DatabaseTreeReconcileTests {
         await tearDown(fixture)
     }
 
+    @Test("An all-schema listing starting to load changes nothing the outline draws, and its rows landing do")
+    func listingStartingToLoadIsNoChange() async throws {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.allSchemaTablesToReturn = [TestFixtures.makeTableInfo(name: "timesheet", schema: "attendance")]
+        driver.pausesNextAllSchemaTablesFetch = true
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let service = DatabaseTreeMetadataService.shared
+        func inputs() -> DatabaseTreeRenderInputs {
+            DatabaseTreeRenderInputs(
+                connectionId: connection.id,
+                treeMetadata: service,
+                schemaService: .shared,
+                temporaryTables: .shared,
+                sidebarState: nil
+            )
+        }
+        let unread = inputs()
+
+        let load = Task { await service.loadAllSchemaTables(connectionId: connection.id, database: "shop") }
+        try await waitUntil {
+            if case .loading = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop") { return true }
+            return false
+        }
+        #expect(inputs() == unread)
+
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 }
+        driver.resumeAllSchemaTablesFetch()
+        await load.value
+        #expect(service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil)
+        #expect(inputs() != unread)
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("A listing reads alike idle and loading, and apart once it loads or fails")
+    func listingOutcomes() {
+        typealias Listing = DatabaseTreeRenderInputs.Listing
+        let rows = CatalogTableListing.Result(tables: [TestFixtures.makeTableInfo(name: "timesheet", schema: "attendance")], unlistedSchemas: [])
+
+        #expect(Listing(.idle, covered: nil) == Listing(.loading, covered: nil))
+        #expect(Listing(.loading, covered: nil).isUnread)
+        #expect(Listing(.loading, covered: nil) != Listing(.loaded(rows), covered: .all))
+        #expect(Listing(.loading, covered: nil) != Listing(.failed("timed out"), covered: nil))
+        #expect(Listing(.loaded(rows), covered: .all) != Listing(.failed("timed out"), covered: nil))
+        #expect(!Listing(.failed("timed out"), covered: nil).isUnread)
+    }
+
     @Test("A reload over the same rows hands back the same row nodes")
     func unchangedRowsKeepTheirNodes() async throws {
         let fixture = try await makeFixture()

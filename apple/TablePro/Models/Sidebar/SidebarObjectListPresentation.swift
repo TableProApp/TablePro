@@ -49,7 +49,8 @@ internal enum SidebarObjectListPresentation: Equatable {
         hasActiveFilter: Bool,
         hasAnyMatch: Bool,
         hasOutlastedGrace: Bool = true,
-        needsDatabaseSelection: Bool = false
+        needsDatabaseSelection: Bool = false,
+        awaitsSearchListing: Bool = false
     ) -> SidebarObjectListPresentation {
         switch state {
         case .idle, .loading:
@@ -61,6 +62,8 @@ internal enum SidebarObjectListPresentation: Equatable {
                 return .noDatabaseSelected
             }
             if hasActiveFilter, !hasAnyMatch {
+                // The other schemas' tables are still on their way, so no match yet is not a miss.
+                guard !awaitsSearchListing else { return hasOutlastedGrace ? .loading : .preparing }
                 return .noMatch
             }
             return .list

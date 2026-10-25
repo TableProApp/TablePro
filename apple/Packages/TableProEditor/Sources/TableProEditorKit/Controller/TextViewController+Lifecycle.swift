@@ -244,7 +244,8 @@ extension TextViewController {
 
         if let findViewController, findViewController.viewModel.isShowingFindPanel,
            textViewHasFocus || findPanelHasFocus,
-           findViewController.findPanel.handleKeyDown(event) == nil {
+           let findPanel = findViewController.findPanel,
+           findPanel.handleKeyDown(event) == nil {
             return nil
         }
 

@@ -90,11 +90,61 @@ struct OracleSchemaQueriesTests {
         #expect(interval?.partitionCount == nil)
     }
 
-    @Test func testTableListingReadsPartitioningFromAllPartTables() {
-        let sql = OracleSchemaQueries.tables(schema: "HR")
-        #expect(sql.contains("LEFT JOIN SYS.ALL_PART_TABLES pt"))
-        #expect(sql.contains("CASE WHEN pt.table_name IS NULL THEN 'N' ELSE 'Y' END"))
-        #expect(sql.contains("CASE WHEN pt.interval IS NULL THEN pt.partition_count END"))
+    @Test func testTableListingsReadPartitioningFromAllTablesWithoutJoiningAllPartTables() {
+        let listings = [OracleSchemaQueries.tables(schema: "HR")] + OracleSchemaQueries.tables(inSchemas: ["HR", "SALES"])
+        for sql in listings {
+            #expect(!sql.contains("ALL_PART_TABLES"))
+            #expect(sql.contains("CASE WHEN t.partitioned = 'YES' THEN 'Y' ELSE 'N' END AS is_partitioned"))
+            #expect(sql.contains("NULL AS partition_count"))
+        }
+    }
+
+    @Test func testPartitionCountsNameEveryOwnerAndOmitAnIntervalCount() throws {
+        let statements = OracleSchemaQueries.partitionCounts(owners: ["HR", "O'BRIEN"])
+        let sql = try #require(statements.first)
+        #expect(statements.count == 1)
+        #expect(sql.contains("FROM SYS.ALL_PART_TABLES"))
+        #expect(sql.contains("WHERE owner IN ('HR', 'O''BRIEN')"))
+        #expect(sql.contains("CASE WHEN interval IS NULL THEN partition_count END"))
+        #expect(OracleSchemaQueries.partitionCounts(owners: []).isEmpty)
+        #expect(OracleSchemaQueries.partitionCounts(owners: (0..<1_001).map { "U\($0)" }).count == 2)
+    }
+
+    @Test func testOnlyOwnersWithAPartitionedTableAreAskedForCounts() {
+        let rows = [
+            OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, schema: "SALES"),
+            OracleTableRow(name: "EVENTS", isView: false, isPartitioned: true, schema: "SALES"),
+            OracleTableRow(name: "EMPLOYEES", isView: false, schema: "HR"),
+            OracleTableRow(name: "AUDIT", isView: false, isPartitioned: true)
+        ]
+        #expect(OracleSchemaQueries.ownersWithPartitionedTables(in: rows, defaultOwner: "APP") == ["APP", "SALES"])
+        #expect(OracleSchemaQueries.ownersWithPartitionedTables(in: rows, defaultOwner: nil) == ["SALES"])
+        #expect(OracleSchemaQueries.ownersWithPartitionedTables(in: [rows[2]], defaultOwner: "HR").isEmpty)
+    }
+
+    @Test func testPartitionCountsLandOnTheirOwnersTables() {
+        let rows = [
+            OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, schema: "SALES"),
+            OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, schema: "ARCHIVE"),
+            OracleTableRow(name: "EVENTS", isView: false, isPartitioned: true, schema: "SALES"),
+            OracleTableRow(name: "EMPLOYEES", isView: false, schema: "SALES")
+        ]
+        let counts: [[OracleRawCell]] = [
+            [.string("SALES"), .string("ORDERS"), .string("12")],
+            [.string("ARCHIVE"), .string("ORDERS"), .string("4")],
+            [.string("SALES"), .string("EVENTS"), .null],
+            [.string("SALES"), .string("EMPLOYEES"), .string("3")]
+        ]
+        let merged = OracleSchemaQueries.applyingPartitionCounts(counts, to: rows, defaultOwner: nil)
+        #expect(merged.map(\.partitionCount) == [12, 4, nil, nil])
+        #expect(merged[2].isPartitioned)
+    }
+
+    @Test func testOneSchemaListingTakesItsCountsUnderTheDefaultOwner() {
+        let rows = [OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true)]
+        let counts: [[OracleRawCell]] = [[.string("HR"), .string("ORDERS"), .string("8")]]
+        let merged = OracleSchemaQueries.applyingPartitionCounts(counts, to: rows, defaultOwner: "HR")
+        #expect(merged == [OracleTableRow(name: "ORDERS", isView: false, isPartitioned: true, partitionCount: 8)])
     }
 
     /// `HIGH_VALUE` is a LONG column OracleNIO cannot decode, so it must never be selected.

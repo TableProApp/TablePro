@@ -130,6 +130,34 @@ struct QuickSwitcherListingDemandTests {
         await disconnect(connection)
     }
 
+    @Test("A listing another reader started counts as loading, so a search waits for it instead of reporting a miss")
+    func listingAnotherReaderStartedCountsAsLoading() async throws {
+        let (connection, driver) = connect()
+        let switcher = makeSwitcher(connection)
+        await switcher.loadItems(databaseType: .pglite, browseSchema: "public")
+        await switcher.flushPendingFilter()
+
+        driver.pausesNextAllSchemaTablesFetch = true
+        var sidebarDemand = AllSchemaTablesDemand()
+        sidebarDemand.requestIfNeeded(
+            connectionId: connection.id,
+            database: "shop",
+            selection: SidebarSchemaFilter().selection(connectionId: connection.id, database: "shop"),
+            isConnected: true,
+            service: .shared
+        )
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 }
+        switcher.searchText = "time"
+
+        try await waitUntil { switcher.isLoadingTables }
+        driver.resumeAllSchemaTablesFetch()
+        try await waitUntil { !switcher.isLoadingTables }
+        await switcher.flushPendingFilter()
+        #expect(switcher.flatItems.contains { $0.name == "timesheet" })
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        await disconnect(connection)
+    }
+
     @Test("The Tables scope lists every schema's tables, so it reads them on open")
     func tablesScopeReadsOnOpen() async throws {
         let (connection, driver) = connect()

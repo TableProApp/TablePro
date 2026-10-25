@@ -342,8 +342,20 @@ struct SidebarView: View {
             hasActiveFilter: !viewModel.filterQuery.isEmpty,
             hasAnyMatch: hasAnyMatch,
             hasOutlastedGrace: showsSchemaProgress,
-            needsDatabaseSelection: needsDatabaseSelection
+            needsDatabaseSelection: needsDatabaseSelection,
+            awaitsSearchListing: awaitsSearchListing
         )
+    }
+
+    private var awaitsSearchListing: Bool {
+        guard rootShape == .flat, !viewModel.filterQuery.isEmpty, let database = activeDatabase,
+              DatabaseTreeMetadataService.listsTablesPerSchema(groupingStrategy) else { return false }
+        switch treeMetadata.allSchemaTablesLoadState(connectionId: connectionId, database: database) {
+        case .loading: return true
+        // A search asks for it at once, but never while disconnected.
+        case .idle: return databaseManager.session(for: connectionId)?.reportedStatus.isConnected == true
+        case .loaded, .failed: return false
+        }
     }
 
     private var needsDatabaseSelection: Bool {

@@ -3,6 +3,7 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
@@ -106,6 +107,38 @@ struct SidebarSchemaFilterTests {
         await disconnect(connection)
     }
 
+    @Test("A failed listing is asked for once per search, not again on every refinement")
+    func failedListingIsAskedForOncePerSearch() async throws {
+        let (connection, driver) = connect { driver in
+            driver.allSchemaTablesError = DatabaseError.queryFailed("listing timed out")
+        }
+        let viewModel = SidebarViewModel(
+            selectedTables: .constant([]),
+            pendingTruncates: .constant([]),
+            pendingDeletes: .constant([]),
+            tableOperationOptions: .constant([:]),
+            databaseType: .pglite,
+            connectionId: connection.id
+        )
+
+        for query in ["t", "ti", "tim"] {
+            viewModel.searchText = query
+            try await waitUntil { viewModel.filterQuery == query }
+            try await waitUntil {
+                if case .failed = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop") { return true }
+                return false
+            }
+        }
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+
+        viewModel.searchText = ""
+        try await waitUntil { viewModel.filterQuery.isEmpty }
+        viewModel.searchText = "o"
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 2 }
+        viewModel.searchText = ""
+        await disconnect(connection)
+    }
+
     @Test("Sidebar search and Open Quickly share one listing for one filter, read schema by schema")
     func sidebarAndOpenQuicklyReadOnce() async throws {
         let (connection, driver) = connect { driver in
@@ -140,6 +173,126 @@ struct SidebarSchemaFilterTests {
         #expect(!driver.fetchSchemaTablesCalls.contains("payroll"))
         #expect(service.allSchemaTablesSelection(connectionId: connection.id, database: "shop") == .only(["attendance", "public"]))
         viewModel.searchText = ""
+        await disconnect(connection)
+    }
+
+    private func makeViewModel(_ connection: DatabaseConnection) -> SidebarViewModel {
+        SidebarViewModel(
+            selectedTables: .constant([]),
+            pendingTruncates: .constant([]),
+            pendingDeletes: .constant([]),
+            tableOperationOptions: .constant([:]),
+            databaseType: .pglite,
+            connectionId: connection.id
+        )
+    }
+
+    // The window's filter field, bound to the connection and holding the keyboard.
+    private func focusFilter(of connection: DatabaseConnection) -> (container: SidebarContainerViewController, window: NSWindow) {
+        let container = SidebarContainerViewController()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 600),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        container.view.frame = NSRect(x: 0, y: 0, width: 280, height: 600)
+        window.contentView?.addSubview(container.view)
+        container.updateSidebarState(SharedSidebarState.forConnection(connection.id))
+        container.focusSearchField()
+        return (container, window)
+    }
+
+    private func release(_ filter: (container: SidebarContainerViewController, window: NSWindow)) {
+        _ = filter.window.makeFirstResponder(nil)
+        filter.container.updateSidebarState(nil)
+        filter.container.view.removeFromSuperview()
+    }
+
+    private func isListingLoading(_ connection: DatabaseConnection) -> Bool {
+        if case .loading = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop") { return true }
+        return false
+    }
+
+    // Sinks deliver through `RunLoop.main.perform` and answer on the main actor; both have run once this returns.
+    private func afterQueuedMainWork() async {
+        await withCheckedContinuation { continuation in
+            RunLoop.main.perform { continuation.resume() }
+        }
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
+    @Test("Focusing the filter reads the listing with nothing typed, and the first keystroke joins that read")
+    func focusReadsTheListingBeforeTheFirstKeystroke() async throws {
+        let (connection, driver) = connect { driver in
+            driver.allSchemaTablesToReturn = [table("users", "public"), table("timesheet", "attendance")]
+            driver.pausesNextAllSchemaTablesFetch = true
+        }
+        let viewModel = makeViewModel(connection)
+
+        let filter = focusFilter(of: connection)
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 1 }
+        #expect(viewModel.filterQuery.isEmpty)
+
+        viewModel.searchText = "time"
+        await afterQueuedMainWork()
+        #expect(isListingLoading(connection))
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+
+        driver.resumeAllSchemaTablesFetch()
+        try await waitUntil { service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil }
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+        #expect(viewModel.schemaListingMatches(database: "shop", searchText: "time")?.matched.contains("attendance") == true)
+        viewModel.searchText = ""
+        release(filter)
+        await disconnect(connection)
+    }
+
+    @Test("A listing that failed at focus is asked for again by the next search, not by the first keystroke")
+    func failedFocusListingIsNotReadAgainByTheFirstKeystroke() async throws {
+        let (connection, driver) = connect { driver in
+            driver.allSchemaTablesError = DatabaseError.queryFailed("listing timed out")
+        }
+        let viewModel = makeViewModel(connection)
+
+        let filter = focusFilter(of: connection)
+        try await waitUntil {
+            if case .failed = service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop") { return true }
+            return false
+        }
+        viewModel.searchText = "t"
+        try await waitUntil { viewModel.filterQuery == "t" }
+        await afterQueuedMainWork()
+        #expect(driver.fetchTablesInAllSchemasCallCount == 1)
+
+        viewModel.searchText = ""
+        try await waitUntil { viewModel.filterQuery.isEmpty }
+        viewModel.searchText = "o"
+        try await waitUntil { driver.fetchTablesInAllSchemasCallCount == 2 }
+        viewModel.searchText = ""
+        release(filter)
+        await disconnect(connection)
+    }
+
+    @Test("Focusing the filter on Favorites reads no listing")
+    func favoritesFocusReadsNoListing() async throws {
+        let (connection, driver) = connect { driver in
+            driver.allSchemaTablesToReturn = [table("users", "public"), table("timesheet", "attendance")]
+        }
+        let viewModel = makeViewModel(connection)
+        SharedSidebarState.forConnection(connection.id).selectedSidebarTab = .favorites
+
+        let filter = focusFilter(of: connection)
+        await afterQueuedMainWork()
+
+        #expect(filter.window.firstResponder is NSText)
+        #expect(service.requestedAllSchemaTablesSelection(connectionId: connection.id, database: "shop") == nil)
+        #expect(driver.fetchTablesInAllSchemasCallCount == 0)
+        #expect(viewModel.filterQuery.isEmpty)
+        release(filter)
         await disconnect(connection)
     }
 }

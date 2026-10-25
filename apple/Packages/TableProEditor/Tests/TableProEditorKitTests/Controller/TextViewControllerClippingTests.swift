@@ -131,13 +131,14 @@ struct TextViewControllerClippingTests {
     @Test("The find panel sliding in from above shows only inside the editor")
     func findPanelSlidesInsideTheEditor() throws {
         let find = try #require(controller.findViewController)
-        find.findPanel.isHidden = false
-        find.findPanelVerticalConstraint.constant = find.resolvedTopPadding - find.viewModel.panelHeight / 2
+        let panel = find.installFindPanel()
+        panel.isHidden = false
+        try #require(find.findPanelVerticalConstraint).constant = find.resolvedTopPadding - find.viewModel.panelHeight / 2
         find.view.layoutSubtreeIfNeeded()
 
-        let panelInWindow = find.findPanel.convert(find.findPanel.bounds, to: nil)
+        let panelInWindow = panel.convert(panel.bounds, to: nil)
         #expect(panelInWindow.maxY > editorInWindow.maxY, "the panel starts its slide above the editor")
-        #expect(contains(editorInWindow, visibleRectInWindow(find.findPanel)))
+        #expect(contains(editorInWindow, visibleRectInWindow(panel)))
     }
 
     /// The band's red, loosely: the cached drawing lands in a color space that shifts the fill.
