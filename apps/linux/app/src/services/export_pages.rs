@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use tablepro_core::export::{ExportError, RowPage};
-use tablepro_core::{ColumnInfo, Connection, FilterSet, OperationControl};
+use tablepro_core::{ColumnInfo, Connection, DriverError, FilterSet, OperationControl};
 use tokio_util::sync::CancellationToken;
 
 use crate::services::browse_query::{BrowseTarget, PageQuery};
@@ -57,7 +57,10 @@ fn page_future(
             }
             PageQuery::Sql(query) => conn.query_params_controlled(&query.sql, &query.params, &control).await,
         }
-        .map_err(|error| ExportError::Source(crate::services::error_text::driver_message(&error)))?;
+        .map_err(|error| match error {
+            DriverError::Cancelled => ExportError::Cancelled,
+            other => ExportError::Source(crate::services::error_text::driver_message(&other)),
+        })?;
         if result.truncated {
             return Err(ExportError::Source("a page of rows exceeded the result limits".into()));
         }
@@ -165,6 +168,17 @@ mod tests {
         let mut next = page_fetcher(connection, plan(), runner(&runtime), CancellationToken::new());
         assert_eq!(next().unwrap().unwrap().len() as u64, EXPORT_PAGE_ROWS);
         assert!(next().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_cancelled_page_fetch_reports_cancellation_instead_of_source_failure() {
+        let runtime = runtime();
+        let (_directory, connection) = runtime.block_on(table_with(1));
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let mut next = page_fetcher(connection, plan(), runner(&runtime), cancel);
+
+        assert!(matches!(next(), Err(ExportError::Cancelled)));
     }
 
     #[test]
