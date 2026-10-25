@@ -184,6 +184,23 @@ struct SelectionSummaryTrackerTests {
         #expect(state.summary?.numbers?.sum.decimal == 1)
     }
 
+    @Test("A clicked or picked row has no summary: only a range of cells does")
+    func rowSelectionsHaveNoSummary() async throws {
+        let (grid, state) = try await makeGrid()
+        defer { grid.close() }
+        grid.model.setSelection(Self.block(rows: 0...1, columns: 0...0))
+        await grid.tracker.pendingTask?.value
+        #expect(state.summary != nil)
+
+        grid.model.selectCell(GridCoord(row: 1, displayColumn: 0))
+        await grid.tracker.pendingTask?.value
+        #expect(state.summary == nil)
+
+        grid.model.selectRows([.existing(0), .existing(1)])
+        await grid.tracker.pendingTask?.value
+        #expect(state.summary == nil)
+    }
+
     @Test("Narrowing to a single cell takes the summary down")
     func singleCellClears() async throws {
         let (grid, state) = try await makeGrid()

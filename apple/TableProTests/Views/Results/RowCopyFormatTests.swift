@@ -373,6 +373,27 @@ extension GlobalStateSuites {
             #expect(clipboard.text == "('Alice', 'Bob')")
         }
 
+        // MySQL reads a backslash as an escape, so quote doubling alone would let a value close the list.
+        @Test("Copy as IN Clause without an owner's dialect escapes for the grid's engine")
+        func inClauseEscapesForTheEngine() throws {
+            let clipboard = try #require(RecordingClipboard.current)
+            var configuration = CommandGrid.editable()
+            configuration.traits = DataGridEngineTraits(databaseType: .mysql)
+            let grid = CommandGrid(
+                TableRows.from(
+                    queryRows: [[.text(#"x\') OR 1=1 -- "#)]],
+                    columns: ["ref"],
+                    columnTypes: [.text(rawType: "TEXT")]
+                ),
+                configuration: configuration
+            )
+            grid.select(rows: 0...0, columns: 0...0)
+
+            grid.controller.copyRowsAsInClause(nil)
+
+            #expect(clipboard.text == #"('x\\'') OR 1=1 -- ')"#)
+        }
+
         @Test("Copy as IN Clause from a cell's menu inside a range takes the clicked column, through the owner's dialect")
         func inClauseTakesTheClickedColumn() throws {
             let clipboard = try #require(RecordingClipboard.current)

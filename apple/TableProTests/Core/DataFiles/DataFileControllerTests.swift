@@ -225,6 +225,20 @@ struct DataFileControllerTests {
         #expect(column(controller, 1) == ["Paris", "x"])
     }
 
+    // A click selects the whole row; a cleanup command still changes only the cell under the cursor.
+    @Test("A clicked cell is the one a cleanup command changes")
+    func clickedCellIsTheTarget() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        controller.gridModel.selectCell(GridCoord(row: 1, displayColumn: 1))
+        let target = try #require(controller.cellTarget())
+
+        controller.applyCleanup(.setValue("x"), target: target, actionName: "Set Cells to Value")
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["A", "B"])
+        #expect(column(controller, 1) == ["Paris", "x"])
+    }
+
     @Test("Changing the query goes back to the first page")
     func queryChangeResetsPage() async throws {
         let rows = (1...30).map { "row\($0)" }.joined(separator: "\n")

@@ -98,6 +98,7 @@ final class DataGridModel: ObservableObject {
         restoreSelection(in: current)
         displayRevision &+= 1
         mountedView?.apply(.reload)
+        refreshFind()
     }
 
     func apply(_ delta: Delta) {

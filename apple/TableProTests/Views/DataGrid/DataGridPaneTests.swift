@@ -114,7 +114,10 @@ struct DataGridPaneTests {
         let sorting = HostedDataGrid(rows: repeated)
         defer { sorting.close() }
         let keys = sorting.main.tableColumns.compactMap { $0.sortDescriptorPrototype?.key }
-        #expect(keys == ["id", "id#1"])
+        #expect(keys == [
+            DataGridColumnID(name: "id", occurrence: 0).stringValue,
+            DataGridColumnID(name: "id", occurrence: 1).stringValue,
+        ])
 
         var configuration = DataGridConfiguration()
         configuration.supportsColumnSort = false

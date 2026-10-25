@@ -151,12 +151,12 @@ struct DataGridControllerTests {
         try clickHeading(age, in: grid, modifiers: .option)
         #expect(sortedNames(grid) == ["name", "age"])
         #expect(grid.model.store.sortState.columns.map { $0.direction } == [.ascending, .ascending])
-        #expect(grid.main.sortDescriptors.map { $0.key } == ["name", "age"])
+        #expect(grid.main.sortDescriptors.map { $0.key } == ["name", "age"].map { DataGridColumnID(name: $0, occurrence: 0).stringValue })
 
         try clickHeading(age, in: grid)
         #expect(sortedNames(grid) == ["age"])
         #expect(grid.model.store.sortState.source == .user)
-        #expect(grid.main.sortDescriptors.map { $0.key } == ["age"])
+        #expect(grid.main.sortDescriptors.map { $0.key } == [DataGridColumnID(name: "age", occurrence: 0).stringValue])
         #expect(grid.owner.sortChanges.count == 3)
     }
 

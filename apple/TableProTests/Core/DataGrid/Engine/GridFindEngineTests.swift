@@ -524,6 +524,22 @@ struct DataGridModelFindTests {
         #expect(offered.find.isVisible == false)
     }
 
+    @Test("New rows under an open bar are searched again")
+    func reloadSearchesTheNewRows() {
+        let (model, owner) = mount()
+        search(model, "acme")
+        #expect(model.find.matches.count == 4)
+
+        owner.tableRows = TableRows.from(
+            queryRows: [["9", "Acme", "Oslo"]],
+            columns: ["id", "company", "city"],
+            columnTypes: [.integer(rawType: "INT"), .text(rawType: "TEXT"), .text(rawType: "TEXT")]
+        )
+        model.reloadRows()
+
+        #expect(model.find.matches.count == 1)
+    }
+
     @Test("The counter names the page whenever the owner holds more rows, Search All Rows offered or not")
     func pageScopeFollowsTheOwnersRows() {
         let (model, owner) = mount()

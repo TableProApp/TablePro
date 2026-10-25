@@ -357,10 +357,10 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
 
     // MARK: - Selection summary
 
-    // Nil while fewer than two cells are selected, which is when the grid reports no summary.
+    // Only a range of two or more cells has a summary; a clicked or picked row spans its cells without choosing them.
     private func selectionSummaryInput() -> SelectionSummaryInput? {
         let selection = model.selection
-        guard selection.hasMultipleCells else { return nil }
+        guard selection.mode == .cells, selection.hasMultipleCells else { return nil }
         let rows = model.rows
         let changeState = model.changeState
         let policy = model.dataSource?.gridSummaryColumnPolicy() ?? .derived(

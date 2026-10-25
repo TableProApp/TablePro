@@ -204,11 +204,14 @@ extension DataGridCommands {
         let tableRows = model.rows
         let values = ids.compactMap { tableRows.row(withID: $0)?[column.dataIndex] }
         guard !values.isEmpty else { return }
+        // Without an owner's driver the engine's dialect escapes: MySQL and ClickHouse read a backslash as one.
         let text = model.actions?.gridSQLExporter?.inClause(values: values, column: column)
             ?? InClauseConverter(
                 columnIndex: 0,
                 columnTypes: [column.type ?? .text(rawType: nil)],
-                escapeStringLiteral: nil,
+                escapeStringLiteral: configuration.traits.databaseType
+                    .flatMap { try? resolveSQLDialect(for: $0) }
+                    .map { escapeStringLiteralFromDialect($0) },
                 stringLiteralPrefix: configuration.traits.stringLiteralPrefix
             ).generateInClause(rows: values.map { [$0] })
         guard !text.isEmpty else { return }

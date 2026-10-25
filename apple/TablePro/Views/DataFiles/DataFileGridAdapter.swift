@@ -86,9 +86,18 @@ extension DataFileGridAdapter: DataGridActions {
         controller.pasteRows(DataFilePasteParser.rows(from: raw))
     }
 
-    // A picked column covers every visible row of the file, not only the loaded page.
+    // The cells the command names, except that picked columns cover every visible row of the file, not only the page.
     func gridSetCellsToValue(_ cells: [(rowID: RowID, column: DataGridColumn)]) -> Bool {
-        guard let owner, let target = controller?.cellTarget() else { return false }
+        guard let owner, let controller else { return false }
+        let named = cells.compactMap { cell -> (column: TabularColumnID, key: Int)? in
+            guard case .existing(let key) = cell.rowID, let column = columnID(for: cell.column) else { return nil }
+            return (column: column, key: key)
+        }
+        let picked = controller.selectedColumnIDs()
+        let coversPickedColumns = !picked.isEmpty && Set(named.map(\.column)) == Set(picked)
+        guard let target = coversPickedColumns ? controller.cellTarget() : controller.cellTarget(cells: named) else {
+            return false
+        }
         owner.presentSetCellsToValue(target)
         return true
     }

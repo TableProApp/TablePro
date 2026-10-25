@@ -23,12 +23,12 @@ struct DataGridColumnSetTests {
         DataGridColumnID(name: name, occurrence: occurrence)
     }
 
-    @Test("A repeated name counts its occurrences, and only a repeat spells the count")
+    @Test("A repeated name counts its occurrences, and each column keeps a key of its own")
     func repeatedNamesCountOccurrences() {
-        let ids = DataGridColumnSet.columnIDs(for: ["id", "name", "id", "id"])
+        let ids = DataGridColumnSet.columnIDs(for: ["id", "name", "id", "id#1"])
 
-        #expect(ids == [id("id"), id("name"), id("id", 1), id("id", 2)])
-        #expect(ids.map { $0.stringValue } == ["id", "name", "id#1", "id#2"])
+        #expect(ids == [id("id"), id("name"), id("id", 1), id("id#1")])
+        #expect(Set(ids.map { $0.stringValue }).count == 4)
     }
 
     @Test("Columns come in data order with their type and comment")

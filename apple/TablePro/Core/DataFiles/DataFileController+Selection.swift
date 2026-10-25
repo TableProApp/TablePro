@@ -52,7 +52,8 @@ extension DataFileController {
             return .wholeColumns(columns, keys: visibleKeys())
         }
         let selection = gridSelection
-        guard !selection.isEmpty else { return focusedCellTarget() }
+        // A click or picked rows span every column; the commands act on the cursor's column of each row.
+        guard !selection.isEmpty, !selection.isRows else { return focusedCellTarget() }
         var cells: [(column: TabularColumnID, key: Int)] = []
         for row in selection.affectedRows {
             guard let key = key(forPageRow: row) else { continue }
@@ -64,7 +65,7 @@ extension DataFileController {
         return cellTarget(cells: cells)
     }
 
-    private func cellTarget(cells: [(column: TabularColumnID, key: Int)]) -> DataFileCellTarget? {
+    func cellTarget(cells: [(column: TabularColumnID, key: Int)]) -> DataFileCellTarget? {
         var order: [TabularColumnID] = []
         var keysByColumn: [TabularColumnID: [Int]] = [:]
         var seen: [TabularColumnID: Set<Int>] = [:]

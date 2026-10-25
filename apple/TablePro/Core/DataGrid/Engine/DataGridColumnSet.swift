@@ -5,8 +5,9 @@ struct DataGridColumnID: Hashable, Sendable {
     let name: String
     let occurrence: Int
 
+    // The occurrence leads, so a column named "a#1" never takes the second "a" column's key.
     var stringValue: String {
-        occurrence == 0 ? name : "\(name)#\(occurrence)"
+        "\(occurrence)#\(name)"
     }
 }
 

@@ -113,13 +113,15 @@ final class DataTabSQLExporter: DataGridSQLExporting {
         }
     }
 
+    // Any result, a join included, needs its engine's escaping: MySQL reads a backslash as one.
     func inClause(values: [PluginCellValue], column: DataGridColumn) -> String? {
-        guard !values.isEmpty else { return nil }
-        let databaseType = coordinator?.connection.type
+        guard !values.isEmpty, let coordinator else { return nil }
+        let databaseType = coordinator.connection.type
+        let driver = coordinator.services.databaseManager.driver(for: coordinator.connectionId)
         let converter = InClauseConverter(
             columnIndex: 0,
             columnTypes: [column.type ?? .text(rawType: nil)],
-            escapeStringLiteral: target?.driver?.escapeStringLiteral,
+            escapeStringLiteral: driver?.escapeStringLiteral,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
         )
         return converter.generateInClause(rows: values.map { [$0] })
