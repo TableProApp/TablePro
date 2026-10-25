@@ -47,13 +47,39 @@ fn editable_grid_menu_offers_row_mutations_when_the_table_has_a_key() {
 fn copying_a_previewed_cell_copies_the_full_value() {
     gtk::init().unwrap();
     let full = "original".repeat(1_200);
-    let row = crate::ui::row_object::RowObject::new(vec![Value::Text(full.clone())]);
+    let columns = vec![ColumnInfo {
+        name: "value".into(),
+        data_type: "TEXT".into(),
+        nullable: true,
+        primary_key: false,
+        is_auto_increment: false,
+        default_value: None,
+        is_generated: false,
+        comment: None,
+        collation: None,
+        enum_type: None,
+        domain_type: None,
+    }];
+    let result = std::sync::Arc::new(QueryResult {
+        columns: columns.clone(),
+        rows: vec![vec![Value::Text(full.clone())]],
+        truncated: false,
+    });
+    let row = crate::ui::row_object::RowObject::from_shared(&result, 0, None).unwrap();
     row.preview_values_from_result();
     let editor = crate::ui::cell_editor::CellEditor::new();
     editor.set_text("preview text");
     IS_NULL_SLOT.set(&editor, false);
 
     assert_eq!(copy_value_text(editor.upcast_ref(), Some(&row), 0), full);
+
+    let rows = gio::ListStore::new::<crate::ui::row_object::RowObject>();
+    rows.append(&row);
+    let view = gtk::ColumnView::new(Some(gtk::MultiSelection::new(Some(rows))));
+    let snapshot = export_snapshot(&view, &columns, false).unwrap();
+
+    assert_eq!(snapshot.rows, vec![vec![Value::Text(full)]]);
+    assert_eq!(snapshot.columns.len(), 1);
 }
 
 #[test]

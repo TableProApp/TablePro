@@ -200,6 +200,11 @@
     [
       "tablepro-app",
       "--lib",
+      "ui::theme::tests::given_gruvbox_when_warning_text_is_styled_then_it_is_distinct_and_readable"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
       "ui::app::workspace_overview::tests::the_tab_overview_hides_duplicate_window_close_controls"
     ],
     [
@@ -731,6 +736,11 @@
       "tablepro-app",
       "--lib",
       "ui::editor::dispatch_tests::editor_actions_fit_narrow_rows_with_running_and_retry_controls"
+    ],
+    [
+      "tablepro-app",
+      "--lib",
+      "ui::editor::dispatch_tests::toolbar_operability_tests::narrow_editor_run_and_cancel_buttons_dispatch_inside_their_layout"
     ],
     [
       "tablepro-app",

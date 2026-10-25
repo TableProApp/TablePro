@@ -803,6 +803,9 @@ fn descendants(root: &gtk::Widget) -> Vec<gtk::Widget> {
 #[path = "panel_tests.rs"]
 mod panel_tests;
 
+#[path = "toolbar_operability_tests.rs"]
+mod toolbar_operability_tests;
+
 #[path = "error_navigation_tests.rs"]
 mod error_navigation_tests;
 

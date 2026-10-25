@@ -16,6 +16,7 @@ struct Surface {
     accent_bg: &'static str,
     accent_fg: &'static str,
     accent_text: &'static str,
+    warning_color: Option<&'static str>,
 }
 
 const LEDGER_DARK: Surface = Surface {
@@ -27,6 +28,7 @@ const LEDGER_DARK: Surface = Surface {
     accent_bg: "#c9a24b",
     accent_fg: "#0e2421",
     accent_text: "#d9b866",
+    warning_color: None,
 };
 
 const LEDGER_LIGHT: Surface = Surface {
@@ -38,6 +40,7 @@ const LEDGER_LIGHT: Surface = Surface {
     accent_bg: "#1f4f48",
     accent_fg: "#fbf7ec",
     accent_text: "#1f4f48",
+    warning_color: None,
 };
 
 const CATPPUCCIN_DARK: Surface = Surface {
@@ -49,6 +52,7 @@ const CATPPUCCIN_DARK: Surface = Surface {
     accent_bg: "#cba6f7",
     accent_fg: "#1e1e2e",
     accent_text: "#cba6f7",
+    warning_color: None,
 };
 
 const CATPPUCCIN_LIGHT: Surface = Surface {
@@ -60,6 +64,7 @@ const CATPPUCCIN_LIGHT: Surface = Surface {
     accent_bg: "#8839ef",
     accent_fg: "#eff1f5",
     accent_text: "#7028d6",
+    warning_color: None,
 };
 
 const TOKYO_DARK: Surface = Surface {
@@ -71,6 +76,7 @@ const TOKYO_DARK: Surface = Surface {
     accent_bg: "#7aa2f7",
     accent_fg: "#16161e",
     accent_text: "#7aa2f7",
+    warning_color: None,
 };
 
 const TOKYO_LIGHT: Surface = Surface {
@@ -82,6 +88,7 @@ const TOKYO_LIGHT: Surface = Surface {
     accent_bg: "#2e5cb8",
     accent_fg: "#ffffff",
     accent_text: "#244a96",
+    warning_color: None,
 };
 
 const GRUVBOX_DARK: Surface = Surface {
@@ -93,6 +100,7 @@ const GRUVBOX_DARK: Surface = Surface {
     accent_bg: "#d79921",
     accent_fg: "#1d2021",
     accent_text: "#fabd2f",
+    warning_color: Some("#fe8019"),
 };
 
 const GRUVBOX_LIGHT: Surface = Surface {
@@ -104,6 +112,7 @@ const GRUVBOX_LIGHT: Surface = Surface {
     accent_bg: "#85570a",
     accent_fg: "#fbf1c7",
     accent_text: "#85570a",
+    warning_color: Some("#a33300"),
 };
 
 fn surface(theme: ThemePref, dark: bool) -> Option<&'static Surface> {
@@ -145,17 +154,23 @@ fn css(surface: &Surface, variables: bool) -> String {
         ("accent_fg_color", surface.accent_fg),
         ("accent_color", surface.accent_text),
     ];
-    let named: String = colors
+    let mut named: String = colors
         .iter()
         .map(|(name, value)| format!("@define-color {name} {value};\n"))
         .collect();
+    if let Some(warning_color) = surface.warning_color {
+        named.push_str(&format!("@define-color warning_color {warning_color};\n"));
+    }
     if !variables {
         return named;
     }
-    let variables: String = colors
+    let mut variables: String = colors
         .iter()
         .map(|(name, value)| format!("  --{}: {value};\n", name.replace('_', "-")))
         .collect();
+    if let Some(warning_color) = surface.warning_color {
+        variables.push_str(&format!("  --warning-color: {warning_color};\n"));
+    }
     format!("{named}:root {{\n{variables}}}\n")
 }
 
@@ -330,6 +345,33 @@ mod tests {
                     let ratio = contrast(fg, bg);
                     assert!(ratio >= floor, "{name}: {fg} on {bg} is {ratio:.2}, needs {floor}");
                 }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn given_gruvbox_when_warning_text_is_styled_then_it_is_distinct_and_readable() {
+        for dark in [true, false] {
+            let s = surface(ThemePref::Gruvbox, dark).unwrap();
+            let sheet = css(s, true);
+            let warning_line = sheet
+                .lines()
+                .find(|line| line.starts_with("@define-color warning_color "))
+                .expect("Gruvbox must define a warning color");
+            let warning = warning_line.split_whitespace().nth(2).unwrap().trim_end_matches(';');
+            let name = format!("Gruvbox dark={dark}");
+            assert_ne!(
+                warning, s.accent_text,
+                "{name}: warning and accent must read differently"
+            );
+            assert_ne!(
+                warning, s.accent_bg,
+                "{name}: warning and selection must read differently"
+            );
+            for background in [s.window_bg, s.chrome_bg] {
+                let ratio = contrast(warning, background);
+                assert!(ratio >= 4.5, "{name}: {warning} on {background} is {ratio:.2}");
             }
         }
     }
