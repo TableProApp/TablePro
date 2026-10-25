@@ -1261,6 +1261,12 @@ GLib.MainLoop().run()
         ui.wait_for_frame_containing(f"{ui.CONNECTION_NAME} — BookiE")
         ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
 
+    def server_activity_dialog_uses_title_case(database, base):
+        ui.open_saved_connection(ui.CONNECTION_NAME)
+        ui.wait_for_frame_containing(f"{ui.CONNECTION_NAME} — BookiE")
+        ui.invoke_accessible_action("win.show-activity")
+        wait_for_adw_dialog("Server Activity")
+
     def ctrl_slash_toggles_a_comment_in_the_editor(database, base):
         editor = ui.set_editor_text("select 1")
         extents = editor.queryComponent().getExtents(pyatspi.WINDOW_COORDS)
@@ -2139,6 +2145,7 @@ GLib.MainLoop().run()
         alt_arrows_jump_between_statements,
         row_inspector_lists_every_column_of_the_selected_row,
         query_history_opens_as_a_docked_panel_and_closes_without_leaving_the_workspace,
+        server_activity_dialog_uses_title_case,
         find_in_loaded_rows_lists_matches_and_selects_one,
         pinned_results_stay_ahead_of_the_next_run,
         local_filter_narrows_a_pinned_result_and_a_second_result_set,
