@@ -1,0 +1,168 @@
+diff --git i/apps/linux/app/tests/support/pinned_tests.rs w/apps/linux/app/tests/support/pinned_tests.rs
+index 32e496f2a..ce8c6dff6 100644
+--- i/apps/linux/app/tests/support/pinned_tests.rs
++++ w/apps/linux/app/tests/support/pinned_tests.rs
+@@ -3,6 +3,62 @@
+ 
+ use tablepro_core::{ColumnInfo, QueryResult, Value};
+ 
++fn profile_large_page(bytes_per_cell: usize, byte: u8) -> Arc<QueryResult> {
++    let columns = (0..60)
++        .map(|index| ColumnInfo {
++            name: format!("payload_{index}"),
++            data_type: "BYTEA".into(),
++            nullable: true,
++            primary_key: false,
++            is_auto_increment: false,
++            default_value: None,
++            is_generated: false,
++            comment: None,
++            collation: None,
++            enum_type: None,
++            domain_type: None,
++        })
++        .collect::<Vec<_>>();
++    let row = (0..60)
++        .map(|_| Value::Bytes(vec![byte; bytes_per_cell]))
++        .collect::<Vec<_>>();
++    assert!(tablepro_core::QueryResultBudget::default().admit(&row));
++    Arc::new(QueryResult {
++        columns,
++        rows: vec![row],
++        truncated: false,
++    })
++}
++
++fn profile_streamed(sql: &str, page: Arc<QueryResult>) -> StatementOutcome {
++    let mut cache = super::super::stream_pages::StreamPageCache::default();
++    cache.append(0, page).expect("append profile page");
++    StatementOutcome {
++        kind: StatementOutcomeKind::Streamed(Box::new(
++            cache.snapshot(super::super::stream_pages::StreamTerminal::Complete, None),
++        )),
++        ..rows(sql)
++    }
++}
++
++fn profile_memory_mib(field: &str) -> usize {
++    profile_memory_kib(field) / 1024
++}
++
++fn profile_memory_kib(field: &str) -> usize {
++    std::fs::read_to_string("/proc/self/status")
++        .expect("process status")
++        .lines()
++        .find_map(|line| {
++            line.strip_prefix(field)?
++                .split_whitespace()
++                .next()?
++                .parse::<usize>()
++                .ok()
++        })
++        .expect("memory sample")
++}
++
+ fn rows(sql: &str) -> StatementOutcome {
+     StatementOutcome {
+         identity: super::super::StatementIdentity::default(),
+@@ -60,6 +116,100 @@ fn nothing_is_pinned_until_asked() {
+     assert!(pins.has_results());
+ }
+ 
++#[test]
++#[ignore = "one-off two-editor and cancelled export-page profile"]
++fn profile_two_editor_and_cancelled_export_page_owners() {
++    use crate::ui::export_dialog::{PageFetcher, PageFetcherFactory};
++    use std::sync::{Mutex, Weak};
++    use tablepro_core::export::{ExportError, RowPage};
++    use tokio_util::sync::CancellationToken;
++
++    let bytes_per_cell = 256 * 1024;
++    let mut editor_pages: Vec<Weak<QueryResult>> = Vec::new();
++    let mut editors = Vec::new();
++    println!("baseline_rss_mib={}", profile_memory_mib("VmRSS:"));
++    println!("baseline_hwm_mib={}", profile_memory_mib("VmHWM:"));
++    println!("baseline_rss_kib={}", profile_memory_kib("VmRSS:"));
++    println!("baseline_hwm_kib={}", profile_memory_kib("VmHWM:"));
++    let page_bytes = profile_large_page(bytes_per_cell, 7).estimated_row_bytes();
++
++    for editor_index in 0..2 {
++        let mut editor = PinnedResults::default();
++        for pin_index in 0..MAX_PINNED {
++            let page = profile_large_page(bytes_per_cell, editor_index + pin_index as u8);
++            editor_pages.push(Arc::downgrade(&page));
++            editor.show(vec![profile_streamed("SELECT pinned", page)]);
++            assert_eq!(editor.pin_last(), pin_index + 1);
++        }
++        let active = profile_large_page(bytes_per_cell, editor_index + 8);
++        editor_pages.push(Arc::downgrade(&active));
++        let shown = editor.show(vec![profile_streamed("SELECT active", active)]);
++        drop(shown);
++        editors.push(editor);
++    }
++
++    let editor_payload_bytes = editor_pages
++        .iter()
++        .filter_map(Weak::upgrade)
++        .map(|page| page.estimated_row_bytes())
++        .sum::<usize>();
++    println!("editor_page_payload_bytes={editor_payload_bytes}");
++    println!("editor_page_count={}", editor_pages.len());
++    println!("two_editors_rss_mib={}", profile_memory_mib("VmRSS:"));
++    println!("two_editors_hwm_mib={}", profile_memory_mib("VmHWM:"));
++    println!("two_editors_rss_kib={}", profile_memory_kib("VmRSS:"));
++    println!("two_editors_hwm_kib={}", profile_memory_kib("VmHWM:"));
++
++    let export_rows: RowPage = Arc::try_unwrap(profile_large_page(bytes_per_cell, 9))
++        .expect("unique export page")
++        .rows;
++    let export_page = Arc::new(export_rows);
++    let export_page_weak = Arc::downgrade(&export_page);
++    let export_state = Arc::new(Mutex::new(Some(export_page.clone())));
++    let factory_state = export_state.clone();
++    let factory: PageFetcherFactory = Arc::new(move |cancel: CancellationToken| {
++        let page_state = factory_state.clone();
++        PageFetcher::new(
++            move || {
++                if cancel.is_cancelled() {
++                    drop(page_state.lock().expect("export state").take());
++                    return Err(ExportError::Cancelled);
++                }
++                let Some(page) = page_state.lock().expect("export state").take() else {
++                    return Ok(None);
++                };
++                Ok(Some((*page).clone()))
++            },
++            || Ok(()),
++        )
++    });
++    let cancel = CancellationToken::new();
++    let mut fetcher = factory(cancel.clone());
++    drop(export_page);
++    drop(export_state);
++    println!("export_page_payload_bytes={page_bytes}");
++    println!("export_in_flight_rss_mib={}", profile_memory_mib("VmRSS:"));
++    println!("export_in_flight_hwm_mib={}", profile_memory_mib("VmHWM:"));
++    println!("export_in_flight_rss_kib={}", profile_memory_kib("VmRSS:"));
++    println!("export_in_flight_hwm_kib={}", profile_memory_kib("VmHWM:"));
++
++    cancel.cancel();
++    assert!(matches!(fetcher.next_page(), Err(ExportError::Cancelled)));
++    fetcher.finish().expect("finish cancelled export");
++    assert!(export_page_weak.upgrade().is_none());
++    println!("after_export_cancel_rss_mib={}", profile_memory_mib("VmRSS:"));
++    println!("after_export_cancel_hwm_mib={}", profile_memory_mib("VmHWM:"));
++    println!("after_export_cancel_rss_kib={}", profile_memory_kib("VmRSS:"));
++    println!("after_export_cancel_hwm_kib={}", profile_memory_kib("VmHWM:"));
++
++    drop(editors);
++    assert!(editor_pages.iter().all(|page| page.upgrade().is_none()));
++    println!("after_editor_close_rss_mib={}", profile_memory_mib("VmRSS:"));
++    println!("after_editor_close_hwm_mib={}", profile_memory_mib("VmHWM:"));
++    println!("after_editor_close_rss_kib={}", profile_memory_kib("VmRSS:"));
++    println!("after_editor_close_hwm_kib={}", profile_memory_kib("VmHWM:"));
++}
++
+ #[test]
+ fn pinned_results_stay_ahead_of_the_next_run() {
+     let mut pins = PinnedResults::default();
