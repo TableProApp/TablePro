@@ -93,6 +93,14 @@ final class DatabaseTreeNSOutlineView: SidebarOutlineView {
     weak var selectionClearing: (any DatabaseTreeSelectionClearing)?
     weak var primaryActionTarget: DatabaseTreeOutlineCoordinator?
 
+    // The first reload runs inside makeNSView, before SwiftUI puts the outline in a window, so a trace
+    // that reload settled can only end on a frame from here.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        primaryActionTarget?.endSettledInteractionTraces()
+    }
+
     override func cancelOperation(_ sender: Any?) {
         super.cancelOperation(sender)
         selectionClearing?.clearSelection()

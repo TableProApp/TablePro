@@ -20,6 +20,11 @@ internal enum QuickSwitcherPanelFocus: Equatable {
 internal final class QuickSwitcherPanel: NSPanel {
     private let focus: QuickSwitcherPanelFocus
 
+    /// The content's keyboard commands, asked before the search field sees a press. The panel holds
+    /// them so they go with it: a local event monitor the content installed was never removed, and
+    /// it kept every closed panel's view model and result list alive.
+    internal var keyCommandHandler: ((NSEvent) -> Bool)?
+
     init<Content: View>(
         hostingController: NSHostingController<Content>,
         surfaceCornerRadius: CGFloat,
@@ -74,6 +79,17 @@ internal final class QuickSwitcherPanel: NSPanel {
         layer.cornerRadius = cornerRadius
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
+    }
+
+    // Command and Control presses reach the window as key equivalents before the menu bar sees them.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if keyCommandHandler?(event) == true { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, keyCommandHandler?(event) == true { return }
+        super.sendEvent(event)
     }
 
     override var canBecomeKey: Bool { focus == .key }
@@ -165,6 +181,7 @@ internal final class QuickSwitcherPanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        panel?.keyCommandHandler = nil
         panel?.contentViewController = nil
         panel = nil
         anchor = nil

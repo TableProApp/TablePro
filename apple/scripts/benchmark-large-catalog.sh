@@ -6,10 +6,11 @@
 # (TABLEPRO_INTERACTION_TRACE=1): sidebar-listing (connect to the full listing), sidebar-filter (one
 # keystroke), sidebar-expand (a schema never read; MySQL: the database), quick-open-panel,
 # quick-open-result (a table in every schema), complete-from and complete-schema (MySQL: the database),
-# plus resident memory.
+# plus the memory footprint.
 #
 # Fixtures come from scripts/probes/build-large-catalog-fixtures.sh. The release build has no Oracle
-# driver, so Oracle needs --oracle-plugin with an OracleDriver.tableplugin signed by the TablePro team.
+# driver, so Oracle needs --oracle-plugin with an OracleDriver.tableplugin built from this tree and signed
+# by the TablePro team; one built before the tree's last Oracle change is refused.
 # Builds Release unless --app names a build, and drives a signed copy through System Events in a
 # TABLEPRO_UI_TEST_SANDBOX, so the terminal needs Accessibility and Automation permission.
 #
@@ -18,8 +19,8 @@
 #       [--parts listing,session,expand] [--runs 10] [--mysql user@host:port] [--postgres user@host:port]
 #       [--oracle host:port] [--oracle-container <name>] [--oracle-plugin <OracleDriver.tableplugin>] [--record] [--keep]
 #
-# Exit: 0 within budget, 1 over budget on the baseline's Mac and configuration, 2 the run stopped
-# or a step has no baseline.
+# Exit: 0 within budget, 1 a stall over 100 ms or over budget on the baseline's Mac and configuration,
+# 2 the run stopped or a step has no baseline.
 
 set -euo pipefail
 

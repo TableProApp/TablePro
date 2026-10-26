@@ -40,8 +40,6 @@ struct ColumnJumpPanelContent: View {
     @ObservedObject var viewModel: ColumnJumpViewModel
     let onCommit: (GridColumnEntry) -> Void
 
-    @State private var keyMonitor: Any?
-
     var body: some View {
         QuickSwitcherGlassGroup {
             VStack(spacing: 0) {
@@ -58,8 +56,11 @@ struct ColumnJumpPanelContent: View {
             .frame(width: QuickSwitcherMetrics.width)
             .quickSwitcherSurface(cornerRadius: QuickSwitcherMetrics.cornerRadius)
         }
-        .onAppear { installKeyMonitor() }
-        .onDisappear { removeKeyMonitor() }
+        .background {
+            WindowAccessor { window in
+                (window as? QuickSwitcherPanel)?.keyCommandHandler = handleKeyCommand
+            }
+        }
     }
 
     // MARK: - State
@@ -263,34 +264,22 @@ struct ColumnJumpPanelContent: View {
 
     // MARK: - Keyboard
 
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.window is QuickSwitcherPanel else { return event }
-            let command = QuickSwitcherKeyCommand.resolve(
-                characters: event.charactersIgnoringModifiers ?? "",
-                modifiers: event.modifierFlags,
-                scopeCount: 0
-            )
-            guard let command else { return event }
+    private func handleKeyCommand(_ event: NSEvent) -> Bool {
+        guard let command = QuickSwitcherKeyCommand.resolve(
+            characters: event.charactersIgnoringModifiers ?? "",
+            modifiers: event.modifierFlags,
+            scopeCount: 0
+        ) else { return false }
 
-            switch command {
-            case let .moveSelection(offset):
-                viewModel.moveSelection(by: offset)
-            case .selectScope:
-                return event
-            case .commit:
-                commitSelection()
-            }
-            return nil
+        switch command {
+        case let .moveSelection(offset):
+            viewModel.moveSelection(by: offset)
+        case .selectScope:
+            return false
+        case .commit:
+            commitSelection()
         }
-    }
-
-    private func removeKeyMonitor() {
-        if let keyMonitor {
-            NSEvent.removeMonitor(keyMonitor)
-        }
-        keyMonitor = nil
+        return true
     }
 
     private func commitSelection() {

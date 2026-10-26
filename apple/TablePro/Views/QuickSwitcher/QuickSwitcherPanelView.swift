@@ -67,8 +67,6 @@ struct QuickSwitcherPanelContent: View {
     @ObservedObject var viewModel: QuickSwitcherViewModel
     let onCommit: (QuickSwitcherItem, QuickSwitcherCommitIntent) -> Void
 
-    @State private var keyMonitor: Any?
-
     var body: some View {
         QuickSwitcherGlassGroup {
             VStack(spacing: 0) {
@@ -90,8 +88,11 @@ struct QuickSwitcherPanelContent: View {
             .frame(width: QuickSwitcherMetrics.width)
             .quickSwitcherSurface(cornerRadius: QuickSwitcherMetrics.cornerRadius)
         }
-        .onAppear { installKeyMonitor() }
-        .onDisappear { removeKeyMonitor() }
+        .background {
+            WindowAccessor { window in
+                (window as? QuickSwitcherPanel)?.keyCommandHandler = handleKeyCommand
+            }
+        }
     }
 
     // MARK: - State
@@ -430,34 +431,22 @@ struct QuickSwitcherPanelContent: View {
 
     // MARK: - Keyboard
 
-    private func installKeyMonitor() {
-        guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.window is QuickSwitcherPanel else { return event }
-            let command = QuickSwitcherKeyCommand.resolve(
-                characters: event.charactersIgnoringModifiers ?? "",
-                modifiers: event.modifierFlags,
-                scopeCount: QuickSwitcherScope.allCases.count
-            )
-            guard let command else { return event }
+    private func handleKeyCommand(_ event: NSEvent) -> Bool {
+        guard let command = QuickSwitcherKeyCommand.resolve(
+            characters: event.charactersIgnoringModifiers ?? "",
+            modifiers: event.modifierFlags,
+            scopeCount: QuickSwitcherScope.allCases.count
+        ) else { return false }
 
-            switch command {
-            case let .moveSelection(offset):
-                viewModel.moveSelection(by: offset)
-            case let .selectScope(index):
-                viewModel.scope = QuickSwitcherScope.allCases[index]
-            case let .commit(intent):
-                commitSelection(intent: intent)
-            }
-            return nil
+        switch command {
+        case let .moveSelection(offset):
+            viewModel.moveSelection(by: offset)
+        case let .selectScope(index):
+            viewModel.scope = QuickSwitcherScope.allCases[index]
+        case let .commit(intent):
+            commitSelection(intent: intent)
         }
-    }
-
-    private func removeKeyMonitor() {
-        if let keyMonitor {
-            NSEvent.removeMonitor(keyMonitor)
-        }
-        keyMonitor = nil
+        return true
     }
 
     private func copyToPasteboard(_ value: String) {

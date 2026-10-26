@@ -299,7 +299,8 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
             treeMetadata: service,
             schemaService: schemaService,
             temporaryTables: temporaryTables,
-            sidebarState: sidebarState
+            sidebarState: sidebarState,
+            rootShape: rootShape
         )
     }
 
@@ -319,8 +320,12 @@ final class DatabaseTreeOutlineCoordinator: NSObject, NSTextFieldDelegate {
         flatFolderPlan = nil
         containerFolderPlans.removeAll()
         invalidateRowConfiguration()
+        // One update for the reload and every disclosure: each expandItem on its own walks the rows and
+        // builds the visible row views again, and a search opens two rows per matching schema.
+        outlineView.beginUpdates()
         outlineView.reloadData()
         applyDesiredExpansion()
+        outlineView.endUpdates()
         syncSelectionToModel()
         isReloading = false
         beginObserving()

@@ -1,5 +1,6 @@
 import AppKit
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 /// The filter field belongs to the window, not to the connection under it. It used to be hidden
@@ -98,6 +99,35 @@ struct SidebarContainerChromeTests {
 
         #expect(host.isFilterEditing)
         #expect(!state.isFilterFieldFocused)
+    }
+
+    @Test("Flipping to Tables while the field edits marks the search, so the first keystroke does not start the listing")
+    func flipToTablesMarksTheEditingField() async throws {
+        let state = SharedSidebarState()
+        state.selectedSidebarTab = .favorites
+        let host = FilterHost(state: state)
+        defer { host.tearDown() }
+        host.controller.focusSearchField()
+        #expect(!state.isFilterFieldFocused)
+
+        state.selectedSidebarTab = .tables
+
+        try await waitUntil { state.isFilterFieldFocused }
+        #expect(host.isFilterEditing)
+    }
+
+    @Test("Flipping to Favorites while the field edits clears the mark Tables set")
+    func flipToFavoritesClearsTheMark() async throws {
+        let state = SharedSidebarState()
+        let host = FilterHost(state: state)
+        defer { host.tearDown() }
+        host.controller.focusSearchField()
+        #expect(state.isFilterFieldFocused)
+
+        state.selectedSidebarTab = .favorites
+
+        try await waitUntil { !state.isFilterFieldFocused }
+        #expect(host.isFilterEditing)
     }
 
     @Test("The focus stays through a rebind to the same connection and leaves with the field for another")
