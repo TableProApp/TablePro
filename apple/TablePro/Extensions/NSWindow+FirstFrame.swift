@@ -19,9 +19,14 @@ internal extension NSWindow {
     /// than never. That covers a launch nobody is looking at, which is exactly the case that must
     /// not stall.
     func afterNextFrame(_ body: @escaping @MainActor () -> Void) {
+        _ = observeNextFrame(body)
+    }
+
+    /// Returns what stops the wait, for a caller that gives up on a frame that may never come.
+    private func observeNextFrame(_ body: @escaping @MainActor () -> Void) -> @MainActor () -> Void {
         guard screen != nil, let view = contentView else {
             body()
-            return
+            return {}
         }
         guard #available(macOS 14.0, *) else {
             /// `NSView.displayLink(target:selector:)` and `CADisplayLink` are both macOS 14.
@@ -32,16 +37,47 @@ internal extension NSWindow {
             CATransaction.setCompletionBlock {
                 DispatchQueue.main.async { MainActor.assumeIsolated(body) }
             }
-            return
+            return {}
         }
-        FirstFrameObserver.observe(view, then: body)
+        let observer = FirstFrameObserver.observe(view, then: body)
+        return { observer.cancel() }
+    }
+
+    /// Returns once the display has shown this window's next frame, or after `limit`: a hidden or
+    /// off-display view drives no display link, so the frame alone could never arrive.
+    func nextFrame(limit: Duration = .milliseconds(100)) async {
+        let gate = FrameGate()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            gate.continuation = continuation
+            gate.stopObserving = observeNextFrame { gate.open() }
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                gate.open()
+            }
+        }
+    }
+}
+
+@MainActor
+private final class FrameGate {
+    var continuation: CheckedContinuation<Void, Never>?
+    var stopObserving: (@MainActor () -> Void)?
+
+    // The limit can win, and a display link left registered would hold its observer for good.
+    func open() {
+        stopObserving?()
+        stopObserving = nil
+        continuation?.resume()
+        continuation = nil
     }
 }
 
 @available(macOS 14.0, *)
 @MainActor
-private final class FirstFrameObserver: NSObject {
+internal final class FirstFrameObserver: NSObject {
     private static var live: Set<FirstFrameObserver> = []
+
+    static var liveCount: Int { live.count }
 
     private let body: @MainActor () -> Void
     private var link: CADisplayLink?
@@ -50,19 +86,25 @@ private final class FirstFrameObserver: NSObject {
         self.body = body
     }
 
-    static func observe(_ view: NSView, then body: @escaping @MainActor () -> Void) {
+    static func observe(_ view: NSView, then body: @escaping @MainActor () -> Void) -> FirstFrameObserver {
         let observer = FirstFrameObserver(body: body)
         let link = view.displayLink(target: observer, selector: #selector(fire))
         observer.link = link
         live.insert(observer)
         link.add(to: .main, forMode: .common)
+        return observer
+    }
+
+    func cancel() {
+        link?.invalidate()
+        link = nil
+        Self.live.remove(self)
     }
 
     @objc
     private func fire() {
-        link?.invalidate()
-        link = nil
-        Self.live.remove(self)
+        guard link != nil else { return }
+        cancel()
         body()
     }
 }
