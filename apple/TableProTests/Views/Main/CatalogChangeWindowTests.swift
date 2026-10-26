@@ -182,7 +182,7 @@ struct CatalogChangeWindowTests {
 
         tabManager.selectedTabId = empty.id
         coordinator.lazyLoadCurrentTabIfNeeded()
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.parkedTableLoad?.trigger == .userInitiated)
     }
 
     @Test("a rows change reloads the selected tab on that table when nothing of the user's is in it")
@@ -247,7 +247,7 @@ struct CatalogChangeWindowTests {
 
         coordinator.applyObjectChange(Self.change(connection, name: "users", database: "shop", schema: nil, kind: .rows))
 
-        #expect(coordinator.pendingLoadTrigger == .userInitiated)
+        #expect(coordinator.parkedTableLoad?.trigger == .userInitiated)
     }
 
     @Test("a structure change marks the structure of a tab on that table, and one holding staged edits owes it")

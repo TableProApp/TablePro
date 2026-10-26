@@ -24,7 +24,6 @@ final class TabSession: ObservableObject, Identifiable {
     let id: UUID
 
     @Published var tableRows: TableRows
-    @Published var isEvicted: Bool
 
     /// Bumped by `TabSessionRegistry` on every mutation of `tableRows`. `TableRows` is a
     /// value type with no `Equatable` conformance, so views that derive expensive content
@@ -48,15 +47,13 @@ final class TabSession: ObservableObject, Identifiable {
     var viewportStage: GridViewportStage?
 
     /// Whether the table changed after these rows, or the definition they were read with, were
-    /// fetched. Unlike eviction the rows stay, so the grid goes on showing them until the reload
-    /// commits over them, and a tab whose last result was empty can be marked too. Not published:
-    /// nothing draws it.
+    /// fetched. The rows stay, so the grid goes on showing them until the reload commits over them,
+    /// and a tab whose last result was empty can be marked too. Not published: nothing draws it.
     var freshness: TableFreshness
 
     init(id: UUID = UUID()) {
         self.id = id
         self.tableRows = TableRows()
-        self.isEvicted = false
         self.freshness = TableFreshness()
         self.dataRevision = 0
         self.bufferEpoch = 0

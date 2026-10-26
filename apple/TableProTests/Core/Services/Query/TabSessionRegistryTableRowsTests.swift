@@ -14,7 +14,6 @@ struct TabSessionRegistryTableRowsTests {
         let first = store.tableRows(for: tabId)
         #expect(first.rows.isEmpty)
         #expect(first.columns.isEmpty)
-        #expect(store.isEvicted(tabId) == false)
 
         let second = store.tableRows(for: tabId)
         #expect(second.rows.count == first.rows.count)
@@ -58,7 +57,7 @@ struct TabSessionRegistryTableRowsTests {
         #expect(resolved?.rows.count == 1)
     }
 
-    @Test("removeTableRows(for:) deletes the entry and clears evicted state")
+    @Test("removeTableRows(for:) deletes the entry")
     func removeTableRowsDeletes() {
         let store = TabSessionRegistry()
         let tabId = UUID()
@@ -67,50 +66,9 @@ struct TabSessionRegistryTableRowsTests {
             TableRows.from(queryRows: [["x"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
             for: tabId
         )
-        store.evict(for: tabId)
-        #expect(store.isEvicted(tabId) == true)
 
         store.removeTableRows(for: tabId)
         #expect(store.existingTableRows(for: tabId) == nil)
-        #expect(store.isEvicted(tabId) == false)
-    }
-
-    @Test("evict(for:) clears rows and marks evicted while preserving columns")
-    func evictMarksEvicted() {
-        let store = TabSessionRegistry()
-        let tabId = UUID()
-        let rows = TableRows.from(
-            queryRows: [["a"], ["b"]],
-            columns: ["c"],
-            columnTypes: [.text(rawType: nil)]
-        )
-        store.setTableRows(rows, for: tabId)
-
-        #expect(store.isEvicted(tabId) == false)
-        store.evict(for: tabId)
-
-        #expect(store.isEvicted(tabId) == true)
-        let evicted = store.existingTableRows(for: tabId)
-        #expect(evicted?.rows.isEmpty == true)
-        #expect(evicted?.columns == ["c"])
-    }
-
-    @Test("setTableRows clears evicted flag")
-    func setClearsEvicted() {
-        let store = TabSessionRegistry()
-        let tabId = UUID()
-        store.setTableRows(
-            TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
-            for: tabId
-        )
-        store.evict(for: tabId)
-        #expect(store.isEvicted(tabId) == true)
-
-        store.setTableRows(
-            TableRows.from(queryRows: [["b"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
-            for: tabId
-        )
-        #expect(store.isEvicted(tabId) == false)
     }
 
     @Test("updateTableRows applies mutation in place")

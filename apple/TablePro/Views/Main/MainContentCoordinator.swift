@@ -335,7 +335,7 @@ final class MainContentCoordinator: ObservableObject {
     @Published var exportFormatId: String?
     // Kept after the sheet closes, so reopening Search Database after opening a result shows the results again.
     var databaseSearchSession: DatabaseSearchSession?
-    @Published var pendingLoadTrigger: TableLoadTrigger?
+    var parkedTableLoad: ParkedTableLoad?
     var deferredRestoreLoadTabId: UUID?
 
     var displayFormatsCache: [UUID: DisplayFormatsCacheEntry] = [:]
@@ -466,9 +466,6 @@ final class MainContentCoordinator: ObservableObject {
     /// Updated by TabWindowController delegate methods; consumed by
     /// event handlers (e.g. sidebar table-selection navigation filter).
     var isKeyWindow = false
-
-    /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
-    var evictionTask: Task<Void, Never>?
 
     var refreshCoalesceTask: Task<Void, Never>?
     var refreshPendingTrailing = false
@@ -711,17 +708,6 @@ final class MainContentCoordinator: ObservableObject {
             MainContentCoordinator.isAppTerminating = true
         }
     }()
-
-    /// Frees the row data of every background tab that can fetch it again, called when this
-    /// coordinator's window stops being key. The selected tab keeps its rows so returning to the
-    /// window costs no refresh, and `canEvictReloadableTableRows` decides the rest: a query tab, a
-    /// tab holding a pinned result, a failed tab and a tab with work in flight all stay resident,
-    /// because none of them would come back on their own.
-    func evictInactiveRowData() {
-        for tab in tabManager.tabs {
-            evictReloadableTableRows(for: tab.id)
-        }
-    }
 
     // MARK: - Initialization
 

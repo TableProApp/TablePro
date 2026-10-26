@@ -11,15 +11,6 @@ import SwiftUI
 import TableProEditorKit
 import TableProPluginKit
 
-/// Identity for the visibility-scoped lazy-load `.task(id:)` modifier on
-/// `MainEditorContentView`. Changes to either field cancel the previous
-/// task and start a new one — exactly the rapid-switch coalescing semantic
-/// we want for Cmd+Number tab navigation.
-private struct TabLoadKey: Hashable {
-    let tabId: UUID?
-    let loadEpoch: Int
-}
-
 /// Picking another database reruns the tab only while it shows rows. An error, a plan or a write's
 /// count is not a view of the data the new database holds, and rerunning it was an unasked run.
 @MainActor
@@ -205,10 +196,7 @@ struct MainEditorContentView: View {
         .onDisappear {
             cachedChangeManager = nil
         }
-        .task(id: TabLoadKey(
-            tabId: tabManager.selectedTabId,
-            loadEpoch: tabManager.selectedTab?.loadEpoch ?? 0
-        )) {
+        .task(id: tabManager.selectedTabId) {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
         .onChange(of: selectionState.indices) { newIndices in
@@ -784,8 +772,7 @@ struct MainEditorContentView: View {
                 FindBarView(
                     coordinator: coordinator,
                     findState: tab.findState,
-                    rowsRevision: tab.loadEpoch
-                        &+ tab.pagination.currentPage
+                    rowsRevision: tab.pagination.currentPage
                         &+ tab.paginationVersion
                         &+ rows.rows.count,
                     onSearchAllRows: { coordinator.findCoordinator.escalateToAllRows() }
