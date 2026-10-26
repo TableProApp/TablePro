@@ -36,4 +36,17 @@ struct NSWindowNextFrameTests {
 
         #expect(elapsed < .seconds(5))
     }
+
+    @Test("A wait that ends at its limit leaves no display link behind")
+    func timedOutWaitReleasesItsObserver() async {
+        guard #available(macOS 14.0, *) else { return }
+        let window = Self.window()
+        window.orderFront(nil)
+        window.orderOut(nil)
+        let before = FirstFrameObserver.liveCount
+
+        await window.nextFrame(limit: .milliseconds(30))
+
+        #expect(FirstFrameObserver.liveCount == before)
+    }
 }
