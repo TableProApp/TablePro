@@ -8,18 +8,21 @@ import TableProMySQLCore
 import TableProPluginKit
 
 extension MySQLPluginDriver {
-    /// Before 5.5.3 there is no `PARAMETERS` table, so a routine's signature is unknown rather than
-    /// empty. Where the table exists, a `NULL` list is a routine that takes nothing.
+    /// The routines and their parameters are two reads; `MySQLRoutineSignatures` says why.
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         guard !flavor.isDatabend, serverHasInformationSchema else { return [] }
         let resolvedSchema = routineSchema(schema)
-        let includesParameters = holdsForServer(MySQLServerVersion.hasParametersCatalog(banner:flavor:))
-        let query = MySQLObjectQueries.routineList(schema: resolvedSchema, includesParameters: includesParameters)
+        let exactSchema = await schemaNamesAreCaseSensitive()
+        let query = MySQLObjectQueries.routineList(schema: resolvedSchema, exactSchema: exactSchema)
         let result = try await execute(ownStatement: query)
+        let signatures = result.rows.isEmpty
+            ? nil
+            : try await routineSignatures(schema: resolvedSchema, exactSchema: exactSchema)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
             guard let name = row[safe: 0]?.asText else { return nil }
-            let isProcedure = row[safe: 1]?.asText?.uppercased() == "PROCEDURE"
-            let signature = includesParameters ? "(\(row[safe: 8]?.asText ?? ""))" : nil
+            let type = row[safe: 1]?.asText ?? ""
+            let isProcedure = type.uppercased() == "PROCEDURE"
+            let owner = row[safe: 7]?.asText ?? resolvedSchema
             var attributes: [PluginObjectAttribute] = []
             if let access = row[safe: 3]?.asText, !access.isEmpty {
                 attributes.append(PluginObjectAttribute(label: "Data Access", value: access))
@@ -36,14 +39,38 @@ extension MySQLPluginDriver {
             return PluginRoutineInfo(
                 name: name,
                 kind: isProcedure ? .procedure : .function,
-                schema: row[safe: 7]?.asText ?? resolvedSchema,
+                schema: owner,
                 returnType: isProcedure ? nil : row[safe: 2]?.asText,
                 language: "SQL",
-                argumentSignature: signature,
+                argumentSignature: signatures?.signature(schema: owner, type: type, routine: name),
                 identity: nil,
                 attributes: attributes
             )
         }
+    }
+
+    /// Nil before 5.5.3, which has no `PARAMETERS` table, so a signature there is unknown rather
+    /// than empty.
+    private func routineSignatures(schema: String, exactSchema: Bool) async throws -> MySQLRoutineSignatures? {
+        guard holdsForServer(MySQLServerVersion.hasParametersCatalog(banner:flavor:)) else { return nil }
+        let query = MySQLObjectQueries.routineParameters(schema: schema, exactSchema: exactSchema)
+        let result = try await execute(ownStatement: query)
+        var signatures = MySQLRoutineSignatures()
+        for row in result.rows {
+            guard let owner = row[safe: 0]?.asText,
+                  let type = row[safe: 1]?.asText,
+                  let routine = row[safe: 2]?.asText
+            else { continue }
+            signatures.append(
+                schema: owner,
+                type: type,
+                routine: routine,
+                mode: row[safe: 3]?.asText,
+                name: row[safe: 4]?.asText,
+                dataType: row[safe: 5]?.asText
+            )
+        }
+        return signatures
     }
 
     func fetchRoutineDDL(_ routine: PluginRoutineInfo) async throws -> String {

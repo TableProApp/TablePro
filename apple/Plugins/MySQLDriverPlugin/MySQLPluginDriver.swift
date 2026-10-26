@@ -54,8 +54,17 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private var sessionLoss = MySQLSessionLoss()
 
-    /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss` and
-    /// `lastActivity`. The driver is `@unchecked Sendable` and the idle timer runs on its own task, so
+    /// Whether this server keeps database names that differ only in letter case apart. It survives a
+    /// reconnect to the same server, and `disconnect()` clears it because the next one may differ.
+    private var _schemaNamesAreCaseSensitive: Bool?
+
+    internal var cachedSchemaNamesAreCaseSensitive: Bool? {
+        get { sessionLock.withLock { _schemaNamesAreCaseSensitive } }
+        set { sessionLock.withLock { _schemaNamesAreCaseSensitive = newValue } }
+    }
+
+    /// Guards `_flavor`, `footprint`, `appliedQueryTimeoutSeconds`, `isReleased`, `sessionLoss`,
+    /// `_schemaNamesAreCaseSensitive` and `lastActivity`. The driver is `@unchecked Sendable` and the idle timer runs on its own task, so
     /// the release decision and a query arriving would otherwise read and write them at the same time.
     /// Nothing calls into the connection while holding it: the connection asks the driver back under
     /// this lock from its deadline queue.
@@ -239,6 +248,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let inFlight = sessionLock.withLock { () -> Task<Void, Error>? in
             _serverVersion = nil
             _flavor = initialFlavor
+            _schemaNamesAreCaseSensitive = nil
             isReleased = false
             isDisconnected = true
             footprint.reset()
@@ -895,12 +905,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard !flavor.isDatabend,
               holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:))
         else { return [] }
-        let result = try await execute(ownStatement: """
-            SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
-            FROM information_schema.EVENTS
-            WHERE EVENT_SCHEMA = '\(effectiveSchemaLiteral(schema))'
-            ORDER BY EVENT_NAME
-            """)
+        let exactSchema = await schemaNamesAreCaseSensitive()
+        let result = try await execute(
+            ownStatement: MySQLObjectQueries.eventList(schema: effectiveSchema(schema), exactSchema: exactSchema)
+        )
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText else { return nil }
             return PluginEventInfo(

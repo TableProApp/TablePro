@@ -18,11 +18,71 @@ struct MySQLObjectQueryTests {
         #expect(sql == "SHOW CREATE FUNCTION `f`")
     }
 
-    @Test("The parameter list excludes a function's return row")
-    func parameterListSkipsOrdinalZero() {
-        let sql = MySQLObjectQueries.routineList(schema: "app")
-        #expect(sql.contains("p.ORDINAL_POSITION > 0"))
-        #expect(sql.contains("information_schema.PARAMETERS"))
+    @Test("The parameter read excludes a function's return row and keeps declaration order")
+    func parameterReadSkipsOrdinalZero() {
+        let sql = MySQLObjectQueries.routineParameters(schema: "app", exactSchema: false)
+        #expect(sql.contains("FROM information_schema.PARAMETERS"))
+        #expect(sql.contains("SPECIFIC_SCHEMA = 'app'"))
+        #expect(sql.contains("ORDINAL_POSITION > 0"))
+        #expect(sql.hasSuffix("ORDER BY SPECIFIC_SCHEMA, ROUTINE_TYPE, SPECIFIC_NAME, ORDINAL_POSITION"))
+    }
+
+    /// MySQL 5.6.51 refills `PARAMETERS` for every row of a correlated subquery: 11.1 s for 300
+    /// routines with 3,000 on the server, where the two reads apart took 0.1 s.
+    @Test("The routine list reads no second catalog")
+    func routineListHasNoParameterSubquery() {
+        let sql = MySQLObjectQueries.routineList(schema: "app", exactSchema: false)
+        #expect(sql.contains("FROM information_schema.ROUTINES"))
+        #expect(!sql.contains("PARAMETERS"))
+        #expect(!sql.contains("GROUP_CONCAT"))
+        #expect(!sql.uppercased().contains(" JOIN "))
+    }
+
+    /// MariaDB lists a package as `PACKAGE` and `PACKAGE BODY` rows, and `SHOW CREATE FUNCTION`
+    /// answers either with 1305.
+    @Test("The routine list keeps standalone procedures and functions only")
+    func routineListLeavesOutPackages() {
+        let sql = MySQLObjectQueries.routineList(schema: "app", exactSchema: false)
+        #expect(sql.contains("ROUTINE_TYPE IN ('PROCEDURE', 'FUNCTION')"))
+    }
+
+    /// Measured on MySQL 5.6.51 and MariaDB 10.6.28 under `lower_case_table_names = 0`: a read of
+    /// `casedb` answered about `CASEDB` too.
+    @Test("An exact read compares the schema as bytes beside the plain comparison")
+    func exactSchemaAddsAByteComparison() {
+        let reads = [
+            ("ROUTINE_SCHEMA", MySQLObjectQueries.routineList(schema: "casedb", exactSchema: true)),
+            ("SPECIFIC_SCHEMA", MySQLObjectQueries.routineParameters(schema: "casedb", exactSchema: true)),
+            ("EVENT_SCHEMA", MySQLObjectQueries.eventList(schema: "casedb", exactSchema: true)),
+            ("ROUTINE_SCHEMA", MySQLObjectQueries.routineCreationSettings(
+                schema: "casedb", name: "f", kind: "FUNCTION", exactSchema: true
+            )),
+            ("EVENT_SCHEMA", MySQLObjectQueries.eventCreationSettings(schema: "casedb", name: "e", exactSchema: true)),
+        ]
+        for (column, sql) in reads {
+            #expect(sql.contains("\(column) = 'casedb' AND CAST(\(column) AS BINARY) = CAST('casedb' AS BINARY)"))
+        }
+    }
+
+    @Test("A read that is not exact keeps the plain comparison alone")
+    func plainSchemaHasNoByteComparison() {
+        let reads = [
+            MySQLObjectQueries.routineList(schema: "casedb", exactSchema: false),
+            MySQLObjectQueries.routineParameters(schema: "casedb", exactSchema: false),
+            MySQLObjectQueries.eventList(schema: "casedb", exactSchema: false),
+            MySQLObjectQueries.routineCreationSettings(schema: "casedb", name: "f", kind: "FUNCTION", exactSchema: false),
+            MySQLObjectQueries.eventCreationSettings(schema: "casedb", name: "e", exactSchema: false),
+        ]
+        for sql in reads {
+            #expect(sql.contains("= 'casedb'"))
+            #expect(!sql.contains("BINARY"))
+        }
+    }
+
+    @Test("The byte comparison escapes its literal")
+    func exactSchemaEscapesTheLiteral() {
+        let sql = MySQLObjectQueries.routineList(schema: #"it's\"#, exactSchema: true)
+        #expect(sql.contains(#"CAST('it''s\\' AS BINARY)"#))
     }
 
     @Test("Both trigger scopes come from one builder")
@@ -60,7 +120,9 @@ struct MySQLObjectQueryTests {
 
     @Test("A quote in a schema or table is escaped")
     func literalsAreEscaped() {
-        #expect(MySQLObjectQueries.routineList(schema: "it's").contains("'it''s'"))
+        #expect(MySQLObjectQueries.routineList(schema: "it's", exactSchema: false).contains("'it''s'"))
+        #expect(MySQLObjectQueries.routineParameters(schema: "it's", exactSchema: false).contains("'it''s'"))
+        #expect(MySQLObjectQueries.eventList(schema: "it's", exactSchema: false).contains("'it''s'"))
         #expect(MySQLObjectQueries.triggerList(schema: "app", table: "o'brien").contains("'o''brien'"))
         #expect(MySQLObjectQueries.catalogTableCount(schema: "o'brien").contains("'o''brien'"))
         #expect(MySQLObjectQueries.foreignKeyColumns(schema: "o'brien", table: nil).contains("'o''brien'"))
@@ -209,21 +271,20 @@ struct MySQLObjectQueryTests {
         )
     }
 
-    /// `information_schema.PARAMETERS` arrived in 5.5.3; 5.1.73 answers 1109.
-    @Test("Without the PARAMETERS catalog the routine list keeps its shape with a NULL parameter list")
-    func routineListWithoutParameters() {
-        let legacy = MySQLObjectQueries.routineList(schema: "app", includesParameters: false)
-
-        #expect(legacy.contains("NULL AS PARAMETER_LIST"))
-        #expect(!legacy.contains("information_schema.PARAMETERS"))
-        #expect(legacy.contains("FROM information_schema.ROUTINES r"))
-        #expect(legacy.contains("WHERE r.ROUTINE_SCHEMA = 'app'"))
-        #expect(MySQLObjectQueries.routineList(schema: "app", includesParameters: true).contains("information_schema.PARAMETERS"))
+    @Test("The event list reads its database's events by name")
+    func eventList() {
+        let sql = MySQLObjectQueries.eventList(schema: "app", exactSchema: false)
+        #expect(sql.contains("SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA"))
+        #expect(sql.contains("FROM information_schema.EVENTS"))
+        #expect(sql.contains("EVENT_SCHEMA = 'app'"))
+        #expect(sql.hasSuffix("ORDER BY EVENT_NAME"))
     }
 
     @Test("A routine's recorded mode is read by schema, name and type, with the name selected for an exact match")
     func routineCreationSettings() {
-        let sql = MySQLObjectQueries.routineCreationSettings(schema: "app", name: "add_course", kind: "PROCEDURE")
+        let sql = MySQLObjectQueries.routineCreationSettings(
+            schema: "app", name: "add_course", kind: "PROCEDURE", exactSchema: false
+        )
         #expect(sql.contains("SELECT ROUTINE_NAME, SQL_MODE"))
         #expect(sql.contains("FROM information_schema.ROUTINES"))
         #expect(sql.contains("ROUTINE_SCHEMA = 'app'"))
@@ -242,7 +303,7 @@ struct MySQLObjectQueryTests {
 
     @Test("An event's recorded mode comes with its time zone")
     func eventCreationSettings() {
-        let sql = MySQLObjectQueries.eventCreationSettings(schema: "app", name: "nightly")
+        let sql = MySQLObjectQueries.eventCreationSettings(schema: "app", name: "nightly", exactSchema: false)
         #expect(sql.contains("SELECT EVENT_NAME, SQL_MODE, TIME_ZONE"))
         #expect(sql.contains("FROM information_schema.EVENTS"))
         #expect(sql.contains("EVENT_SCHEMA = 'app'"))
@@ -251,10 +312,15 @@ struct MySQLObjectQueryTests {
 
     @Test("Names in the creation-settings reads are escaped as literals")
     func creationSettingsEscapeNames() {
-        let routine = MySQLObjectQueries.routineCreationSettings(schema: #"a'b"#, name: #"c\d"#, kind: "FUNCTION")
+        let routine = MySQLObjectQueries.routineCreationSettings(
+            schema: #"a'b"#, name: #"c\d"#, kind: "FUNCTION", exactSchema: false
+        )
         #expect(routine.contains(#"ROUTINE_SCHEMA = 'a''b'"#))
         #expect(routine.contains(#"ROUTINE_NAME = 'c\\d'"#))
         #expect(MySQLObjectQueries.triggerCreationSettings(schema: "app", name: "it's").contains("TRIGGER_NAME = 'it''s'"))
-        #expect(MySQLObjectQueries.eventCreationSettings(schema: "app", name: "it's").contains("EVENT_NAME = 'it''s'"))
+        #expect(
+            MySQLObjectQueries.eventCreationSettings(schema: "app", name: "it's", exactSchema: false)
+                .contains("EVENT_NAME = 'it''s'")
+        )
     }
 }

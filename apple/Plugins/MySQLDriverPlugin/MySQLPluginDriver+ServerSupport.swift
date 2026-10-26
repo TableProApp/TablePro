@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 internal extension MySQLPluginDriver {
@@ -26,5 +27,18 @@ internal extension MySQLPluginDriver {
 
     var serverAppendsInnoDBStatus: Bool {
         holdsForServer(MySQLServerVersion.appendsInnoDBStatusToComment(banner:flavor:))
+    }
+
+    /// Whether a catalog read has to compare the schema name byte for byte: true under
+    /// `lower_case_table_names = 0`. A server that will not answer keeps the plain comparison, for
+    /// this call only.
+    func schemaNamesAreCaseSensitive() async -> Bool {
+        if let known = cachedSchemaNamesAreCaseSensitive { return known }
+        guard let result = try? await execute(ownStatement: MySQLObjectQueries.lowerCaseTableNames),
+              let setting = result.rows.first?[safe: 0]?.asText.flatMap({ Int($0) })
+        else { return false }
+        let sensitive = setting == 0
+        cachedSchemaNamesAreCaseSensitive = sensitive
+        return sensitive
     }
 }

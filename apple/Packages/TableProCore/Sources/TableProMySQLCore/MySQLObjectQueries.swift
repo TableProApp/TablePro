@@ -196,39 +196,66 @@ public enum MySQLObjectQueries {
         """
     }
 
-    /// The parameter list comes from information_schema.PARAMETERS, where ordinal 0 is a function's
-    /// return value rather than a parameter. A server before 5.5.3 has no such table, so the list
-    /// comes back as NULL there rather than failing the whole read.
-    public static func routineList(schema: String, includesParameters: Bool = true) -> String {
-        let schemaLiteral = escapeLiteral(schema)
-        let parameterList = includesParameters ? """
-                (
-                    SELECT GROUP_CONCAT(
-                        CONCAT_WS(' ', p.PARAMETER_MODE, p.PARAMETER_NAME, p.DTD_IDENTIFIER)
-                        ORDER BY p.ORDINAL_POSITION SEPARATOR ', '
-                    )
-                    FROM information_schema.PARAMETERS p
-                    WHERE p.SPECIFIC_SCHEMA = r.ROUTINE_SCHEMA
-                        AND p.SPECIFIC_NAME = r.ROUTINE_NAME
-                        AND p.ROUTINE_TYPE = r.ROUTINE_TYPE
-                        AND p.ORDINAL_POSITION > 0
-                ) AS PARAMETER_LIST
-            """ : "NULL AS PARAMETER_LIST"
-        return """
-            SELECT
-                r.ROUTINE_NAME,
-                r.ROUTINE_TYPE,
-                r.DTD_IDENTIFIER,
-                r.SQL_DATA_ACCESS,
-                r.IS_DETERMINISTIC,
-                r.SECURITY_TYPE,
-                r.DEFINER,
-                r.ROUTINE_SCHEMA,
-                \(parameterList)
-            FROM information_schema.ROUTINES r
-            WHERE r.ROUTINE_SCHEMA = '\(schemaLiteral)'
-            ORDER BY r.ROUTINE_TYPE, r.ROUTINE_NAME
-            """
+    /// `SELECT @@lower_case_table_names`. Only at `0` are two database names differing in letter case
+    /// two databases; at 1 and 2 the server treats them as one.
+    public static let lowerCaseTableNames = "SELECT @@lower_case_table_names"
+
+    /// MySQL 5.7 and earlier and MariaDB fill `ROUTINES`, `PARAMETERS` and `EVENTS` from every
+    /// database and compare the schema name case-insensitively, so under `lower_case_table_names = 0`
+    /// a read of `casedb` also answered about `CASEDB`. Measured on 5.6.51 and MariaDB 10.6.28, where
+    /// `TRIGGERS`, `COLUMNS`, `STATISTICS` and `KEY_COLUMN_USAGE` answer about the exact database.
+    ///
+    /// The byte comparison is added to the plain one, not put in its place: on MySQL 8.4.13 the byte
+    /// comparison alone turns the routine read from an index lookup into a scan of every routine on
+    /// the server.
+    private static func schemaMatch(_ column: String, _ schema: String, exact: Bool) -> String {
+        let literal = escapeLiteral(schema)
+        guard exact else { return "\(column) = '\(literal)'" }
+        return "\(column) = '\(literal)' AND CAST(\(column) AS BINARY) = CAST('\(literal)' AS BINARY)"
+    }
+
+    /// A database's procedures and functions, without their parameters: `routineParameters` reads
+    /// those once for the whole database, and `MySQLRoutineSignatures` says why.
+    ///
+    /// MariaDB lists a package as `PACKAGE` and `PACKAGE BODY` rows, which `SHOW CREATE FUNCTION`
+    /// answers with 1305, so the list keeps the two standalone kinds only.
+    public static func routineList(schema: String, exactSchema: Bool) -> String {
+        """
+        SELECT
+            ROUTINE_NAME,
+            ROUTINE_TYPE,
+            DTD_IDENTIFIER,
+            SQL_DATA_ACCESS,
+            IS_DETERMINISTIC,
+            SECURITY_TYPE,
+            DEFINER,
+            ROUTINE_SCHEMA
+        FROM information_schema.ROUTINES
+        WHERE \(schemaMatch("ROUTINE_SCHEMA", schema, exact: exactSchema))
+          AND ROUTINE_TYPE IN ('PROCEDURE', 'FUNCTION')
+        ORDER BY ROUTINE_TYPE, ROUTINE_NAME
+        """
+    }
+
+    /// Every parameter of every routine in a database, in declaration order. Ordinal 0 is a
+    /// function's return value rather than a parameter. The table arrived in 5.5.3.
+    public static func routineParameters(schema: String, exactSchema: Bool) -> String {
+        """
+        SELECT SPECIFIC_SCHEMA, ROUTINE_TYPE, SPECIFIC_NAME, PARAMETER_MODE, PARAMETER_NAME, DTD_IDENTIFIER
+        FROM information_schema.PARAMETERS
+        WHERE \(schemaMatch("SPECIFIC_SCHEMA", schema, exact: exactSchema))
+          AND ORDINAL_POSITION > 0
+        ORDER BY SPECIFIC_SCHEMA, ROUTINE_TYPE, SPECIFIC_NAME, ORDINAL_POSITION
+        """
+    }
+
+    public static func eventList(schema: String, exactSchema: Bool) -> String {
+        """
+        SELECT EVENT_NAME, EVENT_TYPE, STATUS, EVENT_SCHEMA
+        FROM information_schema.EVENTS
+        WHERE \(schemaMatch("EVENT_SCHEMA", schema, exact: exactSchema))
+        ORDER BY EVENT_NAME
+        """
     }
 
     /// Qualified with the schema. Unqualified, the server resolves the name against the session
@@ -292,11 +319,11 @@ public enum MySQLObjectQueries {
     // keeps only the row named exactly.
 
     /// The `sql_mode` the server recorded for one routine.
-    public static func routineCreationSettings(schema: String, name: String, kind: String) -> String {
+    public static func routineCreationSettings(schema: String, name: String, kind: String, exactSchema: Bool) -> String {
         """
         SELECT ROUTINE_NAME, SQL_MODE
         FROM information_schema.ROUTINES
-        WHERE ROUTINE_SCHEMA = '\(escapeLiteral(schema))'
+        WHERE \(schemaMatch("ROUTINE_SCHEMA", schema, exact: exactSchema))
           AND ROUTINE_NAME = '\(escapeLiteral(name))'
           AND ROUTINE_TYPE = '\(escapeLiteral(kind))'
         """
@@ -313,11 +340,11 @@ public enum MySQLObjectQueries {
     }
 
     /// The `sql_mode` and `time_zone` the server recorded for one event.
-    public static func eventCreationSettings(schema: String, name: String) -> String {
+    public static func eventCreationSettings(schema: String, name: String, exactSchema: Bool) -> String {
         """
         SELECT EVENT_NAME, SQL_MODE, TIME_ZONE
         FROM information_schema.EVENTS
-        WHERE EVENT_SCHEMA = '\(escapeLiteral(schema))'
+        WHERE \(schemaMatch("EVENT_SCHEMA", schema, exact: exactSchema))
           AND EVENT_NAME = '\(escapeLiteral(name))'
         """
     }

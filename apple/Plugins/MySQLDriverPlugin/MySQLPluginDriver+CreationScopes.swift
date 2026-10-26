@@ -10,10 +10,12 @@ import TableProPluginKit
 internal extension MySQLPluginDriver {
     func fetchRoutineCreationScope(_ routine: PluginRoutineInfo) async throws -> PluginStatementScope? {
         guard !flavor.isDatabend, serverHasInformationSchema else { return nil }
+        let exactSchema = await schemaNamesAreCaseSensitive()
         let query = MySQLObjectQueries.routineCreationSettings(
             schema: routineSchema(routine.schema),
             name: routine.name,
-            kind: routine.kind == .procedure ? "PROCEDURE" : "FUNCTION"
+            kind: routine.kind == .procedure ? "PROCEDURE" : "FUNCTION",
+            exactSchema: exactSchema
         )
         let row = try await creationSettingsRow(query, named: routine.name)
         return Self.creationScope(sqlMode: row?[safe: 1]?.asText, timeZone: nil)
@@ -32,7 +34,12 @@ internal extension MySQLPluginDriver {
         guard !flavor.isDatabend, holdsForServer(MySQLServerVersion.hasPartitionAndEventCatalogs(banner:flavor:)) else {
             return nil
         }
-        let query = MySQLObjectQueries.eventCreationSettings(schema: effectiveSchema(event.schema), name: event.name)
+        let exactSchema = await schemaNamesAreCaseSensitive()
+        let query = MySQLObjectQueries.eventCreationSettings(
+            schema: effectiveSchema(event.schema),
+            name: event.name,
+            exactSchema: exactSchema
+        )
         let row = try await creationSettingsRow(query, named: event.name)
         return Self.creationScope(sqlMode: row?[safe: 1]?.asText, timeZone: row?[safe: 2]?.asText)
     }
