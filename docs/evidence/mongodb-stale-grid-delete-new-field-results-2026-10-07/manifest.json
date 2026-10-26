@@ -8,6 +8,10 @@
     "crates/drivers/mongodb/src/update.rs": "a28bea23cd545f68daf4beb084d0f7fdbcda5c38af3b6862c431928040758700",
     "crates/drivers/mongodb/tests/support/stale_grid_delete_contract.rs": "8c1143aaf4cae5100e59a8fb171544a5faaa610753c0baf12638a645d9ac6c2b"
   },
+  "source_commits": {
+    "crates/core/src/sql_dialect/updates.rs": "fd34d116f32a1479f779fc932aa3d2ff707e645b",
+    "crates/drivers/mongodb/src/update.rs": "fd34d116f32a1479f779fc932aa3d2ff707e645b"
+  },
   "engine": "MongoDB 7 in Docker via testcontainers",
   "case": "Optimistic grid delete refuses documents whose top-level field set changed after materialization",
   "test": "stale_grid_delete_contract",
