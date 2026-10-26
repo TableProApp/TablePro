@@ -167,4 +167,12 @@ struct SidebarObjectListPresentationTests {
             hasOutlastedGrace: false
         ) == .failed("boom"))
     }
+    @Test("A loaded catalog waiting for its turn still reads as loading, and every other state passes through")
+    func heldCatalogReadsAsLoading() {
+        let loaded = SchemaState.loaded([table("users")])
+        #expect(SidebarObjectListPresentation.presentedState(loaded, showsLoaded: false) == .loading)
+        #expect(SidebarObjectListPresentation.presentedState(loaded, showsLoaded: true) == loaded)
+        #expect(SidebarObjectListPresentation.presentedState(.failed("boom"), showsLoaded: false) == .failed("boom"))
+        #expect(SidebarObjectListPresentation.presentedState(.idle, showsLoaded: true) == .idle)
+    }
 }
