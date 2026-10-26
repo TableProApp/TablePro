@@ -36,6 +36,30 @@ internal extension NSWindow {
         }
         FirstFrameObserver.observe(view, then: body)
     }
+
+    /// Returns once the display has shown this window's next frame, or after `limit`: a hidden or
+    /// off-display view drives no display link, so the frame alone could never arrive.
+    func nextFrame(limit: Duration = .milliseconds(100)) async {
+        let gate = FrameGate()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            gate.continuation = continuation
+            afterNextFrame { gate.open() }
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                gate.open()
+            }
+        }
+    }
+}
+
+@MainActor
+private final class FrameGate {
+    var continuation: CheckedContinuation<Void, Never>?
+
+    func open() {
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 @available(macOS 14.0, *)
