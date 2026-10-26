@@ -18,6 +18,7 @@ extension TextViewController {
 
     override public func viewDidAppear() {
         super.viewDidAppear()
+        revealExecutionLineIfNeeded()
         textCoordinators.forEach { $0.val?.controllerDidAppear(controller: self) }
     }
 
@@ -187,6 +188,7 @@ extension TextViewController {
         gutterView?.needsDisplay = true
         gutterView?.foldingRibbon.needsDisplay = true
         gutterView?.statementRunRibbon.needsDisplay = true
+        gutterView?.breakpointRibbon.needsDisplay = true
     }
 
     func setUpOberservers() {

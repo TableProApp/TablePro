@@ -19,8 +19,16 @@ struct SQLFormatterRulesTests {
         commaPosition: .leading,
         lineWidth: 100,
         joinCondition: .sameLine,
-        alignAliases: true
+        alignAliases: true,
+        clauseItems: .newLine,
+        logicalOperatorNewline: .after,
+        dataTypeCase: .upper
     )
+
+    // sql-formatter's `removedOptions` (src/validateConfig.ts): a file holding one makes it throw.
+    private static let keysSQLFormatterRefuses: Set<String> = [
+        "multilineLists", "newlineBeforeOpenParen", "newlineBeforeCloseParen", "aliasAs", "commaPosition", "tabulateAlias",
+    ]
 
     private func decode(_ json: String) throws -> SQLFormatterOptions {
         try SQLFormatterRulesFile.decode(Data(json.utf8))
@@ -38,11 +46,66 @@ struct SQLFormatterRulesTests {
     func fileWritesEveryKey() throws {
         let data = try SQLFormatterRulesFile.encode(.default)
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let everyKey = Set(SQLFormatterOptions.CodingKeys.allCases.map { $0.stringValue })
+        let everyKey = Set(SQLFormatterRulesFile.Key.allCases.map { $0.stringValue })
         #expect(Set(object.keys) == everyKey)
-        #expect(object["indentStyle"] as? String == "spaces")
-        #expect(object["commaPosition"] as? String == "trailing")
+        #expect(object["useTabs"] as? Bool == false)
+        #expect(object["tabWidth"] as? Int == 2)
+        #expect(object["commaPlacement"] as? String == "trailing")
         #expect(object["joinCondition"] as? String == "newLine")
+        #expect(object["logicalOperatorNewline"] as? String == "before")
+    }
+
+    @Test("A file TablePro writes holds no key sql-formatter refuses, and every shared key holds a value it accepts")
+    func fileIsReadableBySQLFormatter() throws {
+        for options in [SQLFormatterOptions.default, Self.custom] {
+            let data = try SQLFormatterRulesFile.encode(options)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(Set(object.keys).isDisjoint(with: Self.keysSQLFormatterRefuses))
+            for key in ["keywordCase", "functionCase", "dataTypeCase"] {
+                #expect(["preserve", "upper", "lower"].contains(object[key] as? String ?? ""))
+            }
+            #expect(["before", "after"].contains(object["logicalOperatorNewline"] as? String ?? ""))
+            #expect((object["tabWidth"] as? Int ?? 0) > 0)
+            #expect(object["useTabs"] is Bool)
+            #expect(object["indentStyle"] == nil)
+        }
+    }
+
+    @Test("A file written for sql-formatter is read, its shared rules applied and its own options ignored")
+    func sqlFormatterFileIsRead() throws {
+        let options = try decode("""
+            {
+              "$schema": "https://raw.githubusercontent.com/sql-formatter-org/sql-formatter/master/schema.json",
+              "language": "postgresql",
+              "tabWidth": 4,
+              "useTabs": true,
+              "keywordCase": "lower",
+              "dataTypeCase": "upper",
+              "functionCase": "upper",
+              "identifierCase": "lower",
+              "indentStyle": "tabularLeft",
+              "logicalOperatorNewline": "after",
+              "expressionWidth": 50,
+              "linesBetweenQueries": 2,
+              "denseOperators": false,
+              "newlineBeforeSemicolon": false,
+              "params": ["a"],
+              "paramTypes": {"positional": true, "named": [":"]}
+            }
+            """)
+        var expected = SQLFormatterOptions.default
+        expected.indentStyle = .tabs
+        expected.indentWidth = 4
+        expected.keywordCase = .lower
+        expected.dataTypeCase = .upper
+        expected.functionCase = .upper
+        expected.logicalOperatorNewline = .after
+        #expect(options == expected)
+    }
+
+    @Test("Every indent style sql-formatter documents is read", arguments: ["standard", "tabularLeft", "tabularRight"])
+    func sqlFormatterIndentStylesAreRead(style: String) throws {
+        #expect(try decode(#"{"indentStyle": "\#(style)", "tabWidth": 4}"#).indentWidth == 4)
     }
 
     @Test("A key the file leaves out takes the default")
@@ -50,24 +113,34 @@ struct SQLFormatterRulesTests {
         #expect(try decode("{}") == .default)
         var expected = SQLFormatterOptions.default
         expected.commaPosition = .leading
-        #expect(try decode(#"{"commaPosition": "leading"}"#) == expected)
+        #expect(try decode(#"{"commaPlacement": "leading"}"#) == expected)
+        var operators = SQLFormatterOptions.default
+        operators.logicalOperatorNewline = .after
+        #expect(try decode(#"{"logicalOperatorNewline": "after"}"#) == operators)
     }
 
-    @Test("A key this build does not know is ignored")
+    @Test("A key this build does not know is ignored, sql-formatter's refused commaPosition included")
     func unknownKeysAreIgnored() throws {
-        let options = try decode(#"{"language": "postgresql", "indentWidth": 4}"#)
+        let options = try decode(#"{"language": "postgresql", "tabWidth": 4, "indentWidth": 8, "commaPosition": "leading"}"#)
         #expect(options.indentWidth == 4)
+        #expect(options.commaPosition == .trailing)
     }
 
     @Test(
         "A value this build cannot read names its key",
         arguments: [
             (#"{"keywordCase": "title"}"#, "keywordCase"),
-            (#"{"indentWidth": 0}"#, "indentWidth"),
-            (#"{"indentWidth": 17}"#, "indentWidth"),
-            (#"{"indentWidth": "four"}"#, "indentWidth"),
+            (#"{"dataTypeCase": "title"}"#, "dataTypeCase"),
+            (#"{"tabWidth": 0}"#, "tabWidth"),
+            (#"{"tabWidth": 17}"#, "tabWidth"),
+            (#"{"tabWidth": "four"}"#, "tabWidth"),
+            (#"{"useTabs": "yes"}"#, "useTabs"),
             (#"{"lineWidth": -1}"#, "lineWidth"),
             (#"{"alignAliases": "yes"}"#, "alignAliases"),
+            (#"{"clauseItems": "below"}"#, "clauseItems"),
+            (#"{"logicalOperatorNewline": "end"}"#, "logicalOperatorNewline"),
+            (#"{"commaPlacement": "before"}"#, "commaPlacement"),
+            (#"{"indentStyle": "tabs"}"#, "indentStyle"),
         ]
     )
     func invalidValueNamesKey(json: String, key: String) {
@@ -120,6 +193,8 @@ struct SQLFormatterRulesTests {
         var rules = Self.custom
         rules.indentStyle = .spaces
         rules.lineWidth = 0
+        rules.clauseItems = .sameLine
+        rules.logicalOperatorNewline = .before
         var firstEditor = EditorSettings.default
         firstEditor.tabWidth = 8
         firstEditor.keywordCase = .upper
@@ -177,11 +252,42 @@ struct SQLFormatterRulesTests {
 
     @Test("A stored formatter value this build cannot read costs only that field")
     func storedInvalidValueFallsBackAlone() throws {
-        let json = #"{"commaPosition": "leading", "indentWidth": 99, "keywordCase": "title"}"#
+        let json = #"""
+            {"commaPosition": "leading", "indentWidth": 99, "keywordCase": "title",
+             "clauseItems": "below", "logicalOperatorNewline": "after", "dataTypeCase": "title"}
+            """#
         let settings = try JSONDecoder().decode(SQLFormatterSettings.self, from: Data(json.utf8))
         #expect(settings.rules.commaPosition == .leading)
         #expect(settings.rules.indentWidth == SQLFormatterOptions.default.indentWidth)
         #expect(settings.rules.keywordCase == SQLFormatterOptions.default.keywordCase)
+        #expect(settings.rules.clauseItems == SQLFormatterOptions.default.clauseItems)
+        #expect(settings.rules.logicalOperatorNewline == .after)
+        #expect(settings.rules.dataTypeCase == SQLFormatterOptions.default.dataTypeCase)
+    }
+
+    @Test("Stored settings keep the keys 0.83 wrote, so either build reads the other's")
+    func storedSettingsKeepTheirKeys() throws {
+        let stored = #"""
+            {"alignAliases": true, "commaPosition": "leading", "functionCase": "upper", "indentStyle": "tabs",
+             "indentWidth": 4, "joinCondition": "sameLine", "keywordCase": "lower", "lineWidth": 80,
+             "indentFollowsTabWidth": false, "keywordCaseFollowsEditor": false}
+            """#
+        let settings = try JSONDecoder().decode(SQLFormatterSettings.self, from: Data(stored.utf8))
+        let expected = SQLFormatterOptions(
+            indentStyle: .tabs, indentWidth: 4, keywordCase: .lower, functionCase: .upper,
+            commaPosition: .leading, lineWidth: 80, joinCondition: .sameLine, alignAliases: true
+        )
+        #expect(settings.rules == expected)
+
+        let written = try JSONEncoder().encode(settings)
+        let object = try #require(try JSONSerialization.jsonObject(with: written) as? [String: Any])
+        let oldKeys: Set<String> = [
+            "alignAliases", "commaPosition", "functionCase", "indentStyle", "indentWidth", "joinCondition", "keywordCase",
+            "lineWidth", "indentFollowsTabWidth", "keywordCaseFollowsEditor",
+        ]
+        #expect(oldKeys.isSubset(of: Set(object.keys)))
+        #expect(object["indentStyle"] as? String == "tabs")
+        #expect(object["commaPosition"] as? String == "leading")
     }
 
     @Test("Formatter settings round-trip with both follow choices")
@@ -256,7 +362,7 @@ struct SQLFormatterRulesTests {
     @Test("A file in a linked folder formats with the folder's rules, and other files with Settings")
     func ruleSourcePrefersFolderRules() throws {
         let sandbox = try Sandbox()
-        try sandbox.write("queries/.sql-formatter.json", #"{"commaPosition": "leading"}"#)
+        try sandbox.write("queries/.sql-formatter.json", #"{"commaPlacement": "leading"}"#)
         let file = try sandbox.write("queries/daily.sql")
         let folders = [sandbox.folder("queries")]
         var settings = SQLFormatterOptions.default
@@ -283,7 +389,7 @@ struct SQLFormatterRulesTests {
     @Test("A rules file that is a symlink to a regular file is read")
     func symlinkToFileIsRead() throws {
         let sandbox = try Sandbox()
-        let target = try sandbox.write("shared/rules.json", #"{"indentWidth": 4}"#)
+        let target = try sandbox.write("shared/rules.json", #"{"tabWidth": 4}"#)
         let link = sandbox.root.appendingPathComponent(".sql-formatter.json")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
         #expect(try SQLFormatterRulesFile.load(from: link).indentWidth == 4)
@@ -292,7 +398,7 @@ struct SQLFormatterRulesTests {
     @Test("An unreadable folder rules file refuses to format instead of using Settings")
     func unreadableFolderRulesThrow() throws {
         let sandbox = try Sandbox()
-        try sandbox.write("queries/.sql-formatter.json", #"{"indentWidth": "wide"}"#)
+        try sandbox.write("queries/.sql-formatter.json", #"{"tabWidth": "wide"}"#)
         let file = try sandbox.write("queries/daily.sql")
         #expect(throws: SQLFormatterFolderRulesError.self) {
             try SQLFormatterRuleSource.options(

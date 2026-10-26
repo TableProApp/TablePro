@@ -413,7 +413,10 @@ extension PluginMetadataRegistry {
                             "DATE", "TIME", "TIMESTAMP", "INTERVAL", "PERIOD", "JSON", "XML",
                         ],
                         autoLimitStyle: .top,
-                        caseSensitivityStyle: .unsupported
+                        caseSensitivityStyle: .unsupported,
+                        textCastTypeName: nil,
+                        functionNamesAreCaseInsensitive: true,
+                        typeNamesAreCaseInsensitive: true
                     ),
                     statementCompletions: [],
                     columnTypesByCategory: [

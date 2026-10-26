@@ -17,6 +17,14 @@ struct SQLLexicalReadingsTests {
         #expect(missing.isEmpty)
     }
 
+    @Test("Only T-SQL names continue with # and @")
+    func hashAndAtContinueOnlyTSQLNames() {
+        #expect(SQLLexicalProfile.curated(forDatabaseTypeId: "SQL Server")?.grammar.contains(.hashAndAtInIdentifiers) == true)
+        for typeId in ["MySQL", "PostgreSQL", "SQLite", "Oracle", "ClickHouse", "DuckDB"] {
+            #expect(SQLLexicalProfile.curated(forDatabaseTypeId: typeId)?.grammar.contains(.hashAndAtInIdentifiers) == false)
+        }
+    }
+
     @Test("A curated engine ignores what a plugin declares, because a registry plugin may be older than the app")
     func curatedGrammarWinsOverDeclaration() {
         let readings = SQLLexicalReadings.resolve(

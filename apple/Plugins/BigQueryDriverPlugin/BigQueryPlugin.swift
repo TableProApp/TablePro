@@ -165,7 +165,10 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .caseFoldFunction
+        caseSensitivityStyle: .caseFoldFunction,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let explainVariants: [ExplainVariant] = [

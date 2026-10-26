@@ -174,7 +174,7 @@ final class QueryExecutionCoordinator: ObservableObject {
         guard case .needsBatchDriver = route else { return false }
         parent.tabManager.mutate(at: index) {
             $0.execution.errorMessage = String(
-                localized: "Update the database driver in Settings > Plugins to run a batch more than once with GO."
+                localized: "Update the database driver in Settings > Extensions to run a batch more than once with GO."
             )
         }
         return true

@@ -99,7 +99,10 @@ final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
         paginationStyle: .offsetFetch,
         offsetFetchOrderBy: "ORDER BY 1",
         autoLimitStyle: .fetchFirst,
-        caseSensitivityStyle: .caseFoldFunction
+        caseSensitivityStyle: .caseFoldFunction,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

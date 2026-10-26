@@ -136,6 +136,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     public static let sqlServer: SQLLexicalGrammar = [
         .bracketQuotedIdentifiers, .doubledClosingBracketEscapes, .nestedBlockComments,
         .carriageReturnEndsLineComments, .batchSeparatorLines, .unterminatedStatements, .terminatedMergeStatements,
+        .hashAndAtInIdentifiers,
     ]
 
     /// Spanner's GoogleSQL dialect on the emulator, measured, and BigQuery by the ZetaSQL grammar the two share: a

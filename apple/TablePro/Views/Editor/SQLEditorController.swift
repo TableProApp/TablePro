@@ -31,6 +31,9 @@ struct SQLEditorInput {
     var onFoldRangesChanged: (([Range<Int>]) -> Void)?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onSelectTab: ((Int) -> Void)?
+    var onSelectAdjacentTab: ((Int) -> Void)?
+    var tabCount: (() -> Int)?
     var onRunStatement: ((String, Int) -> Bool)?
     /// A tab runs one thing at a time, so the gutter's run controls go dim for the length of a query.
     var isExecuting = false
@@ -133,6 +136,9 @@ final class SQLEditorController {
     private func applyInput(_ input: SQLEditorInput) {
         coordinator.onCloseTab = input.onCloseTab
         coordinator.onExecuteQuery = input.onExecuteQuery
+        coordinator.onSelectTab = input.onSelectTab
+        coordinator.onSelectAdjacentTab = input.onSelectAdjacentTab
+        coordinator.tabCount = input.tabCount
         coordinator.onRunStatement = input.onRunStatement
         coordinator.setStatementRunControlsEnabled(!input.isExecuting)
         coordinator.setStatementHighlightEnabled(AppSettingsManager.shared.editor.highlightCurrentStatement)

@@ -14,8 +14,6 @@ if [ $# -gt 1 ]; then
     echo "usage: scripts/check-pluginkit-abi.sh [--frozen] [base]" >&2
     exit 2
 fi
-base="${1:-$(git -C "$root" describe --tags --abbrev=0 --match 'v[0-9]*')}"
-
 fail() {
     echo "::error::$1"
     exit 1
@@ -33,13 +31,53 @@ kits() {
 
 config="Configs/PluginKit.xcconfig"
 settings="TABLEPRO_PLUGINKIT_VERSION and TABLEPRO_PLUGINKIT_MINIMUM_VERSION"
+
 # A tag cut before the Apple apps moved into apple/ keeps them at the repository root.
-base_dir=apple
-base_config="apple/$config"
-if ! git -C "$root" cat-file -e "$base:$base_config" 2> /dev/null; then
-    base_dir=.
-    base_config="$config"
+tag_dir() {
+    if git -C "$root" cat-file -e "$1:apple/$config" 2> /dev/null; then
+        echo apple
+    else
+        echo .
+    fi
+}
+
+# A `rev:./path` is read relative to the working directory, so the root form has no leading ./.
+tag_config() {
+    if [ "$(tag_dir "$1")" = apple ]; then
+        echo "apple/$config"
+    else
+        echo "$config"
+    fi
+}
+
+# A release tag sits on its release/* branch, so main cannot reach the kit it shipped. Off a release line the base is
+# the tag that shipped the highest kit, the reachable one on a tie.
+shipped_base() {
+    local reachable best best_kit tag kit
+    reachable="$(git -C "$root" describe --tags --abbrev=0 --match 'v[0-9]*')"
+    best="$reachable"
+    # An unreadable reachable tag stays the base, so the check below names it.
+    best_kit="$(git -C "$root" show "$reachable:$(tag_config "$reachable")" 2> /dev/null | kits | cut -d' ' -f1)" \
+        || { echo "$reachable"; return; }
+    while IFS= read -r tag; do
+        kit="$(git -C "$root" show "$tag:$(tag_config "$tag")" 2> /dev/null | kits | cut -d' ' -f1)" || continue
+        if [ "$kit" -gt "$best_kit" ]; then
+            best="$tag"
+            best_kit="$kit"
+        fi
+    done < <(git -C "$root" tag --list 'v[0-9]*' --sort=-v:refname)
+    echo "$best"
+}
+
+if [ $# -eq 1 ]; then
+    base="$1"
+elif [ "$frozen" -eq 1 ]; then
+    base="$(git -C "$root" describe --tags --abbrev=0 --match 'v[0-9]*')"
+else
+    base="$(shipped_base)"
 fi
+base_dir="$(tag_dir "$base")"
+base_config="$(tag_config "$base")"
 base_kits="$(git -C "$root" show "$base:$base_config" | kits)" || fail "$config at $base does not set $settings to integers."
 head_kits="$(kits < "$root/$config")" || fail "$config does not set $settings to integers."
 read -r base_kit base_minimum <<< "$base_kits"

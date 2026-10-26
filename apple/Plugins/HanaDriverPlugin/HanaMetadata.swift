@@ -70,6 +70,7 @@ enum HanaMetadata {
         caseSensitivityStyle: .caseFoldFunction,
         textCastTypeName: nil,
         functionNamesAreCaseInsensitive: true,
-        lexicalFeatures: [.dollarAndHashInIdentifiers]
+        lexicalFeatures: [.dollarAndHashInIdentifiers],
+        typeNamesAreCaseInsensitive: true
     )
 }

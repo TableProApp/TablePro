@@ -46,6 +46,8 @@ public extension SourceEditorConfiguration {
 
         public var showSpecialCharacters: Bool
 
+        public var showBreakpoints: Bool = false
+
         public init(
             showGutter: Bool = true,
             showLineNumbers: Bool = true,
@@ -55,7 +57,8 @@ public extension SourceEditorConfiguration {
             foldingSizeLimit: Int = EditorHighlighting.maxHighlightableCharacters,
             invisibleCharactersConfiguration: InvisibleCharactersConfiguration = .empty,
             warningCharacters: Set<UInt16> = [],
-            showSpecialCharacters: Bool = false
+            showSpecialCharacters: Bool = false,
+            showBreakpoints: Bool = false
         ) {
             self.showGutter = showGutter
             self.showLineNumbers = showLineNumbers
@@ -66,6 +69,7 @@ public extension SourceEditorConfiguration {
             self.invisibleCharactersConfiguration = invisibleCharactersConfiguration
             self.warningCharacters = warningCharacters
             self.showSpecialCharacters = showSpecialCharacters
+            self.showBreakpoints = showBreakpoints
         }
 
         @MainActor
@@ -88,6 +92,11 @@ public extension SourceEditorConfiguration {
 
             if oldConfig?.showStatementRunControls != showStatementRunControls {
                 controller.gutterView.showStatementRunControls = showStatementRunControls
+                shouldUpdateInsets = true
+            }
+
+            if oldConfig?.showBreakpoints != showBreakpoints {
+                controller.gutterView.showBreakpoints = showBreakpoints
                 shouldUpdateInsets = true
             }
 

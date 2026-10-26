@@ -570,6 +570,20 @@ extension VimEngine {
         case "J":
             joinLines(consumeCount(), withSpace: false, in: buffer)
             return true
+        case "t", "T":
+            let count = countPrefix
+            countPrefix = 0
+            operatorCount = 0
+            guard pendingOperator == nil else {
+                pendingOperator = nil
+                return true
+            }
+            if char == "t" {
+                onCommand?(count > 0 ? "tabnext \(count)" : "tabnext")
+            } else {
+                onCommand?("tabprevious \(max(count, 1))")
+            }
+            return true
         case "u":
             if pendingOperator == .lowercase {
                 applyCaseToLine(.lowercase, count: consumeCount(), in: buffer)

@@ -109,15 +109,22 @@ public class GutterView: NSView {
         }
     }
 
-    /// Toggle the visibility of the per-statement run controls.
-    ///
-    /// The column they sit in is reserved for as long as this is on, whether or not the pointer is revealing a
-    /// control, so a document never shifts sideways under the reader.
+    // The column is reserved while this is on, revealed or not, so the document never shifts under the reader.
     @Invalidating(.display)
     public var showStatementRunControls: Bool = false {
         didSet {
             statementRunRibbon.isHidden = !showStatementRunControls
             updateWidthIfNeeded()
+            layoutRibbons()
+        }
+    }
+
+    @Invalidating(.display)
+    public var showBreakpoints: Bool = false {
+        didSet {
+            breakpointRibbon.isHidden = !showBreakpoints
+            updateWidthIfNeeded()
+            layoutRibbons()
         }
     }
 
@@ -141,6 +148,8 @@ public class GutterView: NSView {
     private var lineNumberDigits: Int = 0
 
     private var fontLineHeight = 1.0
+
+    private(set) var selectionObserver: NSObjectProtocol?
 
     private func updateFontLineHeight() {
         let string = NSAttributedString(string: "0", attributes: [.font: font])
@@ -168,14 +177,23 @@ public class GutterView: NSView {
         statementRunRibbon.isHidden ? 0 : StatementRunRibbonView.width + statementRunRibbonPadding
     }
 
-    /// Where the line numbers start.
-    ///
-    /// The run controls live in the margin the gutter already keeps from the window edge rather than being charged
-    /// for a column of their own, which is where Xcode puts its gutter controls too. The margin only grows when the
-    /// controls need more room than it already had.
+    var breakpointRibbon: BreakpointRibbonView
+
+    @Invalidating(.display)
+    var breakpointRibbonPadding: CGFloat = 4
+
+    var breakpointRibbonWidth: CGFloat {
+        breakpointRibbon.isHidden ? 0 : BreakpointRibbonView.width + breakpointRibbonPadding
+    }
+
+    private var leadingControlsWidth: CGFloat {
+        breakpointRibbonWidth + statementRunRibbonWidth
+    }
+
+    // The leading controls share the window-edge margin, as Xcode's do; it grows only when they need more.
     private var lineNumberLeading: CGFloat {
-        guard showLineNumbers else { return statementRunRibbonWidth }
-        return max(edgeInsets.leading, statementRunRibbonWidth)
+        guard showLineNumbers else { return leadingControlsWidth }
+        return max(edgeInsets.leading, leadingControlsWidth)
     }
 
     /// The leading inset only exists to keep line numbers off the edge, so a gutter without them drops it rather
@@ -202,26 +220,37 @@ public class GutterView: NSView {
         true
     }
 
-    /// We override this variable so we can update the two ribbons' frames to match the gutter.
     override public var frame: NSRect {
         get {
             super.frame
         }
         set {
             super.frame = newValue
-            foldingRibbon.frame = NSRect(
-                x: newValue.width - edgeInsets.trailing - foldingRibbonWidth + foldingRibbonPadding,
-                y: 0.0,
-                width: foldingRibbonWidth,
-                height: newValue.height
-            )
-            statementRunRibbon.frame = NSRect(
-                x: 0.0,
-                y: 0.0,
-                width: max(0, statementRunRibbonWidth - statementRunRibbonPadding),
-                height: newValue.height
-            )
+            layoutRibbons()
         }
+    }
+
+    // Also called when a ribbon shows or hides, since that can leave the gutter's width, and so its frame, unchanged.
+    private func layoutRibbons() {
+        let size = frame.size
+        foldingRibbon.frame = NSRect(
+            x: size.width - edgeInsets.trailing - foldingRibbonWidth + foldingRibbonPadding,
+            y: 0.0,
+            width: foldingRibbonWidth,
+            height: size.height
+        )
+        breakpointRibbon.frame = NSRect(
+            x: 0.0,
+            y: 0.0,
+            width: max(0, breakpointRibbonWidth - breakpointRibbonPadding),
+            height: size.height
+        )
+        statementRunRibbon.frame = NSRect(
+            x: breakpointRibbonWidth,
+            y: 0.0,
+            width: max(0, statementRunRibbonWidth - statementRunRibbonPadding),
+            height: size.height
+        )
     }
 
     public convenience init(
@@ -253,6 +282,7 @@ public class GutterView: NSView {
 
         foldingRibbon = LineFoldRibbonView(controller: controller)
         statementRunRibbon = StatementRunRibbonView(controller: controller)
+        breakpointRibbon = BreakpointRibbonView(controller: controller)
 
         super.init(frame: .zero)
         clipsToBounds = true
@@ -262,12 +292,15 @@ public class GutterView: NSView {
         layer?.masksToBounds = true
 
         statementRunRibbon.isHidden = !showStatementRunControls
+        breakpointRibbon.isHidden = !showBreakpoints
         addSubview(foldingRibbon)
         addSubview(statementRunRibbon)
+        addSubview(breakpointRibbon)
 
-        NotificationCenter.default.addObserver(
+        // A block observer is only removed through its token, and only this editor's selection moves its line band.
+        selectionObserver = NotificationCenter.default.addObserver(
             forName: TextSelectionManager.selectionChangedNotification,
-            object: nil,
+            object: controller.textView.selectionManager,
             queue: .main
         ) { [weak self] _ in
             self?.needsDisplay = true
@@ -284,9 +317,12 @@ public class GutterView: NSView {
         textView?.menu(for: event)
     }
 
-    /// A positional accessibility lookup lands on the gutter for the same reason a right-click does, so it answers for
-    /// the controls its ribbons draw rather than letting the search fall through to the text view underneath.
+    // A positional lookup lands on the gutter, not the ribbons, for the same reason a right-click does.
     override public func accessibilityHitTest(_ point: NSPoint) -> Any? {
+        if !breakpointRibbon.isHidden,
+           let hit = breakpointRibbon.accessibilityElement(atScreenPoint: point) {
+            return hit
+        }
         if !statementRunRibbon.isHidden,
            let hit = statementRunRibbon.accessibilityElement(atScreenPoint: point) {
             return hit
@@ -332,6 +368,7 @@ public class GutterView: NSView {
     override public func mouseExited(with event: NSEvent) {
         foldingRibbon.pointerExitedGutter()
         statementRunRibbon.pointerExitedGutter()
+        breakpointRibbon.pointerExitedGutter()
     }
 
     private func forwardPointer(_ event: NSEvent) {
@@ -340,6 +377,9 @@ public class GutterView: NSView {
         }
         if !statementRunRibbon.isHidden {
             statementRunRibbon.pointerMoved(to: statementRunRibbon.convert(event.locationInWindow, from: nil))
+        }
+        if !breakpointRibbon.isHidden {
+            breakpointRibbon.pointerMoved(to: breakpointRibbon.convert(event.locationInWindow, from: nil))
         }
     }
 
@@ -504,7 +544,9 @@ public class GutterView: NSView {
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        if let selectionObserver {
+            NotificationCenter.default.removeObserver(selectionObserver)
+        }
         delegate = nil
         textView = nil
     }

@@ -66,8 +66,13 @@ enum SQLQueryFingerprint {
             }
 
             switch token.type {
-            case .comment, .whitespace:
+            case .comment, .whitespace, .directive:
                 continue
+
+            case .placeholder where token.value.hasPrefix("@@"):
+                // A system variable names a setting; it is not a value, so `@@version` and `@@sql_mode` stay apart.
+                parts.append(Part(token.value))
+                previousWasLiteral = false
 
             case .number, .placeholder:
                 appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
@@ -189,7 +194,7 @@ enum SQLQueryFingerprint {
             return previousValue != "]"
         case .punctuation:
             return signPrecedingPunctuation.contains(previousValue)
-        case .identifier, .number, .string, .placeholder, .comment, .whitespace:
+        case .identifier, .number, .string, .placeholder, .comment, .whitespace, .directive:
             return false
         }
     }

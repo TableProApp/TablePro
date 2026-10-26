@@ -266,7 +266,10 @@ final class SnowflakePlugin: NSObject, TableProPlugin, DriverPlugin {
         likeEscapeStyle: .explicit,
         paginationStyle: .limit,
         requiresBackslashEscaping: true,
-        caseSensitivityStyle: .ilikeOperator
+        caseSensitivityStyle: .ilikeOperator,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 
     static let explainVariants: [ExplainVariant] = [

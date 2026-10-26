@@ -210,6 +210,9 @@ struct MainEditorContentView: View {
             versionHistoryContent(tab: tab)
         case .tableListing:
             tableListingContent(tab: tab)
+        case .routineDebug:
+            RoutineDebugTabContent(tabId: tab.id, databaseType: connection.type)
+                .id(tab.id)
         }
     }
 
@@ -1206,6 +1209,9 @@ extension MainEditorContentView {
                 coordinator.commandActions?.closeTab()
             },
             onExecuteQuery: { coordinator.runQuery(viewport: .firstRow) },
+            onSelectTab: { number in coordinator.commandActions?.selectTab(number: number) },
+            onSelectAdjacentTab: { offset in coordinator.commandActions?.selectTab(offsetBy: offset) },
+            tabCount: { coordinator.tabManager.visibleTabs.count },
             onRunStatement: { sql, offset in coordinator.runStatement(sql, sourceOffset: offset) },
             isExecuting: isExecuting,
             currentAIAvailability: { coordinator.aiQueryActionAvailability },

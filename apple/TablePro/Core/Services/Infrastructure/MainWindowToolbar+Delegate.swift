@@ -126,6 +126,10 @@ extension MainWindowToolbar {
             return makeNewTabItem()
         case Self.quickSwitcher:
             return makeQuickSwitcherItem()
+        case Self.debugContinue, Self.debugStepOver, Self.debugStepInto, Self.debugStepOut, Self.debugStop:
+            // Answering nil while the module is off is what prunes the controls from a saved arrangement.
+            guard debugItemsEnabled() else { return nil }
+            return makeDebugItem(itemIdentifier)
         default:
             return nil
         }

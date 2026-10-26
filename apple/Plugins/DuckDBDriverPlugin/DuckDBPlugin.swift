@@ -165,7 +165,8 @@ final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         operators: SQLEngineVocabulary.duckDB.operators.compactMap(SQLOperatorDescriptor.init(vocabulary:)),
         // DuckDB has no LIKE or lower() for INTEGER, UUID or DATE: `~~(INTEGER, STRING_LITERAL)` is a binder error.
         textCastTypeName: "VARCHAR",
-        functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive
+        functionNamesAreCaseInsensitive: SQLEngineVocabulary.duckDB.functionNamesAreCaseInsensitive,
+        typeNamesAreCaseInsensitive: true
     )
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {

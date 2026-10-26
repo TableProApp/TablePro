@@ -137,6 +137,10 @@ extension DatabaseManager {
         /// so a database switch cannot promote another connection in the meantime.
         MetadataConnectionPool.shared.beginTransportReplacement(connectionId: connectionId)
         defer { MetadataConnectionPool.shared.endTransportReplacement(connectionId: connectionId) }
+        // Debug drivers are dedicated connections, so the pool's replacement fence does not hold them back; the
+        // debugger keeps its own fence closed until this reconnect is over.
+        await RoutineDebugSessions.shared.stopAll(connectionId: connectionId)
+        defer { RoutineDebugSessions.shared.reopenAdmission(for: connectionId) }
         await SchemaService.shared.prepareForReload(connectionId: connectionId)
         await DatabaseTreeMetadataService.shared.handleReconnect(connectionId: connectionId)
         /// Asked again after the suspensions above: a switch that landed before the replacement
@@ -397,6 +401,8 @@ extension DatabaseManager {
         /// closing the pool there withdrew an open that another database's table load was waiting on.
         let replacesPooledTransport = session.connection.activeTunnelKind != nil || session.liveness != .live
         if replacesPooledTransport {
+            // A debug target dialed through this transport would be left holding its locks once it goes.
+            await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
             MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
             /// The other databases' connections were dialed through the same transport, so they go
             /// with it and reopen on their next use.
@@ -405,6 +411,11 @@ extension DatabaseManager {
         defer {
             if replacesPooledTransport {
                 MetadataConnectionPool.shared.endTransportReplacement(connectionId: sessionId)
+            }
+        }
+        defer {
+            if replacesPooledTransport {
+                RoutineDebugSessions.shared.reopenAdmission(for: sessionId)
             }
         }
 

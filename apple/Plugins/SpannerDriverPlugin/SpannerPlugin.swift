@@ -201,6 +201,9 @@ internal enum SpannerSQLDialect {
         booleanLiteralStyle: .truefalse,
         likeEscapeStyle: .implicit,
         paginationStyle: .limit,
-        caseSensitivityStyle: .caseFoldFunction
+        caseSensitivityStyle: .caseFoldFunction,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 }

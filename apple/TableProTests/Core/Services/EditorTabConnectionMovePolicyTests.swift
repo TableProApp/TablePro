@@ -17,7 +17,7 @@ struct EditorTabConnectionMovePolicyTests {
     @Test("Every other tab type names an object of its own connection and stays")
     func nonQueryTabsStay() {
         for tabType in [TabType.table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights,
-                        .objectSource, .versionHistory, .tableListing] {
+                        .objectSource, .versionHistory, .tableListing, .routineDebug] {
             #expect(!EditorTabConnectionMovePolicy.canMove(tabType: tabType, isBusy: false, hasPendingGridEdits: false))
         }
     }

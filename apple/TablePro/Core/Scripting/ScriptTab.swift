@@ -29,12 +29,13 @@ internal final class ScriptTab: NSObject, ScriptCommandReceiving {
     /// `objectSpecifier`, which Cocoa calls without any isolation of its own.
     private let container: ScriptingBox<NSScriptObjectSpecifier?>
 
-    internal init(tab: QueryTab, connectionId: UUID, container: NSScriptObjectSpecifier?) {
+    internal init?(tab: QueryTab, connectionId: UUID, container: NSScriptObjectSpecifier?) {
+        guard let kind = ScriptEnumerations.code(for: tab.tabType) else { return nil }
         self.tabId = tab.id
         self.connectionId = connectionId
         self.uniqueId = tab.id.uuidString
         self.name = tab.title
-        self.kind = ScriptEnumerations.code(for: tab.tabType)
+        self.kind = kind
         self.tableName = tab.tableContext.tableName
         self.databaseName = tab.tableContext.databaseName.isEmpty ? nil : tab.tableContext.databaseName
         self.schemaName = tab.tableContext.schemaName

@@ -52,6 +52,9 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         ]
     }
 
+    // In the class body so PGlite, which inherits the debugger conformance, can turn it off.
+    var canDebugRoutines: Bool { true }
+
     init(config: DriverConnectionConfig, singleConnectionMode: Bool = false) {
         self.core = LibPQDriverCore(config: config, singleConnectionMode: singleConnectionMode)
     }

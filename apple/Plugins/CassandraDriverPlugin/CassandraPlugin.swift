@@ -106,7 +106,10 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
             likeEscapeStyle: .explicit,
             paginationStyle: .limit,
             autoLimitStyle: .limit,
-            caseSensitivityStyle: .unsupported
+            caseSensitivityStyle: .unsupported,
+            textCastTypeName: nil,
+            functionNamesAreCaseInsensitive: true,
+            typeNamesAreCaseInsensitive: true
         )
     }
 

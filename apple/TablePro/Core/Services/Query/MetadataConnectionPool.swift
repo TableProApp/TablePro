@@ -411,11 +411,17 @@ final class MetadataConnectionPool {
     /// Opens a second connection to the session's server, on `scope`'s database, through the
     /// transport the session already holds. Every tunnel manager closes its tunnel before building a
     /// new one, so dialing the session's effective endpoint is what keeps the other connections up.
-    /// A database lane opens its user connection here too, as `.session`.
-    internal static func openServerDriver(for scope: DatabaseScope, purpose: DriverPurpose) async throws -> DatabaseDriver {
+    /// A database lane opens its user connection here too, as `.session`. `queryTimeoutSeconds`
+    /// replaces the session's timeout, for a debug target that waits on a person between steps.
+    internal static func openServerDriver(
+        for scope: DatabaseScope,
+        purpose: DriverPurpose,
+        queryTimeoutSeconds: Int? = nil
+    ) async throws -> DatabaseDriver {
         guard let session = DatabaseManager.shared.session(for: scope.connectionId) else {
             throw DatabaseError.notConnected
         }
+        let queryTimeout = queryTimeoutSeconds ?? session.effectiveQueryTimeoutSeconds
         var connection = session.effectiveConnection ?? session.connection
         let plan = Self.planConnection(
             configuredDatabase: connection.database,
@@ -443,14 +449,14 @@ final class MetadataConnectionPool {
             purpose: purpose,
             deadline: deadline,
             timeoutEndpoint: timeoutEndpoint,
-            effectiveQueryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
+            effectiveQueryTimeoutSeconds: queryTimeout,
             preparedConfiguration: preparedConfiguration
         )
         do {
             try await driver.connect()
             try await Self.prepareSession(
                 driver,
-                queryTimeoutSeconds: session.effectiveQueryTimeoutSeconds,
+                queryTimeoutSeconds: queryTimeout,
                 startupCommands: session.connection.startupCommands,
                 connectionName: session.connection.name,
                 timeoutSeconds: operationTimeoutSeconds

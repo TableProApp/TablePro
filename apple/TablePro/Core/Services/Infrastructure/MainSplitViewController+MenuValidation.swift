@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import TableProPluginKit
 
 // A plain value keeps `isEnabled` pure and testable, the same split `ToolbarContextResolver` uses for the toolbar.
 struct MenuValidationContext: Equatable {
@@ -125,6 +126,8 @@ struct MenuValidationContext: Equatable {
     var hasDatabaseFilter = false
     var canFilterSchemas = false
     var hasSchemaFilter = false
+    // Filled only when a Debug menu item is validated; the menu exists only while the module is on.
+    var routineDebug = RoutineDebugMenuState()
 
     // The validation and the window's handler both read it, so a lit Use Selection for Find never lands on an editor with no selection.
     var usesGridSelectionForFind: Bool {
@@ -140,6 +143,7 @@ extension MainSplitViewController: NSMenuItemValidation {
         if let query = isQueryCommandEnabled(selector, context: context) { return query }
         if let chooser = isContainerCommandEnabled(selector, context: context) { return chooser }
         if let creation = isCreationCommandEnabled(selector, context: context) { return creation }
+        if let debug = isRoutineDebugCommandEnabled(selector, context: context) { return debug }
 
         switch selector {
         case #selector(exportTables(_:)),
@@ -323,6 +327,27 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected && context.canFilterSchemas && context.hasSchemaFilter
         default:
             return nil
+        }
+    }
+
+    // Agent mode does not draw the debug tab these act on.
+    private static func isRoutineDebugCommandEnabled(
+        _ selector: Selector,
+        context: MenuValidationContext
+    ) -> Bool? {
+        guard routineDebugSelectors.contains(selector) else { return nil }
+        guard !context.isAgentMode else { return false }
+        let debug = context.routineDebug
+        switch selector {
+        case #selector(chooseRoutineToDebug(_:)): return context.isConnected && debug.canChooseRoutine
+        case #selector(debugContinue(_:)): return debug.performableCommands.contains(.continueExecution)
+        case #selector(debugStepOver(_:)): return debug.performableCommands.contains(.stepOver)
+        case #selector(debugStepInto(_:)): return debug.performableCommands.contains(.stepInto)
+        case #selector(debugStepOut(_:)): return debug.performableCommands.contains(.stepOut)
+        case #selector(debugStop(_:)): return debug.canStop
+        case #selector(toggleBreakpoint(_:)): return debug.canToggleBreakpoint
+        case #selector(removeAllBreakpoints(_:)): return debug.canRemoveAllBreakpoints
+        default: return false
         }
     }
 
@@ -650,6 +675,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         guard let action = menuItem.action else { return context }
         if action == #selector(selectNumberedTab(_:)) {
             context.requestedTabNumber = menuItem.tag
+        }
+        if Self.routineDebugSelectors.contains(action) {
+            context.routineDebug = routineDebugMenuState
         }
         guard Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status

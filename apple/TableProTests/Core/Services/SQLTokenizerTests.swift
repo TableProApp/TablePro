@@ -2,8 +2,6 @@
 //  SQLTokenizerTests.swift
 //  TableProTests
 //
-//  Tests for SQLTokenizer — character-by-character SQL lexer.
-//
 
 import Foundation
 import TableProPluginKit
@@ -262,5 +260,132 @@ struct SQLTokenizerTests {
         let nonWS = tokens.filter { $0.type != .whitespace }
         #expect(nonWS[0].value == "select") // preserves original case
         #expect(nonWS[1].value == "'Hello World'")
+    }
+
+    // MARK: - Engine grammar
+
+    private func code(_ sql: String, _ type: DatabaseType, operators: Set<String> = []) -> [SQLToken] {
+        SQLTokenizer(operators: operators).tokenize(sql, grammar: type.lexicalGrammar).filter { $0.type != .whitespace }
+    }
+
+    @Test("A bracket name is one identifier under SQL Server's grammar")
+    func bracketIdentifier() {
+        #expect(code("select [order id] from [my table]", .mssql).map(\.value) == ["select", "[order id]", "from", "[my table]"])
+        #expect(code("[select]", .mssql) == [SQLToken(type: .identifier, value: "[select]")])
+    }
+
+    @Test("Without a grammar a bracket stays apart, as the query fingerprint reads it")
+    func bracketWithoutGrammar() {
+        #expect(tokenizer.tokenize("[users]").map(\.value) == ["[", "users", "]"])
+    }
+
+    @Test("A dollar-quoted body is one string")
+    func dollarQuotedBody() {
+        let body = "$$\nif x:\n    return 1\n$$"
+        #expect(code("as \(body) language plpython3u", .postgresql).map(\.value) == ["as", body, "language", "plpython3u"])
+    }
+
+    @Test("A GO line is a directive")
+    func batchSeparatorDirective() {
+        let tokens = code("select 1\nGO\nselect 2", .mssql)
+        #expect(tokens.map(\.value) == ["select", "1", "GO", "select", "2"])
+        #expect(tokens[2].type == .directive)
+    }
+
+    @Test("A DELIMITER line is a directive and its delimiter ends a statement")
+    func delimiterDirective() {
+        let tokens = code("DELIMITER //\nselect 1; end //\nDELIMITER ;", .mysql)
+        #expect(tokens.map(\.value) == ["DELIMITER //", "select", "1", ";", "end", "//", "DELIMITER ;"])
+        #expect(tokens.map(\.type) == [.directive, .keyword, .number, .punctuation, .keyword, .punctuation, .directive])
+    }
+
+    @Test("DELIMITER is a directive only where a statement starts")
+    func delimiterOnlyAtStatementStart() {
+        #expect(code("select\ndelimiter as d from t", .mysql).allSatisfy { $0.type != .directive })
+        #expect(code("select 1;\ndelimiter $$", .mysql).last?.type == .directive)
+    }
+
+    @Test("A MySQL # comment runs to the end of its line")
+    func hashComment() {
+        #expect(code("a # b and\nc", .mysql).map(\.value) == ["a", "# b and", "c"])
+    }
+
+    @Test("A line comment in a CRLF text ends at its line")
+    func crlfLineComment() {
+        #expect(code("a -- note\r\nb", .mysql).map(\.value) == ["a", "-- note", "b"])
+    }
+
+    @Test("Operators the dialect declares stay whole, and T-SQL's <@ is less than a variable")
+    func dialectOperators() {
+        #expect(code("a@>b and c#>>d", .postgresql, operators: ["@>", "#>>"]).map(\.value) == ["a", "@>", "b", "and", "c", "#>>", "d"])
+        #expect(code("a<@b", .mssql).map(\.value) == ["a", "<", "@b"])
+        #expect(code("a <=> b, @x := 1", .mysql).map(\.value) == ["a", "<=>", "b", ",", "@x", ":=", "1"])
+    }
+
+    @Test("A literal prefix stays on its literal")
+    func prefixedLiterals() {
+        let tokens = code("0xFF N'abc' X'4D' _utf8mb4'a' 2fa_codes", .mysql)
+        #expect(tokens.map(\.value) == ["0xFF", "N'abc'", "X'4D'", "_utf8mb4'a'", "2fa_codes"])
+        #expect(tokens.map(\.type) == [.number, .string, .string, .string, .identifier])
+    }
+
+    @Test("Without a grammar a word before a quote stays a word, so the fingerprint keeps the column")
+    func wordBeforeQuoteWithoutGrammar() {
+        for word in ["a", "b", "N"] {
+            let tokens = tokenizer.tokenize("SELECT \(word)'alias' FROM t").filter { $0.type != .whitespace }
+            #expect(tokens.map(\.value) == ["SELECT", word, "'alias'", "FROM", "t"])
+            #expect(tokens[1].type == .identifier)
+        }
+        for type in [DatabaseType.sqlite, .mysql] {
+            #expect(
+                SQLQueryFingerprint.hash("SELECT a'alias' FROM t", databaseType: type)
+                    != SQLQueryFingerprint.hash("SELECT b'alias' FROM t", databaseType: type)
+            )
+            #expect(SQLQueryFingerprint.normalize("SELECT a'alias' FROM t", databaseType: type) == "SELECT a ? FROM t")
+        }
+    }
+
+    @Test("Under a grammar only a literal introducer joins its quote")
+    func onlyIntroducersJoinTheirQuote() {
+        #expect(code("a'alias' r'raw' b'0101'", .mysql).map(\.value) == ["a", "'alias'", "r", "'raw'", "b'0101'"])
+    }
+
+    @Test("A custom delimiter splits the word it is glued to")
+    func delimiterSplitsAGluedWord() {
+        let tokens = code("DELIMITER $$\nend$$\nDELIMITER ;", .mysql)
+        #expect(tokens.map(\.value) == ["DELIMITER $$", "end", "$$", "DELIMITER ;"])
+        #expect(tokens.map(\.type) == [.directive, .keyword, .punctuation, .directive])
+    }
+
+    @Test("Under T-SQL a name continues with # and @; under MySQL # starts a comment")
+    func tsqlNameCharacters() {
+        #expect(code("Part# a#b c@d", .mssql).map(\.value) == ["Part#", "a#b", "c@d"])
+        #expect(code("a#b\nc", .mysql).map(\.value) == ["a", "#b", "c"])
+    }
+
+    @Test("Operators no dialect declares stay whole")
+    func undeclaredOperators() {
+        #expect(code("a += b == c ** d // e ^= f", .sqlite).map(\.value) == ["a", "+=", "b", "==", "c", "**", "d", "//", "e", "^=", "f"])
+    }
+
+    @Test("A system variable keeps its name in the fingerprint")
+    func systemVariableFingerprint() {
+        #expect(SQLQueryFingerprint.normalize("SELECT @@version", databaseType: .mysql) == "SELECT @@version")
+        #expect(SQLQueryFingerprint.hash("SELECT @@version", databaseType: .mysql) != SQLQueryFingerprint.hash("SELECT 1", databaseType: .mysql))
+        #expect(
+            SQLQueryFingerprint.hash("SELECT @@version", databaseType: .mysql)
+                != SQLQueryFingerprint.hash("SELECT @@sql_mode", databaseType: .mysql)
+        )
+    }
+
+    @Test("A keyword before a quote stays a keyword")
+    func keywordBeforeQuote() {
+        #expect(code("then'x'", .mysql).map(\.value) == ["then", "'x'"])
+    }
+
+    @Test("Temp tables, variables and $ names are one word")
+    func prefixedNames() {
+        #expect(code("#tmp ##global @@rowcount @p", .mssql).map(\.value) == ["#tmp", "##global", "@@rowcount", "@p"])
+        #expect(code("v$session SYS#1", .oracle).map(\.value) == ["v$session", "SYS#1"])
     }
 }

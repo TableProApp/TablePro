@@ -137,7 +137,8 @@ private extension SQLDialectDescriptor {
             operators: operators,
             textCastTypeName: textCastTypeName,
             functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
-            lexicalFeatures: lexicalFeatures
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive
         )
     }
 }

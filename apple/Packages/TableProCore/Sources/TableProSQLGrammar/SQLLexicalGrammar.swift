@@ -99,6 +99,10 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// ``CQLBatchTracker``. Only the curated CQL grammar carries it, so the kit has no feature for it.
     public static let cqlBatches = SQLLexicalGrammar(rawValue: 1 << 26)
 
+    /// `#` and `@` continue a name after its first character, so T-SQL's `Part#` and `c@d` are one name each. Only the
+    /// curated T-SQL grammar carries it, so the kit has no feature for it.
+    public static let hashAndAtInIdentifiers = SQLLexicalGrammar(rawValue: 1 << 27)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

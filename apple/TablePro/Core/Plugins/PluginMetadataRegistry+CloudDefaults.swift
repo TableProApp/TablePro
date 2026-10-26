@@ -153,7 +153,10 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .implicit,
                         paginationStyle: .limit,
-                        caseSensitivityStyle: .caseFoldFunction
+                        caseSensitivityStyle: .caseFoldFunction,
+                        textCastTypeName: nil,
+                        functionNamesAreCaseInsensitive: true,
+                        typeNamesAreCaseInsensitive: true
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -339,7 +342,10 @@ extension PluginMetadataRegistry {
                         booleanLiteralStyle: .truefalse,
                         likeEscapeStyle: .implicit,
                         paginationStyle: .limit,
-                        caseSensitivityStyle: .caseFoldFunction
+                        caseSensitivityStyle: .caseFoldFunction,
+                        textCastTypeName: nil,
+                        functionNamesAreCaseInsensitive: true,
+                        typeNamesAreCaseInsensitive: true
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),
@@ -595,7 +601,10 @@ extension PluginMetadataRegistry {
                         likeEscapeStyle: .explicit,
                         paginationStyle: .limit,
                         requiresBackslashEscaping: true,
-                        caseSensitivityStyle: .ilikeOperator
+                        caseSensitivityStyle: .ilikeOperator,
+                        textCastTypeName: nil,
+                        functionNamesAreCaseInsensitive: true,
+                        typeNamesAreCaseInsensitive: true
                     ),
                     statementCompletions: [
                         CompletionEntry(label: "SELECT", insertText: "SELECT"),

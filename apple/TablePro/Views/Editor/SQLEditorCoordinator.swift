@@ -115,6 +115,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     private var vimCursorManager: VimCursorManager?
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
+    var onSelectTab: ((Int) -> Void)?
+    var onSelectAdjacentTab: ((Int) -> Void)?
+    var tabCount: (() -> Int)?
     var onRunStatement: ((String, Int) -> Bool)?
     var currentAIAvailability: (() -> AIQueryActionAvailability)?
     var onAIAction: ((AIQueryAction, AIQueryTarget) -> Void)?
@@ -323,6 +326,9 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         releaseWindowSentinel()
         onCloseTab = nil
         onExecuteQuery = nil
+        onSelectTab = nil
+        onSelectAdjacentTab = nil
+        tabCount = nil
         onRunStatement = nil
         statementRunController.onRun = nil
         statementRunController.clear(in: controller)
@@ -481,15 +487,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         guard let textView = controller?.textView else { return }
         let formatter: QueryFormatting
         do {
-            guard let made = try QueryFormatterFactory.make(for: databaseType, sourceFileURL: sourceFileURL) else { return }
+            guard let made = try QueryFormatterFactory.make(
+                for: databaseType,
+                sourceFileURL: sourceFileURL,
+                grammar: formatGrammar
+            ) else { return }
             formatter = made
         } catch {
             Self.logger.error("Formatter rules unreadable: \(error.publicLogShape, privacy: .public)")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Couldn't Format Query"),
-                message: error.localizedDescription,
-                window: textView.window
-            )
+            showFormatError(error, in: textView.window)
             return
         }
         let scope = FormatScopeResolver.resolve(
@@ -513,7 +519,22 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
             controller?.setCursorPositions([CursorPosition(range: NSRange(location: caretLocation, length: 0))])
         } catch {
             Self.logger.error("SQL Formatting error: \(error.publicLogShape, privacy: .public)")
+            showFormatError(error, in: textView.window)
         }
+    }
+
+    private var formatGrammar: SQLLexicalGrammar? {
+        guard let databaseType else { return nil }
+        guard let connectionId else { return databaseType.lexicalGrammar }
+        return SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: connectionId)
+    }
+
+    private func showFormatError(_ error: Error, in window: NSWindow?) {
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Couldn't Format Query"),
+            message: error.localizedDescription,
+            window: window
+        )
     }
 
     // MARK: - Inline Suggestion Manager
@@ -665,6 +686,15 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
         }
         commandHandler.onCloseTab = { [weak self] in
             self?.onCloseTab?()
+        }
+        commandHandler.onSelectTab = { [weak self] number in
+            self?.onSelectTab?(number)
+        }
+        commandHandler.onSelectAdjacentTab = { [weak self] offset in
+            self?.onSelectAdjacentTab?(offset)
+        }
+        commandHandler.tabCount = { [weak self] in
+            self?.tabCount?() ?? 0
         }
         engine.onCommand = { [weak self] command in
             self?.commandHandler.handle(command)

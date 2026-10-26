@@ -105,7 +105,10 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
             "JSON", "XML", "ST_GEOMETRY",
         ],
         autoLimitStyle: .top,
-        caseSensitivityStyle: .unsupported
+        caseSensitivityStyle: .unsupported,
+        textCastTypeName: nil,
+        functionNamesAreCaseInsensitive: true,
+        typeNamesAreCaseInsensitive: true
     )
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "TeradataPlugin")

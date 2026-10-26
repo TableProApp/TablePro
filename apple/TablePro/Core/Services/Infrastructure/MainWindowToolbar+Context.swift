@@ -46,7 +46,8 @@ internal extension MainWindowToolbar {
             supportsServerDashboard: databaseType.map { ServerDashboardQueryProviderFactory.supportsDashboard(for: $0) }
                 ?? false,
             isAIEnabled: AppSettingsManager.shared.ai.enabled,
-            stagesObjectChanges: tab?.tabType == .objectSource && tab?.display.objectRef?.kind == .userType
+            stagesObjectChanges: tab?.tabType == .objectSource && tab?.display.objectRef?.kind == .userType,
+            showsDebugItems: debugItemsEnabled()
         )
     }
 
@@ -58,6 +59,7 @@ internal extension MainWindowToolbar {
     func currentContext() -> ToolbarContext {
         let host = self.host
         let state = coordinator?.toolbarState
+        let debugger = (host?.contentMode ?? .browse) == .browse ? coordinator?.frontRoutineDebugController : nil
         return ToolbarContext(
             key: currentVisibilityKey(),
             pane: host?.currentPane ?? .empty,
@@ -70,7 +72,11 @@ internal extension MainWindowToolbar {
             canAddRow: coordinator?.canAddRow ?? false,
             canRestorePreviousValues: coordinator?.canRewindSelectedTab ?? false,
             canNavigateBack: coordinator?.canNavigateBack ?? false,
-            canNavigateForward: coordinator?.canNavigateForward ?? false
+            canNavigateForward: coordinator?.canNavigateForward ?? false,
+            debugCommands: debugger.map { controller in
+                Set(PluginDebugCommand.hostCommands.filter { controller.canPerform($0) })
+            } ?? [],
+            canStopDebugging: debugger?.canStop ?? false
         )
     }
 }

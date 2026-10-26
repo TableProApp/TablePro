@@ -234,9 +234,7 @@ extension VimEngine {
         guard deleteCount > 0 else { return }
         let start = pos - deleteCount
         let range = NSRange(location: start, length: deleteCount)
-        register.text = buffer.string(in: range)
-        register.isLinewise = false
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
         buffer.replaceCharacters(in: range, with: "")
         buffer.setSelectedRange(NSRange(location: start, length: 0))
     }
@@ -251,9 +249,7 @@ extension VimEngine {
         let deleteCount = min(count, max(0, contentEnd - pos))
         guard deleteCount > 0 else { setMode(.insert); return }
         let range = NSRange(location: pos, length: deleteCount)
-        register.text = buffer.string(in: range)
-        register.isLinewise = false
-        register.syncToPasteboard()
+        writeToActiveRegister(text: buffer.string(in: range), linewise: false, asDelete: true)
         buffer.replaceCharacters(in: range, with: "")
         buffer.setSelectedRange(NSRange(location: pos, length: 0))
         setMode(.insert)

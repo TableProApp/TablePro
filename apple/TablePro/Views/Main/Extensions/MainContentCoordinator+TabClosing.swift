@@ -13,12 +13,16 @@ extension MainContentCoordinator {
             guard let tab = tabManager.tabs.first(where: { $0.id == id }) else { continue }
             // A close removes the tab before the selection moves, so this is the only save of filter rows never applied.
             saveLastFilters(of: tab)
-            RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
+            if tab.tabType.isTransient {
+                RoutineDebugSessions.shared.endSession(forTab: id)
+            } else {
+                RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
+            }
             releaseResources(of: tab)
             releaseExecution(of: tab)
             tabManager.closeTab(id: id)
         }
-        guard tabManager.tabs.isEmpty else { return }
+        guard tabManager.tabs.allSatisfy({ $0.tabType.isTransient }) else { return }
         persistence.clearForUserClosedAllTabs()
     }
 

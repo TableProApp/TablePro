@@ -160,9 +160,7 @@ extension VimEngine {
         case "c":
             let sel = buffer.selectedRange()
             if sel.length > 0 {
-                register.text = buffer.string(in: sel)
-                register.isLinewise = isLinewise
-                register.syncToPasteboard()
+                writeToActiveRegister(text: buffer.string(in: sel), linewise: isLinewise, asDelete: true)
                 if isLinewise {
                     let trimmed = sel.length > 0
                         && sel.location + sel.length - 1 < buffer.length

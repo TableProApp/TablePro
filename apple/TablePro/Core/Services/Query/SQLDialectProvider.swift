@@ -16,6 +16,8 @@ struct PluginDialectAdapter: SQLDialectProvider {
     let functions: Set<String>
     let dataTypes: Set<String>
     let functionNamesAreCaseInsensitive: Bool
+    let typeNamesAreCaseInsensitive: Bool
+    let operators: Set<String>
 
     init(descriptor: SQLDialectDescriptor) {
         self.identifierQuote = descriptor.identifierQuote
@@ -23,6 +25,8 @@ struct PluginDialectAdapter: SQLDialectProvider {
         self.functions = descriptor.functions
         self.dataTypes = descriptor.dataTypes
         self.functionNamesAreCaseInsensitive = descriptor.functionNamesAreCaseInsensitive
+        self.typeNamesAreCaseInsensitive = descriptor.typeNamesAreCaseInsensitive
+        self.operators = Set(descriptor.operators.map(\.symbol))
     }
 }
 
@@ -34,6 +38,8 @@ private struct EmptyDialect: SQLDialectProvider {
     let functions: Set<String> = []
     let dataTypes: Set<String> = []
     let functionNamesAreCaseInsensitive = false
+    let typeNamesAreCaseInsensitive = false
+    let operators: Set<String> = []
 }
 
 // MARK: - Dialect Factory
