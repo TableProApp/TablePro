@@ -31,17 +31,7 @@ extension MainContentView {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
         if session.isConnected {
-            if let trigger = coordinator.pendingLoadTrigger {
-                let hasPendingEdits =
-                    changeManager.hasChanges
-                    || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
-                if !hasPendingEdits {
-                    coordinator.pendingLoadTrigger = nil
-                    consumePendingLoad(trigger: trigger)
-                }
-            } else {
-                coordinator.lazyLoadCurrentTabIfNeeded()
-            }
+            coordinator.loadSelectedTableTabAfterConnect()
         }
         toolbarState.updateConnectionState(from: session.reportedStatus)
         toolbarState.syncFromSession(for: connection)
@@ -53,17 +43,6 @@ extension MainContentView {
         AccessibilityAnnouncement.post(
             String(format: String(localized: "Connected with a warning. %@"), warning)
         )
-    }
-
-    private func consumePendingLoad(trigger: TableLoadTrigger) {
-        if let tabId = tabManager.selectedTab?.id {
-            coordinator.resolveTableTabSchemaIfNeeded(tabId: tabId)
-        }
-        if tabManager.selectedTab?.tabType == .table {
-            coordinator.lazyLoadCurrentTabIfNeeded(trigger: trigger)
-        } else {
-            coordinator.runQuery(viewport: .firstRow, trigger: trigger)
-        }
     }
 
     // MARK: - Inspector Context

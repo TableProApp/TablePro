@@ -40,29 +40,17 @@ final class TabSessionRegistry {
     func setTableRows(_ rows: TableRows, for tabId: UUID) {
         let session = ensureSession(for: tabId)
         session.tableRows = rows
-        session.isEvicted = false
         session.dataRevision &+= 1
         session.bufferEpoch &+= 1
         session.rowSetRevision &+= 1
     }
 
-    /// A mutation of what the tab already holds, so it cannot resurrect a tab that holds nothing.
-    ///
-    /// Phase-2 metadata (foreign keys, defaults, enum values) lands at background priority long
-    /// after the load that asked for it, and it is keyed on the result rather than on the rows, so
-    /// it arrives on tabs that were evicted while it was in flight. Clearing `isEvicted` for a
-    /// mutation that leaves the buffer empty leaves a tab with no rows that `canAutoLoadTableTab`
-    /// reads as already loaded, and eviction cannot re-mark it because it has nothing left to lose:
-    /// the grid stays empty until an explicit refresh.
     @discardableResult
     func updateTableRows(for tabId: UUID, _ mutate: (inout TableRows) -> Delta) -> Delta {
         let session = ensureSession(for: tabId)
         var rows = session.tableRows
         let delta = mutate(&rows)
         session.tableRows = rows
-        if !rows.rows.isEmpty {
-            session.isEvicted = false
-        }
         session.dataRevision &+= 1
         if delta.changesRowSet {
             session.rowSetRevision &+= 1
@@ -73,26 +61,6 @@ final class TabSessionRegistry {
     func removeTableRows(for tabId: UUID) {
         guard let session = sessions[tabId] else { return }
         session.tableRows = TableRows()
-        session.isEvicted = false
-        session.dataRevision &+= 1
-        session.bufferEpoch &+= 1
-        session.rowSetRevision &+= 1
-    }
-
-    func isEvicted(_ tabId: UUID) -> Bool {
-        sessions[tabId]?.isEvicted ?? false
-    }
-
-    /// Drops a tab's rows and marks it evicted. Getting them back is the caller's job: SwiftUI's
-    /// `.task(id:)` keys on `QueryTab.loadEpoch`, so a caller that wants the lazy load to re-fire
-    /// bumps that itself.
-    ///
-    /// A tab with no rows is left alone, so eviction never marks a tab that has nothing to lose.
-    func evict(for tabId: UUID) {
-        guard let session = sessions[tabId] else { return }
-        guard !session.tableRows.rows.isEmpty else { return }
-        session.tableRows.discardRowsKeepingMetadata()
-        session.isEvicted = true
         session.dataRevision &+= 1
         session.bufferEpoch &+= 1
         session.rowSetRevision &+= 1
@@ -109,8 +77,7 @@ final class TabSessionRegistry {
     }
 
     /// Records that the tab's table changed. Nothing is discarded, and a tab holding no rows is
-    /// marked all the same: an empty collection that gains its first document is exactly the tab
-    /// eviction refuses.
+    /// marked all the same: an empty collection can gain its first document.
     func recordChange(_ change: TableFreshness.Change, for tabId: UUID) {
         ensureSession(for: tabId).freshness.record(change)
     }

@@ -11,12 +11,6 @@ import SwiftUI
 import TableProEditorKit
 import TableProPluginKit
 
-// A change to either field cancels the old task and starts a new one, which coalesces rapid Cmd+Number switches.
-private struct TabLoadKey: Hashable {
-    let tabId: UUID?
-    let loadEpoch: Int
-}
-
 // Only a tab showing rows reruns: an error, a plan or a write's count is not a view of the new database's data.
 @MainActor
 internal enum ContainerChangeRerunPolicy {
@@ -169,10 +163,7 @@ struct MainEditorContentView: View {
         .onAppear {
             updateHasQueryText()
         }
-        .task(id: TabLoadKey(
-            tabId: tabManager.selectedTabId,
-            loadEpoch: tabManager.selectedTab?.loadEpoch ?? 0
-        )) {
+        .task(id: tabManager.selectedTabId) {
             coordinator.lazyLoadCurrentTabIfNeeded()
         }
     }

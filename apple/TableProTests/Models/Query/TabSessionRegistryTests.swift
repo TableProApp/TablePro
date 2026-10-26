@@ -182,7 +182,7 @@ struct TabSessionRegistryTests {
         #expect(session.rowSetRevision == before)
     }
 
-    @Test("Replacing, removing and evicting the buffer each move rowSetRevision")
+    @Test("Replacing and removing the buffer each move rowSetRevision")
     func bufferReplacementMovesRowSetRevision() {
         let registry = TabSessionRegistry()
         let session = TabSession()
@@ -190,15 +190,12 @@ struct TabSessionRegistryTests {
 
         registry.setTableRows(makeRows(["a"]), for: session.id)
         let afterSet = session.rowSetRevision
-        registry.evict(for: session.id)
-        let afterEvict = session.rowSetRevision
         registry.setTableRows(makeRows(["b"]), for: session.id)
         let afterSecondSet = session.rowSetRevision
         registry.removeTableRows(for: session.id)
 
         #expect(afterSet > 0)
-        #expect(afterEvict > afterSet)
-        #expect(afterSecondSet > afterEvict)
+        #expect(afterSecondSet > afterSet)
         #expect(session.rowSetRevision > afterSecondSet)
     }
 
@@ -215,56 +212,32 @@ struct TabSessionRegistryTests {
         #expect(session.dataRevision > before)
     }
 
-    @Test("evict bumps dataRevision, and leaves it alone when there is nothing to evict")
-    func evictBumpsDataRevision() {
-        let registry = TabSessionRegistry()
-        let session = TabSession()
-        registry.register(session)
-        registry.setTableRows(makeRows(["a"]), for: session.id)
-        let before = session.dataRevision
-
-        registry.evict(for: session.id)
-        let afterEvict = session.dataRevision
-        registry.evict(for: session.id)
-
-        #expect(afterEvict > before)
-        #expect(session.dataRevision == afterEvict)
-        #expect(session.tableRows.index(of: .existing(0)) == nil)
-    }
-
     // MARK: - Stale mark
 
     private static func rowsChange(at instant: ContinuousClock.Instant = .now) -> TableFreshness.Change {
         TableFreshness.Change(extent: .rows, at: instant)
     }
 
-    @Test("Marking a tab stale keeps its rows, where evicting drops them")
+    @Test("Marking a tab stale keeps its rows")
     func markingStaleKeepsTheRows() {
         let registry = TabSessionRegistry()
         let stale = UUID()
-        let evicted = UUID()
         registry.setTableRows(makeRows(["a", "b", "c"]), for: stale)
-        registry.setTableRows(makeRows(["a", "b", "c"]), for: evicted)
 
         registry.recordChange(Self.rowsChange(), for: stale)
-        registry.evict(for: evicted)
 
         #expect(registry.isStale(stale))
         #expect(registry.tableRows(for: stale).rows.count == 3)
-        #expect(!registry.isEvicted(stale))
-        #expect(registry.tableRows(for: evicted).rows.isEmpty)
     }
 
-    @Test("A tab whose last result was empty can be marked stale, which eviction refuses")
+    @Test("A tab whose last result was empty can be marked stale")
     func emptyResultCanBeMarkedStale() {
         let registry = TabSessionRegistry()
         let tabId = UUID()
         registry.setTableRows(makeRows([]), for: tabId)
 
-        registry.evict(for: tabId)
         registry.recordChange(Self.rowsChange(), for: tabId)
 
-        #expect(!registry.isEvicted(tabId))
         #expect(registry.isStale(tabId))
     }
 
