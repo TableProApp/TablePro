@@ -154,11 +154,13 @@ struct IntegrationsActivityLogPane: View {
         .disabled(isLoading)
     }
 
+    /// `sidebar.trailing` is the glyph AppKit's own inspector toggle draws, and unlike
+    /// `sidebar.right` it mirrors in a right-to-left layout.
     private var inspectorToggle: some View {
         Button {
             showInspector.toggle()
         } label: {
-            Label(String(localized: "Details"), systemImage: "sidebar.right")
+            Label(String(localized: "Details"), systemImage: "sidebar.trailing")
         }
         .help(String(localized: "Show details"))
     }

@@ -148,9 +148,7 @@ struct TableStructureView: View {
     var body: some View {
         VStack(spacing: 0) {
             tableCommentBar
-            toolbar
-            Divider()
-            contentArea
+            structureTabs
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(loadInitialData)
@@ -224,30 +222,26 @@ struct TableStructureView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Tabs
 
     private var availableTabs: [StructureTab] {
         session.availableTabs
     }
 
-    private var toolbar: some View {
-        HStack {
-            Spacer()
-
-            Picker("Structure", selection: $session.selectedTab) {
-                ForEach(availableTabs, id: \.self) { tab in
-                    Text(tabLabel(for: tab)).tag(tab)
-                }
+    /// A tab view, because the HIG asks for one wherever the main window area switches between
+    /// panes, and inset by a margin on every side, which is how it lays one out.
+    private var structureTabs: some View {
+        TabView(selection: $session.selectedTab.committingEdit(of: session.gridModel)) {
+            ForEach(availableTabs, id: \.self) { tab in
+                pane(for: tab)
+                    .tabItem { Text(tabLabel(for: tab)) }
+                    .tag(tab)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .monospacedDigit()
-            .accessibilityIdentifier("structure-tab-picker")
-
-            Spacer()
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("structure-tab-picker")
         .padding()
-        .overlay(alignment: .trailing) {
+        .overlay(alignment: .topTrailing) {
             if structureChangeManager.isHeldForSave {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
@@ -255,10 +249,22 @@ struct TableStructureView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.trailing)
+                .padding([.top, .trailing])
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("structure-save-progress")
             }
+        }
+    }
+
+    /// Only the selected pane is built. The grid panes share one `StructureGridAdapter` and one
+    /// grid model, which can drive one mounted grid at a time, and a tab view keeps the panes it
+    /// has shown.
+    @ViewBuilder
+    private func pane(for tab: StructureTab) -> some View {
+        if tab == selectedTab {
+            contentArea
+        } else {
+            Color.clear
         }
     }
 

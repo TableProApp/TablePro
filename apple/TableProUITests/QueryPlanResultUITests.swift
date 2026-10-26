@@ -38,7 +38,8 @@ final class QueryPlanResultUITests: UITestCase {
         step.click()
         XCTAssertTrue(detail.waitToExist(timeout: 5), "A click on a step in a zoomed-out diagram must open its details")
 
-        let modes = window.radioGroups["query-plan-mode-picker"].firstMatch
+        // A tab group on macOS 27, where the switcher takes the tabs role, and a radio group before it.
+        let modes = window.descendants(matching: .any)["query-plan-mode-picker"].firstMatch
         modes.radioButtons["Tree"].click()
         let outline = window.outlines["query-plan-outline"].firstMatch
         XCTAssertTrue(outline.waitToExist(timeout: 10), "Tree mode must show the plan outline")

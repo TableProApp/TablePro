@@ -276,7 +276,7 @@ internal class UITestCase: XCTestCase {
     internal func showStructure(in app: XCUIApplication, window: XCUIElement) {
         showResultView("Structure", in: app)
         XCTAssertTrue(
-            window.radioGroups["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
+            window.descendants(matching: .any)["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
             "The structure editor must open on the Structure result view"
         )
     }

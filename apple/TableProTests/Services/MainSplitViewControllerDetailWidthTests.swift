@@ -24,7 +24,8 @@ struct SplitPaneHoldingPriorityTests {
     func privilegeEditorKeepsDragRoom() {
         let required = UsersRolesLayoutMetrics.privilegeScopeMinimumWidth
             + UsersRolesLayoutMetrics.privilegeChecklistMinimumWidth
-        #expect(UsersRolesLayoutMetrics.tabMinimumWidth - required >= 50)
+        let available = UsersRolesLayoutMetrics.tabMinimumWidth - UsersRolesLayoutMetrics.principalDetailTabViewInset
+        #expect(available - required >= 50)
     }
 }
 
@@ -40,7 +41,7 @@ struct MainSplitViewControllerDetailWidthTests {
     func usersRolesDeclaresItsOwnMinimum() {
         let resolved = MainSplitViewController.resolveDetailMinimumThickness(for: .usersRoles, contentMode: .browse)
         #expect(resolved == UsersRolesLayoutMetrics.tabMinimumWidth)
-        #expect(resolved == 560)
+        #expect(resolved == 592)
     }
 
     @Test(
@@ -105,7 +106,7 @@ struct MainSplitViewControllerDetailWidthTests {
             sidebarMinimum: MainSplitViewController.resolveSidebarMinimumThickness(railAllowance: 0),
             dividerThickness: 1
         )
-        #expect(width == 1_112)
+        #expect(width == 1_144)
     }
 
     @Test("The workspace rail widens the window minimum by its own width")

@@ -75,9 +75,10 @@ internal struct PhpViewerView: View {
                 Text(String(localized: "Tree")).tag(PhpViewMode.tree)
                 Text(String(localized: "Raw")).tag(PhpViewMode.raw)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
             .fixedSize()
+            .accessibilityIdentifier("php-viewer-mode-picker")
             Spacer()
             if let onPopOut {
                 Button { onPopOut(rawValue) } label: {

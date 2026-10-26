@@ -59,11 +59,26 @@ struct DiagramZoomToolbar<Extras: View>: View {
         .buttonStyle(.borderless)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .themeMaterial(.toolbar, .thinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
+        .modifier(DiagramZoomSurface())
     }
 
     private var zoomPercentage: String {
         "\(Int((viewport.magnification * 100).rounded()))%"
+    }
+}
+
+/// Controls floating over content take Liquid Glass from macOS 26, as the Open Quickly panel and
+/// the chat's jump button already do. Glass draws its own edge and adapts to Reduce Transparency
+/// and Increase Contrast itself, so the hairline and the solid fallback belong to the material
+/// only.
+private struct DiagramZoomSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            content
+                .themeMaterial(.toolbar, .thinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 0.5))
+        }
     }
 }

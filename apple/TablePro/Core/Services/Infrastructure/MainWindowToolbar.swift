@@ -23,7 +23,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// record on the next launch. A user who customized keeps their arrangement and still receives
     /// new items where they belong; a bump would throw that away along with their display mode.
     /// The record is six keys and `isHidden` is not among them, since it is runtime state that is
-    /// never persisted, so a context-sensitive item set is no reason to bump either.
+    /// never persisted, so a context-sensitive item set is no reason to bump either. A reordered
+    /// default list needs no bump: a toolbar nobody customized stores no item list and takes the
+    /// new order, and a customized one keeps the user's (`scripts/probes/check-toolbar-autosave-reorder.sh`).
     ///
     /// Bump only for a change that diff cannot express, and say which. Neither fact was measured on
     /// macOS 13 or 14.
@@ -411,8 +413,14 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     /// Eight controls, and the zones are the panes. AppKit's own sidebar toggle stands alone ahead of
     /// `.sidebarTrackingSeparator`, so it lays out in the sidebar's titlebar strip and follows the
-    /// divider; the connection and its container are centred; Refresh, the commit verb, the Actions
-    /// pull-down and Safe Mode are the content run; the trailing-pane toggle closes the row.
+    /// divider; the connection and its container are centred; Refresh, the Actions pull-down, Safe
+    /// Mode and the commit verb are the content run; the trailing-pane toggle closes the row.
+    ///
+    /// The commit verb comes last because the HIG gives a critical action like Save "dedicated,
+    /// familiar, and visually distinct sections" and puts the primary action on the trailing side.
+    /// Measured on macOS 27, AppKit already gives it a glass section of its own there: Safe Mode's
+    /// menu indicator ends the shared capsule before it, so no `.space` is needed, and one drew
+    /// pixel-identical.
     ///
     /// A tracking separator divides the toolbar into pane-aligned sections; it does not align the
     /// items inside one. Everything after `.inspectorTrackingSeparator` therefore lays out from
@@ -444,9 +452,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             database,
             .flexibleSpace,
             refresh,
-            saveChanges,
             actions,
             safeMode,
+            saveChanges,
         ]
         if #available(macOS 14.0, *) {
             items.append(.inspectorTrackingSeparator)

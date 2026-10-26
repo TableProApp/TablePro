@@ -146,10 +146,9 @@ private struct TrailingPaneSurfacePicker: View {
                     .tag(segment)
             }
         }
-        .pickerStyle(.segmented)
+        .viewSwitcherStyle()
         .labelsHidden()
         .fixedSize()
-        .controlSize(.small)
         .accessibilityIdentifier("trailing-pane-surface")
     }
 

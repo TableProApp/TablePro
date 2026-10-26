@@ -83,9 +83,8 @@ internal struct GeometryFieldView: View {
                 Text(String(localized: "Text")).tag(Mode.text)
                 Text(String(localized: "Map")).tag(Mode.map)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
-            .controlSize(.small)
             .fixedSize()
             .accessibilityIdentifier("inspector-geometry-mode")
 

@@ -32,7 +32,7 @@ internal struct VersionHistoryDetailHeader: View {
                 Text("Changes").tag(VersionHistoryViewModel.DisplayMode.changes)
                 Text("Content").tag(VersionHistoryViewModel.DisplayMode.content)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
             .fixedSize()
             .accessibilityIdentifier("version-history-display-mode")
@@ -42,8 +42,10 @@ internal struct VersionHistoryDetailHeader: View {
                     Text("Unified").tag(TextDiffLayout.unified)
                 }
                 .pickerStyle(.segmented)
+                .controlSize(.small)
                 .labelsHidden()
                 .fixedSize()
+                .accessibilityIdentifier("version-history-diff-layout")
             }
             Button(String(localized: "Restore This Version"), action: restoreSelection)
                 .disabled(!viewModel.canRestoreSelection)

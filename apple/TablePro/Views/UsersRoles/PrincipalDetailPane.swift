@@ -9,7 +9,7 @@ struct PrincipalDetailPane: View {
             if let principal = viewModel.selectedPrincipal {
                 header(principal)
                 Divider()
-                content(principal)
+                tabs(principal)
             } else {
                 UnavailableStateView(
                     String(localized: "No Selection"),
@@ -37,25 +37,29 @@ struct PrincipalDetailPane: View {
             }
 
             Spacer()
-
-            Picker(String(localized: "View"), selection: $viewModel.detailSegment) {
-                ForEach(UsersRolesViewModel.DetailSegment.allCases) { segment in
-                    Text(segment.title).tag(segment)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .accessibilityIdentifier("usersroles-detail-segment")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .paneBarBackground(Color(nsColor: .controlBackgroundColor))
     }
 
+    private func tabs(_ principal: PluginPrincipalInfo) -> some View {
+        TabView(selection: $viewModel.detailSegment) {
+            ForEach(UsersRolesViewModel.DetailSegment.allCases) { segment in
+                pane(for: segment, principal: principal)
+                    .tabItem { Text(segment.title) }
+                    .tag(segment)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("usersroles-detail-segment")
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     @ViewBuilder
-    private func content(_ principal: PluginPrincipalInfo) -> some View {
-        switch viewModel.detailSegment {
+    private func pane(for segment: UsersRolesViewModel.DetailSegment, principal: PluginPrincipalInfo) -> some View {
+        switch segment {
         case .privileges:
             PrivilegeEditorPane(viewModel: viewModel)
         case .attributes:

@@ -468,7 +468,7 @@ struct DataBrowserView: View {
                     }
                 }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
+                Label("More", systemImage: ToolbarSymbols.more())
             }
         }
         if canInsertRow {
@@ -500,17 +500,13 @@ struct DataBrowserView: View {
                     .pickerStyle(.inline)
                 }
             } label: {
-                Label("Sort", systemImage: viewModel.sortState.isSorting
-                    ? "arrow.up.arrow.down.circle.fill"
-                    : "arrow.up.arrow.down.circle")
+                Label("Sort", systemImage: ToolbarSymbols.sort(isActive: viewModel.sortState.isSorting))
             }
             .disabled(columns.isEmpty)
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showFilterSheet = true } label: {
-                Label("Filter", systemImage: viewModel.hasActiveFilters
-                    ? "line.3.horizontal.decrease.circle.fill"
-                    : "line.3.horizontal.decrease.circle")
+                Label("Filter", systemImage: ToolbarSymbols.filter(isActive: viewModel.hasActiveFilters))
             }
             .badge(viewModel.activeFilterCount)
         }
