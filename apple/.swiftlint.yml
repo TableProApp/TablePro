@@ -484,6 +484,12 @@ custom_rules:
     regex: '^( *)(?:[\w()]+ +)*func +(?:activateLazyBundle|validateAndLoadBundle)\((?!(?:(?!^\1\}$)[\s\S])*?(?:\bassertLoadable\b|\bPluginCodeSignatureVerifier\b))'
     message: "Every path that loads a plugin's executable goes through the signature gate first."
     severity: error
+  plugin_gated_bundle_insert:
+    name: "Gated Bundle Record"
+    included: ['.*/TablePro/Core/Plugins/[^/]+\.swift$']
+    regex: '^( *)(?:[\w()]+ +)*func +(?!loadLazyDriverExecutable\b)\w+\((?:(?!^\1\}$)[\s\S])*?\bgatedBundleURLs\.insert\b'
+    message: "activateLazyBundle skips the gate for a recorded URL, so only the load that ran the gate records one."
+    severity: error
   plugin_signature_flags:
     name: "Plugin Signature Flags"
     included: ['.*/PluginCodeSignatureVerifier\.swift$']

@@ -22,6 +22,9 @@ internal final class SidebarContainerViewController: NSViewController {
     /// connection, so that is the part the window swaps.
     private let listHost = WorkspacePaneHost()
     private var sidebarState: SharedSidebarState?
+    /// The list the field's focus was last written for. A flip of this one connection's list moves the
+    /// focus with it; a rebind to another connection does not (`updateSidebarState`).
+    private var focusScope: SidebarTab?
     private var observationTask: Task<Void, Never>?
     private var filterPopover: NSPopover?
     /// Exactly one of these is active. A hidden view keeps its constraints, so hiding the two rows
@@ -258,6 +261,7 @@ internal final class SidebarContainerViewController: NSViewController {
         /// scope follows for the same reason, or it would name the previous connection's list.
         viewOptionsButton.isHidden = state.selectedSidebarTab != .tables
         scopeControl.selectedTab = state.selectedSidebarTab
+        focusScope = state.selectedSidebarTab
         observationTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -309,6 +313,12 @@ internal final class SidebarContainerViewController: NSViewController {
         }
         searchField.placeholderString = placeholder
         searchField.setAccessibilityLabel(placeholder)
+
+        // The field keeps editing through a flip of the list, so the focus follows the list it now filters.
+        if state.selectedSidebarTab != focusScope {
+            focusScope = state.selectedSidebarTab
+            writeFilterFocus(state.selectedSidebarTab == .tables && searchField.currentEditor() != nil)
+        }
     }
 
     /// Only a change reaches the window. `NSSegmentedControl` sends its action for a click on the

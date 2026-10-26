@@ -8,9 +8,9 @@ import AppKit
 /// What a key press means inside the quick switcher panel, resolved without touching AppKit state.
 ///
 /// The panel's key handling is split across two owners: the field editor answers the commands
-/// `NSTextField` sends it (arrows, Return, Escape), and everything the field editor never receives
-/// arrives through a local event monitor. Command-Return is in the second group, because AppKit's
-/// field editor has no command for it. Keeping the mapping here means both owners resolve a press
+/// `NSTextField` sends it (arrows, Return, Escape), and the panel asks first about everything the
+/// field editor never receives. Command-Return is in the second group, because AppKit's field
+/// editor has no command for it. Keeping the mapping here means both owners resolve a press
 /// the same way and the mapping can be tested without a window.
 internal enum QuickSwitcherKeyCommand: Equatable {
     case moveSelection(by: Int)
