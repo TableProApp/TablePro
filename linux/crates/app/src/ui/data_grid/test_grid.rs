@@ -215,6 +215,9 @@ impl Grid {
         // A saved layout can hide columns, which draw no cells.
         let width = opened.grid.shown_columns().len();
         wait_until(WAIT, || opened.cells().len() >= width * count.min(20)).expect("the cells are drawn");
+        // Rows are measured before the window's first layout; a user meets
+        // the grid laid out, with a width Row Details can open from.
+        wait_until(WAIT, || opened.grid.width() > 0).expect("the grid is laid out");
         opened
     }
 

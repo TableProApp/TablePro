@@ -2658,7 +2658,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/crypto-bigint-0.7.6/*
+Files: vendor/crypto-bigint-0.7.9/*
  vendor/spki-0.8.0/*
 Copyright: 2021-2026 The RustCrypto Project Developers
 License: Apache-2.0 or Expat

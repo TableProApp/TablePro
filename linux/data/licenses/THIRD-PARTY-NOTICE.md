@@ -6735,7 +6735,7 @@ DEALINGS IN THE SOFTWARE.
 
 Used by:
 
-- crypto-bigint 0.7.6
+- crypto-bigint 0.7.9
 - spki 0.8.0
 
 ~~~~text

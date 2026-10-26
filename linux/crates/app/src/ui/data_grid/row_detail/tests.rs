@@ -513,6 +513,16 @@ fn the_calendar_writes_a_date() {
 }
 
 #[gtk4::test]
+fn the_calendar_opens_toward_the_rows() {
+    let (_grid, pane) = date_grid(a_date(2024, 2, 29));
+    assert_eq!(
+        pane.imp().calendar_button.direction(),
+        gtk::ArrowType::Left,
+        "a calendar dropped below the pane's button has no room on a short screen"
+    );
+}
+
+#[gtk4::test]
 fn clicking_today_on_a_null_date_writes_it() {
     let (grid, pane) = date_grid(Value::Null);
     let calendar = open_calendar(&pane);
