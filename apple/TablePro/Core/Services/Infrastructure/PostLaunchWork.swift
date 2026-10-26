@@ -1,6 +1,5 @@
 import Foundation
 import os
-import TableProUtilities
 
 /// The subsystem work a launch has to do but the first window does not need.
 ///
@@ -27,8 +26,6 @@ internal enum PostLaunchWork {
         guard !hasStarted else { return }
         hasStarted = true
         logger.debug("post-launch work starting")
-
-        MemoryPressureAdvisor.startMonitoring()
 
         Task { await PluginManager.shared.sweepPluginSignatures() }
         Task { await QueryHistoryManager.shared.performStartupCleanup() }

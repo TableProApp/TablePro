@@ -37,7 +37,7 @@ extension MainContentCoordinator {
         }
 
         guard let session = DatabaseManager.shared.activeSessions[connection.id], session.isConnected else {
-            if isTableTab { pendingLoadTrigger = .restore }
+            if isTableTab { parkedTableLoad = ParkedTableLoad(tabId: selected.id, trigger: .restore) }
             return
         }
 

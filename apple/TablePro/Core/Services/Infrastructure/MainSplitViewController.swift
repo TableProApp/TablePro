@@ -650,15 +650,8 @@ internal final class MainSplitViewController: NSSplitViewController {
     /// Switching workspace repaints the window in place. The rail used to raise a different
     /// window instead, which is what made several connections mean several windows.
     internal func applySelectedWorkspace() {
-        /// Switching workspace is this window's key-window change as far as a coordinator is
-        /// concerned. Only the selected one receives the real `windowDidBecomeKey`, so without
-        /// this the outgoing connection keeps `isKeyWindow` true and never schedules the eviction
-        /// that frees its row buffers.
-        ///
-        /// The outgoing side is read from each coordinator rather than from `lastActiveCoordinator`,
-        /// which only a switch sets. The window's first connection is made key by the window itself,
-        /// so the first switch away from it found no cached coordinator to resign: it kept
-        /// `isKeyWindow` and never scheduled the eviction.
+        // Only the selected connection gets the real windowDidBecomeKey, so a switch hands key status over itself.
+        // Each coordinator is asked, not `lastActiveCoordinator`: the window made its first connection key without a switch.
         let incoming = workspaces.selected?.sessionState?.coordinator
         var handedOffKey = false
         for workspace in workspaces.workspaces {
@@ -668,10 +661,7 @@ internal final class MainSplitViewController: NSSplitViewController {
             coordinator.handleWindowDidResignKey()
             handedOffKey = true
         }
-        /// Key status is handed over, never invented. A window that is not key can still change its
-        /// selection, and marking that connection key kept its row eviction from ever being
-        /// scheduled and let a deferred restore load in a window nobody was looking at. The real
-        /// `windowDidBecomeKey` reaches whichever connection is selected when the window comes forward.
+        // Handed over, never invented: marking a connection key in a background window ran its deferred restore load unseen.
         if lastActiveCoordinator !== incoming {
             if handedOffKey || view.window?.isKeyWindow == true {
                 incoming?.handleWindowDidBecomeKey()
