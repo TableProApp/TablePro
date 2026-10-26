@@ -137,7 +137,9 @@ public final class AnalyticsHeartbeatService {
             connectionSucceededAt: provider.connectionSucceededAt,
             firstQueryExecutedAt: provider.firstQueryExecutedAt,
             updateInstallMode: provider.updateInstallMode,
-            updateCheckInterval: provider.updateCheckInterval
+            updateCheckInterval: provider.updateCheckInterval,
+            aiProviders: provider.aiProviders,
+            aiChatSentAt: provider.aiChatSentAt
         )
     }
 

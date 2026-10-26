@@ -213,3 +213,69 @@ struct AnalyticsUpdateFieldTests {
         #expect(provider.updateCheckInterval == nil)
     }
 }
+
+@MainActor
+struct AnalyticsAIUsageFieldTests {
+    private final class StubProvider: AnalyticsEnvironmentProvider {
+        var machineId = "machine-1"
+        var appVersion: String? = "1.0.0"
+        var osVersion = "macOS 15.1.0"
+        var architecture = "arm64"
+        var platform = "macos"
+        var locale = "en"
+        var isAnalyticsEnabled = true
+        var hasLicense = false
+        var activeDatabaseTypes: [String] = []
+        var activeConnectionCount = 0
+        var hmacSecret: String?
+    }
+
+    private func encoded(providers: [String]?, sentAt: Date?) throws -> [String: Any] {
+        let payload = AnalyticsPayload(
+            machineId: "machine-1",
+            platform: "macos",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.1.0",
+            architecture: "arm64",
+            locale: "en",
+            databaseTypes: nil,
+            connectionCount: 0,
+            hasLicense: false,
+            aiProviders: providers,
+            aiChatSentAt: sentAt
+        )
+        let service = AnalyticsHeartbeatService(
+            provider: StubProvider(),
+            heartbeatInterval: 60,
+            initialDelay: 60,
+            cooldownInterval: 0
+        )
+        let data = try service.makeEncodedBodyForTesting(payload: payload)
+        return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    @Test("Encodes the AI usage fields in snake_case")
+    func encodesAIUsageFields() throws {
+        let sentAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let body = try encoded(providers: ["claude", "ollama"], sentAt: sentAt)
+
+        #expect(body["ai_providers"] as? [String] == ["claude", "ollama"])
+        #expect(body["ai_chat_sent_at"] as? String == ISO8601DateFormatter().string(from: sentAt))
+    }
+
+    @Test("Omits both when AI is off and the chat was never used")
+    func omitsAIUsageFieldsWhenAbsent() throws {
+        let body = try encoded(providers: nil, sentAt: nil)
+
+        #expect(body["ai_providers"] == nil)
+        #expect(body["ai_chat_sent_at"] == nil)
+    }
+
+    @Test("A provider that implements neither field sends neither")
+    func defaultsAreNil() {
+        let provider = StubProvider()
+
+        #expect(provider.aiProviders == nil)
+        #expect(provider.aiChatSentAt == nil)
+    }
+}

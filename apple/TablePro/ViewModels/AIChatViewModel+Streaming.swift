@@ -75,6 +75,8 @@ extension AIChatViewModel {
             }
         }
 
+        MacAnalyticsProvider.shared.markAIChatSent()
+
         guard let resolved else {
             beginOnDeviceTurn()
             return

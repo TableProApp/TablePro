@@ -14,6 +14,7 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
         static let connectionAttemptedAt = "com.TablePro.analytics.connectionAttemptedAt"
         static let connectionSucceededAt = "com.TablePro.analytics.connectionSucceededAt"
         static let firstQueryExecutedAt = "com.TablePro.analytics.firstQueryExecutedAt"
+        static let aiChatSentAt = "com.TablePro.analytics.aiChatSentAt"
     }
 
     init(defaults: UserDefaults = AppStorageEnvironment.shared.defaults) {
@@ -94,6 +95,24 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
 
     func markFirstQueryExecuted() {
         writeOnceDate(Keys.firstQueryExecutedAt, label: "firstQueryExecutedAt")
+    }
+
+    var aiProviders: [String]? {
+        Self.aiProviderKinds(AppSettingsStorage.shared.loadAI())
+    }
+
+    nonisolated static func aiProviderKinds(_ ai: AISettings) -> [String]? {
+        guard ai.enabled else { return nil }
+        let kinds = Set(ai.providers.map(\.type.rawValue)).sorted()
+        return kinds.isEmpty ? nil : kinds
+    }
+
+    var aiChatSentAt: Date? {
+        defaults.object(forKey: Keys.aiChatSentAt) as? Date
+    }
+
+    func markAIChatSent() {
+        defaults.set(Date(), forKey: Keys.aiChatSentAt)
     }
 
     private func writeOnceDate(_ key: String, label: String) {

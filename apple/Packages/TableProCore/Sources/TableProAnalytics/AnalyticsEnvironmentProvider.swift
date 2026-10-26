@@ -63,6 +63,14 @@ public protocol AnalyticsEnvironmentProvider: AnyObject {
 
     /// Seconds between scheduled update checks, or nil when checks are off or unavailable.
     var updateCheckInterval: Int? { get }
+
+    /// The kinds of AI provider configured while AI is on (e.g. ["claude", "ollama"]), or nil when
+    /// AI is off or has none. Kinds only: never a name, model, endpoint or key.
+    var aiProviders: [String]? { get }
+
+    /// When the user last sent a message in the AI chat on this device, or nil if never.
+    /// Overwritten on every message, unlike the activation timestamps above.
+    var aiChatSentAt: Date? { get }
 }
 
 public extension AnalyticsEnvironmentProvider {
@@ -71,4 +79,6 @@ public extension AnalyticsEnvironmentProvider {
     var firstQueryExecutedAt: Date? { nil }
     var updateInstallMode: String? { nil }
     var updateCheckInterval: Int? { nil }
+    var aiProviders: [String]? { nil }
+    var aiChatSentAt: Date? { nil }
 }
