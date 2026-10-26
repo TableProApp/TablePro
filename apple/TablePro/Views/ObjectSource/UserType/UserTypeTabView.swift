@@ -186,16 +186,26 @@ struct UserTypeTabView: View {
 
     private func editor(_ projection: UserTypeDraft.Projection) -> some View {
         VStack(spacing: 0) {
-            TabView(selection: $model.section) {
+            PaneTabBar(
+                title: String(localized: "Section"),
+                selection: $model.section,
+                identifier: "user-type-section-picker"
+            ) {
                 ForEach(sections, id: \.self) { section in
-                    pane(for: section, draft: projection.draft)
-                        .tabItem { Text(title(for: section)) }
-                        .tag(section)
+                    Text(title(for: section)).tag(section)
                 }
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("user-type-section-picker")
-            .padding()
+            Divider()
+            Group {
+                switch model.section {
+                case .general:
+                    UserTypeGeneralPane(model: model, draft: projection.draft, isDisabled: isDisabled)
+                case .members:
+                    UserTypeMembersPane(model: model, draft: projection.draft, isDisabled: isDisabled) { sheet = $0 }
+                case .definition:
+                    definition
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if model.needsReload {
                 Divider()
@@ -208,18 +218,6 @@ struct UserTypeTabView: View {
         }
         .onChange(of: model.kind) { _ in
             if !sections.contains(model.section) { model.section = .general }
-        }
-    }
-
-    @ViewBuilder
-    private func pane(for section: UserTypeEditorSection, draft: UserTypeDraft) -> some View {
-        switch section {
-        case .general:
-            UserTypeGeneralPane(model: model, draft: draft, isDisabled: isDisabled)
-        case .members:
-            UserTypeMembersPane(model: model, draft: draft, isDisabled: isDisabled) { sheet = $0 }
-        case .definition:
-            definition
         }
     }
 }

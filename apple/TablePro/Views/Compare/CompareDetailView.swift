@@ -17,22 +17,32 @@ internal struct CompareDetailView: View {
     internal let onGenerateScript: () -> Void
 
     internal var body: some View {
-        TabView(selection: $session.detailPane) {
+        VStack(spacing: 0) {
+            paneSelector
+            Divider()
+            paneContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        /// Without an infinite frame the stack sizes to its content and the split view centres the
+        /// whole block, which put the pane switcher halfway down an empty pane.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var paneSelector: some View {
+        PaneTabBar(
+            title: String(localized: "Detail"),
+            selection: $session.detailPane,
+            identifier: "compare-detail-tabs"
+        ) {
             ForEach(CompareDetailPane.allCases, id: \.self) { pane in
-                content(for: pane)
-                    .tabItem { Text(pane.title) }
-                    .tag(pane)
+                Text(pane.title).tag(pane)
             }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("compare-detail-tabs")
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
-    private func content(for pane: CompareDetailPane) -> some View {
-        switch pane {
+    private var paneContent: some View {
+        switch session.detailPane {
         case .definitions:
             CompareDefinitionsPane(session: session)
         case .rows:

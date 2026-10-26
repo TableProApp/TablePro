@@ -32,16 +32,32 @@ internal struct CreateTableFormEditor: View {
             let issues = form.issues(tableName: draft.tableName)
             let messages = [form.submissionError?.message].compactMap { $0 } + issues.map(\.qualifiedMessage)
             VStack(spacing: 0) {
-                TabView(selection: $pane) {
+                PaneTabBar(
+                    title: String(localized: "View"),
+                    selection: $pane,
+                    identifier: "create-table-form-tabs"
+                ) {
                     ForEach(CreateTableFormPane.allCases, id: \.self) { tab in
-                        content(for: tab, form: form)
-                            .tabItem { Text(tab.displayName) }
-                            .tag(tab)
+                        Text(tab.displayName).tag(tab)
                     }
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("create-table-form-tabs")
-                .padding()
+
+                Divider()
+
+                Group {
+                    switch pane {
+                    case .form:
+                        CreateTableFormView(draft: draft)
+                    case .preview:
+                        CreateTableFormPreview(
+                            preview: form.preview(tableName: draft.tableName, generate: generateStatements),
+                            databaseType: databaseType
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
 
                 HStack(spacing: 8) {
                     if let first = messages.first {
@@ -66,26 +82,9 @@ internal struct CreateTableFormEditor: View {
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("create-table-commit")
                 }
-                .padding([.horizontal, .bottom])
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-        }
-    }
-
-    // Only the selected pane is built, so the preview asks the driver for statements only while it shows.
-    @ViewBuilder
-    private func content(for tab: CreateTableFormPane, form: CreateTableFormState) -> some View {
-        if tab == pane {
-            switch tab {
-            case .form:
-                CreateTableFormView(draft: draft)
-            case .preview:
-                CreateTableFormPreview(
-                    preview: form.preview(tableName: draft.tableName, generate: generateStatements),
-                    databaseType: databaseType
-                )
-            }
-        } else {
-            Color.clear
         }
     }
 }

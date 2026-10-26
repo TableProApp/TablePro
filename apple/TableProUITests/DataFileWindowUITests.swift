@@ -23,7 +23,7 @@ final class DataFileWindowUITests: UITestCase {
             "Row Details must show the selected row, Bob"
         )
 
-        let cities = window.radioButtons["Cities"].firstMatch
+        let cities = switcherSegment("Cities", in: window)
         XCTAssertTrue(cities.waitToExist(timeout: 10), "The window must offer the workbook's other sheet")
         cities.click()
         XCTAssertTrue(waitForRowCount("5 rows", in: window), "Choosing a sheet must show that sheet's rows")
