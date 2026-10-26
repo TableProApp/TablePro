@@ -23,7 +23,7 @@ extension DatabaseTreeOutlineCoordinator {
 
     internal func endSettledInteractionTraces() {
         let tracer = InteractionTracer.shared
-        guard tracer.isRecording, let outlineView else { return }
+        guard tracer.isRecording, let outlineView, let window = outlineView.window else { return }
         let key = traceKey
         let awaitsListing = tracer.subject(of: .sidebarListing, key: key) != nil
         let filter = tracer.subject(of: .sidebarFilter, key: key)
@@ -31,7 +31,6 @@ extension DatabaseTreeOutlineCoordinator {
         guard awaitsListing || filter != nil || expanding != nil,
               let rows = settledRowCount(in: outlineView)
         else { return }
-        let window = outlineView.window
         if awaitsListing, rows > 0, isCatalogSettled {
             tracer.end(.sidebarListing, key: key, detail: "rows=\(rows)", after: window)
         }

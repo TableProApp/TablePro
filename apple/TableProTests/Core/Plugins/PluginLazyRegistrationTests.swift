@@ -85,6 +85,45 @@ struct PluginLazyRegistrationTests {
         #expect(manager.rejectedPlugins.map { $0.bundleId } == ["com.TablePro.OracleDriver"])
     }
 
+    @Test("A connect loads a lazy driver's executable ahead of activation, and activation then registers it")
+    func connectLoadsTheDriverBeforeActivating() async throws {
+        let plugIns = try #require(Bundle.main.builtInPlugInsURL)
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PluginLazyRegistrationTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = PluginManager(builtInPluginsURL: plugIns, userPluginsDir: root)
+        manager.loadPlugins()
+        await manager.waitForInitialLoad()
+        let typeId = DatabaseType.postgresql.pluginTypeId
+        let url = try #require(manager.lazyDriverURLs[typeId])
+
+        await manager.loadLazyDriverExecutable(typeId: typeId)
+
+        #expect(try #require(Bundle(url: url)).isLoaded)
+        #expect(manager.driverPlugins[typeId] == nil)
+        #expect(manager.driverPlugin(for: .postgresql) != nil)
+        #expect(manager.rejectedPlugins.isEmpty)
+    }
+
+    @Test("A driver that fails the gate ahead of activation is still recorded as rejected when activated")
+    func failedEarlyLoadIsRecordedOnActivation() async throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try makeOracleDriver(
+            in: fixture.pluginsDir,
+            provides: ["TableProProvidesDatabaseTypeIds": [DatabaseType.oracle.rawValue]]
+        )
+        let manager = fixture.manager
+        manager.loadPlugins()
+        await manager.waitForInitialLoad()
+
+        await manager.loadLazyDriverExecutable(typeId: DatabaseType.oracle.rawValue)
+        #expect(manager.rejectedPlugins.isEmpty)
+
+        #expect(manager.driverPlugin(for: .oracle) == nil)
+        #expect(manager.rejectedPlugins.map { $0.bundleId } == ["com.TablePro.OracleDriver"])
+    }
+
     @Test("Every bundled plugin's Info.plist declares the ids its class provides, primary id first")
     func bundledPluginsDeclareWhatTheyProvide() throws {
         let plugIns = try #require(Bundle.main.builtInPlugInsURL)

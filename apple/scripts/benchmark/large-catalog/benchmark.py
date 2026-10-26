@@ -2,6 +2,7 @@
 # Driver for scripts/benchmark-large-catalog.sh, which builds and signs the app first.
 
 import argparse
+import ctypes
 import datetime
 import importlib.util
 import json
@@ -21,6 +22,14 @@ app_paths = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(app_paths)
 
 BASELINE = HERE / "baseline.json"
+
+LIBPROC = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+
+
+class RusageInfo(ctypes.Structure):
+    _fields_ = [("uuid", ctypes.c_uint8 * 16)] + [(name, ctypes.c_uint64) for name in (
+        "user_time", "system_time", "pkg_idle_wkups", "interrupt_wkups", "pageins", "wired_size",
+        "resident_size", "phys_footprint", "proc_start_abstime", "proc_exit_abstime")]
 DATABASE = "tablepro_large_catalog"
 # build-large-catalog-fixtures.sh creates the Oracle tenant LC_S001 with this password, whatever SYSTEM's is.
 ORACLE_TENANT_PASSWORD = "probe_pw"
@@ -132,6 +141,24 @@ def oracle_ready(container, password):
 # Sandboxes
 
 
+# Oracle is a registry plugin: a published build would time code that is not in this tree.
+def oracle_plugin_problem(plugin):
+    if plugin is None:
+        return "no --oracle-plugin: the release build has no Oracle driver"
+    executable = plugin / "Contents" / "MacOS" / "OracleDriver"
+    if not executable.exists():
+        return "%s has no Contents/MacOS/OracleDriver" % plugin
+    sources = [str(HERE.parents[2] / "Plugins" / "OracleDriverPlugin"), str(HERE.parents[2] / "Packages" / "TableProOracle")]
+    changed = app_paths.run(["git", "-C", str(HERE), "log", "-1", "--format=%ct", "--"] + sources).stdout.strip()
+    if changed and executable.stat().st_mtime < int(changed):
+        return "%s was built before this tree's last Oracle change: build OracleDriver from this tree" % plugin
+    version = app_paths.run(["plutil", "-extract", "CFBundleShortVersionString", "raw", "-o", "-",
+                             str(plugin / "Contents" / "Info.plist")]).stdout.strip()
+    log("Oracle plugin %s, built %s" % (version, datetime.datetime.fromtimestamp(executable.stat().st_mtime)
+                                        .strftime("%Y-%m-%d %H:%M")))
+    return None
+
+
 def query_tab():
     return {"id": "00000000-0000-4000-8000-000000003661", "title": "Query 1", "query": "",
             "tabType": {"query": {}}, "databaseName": ""}
@@ -224,9 +251,13 @@ class Session(app_paths.RunningApp):
         self.keystroke("a", ("command",))
         self.keystroke(KEY_DELETE)
 
-    def resident_mb(self):
-        rss = app_paths.run(["ps", "-o", "rss=", "-p", str(self.pid)]).stdout.strip()
-        return round(int(rss) / 1024.0, 1)
+    # The physical footprint Activity Monitor shows. RSS leaves out what the memory compressor holds, and
+    # read 107 to 572 MB for the same retained memory.
+    def footprint_mb(self):
+        info = RusageInfo()
+        if LIBPROC.proc_pid_rusage(self.pid, 0, ctypes.byref(info)) != 0:
+            raise app_paths.BenchmarkError("proc_pid_rusage failed for %d" % self.pid)
+        return round(info.phys_footprint / 1048576.0, 1)
 
 
 def launch(app, sandbox, work, label):
@@ -316,7 +347,7 @@ def interactive_runs(app, sandbox, work, fixture, runs, results):
         session.clear_field()
         results["complete-from"] = complete_from
         results["complete-schema"] = complete_schema
-        return session.resident_mb()
+        return session.footprint_mb()
 
 
 # Each run opens a schema no run has read, picked by typing its name in the tree.
@@ -415,7 +446,12 @@ def summarize(traces):
 
 
 def report(measured, baseline, comparable):
-    header = "%-9s %-18s %5s %9s %9s %10s %17s  %s" % (
+    if baseline is not None and not comparable:
+        recorded = baseline.get("machine", {})
+        log("baseline is from %s, %s GB, %s; this run is another Mac or build: budgets shown, not enforced; "
+            "the %d ms stall limit still is" % (recorded.get("model"), recorded.get("memoryGB"),
+                                               baseline.get("app", {}).get("configuration"), STALL_LIMIT_MS))
+    header ="%-9s %-18s %5s %9s %9s %10s %17s  %s" % (
         "fixture", "step", "runs", "median", "p95", "max stall", "budget med/p95", "status")
     print(header)
     print("-" * len(header))
@@ -431,23 +467,26 @@ def report(measured, baseline, comparable):
             summary = steps[step]
             expected = expected_steps.get(step)
             budget = "-"
-            status = "ok" if summary["maxStallMs"] <= STALL_LIMIT_MS else "STALL"
-            if summary["maxStallMs"] > STALL_LIMIT_MS and comparable:
-                over.append("%s %s" % (fixture, step))
+            problems = []
+            failed = summary["maxStallMs"] > STALL_LIMIT_MS
+            if failed:
+                problems.append("STALL")
             if not expected:
                 missing.append("%s %s" % (fixture, step))
-                status += ", no baseline"
+                problems.append("no baseline")
             else:
                 budget = "%d / %d" % (expected["budgetMedian"], expected["budgetP95"])
                 if summary["median"] > expected["budgetMedian"] or summary["p95"] > expected["budgetP95"]:
-                    status = "OVER BUDGET"
-                    if comparable:
-                        over.append("%s %s" % (fixture, step))
+                    problems.append("OVER BUDGET")
+                    failed = failed or comparable
+            if failed:
+                over.append("%s %s" % (fixture, step))
+            status = ", ".join(problems) or "ok"
             print("%-9s %-18s %5d %9.1f %9.1f %10.1f %17s  %s" % (
                 fixture, step, summary["runs"], summary["median"], summary["p95"], summary["maxStallMs"],
                 budget, status))
         if measured[fixture]["memoryMB"] is not None:
-            print("%-9s %-18s %5s %9.1f MB resident after autocomplete"
+            print("%-9s %-18s %5s %9.1f MB footprint after autocomplete"
                   % (fixture, "memory", "", measured[fixture]["memoryMB"]))
     return over, missing
 
@@ -520,9 +559,8 @@ def main():
         elif name == "mysql":
             problem, fixture = mysql_ready(mysql), mysql_fixture(mysql)
         else:
-            problem = oracle_ready(options.oracle_container, options.oracle_password)
-            if problem is None and options.oracle_plugin is None:
-                problem = "no --oracle-plugin: the release build has no Oracle driver"
+            problem = oracle_ready(options.oracle_container, options.oracle_password) \
+                or oracle_plugin_problem(options.oracle_plugin)
             fixture = oracle_fixture({"host": oracle["host"], "port": oracle["port"], "user": "LC_S001",
                                       "password": ORACLE_TENANT_PASSWORD})
         if problem:

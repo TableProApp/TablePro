@@ -108,6 +108,8 @@ final class PluginManager: ObservableObject {
     private var lazyExportURLs: [String: URL] = [:]
     private var lazyImportURLs: [String: URL] = [:]
     private var activatedBundleIds: Set<String> = []
+    /// Bundles a connect already took through the load gate and loaded off the main actor.
+    private var gatedBundleURLs: Set<URL> = []
 
     internal var registryUpdateTask: Task<Void, Never>?
     internal var registryUpdateAttempts = 0
@@ -345,6 +347,7 @@ final class PluginManager: ObservableObject {
     /// leave the valid plugin listed but unreachable for the rest of the process.
     private func rebuildLazyRegistrations() {
         lazyDriverURLs = [:]
+        gatedBundleURLs = []
         lazyExportURLs = [:]
         lazyImportURLs = [:]
 
@@ -390,6 +393,20 @@ final class PluginManager: ObservableObject {
         Array(lazyImportURLs.keys)
     }
 
+    // The signature check and dlopen of a driver plugin hold the thread for hundreds of milliseconds the
+    // first time a launch reads its file, so a connect does both here and leaves only registration to main.
+    func loadLazyDriverExecutable(typeId: String) async {
+        guard driverPlugins[typeId] == nil, let url = lazyDriverURLs[typeId], !gatedBundleURLs.contains(url) else { return }
+        let source = plugins.first(where: { $0.url == url })?.source ?? .userInstalled
+        do {
+            _ = try await Self.validateAndLoadBundleAsync(at: url, source: source)
+            gatedBundleURLs.insert(url)
+        } catch {
+            // Activation runs the gate again on the main actor and records the rejection there.
+            Self.logger.error("Loading driver plugin '\(url.lastPathComponent)' ahead of activation failed: \(error.localizedDescription)")
+        }
+    }
+
     func activateLazyBundle(at url: URL) {
         guard let bundle = Bundle(url: url) else { return }
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
@@ -397,20 +414,22 @@ final class PluginManager: ObservableObject {
 
         let entry = plugins.first(where: { $0.id == bundleId })
 
-        do {
-            try assertLoadable(bundle, source: entry?.source ?? .userInstalled)
-        } catch {
-            Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': failed the load gate: \(error.localizedDescription)")
-            recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
-            return
-        }
+        if !gatedBundleURLs.contains(url) || !bundle.isLoaded {
+            do {
+                try assertLoadable(bundle, source: entry?.source ?? .userInstalled)
+            } catch {
+                Self.logger.error("Refusing to activate lazy plugin '\(bundleId)': failed the load gate: \(error.localizedDescription)")
+                recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
+                return
+            }
 
-        do {
-            try PluginBundleLoader.load(bundle)
-        } catch {
-            Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent): \(error.localizedDescription)")
-            recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
-            return
+            do {
+                try PluginBundleLoader.load(bundle)
+            } catch {
+                Self.logger.error("Failed to load lazy bundle '\(bundleId)' at \(url.lastPathComponent): \(error.localizedDescription)")
+                recordLazyActivationRejection(url: url, bundleId: bundleId, entry: entry, error: error)
+                return
+            }
         }
 
         guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {

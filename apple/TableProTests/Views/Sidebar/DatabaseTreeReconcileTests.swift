@@ -178,7 +178,8 @@ struct DatabaseTreeReconcileTests {
                 treeMetadata: service,
                 schemaService: .shared,
                 temporaryTables: .shared,
-                sidebarState: nil
+                sidebarState: nil,
+                rootShape: .flat
             )
         }
         let unread = inputs()
@@ -195,6 +196,39 @@ struct DatabaseTreeReconcileTests {
         await load.value
         #expect(service.allSchemaTablesLoadState(connectionId: connection.id, database: "shop").value != nil)
         #expect(inputs() != unread)
+        await service.handleDisconnect(connectionId: connection.id)
+        DatabaseManager.shared.removeSession(for: connection.id)
+    }
+
+    @Test("The server's database list loading changes only the database tree's inputs")
+    func databaseListLoadChangesOnlyTheTree() async throws {
+        let connection = TestFixtures.makeConnection(database: "shop", type: .pglite)
+        let driver = MockDatabaseDriver(connection: connection)
+        driver.databasesToReturn = ["shop", "blog"]
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        let service = DatabaseTreeMetadataService.shared
+        func inputs(_ shape: SidebarRootShape) -> DatabaseTreeRenderInputs {
+            DatabaseTreeRenderInputs(
+                connectionId: connection.id,
+                treeMetadata: service,
+                schemaService: .shared,
+                temporaryTables: .shared,
+                sidebarState: nil,
+                rootShape: shape
+            )
+        }
+        let flat = inputs(.flat)
+        let hierarchical = inputs(.hierarchicalSchema)
+        let tree = inputs(.databaseTree)
+
+        await service.loadDatabases(connectionId: connection.id, databaseType: connection.type)
+
+        #expect(service.databases(for: connection.id).count == 2)
+        #expect(inputs(.flat) == flat)
+        #expect(inputs(.hierarchicalSchema) == hierarchical)
+        #expect(inputs(.databaseTree) != tree)
         await service.handleDisconnect(connectionId: connection.id)
         DatabaseManager.shared.removeSession(for: connection.id)
     }

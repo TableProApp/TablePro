@@ -320,9 +320,11 @@ extension PluginManager {
 
     func prepareForConnecting(to type: DatabaseType, registryClient: RegistryClient = .shared) async throws {
         let typeId = type.pluginTypeId
+        await loadLazyDriverExecutable(typeId: typeId)
         if driverPlugin(for: type) == nil, !hasFinishedInitialLoad {
             Self.logger.info("Plugin '\(typeId)' not loaded yet, waiting for background load")
             await waitForInitialLoad()
+            await loadLazyDriverExecutable(typeId: typeId)
         }
         if driverPlugin(for: type) == nil, hasOutdatedRejectedPlugin(forTypeId: typeId) {
             Self.logger.info("Plugin '\(typeId)' is installed but outdated, updating it before connect")

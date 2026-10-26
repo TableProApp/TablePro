@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -163,5 +164,54 @@ struct QuickSwitcherPanelControllerTests {
             #expect(contentView.layer?.masksToBounds != true, "the surface clips itself below macOS 26")
         }
         panel.close()
+    }
+    @Test("Closing Open Quickly releases its view model and the result list it holds")
+    func closingReleasesTheViewModel() async throws {
+        let controller = QuickSwitcherPanelController()
+        weak var released: QuickSwitcherViewModel?
+        do {
+            let viewModel = QuickSwitcherViewModel(connectionId: UUID())
+            released = viewModel
+            controller.present(QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in }, over: nil)
+            let panel = try #require(controller.presentedWindow as? QuickSwitcherPanel)
+            try await waitUntil { panel.keyCommandHandler != nil }
+        }
+
+        controller.dismiss()
+
+        try await waitUntil { released == nil }
+    }
+
+    @Test("The panel answers its own commands ahead of the search field and passes the rest on")
+    func panelAnswersItsCommands() async throws {
+        let controller = QuickSwitcherPanelController()
+        defer { controller.dismiss() }
+        let viewModel = QuickSwitcherViewModel(connectionId: UUID())
+        controller.present(QuickSwitcherPanelContent(viewModel: viewModel) { _, _ in }, over: nil)
+        let panel = try #require(controller.presentedWindow as? QuickSwitcherPanel)
+        try await waitUntil { panel.keyCommandHandler != nil }
+        let handler = try #require(panel.keyCommandHandler)
+
+        #expect(handler(try Self.key("n", modifiers: .control, window: panel)))
+        #expect(!handler(try Self.key("a", modifiers: [], window: panel)))
+
+        let scope = QuickSwitcherScope.allCases[1]
+        #expect(panel.performKeyEquivalent(with: try Self.key("2", modifiers: .command, window: panel)))
+        #expect(viewModel.scope == scope)
+    }
+
+    private static func key(_ characters: String, modifiers: NSEvent.ModifierFlags, window: NSWindow) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: 0
+        ))
     }
 }

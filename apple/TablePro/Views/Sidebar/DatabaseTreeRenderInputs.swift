@@ -96,7 +96,8 @@ struct DatabaseTreeRenderInputs: Equatable {
         treeMetadata: DatabaseTreeMetadataService,
         schemaService: SchemaService,
         temporaryTables: TemporaryTableStore,
-        sidebarState: SharedSidebarState?
+        sidebarState: SharedSidebarState?,
+        rootShape: SidebarRootShape
     ) {
         let ownsObjects = { (key: ObjectsKey) in key.connectionId == connectionId }
         let tables = Self.slice(treeMetadata.tablesState, where: ownsObjects) { Rows($0) }
@@ -120,7 +121,8 @@ struct DatabaseTreeRenderInputs: Equatable {
             // A first read adds its key as it starts, which must not count as a change either.
             if !listing.isUnread { listings[key] = listing }
         }
-        self.databases = Rows(treeMetadata.databaseListState(for: connectionId))
+        // Only the database tree draws the server's database list; the other shapes reloaded every row as it loaded.
+        self.databases = Rows(rootShape == .databaseTree ? treeMetadata.databaseListState(for: connectionId) : .idle)
         self.schemaLists = Self.slice(treeMetadata.schemaList, where: { $0.connectionId == connectionId }) { Rows($0) }
         self.tables = tables
         self.routines = routines
