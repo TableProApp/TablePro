@@ -183,7 +183,7 @@ impl Component for ConnectDialog {
             .map(|d| DriverEntry {
                 id: d.id().to_string(),
                 display_name: d.display_name().to_string(),
-                maturity: d.maturity(),
+                maturity: d.capabilities().maturity,
             })
             .collect();
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
@@ -586,7 +586,7 @@ impl Component for ConnectDialog {
                                         bound_id,
                                         driver_id: &entry.id,
                                         opts: &opts,
-                                        file_based: driver.is_file_based(),
+                                        file_based: driver.capabilities().is_file_based,
                                         ssh: ssh_inputs.as_ref(),
                                     };
                                     let existing = find_existing(&identity).await;
@@ -756,7 +756,7 @@ impl ConnectDialog {
     }
 
     fn tls_config_for(&self, driver: &dyn tablepro_core::DatabaseDriver) -> tablepro_core::TlsConfig {
-        let mode = if driver.is_file_based() || self.uses_local_socket() {
+        let mode = if driver.capabilities().is_file_based || self.uses_local_socket() {
             TlsMode::Disabled
         } else {
             self.selected_tls_mode()
@@ -792,7 +792,7 @@ impl ConnectDialog {
             .drivers
             .get(self.driver_combo.selected() as usize)
             .and_then(|entry| self.registry.get(&entry.id))
-            .is_some_and(|driver| driver.supports_client_tls_auth());
+            .is_some_and(|driver| driver.capabilities().supports_client_tls_auth);
         let visible = identity_configured
             || (!self.form.file_based
                 && !self.uses_local_socket()
@@ -1017,7 +1017,7 @@ async fn run_connect(request: ConnectRequest) -> Result<Option<connection_servic
         bound_id,
         driver_id: &driver_id,
         opts: &opts_clone,
-        file_based: driver.is_file_based(),
+        file_based: driver.capabilities().is_file_based,
         ssh: ssh.as_ref(),
     };
     let existing = find_existing(&identity).await;

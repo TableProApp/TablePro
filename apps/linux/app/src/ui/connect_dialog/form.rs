@@ -21,9 +21,10 @@ pub(super) fn apply_driver_values(
 
 impl super::ConnectDialog {
     pub(super) fn apply_driver_form_visibility(&mut self, driver: &dyn tablepro_core::DatabaseDriver) {
-        self.form.file_based = driver.is_file_based();
-        self.form.supports_integrated = driver.supports_integrated_auth();
-        self.form.supports_local_socket = driver.supports_local_socket();
+        let capabilities = driver.capabilities();
+        self.form.file_based = capabilities.is_file_based;
+        self.form.supports_integrated = capabilities.supports_integrated_auth;
+        self.form.supports_local_socket = capabilities.supports_local_socket;
         if !self.form.supports_local_socket {
             self.endpoint_combo.set_selected(0);
         }

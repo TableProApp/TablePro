@@ -40,13 +40,13 @@ Current defaults are `Stable`, `RawValue`, non-file-based, non-transactional DDL
 
 | Declaration | Current code or documentation consumer |
 | --- | --- |
-| `maturity` | Connection picker in `apps/linux/app/src/ui/connect_dialog/mod.rs`; driver maturity table in `adding-drivers.md`. |
+| `maturity` | Connect dialog reads the typed profile in `apps/linux/app/src/ui/connect_dialog/mod.rs`; the driver maturity table lives in `adding-drivers.md`. |
 | `enum_input_style` | Browse-tab initialization and GTK-free grid/paste parser. This is the first consumer migrated to `capabilities()`. |
-| `is_file_based` | Connect dialog and local-file connection flow. |
-| `ddl_is_transactional` | Structure-save orchestration. |
-| `reports_rows_affected` | Inline grid write handling. |
-| `supports_database_listing` | Database switcher. |
-| Integrated auth, local sockets and client TLS auth | Connect form and transport validation. |
+| `is_file_based` | Connect dialog and duplicate-connection flow read the typed profile. |
+| `ddl_is_transactional` | Structure-save orchestration reads the typed profile. |
+| `reports_rows_affected` | Inline grid write handling reads the typed profile. |
+| `supports_database_listing` | Database switcher reads the typed profile. |
+| Integrated auth, local sockets and client TLS auth | The connect form reads the typed profile; transport validation still reads the declarations directly and remains a backend consumer migration. |
 | Index/FK/view metadata, column comments and catalog kinds | Current source has declarations and driver tests, but no direct production consumer. This is a follow-up opportunity; do not treat the flag as proof the UI exposes the capability. |
 
 ## Values outside the profile

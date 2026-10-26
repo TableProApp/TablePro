@@ -40,7 +40,7 @@ impl App {
             .current_driver_id
             .as_ref()
             .and_then(|id| self.registry.get(id))
-            .is_none_or(|driver| driver.reports_rows_affected());
+            .is_none_or(|driver| driver.capabilities().reports_rows_affected);
         let checked_writes = checked_write_indexes(self.current_driver_id.as_deref(), &sources);
         self.set_row_op_in_flight(true);
         // Increment the in-flight counter so window-close blocks until

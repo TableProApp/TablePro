@@ -1297,13 +1297,16 @@ GLib.MainLoop().run()
         wait_for_adw_dialog("name", present=False)
 
     def postgres_large_stream_pages_round_trip_from_spool(database, base):
+        page_size = 5000
+        stream_rows = int(os.environ.get("TABLEPRO_GTK_STREAM_ROWS", "150000"))
+        assert stream_rows >= 2 * page_size and stream_rows % page_size == 0
         ui.open_saved_connection(ui.POSTGRES_CONNECTION_NAME)
         ui.wait_for_frame_containing(f"{ui.POSTGRES_CONNECTION_NAME} — BookiE")
         ui.invoke(ui.wait_for_node(name="Open SQL editor"))
         ui.wait_for_node(name="Run", role=pyatspi.ROLE_PUSH_BUTTON)
         ui.run_sql(
             "SELECT value AS id, md5(transaction_timestamp()::text) AS run_marker, "
-            "repeat('x', 2048) AS payload FROM generate_series(1, 100000) AS value"
+            f"repeat('x', 2048) AS payload FROM generate_series(1, {stream_rows}) AS value"
         )
         deadline = time.monotonic() + 120
         first_run_marker = None
@@ -1322,17 +1325,18 @@ GLib.MainLoop().run()
             if first_run_marker is None:
                 time.sleep(ui.POLL_SECONDS)
         assert first_run_marker is not None, "the first streamed page never exposed its run marker"
-        ui.wait_for_node_containing("Rows 95001-100000", timeout=120)
-        ui.wait_for_node(name="95001")
+        last_page_start = stream_rows - page_size + 1
+        ui.wait_for_node_containing(f"Rows {last_page_start}-{stream_rows}", timeout=120)
+        ui.wait_for_node(name=str(last_page_start))
         scheme = os.environ.get("ADW_DEBUG_COLOR_SCHEME", "prefer-light")
-        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-all-pages-last-page")
-        for first_id in range(90001, 0, -5000):
+        capture_grid_navigation_artifact(f"postgres-stream-{stream_rows}-{scheme}-last-page")
+        for first_id in range(stream_rows - 2 * page_size + 1, 0, -page_size):
             ui.invoke(ui.wait_for_node(name="Previous page", role=pyatspi.ROLE_PUSH_BUTTON))
-            ui.wait_for_node_containing(f"Rows {first_id}-{first_id + 4999}", timeout=30)
+            ui.wait_for_node_containing(f"Rows {first_id}-{first_id + page_size - 1}", timeout=30)
             ui.wait_for_node(name=str(first_id), timeout=30)
         ui.wait_for_node(name="1")
         ui.wait_for_node(name=first_run_marker, role=pyatspi.ROLE_LABEL, timeout=120)
-        capture_grid_navigation_artifact(f"postgres-stream-{scheme}-all-pages-first-page")
+        capture_grid_navigation_artifact(f"postgres-stream-{stream_rows}-{scheme}-first-page")
         ui.invoke(ui.wait_for_node(name="Next page", role=pyatspi.ROLE_PUSH_BUTTON))
         ui.wait_for_node_containing("Rows 5001-10000", timeout=30)
         ui.invoke(ui.wait_for_node(name="Previous page", role=pyatspi.ROLE_PUSH_BUTTON))

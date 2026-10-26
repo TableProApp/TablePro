@@ -463,7 +463,7 @@ impl App {
         let ddl_is_transactional = self
             .registry
             .get(&driver_id)
-            .is_some_and(|driver| driver.ddl_is_transactional());
+            .is_some_and(|driver| driver.capabilities().ddl_is_transactional);
         let mode = {
             let tabs = self.workspace_tabs.borrow();
             let Some(slot) = tabs.get(&tab_id) else {

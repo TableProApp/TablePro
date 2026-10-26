@@ -194,7 +194,7 @@ impl App {
         self.databases_button.set_visible(
             self.registry
                 .get(driver_id)
-                .is_some_and(|driver| driver.supports_database_listing()),
+                .is_some_and(|driver| driver.capabilities().supports_database_listing),
         );
         self.persist_switched_database(id, sender);
     }
