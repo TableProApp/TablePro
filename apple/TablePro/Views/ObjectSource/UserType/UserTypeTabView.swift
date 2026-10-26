@@ -186,20 +186,15 @@ struct UserTypeTabView: View {
 
     private func editor(_ projection: UserTypeDraft.Projection) -> some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Picker(String(localized: "Section"), selection: $model.section) {
-                    ForEach(sections, id: \.self) { section in
-                        Text(title(for: section)).tag(section)
-                    }
+            PaneTabBar(
+                title: String(localized: "Section"),
+                selection: $model.section,
+                identifier: "user-type-section-picker"
+            ) {
+                ForEach(sections, id: \.self) { section in
+                    Text(title(for: section)).tag(section)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityIdentifier("user-type-section-picker")
-                Spacer()
             }
-            .padding(.vertical, 8)
             Divider()
             Group {
                 switch model.section {

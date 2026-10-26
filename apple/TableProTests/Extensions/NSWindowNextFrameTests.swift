@@ -5,6 +5,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -48,5 +49,15 @@ struct NSWindowNextFrameTests {
         await window.nextFrame(limit: .milliseconds(30))
 
         #expect(FirstFrameObserver.liveCount == before)
+    }
+
+    @Test("Work after the committed turn never runs in the turn that asked for it")
+    func committedTurnRunsLater() async throws {
+        var ran = false
+
+        CommittedTurn.after { ran = true }
+
+        #expect(!ran)
+        try await waitUntil { ran }
     }
 }

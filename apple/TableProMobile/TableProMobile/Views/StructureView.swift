@@ -53,7 +53,7 @@ struct StructureView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top) {
+        .topSafeAreaBar(spacing: nil) {
             Picker("Section", selection: $selectedTab) {
                 ForEach(Tab.allCases, id: \.self) { tab in
                     Text(tab.displayName).tag(tab)
@@ -62,7 +62,6 @@ struct StructureView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.vertical, 8)
-            .background(.bar)
         }
         .navigationTitle(table.name)
         .navigationBarTitleDisplayMode(.inline)

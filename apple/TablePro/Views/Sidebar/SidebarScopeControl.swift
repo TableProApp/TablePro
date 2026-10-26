@@ -20,6 +20,12 @@ import AppKit
 /// The words fit in every language the app ships. Measured at the sidebar's 280pt minimum, which
 /// leaves the row 260pt inside its insets, the widest is Turkish at 238pt, English needs 158pt and
 /// Simplified Chinese 100pt.
+///
+/// On macOS 27 it takes the tabs role AppKit gives "tab-based navigation and content selection",
+/// at small size. Measured there, a regular control in a sidebar draws a glass capsule whatever
+/// its style or role; small with the tabs role draws a flat track with a neutral raised thumb.
+/// Small without the role would fill the thumb with the accent color, which marks a value choice,
+/// so earlier releases keep the regular control.
 @MainActor
 internal final class SidebarScopeControl: NSSegmentedControl {
     internal static let tabs: [SidebarTab] = [.tables, .favorites]
@@ -30,6 +36,12 @@ internal final class SidebarScopeControl: NSSegmentedControl {
         trackingMode = .selectOne
         segmentDistribution = .fillEqually
         controlSize = .regular
+        #if SDK_MACOS_27
+        if #available(macOS 27.0, *) {
+            role = .tabs
+            controlSize = .small
+        }
+        #endif
         for (index, tab) in Self.tabs.enumerated() {
             setLabel(Self.title(for: tab), forSegment: index)
         }

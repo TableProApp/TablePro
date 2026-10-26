@@ -122,9 +122,10 @@ internal struct JSONViewerView: View {
                 Text("Text").tag(JSONViewMode.text)
                 Text("Tree").tag(JSONViewMode.tree)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
             .fixedSize()
+            .accessibilityIdentifier("json-viewer-mode-picker")
             Spacer()
             if let onPopOut {
                 Button { onPopOut(displayText) } label: {

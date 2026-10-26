@@ -113,9 +113,12 @@ struct CreateTableView: View {
                 onCreate: { createTable() }
             )
         } else if draft.hasResolvedForm {
-            toolbar
+            tabBar
             Divider()
             tabContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            commitBar
         } else {
             Color.clear
         }
@@ -207,7 +210,7 @@ struct CreateTableView: View {
         return support.commentableTypes.contains(.table)
     }
 
-    // MARK: - Toolbar
+    // MARK: - Tabs
 
     private var availableTabs: [CreateTableTab] {
         var tabs = CreateTableTab.allCases
@@ -217,41 +220,36 @@ struct CreateTableView: View {
         return tabs
     }
 
-    private var isGridTab: Bool {
-        selectedTab != .sqlPreview
+    private var tabBar: some View {
+        PaneTabBar(
+            title: String(localized: "Structure"),
+            selection: $selectedTab.committingEdit(of: gridModel),
+            identifier: "create-table-tabs"
+        ) {
+            ForEach(availableTabs, id: \.self) { tab in
+                Text(tab.displayName).tag(tab)
+            }
+        }
     }
 
-    private var toolbar: some View {
+    // One grid serves the three grid tabs: the adapter repoints it as the selection moves.
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .columns, .indexes, .foreignKeys:
+            structureGridPane
+        case .sqlPreview:
+            sqlPreviewView
+        }
+    }
+
+    // MARK: - Commit Bar
+
+    private var commitBar: some View {
         let issues = draft.composed?.issues ?? draft.plan(for: connection.type).issues
 
         return HStack(spacing: 8) {
-            Button(action: { gridAdapter.addRow() }) {
-                Image(systemName: "plus")
-                    .frame(width: 24, height: 24)
-            }
-            .help(String(localized: "Add Row"))
-            .accessibilityLabel(String(localized: "Add Row"))
-            .disabled(!isGridTab)
-
-            Button(action: { gridAdapter.deleteRows(gridModel.selectedRowIDs) }) {
-                Image(systemName: "minus")
-                    .frame(width: 24, height: 24)
-            }
-            .help(String(localized: "Delete Selected"))
-            .accessibilityLabel(String(localized: "Delete Selected"))
-            .disabled(!isGridTab || gridModel.selection.isEmpty)
-
             issueMessage(issues)
-
-            Spacer(minLength: 12)
-
-            Picker(String(localized: "Structure"), selection: $selectedTab) {
-                ForEach(availableTabs, id: \.self) { tab in
-                    Text(tab.displayName).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             Spacer(minLength: 12)
 
@@ -264,7 +262,8 @@ struct CreateTableView: View {
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityIdentifier("create-table-commit")
         }
-        .padding()
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -284,18 +283,6 @@ struct CreateTableView: View {
         issue.tab == structureTab ? issue.message : issue.qualifiedMessage
     }
 
-    // MARK: - Tab Content
-
-    @ViewBuilder
-    private var tabContent: some View {
-        switch selectedTab {
-        case .columns, .indexes, .foreignKeys:
-            structureGrid
-        case .sqlPreview:
-            sqlPreviewView
-        }
-    }
-
     // MARK: - Structure Grid
 
     private var structureTab: StructureTab {
@@ -307,8 +294,45 @@ struct CreateTableView: View {
         }
     }
 
-    private var structureGrid: some View {
-        DataGridView(model: gridModel)
+    private var structureGridPane: some View {
+        VStack(spacing: 0) {
+            DataGridView(model: gridModel)
+            Divider()
+            rowButtons(identifier: rowButtonsIdentifier)
+        }
+    }
+
+    private var rowButtonsIdentifier: String {
+        switch selectedTab {
+        case .columns, .sqlPreview: return "create-table-columns"
+        case .indexes: return "create-table-indexes"
+        case .foreignKeys: return "create-table-foreign-keys"
+        }
+    }
+
+    // Add and Delete act on the shown tab's rows, since the adapter follows the selected tab.
+    private func rowButtons(identifier: String) -> some View {
+        HStack(spacing: 8) {
+            Button(action: { gridAdapter.addRow() }) {
+                Image(systemName: "plus")
+                    .frame(width: 24, height: 24)
+            }
+            .help(String(localized: "Add Row"))
+            .accessibilityLabel(String(localized: "Add Row"))
+            .accessibilityIdentifier("\(identifier)-add")
+
+            Button(action: { gridAdapter.deleteRows(gridModel.selectedRowIDs) }) {
+                Image(systemName: "minus")
+                    .frame(width: 24, height: 24)
+            }
+            .help(String(localized: "Delete Selected"))
+            .accessibilityLabel(String(localized: "Delete Selected"))
+            .disabled(gridModel.selection.isEmpty)
+            .accessibilityIdentifier("\(identifier)-remove")
+
+            Spacer()
+        }
+        .padding(8)
     }
 
     // MARK: - SQL Preview

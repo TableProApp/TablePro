@@ -21,6 +21,7 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     var principal: PluginPrincipalRef?
 
     private var isRestoringExpansion = false
+    private var isRestoringSelection = false
     private var pendingExpansions: Set<String> = []
     private var nodeChanges: AnyCancellable?
 
@@ -115,10 +116,16 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
     }
 
     func restoreExpansion() {
-        guard viewModel.privilegeTree.mode == .hierarchy else { return }
+        guard viewModel.privilegeTree.mode == .hierarchy else {
+            restoreSelection()
+            return
+        }
 
         let saved = Set(viewModel.expansionStore.load())
-        guard !saved.isEmpty else { return }
+        guard !saved.isEmpty else {
+            restoreSelection()
+            return
+        }
 
         Task { @MainActor in
             isRestoringExpansion = true
@@ -137,13 +144,29 @@ final class PrivilegeScopeOutlineCoordinator: NSObject, NSOutlineViewDataSource,
                 }
                 frontier = next
             }
+            restoreSelection()
         }
+    }
+
+    /// The outline is rebuilt each time Privileges is shown again, while the checklist keeps acting
+    /// on the scopes the model holds, so the rows for those scopes are selected again. A scope inside
+    /// a collapsed node has no row, and the model keeps it rather than shrinking to what is visible.
+    func restoreSelection() {
+        guard let outlineView, !viewModel.selectedScopes.isEmpty else { return }
+        let rows = IndexSet((0..<outlineView.numberOfRows).filter { row in
+            guard let node = outlineView.item(atRow: row) as? PrivilegeNode else { return false }
+            return viewModel.selectedScopes.contains(node.scope)
+        })
+        guard !rows.isEmpty else { return }
+        isRestoringSelection = true
+        defer { isRestoringSelection = false }
+        outlineView.selectRowIndexes(rows, byExtendingSelection: false)
     }
 
     // MARK: - Selection
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard let outlineView, !isRebuildingRows else { return }
+        guard let outlineView, !isRebuildingRows, !isRestoringSelection else { return }
 
         let scopes = outlineView.selectedRowIndexes.compactMap {
             (outlineView.item(atRow: $0) as? PrivilegeNode)?.scope

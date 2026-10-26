@@ -58,6 +58,18 @@ internal extension NSWindow {
     }
 }
 
+/// Work that must not share a run loop turn with the frame this turn builds.
+@MainActor
+internal enum CommittedTurn {
+    /// Runs `body` after this turn's frame is committed, in a later turn. A main-queue hop alone can run
+    /// before the run loop waits, so the hang would still be one: both pieces between two waits.
+    static func after(_ body: @escaping @MainActor () -> Void) {
+        CATransaction.setCompletionBlock {
+            DispatchQueue.main.async { MainActor.assumeIsolated(body) }
+        }
+    }
+}
+
 @MainActor
 private final class FrameGate {
     var continuation: CheckedContinuation<Void, Never>?

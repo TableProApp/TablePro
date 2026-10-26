@@ -85,8 +85,8 @@ struct AIChatWalkthroughBlockView: View {
             Spacer()
             if walkthrough.hasDiff {
                 Picker(String(localized: "Diff layout"), selection: diffStyleBinding) {
-                    Text("Unified").tag(SqlWalkthroughDiffStyle.unified)
                     Text("Split").tag(SqlWalkthroughDiffStyle.split)
+                    Text("Unified").tag(SqlWalkthroughDiffStyle.unified)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()

@@ -128,6 +128,15 @@ internal class UITestCase: XCTestCase {
 
     // MARK: - Finding things
 
+    // A view switcher's segment. macOS 27 gives the control the tabs role, which XCUITest reports as a tab
+    // group of `Tab` elements; before it the segments are radio buttons.
+    internal func switcherSegment(_ label: String, in container: XCUIElement) -> XCUIElement {
+        let types = [XCUIElement.ElementType.tab, .radioButton].map(\.rawValue)
+        return container.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ AND elementType IN %@", label, types))
+            .firstMatch
+    }
+
     // A window is a direct child of the application; `app.windows` walks the whole tree to find one.
     internal func window(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
         app.children(matching: .window).matching(identifier: identifier).firstMatch
@@ -276,7 +285,7 @@ internal class UITestCase: XCTestCase {
     internal func showStructure(in app: XCUIApplication, window: XCUIElement) {
         showResultView("Structure", in: app)
         XCTAssertTrue(
-            window.radioGroups["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
+            window.descendants(matching: .any)["structure-tab-picker"].firstMatch.waitToExist(timeout: 30),
             "The structure editor must open on the Structure result view"
         )
     }
