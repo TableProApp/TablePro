@@ -43,8 +43,8 @@ struct PrincipalDetailPane: View {
                     Text(segment.title).tag(segment)
                 }
             }
-            .pickerStyle(.segmented)
             .labelsHidden()
+            .viewSwitcherStyle()
             .fixedSize()
             .accessibilityIdentifier("usersroles-detail-segment")
         }

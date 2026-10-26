@@ -32,6 +32,33 @@ internal struct CreateTableFormEditor: View {
             let issues = form.issues(tableName: draft.tableName)
             let messages = [form.submissionError?.message].compactMap { $0 } + issues.map(\.qualifiedMessage)
             VStack(spacing: 0) {
+                PaneTabBar(
+                    title: String(localized: "View"),
+                    selection: $pane,
+                    identifier: "create-table-form-tabs"
+                ) {
+                    ForEach(CreateTableFormPane.allCases, id: \.self) { tab in
+                        Text(tab.displayName).tag(tab)
+                    }
+                }
+
+                Divider()
+
+                Group {
+                    switch pane {
+                    case .form:
+                        CreateTableFormView(draft: draft)
+                    case .preview:
+                        CreateTableFormPreview(
+                            preview: form.preview(tableName: draft.tableName, generate: generateStatements),
+                            databaseType: databaseType
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
                 HStack(spacing: 8) {
                     if let first = messages.first {
                         Label(first, systemImage: "exclamationmark.triangle.fill")
@@ -45,17 +72,6 @@ internal struct CreateTableFormEditor: View {
 
                     Spacer(minLength: 12)
 
-                    Picker(String(localized: "View"), selection: $pane) {
-                        ForEach(CreateTableFormPane.allCases, id: \.self) { pane in
-                            Text(pane.displayName).tag(pane)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-
-                    Spacer(minLength: 12)
-
                     Button(
                         isCreating ? String(localized: "Creating…") : String(localized: "Create Table"),
                         action: onCreate
@@ -66,19 +82,8 @@ internal struct CreateTableFormEditor: View {
                     .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("create-table-commit")
                 }
-                .padding()
-
-                Divider()
-
-                switch pane {
-                case .form:
-                    CreateTableFormView(draft: draft)
-                case .preview:
-                    CreateTableFormPreview(
-                        preview: form.preview(tableName: draft.tableName, generate: generateStatements),
-                        databaseType: databaseType
-                    )
-                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
         }
     }

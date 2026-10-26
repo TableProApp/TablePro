@@ -148,7 +148,7 @@ struct TableStructureView: View {
     var body: some View {
         VStack(spacing: 0) {
             tableCommentBar
-            toolbar
+            tabBar
             Divider()
             contentArea
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -224,29 +224,23 @@ struct TableStructureView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Tabs
 
     private var availableTabs: [StructureTab] {
         session.availableTabs
     }
 
-    private var toolbar: some View {
-        HStack {
-            Spacer()
-
-            Picker("Structure", selection: $session.selectedTab) {
-                ForEach(availableTabs, id: \.self) { tab in
-                    Text(tabLabel(for: tab)).tag(tab)
-                }
+    private var tabBar: some View {
+        PaneTabBar(
+            title: String(localized: "Structure"),
+            selection: $session.selectedTab.committingEdit(of: session.gridModel),
+            identifier: "structure-tab-picker"
+        ) {
+            ForEach(availableTabs, id: \.self) { tab in
+                Text(tabLabel(for: tab)).tag(tab)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .monospacedDigit()
-            .accessibilityIdentifier("structure-tab-picker")
-
-            Spacer()
         }
-        .padding()
+        .monospacedDigit()
         .overlay(alignment: .trailing) {
             if structureChangeManager.isHeldForSave {
                 HStack(spacing: 6) {

@@ -61,9 +61,10 @@ internal struct CellImageViewer<Source: View>: View {
                 Text(String(localized: "Image")).tag(CellImageViewMode.image)
                 Text(sourceKind.label).tag(CellImageViewMode.source)
             }
-            .pickerStyle(.segmented)
+            .viewSwitcherStyle()
             .labelsHidden()
             .fixedSize()
+            .accessibilityIdentifier("image-viewer-mode-picker")
 
             Spacer()
 

@@ -38,12 +38,13 @@ final class QueryPlanResultUITests: UITestCase {
         step.click()
         XCTAssertTrue(detail.waitToExist(timeout: 5), "A click on a step in a zoomed-out diagram must open its details")
 
-        let modes = window.radioGroups["query-plan-mode-picker"].firstMatch
-        modes.radioButtons["Tree"].click()
+        // A tab group on macOS 27, where the switcher takes the tabs role, and a radio group before it.
+        let modes = window.descendants(matching: .any)["query-plan-mode-picker"].firstMatch
+        switcherSegment("Tree", in: modes).click()
         let outline = window.outlines["query-plan-outline"].firstMatch
         XCTAssertTrue(outline.waitToExist(timeout: 10), "Tree mode must show the plan outline")
         XCTAssertGreaterThan(outline.outlineRows.count, 0, "The outline must list the plan's steps")
-        modes.radioButtons["Diagram"].click()
+        switcherSegment("Diagram", in: modes).click()
         XCTAssertTrue(canvas.waitToExist(timeout: 10), "Diagram mode must come back")
 
         // Zoom In goes to whatever has focus. Exactly one step from 100% proves the press made from the
