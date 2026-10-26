@@ -1,0 +1,11 @@
+MESA-EGL: warning: DRI3 error: Could not get DRI3 device
+MESA-EGL: warning: Ensure your X server supports DRI3 to get accelerated rendering
+2026-10-25T22:51:13.013497Z  INFO starting tablepro-app drivers=7
+2026-10-25T22:51:13.013567Z  INFO MCP HTTP server starting host=127.0.0.1 port=17432
+2026-10-25T22:51:13.013832Z  INFO system OpenSSH connections are unavailable error=ssh: the tablepro-askpass helper is not installed
+2026-10-25T22:51:13.222481Z  INFO registered win.disconnect enabled=false
+2026-10-25T22:51:13.229290Z  INFO main window activated
+2026-10-25T22:51:13.719986Z  INFO workspace ready driver=sqlite table_count=1 view_count=0
+
+(com.tablepro.linux:2146193): Gdk-WARNING **: 23:51:14.973: gdk_frame_timings_submitted() called on submitted frame.
+2026-10-25T22:51:15.497940Z  INFO workspace ready driver=postgres table_count=2 view_count=0
