@@ -6,6 +6,10 @@
     "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "d8aaea84ced51abf75d89141940dba0dd3cd0374ae9ad503cf60087b4466689d",
     "crates/drivers/mysql/tests/shared/mysql_atomic_parts/federated.rs": "9f6a567fd6a50431266fe31ae279b76e6937772808b3cb793d1104717b5cca9d"
   },
+  "source_commits": {
+    "crates/drivers/mysql/tests/shared/mysql_atomic.rs": "ecdc8568d59a3b017a3587b71c04a660a283f443",
+    "crates/drivers/mysql/tests/shared/mysql_atomic_parts/federated.rs": "ecdc8568d59a3b017a3587b71c04a660a283f443"
+  },
   "scope": "B4-11 MySQL-family failed-batch effects",
   "fixtures": [
     "MySQL 8.1 testcontainers fixture",
