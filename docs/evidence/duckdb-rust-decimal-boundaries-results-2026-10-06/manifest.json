@@ -51,6 +51,11 @@
     "crates/drivers/duckdb/tests/integration.rs": "6b58cdcc53a00ba128c983b6534efc2859816dda2ff5e0e4d84d83cebd613a27",
     "crates/drivers/duckdb/tests/support/rust_decimal_boundaries.rs": "34d2fa0c0cf267e264aa244fe7094b95582a3e538d69e08a21ba0f05903abd47"
   },
+  "source_commits": {
+    "crates/core/src/sql_literal.rs": "d9818deaf2e998d3d82e5f3ba0e3c233502d8a0b",
+    "crates/drivers/duckdb/tests/integration.rs": "d9818deaf2e998d3d82e5f3ba0e3c233502d8a0b",
+    "crates/drivers/duckdb/tests/support/rust_decimal_boundaries.rs": "d9818deaf2e998d3d82e5f3ba0e3c233502d8a0b"
+  },
   "log_sha256": {
     "core-test.txt": "86eddb859767af7ba5653fce8f5e93d92c0de57a0b5ea2f1fe76978a06693a24",
     "duckdb-test.txt": "0d8e0687744525920f32cc1065c0c27ce490633c0890f97601fd4649dfdfad37",

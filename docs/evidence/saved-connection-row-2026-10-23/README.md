@@ -18,6 +18,12 @@ Native Wayland visual review and screen-reader narration remain unverified.
 
 The Xvfb run emitted routine DRI3, portal and bus warnings in addition to the `GtkBox` measurement warning. These are test-environment messages, not proof of desktop acceptance.
 
+## Follow-up, October 26
+
+On Linux source head `d5274f0b571ae11821d12666b6fcad0a6856c331`, the focused allocation test passed its text-width and action-allocation assertions. It still emitted `GtkBox` warnings at constrained widths 316 px and 179 px: minimum height 52 px, natural height 50 px. This run used GTK 4.24.1 and libadwaita 1.10.0 under Xvfb.
+
+A bare `AdwActionRow` control with similar long Unicode title/subtitle text and the same 20 px CSS did not emit the measurement warning. The warning therefore appears with BookiE's composed row under the narrow allocation, but this comparison does not identify the specific child or establish visible clipping. Native Wayland visual review and screen-reader narration remain outstanding; the issue stays open.
+
 ## Screenshots
 
 | Theme | 320 px | 560 px |

@@ -6,6 +6,10 @@
     "apps/linux/app/src/lib.rs": "078ab0ed6f80a8bbb357a5a3d497eb1e0206712fde58cfda3a6abbc5b9620ad4",
     "scripts/isolated-tests.json": "654da1268e97059b087550d89c02e723ffdc813f1e2e873a1e97945d6240a923"
   },
+  "source_commits": {
+    "apps/linux/app/src/lib.rs": "5b00b4ca6cd358ccb0ddb9f7069a41cb35ee444a",
+    "scripts/isolated-tests.json": "5b00b4ca6cd358ccb0ddb9f7069a41cb35ee444a"
+  },
   "log_sha256": {
     "before.log": "a3fed88d22522b33e09910976ac777126442785cefbcd5c9dedbe9946dd72d08",
     "after.log": "d5682a0de4401049be4e7b04fb56908086573a7b604fd87aa321513d874e85b8",

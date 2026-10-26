@@ -36,6 +36,9 @@
   "source_sha256": {
     "crates/app/src/ui/editor/statement_cursor.rs": "47b5deef734584075a51b67cb0e0bbeee8bc6d4445c823268a0d3324f8242a4a"
   },
+  "source_commits": {
+    "crates/app/src/ui/editor/statement_cursor.rs": "357b8e52f2331b24ddaa2f70fc3d68ec3f3ad9be"
+  },
   "log_sha256": {
     "test.txt": "a492ab42a38d5ad017c176a8dc052502d77294779e77499b66126a569c107e6b",
     "fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
