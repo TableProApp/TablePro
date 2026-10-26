@@ -11,6 +11,10 @@ use super::{App, AppMsg};
 
 const UNTITLED_FILE_NAME: &str = "query.sql";
 
+pub(super) fn initial_editor_query(initial_query: Option<String>) -> String {
+    initial_query.unwrap_or_else(|| crate::ui::editor::query_changes::DEFAULT_INITIAL_QUERY.to_string())
+}
+
 impl App {
     pub(super) fn selected_editor_tab_id(&self) -> Option<Uuid> {
         let id = self.selected_workspace_tab_id()?;
@@ -149,6 +153,15 @@ fn suggested_file_name(file: Option<&EditorFile>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_editor_starts_with_its_visible_default_query_in_workspace_state() {
+        assert_eq!(
+            initial_editor_query(None),
+            crate::ui::editor::query_changes::DEFAULT_INITIAL_QUERY
+        );
+        assert_eq!(initial_editor_query(Some("SELECT 2;".into())), "SELECT 2;");
+    }
 
     fn opened(text: &str) -> (tempfile::TempDir, EditorFile) {
         let directory = tempfile::tempdir().unwrap();

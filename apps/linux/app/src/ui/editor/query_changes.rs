@@ -6,6 +6,8 @@ use relm4::{ComponentSender, gtk};
 
 use super::{DropGeneration, SqlEditor, SqlEditorOutput, folding::FoldController};
 
+pub(crate) const DEFAULT_INITIAL_QUERY: &str = "SELECT 1;";
+
 pub(super) fn install(
     view: &sourceview5::View,
     generation: Rc<DropGeneration>,

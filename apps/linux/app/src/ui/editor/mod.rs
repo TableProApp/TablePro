@@ -12,7 +12,7 @@ mod find_bar;
 mod finish_notice;
 mod folding;
 pub(crate) mod open_file;
-mod query_changes;
+pub(crate) mod query_changes;
 mod run_lifecycle;
 mod session_age;
 mod session_lexing;
@@ -469,7 +469,9 @@ impl SimpleComponent for SqlEditor {
         let widgets = view_output!();
 
         let lang_manager = sourceview5::LanguageManager::default();
-        let initial_text = init.initial_query.unwrap_or_else(|| "SELECT 1;".to_string());
+        let initial_text = init
+            .initial_query
+            .unwrap_or_else(|| query_changes::DEFAULT_INITIAL_QUERY.to_string());
         let initial_query_error = open_file::validate_sql_text(&initial_text).err();
         let saved_draft_blocked = initial_query_error.is_some();
         let initial_text = if initial_query_error.is_some() {

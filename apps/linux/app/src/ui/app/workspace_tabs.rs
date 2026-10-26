@@ -11,6 +11,7 @@ use crate::services::workspace_state;
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
 
+use super::editor_files::initial_editor_query;
 use super::types::{CLOSED_TABS_CAPACITY, read_workspace_tab_id, write_workspace_tab_id};
 use super::workspace_overview::build_workspace_tab_overview;
 use super::{App, AppMsg, ClosedTabDescriptor, EditorTabSlot, WorkspaceTab};
@@ -530,7 +531,15 @@ impl App {
             return;
         };
         let tab_id = draft_id.unwrap_or_else(Uuid::new_v4);
-        let query = initial_query.clone().unwrap_or_default();
+        let query = initial_editor_query(initial_query.clone());
+        let label = match initial_query.as_deref() {
+            Some(query)
+                if !query.trim().is_empty() && query != crate::ui::editor::query_changes::DEFAULT_INITIAL_QUERY =>
+            {
+                derive_tab_label(query)
+            }
+            _ => first_free_editor_label(editor_titles(&self.workspace_tabs.borrow())),
+        };
         let editor = SqlEditor::builder()
             .launch(SqlEditorInit {
                 connection_id: self.connection_id,
@@ -542,10 +551,6 @@ impl App {
             })
             .forward(sender.input_sender(), move |out| editor_output(tab_id, out));
         let page = tab_view.append(editor.widget());
-        let label = match query.trim().is_empty() {
-            true => first_free_editor_label(editor_titles(&self.workspace_tabs.borrow())),
-            false => derive_tab_label(&query),
-        };
         page.set_title(&label);
         if let Some(tip) = editor_tab_tooltip(&query, &label) {
             page.set_tooltip(&tip);

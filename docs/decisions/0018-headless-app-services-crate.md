@@ -5,7 +5,7 @@
 
 ### Implementation status (2026-10-25)
 
-Several GTK-free service modules have moved to `crates/app-services`; the crate has no GTK, libadwaita, glib or Relm4 dependencies. The headless tab model and workspace persistence live in `crates/app-services/src/workspace.rs` and `workspace_state.rs`. Completion metadata cache, request deduplication, connection-aware result application and cancellation state live in `crates/app-services/src/completion.rs`, which also performs the controlled column read. The GTK app owns Relm4 task dispatch and routes returned results to the shared index. GTK page handling remains in `apps/linux/app/src/ui/app/workspace_tabs.rs`. The staged migration remains active under APP-MOD in the [post-0.2.0 backlog](../backlog.md).
+Several GTK-free service modules have moved to `crates/app-services`; the crate has no GTK, libadwaita, glib or Relm4 dependencies. The headless tab model and workspace persistence live in `crates/app-services/src/workspace.rs` and `workspace_state.rs`. Completion metadata cache, request deduplication, connection-aware result application and cancellation state live in `crates/app-services/src/completion.rs`, which also performs the controlled column read. Named-parameter binding and local database-file classification/saved-record construction were added in aggregate [#1663](https://github.com/cozyGarage/BookiE/pull/1663). The GTK app retains Relm4 task dispatch, error translation, file-open signals/dialogs/toasts, driver lookup, and routing results to the shared index. GTK page handling remains in `apps/linux/app/src/ui/app/workspace_tabs.rs`. The staged migration remains active under APP-MOD in the [post-0.2.0 backlog](../backlog.md).
 
 ## Context
 
