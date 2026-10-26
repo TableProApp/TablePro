@@ -766,7 +766,7 @@ impl App {
                         Some(source) => {
                             let file_based = registry
                                 .get(&source.driver_id)
-                                .is_some_and(|driver| driver.is_file_based());
+                                .is_some_and(|driver| driver.capabilities().is_file_based);
                             let eligible = duplicate_connection_prompt_eligible(
                                 source.auth_mode,
                                 file_based,
