@@ -23,9 +23,28 @@ internal final class EditorTabStripPaneController: NSViewController {
 
     private let hosting = NSHostingController(rootView: AnyView(Color.clear))
 
+    /// A hosting view in a collapsed titlebar accessory still builds and lays out its content, so while the band is
+    /// collapsed the strip waits here and the connect turn builds no strip for a connection with one tab.
+    private var pendingRootView: AnyView?
+
     internal var rootView: AnyView {
-        get { hosting.rootView }
-        set { hosting.rootView = newValue }
+        get { pendingRootView ?? hosting.rootView }
+        set {
+            guard isBandVisible else {
+                pendingRootView = newValue
+                return
+            }
+            pendingRootView = nil
+            hosting.rootView = newValue
+        }
+    }
+
+    internal var isBandVisible = false {
+        didSet {
+            guard isBandVisible, let pendingRootView else { return }
+            self.pendingRootView = nil
+            hosting.rootView = pendingRootView
+        }
     }
 
     override internal func loadView() {
@@ -53,7 +72,8 @@ internal final class EditorTabStripPaneController: NSViewController {
     /// detached hosting controller needs before SwiftUI will dismantle its tree.
     internal func teardown() {
         interaction.commands = nil
-        rootView = AnyView(Color.clear)
+        pendingRootView = nil
+        hosting.rootView = AnyView(Color.clear)
         hosting.view.layoutSubtreeIfNeeded()
         view.removeFromSuperview()
         removeFromParent()

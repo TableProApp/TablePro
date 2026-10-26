@@ -485,9 +485,20 @@ def report(measured, baseline, comparable):
             print("%-9s %-18s %5d %9.1f %9.1f %10.1f %17s  %s" % (
                 fixture, step, summary["runs"], summary["median"], summary["p95"], summary["maxStallMs"],
                 budget, status))
-        if measured[fixture]["memoryMB"] is not None:
-            print("%-9s %-18s %5s %9.1f MB footprint after autocomplete"
-                  % (fixture, "memory", "", measured[fixture]["memoryMB"]))
+        footprint = measured[fixture]["footprintMB"]
+        if footprint is not None:
+            entry = (baseline or {}).get("fixtures", {}).get(fixture) or {}
+            budget = entry.get("budgetFootprintMB")
+            status = "ok"
+            if budget is None:
+                missing.append("%s footprint" % fixture)
+                status = "no baseline"
+            elif footprint > budget:
+                status = "OVER BUDGET"
+                if comparable:
+                    over.append("%s footprint" % fixture)
+            print("%-9s %-18s %5s %9.1f MB after autocomplete, budget %s MB  %s"
+                  % (fixture, "footprint", "", footprint, budget if budget is not None else "-", status))
     return over, missing
 
 
@@ -502,16 +513,19 @@ def record_baseline(measured, current_machine, current_app, runs):
             steps[step] = dict(summary, budgetMedian=app_paths.budget_for(summary["median"]),
                                budgetP95=app_paths.budget_for(summary["p95"]))
         entry["steps"] = {step: steps[step] for step in STEPS if step in steps}
-        if values["memoryMB"] is not None:
-            entry["memoryMB"] = values["memoryMB"]
+        # The RSS this used to keep measured a different thing and has no budget.
+        entry.pop("memoryMB", None)
+        if values["footprintMB"] is not None:
+            entry["footprintMB"] = values["footprintMB"]
+            entry["budgetFootprintMB"] = app_paths.budget_for(values["footprintMB"])
         fixtures[fixture] = entry
     BASELINE.write_text(json.dumps({
         "recorded": datetime.date.today().isoformat(),
         "machine": current_machine,
         "app": current_app,
         "runs": runs,
-        "budgetRule": "%.2fx the baseline median and p95, rounded up to 5 ms; no main-thread stall over %d ms"
-                      % (app_paths.BUDGET_FACTOR, STALL_LIMIT_MS),
+        "budgetRule": "%.2fx the baseline median and p95, rounded up to 5 ms, and the footprint, rounded up to 5 MB; "
+                      "no main-thread stall over %d ms" % (app_paths.BUDGET_FACTOR, STALL_LIMIT_MS),
         "fixtures": {name: fixtures[name] for name in FIXTURES if name in fixtures},
     }, indent=2) + "\n")
     log("wrote %s" % BASELINE)
@@ -577,7 +591,7 @@ def main():
             plugin = options.oracle_plugin if fixture.name == "oracle" else None
             results, memory = run_fixture(options.app, work, fixture, options.runs, plugin, parts)
             measured[fixture.name] = {
-                "memoryMB": memory,
+                "footprintMB": memory,
                 "steps": {step: summarize(traces) for step, traces in results.items()},
             }
     except app_paths.BenchmarkError as error:
