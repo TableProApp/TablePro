@@ -336,7 +336,13 @@ impl WorkspaceShell {
             jobs.append(&exports.jobs());
         }
         self.tell_sharing();
-        self.set_front(workspace);
+        // The front follows the tab on screen: a session that joins
+        // comes forward with a tab of its own, which selects it, and
+        // until then the tab the user works in keeps speaking for the
+        // window.
+        if imp.front.borrow().is_none() {
+            self.set_front(workspace);
+        }
     }
 
     /// Each session's tabs name their connection while another one's
@@ -346,6 +352,15 @@ impl WorkspaceShell {
         let shares = sessions.len() > 1;
         for input in sessions.iter().filter_map(Workspace::input) {
             input.deliver(WorkspaceInput::SharesWindow(shares));
+        }
+    }
+
+    /// Every session is about to go with the window's page, so none
+    /// comes to the front as each one leaves.
+    pub(crate) fn release_front(&self) {
+        let left = self.imp().front.take();
+        if let Some(left) = left {
+            left.detach();
         }
     }
 

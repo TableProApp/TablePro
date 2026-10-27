@@ -998,8 +998,20 @@ impl Workspace {
         self.with_model(WorkspaceModel::attach);
     }
 
-    /// Another session came to the front.
+    /// Another session came to the front. One busy with its input lets
+    /// go once it is done, unless it came back to the front meanwhile.
     pub(crate) fn detach(&self) {
+        if self.imp().model.try_borrow_mut().is_err() {
+            let workspace = self.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(workspace) = workspace.upgrade()
+                    && workspace.shell().and_then(|shell| shell.front()).as_ref() != Some(&workspace)
+                {
+                    workspace.detach();
+                }
+            });
+            return;
+        }
         self.with_model(WorkspaceModel::detach);
     }
 
@@ -1167,6 +1179,13 @@ impl WorkspaceModel {
     /// which replaces them.
     fn detach(&mut self) {
         self.attached = false;
+        // The next front adds its own under the same names; with none,
+        // as the window's page goes, nothing would take these off.
+        if let Some(window) = self.window() {
+            for action in &self.actions {
+                window.remove_action(action);
+            }
+        }
         self.actions.clear();
         if let Some(gate) = self.history_gate.take() {
             gate.abort();

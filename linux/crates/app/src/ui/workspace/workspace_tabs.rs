@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -604,15 +604,30 @@ pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, in
         }
     });
 
-    // A drag reorder changes only `pages`, and it has to persist too.
+    // Every session hears the shared view, and only one whose tab came
+    // or left the front, or whose tabs moved, has anything to do.
     let selected_input = input.clone();
     let selected_index = index.clone();
+    let was_selected = Cell::new(false);
     let selected = tab_view.connect_selected_page_notify(move |view| {
-        selected_index.note_selected(view.selected_page().as_ref());
-        selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
+        let page = view.selected_page();
+        let ours = page.as_ref().is_some_and(|page| selected_index.id_of(page).is_some());
+        selected_index.note_selected(page.as_ref());
+        if ours || was_selected.replace(ours) {
+            selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
+        }
     });
+    // A drag reorder changes only `pages`, and it has to persist too.
     let pages_input = input.clone();
-    let pages = tab_view.connect_pages_notify(move |_| pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
+    let pages_index = index.clone();
+    let order: RefCell<Vec<Uuid>> = RefCell::default();
+    let pages = tab_view.connect_pages_notify(move |view| {
+        let now = pages_index.order_in(view);
+        if *order.borrow() != now {
+            order.replace(now);
+            pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
+        }
+    });
     TabViewWatch {
         view: tab_view.downgrade(),
         handlers: vec![close, selected, pages],

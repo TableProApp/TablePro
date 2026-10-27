@@ -23,6 +23,9 @@ pub(crate) enum SessionWindowInput {
     FileResolved(Box<ResolvedFile>),
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
+    /// The saved connections could not be read for this restored key,
+    /// which stays recorded for a launch that can read them.
+    RestoreUnread(SessionKey),
     /// The restored saved connection as the list holds it now, or `None`
     /// once it is deleted.
     RestoreSaved {
@@ -74,9 +77,9 @@ pub(crate) enum SessionWindowInput {
     /// The application asks the window to close.
     CloseRequested(CloseReason),
     /// The workspace gained or lost something a logout would lose.
-    DirtyChanged(bool),
+    DirtyChanged(SessionKey, bool),
     /// The number of saves running in the workspace changed.
-    SavesInFlightChanged(usize),
+    SavesInFlightChanged(SessionKey, usize),
     TitleChanged(String),
     /// A run, save or export ended in one of the workspace's tabs.
     WorkCompleted(CompletedWork),

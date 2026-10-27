@@ -53,8 +53,8 @@ fn a_second_connection_joins_the_window_beside_the_first() {
     assert_eq!(shell.sessions().len(), 2);
     assert_eq!(
         shell.front().and_then(|front| front.key()),
-        Some(SessionKey::Saved(other.id)),
-        "the session that joined is not in front"
+        Some(test.key()),
+        "the session that joined took the front with no tab on screen"
     );
     wait_until(WAIT, || shell.tree_open_connections() == ["Fake", "Other"])
         .expect("the tree to mark both connections open");

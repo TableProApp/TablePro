@@ -37,7 +37,12 @@ pub(crate) struct CloseGuards {
     /// disconnect or switch. A switch asks again once its connection is
     /// ready, about what changed while it connected, but not about these.
     teardown_acknowledged: RefCell<HashSet<Uuid>>,
+    /// Told when a window close's prompt for one workspace approved and
+    /// another is asked next.
+    part_approved: RefCell<Option<PartApproved>>,
 }
+
+type PartApproved = Rc<dyn Fn(&WorkspaceHandle)>;
 
 impl CloseGuards {
     pub(crate) fn new() -> Rc<Self> {
@@ -47,7 +52,16 @@ impl CloseGuards {
             requests: Cell::new(0),
             waiting: RefCell::new(Vec::new()),
             teardown_acknowledged: RefCell::new(HashSet::new()),
+            part_approved: RefCell::new(None),
         })
+    }
+
+    /// What answered Save or Discard for one workspace is done by the
+    /// time the next one asks, so a Cancel there cannot take it back.
+    /// `approved` closes that workspace, so the window keeps only what
+    /// the user still has to decide on.
+    pub(crate) fn on_part_approved(&self, approved: impl Fn(&WorkspaceHandle) + 'static) {
+        self.part_approved.replace(Some(Rc::new(approved)));
     }
 
     async fn run(
@@ -128,12 +142,18 @@ impl CloseGuards {
         let (guards, window) = (self.clone(), window.clone());
         glib::spawn_future_local(async move {
             let mut decision = CloseDecision::Approved;
-            for handle in &asking {
+            for (position, handle) in asking.iter().enumerate() {
                 decision = guards
                     .run(window.upcast_ref(), handle, CloseScope::Window, &mut HashSet::new())
                     .await;
                 if decision != CloseDecision::Approved {
                     break;
+                }
+                let approved = guards.part_approved.borrow().clone();
+                if position + 1 < asking.len()
+                    && let Some(approved) = approved
+                {
+                    approved(handle);
                 }
             }
             match decision {

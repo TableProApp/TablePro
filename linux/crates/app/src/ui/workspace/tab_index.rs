@@ -28,6 +28,14 @@ impl TabIndex {
         self.ids.borrow_mut().remove(page)
     }
 
+    /// This workspace's tabs, in the order `view` shows them.
+    pub(crate) fn order_in(&self, view: &adw::TabView) -> Vec<Uuid> {
+        let ids = self.ids.borrow();
+        (0..view.n_pages())
+            .filter_map(|position| ids.get(&view.nth_page(position)).copied())
+            .collect()
+    }
+
     pub(crate) fn pages(&self) -> Vec<adw::TabPage> {
         self.ids.borrow().keys().cloned().collect()
     }

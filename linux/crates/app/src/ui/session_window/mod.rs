@@ -137,19 +137,7 @@ impl SessionWindow {
                 prompts, self,
             )));
 
-        let guards = CloseGuards::new();
-        let window = self.downgrade();
-        guards.connect_window(
-            self,
-            move || {
-                window
-                    .upgrade()
-                    .map(|window| window.workspace_handles())
-                    .unwrap_or_default()
-            },
-            SessionWindow::on_close_approved,
-        );
-        let _ = imp.close_guards.set(guards);
+        let _ = imp.close_guards.set(self.close_guards_for_window());
         imp.inhibitor
             .replace(Some(WindowInhibitor::new(ApplicationInhibit::new(self))));
 
@@ -407,6 +395,27 @@ impl SessionWindow {
     }
 
     /// Whether any session has something to lose.
+    /// A session said what it has to lose. One the window no longer
+    /// holds has nothing left to lose, so its last word is dropped.
+    fn on_dirty_changed(&self, key: &SessionKey, dirty: Option<bool>, saves: Option<usize>) {
+        if self.imp().page.borrow().session(key).is_none() {
+            return;
+        }
+        let others: Vec<Workspace> = self
+            .workspaces()
+            .into_iter()
+            .filter(|workspace| workspace.key().as_ref() != Some(key))
+            .collect();
+        let imp = self.imp();
+        if let Some(dirty) = dirty {
+            imp.dirty.set(dirty || others.iter().any(Workspace::is_dirty));
+        }
+        if let Some(count) = saves {
+            imp.saving.set(count > 0 || others.iter().any(Workspace::is_saving));
+        }
+        self.refresh_inhibitor();
+    }
+
     /// What the sessions left have to lose, after one of them went.
     fn refresh_dirty(&self) {
         let workspaces = self.workspaces();
@@ -428,9 +437,19 @@ impl SessionWindow {
         match message {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
-            SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
+            SessionWindowInput::FileResolved(resolved) => {
+                self.on_file_resolved(*resolved);
+                self.restore_on_picker();
+            }
             SessionWindowInput::Restore(key) => self.on_restore(key),
-            SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
+            SessionWindowInput::RestoreSaved { id, saved } => {
+                self.on_restore_saved(id, saved.map(|saved| *saved));
+                self.restore_on_picker();
+            }
+            SessionWindowInput::RestoreUnread(key) => {
+                self.end_restore(&key);
+                self.restore_on_picker();
+            }
             SessionWindowInput::OpenConnectDialog => {
                 self.present_connect_dialog(ConnectDialogMode::Create, None, None);
             }
@@ -469,20 +488,8 @@ impl SessionWindow {
             }
             // Only the workspace on screen speaks for the window: one
             // torn down has nothing left to lose.
-            SessionWindowInput::DirtyChanged(dirty) => {
-                if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-                    let others = self.workspaces().iter().any(Workspace::is_dirty);
-                    self.imp().dirty.set(dirty || others);
-                    self.refresh_inhibitor();
-                }
-            }
-            SessionWindowInput::SavesInFlightChanged(count) => {
-                if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-                    let others = self.workspaces().iter().any(Workspace::is_saving);
-                    self.imp().saving.set(count > 0 || others);
-                    self.refresh_inhibitor();
-                }
-            }
+            SessionWindowInput::DirtyChanged(key, dirty) => self.on_dirty_changed(&key, Some(dirty), None),
+            SessionWindowInput::SavesInFlightChanged(key, count) => self.on_dirty_changed(&key, None, Some(count)),
             SessionWindowInput::TitleChanged(title) => {
                 if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
                     self.set_title(Some(&title));
@@ -838,11 +845,16 @@ impl SessionWindow {
         let Some(input) = self.input() else {
             return;
         };
-        let dirty = input.clone();
-        workspace.connect_dirty_changed(move |_, value| dirty.deliver(SessionWindowInput::DirtyChanged(value)));
+        let Some(key) = workspace.key() else {
+            return;
+        };
+        let (dirty, dirty_key) = (input.clone(), key.clone());
+        workspace.connect_dirty_changed(move |_, value| {
+            dirty.deliver(SessionWindowInput::DirtyChanged(dirty_key.clone(), value));
+        });
         let saves = input.clone();
         workspace.connect_saves_in_flight_changed(move |_, count| {
-            saves.deliver(SessionWindowInput::SavesInFlightChanged(count));
+            saves.deliver(SessionWindowInput::SavesInFlightChanged(key.clone(), count));
         });
         self.follow_workspace_tabs(workspace, &input);
         workspace.connect_title_changed(move |_, title| input.deliver(SessionWindowInput::TitleChanged(title)));
@@ -1341,6 +1353,46 @@ impl SessionWindow {
         match self.workspace().and_then(|workspace| workspace.input()) {
             Some(input) => input.deliver(WorkspaceInput::CloseActiveWorkspaceTab),
             None => self.close(),
+        }
+    }
+
+    /// The window closes through every session's prompts in turn.
+    fn close_guards_for_window(&self) -> Rc<CloseGuards> {
+        let guards = CloseGuards::new();
+        let window = self.downgrade();
+        guards.connect_window(
+            self,
+            move || {
+                window
+                    .upgrade()
+                    .map(|window| window.workspace_handles())
+                    .unwrap_or_default()
+            },
+            SessionWindow::on_close_approved,
+        );
+        let window = self.downgrade();
+        guards.on_part_approved(move |handle| {
+            if let Some(window) = window.upgrade() {
+                window.close_approved_part(handle);
+            }
+        });
+        guards
+    }
+
+    /// One session's prompt approved the window's close and the next is
+    /// asked: the session goes now, with what its prompt saved or
+    /// discarded, whatever the next one answers.
+    fn close_approved_part(&self, handle: &crate::workspace::WorkspaceHandle) {
+        let key = self
+            .imp()
+            .page
+            .borrow()
+            .sessions()
+            .iter()
+            .find(|open| open.workspace.handle().is_some_and(|held| held.same(handle)))
+            .map(|open| open.claim.key().clone());
+        if let Some(key) = key {
+            self.send(SessionWindowInput::SessionTeardownApproved(key));
         }
     }
 

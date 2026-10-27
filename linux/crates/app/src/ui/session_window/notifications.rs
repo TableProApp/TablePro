@@ -77,8 +77,11 @@ impl SessionWindow {
         if workspaces.is_empty() {
             return;
         }
-        let open: Vec<_> = workspaces.iter().filter_map(Workspace::open_tabs).collect();
-        notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
+        // A session busy with its input cannot say which tabs it holds,
+        // and its notifications stay until it can.
+        if let Some(open) = workspaces.iter().map(Workspace::open_tabs).collect::<Option<Vec<_>>>() {
+            notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
+        }
         if self.window_is_active()
             && let Some(tab) = workspaces.iter().find_map(Workspace::selected_tab)
         {
@@ -89,7 +92,14 @@ impl SessionWindow {
     /// The notifications of tabs no session holds any more, after one of
     /// the window's sessions closed.
     pub(super) fn withdraw_closed_notifications(&self) {
-        let open: Vec<_> = self.workspaces().iter().filter_map(Workspace::open_tabs).collect();
+        let Some(open) = self
+            .workspaces()
+            .iter()
+            .map(Workspace::open_tabs)
+            .collect::<Option<Vec<_>>>()
+        else {
+            return;
+        };
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
             notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
         }

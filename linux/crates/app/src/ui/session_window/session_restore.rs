@@ -39,10 +39,12 @@ impl SessionWindow {
                 // The key stays recorded: the list may read again once
                 // the user resets it, which the picker's banner offers.
                 Ok(Err(error)) => {
-                    tracing::warn!(%error, "a session was not restored: the saved connections could not be read")
+                    tracing::warn!(%error, "a session was not restored: the saved connections could not be read");
+                    input.deliver(SessionWindowInput::RestoreUnread(SessionKey::Saved(id)));
                 }
                 Err(failure) => {
-                    tracing::warn!(%failure, "a session was not restored: the connections read task failed")
+                    tracing::warn!(%failure, "a session was not restored: the connections read task failed");
+                    input.deliver(SessionWindowInput::RestoreUnread(SessionKey::Saved(id)));
                 }
             }
         });
@@ -55,7 +57,6 @@ impl SessionWindow {
             None => {
                 self.forget_session(&SessionKey::Saved(id));
                 self.show_toast(&crate::i18n::gettext("The connection was deleted."));
-                self.continue_restore();
             }
         }
     }
@@ -116,6 +117,15 @@ impl SessionWindow {
         };
         for key in started {
             input.deliver(SessionWindowInput::Restore(key));
+        }
+    }
+
+    /// A restored key that did not leave the picker, because it was
+    /// deleted, unreadable or open in another window, lets the next one
+    /// try.
+    pub(super) fn restore_on_picker(&self) {
+        if self.page_is(|page| matches!(page, SessionPage::Picker)) {
+            self.continue_restore();
         }
     }
 

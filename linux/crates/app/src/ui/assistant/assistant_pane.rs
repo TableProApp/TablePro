@@ -168,7 +168,13 @@ impl WeakTurnRow {
 }
 
 impl AssistantPane {
+    /// Bind the pane to a session. A conversation is about one
+    /// connection's tables and editor, so another session's starts empty,
+    /// and a reply still coming for the last one stops.
     pub(crate) fn bind(&self, hooks: PaneHooks) {
+        if self.access().is_some_and(|bound| !Rc::ptr_eq(&bound, &hooks.access)) {
+            self.new_conversation();
+        }
         let settings = hooks.access.ai().settings().clone();
         let mut watches = Vec::new();
         for key in [

@@ -52,6 +52,13 @@ pub struct WorkspaceDeps {
 #[derive(Clone)]
 pub struct WorkspaceHandle(Rc<Inner>);
 
+impl WorkspaceHandle {
+    /// Whether both are handles of one workspace.
+    pub fn same(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 struct Inner {
     deps: WorkspaceDeps,
     ledger: SaveLedger,

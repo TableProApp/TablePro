@@ -51,6 +51,7 @@ impl SessionWindow {
         self.set_content(gtk::Widget::NONE);
         imp.page_toasts.replace(None);
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
+        shell.release_front();
         for open in sessions {
             self.close_open_session(&shell, open, false);
         }
