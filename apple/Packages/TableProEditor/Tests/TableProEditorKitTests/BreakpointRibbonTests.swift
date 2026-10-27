@@ -82,9 +82,10 @@ struct BreakpointRibbonTests {
         }
 
         // Delivered to whatever the window hit-tests at the point, so a click that never reaches the ribbon fails.
-        func click(downOnLine down: Int, upOnLine up: Int? = nil) throws {
+        func click(downOnLine down: Int, upOnLine up: Int? = nil, upAcross offset: CGFloat = 0) throws {
             let downPoint = try windowPoint(onLine: down)
-            let upPoint = try windowPoint(onLine: up ?? down)
+            var upPoint = try windowPoint(onLine: up ?? down)
+            upPoint.x += offset
             let target = try #require(window.contentView?.hitTest(downPoint))
             target.mouseDown(with: try mouse(.leftMouseDown, at: downPoint))
             target.mouseUp(with: try mouse(.leftMouseUp, at: upPoint))
@@ -143,6 +144,15 @@ struct BreakpointRibbonTests {
         let harness = Harness()
 
         try harness.click(downOnLine: 3, upOnLine: 5)
+
+        #expect(harness.toggled.isEmpty)
+    }
+
+    @Test("Dragging sideways into the source before releasing takes the click back")
+    func dragIntoTheSourceCancels() throws {
+        let harness = Harness()
+
+        try harness.click(downOnLine: 3, upAcross: harness.ribbon.bounds.width + 40)
 
         #expect(harness.toggled.isEmpty)
     }

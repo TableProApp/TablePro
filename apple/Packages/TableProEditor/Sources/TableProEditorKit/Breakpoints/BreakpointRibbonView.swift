@@ -111,7 +111,7 @@ class BreakpointRibbonView: NSView {
         pressedLine = nil
 
         let point = convert(event.locationInWindow, from: nil)
-        if line(at: point) == pressed {
+        if bounds.contains(point), line(at: point) == pressed {
             controller?.onBreakpointToggle?(pressed)
         }
         pointerMoved(to: point)

@@ -55,6 +55,8 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     private var stopTask: Task<Void, Never>?
     private var stopDeadline: ContinuousClock.Instant?
     private var abortSent = false
+    // The target read an abort: through the proxy, or through a session that attached to it.
+    private var abortDelivered = false
     private var proxyInterrupted = false
     private var endedByInterruption = false
 
@@ -446,8 +448,10 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             stopTask = Task { await performStop() }
         }
         await stopTask?.value
+        // A call that failed on its own connection ended only on this side; the backend may still hold its locks.
+        let callEnded = rendezvous.hasSettled && (abortDelivered || !target.hasLostConnection)
         return PostgreSQLRoutineDebugProtocol.stopOutcome(
-            callEnded: rendezvous.hasSettled,
+            callEnded: callEnded,
             abandoned: rendezvous.isAbandoned,
             process: targetProcess,
             port: port
@@ -477,6 +481,10 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             await awaitTargetEnd()
         case .ended:
             break
+        }
+        // The backend of a call whose connection dropped may still wait for a debugger, and only an attach reaches it.
+        if target.hasLostConnection, !abortDelivered {
+            await abortByAttaching(reusingProxy: false, evenAfterTheCallEnded: true)
         }
         _ = await targetEnded()
     }
@@ -518,6 +526,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             let statement = PostgreSQLRoutineDebugProtocol.abortStatement(extensionSchema: extensionSchema, session: handle)
             switch await Self.boundedResult(by: currentDeadline(), { try await proxy.execute(query: statement) }) {
             case .success?:
+                abortDelivered = true
                 return
             case .failure(let error)?:
                 // An interrupted abort was still written; the target reads it at its next pause while the proxy
@@ -534,7 +543,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     // A target whose proxy is gone waits in accept() and ignores cancel and terminate. Attaching to its backend
     // number and aborting is the only way to end it. The old proxy can hold the target for a moment after its
     // client goes, so the attach is retried until the deadline.
-    private func abortByAttaching(reusingProxy: Bool) async {
+    private func abortByAttaching(reusingProxy: Bool, evenAfterTheCallEnded: Bool = false) async {
         guard let port else { return }
         let driver: PostgreSQLPluginDriver
         if reusingProxy {
@@ -556,7 +565,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         }
         let schema = extensionSchema
         let deadline = currentDeadline()
-        while !rendezvous.hasSettled {
+        while !abortDelivered, evenAfterTheCallEnded || !rendezvous.hasSettled {
             let ended = await Self.boundedResult(by: deadline) {
                 let session = try await Self.attach(using: driver, port: port, extensionSchema: schema)
                 _ = try await driver.execute(
@@ -564,7 +573,10 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
                 )
             }
             switch ended {
-            case .success?, nil:
+            case .success?:
+                abortDelivered = true
+                return
+            case nil:
                 return
             case .failure:
                 let remaining = ContinuousClock.now.duration(to: deadline)

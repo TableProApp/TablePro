@@ -650,6 +650,56 @@ else
     fail "no PLDBGBREAK notice"
 fi
 
+# --- A target whose own client went away while it waited: its backend stays, and an abort ends it ---------------
+
+echo "== target client lost while paused"
+before=$(audit)
+cat > "$WORK/client.target.sql" <<SQL
+$TARGET_SETUP
+SELECT 'TARGET ' || pg_backend_pid();
+SELECT "public".pldbg_oid_debug('$SLOW_FN'::pg_catalog.oid);
+SELECT * FROM "public"."slow_fn"() \bind \g
+SQL
+cat > "$WORK/client.proxy.sql" <<SQL
+$PROXY_SETUP
+SELECT "public".pldbg_attach_to_port(:port) AS s \gset
+SELECT func, linenumber, targetname FROM "public".pldbg_wait_for_breakpoint(:s);
+\echo ==paused
+SELECT pg_sleep(2);
+\echo ==abort
+SELECT * FROM "public".pldbg_abort_target(:s);
+SQL
+start_target client dev
+if await_port client; then
+    target_pid=$(grep -o 'TARGET [0-9]*' "$WORK/client.target.log" | cut -d' ' -f2)
+    # The only psql in the container until the proxy starts.
+    client_pid=$(docker exec "$CONTAINER" sh -c 'for d in /proc/[0-9]*; do [ "$(cat "$d/comm" 2> /dev/null)" = psql ] && echo "${d#/proc/}"; done')
+    run_proxy client dev &
+    proxy_job=$!
+    for _ in $(seq 1 50); do
+        grep -F "==paused" "$WORK/client.proxy.log" > /dev/null 2>&1 && break
+        sleep 0.1
+    done
+    docker exec "$CONTAINER" kill -9 "$client_pid"
+    sleep 1
+    alive=$(sql postgres postgres -c "SELECT count(*) FROM pg_stat_activity WHERE pid = $target_pid")
+    [ "$alive" = 1 ] && pass "a paused target's backend outlives its client" \
+        || fail "a paused target's backend outlives its client ($alive)"
+    wait "$proxy_job"
+    expect_after "$WORK/client.proxy.log" "==abort" "t" "the proxy's abort reaches a target whose client is gone"
+    gone=1
+    for _ in $(seq 1 30); do
+        gone=$(sql postgres postgres -c "SELECT count(*) FROM pg_stat_activity WHERE pid = $target_pid")
+        [ "$gone" = 0 ] && break
+        sleep 0.1
+    done
+    [ "$gone" = 0 ] && pass "the aborted target's backend ends" || fail "the aborted target's backend ends"
+    [ "$(audit)" = "$before" ] && pass "that run rolls back" || fail "that run rolls back"
+    wait "$TARGET" 2> /dev/null
+else
+    fail "no PLDBGBREAK notice"
+fi
+
 # --- A procedure, a named argument after a default, and its notices -----------------------------------------
 
 echo "== procedure"
