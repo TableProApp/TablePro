@@ -87,6 +87,9 @@ mod imp {
         pub(super) follow: Cell<bool>,
         pub(super) settings_watch: RefCell<Vec<HandlerGuard>>,
         pub(super) actions: gtk::gio::SimpleActionGroup,
+        /// The conversations of the window's other sessions, put aside
+        /// while another one is in front.
+        pub(super) kept: RefCell<Vec<super::KeptConversation>>,
     }
 
     #[glib::object_subclass]
@@ -125,6 +128,17 @@ glib::wrapper! {
     pub struct AssistantPane(ObjectSubclass<imp::AssistantPane>)
         @extends adw::Bin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+/// A session's conversation while another session is in front: what
+/// it said and the turns that showed it, taken up again as it was.
+pub(super) struct KeptConversation {
+    /// Weak, so a session that closed while put aside lets go of it.
+    access: std::rc::Weak<AssistantAccess>,
+    conversation: Option<Conversation>,
+    rows: Vec<TurnRow>,
+    retry: Option<gtk::Button>,
+    turns: Vec<gtk::Widget>,
 }
 
 /// One question and its reply on screen.
@@ -169,11 +183,17 @@ impl WeakTurnRow {
 
 impl AssistantPane {
     /// Bind the pane to a session. A conversation is about one
-    /// connection's tables and editor, so another session's starts empty,
-    /// and a reply still coming for the last one stops.
+    /// connection's tables and editor, so each session has its own: the
+    /// one in front shows, and the others wait aside. A reply still
+    /// coming for the session that left stops where it got to.
     pub(crate) fn bind(&self, hooks: PaneHooks) {
-        if self.access().is_some_and(|bound| !Rc::ptr_eq(&bound, &hooks.access)) {
-            self.new_conversation();
+        let bound = self.access();
+        if bound.as_ref().is_none_or(|bound| !Rc::ptr_eq(bound, &hooks.access)) {
+            // A pane the closed front shut down holds nothing to keep.
+            if let Some(bound) = bound {
+                self.put_aside(&bound);
+            }
+            self.take_up(&hooks.access);
         }
         let settings = hooks.access.ai().settings().clone();
         let mut watches = Vec::new();
@@ -256,6 +276,63 @@ impl AssistantPane {
         self.new_conversation();
         self.imp().settings_watch.take();
         self.imp().hooks.take();
+    }
+
+    /// Put the conversation on screen aside for the session `access`.
+    fn put_aside(&self, access: &Rc<AssistantAccess>) {
+        let imp = self.imp();
+        if imp.busy.get()
+            && let Some(row) = imp.rows.borrow().last()
+        {
+            clear(&row.footer);
+            row.footer.append(&dim_caption(&crate::i18n::gettext("Stopped.")));
+        }
+        self.stop_work();
+        imp.generation.set(imp.generation.get() + 1);
+        let mut turns = Vec::new();
+        while let Some(child) = imp.messages.first_child() {
+            imp.messages.remove(&child);
+            turns.push(child);
+        }
+        imp.kept.borrow_mut().push(KeptConversation {
+            access: Rc::downgrade(access),
+            conversation: imp.conversation.take(),
+            rows: imp.rows.take(),
+            retry: imp.retry.take(),
+            turns,
+        });
+    }
+
+    /// Show the conversation kept for `access`, or none.
+    fn take_up(&self, access: &Rc<AssistantAccess>) {
+        let imp = self.imp();
+        let kept = {
+            let mut kept = imp.kept.borrow_mut();
+            kept.retain(|kept| kept.access.strong_count() > 0);
+            kept.iter()
+                .position(|kept| std::ptr::eq(kept.access.as_ptr(), Rc::as_ptr(access)))
+                .map(|position| kept.remove(position))
+        };
+        let shown = kept.is_some_and(|kept| {
+            imp.conversation.replace(kept.conversation);
+            imp.rows.replace(kept.rows);
+            imp.retry.replace(kept.retry);
+            for turn in &kept.turns {
+                imp.messages.append(turn);
+            }
+            !kept.turns.is_empty()
+        });
+        imp.conversation_stack
+            .set_visible_child_name(if shown { "messages" } else { "empty" });
+        self.sync_controls();
+    }
+
+    /// Let go of the conversation kept for a session that closed.
+    pub(crate) fn forget(&self, access: &Rc<AssistantAccess>) {
+        self.imp()
+            .kept
+            .borrow_mut()
+            .retain(|kept| kept.access.strong_count() > 0 && !std::ptr::eq(kept.access.as_ptr(), Rc::as_ptr(access)));
     }
 
     pub(crate) fn new_conversation(&self) {
@@ -973,6 +1050,42 @@ mod tests {
         assert_eq!(body["messages"][1]["content"], "How many orders are there?");
         assert_eq!(harness.pane.composer_text(), "", "the question left the composer");
         wait_until(WAIT, || imp.send_stack.visible_child_name().as_deref() == Some("send")).expect("ready again");
+    }
+
+    #[gtk4::test]
+    fn each_session_takes_its_own_conversation_up_again() {
+        let runtime = test_runtime();
+        let provider = serve(&runtime, REPLY);
+        let harness = pane(&provider, runtime, Rc::new(Cell::new(AiPolicy::Allow)));
+        let imp = harness.pane.imp();
+        imp.composer.buffer().set_text("How many orders are there?");
+        imp.send_button.emit_clicked();
+        wait_until(WAIT, || {
+            texts(&harness.pane).iter().any(|text| text == "There are 42 orders.")
+        })
+        .expect("the reply");
+        let first = harness.pane.hooks().expect("the first session's hooks");
+        let other = PaneHooks {
+            access: AssistantAccess::new(
+                first.access.ai().clone(),
+                ActiveSession::new(),
+                "SQLite".to_owned(),
+                || AiPolicy::Allow,
+            ),
+            ..first.clone()
+        };
+
+        harness.pane.bind(other);
+        assert_eq!(imp.conversation_stack.visible_child_name().as_deref(), Some("empty"));
+        assert!(
+            imp.conversation.borrow().is_none(),
+            "the other session got the first one's conversation"
+        );
+
+        harness.pane.bind(first);
+        assert_eq!(imp.conversation_stack.visible_child_name().as_deref(), Some("messages"));
+        assert!(texts(&harness.pane).iter().any(|text| text == "There are 42 orders."));
+        assert!(imp.conversation.borrow().is_some());
     }
 
     #[gtk4::test]

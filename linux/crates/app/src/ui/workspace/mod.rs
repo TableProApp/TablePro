@@ -1009,12 +1009,16 @@ impl Workspace {
                 if let Some(workspace) = workspace.upgrade()
                     && workspace.shell().and_then(|shell| shell.front()).as_ref() != Some(&workspace)
                 {
-                    workspace.detach();
+                    // The next front added its actions under the same
+                    // names meanwhile, unless none came.
+                    let none_in_front = workspace.shell().and_then(|shell| shell.front()).is_none();
+                    workspace.with_model(|model| model.detach(none_in_front));
                 }
             });
             return;
         }
-        self.with_model(WorkspaceModel::detach);
+        // The next front adds its actions after this, if any comes.
+        self.with_model(|model| model.detach(true));
     }
 
     /// Where the window shows its toasts while it shows this workspace:
@@ -1075,11 +1079,11 @@ impl Workspace {
 
     /// Stop the tabs, their reads and the watchers, take the
     /// workspace's actions off the window and drop what it holds. Any
-    /// reply still on its way is dropped with the input queue.
-    /// Shut the workspace down. With `close_pages` its pages leave the
-    /// shared tab view too, for a window that keeps its other sessions;
-    /// a window that closes whole lets the view go with its shell, so no
-    /// session sees another's page come forward as it goes.
+    /// reply still on its way is dropped with the input queue. With
+    /// `close_pages` its pages leave the shared tab view too, for a
+    /// window that keeps its other sessions; a window that closes whole
+    /// lets the view go with its shell, so no session sees another's page
+    /// come forward as it goes.
     pub(crate) fn shutdown(&self, close_pages: bool) {
         let imp = self.imp();
         if let Some(pump) = imp.pump.take() {
@@ -1179,15 +1183,11 @@ impl WorkspaceModel {
 
     /// The actions stay on the window for the session now in front,
     /// which replaces them.
-    fn detach(&mut self) {
+    /// `remove_actions` is false once the next front has added its own
+    /// under the same names, which taking these off would take.
+    fn detach(&mut self, remove_actions: bool) {
         self.attached = false;
-        // The next front adds its own under the same names, and taking
-        // them off here, once it did, would take its own. With none in
-        // front, as the window's page goes, nothing else takes them off.
-        let front = self.shell.upgrade().and_then(|shell| shell.front());
-        if front.is_none()
-            && let Some(window) = self.window()
-        {
+        if remove_actions && let Some(window) = self.window() {
             for action in &self.actions {
                 window.remove_action(action);
             }
@@ -1203,7 +1203,6 @@ impl WorkspaceModel {
     /// area, and the tabs saved for it.
     fn open(&mut self) {
         self.reconnect_banner.set_revealed(false);
-        self.table_search.set_text("");
         tracing::info!(driver = %self.driver_id, "workspace ready");
         self.open_sidebar();
         self.refresh_window_title();

@@ -153,6 +153,8 @@ impl AssistantShell {
     pub(super) fn shutdown(&self) {
         if self.attached.replace(false) {
             self.pane.shutdown();
+        } else {
+            self.pane.forget(&self.access);
         }
     }
 }

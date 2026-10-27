@@ -399,7 +399,6 @@ impl SessionWindow {
             .collect()
     }
 
-    /// Whether any session has something to lose.
     /// A session said what it has to lose. One the window no longer
     /// holds has nothing left to lose, so its last word is dropped.
     fn on_dirty_changed(&self, key: &SessionKey, dirty: Option<bool>, saves: Option<usize>) {
@@ -421,7 +420,7 @@ impl SessionWindow {
         self.refresh_inhibitor();
     }
 
-    /// What the sessions left have to lose, after one of them went.
+    /// Whether any session has something to lose, after one of them went.
     fn refresh_dirty(&self) {
         let workspaces = self.workspaces();
         self.imp().dirty.set(workspaces.iter().any(Workspace::is_dirty));
@@ -677,15 +676,6 @@ impl SessionWindow {
             }
             return;
         };
-        if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-            let key = claim.key().clone();
-            drop(claim);
-            self.forget_session(&key);
-            if let Ok(connected) = result {
-                self.discard_pending(connected.pending);
-            }
-            return;
-        }
         if let Some(shell) = self.shell() {
             shell.set_connecting(key, false);
         }
@@ -755,9 +745,10 @@ impl SessionWindow {
             return;
         };
         // The front follows the tab on screen, so a session with none
-        // stays behind the one the user sees.
-        if let Some(page) = workspace.some_page() {
-            shell.tab_view().set_selected_page(&page);
+        // gets a query tab to come forward with.
+        match workspace.some_page() {
+            Some(page) => shell.tab_view().set_selected_page(&page),
+            None => drop(workspace.create_editor_page()),
         }
     }
 
@@ -919,11 +910,8 @@ impl SessionWindow {
         };
         let key = SessionKey::Saved(saved.id);
         if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-            let held = self.imp().page.borrow().session(&key).is_some();
-            if held {
-                self.show_session(&key);
-            } else if self.connecting_beside(&key) {
-                // Its row keeps saying so.
+            if self.shown_beside(&key) {
+                // A row keeps saying it connects while it does.
             } else if let Some(claim) = self.claim(key.clone()) {
                 self.begin_background_connect(claim, ConnectSource::Saved(Box::new(saved)));
                 return;
@@ -1004,8 +992,7 @@ impl SessionWindow {
                     self.forget_unclaimed(&arrived);
                 }
                 let key = SessionKey::File(identity.uri.clone());
-                if beside && (self.imp().page.borrow().session(&key).is_some() || self.connecting_beside(&key)) {
-                    self.show_session(&key);
+                if beside && self.shown_beside(&key) {
                     return;
                 }
                 if let Some(claim) = self.claim(key) {
@@ -1050,6 +1037,11 @@ impl SessionWindow {
         };
         if beside {
             let key = SessionKey::Saved(pending_save.connection.id);
+            // The edits are kept for the next connect.
+            if self.shown_beside(&key) {
+                self.persist_pending_save(pending_save);
+                return;
+            }
             match self.claim(key.clone()) {
                 Some(claim) => self.begin_background_connect(
                     claim,
@@ -1152,6 +1144,16 @@ impl SessionWindow {
         });
     }
 
+    /// A key the window holds comes to the front, and one connecting
+    /// beside its sessions goes on: true when there is nothing to start.
+    fn shown_beside(&self, key: &SessionKey) -> bool {
+        if self.imp().page.borrow().session(key).is_some() {
+            self.show_session(key);
+            return true;
+        }
+        self.connecting_beside(key)
+    }
+
     /// Whether a connect for `key` runs beside the window's sessions.
     fn connecting_beside(&self, key: &SessionKey) -> bool {
         self.imp()
@@ -1249,6 +1251,7 @@ impl SessionWindow {
             if let Some(key) = key {
                 self.forget_session(&key);
             }
+            self.continue_restore();
         }
     }
 
