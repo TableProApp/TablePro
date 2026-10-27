@@ -1300,6 +1300,48 @@ struct SQLFormatterServiceTests {
         )
     }
 
+    @Test("An alias written without AS keeps its spelling, and APPLY is a keyword only after CROSS or OUTER")
+    func implicitAliasesKeepTheirSpelling() throws {
+        try expectFormat("SELECT 1 apply ORDER BY apply", dialect: .clickhouse, equals: "SELECT 1 apply\nORDER BY apply")
+        try expectFormat(
+            "SELECT 1 rows, x date, y key FROM t FINAL WHERE a = 1",
+            dialect: .clickhouse,
+            equals: """
+        SELECT 1 rows,
+               x date,
+               y key
+        FROM t FINAL
+        WHERE a = 1
+        """
+        )
+        try expectFormat(
+            "select a.b key, c value, count(*) total from t first where x = 1 order by key desc",
+            equals: """
+        SELECT a.b key,
+               c value,
+               count(*) total
+        FROM t first
+        WHERE x = 1
+        ORDER BY key DESC
+        """
+        )
+        try expectFormat(
+            "select x date from t date",
+            options: options { $0.dataTypeCase = .upper },
+            equals: "SELECT x date\nFROM t date"
+        )
+        try expectFormat(
+            "select * from a cross apply f(a.id) x outer apply g(a.id) y",
+            dialect: .mssql,
+            equals: """
+        SELECT *
+        FROM a
+        CROSS APPLY f(a.id) x
+        OUTER APPLY g(a.id) y
+        """
+        )
+    }
+
     @Test("A table named like a keyword keeps its spelling before its alias")
     func tableNamedLikeAKeywordBeforeItsAlias() throws {
         try expectFormat(

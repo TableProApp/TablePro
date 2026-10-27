@@ -79,9 +79,6 @@ struct SQLTokenizer {
         "TOP", "PERCENT",
     ]
 
-    // Keywords a grammar reading adds, which the fingerprint's reading does not know.
-    private static let grammarKeywords: Set<String> = ["APPLY"]
-
     // No engine reads one of these as two valid operators, so a run written together stays together whatever the
     // dialect declares: T-SQL's `+=`, SQLite's `==`, Oracle's `^=` and `**`, DuckDB's `//`. `<@` is not here: T-SQL
     // reads `a<@b` as `a < @b`.
@@ -127,8 +124,7 @@ struct SQLTokenizer {
     }
 
     fileprivate func isKeyword(_ upperWord: String) -> Bool {
-        Self.standardKeywords.contains(upperWord) || Self.grammarKeywords.contains(upperWord)
-            || dialectKeywords.contains(upperWord)
+        Self.standardKeywords.contains(upperWord) || dialectKeywords.contains(upperWord)
     }
 
     fileprivate func operatorCandidates(startingWith unit: UInt16) -> [String] {

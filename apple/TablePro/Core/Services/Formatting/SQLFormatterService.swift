@@ -826,6 +826,38 @@ internal struct SQLTokenFormatter {
         "DELAYED", "OUTFILE", "DUMPFILE",
     ]
 
+    // What can end a select item or a table reference, so a word after it is that item's alias.
+    private static func endsOperand(_ token: SQLToken) -> Bool {
+        switch token.type {
+        case .identifier, .number, .string, .placeholder:
+            return true
+        case .keyword:
+            return token.upperValue == "END" || valueWords.contains(token.upperValue)
+        default:
+            return token.value == ")" || token.value == "]"
+        }
+    }
+
+    private static let aliasEnders: Set<String> = [
+        ",", ")", "FROM", "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT",
+        "MINUS", "WINDOW", "QUALIFY", "INTO", "ON", "USING", "SET", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS",
+        "NATURAL", "OUTER", "PREWHERE", "SETTINGS", "FORMAT", "FETCH",
+    ]
+
+    // Words that follow a table reference without naming it: ClickHouse's `FROM t FINAL`, `GLOBAL ANY JOIN`.
+    private static let tableReferenceModifiers: Set<String> = ["FINAL", "GLOBAL", "ANY", "ASOF", "SEMI", "ANTI", "PASTE"]
+
+    // `SELECT 1 rows`, `SELECT x date FROM t`, `FROM t first WHERE`: an alias written without AS keeps its spelling.
+    private func isImplicitAlias(_ upper: String, prev: SQLToken?, next: SQLToken?) -> Bool {
+        guard [.select, .from, .join].contains(currentContext), let prev, Self.endsOperand(prev),
+              !Self.tableReferenceModifiers.contains(upper)
+        else {
+            return false
+        }
+        guard let next else { return true }
+        return Self.isTerminator(next) || Self.aliasEnders.contains(next.upperValue)
+    }
+
     private static let constraintStarters: Set<String> = [
         "CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "EXCLUDE", "PERIOD", "LIKE",
     ]
@@ -850,6 +882,7 @@ internal struct SQLTokenFormatter {
         }
         if prev?.upperValue == "COLUMN" { return upper != "IF" }
         if prev?.upperValue == "AS" { return !isInsideNestedExpression && next?.value != "(" }
+        if isImplicitAlias(upper, prev: prev, next: next) { return true }
         // `FROM apply a`: a word between FROM, JOIN, UPDATE or INTO and its alias names the table.
         if let prev, Self.tableIntroducers.contains(prev.upperValue), next?.type == .identifier,
            !Self.tableModifiers.contains(upper) {
@@ -996,9 +1029,10 @@ internal struct SQLTokenFormatter {
         if word(index) == "NATURAL" { index += 1 }
         if let side = word(index), ["LEFT", "RIGHT", "FULL", "INNER", "CROSS"].contains(side) { index += 1 }
         if word(index) == "OUTER" { index += 1 }
-        guard index > start, let last = word(index) else { return nil }
-        if last == "JOIN" { return index - start + 1 }
-        if last == "APPLY", let before = word(index - 1), before == "CROSS" || before == "OUTER" {
+        guard index > start, let last = token(at: index), Self.isWord(last) else { return nil }
+        if last.type == .keyword, last.upperValue == "JOIN" { return index - start + 1 }
+        // APPLY is a word anywhere but right after CROSS or OUTER (`SELECT 1 apply`).
+        if last.upperValue == "APPLY", let before = word(index - 1), before == "CROSS" || before == "OUTER" {
             return index - start + 1
         }
         return nil
