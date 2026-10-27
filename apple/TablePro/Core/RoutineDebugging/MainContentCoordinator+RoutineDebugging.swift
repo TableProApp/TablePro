@@ -197,7 +197,7 @@ extension MainContentCoordinator {
     }
 
     private func closeRoutineDebugTab(_ tabId: UUID) {
-        RoutineDebugSessions.shared.endSession(forTab: tabId)
+        RoutineDebugSessions.shared.endSession(forTab: tabId, window: contentWindow)
         guard tabManager.tabs.contains(where: { $0.id == tabId }) else { return }
         tabManager.closeTab(id: tabId)
     }

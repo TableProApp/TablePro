@@ -878,7 +878,7 @@ final class MainContentCoordinator: ObservableObject {
 
         let debugTabIds = tabManager.tabs.filter { $0.tabType.isTransient }.map(\.id)
         if !debugTabIds.isEmpty {
-            RoutineDebugSessions.shared.endSessions(forTabs: debugTabIds)
+            RoutineDebugSessions.shared.endSessions(forTabs: debugTabIds, window: contentWindow)
         }
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

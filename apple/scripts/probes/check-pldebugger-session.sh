@@ -8,7 +8,7 @@
 # source line, a stack line is not, NULL arrives as the text NULL, 08006 means the target left) were measured
 # by hand, and pldebugger can change them in a release. This runs the same statements the plugin builds in
 # PostgreSQLRoutineDebugProtocol and checks every reply the plugin relies on, including Stop while paused,
-# Stop while running, and a target whose proxy disappeared.
+# Stop while running, and a target whose proxy disappeared while it ran or waited.
 #
 # Usage:
 #   scripts/probes/check-pldebugger-session.sh [--keep]
@@ -589,6 +589,58 @@ if await_port lost; then
     expect_after "$WORK/lost.rescue.log" "==abort" "t" "a fresh session attaches to that number and aborts"
     expect "$WORK/lost.target.log" "canceling statement due to user request" "the abandoned target ends"
     [ "$(audit)" = "$before" ] && pass "the abandoned run rolls back" || fail "the abandoned run rolls back"
+else
+    fail "no PLDBGBREAK notice"
+fi
+
+# --- A target whose proxy dies while it runs a statement: a cancel then ends it, and nothing does once it pauses ---
+
+echo "== proxy lost while running"
+before=$(audit)
+cat > "$WORK/lostrun.target.sql" <<SQL
+$TARGET_SETUP
+SELECT 'TARGET ' || pg_backend_pid();
+SELECT "public".pldbg_oid_debug('$SLOW_FN'::pg_catalog.oid);
+SELECT * FROM "public"."slow_fn"() \bind \g
+SQL
+cat > "$WORK/lostrun.proxy.sql" <<SQL
+$PROXY_SETUP
+SELECT 'PROXY ' || pg_backend_pid();
+SELECT "public".pldbg_attach_to_port(:port) AS s \gset
+SELECT func, linenumber, targetname FROM "public".pldbg_wait_for_breakpoint(:s);
+SELECT func, linenumber, targetname FROM "public".pldbg_step_over(:s);
+\echo ==sleeping
+SELECT func, linenumber, targetname FROM "public".pldbg_step_over(:s);
+SQL
+start_target lostrun dev
+if await_port lostrun; then
+    target_pid=$(grep -o 'TARGET [0-9]*' "$WORK/lostrun.target.log" | cut -d' ' -f2)
+    run_proxy lostrun dev &
+    proxy_job=$!
+    for _ in $(seq 1 50); do
+        grep -F "==sleeping" "$WORK/lostrun.proxy.log" > /dev/null 2>&1 && break
+        sleep 0.1
+    done
+    sleep 0.5
+    proxy_pid=$(grep -o 'PROXY [0-9]*' "$WORK/lostrun.proxy.log" | cut -d' ' -f2)
+    sql postgres postgres -c "SELECT pg_terminate_backend($proxy_pid)" > /dev/null
+    wait "$proxy_job"
+    sql postgres postgres -c "SELECT pg_cancel_backend($target_pid)" > /dev/null
+    for _ in $(seq 1 20); do
+        kill -0 "$TARGET" 2> /dev/null || break
+        sleep 0.1
+    done
+    if kill -0 "$TARGET" 2> /dev/null; then
+        fail "a cancel sent while it runs ends a target whose proxy is gone"
+        sleep 4
+        docker exec -i "$CONTAINER" psql -X -At -U dev -d postgres -v port="$PORT" < "$WORK/lost.rescue.sql" > /dev/null 2>&1
+    else
+        pass "a cancel sent while it runs ends a target whose proxy is gone"
+    fi
+    wait "$TARGET"
+    expect "$WORK/lostrun.target.log" "CONTEXT:  SQL statement \"SELECT pg_sleep(4)\"" \
+        "the cancel lands in the statement the target was running"
+    [ "$(audit)" = "$before" ] && pass "that run rolls back" || fail "that run rolls back"
 else
     fail "no PLDBGBREAK notice"
 fi

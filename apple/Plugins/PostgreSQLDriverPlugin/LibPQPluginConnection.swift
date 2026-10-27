@@ -72,6 +72,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private var _isConnectCancelled: Bool = false
     private var _lastTransactionState: LibPQTransactionState = .idle
     private var _hasLostConnection = false
+    private var _interruptsBlockedCallOnDisconnect = false
     private var serverMessages: Unmanaged<LibPQServerMessageSink>?
     private var _standardConformingStrings = true
     /// Queue-confined. Non-nil until every schema/flavor/catalog bootstrap probe has completed.
@@ -584,11 +585,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
         _isConnectCancelled = true
         let handle = conn
         let sink = serverMessages
+        let interruptsBlockedCall = _interruptsBlockedCallOnDisconnect
         conn = nil
         serverMessages = nil
         _cachedServerVersion = nil
         _cachedServerVersionNumber = 0
         stateLock.unlock()
+        // The descriptor stays this connection's until the PQfinish queued below runs.
+        if interruptsBlockedCall, let handle {
+            let socket = PQsocket(handle)
+            if socket >= 0 { _ = Darwin.shutdown(socket, SHUT_RDWR) }
+        }
         queue.async { [self] in
             activeConnectDeadline = nil
             if let handle {
@@ -1452,5 +1459,18 @@ extension LibPQPluginConnection {
     func observeServerNotices(_ observer: (@Sendable (LibPQServerNotice) -> Void)?) {
         let sink = stateLock.withLock { serverMessages?.takeUnretainedValue() }
         sink?.observeNotices(observer)
+    }
+
+    // A debug session runs with no statement timeout, so a call blocked on a server that stopped answering would
+    // otherwise keep the socket, and the PQfinish queued behind it, for as long as TCP keeps the connection open.
+    func interruptBlockedCallOnDisconnect() {
+        stateLock.withLock { _interruptsBlockedCallOnDisconnect = true }
+    }
+
+    // Leaves the cancellation gate alone, so the server's reply decides how the call ended: a cancel that lands
+    // after a routine returned must not turn its committed result into a cancellation.
+    func requestServerCancelKeepingReply() {
+        guard let current = stateLock.withLock({ conn }) else { return }
+        requestServerCancel(on: current)
     }
 }

@@ -22,10 +22,21 @@ internal enum RoutineDebugSheet {
         sheet.isReleasedWhenClosed = false
         presentation.sheet = sheet
         setup.dismissPresentation = { presentation.finish(nil) }
+        // A window closed under its sheet, as closing the connection from another window does, never answers it.
+        let parentClosing = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: parent,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                presentation.finish(nil)
+            }
+        }
         let value = await withCheckedContinuation { continuation in
             presentation.continuation = continuation
             parent.beginSheet(sheet)
         }
+        NotificationCenter.default.removeObserver(parentClosing)
         setup.dismissPresentation = nil
         return value
     }

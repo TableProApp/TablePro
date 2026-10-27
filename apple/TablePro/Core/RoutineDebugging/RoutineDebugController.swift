@@ -105,7 +105,7 @@ internal final class RoutineDebugController: ObservableObject {
     // The one `stop()` call a session gets, shared by everything that ends its target.
     private var targetStop: Task<PluginDebugStopOutcome, Never>?
     // The plugin could not confirm its target ended, or did not answer by the deadline: the status says so.
-    private var unconfirmedStop: String?
+    private(set) var unconfirmedStop: String?
     private var outputTask: Task<Void, Never>?
     private var pauseGeneration = 0
     private var stopMessage: String?
@@ -483,6 +483,9 @@ internal final class RoutineDebugController: ObservableObject {
             startTask = nil
             if !isStopping {
                 Self.logger.error("Debug session did not start: \(error.publicLogShape, privacy: .public)")
+            } else if !(error is CancellationError) {
+                // A cancelled start throws something else only when it could not confirm its target ended.
+                unconfirmedStop = Self.message(for: error)
             }
             await end(isStopping ? .stopped(nil) : .failed(Self.message(for: error)))
             return
@@ -588,8 +591,13 @@ internal final class RoutineDebugController: ObservableObject {
         // A stop in flight owns the ending; a pause that raced it is the plugin's to abort. The waiting step's own words
         // (rolled back, say) become the status when the stop itself was confirmed.
         guard !isStopping else {
-            if case .failed(let message, let detail) = outcome {
+            switch outcome {
+            case .failed(let message, let detail):
                 answerStop(with: Self.join(message, detail))
+            case .finished:
+                answerStop(with: String(localized: "The routine finished before the stop reached it."))
+            default:
+                break
             }
             return
         }

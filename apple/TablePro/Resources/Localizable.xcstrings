@@ -4972,6 +4972,9 @@
         }
       }
     },
+    "%@ May Still Be Running" : {
+
+    },
     "%@ more, in the script beside this" : {
       "localizations" : {
         "fr" : {
@@ -17955,6 +17958,10 @@
           }
         }
       }
+    },
+    "A user with ALTER SYSTEM can find its session in V$SESSION and end it with ALTER SYSTEM KILL SESSION." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A value could not be written as JSON." : {
       "localizations" : {
@@ -57846,6 +57853,8 @@
       }
     },
     "Data" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -60607,6 +60616,10 @@
     },
     "Debug %@" : {
 
+    },
+    "Debug it from a routine that calls it with arguments only this overload takes." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Debug it from a routine that calls it with that value." : {
       "extractionState" : "manual",
@@ -86603,6 +86616,14 @@
         }
       }
     },
+    "Give %1$@ a value. Left at its default, the call also matches another overload of %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Give %1$@ values. Left at their defaults, the call also matches another overload of %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Give its full path in the connection. Apps launched from the Dock do not inherit your shell's PATH." : {
       "localizations" : {
         "fr" : {
@@ -93872,6 +93893,8 @@
       }
     },
     "Indexes" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -129100,6 +129123,10 @@
       }
     },
     "Oracle 11g has no identity columns, so a column cannot be auto-increment." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Oracle can't tell the overloads apart without it (PLS-00307), and TablePro can't read the default to pass it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -174324,6 +174351,8 @@
       }
     },
     "Structure" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -179122,6 +179151,10 @@
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 
+    },
+    "TablePro couldn't confirm that the routine ended. It may still be running on the server." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro." : {
       "localizations" : {
@@ -185363,6 +185396,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The debugger didn't confirm the stop. The routine may still be running on the server." : {
+
+    },
     "The debugger stopped for a reason TablePro doesn't know." : {
 
     },
@@ -189080,6 +189116,9 @@
     "The routine couldn't be stopped on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "The routine finished before the stop reached it." : {
+
     },
     "The routine is still running on the server. DBMS_DEBUG can't interrupt it between breakpoints." : {
       "extractionState" : "manual",
@@ -193641,6 +193680,10 @@
           }
         }
       }
+    },
+    "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This change needs %@ to be recreated, and it cannot be recreated from the definition the database stored for it. Virtual tables, such as full-text search tables, are the usual reason." : {
       "localizations" : {

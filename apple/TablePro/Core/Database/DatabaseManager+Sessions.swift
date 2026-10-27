@@ -744,7 +744,7 @@ extension DatabaseManager {
         defer { disconnectsInFlight.remove(sessionId) }
 
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
-        await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
+        await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
         defer { RoutineDebugSessions.shared.reopenAdmission(for: sessionId) }
 
         tabStatePersister?.persistTabState(for: sessionId)

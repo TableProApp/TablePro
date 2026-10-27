@@ -264,6 +264,14 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.observeServerNotices(observer)
     }
 
+    func cancelQueryKeepingReply() {
+        libpqConnection?.requestServerCancelKeepingReply()
+    }
+
+    func interruptBlockedCallOnDisconnect() {
+        libpqConnection?.interruptBlockedCallOnDisconnect()
+    }
+
     func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
         libpqConnection?.setPostgisOidMap(map)
     }

@@ -54,12 +54,13 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
     }
 
     private let connection: OracleJDWPConnection
-    private let target: OracleCoreConnection
-    private let helper: OracleCoreConnection
+    private let target: any OracleDebugChannel
+    private let helper: any OracleDebugChannel
     private let entryPoint: OracleDebugEntryPoint
     private let invocation: OracleDebugStatements.Invocation
     private let connectCall: Task<Result<[String?], Error>, Never>
     private let targetIdentity: OracleDebugSessionIdentity?
+    private let callEndWait: Duration
     private var gaveUp = false
     private var stopResult = OracleDebugStopResult.ended
     private var preparedClasses: Set<UInt64> = []
@@ -80,6 +81,7 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
     private var prepareRequests: Set<OracleDebugUnit> = []
     private var placed: [BreakpointKey: Int32] = [:]
     private var pending: Set<BreakpointKey> = []
+    private var holds = OracleDebugBreakpointHolds()
     private var entryRequests: Set<Int32> = []
     private var stepRequest: Int32?
     private var frames: [FrameInfo] = []
@@ -89,15 +91,17 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
 
     init(
         connection: OracleJDWPConnection,
-        target: OracleCoreConnection,
-        helper: OracleCoreConnection,
+        target: any OracleDebugChannel,
+        helper: any OracleDebugChannel,
         entryPoint: OracleDebugEntryPoint,
         invocation: OracleDebugStatements.Invocation,
         connectCall: Task<Result<[String?], Error>, Never>,
         targetIdentity: OracleDebugSessionIdentity? = nil,
+        callEndWait: Duration = OracleDebugSupport.callEndWait,
         notices initial: [OracleDebugNotice]
     ) {
         self.targetIdentity = targetIdentity
+        self.callEndWait = callEndWait
         self.connection = connection
         self.target = target
         self.helper = helper
@@ -134,7 +138,7 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         try await requestPrepare(of: entryPoint.entry.unit)
         await adoptIfLoaded(entryPoint.entry.unit)
         for breakpoint in breakpoints {
-            _ = try await setBreakpoint(in: breakpoint.unit, line: breakpoint.line)
+            _ = try await setBreakpoint(in: breakpoint.unit, line: breakpoint.line, atStart: true)
         }
         try await resume()
         switch await connectCall.value {
@@ -399,9 +403,9 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         if stopRequested {
             return await outcomeOfStop()
         }
-        let result: Result<[String?], Error>
+        let result: Result<[String?], Error>?
         if let call {
-            result = await OracleDebugSupport.value(of: call, within: 30) ?? .failure(OracleDebugError.ended)
+            result = await OracleDebugSupport.value(of: call, within: OracleDebugStopBudget.seconds(callEndWait))
         } else {
             result = .failure(OracleDebugError.ended)
         }
@@ -409,7 +413,8 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
             result,
             stopped: stopRequested,
             entryPoint: entryPoint,
-            target: target
+            target: target,
+            targetIdentity: targetIdentity
         ) { [noticeContinuation] in noticeContinuation.yield($0) }
         state = .ended
         // Closing ends the target session, so it waits until the commit or rollback is done.
@@ -441,9 +446,11 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
             pending.remove(key)
             if let placedLine = try? await place(key.line, in: unit, classID: typeID) {
                 if placedLine != key.line {
+                    holds.move(key.line, to: placedLine, in: unit)
                     noticeContinuation.yield(.breakpointMoved(unit: unit, from: key.line, to: placedLine))
                 }
             } else {
+                holds.drop(key.line, in: unit)
                 noticeContinuation.yield(.breakpointHasNoCode(unit: unit, line: key.line))
             }
         }
@@ -564,8 +571,14 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
     // MARK: - Breakpoints
 
     public func setBreakpoint(in unit: OracleDebugUnit, line: Int) async throws -> Int? {
+        try await setBreakpoint(in: unit, line: line, atStart: false)
+    }
+
+    private func setBreakpoint(in unit: OracleDebugUnit, line: Int, atStart: Bool) async throws -> Int? {
         guard state != .ended else { throw OracleDebugError.ended }
-        return try await guarded { try await placeBreakpoint(in: unit, line: line) }
+        guard let landed = try await guarded({ try await placeBreakpoint(in: unit, line: line) }) else { return nil }
+        holds.hold(landed, in: unit, by: atStart ? line : landed)
+        return landed
     }
 
     private func placeBreakpoint(in unit: OracleDebugUnit, line: Int) async throws -> Int? {
@@ -584,7 +597,8 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
     }
 
     public func removeBreakpoint(in unit: OracleDebugUnit, line: Int) async throws {
-        let key = BreakpointKey(unit: unit, line: line)
+        guard let landed = holds.release(line, in: unit) else { return }
+        let key = BreakpointKey(unit: unit, line: landed)
         pending.remove(key)
         guard let request = placed.removeValue(forKey: key) else { return }
         try await guarded {

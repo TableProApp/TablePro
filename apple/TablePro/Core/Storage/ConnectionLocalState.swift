@@ -57,6 +57,7 @@ internal enum ConnectionLocalState {
             HistoryPanelPreferencesStorage.remove(for: connectionId)
             QueryInsightsPreferencesStorage.remove(for: connectionId)
             ServerDashboardTileStorage().remove(for: connectionId)
+            RoutineDebugOptionStore(defaults: { [defaults] in defaults }).remove(for: connectionId)
             MCPServerStore.shared.forgetConnection(connectionId)
         }
         purgeTrailingPaneKeys(connectionIds, defaults: defaults)

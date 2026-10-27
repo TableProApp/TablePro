@@ -14,7 +14,7 @@ extension MainContentCoordinator {
             // A close removes the tab before the selection moves, so this is the only save of filter rows never applied.
             saveLastFilters(of: tab)
             if tab.tabType.isTransient {
-                RoutineDebugSessions.shared.endSession(forTab: id)
+                RoutineDebugSessions.shared.endSession(forTab: id, window: contentWindow)
             } else {
                 RecentlyClosedTabStore.shared.push(tab: tab, connection: connection)
             }

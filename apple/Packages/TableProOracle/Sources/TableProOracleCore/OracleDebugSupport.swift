@@ -29,7 +29,7 @@ enum OracleDebugSupport {
         result.rows.map { row in row.map(\.stringValue) }
     }
 
-    static func source(of unit: OracleDebugUnit, on connection: OracleCoreConnection) async throws -> String {
+    static func source(of unit: OracleDebugUnit, on connection: any OracleDebugChannel) async throws -> String {
         let result = try await connection.executeQuery(OracleDebugStatements.source(of: unit))
         let lines = rows(result).compactMap { row -> (line: Int, text: String?)? in
             guard let line = row.first.flatMap({ $0 }).flatMap({ Int($0.trimmingCharacters(in: .whitespaces)) })
@@ -40,7 +40,7 @@ enum OracleDebugSupport {
         return OracleDebugStatements.assembleSource(rows: lines)
     }
 
-    static func executableLines(of unit: OracleDebugUnit, on connection: OracleCoreConnection) async throws -> [Int]? {
+    static func executableLines(of unit: OracleDebugUnit, on connection: any OracleDebugChannel) async throws -> [Int]? {
         let fields = try await payload(OracleDBMSDebugStatements.lineMap(of: unit), on: connection)
         return try OracleDBMSDebugStatements.executableLines(fromPayload: fields)
     }
@@ -49,7 +49,7 @@ enum OracleDebugSupport {
         _ block: String,
         binds: [OracleBindValue] = [],
         autoCommit: Bool = false,
-        on connection: OracleCoreConnection
+        on connection: any OracleDebugChannel
     ) async throws -> [String?] {
         let pieces = try await connection.executeDirect(block, binds: binds, autoCommit: autoCommit, readsRows: true)
         do {
@@ -59,14 +59,20 @@ enum OracleDebugSupport {
         }
     }
 
-    // The routine's own result: its outputs on success; a rollback otherwise, and always after Stop.
+    // How long the routine's call gets to return once the debugger has seen it end or lost the target.
+    static let callEndWait: Duration = .seconds(30)
+
+    // The routine's own result: its outputs on success; a rollback otherwise, and always after Stop. Nil is a call
+    // still running, which holds the target's gate: a ROLLBACK would queue behind it with no bound.
     static func conclude(
-        _ result: Result<[String?], Error>,
+        _ result: Result<[String?], Error>?,
         stopped: Bool,
         entryPoint: OracleDebugEntryPoint,
-        target: OracleCoreConnection,
+        target: any OracleDebugChannel,
+        targetIdentity: OracleDebugSessionIdentity?,
         notice: @Sendable (OracleDebugNotice) -> Void
     ) async -> OracleDebugStop {
+        guard let result else { return .failed(.stillRunning(targetIdentity)) }
         let report: OracleDebugStatements.InvocationReport?
         switch result {
         case .success(let pieces):
@@ -112,7 +118,7 @@ enum OracleDebugSupport {
     }
 
     // The target's SID and SERIAL#, read before it is attached to a debugger, so its own PL/SQL does not stop it.
-    static func sessionIdentity(of connection: OracleCoreConnection) async -> OracleDebugSessionIdentity? {
+    static func sessionIdentity(of connection: any OracleDebugChannel) async -> OracleDebugSessionIdentity? {
         for query in OracleDBMSDebugStatements.sessionIdentityQueries {
             guard let row = try? await connection.executeQuery(query).rows.first?.map(\.stringValue),
                   let identity = OracleDBMSDebugStatements.sessionIdentity(fromRow: row) else { continue }
@@ -127,7 +133,7 @@ enum OracleDebugSupport {
     // A read Stop overlaps holds the connection's gate first; past `seconds` the channel is closed, which ends both.
     static func kill(
         _ identity: OracleDebugSessionIdentity?,
-        from connection: OracleCoreConnection,
+        from connection: any OracleDebugChannel,
         within seconds: Double
     ) async -> OracleDebugStopBudget.KillOutcome {
         guard let identity, let statement = OracleDBMSDebugStatements.killSession(identity), seconds > 0 else {

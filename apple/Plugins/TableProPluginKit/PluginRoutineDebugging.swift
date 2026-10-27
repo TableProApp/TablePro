@@ -8,7 +8,8 @@ public protocol PluginRoutineDebugging: AnyObject, Sendable {
     func debugTargets(schema: String?) async throws -> [PluginDebugTarget]
     func prepareDebug(_ target: PluginDebugTarget) async throws -> PluginDebugPlan
     // Every driver the plugin takes from `sessions` is closed by the host once the session ends.
-    // Cancelling the task that awaits this ends the target as `stop()` would, then throws CancellationError.
+    // Cancelling the task that awaits this ends the target as `stop()` would, then throws CancellationError, or an
+    // error saying the target may still be running when its end could not be confirmed.
     func startDebug(
         _ request: PluginDebugRequest,
         sessions: any PluginDebugSessionSource

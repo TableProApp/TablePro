@@ -3,8 +3,10 @@
 //  TablePro
 //
 
+import AppKit
 import Foundation
 import os
+import TableProPluginKit
 
 // T0 plus the stop limit, fixed when a stop is first asked for. Every wait in that stop, and every caller waiting on
 // it, runs against this one instant, so no connection closes before the plugin answered or the instant passed.
@@ -22,7 +24,7 @@ internal struct RoutineDebugStopDeadline: Sendable {
     }
 }
 
-// Every live debug run, by the tab that shows it. A tab can move between windows, so nothing here belongs to a window.
+// Every live debug run, by the tab that shows it. Its connection can move to another window, so nothing here keeps one.
 @MainActor
 internal final class RoutineDebugSessions {
     static let shared = RoutineDebugSessions()
@@ -40,21 +42,27 @@ internal final class RoutineDebugSessions {
     private var entries: [UUID: Entry] = [:]
     private var ending: [UUID: Entry] = [:]
     // Per connection: closed while its transport is torn down or replaced, and bumped each time, so a start set up
-    // against the old transport is refused even after the fence opens again.
-    private var fencedConnections: Set<UUID> = []
+    // against the old transport is refused even after the fence opens again. Replacements nest; the last to end opens it.
+    private var fenceDepths: [UUID: Int] = [:]
     private var admissionGenerations: [UUID: Int] = [:]
+    // Runs a disconnect ended: the connection's teardown takes their tabs before anyone reads their status.
+    private var unseenEndTabs: Set<UUID> = []
     // Choosers, start sheets and preparation alerts still on screen, so turning the module off can take them down.
     private var pendingSetups: [ObjectIdentifier: RoutineDebugSetup] = [:]
     private var moduleObserver: NSObjectProtocol?
     private let isModuleEnabled: @MainActor () -> Bool
     private let notificationCenter: NotificationCenter
+    private let reportUnconfirmedStop: @MainActor (RoutineDebugController, NSWindow?) -> Void
 
     init(
         isModuleEnabled: @escaping @MainActor () -> Bool = { AppModuleSettings.shared.isEnabled(.routineDebugger) },
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        reportUnconfirmedStop: @escaping @MainActor (RoutineDebugController, NSWindow?) -> Void =
+            RoutineDebugSessions.presentUnconfirmedStop
     ) {
         self.isModuleEnabled = isModuleEnabled
         self.notificationCenter = notificationCenter
+        self.reportUnconfirmedStop = reportUnconfirmedStop
     }
 
     var hasActiveSessions: Bool {
@@ -94,16 +102,17 @@ internal final class RoutineDebugSessions {
     }
 
     func admits(_ connectionId: UUID, generation: Int) -> Bool {
-        !fencedConnections.contains(connectionId) && admissionGeneration(for: connectionId) == generation
+        fenceDepths[connectionId] == nil && admissionGeneration(for: connectionId) == generation
     }
 
     // After the transport is up again, or gone for good. Starts read before the fence closed stay refused.
     func reopenAdmission(for connectionId: UUID) {
-        fencedConnections.remove(connectionId)
+        guard let depth = fenceDepths[connectionId] else { return }
+        fenceDepths[connectionId] = depth > 1 ? depth - 1 : nil
     }
 
     private func closeAdmission(for connectionId: UUID) {
-        fencedConnections.insert(connectionId)
+        fenceDepths[connectionId, default: 0] += 1
         admissionGenerations[connectionId] = admissionGeneration(for: connectionId) + 1
     }
 
@@ -111,39 +120,71 @@ internal final class RoutineDebugSessions {
         entries[tabId]?.controller
     }
 
-    // The tab is going away: its run stops and its drivers close, without anyone waiting on it.
-    func endSession(forTab tabId: UUID) {
+    // The tab is going away: its run stops and its drivers close, without anyone waiting on it. With no tab left to
+    // show it, a stop the plugin could not confirm is reported on `window`, the one that held the tab.
+    func endSession(forTab tabId: UUID, window: NSWindow? = nil) {
         guard let entry = entries.removeValue(forKey: tabId) else { return }
         entry.controller.onCancelled = nil
         guard !entry.controller.hasEnded else {
+            if unseenEndTabs.remove(tabId) != nil, entry.controller.unconfirmedStop != nil {
+                let controller = entry.controller
+                // A turn later, so a window closing with the tab is gone and the alert lands on one that stays.
+                Task { [weak self, weak window] in
+                    self?.reportUnconfirmedStop(controller, window)
+                }
+            }
             stopObservingIfIdle()
             return
         }
+        unseenEndTabs.remove(tabId)
         ending[tabId] = entry
         entry.controller.stop()
-        Task { [weak self] in
+        Task { [weak self, weak window] in
             await entry.controller.waitUntilEnded()
-            self?.ending.removeValue(forKey: tabId)
-            self?.stopObservingIfIdle()
+            guard let self else { return }
+            self.ending.removeValue(forKey: tabId)
+            if entry.controller.unconfirmedStop != nil {
+                self.reportUnconfirmedStop(entry.controller, window)
+            }
+            self.stopObservingIfIdle()
         }
     }
 
-    func endSessions(forTabs tabIds: [UUID]) {
+    func endSessions(forTabs tabIds: [UUID], window: NSWindow? = nil) {
         for tabId in tabIds {
-            endSession(forTab: tabId)
+            endSession(forTab: tabId, window: window)
         }
+    }
+
+    // The target may still hold its locks. A quit in progress shows nothing: the process is about to end its connections.
+    static func presentUnconfirmedStop(of controller: RoutineDebugController, in window: NSWindow?) {
+        guard let text = controller.unconfirmedStop,
+              !AppModuleTermination.hasBegun,
+              !MainContentCoordinator.isAppTerminating
+        else { return }
+        let alert = NSAlert()
+        alert.messageText = String(format: String(localized: "%@ May Still Be Running"), controller.plan.target.name)
+        alert.informativeText = text
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "OK"))
+        AlertHelper.present(alert, in: window?.isVisible == true ? window : nil)
     }
 
     // Before the connection's transport goes, so every target is aborted while it can still be reached. Closes the
     // connection's admission first, so a start racing this cannot open a driver on the transport being torn down; the
     // caller reopens it with `reopenAdmission(for:)` once the new transport is up.
-    func stopAll(connectionId: UUID, timeout: Duration = defaultStopTimeout) async {
+    // `tabsCloseAfter`: the caller tears the connection's tabs down next, so an unconfirmed stop is reported then.
+    func stopAll(connectionId: UUID, timeout: Duration = defaultStopTimeout, tabsCloseAfter: Bool = false) async {
         let deadline = RoutineDebugStopDeadline(after: timeout)
         closeAdmission(for: connectionId)
         let controllers = (entries.values.map { $0 } + ending.values.map { $0 })
             .filter { $0.connectionId == connectionId }
             .map(\.controller)
         await stopAndWait(controllers, by: deadline)
+        guard tabsCloseAfter else { return }
+        for (tabId, entry) in entries where entry.connectionId == connectionId {
+            unseenEndTabs.insert(tabId)
+        }
     }
 
     func stopAll(timeout: Duration = defaultStopTimeout) async {

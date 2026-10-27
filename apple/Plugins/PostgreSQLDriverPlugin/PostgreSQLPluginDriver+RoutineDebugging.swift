@@ -90,6 +90,7 @@ extension PostgreSQLPluginDriver: PluginRoutineDebugging {
         guard let driver = try await sessions.openSession() as? PostgreSQLPluginDriver, driver.canDebugRoutines else {
             throw PostgreSQLRoutineDebugError.unavailable
         }
+        driver.core.interruptBlockedCallOnDisconnect()
         return driver
     }
 

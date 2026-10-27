@@ -123,8 +123,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             throw CancellationError()
         case .attachAndAbort(let announced):
             port = announced
-            _ = await stop()
-            throw CancellationError()
+            throw await stopForStart(otherwise: CancellationError())
         case .attach(let announced):
             port = announced
             do {
@@ -132,19 +131,24 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
                 phase = .paused
             } catch {
                 phase = .broken
-                _ = await stop()
-                throw PostgreSQLRoutineDebugProtocol.startFailure(
+                Self.logger.error("Attaching to the debug target failed: \(error.localizedDescription, privacy: .private)")
+                throw await stopForStart(otherwise: PostgreSQLRoutineDebugProtocol.startFailure(
                     error,
                     database: routine.database,
                     routineName: routine.displayName
-                )
+                ))
             }
             // The attach does not observe cancellation, so a start cancelled meanwhile is ended here, as Stop would.
             if Task.isCancelled {
-                _ = await stop()
-                throw CancellationError()
+                throw await stopForStart(otherwise: CancellationError())
             }
         }
+    }
+
+    // A backend that may still hold its locks matters more than why the start failed.
+    private func stopForStart(otherwise error: Error) async -> Error {
+        guard case .unconfirmed = await stop() else { return error }
+        return PostgreSQLRoutineDebugError.targetAbandoned(process: targetProcess, port: port)
     }
 
     // A cancel reaches only a call libpq has already sent, so it is repeated until the call ends or the target
@@ -238,8 +242,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             case .interrupted:
                 // The target goes on to its next pause and waits for a command the session can no longer match to
                 // a reply, so it is ended the way Stop ends it.
-                phase = .broken
-                proxyInterrupted = true
+                noteInterruption()
                 endedByInterruption = !stopRequested
                 Self.logger.error("A signal interrupted the debugger session while it waited; ending the target")
                 await endTarget()
@@ -267,7 +270,16 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         }
         if let handle {
             for breakpoint in breakpoints where !stopRequested {
-                _ = try? await place(breakpoint, session: handle)
+                do {
+                    _ = try await place(breakpoint, session: handle)
+                } catch where PostgreSQLRoutineDebugProtocol.proxyFailure(error) == .interrupted {
+                    noteInterruption()
+                    endedByInterruption = !stopRequested
+                    await endTarget()
+                    return await targetEnded()
+                } catch {
+                    continue
+                }
             }
         }
         if stopRequested { return await outcomeAfterStop() }
@@ -337,8 +349,13 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         guard let handle = try pausedSession() else { return nil }
         do {
             return try await place(breakpoint, session: handle)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch where PostgreSQLRoutineDebugProtocol.proxyFailure(error) == .targetEnded {
             return nil
+        } catch {
+            if PostgreSQLRoutineDebugProtocol.proxyFailure(error) == .interrupted { noteInterruption() }
+            throw error
         }
     }
 
@@ -392,13 +409,18 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             case .targetEnded:
                 return nil
             case .interrupted:
-                phase = .broken
-                proxyInterrupted = true
+                noteInterruption()
                 throw error
             case .broken:
                 throw error
             }
         }
+    }
+
+    // The interrupted call's reply stays unread on the proxy, so no later call could be matched to its own reply.
+    private func noteInterruption() {
+        phase = .broken
+        proxyInterrupted = true
     }
 
     // pldbgapi answers only while the target waits for a command; the session is nil once the target is gone.
@@ -451,7 +473,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         case .running:
             // Never the proxy: cancelling a waiting proxy call desynchronizes the session. A target that paused
             // before this cancel arrived holds it, and the step in flight aborts the target instead.
-            target.core.cancelQuery()
+            target.core.cancelQueryKeepingReply()
             await awaitTargetEnd()
         case .ended:
             break
@@ -467,9 +489,11 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     }
 
     // The abort is sent, not waited on: an abort to a target that already returned waits on a socket that stays
-    // open for the target's session. The target's call ending is what counts.
+    // open for the target's session. The target's call ending is what counts. Without a working proxy the target may
+    // still be running a statement, which only a cancel ends before it pauses and waits in accept() for good; a
+    // paused target holds the cancel and a waiting one ignores it.
     private func endTarget() async {
-        if proxyInterrupted { target.core.cancelQuery() }
+        if proxyInterrupted || phase == .broken { target.core.cancelQueryKeepingReply() }
         Task { await self.abortTarget() }
         await awaitTargetEnd()
     }

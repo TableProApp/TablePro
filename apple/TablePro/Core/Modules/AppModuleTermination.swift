@@ -3,10 +3,13 @@ import Foundation
 @MainActor
 enum AppModuleTermination {
     static let stopLimit: Duration = .seconds(5)
+    // From the approved quit on, so nothing puts up an alert that would hold it.
+    private(set) static var hasBegun = false
 
     // A stop waiting on a server that no longer answers must not hold the quit: `stopAll` returns by its deadline,
     // the same one the runs close their connections at.
     static func stopModuleWork() async {
+        hasBegun = true
         guard RoutineDebugSessions.shared.hasActiveSessions else { return }
         await RoutineDebugSessions.shared.stopAll(timeout: stopLimit)
     }

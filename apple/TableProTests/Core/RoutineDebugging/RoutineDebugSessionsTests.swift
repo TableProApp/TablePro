@@ -3,11 +3,23 @@
 //  TableProTests
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProTestSupport
 import Testing
+
+@MainActor
+private final class UnconfirmedStopRecorder {
+    private(set) var texts: [String?] = []
+    private(set) var windows: [NSWindow?] = []
+
+    func record(_ controller: RoutineDebugController, _ window: NSWindow?) {
+        texts.append(controller.unconfirmedStop)
+        windows.append(window)
+    }
+}
 
 @MainActor
 struct RoutineDebugSessionsTests {
@@ -183,5 +195,110 @@ struct RoutineDebugSessionsTests {
         #expect(session.stopCount == 1)
         #expect(registry.controller(forTab: tabId) == nil)
         try await waitUntil { !registry.hasActiveSessions }
+    }
+
+    @Test("A stop the plugin cannot confirm after its tab closed is reported on the window that held the tab")
+    func unconfirmedStopOfClosedTabIsReported() async throws {
+        let recorder = UnconfirmedStopRecorder()
+        let registry = RoutineDebugSessions(isModuleEnabled: { true }, reportUnconfirmedStop: { recorder.record($0, $1) })
+        let session = FakeDebugSession(stopOutcome: .unconfirmed(
+            message: "Server process 4242 may still be running.",
+            detail: "End it with pg_terminate_backend(4242)."
+        ))
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        let tabId = UUID()
+        registry.register(controller, tabId: tabId, connectionId: UUID())
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+
+        registry.endSession(forTab: tabId, window: window)
+        try await waitUntil { !registry.hasActiveSessions }
+
+        #expect(recorder.texts == ["Server process 4242 may still be running.\nEnd it with pg_terminate_backend(4242)."])
+        #expect(recorder.windows.count == 1 && recorder.windows[0] === window)
+    }
+
+    @Test("A confirmed stop after the tab closed reports nothing")
+    func confirmedStopOfClosedTabIsNotReported() async throws {
+        let recorder = UnconfirmedStopRecorder()
+        let registry = RoutineDebugSessions(isModuleEnabled: { true }, reportUnconfirmedStop: { recorder.record($0, $1) })
+        let session = FakeDebugSession()
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        let tabId = UUID()
+        registry.register(controller, tabId: tabId, connectionId: UUID())
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+
+        registry.endSession(forTab: tabId)
+        try await waitUntil { !registry.hasActiveSessions }
+
+        #expect(session.stopCount == 1)
+        #expect(recorder.texts.isEmpty)
+    }
+
+    @Test("An unconfirmed stop that ended while its tab still showed it is not reported again when the tab closes")
+    func unconfirmedStopShownInItsTabIsNotReported() async throws {
+        let recorder = UnconfirmedStopRecorder()
+        let registry = RoutineDebugSessions(isModuleEnabled: { true }, reportUnconfirmedStop: { recorder.record($0, $1) })
+        let session = FakeDebugSession(stopOutcome: .unconfirmed(message: "Server process 4242 may still be running.", detail: nil))
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        let tabId = UUID()
+        let connectionId = UUID()
+        registry.register(controller, tabId: tabId, connectionId: connectionId)
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+
+        await registry.stopAll(connectionId: connectionId)
+        registry.reopenAdmission(for: connectionId)
+        try await waitUntil { controller.hasEnded }
+        registry.endSession(forTab: tabId)
+        try await waitUntil { !registry.hasActiveSessions }
+
+        #expect(controller.unconfirmedStop != nil)
+        #expect(recorder.texts.isEmpty)
+    }
+
+    @Test("An unconfirmed stop a disconnect caused is reported once its tab goes with the connection")
+    func unconfirmedStopOfDisconnectIsReportedWhenItsTabCloses() async throws {
+        let recorder = UnconfirmedStopRecorder()
+        let registry = RoutineDebugSessions(isModuleEnabled: { true }, reportUnconfirmedStop: { recorder.record($0, $1) })
+        let session = FakeDebugSession(stopOutcome: .unconfirmed(message: "Server process 4242 may still be running.", detail: nil))
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        let tabId = UUID()
+        let connectionId = UUID()
+        registry.register(controller, tabId: tabId, connectionId: connectionId)
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+
+        await registry.stopAll(connectionId: connectionId, tabsCloseAfter: true)
+        registry.reopenAdmission(for: connectionId)
+        try await waitUntil { controller.hasEnded }
+        #expect(recorder.texts.isEmpty)
+        registry.endSession(forTab: tabId)
+        try await waitUntil { recorder.texts.count == 1 }
+
+        #expect(recorder.texts == ["Server process 4242 may still be running."])
+    }
+
+    @Test("Two overlapping transport replacements keep the fence closed until the second one ends")
+    func nestedFencesReopenOnTheLast() async {
+        let registry = RoutineDebugSessions(isModuleEnabled: { true })
+        let connectionId = UUID()
+
+        await registry.stopAll(connectionId: connectionId)
+        await registry.stopAll(connectionId: connectionId)
+        let generation = registry.admissionGeneration(for: connectionId)
+
+        registry.reopenAdmission(for: connectionId)
+        #expect(!registry.admits(connectionId, generation: generation))
+
+        registry.reopenAdmission(for: connectionId)
+        #expect(registry.admits(connectionId, generation: generation))
+
+        registry.reopenAdmission(for: connectionId)
+        await registry.stopAll(connectionId: connectionId)
+        #expect(!registry.admits(connectionId, generation: registry.admissionGeneration(for: connectionId)))
     }
 }

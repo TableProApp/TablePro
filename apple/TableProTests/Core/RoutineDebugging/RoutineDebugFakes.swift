@@ -297,12 +297,19 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
     }
 }
 
+internal struct FakeDebugError: LocalizedError, Sendable {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 internal enum FakeStartBehavior: Sendable {
     case immediate
     // The target's call is under way and waits for a breakpoint that never comes, until the start is cancelled.
     case untilCancelled
     // A plugin that never looks at cancellation and returns its session once the gate opens.
     case ignoringCancellation(AsyncGate)
+    // Cancelled, the plugin cannot confirm its target ended and throws why.
+    case untilCancelledThenThrowing(any Error & Sendable)
 }
 
 internal final class FakeRoutineDebugger: PluginRoutineDebugging, @unchecked Sendable {
@@ -352,6 +359,13 @@ internal final class FakeRoutineDebugger: PluginRoutineDebugging, @unchecked Sen
             }
         case .ignoringCancellation(let gate):
             await gate.wait()
+        case .untilCancelledThenThrowing(let error):
+            do {
+                try await Task.sleep(for: .seconds(600))
+            } catch {
+                lock.withLock { cancelled = true }
+            }
+            throw error
         }
         return session
     }

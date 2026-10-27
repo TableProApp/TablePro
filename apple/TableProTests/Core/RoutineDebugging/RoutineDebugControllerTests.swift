@@ -99,6 +99,39 @@ struct RoutineDebugControllerTests {
         }
     }
 
+    @Test("A cancelled start that cannot confirm its target ended shows why")
+    func unconfirmedCancelledStartBecomesTheStatus() async throws {
+        let drivers = DebugDriverLog()
+        let (controller, debugger) = RoutineDebugFixtures.controller(
+            session: FakeDebugSession(),
+            drivers: drivers,
+            startBehavior: .untilCancelledThenThrowing(FakeDebugError(message: "Server process 4242 may still be running."))
+        )
+        controller.start()
+        try await waitUntil { drivers.openedCount == 2 }
+
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+
+        #expect(debugger.startWasCancelled)
+        #expect(controller.statusText == "Server process 4242 may still be running.")
+    }
+
+    @Test("A step that finishes as the stop arrives says the routine finished first")
+    func finishedAnswerToAStopBecomesTheStatus() async throws {
+        let session = FakeDebugSession(performBlocksUntilStop: true, stopAnswer: .finished(nil))
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+
+        controller.perform(.continueExecution)
+        try await waitUntil { session.performedCommands == [.continueExecution] }
+        controller.stop()
+        try await waitUntil { controller.hasEnded && controller.statusText != String(localized: "Stopped") }
+
+        #expect(controller.statusText == String(localized: "The routine finished before the stop reached it."))
+    }
+
     @Test("A start that ignores its cancellation loses its drivers at the limit, and a late session is still ended")
     func startIgnoringCancellationIsCapped() async throws {
         let late = AsyncGate()
