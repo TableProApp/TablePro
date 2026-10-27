@@ -155,6 +155,10 @@ internal struct SQLTokenFormatter {
     private var awaitsTableBody = false
     // True between CREATE ... FUNCTION or PROCEDURE and its parameter list.
     private var awaitsParameterList = false
+    // Where `@x <type>` declares a variable: a DECLARE, and a routine's header up to its AS or BEGIN. Anywhere else
+    // the word after a variable is an alias (`FROM @rows date`).
+    private var inDeclare = false
+    private var inRoutineHeader = false
     // The word before each open inline paren, keyed by its index in `clauseStack`.
     private var parenOpeners: [Int: String] = [:]
     // The last token of the multi-word type being written, which takes the type's case as one word does.
@@ -343,9 +347,7 @@ internal struct SQLTokenFormatter {
     // MARK: - Token Processing
 
     private mutating func processToken(_ token: SQLToken, prev: SQLToken?, next: SQLToken?) {
-        if currentContext == .createTable, ["FUNCTION", "PROCEDURE"].contains(token.upperValue) {
-            awaitsParameterList = true
-        }
+        trackDeclarations(token)
         if let lead = pendingLead, token.type != .comment,
            !(lead.kind == .select && ["DISTINCT", "ALL"].contains(token.upperValue)),
            !(lead.kind == .cte && token.upperValue == "RECURSIVE") {
@@ -418,6 +420,27 @@ internal struct SQLTokenFormatter {
         resetStatement()
     }
 
+    private static let statementStarters: Set<String> = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "SET", "WITH", "IF", "WHILE", "BEGIN", "END", "RETURN",
+        "EXEC", "EXECUTE", "PRINT", "OPEN", "FETCH", "CLOSE", "CREATE", "ALTER", "DROP", "TRUNCATE",
+    ]
+
+    private mutating func trackDeclarations(_ token: SQLToken) {
+        guard Self.isWord(token) else { return }
+        let upper = token.upperValue
+        if currentContext == .createTable, upper == "FUNCTION" || upper == "PROCEDURE" {
+            awaitsParameterList = true
+            inRoutineHeader = true
+        } else if upper == "AS" || upper == "BEGIN" {
+            inRoutineHeader = false
+        }
+        if upper == "DECLARE" {
+            inDeclare = true
+        } else if Self.statementStarters.contains(upper) {
+            inDeclare = false
+        }
+    }
+
     private mutating func resetStatement() {
         clauseStack.removeAll()
         selectColumnPadStack.removeAll()
@@ -428,6 +451,8 @@ internal struct SQLTokenFormatter {
         inSelectColumns = false
         awaitsTableBody = false
         awaitsParameterList = false
+        inDeclare = false
+        inRoutineHeader = false
         afterBetween = false
     }
 
@@ -705,14 +730,19 @@ internal struct SQLTokenFormatter {
         case "TYPE":
             return beforePrev.map { $0.type == .identifier || $0.upperValue == "DATA" } ?? false
         case "AS":
-            if let beforePrev, beforePrev.type == .placeholder, beforePrev.value.hasPrefix("@") { return true }
+            if let beforePrev, Self.isVariable(beforePrev), declaresVariables { return true }
             guard currentContext == .inlineParen, let opener = parenOpeners[clauseStack.count - 1] else { return false }
             return Self.castFunctions.contains(opener)
         default:
             break
         }
-        if prev.type == .placeholder, prev.value.hasPrefix("@"), !prev.value.hasPrefix("@@") { return true }
+        if Self.isVariable(prev), declaresVariables { return true }
         let beforeUpper = beforePrev?.upperValue ?? ""
+        // A table variable's or table type's columns: `DECLARE @t TABLE (a int)`, `RETURNS @t TABLE (a int)`.
+        if currentContext == .inlineParen, parenOpeners[clauseStack.count - 1] == "TABLE",
+           ["(", ","].contains(beforeUpper), Self.isWord(prev) {
+            return true
+        }
         if ["DECLARE", "COLUMN", "ADD", "MODIFY"].contains(beforeUpper), Self.isWord(prev), prevUpper != "IF" {
             return true
         }
@@ -731,6 +761,14 @@ internal struct SQLTokenFormatter {
 
     private static func isWord(_ token: SQLToken) -> Bool {
         token.type == .identifier || token.type == .keyword
+    }
+
+    private static func isVariable(_ token: SQLToken) -> Bool {
+        token.type == .placeholder && token.value.hasPrefix("@") && !token.value.hasPrefix("@@")
+    }
+
+    private var declaresVariables: Bool {
+        inDeclare || inRoutineHeader
     }
 
     private func typeCased(_ token: SQLToken) -> String {

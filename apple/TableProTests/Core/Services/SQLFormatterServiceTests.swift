@@ -1329,6 +1329,40 @@ struct SQLFormatterServiceTests {
         )
     }
 
+    @Test("The word after a T-SQL variable is a type only where the variable is declared")
+    func variableTypesOnlyInDeclarations() throws {
+        let upper = options { $0.dataTypeCase = .upper }
+        try expectFormat(
+            "SELECT date.id FROM @rows date; SELECT @x date; SELECT @x AS date",
+            dialect: .mssql,
+            options: upper,
+            equals: """
+        SELECT date.id
+        FROM @rows date;
+        SELECT @x date;
+        SELECT @x AS date
+        """
+        )
+        try expectFormat(
+            "DECLARE @a int, @b date; DECLARE @c AS varchar(10) = 'x'",
+            dialect: .mssql,
+            options: upper,
+            equals: "DECLARE @a INT, @b DATE;\nDECLARE @c AS VARCHAR(10) = 'x'"
+        )
+        try expectFormat(
+            "CREATE PROCEDURE p @a int, @b date = NULL AS SELECT @a date",
+            dialect: .mssql,
+            options: upper,
+            equals: "CREATE PROCEDURE p @a INT, @b DATE = NULL AS\nSELECT @a date"
+        )
+        try expectFormat(
+            "DECLARE @t TABLE (id int, d date); SELECT d date FROM @t",
+            dialect: .mssql,
+            options: upper,
+            equals: "DECLARE @t TABLE (id INT, d DATE);\nSELECT d date\nFROM @t"
+        )
+    }
+
     @Test("A multi-word type takes the data type case as one type")
     func multiWordTypesTakeOneCase() throws {
         try expectFormat(
