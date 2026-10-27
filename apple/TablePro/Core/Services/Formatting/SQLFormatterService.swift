@@ -95,6 +95,8 @@ internal struct SQLTokenFormatter {
         "BLOB", "CLOB", "BINARY", "VARBINARY",
         "JSON", "JSONB", "XML", "UUID",
         "SERIAL", "BIGSERIAL",
+        "DOUBLE PRECISION", "CHARACTER VARYING", "CHAR VARYING", "NATIONAL CHARACTER", "NATIONAL CHAR", "BIT VARYING",
+        "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITHOUT TIME ZONE", "TIME WITH TIME ZONE", "TIME WITHOUT TIME ZONE",
     ]
 
     // Width of `SELECT ` and `SET `, which the items after the first line up under.
@@ -103,6 +105,8 @@ internal struct SQLTokenFormatter {
 
     private let functions: Set<String>
     private let dataTypes: Set<String>
+    // Multi-word types by their first word, longest first: `CHARACTER VARYING`, `TIMESTAMP WITH TIME ZONE`.
+    private let typePhrases: [String: [[String]]]
     private let rewritesFunctionCase: Bool
     private let rewritesDataTypeCase: Bool
     private let indentUnit: String
@@ -117,6 +121,12 @@ internal struct SQLTokenFormatter {
         self.options = options
         self.functions = Self.builtinFunctions.union(dialectFunctions)
         self.dataTypes = Self.builtinDataTypes.union(dialectDataTypes)
+        var phrases: [String: [[String]]] = [:]
+        for type in dataTypes where type.contains(" ") {
+            let words = type.uppercased().split(separator: " ").map(String.init)
+            if let first = words.first { phrases[first, default: []].append(words) }
+        }
+        self.typePhrases = phrases.mapValues { $0.sorted { $0.count > $1.count } }
         self.rewritesFunctionCase = rewritesFunctionCase
         self.rewritesDataTypeCase = rewritesDataTypeCase
         self.indentUnit = options.indentUnit
@@ -145,8 +155,14 @@ internal struct SQLTokenFormatter {
     private var awaitsTableBody = false
     // True between CREATE ... FUNCTION or PROCEDURE and its parameter list.
     private var awaitsParameterList = false
+    // Where `@x <type>` declares a variable: a DECLARE, and a routine's header up to its AS or BEGIN. Anywhere else
+    // the word after a variable is an alias (`FROM @rows date`).
+    private var inDeclare = false
+    private var inRoutineHeader = false
     // The word before each open inline paren, keyed by its index in `clauseStack`.
     private var parenOpeners: [Int: String] = [:]
+    // The last token of the multi-word type being written, which takes the type's case as one word does.
+    private var typePhraseEnd = -1
     private var directiveOffsets: [Int] = []
 
     private enum ClauseContext {
@@ -331,9 +347,7 @@ internal struct SQLTokenFormatter {
     // MARK: - Token Processing
 
     private mutating func processToken(_ token: SQLToken, prev: SQLToken?, next: SQLToken?) {
-        if currentContext == .createTable, ["FUNCTION", "PROCEDURE"].contains(token.upperValue) {
-            awaitsParameterList = true
-        }
+        trackDeclarations(token)
         if let lead = pendingLead, token.type != .comment,
            !(lead.kind == .select && ["DISTINCT", "ALL"].contains(token.upperValue)),
            !(lead.kind == .cte && token.upperValue == "RECURSIVE") {
@@ -344,6 +358,10 @@ internal struct SQLTokenFormatter {
             appendSeparator(kind: lead.kind, inline: " ", broken: "\n" + render(lead.pad))
             afterNewline = false
             suppressNextSpace = true
+        }
+        if position <= typePhraseEnd || startsTypePhrase() {
+            appendToken(typeCased(token))
+            return
         }
         switch token.type {
         case .comment:
@@ -402,6 +420,27 @@ internal struct SQLTokenFormatter {
         resetStatement()
     }
 
+    private static let statementStarters: Set<String> = [
+        "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "SET", "WITH", "IF", "WHILE", "BEGIN", "END", "RETURN",
+        "EXEC", "EXECUTE", "PRINT", "OPEN", "FETCH", "CLOSE", "CREATE", "ALTER", "DROP", "TRUNCATE",
+    ]
+
+    private mutating func trackDeclarations(_ token: SQLToken) {
+        guard Self.isWord(token) else { return }
+        let upper = token.upperValue
+        if currentContext == .createTable, upper == "FUNCTION" || upper == "PROCEDURE" {
+            awaitsParameterList = true
+            inRoutineHeader = true
+        } else if upper == "AS" || upper == "BEGIN" {
+            inRoutineHeader = false
+        }
+        if upper == "DECLARE" {
+            inDeclare = true
+        } else if Self.statementStarters.contains(upper) {
+            inDeclare = false
+        }
+    }
+
     private mutating func resetStatement() {
         clauseStack.removeAll()
         selectColumnPadStack.removeAll()
@@ -412,6 +451,8 @@ internal struct SQLTokenFormatter {
         inSelectColumns = false
         awaitsTableBody = false
         awaitsParameterList = false
+        inDeclare = false
+        inRoutineHeader = false
         afterBetween = false
     }
 
@@ -514,7 +555,9 @@ internal struct SQLTokenFormatter {
         awaitsParameterList = false
         // A structural keyword takes a space before its paren (`VALUES (`, `IN (`); a function call
         // or a sized type does not (`COUNT(*)`, `VARCHAR(255)`).
-        if let prev, prev.type == .keyword, !functions.contains(prev.upperValue), !dataTypes.contains(prev.upperValue) {
+        if typePhraseEnd == position - 1 {
+            writeGlued("(")
+        } else if let prev, prev.type == .keyword, !functions.contains(prev.upperValue), !dataTypes.contains(prev.upperValue) {
             writeOpener()
         } else if currentContext == .insert && Self.isQuotedOrPlainName(prev) {
             writeOpener()
@@ -659,8 +702,7 @@ internal struct SQLTokenFormatter {
             return token.value
         }
         if dataTypes.contains(upper) {
-            guard rewritesDataTypeCase, isTypePosition(position) else { return token.value }
-            return options.dataTypeCase.applied(upper: upper, original: token.value)
+            return isTypePosition(position) ? typeCased(token) : token.value
         }
         if functions.contains(upper) {
             return token.value
@@ -673,8 +715,6 @@ internal struct SQLTokenFormatter {
     private static let parameterListOpener = "(parameters)"
     private static let castFunctions: Set<String> = ["CAST", "TRY_CAST", "SAFE_CAST"]
     private static let parameterModes: Set<String> = ["IN", "OUT", "INOUT", "VARIADIC"]
-    // The second word of `DOUBLE PRECISION`, `CHARACTER VARYING`, `LONG RAW`, `NATIONAL CHAR`.
-    private static let typeContinuations: Set<String> = ["PRECISION", "VARYING", "RAW", "VARCHAR", "CHAR", "CHARACTER"]
 
     // A word spelled like a type is a type only where the grammar puts one: a column definition, `CAST(x AS t)`,
     // `x::t`, `RETURNS t`, `TYPE t`, a variable or parameter declaration, and the words that continue one
@@ -684,34 +724,35 @@ internal struct SQLTokenFormatter {
         guard let prev = token(at: index - 1) else { return false }
         let prevUpper = prev.upperValue
         let beforePrev = token(at: index - 2)
-        if let current = token(at: index), Self.typeContinuations.contains(current.upperValue),
-           dataTypes.contains(prevUpper), isTypePosition(index - 1) {
-            return true
-        }
         switch prevUpper {
         case "::", "RETURNS", "SETOF":
             return true
         case "TYPE":
-            return beforePrev.map { $0.type == .identifier || $0.upperValue == "DATA" } ?? false
+            return beforePrev.map { ($0.type != .keyword && Self.isNameToken($0)) || $0.upperValue == "DATA" } ?? false
         case "AS":
-            if let beforePrev, beforePrev.type == .placeholder, beforePrev.value.hasPrefix("@") { return true }
+            if let beforePrev, Self.isVariable(beforePrev), declaresVariables { return true }
             guard currentContext == .inlineParen, let opener = parenOpeners[clauseStack.count - 1] else { return false }
             return Self.castFunctions.contains(opener)
         default:
             break
         }
-        if prev.type == .placeholder, prev.value.hasPrefix("@"), !prev.value.hasPrefix("@@") { return true }
+        if Self.isVariable(prev), declaresVariables { return true }
         let beforeUpper = beforePrev?.upperValue ?? ""
-        if ["DECLARE", "COLUMN", "ADD", "MODIFY"].contains(beforeUpper), Self.isWord(prev), prevUpper != "IF" {
+        // A table variable's or table type's columns: `DECLARE @t TABLE (a int)`, `RETURNS @t TABLE (a int)`.
+        if currentContext == .inlineParen, parenOpeners[clauseStack.count - 1] == "TABLE",
+           ["(", ","].contains(beforeUpper), Self.isNameToken(prev) {
             return true
         }
-        if currentContext == .createTableBody, ["(", ","].contains(beforeUpper), Self.isWord(prev) {
+        if ["DECLARE", "COLUMN", "ADD", "MODIFY"].contains(beforeUpper), Self.isNameToken(prev), prevUpper != "IF" {
+            return true
+        }
+        if currentContext == .createTableBody, ["(", ","].contains(beforeUpper), Self.isNameToken(prev) {
             return true
         }
         guard currentContext == .inlineParen, parenOpeners[clauseStack.count - 1] == Self.parameterListOpener else {
             return false
         }
-        if Self.isWord(prev), ["(", ","].contains(beforeUpper) || Self.parameterModes.contains(beforeUpper) {
+        if Self.isNameToken(prev), ["(", ","].contains(beforeUpper) || Self.parameterModes.contains(beforeUpper) {
             return true
         }
         let next = token(at: index + 1)?.value
@@ -720,6 +761,38 @@ internal struct SQLTokenFormatter {
 
     private static func isWord(_ token: SQLToken) -> Bool {
         token.type == .identifier || token.type == .keyword
+    }
+
+    // A name as a declaration writes it: a word, or a quoted identifier (`"id"`, `[id]`, `` `id` ``). The tokenizer
+    // keeps `"..."` a string, as the query fingerprint reads it.
+    private static func isNameToken(_ token: SQLToken) -> Bool {
+        isWord(token) || (token.type == .string && token.value.hasPrefix("\""))
+    }
+
+    private static func isVariable(_ token: SQLToken) -> Bool {
+        token.type == .placeholder && token.value.hasPrefix("@") && !token.value.hasPrefix("@@")
+    }
+
+    private var declaresVariables: Bool {
+        inDeclare || inRoutineHeader
+    }
+
+    private func typeCased(_ token: SQLToken) -> String {
+        rewritesDataTypeCase ? options.dataTypeCase.applied(upper: token.upperValue, original: token.value) : token.value
+    }
+
+    // A multi-word type in a type position is one type: every word takes its case, and the `WITH` of
+    // `TIMESTAMP WITH TIME ZONE` starts no statement.
+    private mutating func startsTypePhrase() -> Bool {
+        guard let candidates = typePhrases[stream[position].upperValue], Self.isWord(stream[position]) else { return false }
+        let match = candidates.first { words in
+            words.indices.dropFirst().allSatisfy { offset in
+                token(at: position + offset).map { Self.isWord($0) && $0.upperValue == words[offset] } ?? false
+            }
+        }
+        guard let match, isTypePosition(position) else { return false }
+        typePhraseEnd = position + match.count - 1
+        return true
     }
 
     // MARK: - Names
@@ -745,6 +818,46 @@ internal struct SQLTokenFormatter {
         "=", "<>", "!=", "<", ">", "<=", ">=", "<=>", "+", "-", "*", "/", "%", "||", "::", "[",
     ]
 
+    private static let tableIntroducers: Set<String> = ["FROM", "JOIN", "UPDATE", "INTO"]
+
+    // Words that come between those and the table: `FROM ONLY t`, `JOIN LATERAL f(x) a`, ClickHouse's `INTO TABLE t`.
+    private static let tableModifiers: Set<String> = [
+        "ONLY", "LATERAL", "TABLE", "TEMPORARY", "TEMP", "UNLOGGED", "IGNORE", "LOW_PRIORITY", "HIGH_PRIORITY",
+        "DELAYED", "OUTFILE", "DUMPFILE",
+    ]
+
+    // What can end a select item or a table reference, so a word after it is that item's alias.
+    private static func endsOperand(_ token: SQLToken) -> Bool {
+        switch token.type {
+        case .identifier, .number, .string, .placeholder:
+            return true
+        case .keyword:
+            return token.upperValue == "END" || valueWords.contains(token.upperValue)
+        default:
+            return token.value == ")" || token.value == "]"
+        }
+    }
+
+    private static let aliasEnders: Set<String> = [
+        ",", ")", "FROM", "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT",
+        "MINUS", "WINDOW", "QUALIFY", "INTO", "ON", "USING", "SET", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS",
+        "NATURAL", "OUTER", "PREWHERE", "SETTINGS", "FORMAT", "FETCH",
+    ]
+
+    // Words that follow a table reference without naming it: ClickHouse's `FROM t FINAL`, `GLOBAL ANY JOIN`.
+    private static let tableReferenceModifiers: Set<String> = ["FINAL", "GLOBAL", "ANY", "ASOF", "SEMI", "ANTI", "PASTE"]
+
+    // `SELECT 1 rows`, `SELECT x date FROM t`, `FROM t first WHERE`: an alias written without AS keeps its spelling.
+    private func isImplicitAlias(_ upper: String, prev: SQLToken?, next: SQLToken?) -> Bool {
+        guard [.select, .from, .join].contains(currentContext), let prev, Self.endsOperand(prev),
+              !Self.tableReferenceModifiers.contains(upper)
+        else {
+            return false
+        }
+        guard let next else { return true }
+        return Self.isTerminator(next) || Self.aliasEnders.contains(next.upperValue)
+    }
+
     private static let constraintStarters: Set<String> = [
         "CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "EXCLUDE", "PERIOD", "LIKE",
     ]
@@ -769,6 +882,12 @@ internal struct SQLTokenFormatter {
         }
         if prev?.upperValue == "COLUMN" { return upper != "IF" }
         if prev?.upperValue == "AS" { return !isInsideNestedExpression && next?.value != "(" }
+        if isImplicitAlias(upper, prev: prev, next: next) { return true }
+        // `FROM apply a`: a word between FROM, JOIN, UPDATE or INTO and its alias names the table.
+        if let prev, Self.tableIntroducers.contains(prev.upperValue), next?.type == .identifier,
+           !Self.tableModifiers.contains(upper) {
+            return true
+        }
         guard let prev, Self.operandStarters.contains(prev.upperValue) else { return false }
         guard let next else { return true }
         return Self.operandEnders.contains(next.upperValue) || Self.isTerminator(next)
@@ -910,9 +1029,10 @@ internal struct SQLTokenFormatter {
         if word(index) == "NATURAL" { index += 1 }
         if let side = word(index), ["LEFT", "RIGHT", "FULL", "INNER", "CROSS"].contains(side) { index += 1 }
         if word(index) == "OUTER" { index += 1 }
-        guard index > start, let last = word(index) else { return nil }
-        if last == "JOIN" { return index - start + 1 }
-        if last == "APPLY", let before = word(index - 1), before == "CROSS" || before == "OUTER" {
+        guard index > start, let last = token(at: index), Self.isWord(last) else { return nil }
+        if last.type == .keyword, last.upperValue == "JOIN" { return index - start + 1 }
+        // APPLY is a word anywhere but right after CROSS or OUTER (`SELECT 1 apply`).
+        if last.upperValue == "APPLY", let before = word(index - 1), before == "CROSS" || before == "OUTER" {
             return index - start + 1
         }
         return nil
