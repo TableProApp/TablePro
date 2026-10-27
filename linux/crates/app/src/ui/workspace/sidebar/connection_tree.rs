@@ -24,11 +24,13 @@ use super::sidebar_menu::{GROUP, NEW_TABLE, SHOW_SCHEMA_DIAGRAM, object_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::SidebarView;
 use super::tree_node::{NodeKind, TreeNode};
+use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::saved_connection_list::SavedConnectionList;
 use crate::services::saved_connection_object::SavedConnectionObject;
 
 /// The tree's own actions, on the connection or group whose menu is open.
 const TREE: &str = "tree";
+const CONTEXT_MENU: &str = "context-menu";
 const CONNECT: &str = "connect";
 const DISCONNECT: &str = "disconnect";
 const NEW_QUERY: &str = "new-query";
@@ -232,7 +234,14 @@ impl ConnectionTree {
         let scheduled = Rc::new(Cell::new(false));
         // A new list takes every row out, then puts the new ones in; the
         // branch follows once both are done, so its open schemas stay open.
+        // The schemas it has already follow the list at once, so none of
+        // them reads rows of a range the list no longer has.
+        let resync = Rc::downgrade(inner);
+        let resync_key = key.clone();
         let handler = list.connect_items_changed(move |_, _, _, _| {
+            if let Some(inner) = resync.upgrade() {
+                inner.resync_slices(&resync_key);
+            }
             if scheduled.replace(true) {
                 return;
             }
@@ -491,6 +500,32 @@ impl TreeInner {
 
     /// List the session's schemas again from its list, keeping the rows
     /// of the schemas that stay.
+    /// Point each schema the branch has at its run of the list as it is
+    /// now, and a schema the list no longer has at nothing.
+    fn resync_slices(&self, key: &SessionKey) {
+        let branches = self.branches.borrow();
+        let Some(branch) = branches.get(key) else {
+            return;
+        };
+        let list = &branch.list;
+        let mut ranges: HashMap<String, (u32, u32)> = HashMap::new();
+        let mut position = 0;
+        let count = list.n_items();
+        while position < count {
+            let (start, end) = list.section(position);
+            let end = end.min(count).max(start + 1);
+            let Some(first) = list.item(start).and_downcast::<SidebarObject>() else {
+                break;
+            };
+            ranges.insert(first.section_title(), (start, end));
+            position = end;
+        }
+        for (title, (_, slice)) in &branch.schemas {
+            let (start, end) = ranges.get(title).copied().unwrap_or((0, 0));
+            slice.set_range(start, end);
+        }
+    }
+
     fn refresh_branch(&self, key: &SessionKey) {
         let mut branches = self.branches.borrow_mut();
         let Some(branch) = branches.get_mut(key) else {
@@ -862,6 +897,45 @@ impl TreeInner {
         true
     }
 
+    /// The menu of the row with the keyboard focus, from the Menu key,
+    /// under that row.
+    fn popup_keyboard_menu(&self) {
+        let focused = self.list_view.focus_child();
+        let item = focused.and_then(|focused| {
+            self.bindings
+                .borrow()
+                .keys()
+                .find(|item| {
+                    item.child()
+                        .is_some_and(|row| row == focused || row.is_ancestor(&focused))
+                })
+                .cloned()
+        });
+        let position = item
+            .as_ref()
+            .map_or_else(|| self.selection.selected(), gtk::ListItem::position);
+        let Some(row) = self.row_at(position) else {
+            return;
+        };
+        let Some(menu) = self.menu_for(&row) else {
+            return;
+        };
+        let pointing = item
+            .and_then(|item| item.child())
+            .and_then(|row| row.compute_bounds(&self.list_view))
+            .map(|bounds| {
+                gdk::Rectangle::new(
+                    bounds.x() as i32,
+                    bounds.y() as i32,
+                    bounds.width() as i32,
+                    bounds.height() as i32,
+                )
+            });
+        self.popover.set_menu_model(Some(&menu));
+        self.popover.set_pointing_to(pointing.as_ref());
+        self.popover.popup();
+    }
+
     /// The menu of a row, with the session's actions on the list for a
     /// table's or a schema's.
     fn menu_for(&self, row: &gtk::TreeListRow) -> Option<gio::Menu> {
@@ -1103,6 +1177,13 @@ fn connection_menu(node: &TreeNode) -> gio::Menu {
             Some(&crate::i18n::gettext("Disconnect")),
             Some(&format!("{TREE}.{DISCONNECT}")),
         );
+    } else if node.connecting() {
+        // A connect beside the open sessions can wait for a host that
+        // never answers, so it stops here.
+        session.append(
+            Some(&crate::i18n::gettext("Stop Connecting")),
+            Some(&format!("{TREE}.{DISCONNECT}")),
+        );
     } else {
         session.append(
             Some(&crate::i18n::gettext("Connect")),
@@ -1142,6 +1223,14 @@ fn schema_menu(node: &TreeNode, affordances: super::SidebarAffordances) -> Optio
 
 fn install_actions(inner: &Rc<TreeInner>) {
     let actions = gio::SimpleActionGroup::new();
+    let menu = gio::SimpleAction::new(CONTEXT_MENU, None);
+    let view = Rc::downgrade(inner);
+    menu.connect_activate(move |_, _| {
+        if let Some(view) = view.upgrade() {
+            view.popup_keyboard_menu();
+        }
+    });
+    actions.add_action(&menu);
     for name in [CONNECT, DISCONNECT, NEW_QUERY, REFRESH, EDIT] {
         let action = gio::SimpleAction::new(name, None);
         let view = Rc::downgrade(inner);
@@ -1153,6 +1242,9 @@ fn install_actions(inner: &Rc<TreeInner>) {
         actions.add_action(&action);
     }
     inner.list_view.insert_action_group(TREE, Some(&actions));
+    inner
+        .list_view
+        .add_controller(local_shortcut_controller(ShortcutOwner::ConnectionTree));
 }
 
 /// The parts of a row, found again when it is bound.
@@ -1281,6 +1373,17 @@ fn bind_row(view: &Weak<TreeInner>, item: &gtk::ListItem) {
     }
 }
 
+fn connection_icon_name(node: &TreeNode) -> String {
+    let fallback = if node.file_based() {
+        crate::ui::icons::DRIVE_HARDDISK
+    } else {
+        crate::ui::icons::NETWORK_SERVER
+    };
+    node.connection_icon()
+        .map_or(fallback, crate::ui::icons::connection_icon)
+        .to_owned()
+}
+
 /// A connection's icon in its colour, and its open and connecting state,
 /// which follow the node while the row shows it.
 fn bind_connection(
@@ -1290,21 +1393,34 @@ fn bind_connection(
     node: &TreeNode,
     parts: &RowParts,
 ) {
-    let fallback = if node.file_based() {
-        crate::ui::icons::DRIVE_HARDDISK
-    } else {
-        crate::ui::icons::NETWORK_SERVER
-    };
-    let icon = node
-        .connection_icon()
-        .map_or(fallback, crate::ui::icons::connection_icon);
-    parts.icon.set_icon_name(Some(icon));
-    if let Some(color) = node.color() {
-        parts
-            .icon
-            .add_css_class(crate::ui::connection_appearance::color_class(color));
-    }
     let bindings = vec![
+        node.bind_property("appearance", &parts.label, "label")
+            .transform_to(|binding, _: u32| binding.source().and_downcast::<TreeNode>().map(|node| node.title()))
+            .sync_create()
+            .build(),
+        node.bind_property("appearance", &parts.icon, "icon-name")
+            .transform_to(|binding, _: u32| {
+                binding
+                    .source()
+                    .and_downcast::<TreeNode>()
+                    .map(|node| connection_icon_name(&node))
+            })
+            .sync_create()
+            .build(),
+        node.bind_property("appearance", &parts.icon, "css-classes")
+            .transform_to(|binding, _: u32| {
+                let color = binding
+                    .source()
+                    .and_downcast::<TreeNode>()
+                    .and_then(|node| node.color());
+                Some(
+                    color
+                        .map(|color| vec![crate::ui::connection_appearance::color_class(color).to_owned()])
+                        .unwrap_or_default(),
+                )
+            })
+            .sync_create()
+            .build(),
         node.bind_property("open", &parts.status, "visible")
             .sync_create()
             .build(),

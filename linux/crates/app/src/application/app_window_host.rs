@@ -1,6 +1,7 @@
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
+use tablepro_session::SessionKey;
 
 use super::{TableProApplication, WindowHost, WindowLaunch};
 
@@ -20,6 +21,12 @@ impl AppWindowHost {
 impl WindowHost for AppWindowHost {
     fn present_window(&self, window_id: u32) -> bool {
         self.app.upgrade().is_some_and(|app| app.present_window(window_id))
+    }
+
+    fn present_session(&self, window_id: u32, key: &SessionKey) -> bool {
+        self.app
+            .upgrade()
+            .is_some_and(|app| app.present_session(window_id, key))
     }
 
     fn open_window(&self, launch: WindowLaunch) {

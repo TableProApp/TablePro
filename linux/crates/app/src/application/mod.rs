@@ -120,6 +120,14 @@ impl TableProApplication {
         true
     }
 
+    /// Bring the window forward with the session under `key` in front.
+    pub fn present_session(&self, window_id: u32, key: &SessionKey) -> bool {
+        if let Some(input) = self.imp().windows.sender(window_id) {
+            crate::runtime::DeliverInput::deliver(&input, crate::ui::SessionWindowInput::ShowSession(key.clone()));
+        }
+        self.present_window(window_id)
+    }
+
     /// What activate and the new-window action open: the sessions open
     /// at the last quit the first time, a picker after. A picker opened
     /// first would write its session over the ones still to reopen.

@@ -234,3 +234,28 @@ fn f002_a_connect_beside_the_last_session_carries_on_and_its_stopped_result_clos
     assert_eq!(test.services.sessions.window_for(&test.key()), None);
     assert_eq!(test.services.sessions.live_count(), 1);
 }
+
+#[gtk4::test]
+fn the_windows_actions_go_to_the_session_in_front() {
+    let (test, other) = open_both("ActionsFront");
+    let shell = test.window.shell().expect("the shell");
+    let other_key = SessionKey::Saved(other.id);
+    let joined = shell.session(&other_key).expect("the session that joined");
+    let page = joined.create_editor_page().expect("a tab of its own");
+    shell.tab_view().set_selected_page(&page);
+    wait_until(WAIT, || {
+        shell.front().and_then(|front| front.key()) == Some(other_key.clone())
+    })
+    .expect("the session to come to the front with its tab");
+    let before = shell.tab_view().n_pages();
+
+    WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("the window's action");
+    wait_until(WAIT, || shell.tab_view().n_pages() == before + 1).expect("a new tab");
+
+    let added = shell.tab_view().selected_page().expect("the new tab in front");
+    assert_eq!(
+        shell.owner_of(&added).and_then(|(workspace, _)| workspace.key()),
+        Some(other_key),
+        "the action went to a session behind"
+    );
+}

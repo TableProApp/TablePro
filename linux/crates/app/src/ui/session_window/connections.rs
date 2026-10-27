@@ -275,7 +275,7 @@ impl SessionWindow {
         let dialog = delete_connection_dialog::is_open_dialog(name);
         let host = state.host.clone();
         dialog.connect_response(Some(delete_connection_dialog::SHOW), move |_, _| {
-            if !host.present_window(owner) {
+            if !host.present_session(owner, &SessionKey::Saved(id)) {
                 tracing::warn!(owner, "the window holding the connection is gone");
             }
         });
@@ -567,8 +567,8 @@ impl SessionWindow {
         let Some(workspace) = workspace else {
             return;
         };
-        workspace.commit_cell_edits();
-        let (Some(handle), Some(guards), Some(input)) = (workspace.handle(), self.close_guards(), self.input()) else {
+        let (Some(handle), Some(guards), Some(input)) = (workspace.prompt_handle(), self.close_guards(), self.input())
+        else {
             return;
         };
         guards.begin_teardown();

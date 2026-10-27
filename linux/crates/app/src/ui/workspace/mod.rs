@@ -125,9 +125,6 @@ pub(crate) struct WorkspaceModel {
     /// Watches `HistoryService` and flips `win.show-history` while the
     /// session is in front, whose actions it acts on.
     history_gate: Option<glib::JoinHandle<()>>,
-    /// The window's actions this workspace added while in front, removed
-    /// with it.
-    actions: Vec<&'static str>,
     /// The assistant's column, its toggle and what it may send.
     assistant: assistant::AssistantShell,
     sidebar: sidebar::SidebarView,
@@ -802,6 +799,7 @@ impl Workspace {
         let imp = workspace.imp();
         imp.shell.set(Some(&shell));
         let input = workspace.pump_inputs();
+        let _ = imp.sender.set(input.clone());
         let context = session_slot(&context, &session);
         let storage = services.storage.clone();
         let tasks = services.tasks.clone();
@@ -850,7 +848,6 @@ impl Workspace {
             sidebar_title: shell.imp().sidebar_title.get(),
             shell_handles: handles,
             history_gate: None,
-            actions: Vec::new(),
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
@@ -977,13 +974,20 @@ impl Workspace {
             .unwrap_or(false)
     }
 
+    /// The handle a close prompt asks, once a value still typed in a
+    /// cell counts as the unsaved change it is.
+    pub(crate) fn prompt_handle(&self) -> Option<WorkspaceHandle> {
+        self.commit_cell_edits();
+        self.handle()
+    }
+
     /// Whether a save of the workspace's is still being written.
     pub(crate) fn is_saving(&self) -> bool {
         self.handle().is_some_and(|handle| handle.ledger().in_flight() > 0)
     }
 
-    /// The session is now the one in front: it adds the window's actions
-    /// and names the header bars. One busy with its input does so once
+    /// The session is now the one in front: the window's actions go to
+    /// it, and it names the header bars. One busy with its input does so once
     /// it is done.
     pub(crate) fn attach(&self) {
         if self.imp().model.try_borrow_mut().is_err() {
@@ -1009,16 +1013,12 @@ impl Workspace {
                 if let Some(workspace) = workspace.upgrade()
                     && workspace.shell().and_then(|shell| shell.front()).as_ref() != Some(&workspace)
                 {
-                    // The next front added its actions under the same
-                    // names meanwhile, unless none came.
-                    let none_in_front = workspace.shell().and_then(|shell| shell.front()).is_none();
-                    workspace.with_model(|model| model.detach(none_in_front));
+                    workspace.detach();
                 }
             });
             return;
         }
-        // The next front adds its actions after this, if any comes.
-        self.with_model(|model| model.detach(true));
+        self.with_model(WorkspaceModel::detach);
     }
 
     /// Where the window shows its toasts while it shows this workspace:
@@ -1027,6 +1027,12 @@ impl Workspace {
     pub(crate) fn toast_overlay(&self) -> adw::ToastOverlay {
         self.shell()
             .map_or_else(adw::ToastOverlay::new, |shell| shell.toast_overlay())
+    }
+
+    /// Where the window's actions send while it is in front, which a
+    /// workspace busy with its input still takes.
+    pub(crate) fn sender(&self) -> Option<WorkspaceSender> {
+        self.imp().sender.get().cloned()
     }
 
     /// What the workspace's actions, tabs and background work send it.
@@ -1158,13 +1164,14 @@ impl WorkspaceModel {
 
     /// Add the window's actions, bind the assistant and name the header
     /// bars after this session, now in front.
+    /// Coming back to the front before a deferred detach let go runs
+    /// again, since another session named the header bars meanwhile.
     fn attach(&mut self) {
-        if self.attached {
-            return;
-        }
         self.attached = true;
+        if let Some(gate) = self.history_gate.take() {
+            gate.abort();
+        }
         if let Some(window) = self.window() {
-            self.actions = workspace_actions::install(&window, &self.input);
             self.history_gate = Some(workspace_actions::spawn_history_gate(
                 &window,
                 self.history.availability(),
@@ -1181,18 +1188,8 @@ impl WorkspaceModel {
         self.refresh_window_title();
     }
 
-    /// The actions stay on the window for the session now in front,
-    /// which replaces them.
-    /// `remove_actions` is false once the next front has added its own
-    /// under the same names, which taking these off would take.
-    fn detach(&mut self, remove_actions: bool) {
+    fn detach(&mut self) {
         self.attached = false;
-        if remove_actions && let Some(window) = self.window() {
-            for action in &self.actions {
-                window.remove_action(action);
-            }
-        }
-        self.actions.clear();
         if let Some(gate) = self.history_gate.take() {
             gate.abort();
         }
@@ -1310,13 +1307,6 @@ impl WorkspaceModel {
         }
         if let Some(dialog) = self.import_dialog.take() {
             close_if_presented(dialog.model().dialog());
-        }
-        if self.attached
-            && let Some(window) = self.window()
-        {
-            for action in &self.actions {
-                window.remove_action(action);
-            }
         }
         let pages = if close_pages { self.index.pages() } else { Vec::new() };
         self.close_tabs();

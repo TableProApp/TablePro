@@ -93,6 +93,7 @@ impl WorkspaceShell {
             menu_button.set_menu_model(Some(&with_safe_mode(&menu)));
         }
         imp.sidebar_header.pack_end(&menu_button);
+        super::workspace_actions::install(window, &shell);
 
         window.add_action(&gio::PropertyAction::new(
             SHOW_SIDEBAR,
@@ -297,6 +298,7 @@ impl WorkspaceShell {
         if let Some(window) = imp.window.upgrade() {
             window.remove_action(SHOW_SIDEBAR);
             window.remove_action(SHOW_ASSISTANT);
+            super::workspace_actions::remove(&window);
         }
     }
 

@@ -390,13 +390,7 @@ impl SessionWindow {
 
     /// Every session's, for the window's own close.
     fn workspace_handles(&self) -> Vec<WorkspaceHandle> {
-        self.workspaces()
-            .iter()
-            .filter_map(|workspace| {
-                workspace.commit_cell_edits();
-                workspace.handle()
-            })
-            .collect()
+        self.workspaces().iter().filter_map(Workspace::prompt_handle).collect()
     }
 
     /// A session said what it has to lose. One the window no longer
@@ -748,7 +742,11 @@ impl SessionWindow {
         // gets a query tab to come forward with.
         match workspace.some_page() {
             Some(page) => shell.tab_view().set_selected_page(&page),
-            None => drop(workspace.create_editor_page()),
+            None => {
+                if let Some(page) = workspace.create_editor_page() {
+                    shell.tab_view().set_selected_page(&page);
+                }
+            }
         }
     }
 
@@ -807,10 +805,15 @@ impl SessionWindow {
                 sessions: vec![open],
             });
         }
+        let from_dialog = matches!(source, ConnectSource::Intent(_));
         shell.add_session(&workspace);
         workspace.start();
         self.sync_front();
-        drop(self.imp().dialog.take());
+        // A connect beside the sessions can land while the user has a
+        // dialog open for something else, which stays the window's.
+        if held.is_none() || from_dialog {
+            drop(self.imp().dialog.take());
+        }
         for warning in warnings {
             self.show_toast(&warning);
         }
@@ -870,13 +873,13 @@ impl SessionWindow {
     /// same database brings the first forward instead of connecting.
     fn claim(&self, key: SessionKey) -> Option<SessionClaim> {
         let state = self.state()?;
-        match state.context.sessions.claim(key, self.id()) {
+        match state.context.sessions.claim(key.clone(), self.id()) {
             Ok(claim) => Some(claim),
             Err(ClaimError::AlreadyOpen { window_id }) => {
                 // A window that stayed to say the owner could not be
                 // shown is the user's picker from then on.
                 let opened_for_file = self.imp().opened_for_file.replace(false);
-                if self.present_owner(window_id) && opened_for_file {
+                if self.present_owner(window_id, &key) && opened_for_file {
                     self.close();
                 }
                 None
@@ -886,8 +889,10 @@ impl SessionWindow {
 
     /// False when the owner could not be brought forward, and this
     /// window says so instead.
-    fn present_owner(&self, window_id: u32) -> bool {
-        let presented = self.state().is_some_and(|state| state.host.present_window(window_id));
+    fn present_owner(&self, window_id: u32, key: &SessionKey) -> bool {
+        let presented = self
+            .state()
+            .is_some_and(|state| state.host.present_session(window_id, key));
         if !presented {
             self.show_toast(&crate::i18n::gettext(
                 "This connection is already open in another window.",
@@ -924,7 +929,7 @@ impl SessionWindow {
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {
             // This window is connecting; another one opens this.
             if let Some(owner) = state.context.sessions.window_for(&key)
-                && state.host.present_window(owner)
+                && state.host.present_session(owner, &key)
             {
                 return;
             }
@@ -1075,7 +1080,7 @@ impl SessionWindow {
                 // The edits are kept for the next connect; the session
                 // open in the other window goes on as it was.
                 self.persist_pending_save(pending_save);
-                self.present_owner(window_id);
+                self.present_owner(window_id, &key);
             }
         }
     }
@@ -1169,6 +1174,20 @@ impl SessionWindow {
         let stopped = self.imp().background.take();
         for running in stopped {
             self.stop_background_connect(running);
+        }
+    }
+
+    /// The user stopped a connect running beside the sessions.
+    fn stop_connecting_beside(&self, key: &SessionKey) {
+        let stopped = {
+            let mut background = self.imp().background.borrow_mut();
+            background
+                .iter()
+                .position(|running| running.claim.key() == key)
+                .map(|position| background.remove(position))
+        };
+        if let Some(stopped) = stopped {
+            self.stop_background_connect(stopped);
         }
     }
 
@@ -1339,10 +1358,10 @@ impl SessionWindow {
             .session(&key)
             .map(|open| open.workspace.clone());
         let Some(workspace) = workspace else {
+            self.stop_connecting_beside(&key);
             return;
         };
-        workspace.commit_cell_edits();
-        let (Some(handle), Some(guards)) = (workspace.handle(), self.close_guards()) else {
+        let (Some(handle), Some(guards)) = (workspace.prompt_handle(), self.close_guards()) else {
             return;
         };
         // Whether it is the last is decided once approved: a session can

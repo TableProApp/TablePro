@@ -27,6 +27,7 @@ pub struct Workspace {
 
     /// The window's shell, which holds this workspace and its tabs.
     pub(super) shell: glib::WeakRef<super::WorkspaceShell>,
+    pub(super) sender: std::cell::OnceCell<super::WorkspaceSender>,
     pub(super) model: RefCell<Option<WorkspaceModel>>,
     /// Handles the queued input, and with it every reply the workspace
     /// is still waiting on. Aborted at shutdown, which drops them.

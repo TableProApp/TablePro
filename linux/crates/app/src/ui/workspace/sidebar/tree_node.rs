@@ -41,6 +41,10 @@ mod imp {
         /// The connection is connecting in this window.
         #[property(get, set)]
         pub(super) connecting: Cell<bool>,
+        /// Counts the changes to the row's name, colour and icon, so a
+        /// row on screen follows a connection edited while it shows.
+        #[property(get)]
+        pub(super) appearance: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -125,10 +129,19 @@ impl TreeNode {
         file_based: bool,
     ) {
         let imp = self.imp();
+        let changed = *imp.title.borrow() != title
+            || imp.color.get() != color
+            || imp.icon.get() != icon
+            || imp.file_based.get() != file_based;
+        if !changed {
+            return;
+        }
         imp.title.replace(title.to_owned());
         imp.color.set(color);
         imp.icon.set(icon);
         imp.file_based.set(file_based);
+        imp.appearance.set(imp.appearance.get().wrapping_add(1));
+        self.notify_appearance();
     }
 
     pub(crate) fn children(&self) -> Option<gio::ListModel> {
