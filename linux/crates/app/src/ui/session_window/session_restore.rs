@@ -28,6 +28,16 @@ impl SessionWindow {
         let (Some(state), Some(input)) = (self.state(), self.input()) else {
             return;
         };
+        // The list the window follows has it once read: the keys restored
+        // beside the first need no read of the file each.
+        if matches!(
+            state.services.saved_connections.state(),
+            tablepro_storage::ConnectionListState::Ready(_)
+        ) {
+            let saved = state.services.saved_connections.get(id).map(Box::new);
+            input.deliver(SessionWindowInput::RestoreSaved { id, saved });
+            return;
+        }
         let store = state.services.storage.connections().clone();
         let reading = state.services.tasks.spawn_blocking_task(move || store.load_blocking());
         glib::spawn_future_local(async move {

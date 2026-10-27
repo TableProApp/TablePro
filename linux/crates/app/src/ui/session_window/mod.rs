@@ -364,7 +364,12 @@ impl SessionWindow {
             let message = match request {
                 TreeRequest::Connect(SessionKey::Saved(id)) => match list.get(id) {
                     Some(saved) => SessionWindowInput::OpenSaved(Box::new(saved)),
-                    None => SessionWindowInput::ShowToast(crate::i18n::gettext("The connection was deleted.")),
+                    None => {
+                        input.deliver(SessionWindowInput::ShowToast(crate::i18n::gettext(
+                            "The connection was deleted.",
+                        )));
+                        SessionWindowInput::ShowSession(SessionKey::Saved(id))
+                    }
                 },
                 TreeRequest::Connect(key) | TreeRequest::Show(key) => SessionWindowInput::ShowSession(key),
                 TreeRequest::Disconnect(key) => SessionWindowInput::DisconnectSession(key),
@@ -739,17 +744,21 @@ impl SessionWindow {
 
     /// Bring the session under `key` to the front, with one of its tabs.
     fn show_session(&self, key: &SessionKey) {
-        let (Some(shell), Some(workspace)) = (
-            self.shell(),
-            self.imp().page.borrow().session(key).map(|open| open.workspace.clone()),
-        ) else {
+        let Some(shell) = self.shell() else {
             return;
         };
+        let workspace = self.imp().page.borrow().session(key).map(|open| open.workspace.clone());
+        let Some(workspace) = workspace else {
+            // A row asked for a session that did not open stops saying it
+            // connects.
+            shell.set_connecting(key, self.connecting_beside(key));
+            return;
+        };
+        // The front follows the tab on screen, so a session with none
+        // stays behind the one the user sees.
         if let Some(page) = workspace.some_page() {
             shell.tab_view().set_selected_page(&page);
         }
-        shell.set_front(&workspace);
-        self.sync_front();
     }
 
     /// Start the session that connected and build its workspace, in the
@@ -903,6 +912,9 @@ impl SessionWindow {
         // A picker another window deleted the entry under still lists it.
         let Some(saved) = self.saved_as_stored(&saved) else {
             self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+            if let Some(shell) = self.shell() {
+                shell.set_connecting(&SessionKey::Saved(saved.id), false);
+            }
             return;
         };
         let key = SessionKey::Saved(saved.id);
@@ -993,6 +1005,7 @@ impl SessionWindow {
                 }
                 let key = SessionKey::File(identity.uri.clone());
                 if beside && (self.imp().page.borrow().session(&key).is_some() || self.connecting_beside(&key)) {
+                    self.show_session(&key);
                     return;
                 }
                 if let Some(claim) = self.claim(key) {

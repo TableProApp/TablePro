@@ -613,7 +613,8 @@ pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, in
         let page = view.selected_page();
         let ours = page.as_ref().is_some_and(|page| selected_index.id_of(page).is_some());
         selected_index.note_selected(page.as_ref());
-        if ours || was_selected.replace(ours) {
+        let was = was_selected.replace(ours);
+        if ours || was {
             selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         }
     });

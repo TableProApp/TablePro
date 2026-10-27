@@ -252,7 +252,8 @@ impl AssistantPane {
     /// Stop the reply in flight and let go of the window's services, as
     /// the window's session ends.
     pub(crate) fn shutdown(&self) {
-        self.stop_work();
+        // The conversation was about the session that ended.
+        self.new_conversation();
         self.imp().settings_watch.take();
         self.imp().hooks.take();
     }

@@ -939,11 +939,13 @@ impl Workspace {
                 .selected_page()
                 .filter(|page| model.index.id_of(page).is_some())
                 .or_else(|| {
+                    let tabs = model.workspace_tabs.borrow();
+                    // The tab the user left the session on, else any.
                     model
-                        .workspace_tabs
-                        .borrow()
-                        .values()
-                        .next()
+                        .index
+                        .last_selected()
+                        .and_then(|id| tabs.get(&id))
+                        .or_else(|| tabs.values().next())
                         .map(|tab| tab.page().clone())
                 })
         })
@@ -1179,9 +1181,13 @@ impl WorkspaceModel {
     /// which replaces them.
     fn detach(&mut self) {
         self.attached = false;
-        // The next front adds its own under the same names; with none,
-        // as the window's page goes, nothing would take these off.
-        if let Some(window) = self.window() {
+        // The next front adds its own under the same names, and taking
+        // them off here, once it did, would take its own. With none in
+        // front, as the window's page goes, nothing else takes them off.
+        let front = self.shell.upgrade().and_then(|shell| shell.front());
+        if front.is_none()
+            && let Some(window) = self.window()
+        {
             for action in &self.actions {
                 window.remove_action(action);
             }

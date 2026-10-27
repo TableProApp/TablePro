@@ -362,6 +362,8 @@ impl WorkspaceShell {
         if let Some(left) = left {
             left.detach();
         }
+        // The pane was the front's, which no longer shuts it down.
+        self.imp().assistant_pane.shutdown();
     }
 
     /// Let go of `workspace`, which has shut down. Another session comes
