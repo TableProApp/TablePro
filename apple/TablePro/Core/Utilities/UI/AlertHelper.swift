@@ -251,13 +251,19 @@ final class AlertHelper {
                 work: .immediate { gate.deliver(.success(true)) }
             )
         )
-        let confirmed = try? await runHostedDecision(
-            title: title,
-            fittingWidth: 560,
-            gate: gate,
-            window: window,
-            rootView: sheet
-        )
+        guard !Task.isCancelled else { return false }
+        // A caller that gives up takes the review down as a no, the way Escape would.
+        let confirmed = await withTaskCancellationHandler {
+            try? await runHostedDecision(
+                title: title,
+                fittingWidth: 560,
+                gate: gate,
+                window: window,
+                rootView: sheet
+            )
+        } onCancel: {
+            Task { @MainActor in gate.cancel() }
+        }
         return confirmed ?? false
     }
 

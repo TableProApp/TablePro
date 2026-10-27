@@ -376,3 +376,34 @@ internal enum RoutineDebugFixtures {
         return (controller, debugger)
     }
 }
+
+// A gate still waiting on the person: it answers as Cancel once its task is cancelled, or, ignoring cancellation, as
+// allowed when `answer` opens.
+internal final class WaitingGate: ExecutionGate, @unchecked Sendable {
+    private let lock = NSLock()
+    private let answer: AsyncGate?
+    private var asked = 0
+    private var cancelled = false
+
+    init(ignoringCancellationUntil answer: AsyncGate? = nil) {
+        self.answer = answer
+    }
+
+    var askedCount: Int { lock.withLock { asked } }
+    var sawCancellation: Bool { lock.withLock { cancelled } }
+
+    func authorize(_ request: OperationRequest) async -> OperationDecision {
+        lock.withLock { asked += 1 }
+        if let answer {
+            await answer.wait()
+            return await AlwaysAllowGate().authorize(request)
+        }
+        do {
+            try await Task.sleep(for: .seconds(600))
+        } catch {
+            lock.withLock { cancelled = true }
+            return .denied(reason: "Operation cancelled by user", cause: .cancelledByUser)
+        }
+        return .denied(reason: "No answer")
+    }
+}

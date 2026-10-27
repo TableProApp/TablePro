@@ -111,10 +111,7 @@ extension PostgreSQLPluginDriver: PluginRoutineDebugging {
         guard let oid = PostgreSQLRoutineDebugProtocol.oid(inIdentity: identity) else {
             throw PostgreSQLRoutineDebugError.routineNotFound(name)
         }
-        let query = PostgreSQLRoutineDebugProtocol.routineQuery(
-            oid: oid,
-            hasProcedureKind: catalogCapabilities.hasProcedureKind
-        )
+        let query = PostgreSQLRoutineDebugProtocol.routineQuery(oid: oid, capabilities: catalogCapabilities)
         let result = try await execute(query: query)
         guard let row = result.rows.first else { throw PostgreSQLRoutineDebugError.routineNotFound(name) }
         let routine = PostgreSQLDebugRoutine(row: row.map(\.asText), identity: String(oid))

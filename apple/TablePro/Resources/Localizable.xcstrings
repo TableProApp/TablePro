@@ -3472,10 +3472,6 @@
         }
       }
     },
-    "%@ can't use its default value because a later parameter has no name." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "%@ cannot add or remove a table's constraints." : {
       "localizations" : {
         "fr" : {
@@ -99196,6 +99192,10 @@
     },
     "This sequence's settings could not be read, so they cannot be changed here." : {
 
+    },
+    "This server can't show the default value of %@, so enter a value for it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "keyword: %@" : {
       "localizations" : {

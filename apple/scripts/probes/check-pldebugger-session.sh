@@ -66,6 +66,8 @@ for fragment in \
     "message.contains(\"select() failed\")" \
     "JOIN pg_catalog.pg_type ty ON ty.oid = (\\(argumentTypes))[s.i]" \
     "|| pg_catalog.replace(ty.typname, '\"', '\"\"') || '\"'" \
+    "pg_catalog.pg_get_function_arg_default(" \
+    "(s.i - pg_catalog.array_lower(\\(argumentTypes), 1) + 1)::pg_catalog.int4" \
     "quoteLiteral(String(oid)))::pg_catalog.oid" \
     "PLDBGBREAK:" \
     "\"08006\"" \
@@ -158,6 +160,11 @@ CREATE FUNCTION pick(v varchar) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN
 CREATE FUNCTION pick(v bit[]) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'bit[]:' || v::text; END; $$;
 CREATE FUNCTION pick(v bit varying[]) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'varbit[]:' || v::text; END; $$;
 CREATE FUNCTION pick(v app."Code3") RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'domain:' || v::text; END; $$;
+CREATE FUNCTION dflt(a integer DEFAULT 1) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'int:' || a; END; $$;
+CREATE FUNCTION dflt(a text DEFAULT 'x, y') RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'text:' || a; END; $$;
+CREATE SEQUENCE ds;
+CREATE FUNCTION dnext(a integer, b bigint DEFAULT nextval('ds')) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN a || '/' || b; END; $$;
+CREATE FUNCTION dvar(a integer, VARIADIC rest integer[] DEFAULT '{}') RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN a || ':' || rest::text; END; $$;
 CREATE TABLE audit_log(id serial PRIMARY KEY, note text);
 CREATE FUNCTION add_tax(amount numeric, rate numeric DEFAULT 0.1)
 RETURNS numeric LANGUAGE plpgsql AS $$
@@ -286,6 +293,14 @@ SELECT
         JOIN pg_catalog.pg_type ty ON ty.oid = (COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]))[s.i]
         JOIN pg_catalog.pg_namespace tn ON tn.oid = ty.typnamespace
         ORDER BY s.i
+    ),
+    ARRAY(
+        SELECT pg_catalog.pg_get_function_arg_default(
+            p.oid,
+            (s.i - pg_catalog.array_lower(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]), 1) + 1)::pg_catalog.int4
+        )
+        FROM pg_catalog.generate_subscripts(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]), 1) AS s(i)
+        ORDER BY s.i
     )
 FROM (SELECT 1) AS one
 LEFT JOIN pg_catalog.pg_proc p ON p.oid = :'oid'::pg_catalog.oid
@@ -312,7 +327,7 @@ expect "$WORK/routine.noext.log" "noext||t|t|t|f|v|plpgsql|public|g|" \
     "no extension in this database, but the server offers it"
 for pseudo in "$POLY_ELEM" "$REC_IN"; do
     sql dev postgres -v oid="$pseudo" < "$WORK/routine.sql" > "$WORK/routine.pseudo.log" 2>&1
-    if [ "$(awk -F'|' '{ print $(NF - 2) }' "$WORK/routine.pseudo.log")" = "t" ]; then
+    if [ "$(awk -F'|' '{ print $(NF - 3) }' "$WORK/routine.pseudo.log")" = "t" ]; then
         pass "an anyelement or record argument is flagged, since the debugger cannot bind one"
     else
         fail "an anyelement or record argument is flagged, since the debugger cannot bind one"
@@ -703,6 +718,34 @@ for result in "bit:101" "varbit:101" "char:ABCD" "bit[]:{101,11}" "domain:AB"; d
 done
 expect_after "$WORK/codes.log" "==unlimited-spelling" "varbit:101" \
     "varbit is not a way to keep a bit(n) argument: it calls the bit varying overload"
+
+# --- Defaults spelled out -------------------------------------------------------------------------------------
+
+echo "== defaults"
+DFLT_INT=$(sql postgres postgres -c "SELECT 'public.dflt(integer)'::regprocedure::oid")
+DNEXT=$(sql postgres postgres -c "SELECT 'public.dnext(integer,bigint)'::regprocedure::oid")
+sql dev postgres -v oid="$DFLT_INT" < "$WORK/routine.sql" > "$WORK/routine.dflt.log" 2>&1
+expect "$WORK/routine.dflt.log" '|{"\"pg_catalog\".\"int4\""}|{1}' "the catalog read returns each argument's default expression"
+sql dev postgres -v oid="$DNEXT" < "$WORK/routine.sql" > "$WORK/routine.dnext.log" 2>&1
+expect "$WORK/routine.dnext.log" "|{NULL,nextval('ds'::regclass)}" "an argument without a default reads as NULL beside one with"
+docker exec -i "$CONTAINER" psql -X -At -U dev -d postgres > "$WORK/defaults.log" 2>&1 <<'SQL'
+SELECT * FROM "public"."dflt"() \bind \g
+\echo ==explicit
+SELECT * FROM "public"."dflt"((1)::"pg_catalog"."int4") \bind \g
+SELECT * FROM "public"."dflt"(('x, y'::text)::"pg_catalog"."text") \bind \g
+SELECT * FROM "public"."dnext"($1::"pg_catalog"."int4", (nextval('ds'::regclass))::"pg_catalog"."int8") \bind 7 \g
+SELECT last_value::text || '/' || is_called::text FROM ds;
+SELECT * FROM "public"."dvar"($1::"pg_catalog"."int4", VARIADIC ('{}'::integer[])::"pg_catalog"."_int4") \bind 3 \g
+SQL
+expect "$WORK/defaults.log" "is not unique" "leaving out defaults that tell overloads apart makes the call ambiguous"
+for result in "int:1" "text:x, y" "7/1" "1/true" "3:{}"; do
+    if grep -qxF -- "$result" "$WORK/defaults.log"; then
+        pass "a spelled-out default calls the selected overload and evaluates once ($result)"
+    else
+        fail "a spelled-out default calls the selected overload and evaluates once ($result)"
+        sed 's/^/    /' "$WORK/defaults.log"
+    fi
+done
 
 # --- The proxy's two 08006 errors -----------------------------------------------------------------------------
 

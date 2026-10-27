@@ -21,7 +21,7 @@ enum PostgreSQLRoutineDebugError: PluginDriverError, Equatable {
     case notPaused
     case unsupportedCommand
     case noDefault(parameter: String)
-    case defaultNotSkippable(parameter: String)
+    case defaultNotReadable(parameter: String)
 
     var pluginErrorMessage: String {
         switch self {
@@ -63,9 +63,9 @@ enum PostgreSQLRoutineDebugError: PluginDriverError, Equatable {
             return String(localized: "The PL/pgSQL debugger can't step out of a routine.")
         case .noDefault(let parameter):
             return String(format: String(localized: "%@ has no default value."), parameter)
-        case .defaultNotSkippable(let parameter):
+        case .defaultNotReadable(let parameter):
             return String(
-                format: String(localized: "%@ can't use its default value because a later parameter has no name."),
+                format: String(localized: "This server can't show the default value of %@, so enter a value for it."),
                 parameter
             )
         }
@@ -91,7 +91,7 @@ enum PostgreSQLRoutineDebugError: PluginDriverError, Equatable {
         case .targetAbandoned(let process, let port):
             return PostgreSQLRoutineDebugProtocol.abandonedDetail(process: process, port: port)
         case .notOwner, .routineNotFound, .notDebuggable, .pseudoTypeParameter, .unavailable, .notPaused,
-             .unsupportedCommand, .noDefault, .defaultNotSkippable:
+             .unsupportedCommand, .noDefault, .defaultNotReadable:
             return nil
         }
     }

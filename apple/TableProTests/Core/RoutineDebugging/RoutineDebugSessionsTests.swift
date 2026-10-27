@@ -145,6 +145,24 @@ struct RoutineDebugSessionsTests {
         try await waitUntil { !registry.hasActiveSessions }
     }
 
+    @Test("Turning the module off while the gate is still asking withdraws it, ends the run and drops the observer")
+    func moduleOffWhileTheGateAsks() async throws {
+        let center = NotificationCenter()
+        let registry = RoutineDebugSessions(isModuleEnabled: { false }, notificationCenter: center)
+        let gate = WaitingGate()
+        let (controller, debugger) = RoutineDebugFixtures.controller(gate: gate)
+        registry.register(controller, tabId: UUID(), connectionId: UUID())
+        controller.start()
+        try await waitUntil { gate.askedCount == 1 }
+
+        center.post(name: .appModulesDidChange, object: AppModule.routineDebugger)
+        try await waitUntil { controller.hasEnded }
+
+        #expect(gate.sawCancellation)
+        #expect(debugger.startRequests.isEmpty)
+        try await waitUntil { !registry.hasActiveSessions }
+    }
+
     @Test("Turning the module off ends every run the registry holds")
     func moduleOffEndsRuns() async throws {
         let center = NotificationCenter()

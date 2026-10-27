@@ -59,6 +59,8 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
     // character(1) and bit(1) and cut the value, and bpchar or varbit pick an f(bit varying) overload over the
     // f(bit) being debugged (both measured).
     let argumentCastTypes: [String]
+    // Each argument's default expression from pg_get_function_arg_default, nil where it has none.
+    let defaultExpressions: [String?]
 
     // The columns of `PostgreSQLRoutineDebugProtocol.routineQuery`, in order.
     init(row: [String?], identity: String) {
@@ -87,6 +89,7 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
         takesPseudoType = flag(17)
         configuration = PostgreSQLTextArray.values(text(18))
         argumentCastTypes = PostgreSQLTextArray.values(text(19))
+        defaultExpressions = PostgreSQLTextArray.elements(text(20))
     }
 
     var isProcedure: Bool { kind == "p" }
@@ -221,11 +224,24 @@ enum PostgreSQLRoutineDebugProtocol {
 
     // MARK: - Catalog
 
-    static func routineQuery(oid: UInt32, hasProcedureKind: Bool) -> String {
-        let kindColumn = hasProcedureKind
+    static func routineQuery(oid: UInt32, capabilities: PostgreSQLCapabilities) -> String {
+        let kindColumn = capabilities.hasProcedureKind
             ? "p.prokind"
             : "CASE WHEN p.proisagg THEN 'a' WHEN p.proiswindow THEN 'w' ELSE 'f' END"
         let argumentTypes = "COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[])"
+        // pg_get_function_arg_default (9.4) counts arguments from 1; proargtypes as an array starts at 0.
+        let defaultsColumn = capabilities.serverVersion >= 90_400
+            ? """
+                ARRAY(
+                    SELECT pg_catalog.pg_get_function_arg_default(
+                        p.oid,
+                        (s.i - pg_catalog.array_lower(\(argumentTypes), 1) + 1)::pg_catalog.int4
+                    )
+                    FROM pg_catalog.generate_subscripts(\(argumentTypes), 1) AS s(i)
+                    ORDER BY s.i
+                )
+                """
+            : "NULL::pg_catalog.text[]"
         return """
             SELECT
                 pg_catalog.current_database(),
@@ -260,7 +276,8 @@ enum PostgreSQLRoutineDebugProtocol {
                     JOIN pg_catalog.pg_type ty ON ty.oid = (\(argumentTypes))[s.i]
                     JOIN pg_catalog.pg_namespace tn ON tn.oid = ty.typnamespace
                     ORDER BY s.i
-                )
+                ),
+                \(defaultsColumn)
             FROM (SELECT 1) AS one
             LEFT JOIN pg_catalog.pg_proc p ON p.oid = \(oidLiteral(oid))
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -534,7 +551,6 @@ enum PostgreSQLRoutineDebugProtocol {
         }
         var expressions: [String] = []
         var bound: [PluginCellValue] = []
-        var skipped: String?
         for (index, parameter) in routine.parameters.enumerated() {
             let castType = routine.argumentCastTypes.indices.contains(index)
                 ? routine.argumentCastTypes[index]
@@ -545,20 +561,19 @@ enum PostgreSQLRoutineDebugProtocol {
                 guard routine.isProcedure else { continue }
                 expression = "NULL::\(castType)"
             } else {
-                let value = values[parameter.name] ?? (parameter.hasDefault ? .defaultValue : .null)
-                guard let cell = try boundValue(value, for: parameter) else {
-                    skipped = skipped ?? parameter.name
-                    continue
+                switch values[parameter.name] ?? (parameter.hasDefault ? .defaultValue : .null) {
+                case .text(let text):
+                    bound.append(.text(text))
+                    expression = "$\(bound.count)::\(castType)"
+                case .defaultValue:
+                    expression = "(\(try defaultExpression(of: parameter, at: index, in: routine)))::\(castType)"
+                case .null:
+                    bound.append(.null)
+                    expression = "$\(bound.count)::\(castType)"
+                @unknown default:
+                    bound.append(.null)
+                    expression = "$\(bound.count)::\(castType)"
                 }
-                bound.append(cell)
-                expression = "$\(bound.count)::\(castType)"
-            }
-            // After an omitted argument the rest can only be passed by name.
-            if let skipped {
-                guard !parameter.name.hasPrefix("$") else {
-                    throw PostgreSQLRoutineDebugError.defaultNotSkippable(parameter: skipped)
-                }
-                expression = "\(PostgreSQLObjectQueries.quoteIdentifier(parameter.name)) => \(expression)"
             }
             if parameter.mode == .variadic {
                 expression = "VARIADIC " + expression
@@ -580,23 +595,21 @@ enum PostgreSQLRoutineDebugProtocol {
         return PostgreSQLDebugCall(sql: sql, parameters: bound)
     }
 
-    private static func boundValue(
-        _ value: PluginDebugArgumentValue,
-        for parameter: PluginDebugParameter
-    ) throws -> PluginCellValue? {
-        switch value {
-        case .text(let text):
-            return .text(text)
-        case .null:
-            return .null
-        case .defaultValue:
-            guard parameter.hasDefault else {
-                throw PostgreSQLRoutineDebugError.noDefault(parameter: parameter.name)
-            }
-            return nil
-        @unknown default:
-            return .null
+    // Never left out: overloads that differ only in defaulted parameters make f() ambiguous although the selected
+    // oid is known. The routine's own default expression, cast to the exact type, names that overload and is
+    // evaluated in the call just as an omitted argument's would be.
+    private static func defaultExpression(
+        of parameter: PluginDebugParameter,
+        at index: Int,
+        in routine: PostgreSQLDebugRoutine
+    ) throws -> String {
+        guard parameter.hasDefault else {
+            throw PostgreSQLRoutineDebugError.noDefault(parameter: parameter.name)
         }
+        guard routine.defaultExpressions.indices.contains(index), let expression = routine.defaultExpressions[index] else {
+            throw PostgreSQLRoutineDebugError.defaultNotReadable(parameter: parameter.name)
+        }
+        return expression
     }
 
     // MARK: - Starting

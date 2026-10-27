@@ -94,6 +94,7 @@ internal final class RoutineDebugController: ObservableObject {
     private var session: (any PluginDebugSession)?
     private var startTask: Task<any PluginDebugSession, Error>?
     private var preparationTask: Task<Void, Error>?
+    private var authorizationTask: Task<OperationDecision, Never>?
     private var placedBreakpoints: [String: Set<Int>] = [:]
     private var lastOperation: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
@@ -178,6 +179,8 @@ internal final class RoutineDebugController: ObservableObject {
             cancelStart(startTask)
         } else if let preparationTask {
             cancelPreparation(preparationTask)
+        } else if let authorizationTask {
+            cancelAuthorization(authorizationTask)
         } else if lastOperation == nil {
             Task { await self.end(.stopped(nil)) }
         }
@@ -197,6 +200,20 @@ internal final class RoutineDebugController: ObservableObject {
             }
             guard !answered else { return }
             Self.logger.warning("Debug start ignored its cancellation; closing its drivers")
+            await self?.end(.stopped(nil))
+        }
+    }
+
+    // The gate withdraws its prompt when cancelled and answers as a Cancel would; one that cannot is not waited on past the
+    // limit, since nothing is open yet that the run would have to close.
+    private func cancelAuthorization(_ work: Task<OperationDecision, Never>) {
+        let limit = cancelLimit
+        stopTask = Task { [weak self] in
+            work.cancel()
+            let answered = await AppModuleTermination.runCapped(at: limit) {
+                _ = await work.value
+            }
+            guard !answered else { return }
             await self?.end(.stopped(nil))
         }
     }
@@ -404,7 +421,7 @@ internal final class RoutineDebugController: ObservableObject {
     }
 
     private func run() async {
-        let decision = await gate.authorize(OperationRequest(
+        let decision = await authorize(OperationRequest(
             connectionId: connectionId,
             databaseType: databaseType,
             sql: nil,
@@ -461,6 +478,15 @@ internal final class RoutineDebugController: ObservableObject {
         await runStep { try await session.firstStop() }
     }
 
+    // In a task of its own, so a stop can withdraw a confirmation or Touch ID prompt the gate is still waiting on.
+    private func authorize(_ request: OperationRequest) async -> OperationDecision {
+        let gate = gate
+        let work = Task { await gate.authorize(request) }
+        authorizationTask = work
+        defer { authorizationTask = nil }
+        return await work.value
+    }
+
     private func proceed(after decision: OperationDecision) async -> Bool {
         switch decision {
         case .authorized:
@@ -468,9 +494,12 @@ internal final class RoutineDebugController: ObservableObject {
             await end(.stopped(nil))
             return false
         case .denied(let reason, let cause):
-            if cause == .cancelledByUser {
+            if cause == .cancelledByUser || isStopping {
+                let declined = !isStopping
                 await end(.stopped(nil))
-                onCancelled?()
+                if declined {
+                    onCancelled?()
+                }
             } else {
                 await end(.failed(reason))
             }
@@ -491,7 +520,7 @@ internal final class RoutineDebugController: ObservableObject {
             await end(.stopped(nil))
             return false
         }
-        let decision = await gate.authorize(OperationRequest(
+        let decision = await authorize(OperationRequest(
             connectionId: connectionId,
             databaseType: databaseType,
             sql: preparation.statements.joined(separator: "\n"),

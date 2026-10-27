@@ -179,6 +179,54 @@ struct RoutineDebugControllerTests {
         await controller.waitUntilEnded()
     }
 
+    @Test("Stop while the gate is still asking withdraws its prompt and ends the run Stopped, opening nothing")
+    func stopWhileTheGateAsks() async throws {
+        let gate = WaitingGate()
+        let drivers = DebugDriverLog()
+        let (controller, debugger) = RoutineDebugFixtures.controller(drivers: drivers, gate: gate)
+        var cancelled = false
+        controller.onCancelled = { cancelled = true }
+        controller.start()
+        try await waitUntil { gate.askedCount == 1 }
+
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+
+        #expect(gate.sawCancellation)
+        #expect(!cancelled)
+        #expect(debugger.startRequests.isEmpty)
+        #expect(drivers.openedCount == 0)
+        guard case .stopped = controller.state else {
+            Issue.record("expected stopped, got \(controller.state)")
+            return
+        }
+    }
+
+    @Test("A gate that cannot be withdrawn is not waited on past the limit, and its late yes starts nothing")
+    func gateIgnoringCancellationIsCapped() async throws {
+        let answer = AsyncGate()
+        let gate = WaitingGate(ignoringCancellationUntil: answer)
+        let drivers = DebugDriverLog()
+        let (controller, debugger) = RoutineDebugFixtures.controller(
+            drivers: drivers,
+            gate: gate,
+            cancelLimit: .milliseconds(50)
+        )
+        controller.start()
+        try await waitUntil { gate.askedCount == 1 }
+
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+        await answer.open()
+
+        #expect(debugger.startRequests.isEmpty)
+        #expect(drivers.openedCount == 0)
+        guard case .stopped = controller.state else {
+            Issue.record("expected stopped, got \(controller.state)")
+            return
+        }
+    }
+
     @Test("A plan that may write is denied by a read-only gate, and no session opens")
     func readOnlyGateDeniesWritingPlan() async throws {
         let drivers = DebugDriverLog()

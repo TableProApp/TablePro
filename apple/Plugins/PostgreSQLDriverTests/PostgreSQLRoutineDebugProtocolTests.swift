@@ -22,7 +22,9 @@ struct PostgreSQLRoutineDebugProtocolTests {
     private static let logNote = routine([
         "postgres", "public", "t", "t", "t", "p", "v", "plpgsql", "public", "log_note",
         "IN msg text, INOUT n integer, IN label text", "t", "f", "{text,integer,text}", "{msg,n,label}",
-        "{i,b,i}", "2"
+        "{i,b,i}", "2", "f", nil,
+        #"{"\"pg_catalog\".\"text\"","\"pg_catalog\".\"int4\"","\"pg_catalog\".\"text\""}"#,
+        "{NULL,NULL::integer,'x'::text}"
     ], identity: "16434")
 
     private static let pair = routine([
@@ -32,7 +34,8 @@ struct PostgreSQLRoutineDebugProtocolTests {
 
     private static let anonymous = routine([
         "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "anon",
-        "integer, integer", "t", "f", "{integer,integer}", nil, nil, "1"
+        "integer, integer", "t", "f", "{integer,integer}", nil, nil, "1", "f", nil,
+        #"{"\"pg_catalog\".\"int4\"","\"pg_catalog\".\"int4\""}"#, "{NULL,5}"
     ], identity: "16436")
 
     private static let totalOf = routine([
@@ -162,12 +165,15 @@ struct PostgreSQLRoutineDebugProtocolTests {
                 Self.argument("label", .defaultValue)
             ]
         )
-        #expect(call.sql == "CALL \"public\".\"log_note\"($1::text)")
+        #expect(
+            call.sql
+                == #"CALL "public"."log_note"($1::"pg_catalog"."text", (NULL::integer)::"pg_catalog"."int4", ('x'::text)::"pg_catalog"."text")"#
+        )
         #expect(call.parameters == [.text("hello")])
     }
 
-    @Test("An argument after one left to its default is passed by name")
-    func argumentAfterDefaultIsNamed() throws {
+    @Test("An argument after one left to its default stays positional, the default spelled out")
+    func argumentAfterDefaultStaysPositional() throws {
         let call = try PostgreSQLRoutineDebugProtocol.call(
             for: Self.logNote,
             arguments: [
@@ -176,8 +182,55 @@ struct PostgreSQLRoutineDebugProtocolTests {
                 Self.argument("label", .text("-lbl"))
             ]
         )
-        #expect(call.sql == "CALL \"public\".\"log_note\"($1::text, \"label\" => $2::text)")
+        #expect(
+            call.sql
+                == #"CALL "public"."log_note"($1::"pg_catalog"."text", (NULL::integer)::"pg_catalog"."int4", $2::"pg_catalog"."text")"#
+        )
         #expect(call.parameters == [.text("hello"), .text("-lbl")])
+    }
+
+    @Test("Overloads that differ only in a defaulted parameter each get their own default, so the call is not ambiguous")
+    func defaultedOverloadsStaySelected() throws {
+        let integer = Self.routine([
+            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "dflt", "a integer", "f", "f",
+            "{integer}", "{a}", nil, "1", "f", nil, #"{"\"pg_catalog\".\"int4\""}"#, "{1}"
+        ])
+        let text = Self.routine([
+            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "dflt", "a text", "f", "f",
+            "{text}", "{a}", nil, "1", "f", nil, #"{"\"pg_catalog\".\"text\""}"#, #"{"'x, y'::text"}"#
+        ])
+        let first = try PostgreSQLRoutineDebugProtocol.call(for: integer, arguments: [Self.argument("a", .defaultValue)])
+        let second = try PostgreSQLRoutineDebugProtocol.call(for: text, arguments: [Self.argument("a", .defaultValue)])
+        #expect(first.sql == #"SELECT * FROM "public"."dflt"((1)::"pg_catalog"."int4")"#)
+        #expect(second.sql == #"SELECT * FROM "public"."dflt"(('x, y'::text)::"pg_catalog"."text")"#)
+        #expect(first.parameters.isEmpty)
+    }
+
+    @Test("A VARIADIC parameter left at its default keeps VARIADIC in front of the spelled-out default")
+    func variadicDefault() throws {
+        let routine = Self.routine([
+            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "dvar", "a integer, VARIADIC rest integer[]",
+            "f", "f", "{integer,integer[]}", "{a,rest}", "{i,v}", "1", "f", nil,
+            #"{"\"pg_catalog\".\"int4\"","\"pg_catalog\".\"_int4\""}"#, #"{NULL,"'{}'::integer[]"}"#
+        ])
+        let call = try PostgreSQLRoutineDebugProtocol.call(
+            for: routine,
+            arguments: [Self.argument("a", .text("3")), Self.argument("rest", .defaultValue)]
+        )
+        #expect(
+            call.sql == #"SELECT * FROM "public"."dvar"($1::"pg_catalog"."int4", VARIADIC ('{}'::integer[])::"pg_catalog"."_int4")"#
+        )
+    }
+
+    @Test("A default the server could not show is refused rather than left out")
+    func unreadableDefaultIsRefused() {
+        let routine = Self.routine([
+            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "f", "a integer", "f", "f",
+            "{integer}", "{a}", nil, "1", "f", nil, #"{"\"pg_catalog\".\"int4\""}"#, nil
+        ])
+        #expect(throws: PostgreSQLRoutineDebugError.defaultNotReadable(parameter: "a")) {
+            try PostgreSQLRoutineDebugProtocol.call(for: routine, arguments: [Self.argument("a", .defaultValue)])
+        }
     }
 
     @Test("A function returning a bare record is selected as a value")
@@ -186,7 +239,7 @@ struct PostgreSQLRoutineDebugProtocolTests {
             for: Self.anonymous,
             arguments: [Self.argument("$1", .text("7")), Self.argument("$2", .defaultValue)]
         )
-        #expect(call.sql == "SELECT \"public\".\"anon\"($1::integer)")
+        #expect(call.sql == #"SELECT "public"."anon"($1::"pg_catalog"."int4", (5)::"pg_catalog"."int4")"#)
     }
 
     @Test("A function with OUT parameters keeps SELECT * FROM and passes only its inputs")
@@ -223,18 +276,19 @@ struct PostgreSQLRoutineDebugProtocolTests {
         }
     }
 
-    @Test("An unnamed parameter cannot follow one left to its default")
-    func unnamedAfterDefaultIsRefused() {
+    @Test("An unnamed parameter after one left to its default is passed by position")
+    func unnamedAfterDefault() throws {
         let routine = Self.routine([
             "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "f",
-            "integer, integer", "f", "f", "{integer,integer}", nil, nil, "2"
+            "integer, integer", "f", "f", "{integer,integer}", nil, nil, "2", "f", nil,
+            #"{"\"pg_catalog\".\"int4\"","\"pg_catalog\".\"int4\""}"#, "{1,2}"
         ])
-        #expect(throws: PostgreSQLRoutineDebugError.defaultNotSkippable(parameter: "$1")) {
-            try PostgreSQLRoutineDebugProtocol.call(
-                for: routine,
-                arguments: [Self.argument("$1", .defaultValue), Self.argument("$2", .text("1"))]
-            )
-        }
+        let call = try PostgreSQLRoutineDebugProtocol.call(
+            for: routine,
+            arguments: [Self.argument("$1", .defaultValue), Self.argument("$2", .text("7"))]
+        )
+        #expect(call.sql == #"SELECT * FROM "public"."f"((1)::"pg_catalog"."int4", $1::"pg_catalog"."int4")"#)
+        #expect(call.parameters == [.text("7")])
     }
 
     @Test("A procedure's OUT parameter gets a typed NULL placeholder")
