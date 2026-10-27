@@ -57,6 +57,8 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     private var abortSent = false
     // The target read an abort: through the proxy, or through a session that attached to it.
     private var abortDelivered = false
+    // Another session saw the target's backend gone from pg_stat_activity.
+    private var backendGone = false
     private var proxyInterrupted = false
     private var endedByInterruption = false
 
@@ -449,7 +451,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         }
         await stopTask?.value
         // A call that failed on its own connection ended only on this side; the backend may still hold its locks.
-        let callEnded = rendezvous.hasSettled && (abortDelivered || !target.hasLostConnection)
+        let callEnded = rendezvous.hasSettled && (abortDelivered || backendGone || !target.hasLostConnection)
         return PostgreSQLRoutineDebugProtocol.stopOutcome(
             callEnded: callEnded,
             abandoned: rendezvous.isAbandoned,
@@ -482,11 +484,39 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         case .ended:
             break
         }
-        // The backend of a call whose connection dropped may still wait for a debugger, and only an attach reaches it.
         if target.hasLostConnection, !abortDelivered {
-            await abortByAttaching(reusingProxy: false, evenAfterTheCallEnded: true)
+            await endBackendWithoutItsConnection()
         }
         _ = await targetEnded()
+    }
+
+    // A call whose own connection dropped ended only on this side: its backend may still run a statement, or wait at
+    // a pause for the proxy, which still holds it. The proxy's abort reaches it paused, a cancel from another session
+    // reaches it running, and only its absence from pg_stat_activity confirms the end.
+    private func endBackendWithoutItsConnection() async {
+        Task { await self.abortTarget() }
+        guard let process = targetProcess else { return }
+        let sessions = sessions
+        let deadline = currentDeadline()
+        guard case .success(let rescue)? = await Self.boundedResult(by: deadline, {
+            try await PostgreSQLPluginDriver.debugSession(from: sessions)
+        }) else { return }
+        _ = await Self.boundedResult(by: deadline) {
+            try await rescue.execute(query: PostgreSQLRoutineDebugProtocol.cancelBackendStatement(process: process))
+        }
+        while !abortDelivered {
+            let counted = await Self.boundedResult(by: deadline) {
+                try await rescue.execute(query: PostgreSQLRoutineDebugProtocol.backendCountStatement(process: process))
+            }
+            guard case .success(let reply)? = counted else { return }
+            if reply.rows.first?.first?.asText == "0" {
+                backendGone = true
+                return
+            }
+            let remaining = ContinuousClock.now.duration(to: deadline)
+            guard remaining > .zero else { return }
+            try? await Task.sleep(for: min(Self.attachRetryDelay, remaining))
+        }
     }
 
     private func currentDeadline() -> ContinuousClock.Instant {
@@ -537,7 +567,8 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
                 return
             }
         }
-        await abortByAttaching(reusingProxy: handle == nil && phase != .broken)
+        // With the target's own connection gone its call has already settled, which ends no backend.
+        await abortByAttaching(reusingProxy: handle == nil && phase != .broken, evenAfterTheCallEnded: target.hasLostConnection)
     }
 
     // A target whose proxy is gone waits in accept() and ignores cancel and terminate. Attaching to its backend

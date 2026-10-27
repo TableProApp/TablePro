@@ -338,6 +338,15 @@ enum PostgreSQLRoutineDebugProtocol {
                 )
         """
 
+    // The owner may signal and see its own backends, so no superuser or pg_signal_backend is needed.
+    static func cancelBackendStatement(process: Int) -> String {
+        "SELECT pg_catalog.pg_cancel_backend(\(process))"
+    }
+
+    static func backendCountStatement(process: Int) -> String {
+        "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid = \(process)"
+    }
+
     static func routineSourceStatement(oid: UInt32) -> String {
         "SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = \(oidLiteral(oid))"
     }

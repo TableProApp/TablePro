@@ -72,7 +72,9 @@ for fragment in \
     "quoteLiteral(String(oid)))::pg_catalog.oid" \
     "PLDBGBREAK:" \
     "\"08006\"" \
-    "\"57014\""; do
+    "\"57014\"" \
+    "SELECT pg_catalog.pg_cancel_backend(" \
+    "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid = "; do
     grep -qF -- "$fragment" "$PROTOCOL" || {
         echo "FAIL: $PROTOCOL no longer contains: $fragment; update this script with the plugin" >&2
         exit 1
@@ -630,7 +632,8 @@ if await_port lostrun; then
     proxy_pid=$(grep -o 'PROXY [0-9]*' "$WORK/lostrun.proxy.log" | cut -d' ' -f2)
     sql postgres postgres -c "SELECT pg_terminate_backend($proxy_pid)" > /dev/null
     wait "$proxy_job"
-    sql postgres postgres -c "SELECT pg_cancel_backend($target_pid)" > /dev/null
+    # As the owner, the way the plugin's rescue session sends it.
+    sql dev postgres -c "SELECT pg_catalog.pg_cancel_backend($target_pid)" > /dev/null
     for _ in $(seq 1 20); do
         kill -0 "$TARGET" 2> /dev/null || break
         sleep 0.1
@@ -682,14 +685,15 @@ if await_port client; then
     done
     docker exec "$CONTAINER" kill -9 "$client_pid"
     sleep 1
-    alive=$(sql postgres postgres -c "SELECT count(*) FROM pg_stat_activity WHERE pid = $target_pid")
-    [ "$alive" = 1 ] && pass "a paused target's backend outlives its client" \
-        || fail "a paused target's backend outlives its client ($alive)"
+    # Counted as the owner, the way the plugin confirms a backend whose connection dropped has ended.
+    alive=$(sql dev postgres -c "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid = $target_pid")
+    [ "$alive" = 1 ] && pass "a paused target's backend outlives its client, and its owner sees it" \
+        || fail "a paused target's backend outlives its client, and its owner sees it ($alive)"
     wait "$proxy_job"
     expect_after "$WORK/client.proxy.log" "==abort" "t" "the proxy's abort reaches a target whose client is gone"
     gone=1
     for _ in $(seq 1 30); do
-        gone=$(sql postgres postgres -c "SELECT count(*) FROM pg_stat_activity WHERE pid = $target_pid")
+        gone=$(sql dev postgres -c "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid = $target_pid")
         [ "$gone" = 0 ] && break
         sleep 0.1
     done
