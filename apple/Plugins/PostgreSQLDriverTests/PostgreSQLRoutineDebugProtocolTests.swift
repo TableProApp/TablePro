@@ -704,6 +704,74 @@ struct PostgreSQLRoutineDebugProtocolTests {
         #expect(detail == both)
     }
 
+    @Test("Stop reports the target ended only when its call returned")
+    func stopOutcomeEnded() {
+        guard case .ended = PostgreSQLRoutineDebugProtocol.stopOutcome(
+            callEnded: true,
+            abandoned: false,
+            process: 4_242,
+            port: 11
+        ) else {
+            Issue.record("expected ended")
+            return
+        }
+    }
+
+    @Test("A stop that could not confirm the end names the server process and the SQL that ends it")
+    func stopOutcomeUnconfirmed() {
+        for (callEnded, abandoned) in [(true, true), (false, false), (false, true)] {
+            guard case .unconfirmed(let message, let detail) = PostgreSQLRoutineDebugProtocol.stopOutcome(
+                callEnded: callEnded,
+                abandoned: abandoned,
+                process: 4_242,
+                port: 11
+            ) else {
+                Issue.record("expected unconfirmed for \(callEnded), \(abandoned)")
+                continue
+            }
+            #expect(message == PostgreSQLRoutineDebugProtocol.abandonedMessage)
+            #expect(detail == PostgreSQLRoutineDebugProtocol.abandonedDetail(process: 4_242, port: 11))
+        }
+    }
+
+    @Test("Many replies that win against a signal that never settles leave no waiter behind")
+    func winningRepliesLeaveNoWaiter() async {
+        let signal = PostgreSQLDebugRendezvous()
+        for value in 0..<200 {
+            let answer = await signal.reply(to: Task { value })
+            if case .success(let got)? = answer {
+                #expect(got == value)
+            } else {
+                Issue.record("expected the reply for \(value)")
+            }
+        }
+        #expect(signal.waiterCount == 0)
+    }
+
+    @Test("A signal that settles first answers nil and keeps no waiter")
+    func settledSignalWins() async {
+        let signal = PostgreSQLDebugRendezvous()
+        let step = Task { () throws -> Int in
+            try await Task.sleep(for: .seconds(60))
+            return 1
+        }
+        signal.settle()
+        let answer = await signal.reply(to: step)
+        #expect(answer == nil)
+        #expect(signal.waiterCount == 0)
+        step.cancel()
+    }
+
+    @Test("A cancelled wait for the signal returns and withdraws its waiter")
+    func cancelledWaitIsWithdrawn() async {
+        let signal = PostgreSQLDebugRendezvous()
+        let waiting = Task { await signal.settled() }
+        waiting.cancel()
+        await waiting.value
+        #expect(signal.waiterCount == 0)
+        #expect(!signal.hasSettled)
+    }
+
     @Test("Giving up on a target releases its waiters and marks it abandoned, unless its call already ended")
     func rendezvousAbandon() async {
         let waiting = PostgreSQLDebugRendezvous()

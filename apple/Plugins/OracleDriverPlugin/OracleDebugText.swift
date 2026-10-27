@@ -58,9 +58,6 @@ enum OracleDebugText {
                 format: String(localized: "The breakpoint on line %1$d of %2$@ moved to line %3$d, the next line with code."),
                 from, unit.name, to
             )
-        case .stillRunningAfterStop(let identity):
-            let text = stillRunning(identity)
-            return text.message + " " + text.detail
         case .serverOutput(let text):
             return text
         }
@@ -159,6 +156,20 @@ enum OracleDebugText {
                 message: String(format: String(localized: "TablePro can't pass any value of type %2$@ to %1$@."), name, typeName),
                 detail: String(localized: "Debug it from a routine that calls it with that value.")
             )
+        case let .ambiguousDefaults(subprogram, parameters):
+            // String(localized:) does not inflect, so the plural is its own key.
+            let format = parameters.count == 1
+                ? String(localized: "Give %1$@ a value. Left at its default, the call also matches another overload of %2$@.")
+                : String(localized: "Give %1$@ values. Left at their defaults, the call also matches another overload of %2$@.")
+            return OracleDebugPluginError(
+                message: String(format: format, ListFormatter.localizedString(byJoining: parameters), subprogram),
+                detail: String(localized: "Oracle can't tell the overloads apart without it (PLS-00307), and TablePro can't read the default to pass it.")
+            )
+        case .ambiguousCall(let subprogram):
+            return OracleDebugPluginError(
+                message: String(format: String(localized: "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)."), subprogram),
+                detail: String(localized: "Debug it from a routine that calls it with arguments only this overload takes.")
+            )
         case .unitNotFound:
             return OracleDebugPluginError(message: String(localized: "TablePro can't read this unit's source."))
         case .malformedReply:
@@ -214,9 +225,11 @@ enum OracleDebugText {
     }
 
     static func stillRunning(_ identity: OracleDebugSessionIdentity?) -> (message: String, detail: String) {
-        let message = String(localized: "The routine is still running on the server. DBMS_DEBUG can't interrupt it between breakpoints.")
+        let message = String(localized: "TablePro couldn't confirm that the routine ended. It may still be running on the server.")
         let rollback = String(localized: "Its uncommitted work rolls back when it ends.")
-        guard let identity else { return (message, rollback) }
+        guard let identity else {
+            return (message, rollback + " " + String(localized: "A user with ALTER SYSTEM can find its session in V$SESSION and end it with ALTER SYSTEM KILL SESSION."))
+        }
         guard let serial = identity.serial else {
             return (message, String(format: String(localized: "Session SID %d. %@"), identity.sid, rollback))
         }

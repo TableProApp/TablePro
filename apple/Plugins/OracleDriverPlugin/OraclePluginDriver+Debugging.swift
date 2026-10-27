@@ -63,6 +63,7 @@ extension OraclePluginDriver: PluginRoutineDebugging {
             throw OracleDebugPluginError(message: OracleDebugText.noEntryPoints(target.name))
         }
         debugState.withLock { state in
+            state.entryPoints = state.entryPoints.filter { $0.value.entry.unit != unit }
             for entryPoint in entryPoints {
                 state.entryPoints[entryPoint.entry.identity] = entryPoint
             }
@@ -86,10 +87,16 @@ extension OraclePluginDriver: PluginRoutineDebugging {
         }
         let opener = OracleDebugSessionOpener(source: sessions)
         let entryPoint: OracleDebugEntryPoint
-        if let cached = debugState.withLock({ $0.entryPoints[entry.identity] }) {
-            entryPoint = cached
+        let overloads: [OracleDebugEntryPoint]
+        let cached = debugState.withLock { state in
+            state.entryPoints[entry.identity].map { found in
+                (found, state.entryPoints.values.filter { $0.entry.unit == entry.unit && $0.entry.subprogram == entry.subprogram })
+            }
+        }
+        if let cached {
+            (entryPoint, overloads) = cached
         } else {
-            entryPoint = try await opener.entryPoint(for: entry)
+            (entryPoint, overloads) = try await opener.entryPoint(for: entry)
         }
         let values = request.optionValues
         let preference = values[OracleDebugProtocolPreference.fieldID]
@@ -125,7 +132,8 @@ extension OraclePluginDriver: PluginRoutineDebugging {
             ports: ports,
             databaseHost: config.host,
             databasePort: config.port,
-            otherDatabaseHosts: tunneledHost.map { [$0] } ?? []
+            otherDatabaseHosts: tunneledHost.map { [$0] } ?? [],
+            overloads: overloads
         )
         do {
             let engine = try await OracleDebugLauncher.launch(launch) { try await opener.open() }
@@ -258,7 +266,7 @@ final class OracleDebugSessionOpener: @unchecked Sendable {
     }
 
     // Read on the first debug session, which the launcher then takes as its own.
-    func entryPoint(for entry: OracleDebugEntry) async throws -> OracleDebugEntryPoint {
+    func entryPoint(for entry: OracleDebugEntry) async throws -> (OracleDebugEntryPoint, overloads: [OracleDebugEntryPoint]) {
         let connection = try await open()
         lock.withLock { opened.append(connection) }
         let rows = try await connection.executeQuery(OracleDebugStatements.entryPoints(of: entry.unit)).rows
@@ -266,6 +274,6 @@ final class OracleDebugSessionOpener: @unchecked Sendable {
         guard let entryPoint = entryPoints.first(where: { $0.entry == entry }) else {
             throw OracleDebugPluginError(message: OracleDebugText.noEntryPoints(entry.subprogram))
         }
-        return entryPoint
+        return (entryPoint, entryPoints.filter { $0.entry.subprogram == entry.subprogram })
     }
 }

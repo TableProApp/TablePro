@@ -39,6 +39,9 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     private let initialBreakpoints: [PluginDebugBreakpoint]
     private let outputContinuation: AsyncStream<String>.Continuation
     private let rendezvous = PostgreSQLDebugRendezvous()
+    // Settled the moment stop() is asked, so a read or breakpoint call it overlaps returns at once, and on every
+    // other way the run ends, so no wait on it outlives the session.
+    private let stopSignal = PostgreSQLDebugRendezvous()
 
     private var phase = Phase.starting
     private var hasReportedFirstStop = false
@@ -112,6 +115,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             try await endBeforeEntry()
         case .cancelled:
             phase = .ended
+            stopSignal.settle()
             if rendezvous.isAbandoned {
                 throw PostgreSQLRoutineDebugError.targetAbandoned(process: targetProcess, port: nil)
             }
@@ -119,7 +123,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             throw CancellationError()
         case .attachAndAbort(let announced):
             port = announced
-            await stop()
+            _ = await stop()
             throw CancellationError()
         case .attach(let announced):
             port = announced
@@ -128,7 +132,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
                 phase = .paused
             } catch {
                 phase = .broken
-                await stop()
+                _ = await stop()
                 throw PostgreSQLRoutineDebugProtocol.startFailure(
                     error,
                     database: routine.database,
@@ -137,7 +141,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             }
             // The attach does not observe cancellation, so a start cancelled meanwhile is ended here, as Stop would.
             if Task.isCancelled {
-                await stop()
+                _ = await stop()
                 throw CancellationError()
             }
         }
@@ -173,6 +177,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     private func endBeforeEntry() async throws {
         let outcome = await targetCall?.value ?? .failure(CancellationError())
         phase = .ended
+        stopSignal.settle()
         hasReportedFirstStop = true
         if case .failure(let error) = outcome {
             if error is CancellationError { throw CancellationError() }
@@ -221,10 +226,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         // pausing again the proxy only hears of it once that session closes (measured: 8 s later, on disconnect).
         // The target's own call ending is the signal instead.
         let proxy = proxy
-        guard let answered = await Self.proxyReply(
-            to: Task { try await proxy.execute(query: statement) },
-            unlessSettled: rendezvous
-        ) else {
+        guard let answered = await rendezvous.reply(to: Task { try await proxy.execute(query: statement) }) else {
             return await targetEnded()
         }
         do {
@@ -264,7 +266,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             return await targetEnded()
         }
         if let handle {
-            for breakpoint in breakpoints {
+            for breakpoint in breakpoints where !stopRequested {
                 _ = try? await place(breakpoint, session: handle)
             }
         }
@@ -302,7 +304,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
             return text
         }
         // pldbg_get_source sends prosrc, which the catalog answers too while the proxy is idle.
-        let reply = try await proxy.execute(query: PostgreSQLRoutineDebugProtocol.routineSourceStatement(oid: oid))
+        let reply = try await proxyCall(PostgreSQLRoutineDebugProtocol.routineSourceStatement(oid: oid))
         guard let text = reply.rows.first?.first?.asText else {
             throw PostgreSQLRoutineDebugError.routineNotFound(unit.displayName)
         }
@@ -358,7 +360,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         guard let oid = PostgreSQLRoutineDebugProtocol.oid(inIdentity: breakpoint.unitIdentity), breakpoint.line > 0 else {
             return nil
         }
-        let reply = try await proxy.execute(query: PostgreSQLRoutineDebugProtocol.setBreakpointStatement(
+        let reply = try await proxyCall(PostgreSQLRoutineDebugProtocol.setBreakpointStatement(
             extensionSchema: extensionSchema,
             session: session,
             oid: oid,
@@ -367,10 +369,24 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         return PostgreSQLCatalogBoolean.isTrue(reply.rows.first?.first?.asText) ? breakpoint : nil
     }
 
+    // A read or breakpoint edit that stop() overlaps throws at once. Its statement still finishes on the proxy
+    // first, and the abort queued behind it reaches the target after it: libpq runs one statement at a time per
+    // connection, and cancelling the read gains nothing (measured: the cancel lands only once the read's reply has
+    // crossed, while it can leave part of that reply unread).
+    private func proxyCall(_ statement: String) async throws -> PluginQueryResult {
+        let proxy = proxy
+        guard let answered = await stopSignal.reply(to: Task { try await proxy.execute(query: statement) }) else {
+            throw CancellationError()
+        }
+        return try answered.get()
+    }
+
     private func pausedRead(_ statement: (Int) -> String) async throws -> PluginQueryResult? {
         guard let handle = try pausedSession() else { return nil }
         do {
-            return try await proxy.execute(query: statement(handle))
+            return try await proxyCall(statement(handle))
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             switch PostgreSQLRoutineDebugProtocol.proxyFailure(error) {
             case .targetEnded:
@@ -400,13 +416,20 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
 
     // MARK: - Stop
 
-    func stop() async {
+    func stop() async -> PluginDebugStopOutcome {
         if stopTask == nil {
             stopRequested = true
+            stopSignal.settle()
             if stopDeadline == nil { stopDeadline = .now + Self.stopBudget }
             stopTask = Task { await performStop() }
         }
         await stopTask?.value
+        return PostgreSQLRoutineDebugProtocol.stopOutcome(
+            callEnded: rendezvous.hasSettled,
+            abandoned: rendezvous.isAbandoned,
+            process: targetProcess,
+            port: port
+        )
     }
 
     private func performStop() async {
@@ -559,28 +582,6 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
         }
     }
 
-    // The proxy's reply, or nil once the target's call has ended; a reply that comes later is dropped.
-    private static func proxyReply(
-        to step: Task<PluginQueryResult, Error>,
-        unlessSettled rendezvous: PostgreSQLDebugRendezvous
-    ) async -> Result<PluginQueryResult, Error>? {
-        let resumed = OSAllocatedUnfairLock(initialState: false)
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Result<PluginQueryResult, Error>?, Never>) in
-            let resume = { @Sendable (value: Result<PluginQueryResult, Error>?) in
-                let first = resumed.withLock { done -> Bool in
-                    defer { done = true }
-                    return !done
-                }
-                if first { continuation.resume(returning: value) }
-            }
-            Task { resume(await step.result) }
-            Task {
-                await rendezvous.settled()
-                resume(nil)
-            }
-        }
-    }
-
     private static func boundedResult<T: Sendable>(
         by deadline: ContinuousClock.Instant,
         _ operation: @escaping @Sendable () async throws -> T
@@ -597,6 +598,7 @@ actor PostgreSQLRoutineDebugSession: PluginDebugSession {
     private func targetEnded() async -> PluginDebugStop {
         await rendezvous.settled()
         phase = .ended
+        stopSignal.settle()
         if let terminalStop { return terminalStop }
         let stop: PluginDebugStop
         if rendezvous.isAbandoned {

@@ -47,6 +47,7 @@ internal final class DebugDriverLog: @unchecked Sendable {
     private var opened = 0
     private var closed = 0
     private var executed = 0
+    private var closes: [ContinuousClock.Instant] = []
 
     init(statements: FakeStatementBehavior = .immediate) {
         self.statements = statements
@@ -55,6 +56,7 @@ internal final class DebugDriverLog: @unchecked Sendable {
     var openedCount: Int { lock.withLock { opened } }
     var closedCount: Int { lock.withLock { closed } }
     var executedCount: Int { lock.withLock { executed } }
+    var closeInstants: [ContinuousClock.Instant] { lock.withLock { closes } }
 
     func source(admits: @escaping @Sendable () async -> Bool = { true }) -> RoutineDebugSessionSource {
         RoutineDebugSessionSource(admits: admits) { [self] in
@@ -63,7 +65,10 @@ internal final class DebugDriverLog: @unchecked Sendable {
                 lock.withLock { executed += 1 }
             }
             return RoutineDebugDriverHandle(driver: driver) { [self] in
-                lock.withLock { closed += 1 }
+                lock.withLock {
+                    closed += 1
+                    closes.append(.now)
+                }
             }
         }
     }
@@ -85,6 +90,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
     private let stepGate: AsyncGate?
     private let placeGate: AsyncGate?
     private let stopAnswer: PluginDebugStop
+    private let stopOutcome: PluginDebugStopOutcome
     private let inspectGate: AsyncGate?
     private let relayedOutput: (gate: AsyncGate, lines: [String])?
     private let frames: [PluginDebugFrame]
@@ -97,6 +103,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
     private var callsInFlight = 0
     private var stopOverlaps = 0
     private var stops = 0
+    private var stopped = false
     private var performs: [PluginDebugCommand] = []
     private var sourceReads = 0
     private var stackReads = 0
@@ -113,6 +120,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         stepGate: AsyncGate? = nil,
         placeGate: AsyncGate? = nil,
         stopAnswer: PluginDebugStop = .finished(nil),
+        stopOutcome: PluginDebugStopOutcome = .ended,
         inspectGate: AsyncGate? = nil,
         relayedOutput: (gate: AsyncGate, lines: [String])? = nil,
         frames: [PluginDebugFrame] = [PluginDebugFrame(level: 0, location: nil, arguments: nil)],
@@ -127,6 +135,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         self.stepGate = stepGate
         self.placeGate = placeGate
         self.stopAnswer = stopAnswer
+        self.stopOutcome = stopOutcome
         self.inspectGate = inspectGate
         self.relayedOutput = relayedOutput
         self.frames = frames
@@ -149,7 +158,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
     var callLog: [String] { lock.withLock { calls } }
     // Calls other than `stop()` that arrived while a step was still waiting, which the contract forbids.
     var overlappingCallCount: Int { lock.withLock { overlaps } }
-    // Stops that arrived while a read or a breakpoint edit was still out, which only a waiting step may see.
+    // Stops that arrived while a read or a breakpoint edit was still out.
     var stopOverlapCount: Int { lock.withLock { stopOverlaps } }
 
     private func beginCall() {
@@ -161,6 +170,13 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
 
     private func endCall() {
         lock.withLock { callsInFlight -= 1 }
+    }
+
+    // As the contract asks of a plugin: a read or an edit that `stop()` overlapped throws.
+    private func throwIfStopped() throws {
+        if lock.withLock({ stopped }) {
+            throw RoutineDebugError.sessionEnded
+        }
     }
 
     func emit(_ line: String) {
@@ -206,6 +222,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         defer { endCall() }
         lock.withLock { sourceReads += 1 }
         await inspectGate?.wait()
+        try throwIfStopped()
         return Self.source
     }
 
@@ -220,6 +237,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         if read > 1 {
             await laterStackGate?.wait()
         }
+        try throwIfStopped()
         return frames
     }
 
@@ -247,6 +265,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
             calls.append("set \(breakpoint.line)")
         }
         await placeGate?.wait()
+        try throwIfStopped()
         return placesBreakpoint(breakpoint.line).map {
             PluginDebugBreakpoint(unitIdentity: breakpoint.unitIdentity, line: $0)
         }
@@ -261,14 +280,20 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         }
     }
 
-    func stop() async {
+    // Ends every call still running at once, then confirms the stop when `stopBlocker` lets it.
+    func stop() async -> PluginDebugStopOutcome {
         lock.withLock {
             stops += 1
+            stopped = true
             if callsInFlight > 0 { stopOverlaps += 1 }
         }
-        await stopBlocker?.wait()
         await stopGate.open()
+        await inspectGate?.open()
+        await placeGate?.open()
+        await laterStackGate?.open()
+        await stopBlocker?.wait()
         outputContinuation.finish()
+        return stopOutcome
     }
 }
 

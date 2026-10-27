@@ -1,21 +1,14 @@
 import Foundation
-import os
 
 @MainActor
 enum AppModuleTermination {
     static let stopLimit: Duration = .seconds(5)
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppModules")
-
-    // A stop waiting on a server that no longer answers must not hold the quit, so it gets a limit.
+    // A stop waiting on a server that no longer answers must not hold the quit: `stopAll` returns by its deadline,
+    // the same one the runs close their connections at.
     static func stopModuleWork() async {
         guard RoutineDebugSessions.shared.hasActiveSessions else { return }
-        let finished = await runCapped(at: stopLimit) {
-            await RoutineDebugSessions.shared.stopAll()
-        }
-        if !finished {
-            logger.warning("Routine debug sessions were still stopping when the quit limit passed")
-        }
+        await RoutineDebugSessions.shared.stopAll(timeout: stopLimit)
     }
 
     // True when `work` returned before the limit. Work still running at the limit is left to the process exit.

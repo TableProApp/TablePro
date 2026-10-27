@@ -50,6 +50,7 @@ struct RoutineDebugControllerTests {
             Issue.record("expected stopped, got \(controller.state)")
             return
         }
+        #expect(controller.statusText == String(localized: "Stopped"))
         #expect(!controller.canStop)
     }
 
@@ -119,6 +120,7 @@ struct RoutineDebugControllerTests {
             Issue.record("expected stopped, got \(controller.state)")
             return
         }
+        #expect(controller.statusText == RoutineDebugController.stopNotConfirmed)
 
         await late.open()
         try await waitUntil { session.stopCount == 1 }
@@ -144,6 +146,27 @@ struct RoutineDebugControllerTests {
             Issue.record("expected stopped, got \(controller.state)")
             return
         }
+    }
+
+    @Test("A stop the plugin cannot confirm shows its words, whether or not a step was waiting", arguments: [false, true])
+    func unconfirmedStopBecomesTheStatus(stepWaiting: Bool) async throws {
+        let session = FakeDebugSession(
+            performBlocksUntilStop: stepWaiting,
+            stopAnswer: .failed(message: "Cancelled.", detail: nil),
+            stopOutcome: .unconfirmed(message: "Server process 4242 may still be running.", detail: "End it with pg_terminate_backend(4242).")
+        )
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil && !controller.variables.isEmpty }
+        if stepWaiting {
+            controller.perform(.continueExecution)
+            try await waitUntil { session.performedCommands == [.continueExecution] }
+        }
+
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+
+        #expect(controller.statusText == "Server process 4242 may still be running.\nEnd it with pg_terminate_backend(4242).")
     }
 
     @Test("A command is refused while a step runs")
@@ -560,24 +583,50 @@ struct RoutineDebugControllerTests {
         try await waitUntil { controller.hasEnded }
     }
 
-    @Test("Stop waits for a read still out before ending the target, so only a waiting step ever overlaps it")
-    func stopWaitsForPendingRead() async throws {
+    @Test("Stop during a slow read reaches the session at once, and its drivers close no earlier than the deadline")
+    func stopDuringReadIsNotQueued() async throws {
         let reads = AsyncGate()
-        let session = FakeDebugSession(inspectGate: reads)
-        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        let blocker = AsyncGate()
+        let session = FakeDebugSession(stopBlocker: blocker, inspectGate: reads)
+        let drivers = DebugDriverLog()
+        let limit: Duration = .seconds(1)
+        let (controller, _) = RoutineDebugFixtures.controller(session: session, drivers: drivers, cancelLimit: limit)
         controller.start()
         try await waitUntil { session.sourceReadCount == 1 }
 
+        let asked = ContinuousClock.now
         controller.stop()
-        // Gives an overlapping stop time to reach the session while the read is still out; a correct one waits.
-        let stoppedEarly = (try? await waitUntil(timeout: .milliseconds(300)) { session.stopCount > 0 }) != nil
-        await reads.open()
+        try await waitUntil(timeout: .milliseconds(500)) { session.stopCount == 1 }
+        #expect(session.stopOverlapCount == 1)
+        #expect(drivers.closedCount == 0)
         try await waitUntil { controller.hasEnded }
 
-        #expect(!stoppedEarly)
-        #expect(session.stopCount == 1)
-        #expect(session.stopOverlapCount == 0)
+        #expect(drivers.closedCount == 2)
+        #expect(drivers.closeInstants.allSatisfy { $0 >= asked.advanced(by: limit) })
         #expect(session.stackReadCount == 0)
+        #expect(controller.inspectionError == nil)
+        #expect(controller.statusText == RoutineDebugController.stopNotConfirmed)
+        await blocker.open()
+    }
+
+    @Test("Drivers close as soon as the plugin answers the stop, before the deadline")
+    func driversCloseWhenStopReturns() async throws {
+        let reads = AsyncGate()
+        let session = FakeDebugSession(inspectGate: reads)
+        let drivers = DebugDriverLog()
+        let limit: Duration = .seconds(5)
+        let (controller, _) = RoutineDebugFixtures.controller(session: session, drivers: drivers, cancelLimit: limit)
+        controller.start()
+        try await waitUntil { session.sourceReadCount == 1 }
+
+        let asked = ContinuousClock.now
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+
+        #expect(session.stopCount == 1)
+        #expect(drivers.closedCount == 2)
+        #expect(drivers.closeInstants.allSatisfy { $0 < asked.advanced(by: limit) })
+        #expect(controller.statusText == String(localized: "Stopped"))
     }
 
     @Test("A new pause never shows the last pause's variables, even when its own fail to load")
@@ -670,6 +719,7 @@ struct RoutineDebugControllerTests {
 
         #expect(session.stopCount == 1)
         #expect(drivers.closedCount == 2)
+        #expect(controller.statusText == RoutineDebugController.stopNotConfirmed)
         await blocker.open()
     }
 

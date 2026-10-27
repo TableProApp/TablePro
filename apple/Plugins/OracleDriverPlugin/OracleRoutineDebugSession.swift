@@ -114,8 +114,14 @@ final class OracleRoutineDebugSession: PluginDebugSession, @unchecked Sendable {
         }
     }
 
-    func stop() async {
-        await engine.stop()
+    func stop() async -> PluginDebugStopOutcome {
+        switch await engine.stop() {
+        case .ended:
+            return .ended
+        case .unconfirmed(let identity):
+            let text = OracleDebugText.stillRunning(identity)
+            return .unconfirmed(message: text.message, detail: text.detail)
+        }
     }
 
     static func location(_ location: OracleDebugLocation) -> PluginDebugLocation {

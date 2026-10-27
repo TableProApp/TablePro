@@ -166,6 +166,14 @@ enum PostgreSQLRoutineDebugProtocol {
         .failed(message: abandonedMessage, detail: abandonedDetail(process: process, port: port))
     }
 
+    // Ended only when the target's call is known to have returned: then its transaction is over and its locks gone.
+    static func stopOutcome(callEnded: Bool, abandoned: Bool, process: Int?, port: Int?) -> PluginDebugStopOutcome {
+        guard callEnded, !abandoned else {
+            return .unconfirmed(message: abandonedMessage, detail: abandonedDetail(process: process, port: port))
+        }
+        return .ended
+    }
+
     static var abandonedMessage: String {
         String(localized: "The routine couldn't be stopped on the server.")
     }

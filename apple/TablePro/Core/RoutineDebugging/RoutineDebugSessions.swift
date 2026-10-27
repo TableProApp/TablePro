@@ -6,6 +6,22 @@
 import Foundation
 import os
 
+// T0 plus the stop limit, fixed when a stop is first asked for. Every wait in that stop, and every caller waiting on
+// it, runs against this one instant, so no connection closes before the plugin answered or the instant passed.
+internal struct RoutineDebugStopDeadline: Sendable {
+    let instant: ContinuousClock.Instant
+
+    init(after limit: Duration) {
+        instant = ContinuousClock.now.advanced(by: limit)
+    }
+
+    // True when `work` returned first. Work still running at the deadline is left running.
+    @MainActor
+    func wait(for work: @escaping @MainActor @Sendable () async -> Void) async -> Bool {
+        await AppModuleTermination.runCapped(at: ContinuousClock.now.duration(to: instant), work)
+    }
+}
+
 // Every live debug run, by the tab that shows it. A tab can move between windows, so nothing here belongs to a window.
 @MainActor
 internal final class RoutineDebugSessions {
@@ -122,33 +138,34 @@ internal final class RoutineDebugSessions {
     // connection's admission first, so a start racing this cannot open a driver on the transport being torn down; the
     // caller reopens it with `reopenAdmission(for:)` once the new transport is up.
     func stopAll(connectionId: UUID, timeout: Duration = defaultStopTimeout) async {
+        let deadline = RoutineDebugStopDeadline(after: timeout)
         closeAdmission(for: connectionId)
         let controllers = (entries.values.map { $0 } + ending.values.map { $0 })
             .filter { $0.connectionId == connectionId }
             .map(\.controller)
-        await stopAndWait(controllers, timeout: timeout)
+        await stopAndWait(controllers, by: deadline)
     }
 
     func stopAll(timeout: Duration = defaultStopTimeout) async {
+        let deadline = RoutineDebugStopDeadline(after: timeout)
         let controllers = entries.values.map(\.controller) + ending.values.map(\.controller)
-        await stopAndWait(controllers, timeout: timeout)
+        await stopAndWait(controllers, by: deadline)
     }
 
-    private func stopAndWait(_ controllers: [RoutineDebugController], timeout: Duration) async {
+    // The runs close their drivers by the same deadline this waits for, so the caller's transport outlives them.
+    private func stopAndWait(_ controllers: [RoutineDebugController], by deadline: RoutineDebugStopDeadline) async {
         let live = controllers.filter { !$0.hasEnded }
         guard !live.isEmpty else { return }
         for controller in live {
-            controller.stop()
+            controller.stop(by: deadline)
         }
-        let finished = await AppModuleTermination.runCapped(at: timeout) {
+        let finished = await deadline.wait {
             for controller in live {
                 await controller.waitUntilEnded()
             }
         }
         if !finished {
-            Self.logger.warning(
-                "Debug sessions still stopping after \(String(describing: timeout), privacy: .public); continuing without them"
-            )
+            Self.logger.warning("Debug sessions still stopping at their deadline; continuing without them")
         }
     }
 

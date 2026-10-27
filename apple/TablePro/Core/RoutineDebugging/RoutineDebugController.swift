@@ -57,6 +57,9 @@ internal final class RoutineDebugController: ObservableObject {
     private static let outputLineLimit = 5_000
     // Output a plugin relays as the routine completes (Oracle's DBMS_OUTPUT) comes through its own task, shortly after.
     private static let outputDrainLimit: Duration = .seconds(1)
+    static let stopNotConfirmed = String(
+        localized: "The debugger didn't confirm the stop. The routine may still be running on the server."
+    )
 
     let plan: PluginDebugPlan
     let choice: RoutineDebugStartChoice
@@ -98,9 +101,13 @@ internal final class RoutineDebugController: ObservableObject {
     private var placedBreakpoints: [String: Set<Int>] = [:]
     private var lastOperation: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
+    private var stopDeadline: RoutineDebugStopDeadline?
+    // The one `stop()` call a session gets, shared by everything that ends its target.
+    private var targetStop: Task<PluginDebugStopOutcome, Never>?
+    // The plugin could not confirm its target ended, or did not answer by the deadline: the status says so.
+    private var unconfirmedStop: String?
     private var outputTask: Task<Void, Never>?
     private var pauseGeneration = 0
-    private var stepInFlight = false
     private var stopMessage: String?
     // `isEnding` from the moment the run starts to end; `hasEnded` once its drivers are closed and its state final.
     private var isEnding = false
@@ -154,94 +161,105 @@ internal final class RoutineDebugController: ObservableObject {
         !isEnding && !isStopping
     }
 
-    func stop() {
+    // Every way a run is stopped comes here: Stop, its tab or window closing, a disconnect or reconnect, the module
+    // turned off, quit. A caller that waits on the stop passes its deadline so both end at the same instant.
+    func stop(by deadline: RoutineDebugStopDeadline? = nil) {
         guard canStop else { return }
         isStopping = true
+        let deadline = startStopDeadline(deadline)
         notifyStateChange()
         if case .preparing = state {
             withdrawPreparation()
         }
         if let session {
-            // Only a waiting step may overlap `stop()`; a read or a breakpoint edit in flight finishes first, and every
-            // queued one returns at once now that the run is stopping.
-            let pending = stepInFlight ? nil : lastOperation
-            let limit = cancelLimit
-            stopTask = Task { [weak self] in
-                if let pending {
-                    _ = await AppModuleTermination.runCapped(at: limit) {
-                        await pending.value
-                    }
-                }
-                await self?.endTarget(session)
-                await self?.end(.stopped(nil))
+            stopTask = Task {
+                await self.endTarget(session)
+                await self.end(.stopped(nil))
             }
         } else if let startTask {
-            cancelStart(startTask)
+            cancelStart(startTask, by: deadline)
         } else if let preparationTask {
-            cancelPreparation(preparationTask)
+            cancelPreparation(preparationTask, by: deadline)
         } else if let authorizationTask {
-            cancelAuthorization(authorizationTask)
+            cancelAuthorization(authorizationTask, by: deadline)
         } else if lastOperation == nil {
             Task { await self.end(.stopped(nil)) }
         }
-        // Otherwise the gate or the preparation is still pending, and the run ends itself as stopped when it returns.
+        // Otherwise the preparation question is up or the run is between two steps, and it ends itself as stopped at
+        // its next check.
     }
 
-    // The target may already be running its call before `startDebug` returns. Cancelling makes the plugin end it; a plugin
-    // that never answers still loses its drivers at the limit, so nothing it opened outlives the tab.
-    private func cancelStart(_ start: Task<any PluginDebugSession, Error>) {
-        let limit = cancelLimit
+    private func startStopDeadline(_ requested: RoutineDebugStopDeadline? = nil) -> RoutineDebugStopDeadline {
+        if let stopDeadline {
+            return stopDeadline
+        }
+        let deadline = requested ?? RoutineDebugStopDeadline(after: cancelLimit)
+        stopDeadline = deadline
+        return deadline
+    }
+
+    // The only place a session hears `stop()`: at once, even over a read, an edit or a step still running, which the
+    // plugin then ends itself. Returns when the plugin answers or at the deadline, whichever comes first.
+    private func endTarget(_ session: any PluginDebugSession) async {
+        let deadline = startStopDeadline()
+        let stopping: Task<PluginDebugStopOutcome, Never>
+        if let targetStop {
+            stopping = targetStop
+        } else {
+            let source = sessionSource
+            stopping = Task {
+                // A plugin may need one more session to end its target, which the connection's admission fence must not refuse.
+                await source.permitCleanup()
+                return await session.stop()
+            }
+            targetStop = stopping
+        }
+        let answered = await deadline.wait { _ = await stopping.value }
+        guard answered else {
+            Self.logger.warning("Debug target did not answer its stop by the deadline; closing its connections")
+            unconfirmedStop = Self.stopNotConfirmed
+            return
+        }
+        if case .unconfirmed(let message, let detail) = await stopping.value {
+            unconfirmedStop = Self.join(message, detail)
+        }
+    }
+
+    // The target may already be running its call before `startDebug` returns. Cancelling makes the plugin end it, and a
+    // session it returns anyway is stopped within the same deadline; one that never answers loses its drivers then.
+    private func cancelStart(_ start: Task<any PluginDebugSession, Error>, by deadline: RoutineDebugStopDeadline) {
         let source = sessionSource
-        stopTask = Task { [weak self] in
+        stopTask = Task {
             await source.permitCleanup()
             start.cancel()
-            let answered = await AppModuleTermination.runCapped(at: limit) {
-                _ = await start.result
-            }
+            let answered = await deadline.wait { _ = await start.result }
             guard !answered else { return }
             Self.logger.warning("Debug start ignored its cancellation; closing its drivers")
-            await self?.end(.stopped(nil))
+            self.unconfirmedStop = Self.stopNotConfirmed
+            await self.end(.stopped(nil))
         }
     }
 
-    // The gate withdraws its prompt when cancelled and answers as a Cancel would; one that cannot is not waited on past the
-    // limit, since nothing is open yet that the run would have to close.
-    private func cancelAuthorization(_ work: Task<OperationDecision, Never>) {
-        let limit = cancelLimit
-        stopTask = Task { [weak self] in
+    // The gate withdraws its prompt when cancelled and answers as a Cancel would; one that cannot is not waited on past
+    // the deadline, since nothing is open yet that the run would have to close.
+    private func cancelAuthorization(_ work: Task<OperationDecision, Never>, by deadline: RoutineDebugStopDeadline) {
+        stopTask = Task {
             work.cancel()
-            let answered = await AppModuleTermination.runCapped(at: limit) {
-                _ = await work.value
-            }
+            let answered = await deadline.wait { _ = await work.value }
             guard !answered else { return }
-            await self?.end(.stopped(nil))
+            await self.end(.stopped(nil))
         }
     }
 
-    // A statement already sent cannot be called back: the run waits for it within the limit, then closes its connection,
-    // which abandons it. Either way the run ends stopped and never goes on to start the session.
-    private func cancelPreparation(_ work: Task<Void, Error>) {
-        let limit = cancelLimit
-        stopTask = Task { [weak self] in
+    // A statement already sent cannot be called back: the run waits for it until the deadline, then closes its
+    // connection, which abandons it. Either way the run ends stopped and never goes on to start the session.
+    private func cancelPreparation(_ work: Task<Void, Error>, by deadline: RoutineDebugStopDeadline) {
+        stopTask = Task {
             work.cancel()
-            let answered = await AppModuleTermination.runCapped(at: limit) {
-                _ = await work.result
-            }
+            let answered = await deadline.wait { _ = await work.result }
             guard !answered else { return }
-            Self.logger.warning("Debug preparation still running at the limit; closing its connection")
-            await self?.end(.stopped(nil))
-        }
-    }
-
-    // A plugin may need one more session to end its target, which the connection's admission fence must not refuse.
-    // Plugins return from `stop()` within 3 s; past the limit the run closes the connections anyway.
-    private func endTarget(_ session: any PluginDebugSession) async {
-        await sessionSource.permitCleanup()
-        let stopped = await AppModuleTermination.runCapped(at: cancelLimit) {
-            await session.stop()
-        }
-        if !stopped {
-            Self.logger.warning("Debug target did not stop within the limit; closing its connections")
+            Self.logger.warning("Debug preparation still running at the deadline; closing its connection")
+            await self.end(.stopped(nil))
         }
     }
 
@@ -306,15 +324,19 @@ internal final class RoutineDebugController: ObservableObject {
             let wanted = breakpoints[unit] ?? []
             let placed = placedBreakpoints[unit] ?? []
             for line in placed.subtracting(wanted).sorted() {
+                guard !isStopping else { return }
                 do {
                     try await session.removeBreakpoint(PluginDebugBreakpoint(unitIdentity: unit, line: line))
                     placedBreakpoints[unit]?.remove(line)
                 } catch {
+                    // A stop ends the call on purpose; that is no failure to show.
+                    guard !isStopping else { return }
                     breakpoints[unit, default: []].insert(line)
                     inspectionError = Self.message(for: error)
                 }
             }
             for line in wanted.subtracting(placed).sorted() {
+                guard !isStopping else { return }
                 let requested = PluginDebugBreakpoint(unitIdentity: unit, line: line)
                 do {
                     let result = try await session.setBreakpoint(requested)
@@ -329,6 +351,7 @@ internal final class RoutineDebugController: ObservableObject {
                         breakpoints[result.unitIdentity, default: []].insert(result.line)
                     }
                 } catch {
+                    guard !isStopping else { return }
                     breakpoints[unit]?.remove(line)
                     inspectionError = Self.message(for: error)
                 }
@@ -370,6 +393,7 @@ internal final class RoutineDebugController: ObservableObject {
                 guard self.isCurrentFrame(level, generation) else { return }
                 self.show(frame: level, unit: frame.location?.unit, variables: values)
             } catch {
+                guard !self.isStopping else { return }
                 self.inspectionError = Self.message(for: error)
             }
         }
@@ -552,8 +576,6 @@ internal final class RoutineDebugController: ObservableObject {
     private func runStep(_ step: @escaping () async throws -> PluginDebugStop) async {
         let outcome: PluginDebugStop
         do {
-            stepInFlight = true
-            defer { stepInFlight = false }
             outcome = try await step()
         } catch {
             guard !isStopping, let session else { return }
@@ -563,8 +585,8 @@ internal final class RoutineDebugController: ObservableObject {
             await end(.failed(Self.message(for: error)))
             return
         }
-        // A stop in flight owns the ending; a pause that raced it is the plugin's to abort. What the plugin says about
-        // the stop (rolled back, or still running on the server) becomes the status instead of a bare "Stopped".
+        // A stop in flight owns the ending; a pause that raced it is the plugin's to abort. The waiting step's own words
+        // (rolled back, say) become the status when the stop itself was confirmed.
         guard !isStopping else {
             if case .failed(let message, let detail) = outcome {
                 answerStop(with: Self.join(message, detail))
@@ -599,6 +621,7 @@ internal final class RoutineDebugController: ObservableObject {
         inspectionError = nil
         displayedUnit = location.unit
         await syncBreakpoints(session)
+        guard isCurrentPause(generation) else { return }
         do {
             try await loadSource(of: location.unit, from: session)
             guard isCurrentPause(generation) else { return }
@@ -612,6 +635,7 @@ internal final class RoutineDebugController: ObservableObject {
             guard isCurrentFrame(level, generation) else { return }
             show(frame: level, unit: location.unit, variables: values)
         } catch {
+            guard !isStopping else { return }
             inspectionError = Self.message(for: error)
         }
     }
@@ -668,10 +692,17 @@ internal final class RoutineDebugController: ObservableObject {
         }
         await sessionSource.closeAll()
         outputTask?.cancel()
-        // Read after the wait: the plugin's answer to the stop can land while the drivers close.
+        // Read after the wait: the waiting step's answer to the stop can land while the drivers close.
         var final = final
-        if case .stopped(.none) = final, let stopMessage {
-            final = .stopped(stopMessage)
+        switch final {
+        case .stopped(.none):
+            final = .stopped(unconfirmedStop ?? stopMessage)
+        case .failed(let message):
+            if let unconfirmedStop {
+                final = .failed(Self.join(message, unconfirmedStop))
+            }
+        default:
+            break
         }
         if case .finished(let result) = final {
             resultGrid = result.flatMap { Self.makeResultGrid($0, databaseType: databaseType) }

@@ -19,8 +19,8 @@ public protocol PluginDebugSessionSource: Sendable {
     func openSession() async throws -> any PluginDatabaseDriver
 }
 
-// Calls never overlap except `stop()`, which may arrive while `firstStop()` or `perform(_:)` is still waiting:
-// the waiting call then returns `.finished` or `.failed`, never a pause.
+// The host never overlaps two calls, except `stop()`, which may arrive while any other call is still running: that
+// call then ends promptly (a waiting step returns `.finished` or `.failed`, never a pause; a read throws).
 public protocol PluginDebugSession: AnyObject, Sendable {
     var supportedCommands: Set<PluginDebugCommand> { get }
     var output: AsyncStream<String> { get }
@@ -32,9 +32,9 @@ public protocol PluginDebugSession: AnyObject, Sendable {
     // The breakpoint as the engine placed it (its line may move to the next executable one); nil when it cannot be set.
     func setBreakpoint(_ breakpoint: PluginDebugBreakpoint) async throws -> PluginDebugBreakpoint?
     func removeBreakpoint(_ breakpoint: PluginDebugBreakpoint) async throws
-    // Ends the target and rolls back its open transaction, whatever state it is in. Returns within 3 seconds:
-    // the host closes the session's transport 5 seconds after asking.
-    func stop() async
+    // Ends the target and rolls back its open transaction, whatever state it is in, and says whether it could confirm
+    // that. Returns within 3 seconds: the host closes the session's transport 5 seconds after asking.
+    func stop() async -> PluginDebugStopOutcome
 }
 
 public struct PluginDebugTarget: Sendable, Hashable {
@@ -166,6 +166,12 @@ public enum PluginDebugCommand: String, Sendable, Hashable {
     case stepOver
     case stepInto
     case stepOut
+}
+
+public enum PluginDebugStopOutcome: Sendable {
+    case ended
+    // The target may still be running on the server; the message names it and how to end it.
+    case unconfirmed(message: String, detail: String?)
 }
 
 public enum PluginDebugStop: Sendable {

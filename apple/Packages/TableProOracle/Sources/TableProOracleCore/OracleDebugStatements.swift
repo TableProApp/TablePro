@@ -336,6 +336,46 @@ public enum OracleDebugStatements {
         return Invocation(block: block, binds: binds)
     }
 
+    public enum Ambiguity: Sendable, Equatable {
+        // Leaving these parameters at their defaults leaves nothing to tell this overload from another.
+        case needsValue([String])
+        // The call matches another overload whatever values are given (PLS-00307).
+        case unresolvable
+    }
+
+    // Oracle picks an overload by the named arguments it is given, so leaving out defaulted ones can leave two
+    // overloads that both fit, and the call fails with PLS-00307 (`p(x NUMBER DEFAULT 1)` and
+    // `p(x VARCHAR2 DEFAULT 'a')`, both started with the default). ALL_ARGUMENTS cannot give the default's value to
+    // pass instead, so the person has to give one.
+    public static func ambiguity(
+        of entryPoint: OracleDebugEntryPoint,
+        arguments: [String: OracleDebugArgumentValue],
+        overloads: [OracleDebugEntryPoint]
+    ) -> Ambiguity? {
+        func value(of parameter: OracleDebugParameter) -> OracleDebugArgumentValue {
+            arguments[parameter.name] ?? (parameter.hasDefault ? .defaultValue : .null)
+        }
+        let omitted = entryPoint.parameters.filter { $0.mode == .input && $0.hasDefault && value(of: $0) == .defaultValue }
+        let passed = entryPoint.parameters.filter { parameter in !omitted.contains { $0.name == parameter.name } }
+        for other in overloads where other.entry.unit == entryPoint.entry.unit
+            && other.entry.subprogram == entryPoint.entry.subprogram
+            && other.entry.subprogramID != entryPoint.entry.subprogramID
+            && (other.result == nil) == (entryPoint.result == nil) {
+            let takesEveryPassed = passed.allSatisfy { parameter in
+                other.parameters.contains { $0.name == parameter.name && $0.declaration == parameter.declaration }
+            }
+            let needsNothingElse = other.parameters.allSatisfy { parameter in
+                passed.contains { $0.name == parameter.name } || (parameter.mode == .input && parameter.hasDefault)
+            }
+            guard takesEveryPassed, needsNothingElse else { continue }
+            let distinguishing = omitted.filter { parameter in
+                !other.parameters.contains { $0.name == parameter.name && $0.declaration == parameter.declaration }
+            }
+            return distinguishing.isEmpty ? .unresolvable : .needsValue(distinguishing.map(\.name))
+        }
+        return nil
+    }
+
     public struct InvocationReport: Sendable, Equatable {
         public let succeeded: Bool
         public let error: String?

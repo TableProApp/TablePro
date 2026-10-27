@@ -11,26 +11,29 @@ import Testing
 
 @MainActor
 struct RoutineDebugSessionsTests {
-    @Test("Stopping a connection's runs gives up at its limit when a target cannot be reached, and the stop still lands")
-    func stopAllIsCapped() async throws {
+    @Test("Stopping a connection's runs closes their drivers at the caller's deadline when a target cannot be reached")
+    func stopAllSharesItsDeadline() async throws {
         let blocker = AsyncGate()
         let session = FakeDebugSession(stopBlocker: blocker)
         let drivers = DebugDriverLog()
-        let (controller, _) = RoutineDebugFixtures.controller(session: session, drivers: drivers)
+        let (controller, _) = RoutineDebugFixtures.controller(session: session, drivers: drivers, cancelLimit: .seconds(30))
         let registry = RoutineDebugSessions(isModuleEnabled: { true })
         let connectionId = UUID()
         registry.register(controller, tabId: UUID(), connectionId: connectionId)
         controller.start()
         try await waitUntil { controller.state.pausedLocation != nil }
 
-        await registry.stopAll(connectionId: connectionId, timeout: .milliseconds(50))
+        let timeout: Duration = .milliseconds(200)
+        let asked = ContinuousClock.now
+        await registry.stopAll(connectionId: connectionId, timeout: timeout)
+        #expect(ContinuousClock.now >= asked.advanced(by: timeout))
+        try await waitUntil(timeout: .seconds(2)) { controller.hasEnded }
 
         #expect(session.stopCount == 1)
-        #expect(!controller.hasEnded)
-        #expect(drivers.closedCount == 0)
-        await blocker.open()
-        await controller.waitUntilEnded()
         #expect(drivers.closedCount == 2)
+        #expect(drivers.closeInstants.allSatisfy { $0 >= asked.advanced(by: timeout) })
+        #expect(controller.statusText == RoutineDebugController.stopNotConfirmed)
+        await blocker.open()
     }
 
     @Test("Closing the tab while the debugger is still starting cancels the start and closes its drivers")

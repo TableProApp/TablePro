@@ -58,6 +58,13 @@ public enum OracleDebugFailure: Sendable, Equatable {
     case connectionLost(String?)
 }
 
+public enum OracleDebugStopResult: Sendable, Equatable {
+    // The routine's call ended, so its uncommitted work is rolled back and its locks are gone.
+    case ended
+    // Nothing confirmed the end inside the budget; the session may still run and hold locks.
+    case unconfirmed(OracleDebugSessionIdentity?)
+}
+
 public struct OracleDebugSessionIdentity: Sendable, Hashable {
     public let sid: Int
     public let serial: Int?
@@ -109,7 +116,6 @@ public enum OracleDebugNotice: Sendable, Equatable {
     case usingDBMSDebug(reason: OracleDebugProbeReason)
     case breakpointHasNoCode(unit: OracleDebugUnit, line: Int)
     case breakpointMoved(unit: OracleDebugUnit, from: Int, to: Int)
-    case stillRunningAfterStop(OracleDebugSessionIdentity?)
     case serverOutput(String)
 }
 
@@ -126,6 +132,9 @@ public enum OracleDebugError: Error, Sendable, Equatable {
     case ended
     case unsupportedArgument(name: String, typeName: String)
     case undeclarableArgument(name: String, typeName: String)
+    // Leaving these defaulted parameters out would match another overload of the subprogram too.
+    case ambiguousDefaults(subprogram: String, parameters: [String])
+    case ambiguousCall(subprogram: String)
     // A JDWP command the database answered with an error code.
     case debuggerRefused(code: Int)
     // A DBMS_DEBUG answer that does not parse.
@@ -164,5 +173,6 @@ public protocol OracleDebugEngine: AnyObject, Sendable {
     func setBreakpoint(in unit: OracleDebugUnit, line: Int) async throws -> Int?
     func removeBreakpoint(in unit: OracleDebugUnit, line: Int) async throws
     func source(of unit: OracleDebugUnit) async throws -> String
-    func stop() async
+    // Returns within 3 seconds, whatever call it overlaps; that call then ends promptly.
+    func stop() async -> OracleDebugStopResult
 }

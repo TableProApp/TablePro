@@ -15,6 +15,8 @@ public struct OracleDebugLaunch: Sendable {
     public let databaseHost: String
     public let databasePort: Int
     public let otherDatabaseHosts: [String]
+    // Every overload of the entry point's subprogram, to refuse a call Oracle could not resolve.
+    public let overloads: [OracleDebugEntryPoint]
     // How long the database gets to connect back before JDWP counts as unreachable.
     public let connectTimeout: Duration
 
@@ -28,6 +30,7 @@ public struct OracleDebugLaunch: Sendable {
         databaseHost: String,
         databasePort: Int,
         otherDatabaseHosts: [String] = [],
+        overloads: [OracleDebugEntryPoint] = [],
         connectTimeout: Duration = .seconds(15)
     ) {
         self.entryPoint = entryPoint
@@ -39,6 +42,7 @@ public struct OracleDebugLaunch: Sendable {
         self.databaseHost = databaseHost
         self.databasePort = databasePort
         self.otherDatabaseHosts = otherDatabaseHosts
+        self.overloads = overloads
         self.connectTimeout = connectTimeout
     }
 }
@@ -63,6 +67,14 @@ public enum OracleDebugLauncher {
         try Task.checkCancellation()
         if OracleDebugProtocolDecision.initial(preference: launch.preference, host: launch.debuggerHost) == .fail {
             throw OracleDebugError.jdwp(.noDebuggerHost)
+        }
+        switch OracleDebugStatements.ambiguity(of: launch.entryPoint, arguments: launch.arguments, overloads: launch.overloads) {
+        case .needsValue(let parameters):
+            throw OracleDebugError.ambiguousDefaults(subprogram: launch.entryPoint.entry.subprogram, parameters: parameters)
+        case .unresolvable:
+            throw OracleDebugError.ambiguousCall(subprogram: launch.entryPoint.entry.subprogram)
+        case nil:
+            break
         }
         let invocation: OracleDebugStatements.Invocation
         do {
@@ -112,7 +124,7 @@ public enum OracleDebugLauncher {
             try await session.start(breakpoints: breakpoints)
         } catch {
             if Task.isCancelled {
-                await session.stop()
+                _ = await session.stop()
                 throw CancellationError()
             }
             throw mapped(error)
@@ -123,7 +135,7 @@ public enum OracleDebugLauncher {
     // A start the caller cancelled hands back no session, so the target ends here.
     private static func keep(_ engine: any OracleDebugEngine) async throws -> any OracleDebugEngine {
         guard Task.isCancelled else { return engine }
-        await engine.stop()
+        _ = await engine.stop()
         throw CancellationError()
     }
 
@@ -218,7 +230,7 @@ public enum OracleDebugLauncher {
             try await session.start(breakpoints: breakpoints)
         } catch {
             // Closing the JDWP socket ends the target session.
-            await session.stop()
+            _ = await session.stop()
             if Task.isCancelled { throw CancellationError() }
             if let failure = error as? OracleDebugError {
                 switch failure {

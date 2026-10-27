@@ -61,6 +61,7 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
     private let connectCall: Task<Result<[String?], Error>, Never>
     private let targetIdentity: OracleDebugSessionIdentity?
     private var gaveUp = false
+    private var stopResult = OracleDebugStopResult.ended
     private var preparedClasses: Set<UInt64> = []
 
     private var sizes = OracleJDWPIDSizes.oracle
@@ -273,10 +274,26 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         }
     }
 
-    // Data the peer sent that does not decode ends the session: closing the socket ends the target.
+    // A call Stop overlapped ends with Stop, not with what it read or failed to read from a closing connection.
     private func guarded<T: Sendable>(_ body: () async throws -> T) async throws -> T {
+        guard !stopRequested else { throw OracleDebugError.ended }
+        let value: T
+        do {
+            value = try await translated(body)
+        } catch {
+            if stopRequested { throw OracleDebugError.ended }
+            throw error
+        }
+        if stopRequested { throw OracleDebugError.ended }
+        return value
+    }
+
+    // Data the peer sent that does not decode ends the session: closing the socket ends the target.
+    private func translated<T: Sendable>(_ body: () async throws -> T) async throws -> T {
         do {
             return try await body()
+        } catch let error as OracleDebugError {
+            throw error
         } catch OracleJDWPError.malformedPacket, OracleJDWPError.truncated {
             await connection.close()
             throw OracleDebugError.malformedReply
@@ -337,7 +354,7 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
             let signal = await nextSignal()
             // The caller gave up on this step: the target ends as Stop ends it.
             if case .cancelled = signal {
-                await stop()
+                _ = await stop()
                 throw CancellationError()
             }
             if stopRequested {
@@ -570,17 +587,19 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         let key = BreakpointKey(unit: unit, line: line)
         pending.remove(key)
         guard let request = placed.removeValue(forKey: key) else { return }
-        _ = try await connection.send(
-            OracleJDWPCommand.eventRequest,
-            OracleJDWPCommand.clear,
-            OracleJDWPRequest.clear(kind: .breakpoint, requestID: request, sizes: sizes)
-        )
+        try await guarded {
+            _ = try await connection.send(
+                OracleJDWPCommand.eventRequest,
+                OracleJDWPCommand.clear,
+                OracleJDWPRequest.clear(kind: .breakpoint, requestID: request, sizes: sizes)
+            )
+        }
     }
 
     // MARK: - Inspection
 
     public func source(of unit: OracleDebugUnit) async throws -> String {
-        try await OracleDebugSupport.source(of: unit, on: helper)
+        try await guarded { try await OracleDebugSupport.source(of: unit, on: helper) }
     }
 
     public func stack() async throws -> [OracleDebugFrame] {
@@ -801,31 +820,43 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
 
     // Closing the socket without Dispose ends the target session in any state: ORA-30687 within a second while it
     // was running a loop, and while paused (measured). The server rolls its transaction back with it.
-    public func stop() async {
+    // Closing the socket first fails every reply still awaited, so a read or breakpoint call Stop overlaps throws at
+    // once, and it ends the target: PL/SQL sees the close and ends with ORA-30687 within a second (measured).
+    public func stop() async -> OracleDebugStopResult {
         if stopRequested {
-            guard !isStopped else { return }
-            await withCheckedContinuation { stopWaiters.append($0) }
-            return
+            if !isStopped {
+                await withCheckedContinuation { stopWaiters.append($0) }
+            }
+            return stopResult
         }
         stopRequested = true
         await connection.close()
-        let call = self.call ?? connectCall
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: OracleDebugStopBudget.total - OracleDebugStopBudget.cleanup)
-        // PL/SQL sees the close and ends with ORA-30687 within a second (measured); a SQL statement the routine is
-        // inside does not, so it is killed from the helper session, and said to be still running if that is refused.
-        var ended = await OracleDebugSupport.value(of: call, within: 1) != nil
-        if !ended {
-            ended = await OracleDebugStopBudget.endRunningTarget(clock: clock, budget: clock.now.duration(to: deadline)) {
-                await OracleDebugSupport.kill(targetIdentity, from: helper)
-            } waitForEnd: { remaining in
-                await OracleDebugSupport.value(of: call, within: OracleDebugStopBudget.seconds(remaining)) != nil
+        if let call {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: OracleDebugStopBudget.total - OracleDebugStopBudget.cleanup)
+            // A call that never returns to PL/SQL (DBMS_SESSION.SLEEP, measured) does not see the close, so it is
+            // killed from the helper session.
+            var ended = await OracleDebugSupport.value(of: call, within: 1) != nil
+            if !ended {
+                ended = await OracleDebugStopBudget.endRunningTarget(clock: clock, budget: clock.now.duration(to: deadline)) {
+                    await OracleDebugSupport.kill(
+                        targetIdentity,
+                        from: helper,
+                        within: OracleDebugStopBudget.seconds(clock.now.duration(to: deadline))
+                    )
+                } waitForEnd: { remaining in
+                    await OracleDebugSupport.value(of: call, within: OracleDebugStopBudget.seconds(remaining)) != nil
+                }
             }
-        }
-        if !ended {
-            gaveUp = true
-            noticeContinuation.yield(.stillRunningAfterStop(targetIdentity))
-            target.cancelCurrentQuery()
+            if !ended {
+                gaveUp = true
+                target.cancelCurrentQuery()
+            }
+            stopResult = ended ? .ended : .unconfirmed(targetIdentity)
+        } else {
+            // Before the routine ran the target held no work; the closed socket ends its session.
+            _ = await OracleDebugSupport.value(of: connectCall, within: 1)
+            stopResult = .ended
         }
         state = .ended
         post(.connectionClosed)
@@ -837,5 +868,6 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         for waiter in waiters {
             waiter.resume()
         }
+        return stopResult
     }
 }

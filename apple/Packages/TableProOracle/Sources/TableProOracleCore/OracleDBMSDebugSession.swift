@@ -51,6 +51,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     private var stopRequested = false
     private var isStopped = false
     private var gaveUp = false
+    private var stopResult = OracleDebugStopResult.ended
     private var targetIdentity: OracleDebugSessionIdentity?
     private var callEnded = false
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
@@ -326,8 +327,27 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
 
     // MARK: - Breakpoints
 
+    // A call Stop overlaps keeps the supervisor's gate until it finishes, then ends with Stop, not with what it read or
+    // failed to read from a closing connection.
+    private func readable<T: Sendable>(_ body: () async throws -> T) async throws -> T {
+        guard !stopRequested else { throw OracleDebugError.ended }
+        let value: T
+        do {
+            value = try await body()
+        } catch {
+            if stopRequested { throw OracleDebugError.ended }
+            throw error
+        }
+        if stopRequested { throw OracleDebugError.ended }
+        return value
+    }
+
     public func setBreakpoint(in unit: OracleDebugUnit, line: Int) async throws -> Int? {
         guard state != .ended else { throw OracleDebugError.ended }
+        return try await readable { try await placeBreakpoint(in: unit, line: line) }
+    }
+
+    private func placeBreakpoint(in unit: OracleDebugUnit, line: Int) async throws -> Int? {
         let lines = try await executableLines(of: unit)
         guard let resolved = lines.first(where: { $0 >= line }) else { return nil }
         let key = BreakpointKey(unit: unit, line: resolved)
@@ -356,7 +376,9 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         let key = BreakpointKey(unit: unit, line: line)
         pending.remove(key)
         guard let number = placed.removeValue(forKey: key), state == .paused else { return }
-        _ = try await supervisor.executeDirect(Statements.deleteBreakpoints([number]))
+        try await readable {
+            _ = try await supervisor.executeDirect(Statements.deleteBreakpoints([number]))
+        }
     }
 
     private func executableLines(of unit: OracleDebugUnit) async throws -> [Int] {
@@ -369,7 +391,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     // MARK: - Inspection
 
     public func source(of unit: OracleDebugUnit) async throws -> String {
-        try await OracleDebugSupport.source(of: unit, on: supervisor)
+        try await readable { try await OracleDebugSupport.source(of: unit, on: supervisor) }
     }
 
     private func scan(of unit: OracleDebugUnit) async throws -> OraclePLSQLDeclarationScan {
@@ -397,6 +419,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     }
 
     public func stack() async throws -> [OracleDebugFrame] {
+        guard !stopRequested else { throw OracleDebugError.ended }
         guard state == .paused else { throw OracleDebugError.notPaused }
         return visibleFrames.enumerated().map { level, frame in
             OracleDebugFrame(level: level, location: frame.location, subprogram: frame.subprogram)
@@ -405,6 +428,10 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
 
     public func variables(inFrame level: Int) async throws -> [OracleDebugVariable] {
         guard state == .paused else { throw OracleDebugError.notPaused }
+        return try await readable { try await readVariables(inFrame: level) }
+    }
+
+    private func readVariables(inFrame level: Int) async throws -> [OracleDebugVariable] {
         let frames = visibleFrames
         guard frames.indices.contains(level) else { return [] }
         let frame = frames[level]
@@ -450,24 +477,36 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     // At a pause, abort_execution ends the routine with ORA-06543 and its work rolls back (measured). While it runs,
     // the target reads nothing the supervisor sends, abort included (measured: SET_BREAKPOINT and the abort both
     // timed out and the routine ran to its end), so Stop waits for its next stop or its end, for a bounded time.
-    public func stop() async {
+    public func stop() async -> OracleDebugStopResult {
         if stopRequested {
-            guard !isStopped else { return }
-            await withCheckedContinuation { stopWaiters.append($0) }
-            return
+            if !isStopped {
+                await withCheckedContinuation { stopWaiters.append($0) }
+            }
+            return stopResult
         }
         stopRequested = true
         stopPinging()
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: OracleDebugStopBudget.total)
+        let endBy = deadline - OracleDebugStopBudget.cleanup
         if let call {
             var ended: Bool
             if state == .paused, !isDriving {
-                _ = try? await resume(flags: Statements.BreakFlags.abortExecution)
-                ended = await callEnds(call, before: deadline - OracleDebugStopBudget.cleanup)
+                // A read Stop overlaps holds the supervisor's gate first; the abort waits for it at most half the budget.
+                await bounded(by: clock.now.advanced(by: OracleDebugStopBudget.total / 2), closing: supervisor) { _ in
+                    _ = try? await self.resume(flags: Statements.BreakFlags.abortExecution)
+                }
+                ended = await callEnds(call, before: clock.now.advanced(by: .seconds(1)))
+                if !ended {
+                    ended = await OracleDebugStopBudget.endRunningTarget(clock: clock, budget: clock.now.duration(to: endBy)) {
+                        await killTarget(within: clock.now.duration(to: endBy))
+                    } waitForEnd: { remaining in
+                        await callEnds(call, before: clock.now.advanced(by: remaining))
+                    }
+                }
             } else {
                 ended = await OracleDebugStopBudget.endRunningTarget(clock: clock) {
-                    await killTarget()
+                    await killTarget(within: clock.now.duration(to: endBy))
                 } waitForEnd: { remaining in
                     await callEnds(call, before: clock.now.advanced(by: remaining))
                 }
@@ -479,8 +518,11 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
                 }
             } else {
                 gaveUp = true
-                noticeContinuation.yield(.stillRunningAfterStop(targetIdentity))
             }
+            stopResult = ended ? .ended : .unconfirmed(targetIdentity)
+        } else {
+            // Before the routine ran, the target only switched debug mode on; it holds no work.
+            stopResult = .ended
         }
         if !isDriving {
             await bounded(by: deadline, closing: supervisor) { supervisor in
@@ -495,6 +537,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         for waiter in waiters {
             waiter.resume()
         }
+        return stopResult
     }
 
     private func callEnds(_ call: Task<Result<[String?], Error>, Never>, before deadline: ContinuousClock.Instant) async -> Bool {
@@ -520,7 +563,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     }
 
     // The supervisor waits at most `supervisorTimeoutSeconds` on the gate behind its own poll.
-    private func killTarget() async -> OracleDebugStopBudget.KillOutcome {
-        await OracleDebugSupport.kill(targetIdentity, from: supervisor)
+    private func killTarget(within budget: Duration) async -> OracleDebugStopBudget.KillOutcome {
+        await OracleDebugSupport.kill(targetIdentity, from: supervisor, within: OracleDebugStopBudget.seconds(budget))
     }
 }

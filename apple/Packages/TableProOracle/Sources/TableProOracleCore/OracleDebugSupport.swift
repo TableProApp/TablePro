@@ -124,11 +124,19 @@ enum OracleDebugSupport {
     // The server ends a killed session at its next check, even inside a loop or a SQL statement, and rolls its work
     // back. ORA-00031 "session marked for kill" is that taking effect on a busy session (measured: the target then
     // failed with ORA-00028); ORA-01031 is a session without ALTER SYSTEM.
-    static func kill(_ identity: OracleDebugSessionIdentity?, from connection: OracleCoreConnection) async
-        -> OracleDebugStopBudget.KillOutcome {
-        guard let identity, let statement = OracleDBMSDebugStatements.killSession(identity) else { return .refused }
+    // A read Stop overlaps holds the connection's gate first; past `seconds` the channel is closed, which ends both.
+    static func kill(
+        _ identity: OracleDebugSessionIdentity?,
+        from connection: OracleCoreConnection,
+        within seconds: Double
+    ) async -> OracleDebugStopBudget.KillOutcome {
+        guard let identity, let statement = OracleDBMSDebugStatements.killSession(identity), seconds > 0 else {
+            return .refused
+        }
         do {
-            _ = try await connection.executeDirect(statement)
+            _ = try await withOracleTimeout(seconds: seconds, onTimeout: { connection.cancelCurrentQuery() }) {
+                try await connection.executeDirect(statement)
+            }
             return .marked
         } catch {
             return OracleDebugStatements.errorCodes(in: message(of: error)).contains(31) ? .marked : .refused
