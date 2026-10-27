@@ -25,6 +25,8 @@ internal struct BackupScopeTreeView: NSViewRepresentable {
         let outlineView = CheckboxOutlineView()
         outlineView.headerView = nil
         outlineView.style = .plain
+        // The default style left the column 14 pt wider than the clip view, so a swipe slid the rows sideways.
+        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outlineView.rowSizeStyle = .custom
         outlineView.rowHeight = 24
         outlineView.allowsMultipleSelection = true
@@ -335,16 +337,14 @@ internal final class BackupScopeTreeCoordinator: NSObject, NSOutlineViewDataSour
 
     internal func toggleSelectedRows() {
         guard let outlineView else { return }
-        for index in outlineView.selectedRowIndexes {
-            guard let node = outlineView.item(atRow: index) as? BackupScopeNode else { continue }
+        let selection = outlineView.selectedRowIndexes.compactMap { index -> BackupScopeModel.Row? in
+            guard let node = outlineView.item(atRow: index) as? BackupScopeNode else { return nil }
             switch node.kind {
-            case .database(let name):
-                model.toggleDatabase(name)
-            case .object(let database, let id):
-                model.toggleObject(id, in: database)
-            case .placeholder:
-                continue
+            case .database(let name): return .database(name)
+            case .object(let database, let id): return .object(id, database: database)
+            case .placeholder: return nil
             }
         }
+        model.toggle(selection)
     }
 }

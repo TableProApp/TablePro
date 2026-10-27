@@ -53,3 +53,47 @@ internal final class HostingTableCellView: NSTableCellView {
         hosting.rootView = content
     }
 }
+
+internal final class CheckboxTableCellView: NSTableCellView {
+    private let checkbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private var modelState: NSControl.StateValue = .off
+    private var action: (() -> Void)?
+
+    internal init(identifier: NSUserInterfaceItemIdentifier) {
+        super.init(frame: .zero)
+        self.identifier = identifier
+        checkbox.target = self
+        checkbox.action = #selector(clicked(_:))
+        checkbox.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(checkbox)
+        NSLayoutConstraint.activate([
+            checkbox.centerXAnchor.constraint(equalTo: centerXAnchor),
+            checkbox.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    internal required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    internal func configure(
+        state: NSControl.StateValue,
+        isEnabled: Bool,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) {
+        modelState = state
+        self.action = action
+        checkbox.allowsMixedState = state == .mixed
+        checkbox.state = state
+        checkbox.isEnabled = isEnabled
+        checkbox.setAccessibilityLabel(accessibilityLabel)
+    }
+
+    // AppKit already moved the box to its next state; the action decides the real one.
+    @objc private func clicked(_ sender: NSButton) {
+        sender.state = modelState
+        action?()
+    }
+}

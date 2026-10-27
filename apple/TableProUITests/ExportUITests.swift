@@ -77,6 +77,67 @@ final class ExportUITests: UITestCase {
         XCTAssertFalse(markdown.contains("North"), "A data dictionary must hold no row")
     }
 
+    func testExportingEveryTableAsStructureOnly() throws {
+        let launch = try launchWithFixture()
+        let window = launch.window
+        let app = launch.app
+        let destination = try XCTUnwrap(sandboxRoot)
+        let exported = destination.appendingPathComponent("schema.sql")
+
+        _ = openFromObjectBrowser("album", in: launch)
+        app.typeShortcut(.export)
+
+        let sheet = window.children(matching: .sheet).firstMatch
+        XCTAssertTrue(sheet.staticTexts["1 table to export"].waitToExist(timeout: 30), "Export must open")
+        let format = element(sheet.popUpButtons, labelEndingWith: "Format")
+        XCTAssertTrue(format.waitToExist(timeout: 10), "The export sheet must offer a format menu")
+        if (format.value as? String) != "SQL" {
+            format.click()
+            let sql = app.menuItems["SQL"].firstMatch
+            XCTAssertTrue(sql.waitToExist(timeout: 10), "SQL must be an export format")
+            sql.click()
+        }
+        XCTAssertTrue(waitForPredicate(timeout: 10) { (format.value as? String) == "SQL" }, "The format must be SQL")
+
+        let tree = sheet.outlines.firstMatch
+        XCTAssertTrue(tree.waitToExist(timeout: 10), "The export tree must show")
+        // The fixture's database row is named after its file's path.
+        let database = tree.checkBoxes.matching(
+            NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "/", ".sqlite")
+        ).firstMatch
+        XCTAssertTrue(database.waitToExist(timeout: 10), "The database row must offer its own checkbox")
+        database.click()
+        XCTAssertTrue(
+            sheet.staticTexts["6 tables to export"].waitToExist(timeout: 10),
+            "Ticking the database must select every table"
+        )
+        for column in ["Drop", "Data"] {
+            let box = tree.checkBoxes.matching(
+                NSPredicate(format: "label BEGINSWITH %@ AND label ENDSWITH %@", "\(column) for ", ".sqlite")
+            ).firstMatch
+            XCTAssertTrue(box.waitToExist(timeout: 10), "The database row must offer a \(column) checkbox")
+            box.click()
+            XCTAssertTrue(
+                waitForPredicate(timeout: 10) { (box.value as? Int) == 0 },
+                "\(column) must turn off for the whole database"
+            )
+        }
+
+        save(from: sheet, to: exported, in: app)
+
+        XCTAssertTrue(
+            waitForPredicate(timeout: 30) { FileManager.default.fileExists(atPath: exported.path) },
+            "Export must write \(exported.lastPathComponent) into the chosen folder"
+        )
+        let sql = try String(contentsOf: exported, encoding: .utf8)
+        XCTAssertEqual(
+            sql.components(separatedBy: "CREATE TABLE").count - 1, 6,
+            "The file must create every one of the fixture's six tables"
+        )
+        XCTAssertFalse(sql.contains("INSERT INTO"), "A structure-only export must hold no row")
+        XCTAssertFalse(sql.contains("DROP TABLE"), "A structure-only export must drop nothing")
+    }
+
     // Clicks Export…, names the file in the save panel, moves the panel to the file's folder and saves.
     private func save(from sheet: XCUIElement, to exported: URL, in app: XCUIApplication) {
         let destination = exported.deletingLastPathComponent()

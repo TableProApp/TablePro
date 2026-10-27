@@ -95,16 +95,11 @@ internal struct ExportTreeContainerRow: View {
     }
 }
 
-/// One object row. The option toggles stay positionally aligned with the format's full column list
-/// for every kind, so a column this kind does not support leaves an empty slot of the same width
-/// rather than shifting the ones after it.
+// The checkbox only includes or excludes the object; what it writes is in the option columns.
 internal struct ExportTreeObjectRow: View {
     internal let object: ExportObjectItem
     internal let offersRowScope: Bool
-    internal let optionColumns: [PluginExportOptionColumn]
-    internal let supportsOption: (String, PluginExportObjectKind) -> Bool
-    internal let setSelected: (Bool) -> Void
-    internal let setOption: (Int, Bool) -> Void
+    internal let toggle: () -> Void
     internal let setRowScope: (PluginExportRowScope) -> Void
     internal let loadColumns: () async -> [String]
 
@@ -114,21 +109,10 @@ internal struct ExportTreeObjectRow: View {
 
     internal var body: some View {
         HStack(spacing: 4) {
-            if optionColumns.isEmpty {
-                Toggle(object.name, isOn: Binding(get: { object.isSelected }, set: setSelected))
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .frame(width: 18)
-            } else {
-                TristateCheckbox(
-                    state: checkboxState,
-                    accessibilityLabel: object.name,
-                    accessibilityValue: ExportObjectKindPresentation.checkboxValue(for: checkboxState)
-                ) {
-                    setSelected(checkboxState != .checked)
-                }
+            Toggle(object.name, isOn: Binding(get: { object.isSelected }, set: { _ in toggle() }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
                 .frame(width: 18)
-            }
 
             Image(systemName: ExportObjectKindPresentation.iconName(for: object.kind))
                 .foregroundStyle(ExportObjectKindPresentation.iconColor(for: object.kind))
@@ -152,12 +136,6 @@ internal struct ExportTreeObjectRow: View {
 
             if offersRowScope {
                 rowScopeButton
-            }
-
-            if !optionColumns.isEmpty {
-                ForEach(Array(optionColumns.enumerated()), id: \.element.id) { index, column in
-                    optionToggle(index: index, column: column)
-                }
             }
         }
     }
@@ -194,32 +172,5 @@ internal struct ExportTreeObjectRow: View {
                 availableColumns = await loadColumns()
             }
         }
-    }
-
-    @ViewBuilder
-    private func optionToggle(index: Int, column: PluginExportOptionColumn) -> some View {
-        if supportsOption(column.id, object.kind) {
-            Toggle(column.label, isOn: Binding(
-                get: { object.optionValues[safe: index] ?? column.defaultValue },
-                set: { setOption(index, $0) }
-            ))
-            .toggleStyle(.checkbox)
-            .labelsHidden()
-            .disabled(!object.isSelected)
-            .frame(width: column.width, alignment: .center)
-        } else {
-            Color.clear.frame(width: column.width, height: 1)
-        }
-    }
-
-    private var checkboxState: TristateCheckbox.State {
-        guard object.isSelected else { return .unchecked }
-        let supported = optionColumns.indices.filter {
-            supportsOption(optionColumns[$0].id, object.kind)
-        }
-        guard !supported.isEmpty else { return .checked }
-        let onCount = supported.count { object.optionValues[safe: $0] == true }
-        if onCount == 0 { return .unchecked }
-        return onCount == supported.count ? .checked : .mixed
     }
 }

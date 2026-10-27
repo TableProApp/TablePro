@@ -106,6 +106,27 @@ struct BackupScopeModelTests {
         #expect(scopes[0].scope.objects.map(\.name) == ["carts"])
     }
 
+    @Test("Space over a database and its objects unticks them once instead of flipping the objects back")
+    func spaceOverNestedRowsActsOnce() {
+        let rows = [row("sales", selected: true, objects: [("orders", true), ("carts", true)])]
+        let toggled = BackupScopeModel.toggling(
+            [.database("sales"), .object("orders", database: "sales"), .object("carts", database: "sales")],
+            in: rows
+        )
+        #expect(!toggled[0].isSelected)
+        #expect(toggled[0].objects.allSatisfy { !$0.isSelected })
+    }
+
+    @Test("Space over rows in different states turns them all on")
+    func spaceOverMixedSelectionTurnsAllOn() {
+        let rows = [
+            row("sales", selected: true, objects: [("orders", true)]),
+            row("billing", selected: false)
+        ]
+        let toggled = BackupScopeModel.toggling([.database("sales"), .database("billing")], in: rows)
+        #expect(toggled.allSatisfy { $0.isSelected })
+    }
+
     @Test("The footer counts files for a run and objects for a narrowed one")
     func summaryText() {
         let whole = [row("sales", selected: true)]

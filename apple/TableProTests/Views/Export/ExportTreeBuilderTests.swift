@@ -395,6 +395,26 @@ struct ExportTreeBuilderTests {
         #expect(archive.objects.first { $0.name == "purge" }?.isSelected == true)
     }
 
+    @Test("A reload keeps a table's row scope, so a format round trip cannot widen what it exports")
+    func reloadKeepsRowScope() async throws {
+        let builder = Self.builder(
+            typeId: Self.schemaTypeId,
+            preselection: .tables(names: [], scope: nil),
+            reader: Self.threeSchemaReader(),
+            supportedObjectKinds: Self.sqlKinds
+        )
+        var before = try await builder.build(priorRows: [:])
+        let databaseIndex = try #require(before.firstIndex { !$0.objects.isEmpty })
+        let scope = PluginExportRowScope(filter: "total > 10", rowLimit: 5)
+        before[databaseIndex].objects[0].rowScope = scope
+        let name = before[databaseIndex].objects[0].name
+
+        let after = try await builder.build(priorRows: ExportTreeBuilder.snapshots(of: before))
+
+        let restored = try #require(after.first { $0.name == before[databaseIndex].name }?.objects.first { $0.name == name })
+        #expect(restored.rowScope == scope)
+    }
+
     @Test("A schema holding the preselected table is expanded even when it is not the default one")
     func preselectedSchemaExpands() async throws {
         let reader = FakeReader(

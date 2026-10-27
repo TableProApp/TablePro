@@ -71,6 +71,11 @@ final class SQLEditorCoordinator: ObservableObject, TextViewCoordinator, TextVie
     }
 
     func scheduleEditorFocusClaim() {
+        // Query tabs share one editor, which installs only once, so a later tab's claim is taken here.
+        if hasInstalledEditorServices, !isDestroyed, let textView = controller?.textView, let window = textView.window {
+            window.makeFirstResponder(textView)
+            return
+        }
         focusClaimPending = true
     }
 

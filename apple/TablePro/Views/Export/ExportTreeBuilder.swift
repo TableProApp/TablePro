@@ -150,6 +150,7 @@ struct ExportRowSnapshot {
     let kind: PluginExportObjectKind
     let isSelected: Bool
     let optionValues: [Bool]
+    var rowScope: PluginExportRowScope = .unrestricted
 }
 
 /// Builds the export dialog's container tree.
@@ -191,7 +192,8 @@ struct ExportTreeBuilder {
                         container: database.name,
                         kind: object.kind,
                         isSelected: object.isSelected,
-                        optionValues: object.optionValues
+                        optionValues: object.optionValues,
+                        rowScope: object.rowScope
                     )
             }
         }
@@ -443,7 +445,8 @@ struct ExportTreeBuilder {
                 inContainer: containerRef,
                 isCurrentContainer: isCurrentContainer
             ),
-            optionValues: priorRow?.optionValues ?? []
+            optionValues: priorRow?.optionValues ?? [],
+            rowScope: priorRow?.rowScope ?? .unrestricted
         )
     }
 }
