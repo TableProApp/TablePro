@@ -95,6 +95,8 @@ internal struct SQLTokenFormatter {
         "BLOB", "CLOB", "BINARY", "VARBINARY",
         "JSON", "JSONB", "XML", "UUID",
         "SERIAL", "BIGSERIAL",
+        "DOUBLE PRECISION", "CHARACTER VARYING", "CHAR VARYING", "NATIONAL CHARACTER", "NATIONAL CHAR", "BIT VARYING",
+        "TIMESTAMP WITH TIME ZONE", "TIMESTAMP WITHOUT TIME ZONE", "TIME WITH TIME ZONE", "TIME WITHOUT TIME ZONE",
     ]
 
     // Width of `SELECT ` and `SET `, which the items after the first line up under.
@@ -103,6 +105,8 @@ internal struct SQLTokenFormatter {
 
     private let functions: Set<String>
     private let dataTypes: Set<String>
+    // Multi-word types by their first word, longest first: `CHARACTER VARYING`, `TIMESTAMP WITH TIME ZONE`.
+    private let typePhrases: [String: [[String]]]
     private let rewritesFunctionCase: Bool
     private let rewritesDataTypeCase: Bool
     private let indentUnit: String
@@ -117,6 +121,12 @@ internal struct SQLTokenFormatter {
         self.options = options
         self.functions = Self.builtinFunctions.union(dialectFunctions)
         self.dataTypes = Self.builtinDataTypes.union(dialectDataTypes)
+        var phrases: [String: [[String]]] = [:]
+        for type in dataTypes where type.contains(" ") {
+            let words = type.uppercased().split(separator: " ").map(String.init)
+            if let first = words.first { phrases[first, default: []].append(words) }
+        }
+        self.typePhrases = phrases.mapValues { $0.sorted { $0.count > $1.count } }
         self.rewritesFunctionCase = rewritesFunctionCase
         self.rewritesDataTypeCase = rewritesDataTypeCase
         self.indentUnit = options.indentUnit
@@ -147,6 +157,8 @@ internal struct SQLTokenFormatter {
     private var awaitsParameterList = false
     // The word before each open inline paren, keyed by its index in `clauseStack`.
     private var parenOpeners: [Int: String] = [:]
+    // The last token of the multi-word type being written, which takes the type's case as one word does.
+    private var typePhraseEnd = -1
     private var directiveOffsets: [Int] = []
 
     private enum ClauseContext {
@@ -345,6 +357,10 @@ internal struct SQLTokenFormatter {
             afterNewline = false
             suppressNextSpace = true
         }
+        if position <= typePhraseEnd || startsTypePhrase() {
+            appendToken(typeCased(token))
+            return
+        }
         switch token.type {
         case .comment:
             handleComment(token)
@@ -514,7 +530,9 @@ internal struct SQLTokenFormatter {
         awaitsParameterList = false
         // A structural keyword takes a space before its paren (`VALUES (`, `IN (`); a function call
         // or a sized type does not (`COUNT(*)`, `VARCHAR(255)`).
-        if let prev, prev.type == .keyword, !functions.contains(prev.upperValue), !dataTypes.contains(prev.upperValue) {
+        if typePhraseEnd == position - 1 {
+            writeGlued("(")
+        } else if let prev, prev.type == .keyword, !functions.contains(prev.upperValue), !dataTypes.contains(prev.upperValue) {
             writeOpener()
         } else if currentContext == .insert && Self.isQuotedOrPlainName(prev) {
             writeOpener()
@@ -659,8 +677,7 @@ internal struct SQLTokenFormatter {
             return token.value
         }
         if dataTypes.contains(upper) {
-            guard rewritesDataTypeCase, isTypePosition(position) else { return token.value }
-            return options.dataTypeCase.applied(upper: upper, original: token.value)
+            return isTypePosition(position) ? typeCased(token) : token.value
         }
         if functions.contains(upper) {
             return token.value
@@ -673,8 +690,6 @@ internal struct SQLTokenFormatter {
     private static let parameterListOpener = "(parameters)"
     private static let castFunctions: Set<String> = ["CAST", "TRY_CAST", "SAFE_CAST"]
     private static let parameterModes: Set<String> = ["IN", "OUT", "INOUT", "VARIADIC"]
-    // The second word of `DOUBLE PRECISION`, `CHARACTER VARYING`, `LONG RAW`, `NATIONAL CHAR`.
-    private static let typeContinuations: Set<String> = ["PRECISION", "VARYING", "RAW", "VARCHAR", "CHAR", "CHARACTER"]
 
     // A word spelled like a type is a type only where the grammar puts one: a column definition, `CAST(x AS t)`,
     // `x::t`, `RETURNS t`, `TYPE t`, a variable or parameter declaration, and the words that continue one
@@ -684,10 +699,6 @@ internal struct SQLTokenFormatter {
         guard let prev = token(at: index - 1) else { return false }
         let prevUpper = prev.upperValue
         let beforePrev = token(at: index - 2)
-        if let current = token(at: index), Self.typeContinuations.contains(current.upperValue),
-           dataTypes.contains(prevUpper), isTypePosition(index - 1) {
-            return true
-        }
         switch prevUpper {
         case "::", "RETURNS", "SETOF":
             return true
@@ -722,6 +733,24 @@ internal struct SQLTokenFormatter {
         token.type == .identifier || token.type == .keyword
     }
 
+    private func typeCased(_ token: SQLToken) -> String {
+        rewritesDataTypeCase ? options.dataTypeCase.applied(upper: token.upperValue, original: token.value) : token.value
+    }
+
+    // A multi-word type in a type position is one type: every word takes its case, and the `WITH` of
+    // `TIMESTAMP WITH TIME ZONE` starts no statement.
+    private mutating func startsTypePhrase() -> Bool {
+        guard let candidates = typePhrases[stream[position].upperValue], Self.isWord(stream[position]) else { return false }
+        let match = candidates.first { words in
+            words.indices.dropFirst().allSatisfy { offset in
+                token(at: position + offset).map { Self.isWord($0) && $0.upperValue == words[offset] } ?? false
+            }
+        }
+        guard let match, isTypePosition(position) else { return false }
+        typePhraseEnd = position + match.count - 1
+        return true
+    }
+
     // MARK: - Names
 
     // Values, actions and modifiers wherever they stand, never names (`SELECT DISTINCT *`, `ARRAY[1]`).
@@ -743,6 +772,14 @@ internal struct SQLTokenFormatter {
         "SET", "VALUES", "JOIN", "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL",
         "IN", "IS", "LIKE", "ILIKE", "BETWEEN", "NOT",
         "=", "<>", "!=", "<", ">", "<=", ">=", "<=>", "+", "-", "*", "/", "%", "||", "::", "[",
+    ]
+
+    private static let tableIntroducers: Set<String> = ["FROM", "JOIN", "UPDATE", "INTO"]
+
+    // Words that come between those and the table: `FROM ONLY t`, `JOIN LATERAL f(x) a`, ClickHouse's `INTO TABLE t`.
+    private static let tableModifiers: Set<String> = [
+        "ONLY", "LATERAL", "TABLE", "TEMPORARY", "TEMP", "UNLOGGED", "IGNORE", "LOW_PRIORITY", "HIGH_PRIORITY",
+        "DELAYED", "OUTFILE", "DUMPFILE",
     ]
 
     private static let constraintStarters: Set<String> = [
@@ -769,6 +806,11 @@ internal struct SQLTokenFormatter {
         }
         if prev?.upperValue == "COLUMN" { return upper != "IF" }
         if prev?.upperValue == "AS" { return !isInsideNestedExpression && next?.value != "(" }
+        // `FROM apply a`: a word between FROM, JOIN, UPDATE or INTO and its alias names the table.
+        if let prev, Self.tableIntroducers.contains(prev.upperValue), next?.type == .identifier,
+           !Self.tableModifiers.contains(upper) {
+            return true
+        }
         guard let prev, Self.operandStarters.contains(prev.upperValue) else { return false }
         guard let next else { return true }
         return Self.operandEnders.contains(next.upperValue) || Self.isTerminator(next)

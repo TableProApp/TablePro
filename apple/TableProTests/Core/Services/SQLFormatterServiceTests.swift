@@ -697,7 +697,7 @@ struct SQLFormatterServiceTests {
         #expect(result == """
         CREATE TABLE t (
           id int,
-          ts timestamp WITH time zone,
+          ts timestamp with time zone,
           name text CHARACTER SET utf8mb4,
           parent int REFERENCES p(id) ON DELETE CASCADE
         )
@@ -1282,6 +1282,78 @@ struct SQLFormatterServiceTests {
                B'101',
                _utf8mb4'a'
         FROM t
+        """
+        )
+    }
+
+    @Test("An @ parameter whose name starts with a digit stays one word")
+    func atParametersKeepDigitLeadingNames() throws {
+        try expectFormat(
+            "select @1, @1ab from t where a = @1",
+            dialect: .sqlite,
+            equals: """
+        SELECT @1,
+               @1ab
+        FROM t
+        WHERE a = @1
+        """
+        )
+    }
+
+    @Test("A table named like a keyword keeps its spelling before its alias")
+    func tableNamedLikeAKeywordBeforeItsAlias() throws {
+        try expectFormat(
+            "select * from apply a join apply b on a.id = b.id; update apply x set y = 1; insert into apply values (1)",
+            equals: """
+        SELECT *
+        FROM apply a
+        JOIN apply b
+          ON a.id = b.id;
+        UPDATE apply x
+        SET y = 1;
+        INSERT INTO apply
+        VALUES (1)
+        """
+        )
+        try expectFormat(
+            "select * from only t x; select * from t join lateral f(t.id) z on true",
+            dialect: .postgresql,
+            equals: """
+        SELECT *
+        FROM ONLY t x;
+        SELECT *
+        FROM t
+        JOIN LATERAL f(t.id) z
+          ON TRUE
+        """
+        )
+    }
+
+    @Test("A multi-word type takes the data type case as one type")
+    func multiWordTypesTakeOneCase() throws {
+        try expectFormat(
+            "select cast(x as character varying(20)), y::timestamp with time zone, cast(z as double precision), "
+                + "w::bit varying(3) from t",
+            dialect: .postgresql,
+            options: options { $0.dataTypeCase = .lower },
+            equals: """
+        SELECT cast(x AS character varying(20)),
+               y :: timestamp with time zone,
+               cast(z AS double precision),
+               w :: bit varying(3)
+        FROM t
+        """
+        )
+        try expectFormat(
+            "create table t (a double precision, b timestamp without time zone, c character varying(10))",
+            dialect: .postgresql,
+            options: options { $0.dataTypeCase = .upper },
+            equals: """
+        CREATE TABLE t (
+          a DOUBLE PRECISION,
+          b TIMESTAMP WITHOUT TIME ZONE,
+          c CHARACTER VARYING(10)
+        )
         """
         )
     }

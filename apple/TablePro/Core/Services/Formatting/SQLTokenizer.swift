@@ -430,7 +430,12 @@ private struct Lexer {
             if cursor < length, text.character(at: cursor) == unit {
                 cursor += 1
             }
-            guard cursor < length, isWordStart(text.character(at: cursor)) else { return false }
+            // SQLite's `@1` and T-SQL's `@1st` are parameters; `#` starts a temp table name only before a letter.
+            guard cursor < length,
+                  unit == Self.at ? isWordPart(text.character(at: cursor)) : isWordStart(text.character(at: cursor))
+            else {
+                return false
+            }
             index = cursor
             consumeWordParts()
             emit(unit == Self.at ? .placeholder : .identifier, from: start)

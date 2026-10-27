@@ -350,6 +350,13 @@ struct SQLTokenizerTests {
         #expect(code("a'alias' r'raw' b'0101'", .mysql).map(\.value) == ["a", "'alias'", "r", "'raw'", "b'0101'"])
     }
 
+    @Test("An @ parameter may start with a digit")
+    func atParameterWithLeadingDigit() {
+        let tokens = code("@1 @1ab @@x", .sqlite)
+        #expect(tokens.map(\.value) == ["@1", "@1ab", "@@x"])
+        #expect(tokens.allSatisfy { $0.type == .placeholder })
+    }
+
     @Test("A custom delimiter splits the word it is glued to")
     func delimiterSplitsAGluedWord() {
         let tokens = code("DELIMITER $$\nend$$\nDELIMITER ;", .mysql)
