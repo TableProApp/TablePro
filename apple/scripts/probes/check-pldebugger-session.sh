@@ -62,6 +62,7 @@ for fragment in \
     "p.prorettype = 'pg_catalog.record'::pg_catalog.regtype" \
     "SELECT 1 FROM pg_catalog.unnest(p.proargtypes::pg_catalog.oid[]) AS a(t)" \
     "WHERE ty.typtype = 'p'" \
+    "rt.typname IN ('trigger', 'event_trigger')" \
     "p.proconfig" \
     "message.contains(\"select() failed\")" \
     "JOIN pg_catalog.pg_type ty ON ty.oid = (\\(argumentTypes))[s.i]" \
@@ -271,7 +272,11 @@ SELECT
     p.proname,
     pg_catalog.pg_get_function_identity_arguments(p.oid),
     p.prorettype = 'pg_catalog.record'::pg_catalog.regtype,
-    p.prorettype IN ('pg_catalog.trigger'::pg_catalog.regtype, 'pg_catalog.event_trigger'::pg_catalog.regtype),
+    EXISTS (
+        SELECT 1 FROM pg_catalog.pg_type rt
+        JOIN pg_catalog.pg_namespace rn ON rn.oid = rt.typnamespace
+        WHERE rt.oid = p.prorettype AND rn.nspname = 'pg_catalog' AND rt.typname IN ('trigger', 'event_trigger')
+    ),
     ARRAY(
         SELECT pg_catalog.format_type((COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]))[s.i], NULL)
         FROM pg_catalog.generate_subscripts(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]), 1) AS s(i)

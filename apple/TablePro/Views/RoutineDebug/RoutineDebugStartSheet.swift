@@ -181,24 +181,25 @@ internal struct RoutineDebugStartSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: 600)
     }
 
     private var entryPointBinding: Binding<Int> {
         Binding(get: { model.entryPointIndex }, set: { model.selectEntryPoint($0) })
     }
 
+    // The ideal widths plus the table's insets and column gaps stay inside the sheet, or Default scrolls out of sight.
     private var argumentTable: some View {
         Table(model.arguments) {
             TableColumn(String(localized: "Name")) { argument in
                 Text(argument.parameter.name)
             }
-            .width(min: 80, ideal: 120)
+            .width(min: 80, ideal: 100)
             TableColumn(String(localized: "Type")) { argument in
                 Text(argument.parameter.typeName)
                     .foregroundStyle(.secondary)
             }
-            .width(min: 60, ideal: 100)
+            .width(min: 60, ideal: 80)
             TableColumn(String(localized: "Value")) { argument in
                 if argument.takesValue {
                     TextField(
@@ -212,7 +213,7 @@ internal struct RoutineDebugStartSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .width(min: 120, ideal: 180)
+            .width(min: 120, ideal: 140)
             TableColumn(String(localized: "NULL")) { argument in
                 Toggle(
                     String(localized: "NULL"),

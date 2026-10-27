@@ -266,7 +266,7 @@ enum PostgreSQLRoutineDebugProtocol {
                 p.proname,
                 pg_catalog.pg_get_function_identity_arguments(p.oid),
                 p.prorettype = 'pg_catalog.record'::pg_catalog.regtype,
-                p.prorettype IN ('pg_catalog.trigger'::pg_catalog.regtype, 'pg_catalog.event_trigger'::pg_catalog.regtype),
+                \(returnsTriggerTest),
                 ARRAY(
                     SELECT pg_catalog.format_type((\(argumentTypes))[s.i], NULL)
                     FROM pg_catalog.generate_subscripts(\(argumentTypes), 1) AS s(i)
@@ -310,7 +310,7 @@ enum PostgreSQLRoutineDebugProtocol {
             WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
                 AND l.lanname = 'plpgsql'
                 AND \(kindFilter)
-                AND p.prorettype NOT IN ('pg_catalog.trigger'::pg_catalog.regtype, 'pg_catalog.event_trigger'::pg_catalog.regtype)
+                AND NOT \(returnsTriggerTest)
                 AND NOT \(pseudoTypeArgumentTest)
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
@@ -321,6 +321,15 @@ enum PostgreSQLRoutineDebugProtocol {
     }
 
     // proargtypes holds the arguments a call passes; a pseudo-type there (anyelement, record) cannot be bound.
+    // Named, never cast: event_trigger arrived in 9.3, and a cast to a type the server lacks fails the whole query.
+    private static let returnsTriggerTest = """
+        EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_type rt
+                    JOIN pg_catalog.pg_namespace rn ON rn.oid = rt.typnamespace
+                    WHERE rt.oid = p.prorettype AND rn.nspname = 'pg_catalog' AND rt.typname IN ('trigger', 'event_trigger')
+                )
+        """
+
     private static let pseudoTypeArgumentTest = """
         EXISTS (
                     SELECT 1 FROM pg_catalog.unnest(p.proargtypes::pg_catalog.oid[]) AS a(t)

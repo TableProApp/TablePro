@@ -383,6 +383,11 @@ func walkthrough(_ preference: OracleDebugProtocolPreference) async throws {
     let moved = try await engine.setBreakpoint(in: calcBody, line: 4)
     log("breakpoint at 4 placed at \(moved.map(String.init) ?? "nil")")
     if let moved { try await engine.removeBreakpoint(in: calcBody, line: moved) }
+    let held = try await engine.perform(.continueExecution)
+    log("continue with the start breakpoint still set: \(describe(held))")
+    check(held == .paused(OracleDebugLocation(unit: calcBody, line: 5)), "\(preference): the start breakpoint asked for 4 still stops at 5")
+    // A start breakpoint comes off by the line the host asked for, wherever it landed.
+    try await engine.removeBreakpoint(in: calcBody, line: 4)
     let atBreakpoint = try await engine.perform(.continueExecution)
     log("continue: \(describe(atBreakpoint))")
     check(atBreakpoint == .paused(OracleDebugLocation(unit: calcBody, line: 6)), "\(preference): continue stops at 6")

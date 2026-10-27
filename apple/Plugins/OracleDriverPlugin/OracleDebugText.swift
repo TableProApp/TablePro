@@ -230,12 +230,12 @@ enum OracleDebugText {
         guard let identity else {
             return (message, rollback + " " + String(localized: "A user with ALTER SYSTEM can find its session in V$SESSION and end it with ALTER SYSTEM KILL SESSION."))
         }
-        guard let serial = identity.serial else {
+        guard let serial = identity.serial, let kill = OracleDBMSDebugStatements.killSession(identity) else {
             return (message, String(format: String(localized: "Session SID %d. %@"), identity.sid, rollback))
         }
         return (message, String(
-            format: String(localized: "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with ALTER SYSTEM KILL SESSION '%1$d,%2$d' IMMEDIATE."),
-            identity.sid, serial, rollback
+            format: String(localized: "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@."),
+            identity.sid, serial, rollback, kill
         ))
     }
 

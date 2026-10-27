@@ -68,10 +68,13 @@ public enum OracleDebugStopResult: Sendable, Equatable {
 public struct OracleDebugSessionIdentity: Sendable, Hashable {
     public let sid: Int
     public let serial: Int?
+    // On RAC a SID and SERIAL# name a session only within its instance, and the kill may go through another one.
+    public let instance: Int?
 
-    public init(sid: Int, serial: Int?) {
+    public init(sid: Int, serial: Int?, instance: Int? = nil) {
         self.sid = sid
         self.serial = serial
+        self.instance = instance
     }
 }
 

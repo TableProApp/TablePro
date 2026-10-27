@@ -73,11 +73,15 @@ struct OracleDBMSDebugStatementsTests {
 
     // Read before DEBUG_ON: the target's SID and SERIAL#, which Stop needs to end a routine running between breakpoints.
     @Test func testTheTargetSessionIsIdentifiedForAKill() {
-        #expect(Statements.sessionIdentity(fromRow: ["213", "28648"]) == OracleDebugSessionIdentity(sid: 213, serial: 28_648))
-        #expect(Statements.sessionIdentity(fromRow: ["213", nil]) == OracleDebugSessionIdentity(sid: 213, serial: nil))
-        #expect(Statements.sessionIdentity(fromRow: [nil, nil]) == nil)
+        #expect(Statements.sessionIdentity(fromRow: ["213", "28648", "2"])
+            == OracleDebugSessionIdentity(sid: 213, serial: 28_648, instance: 2))
+        #expect(Statements.sessionIdentity(fromRow: ["213", nil, "1"]) == OracleDebugSessionIdentity(sid: 213, serial: nil, instance: 1))
+        #expect(Statements.sessionIdentity(fromRow: [nil, nil, "1"]) == nil)
         #expect(Statements.killSession(OracleDebugSessionIdentity(sid: 213, serial: 28_648))
             == "ALTER SYSTEM KILL SESSION '213,28648' IMMEDIATE")
+        #expect(Statements.killSession(OracleDebugSessionIdentity(sid: 213, serial: 28_648, instance: 2))
+            == "ALTER SYSTEM KILL SESSION '213,28648,@2' IMMEDIATE")
+        #expect(Statements.sessionIdentityQueries.allSatisfy { $0.contains("SYS_CONTEXT('USERENV', 'INSTANCE')") })
         #expect(Statements.killSession(OracleDebugSessionIdentity(sid: 213, serial: nil)) == nil)
         #expect(Statements.sessionIdentityQueries.first?.contains("DBMS_DEBUG_JDWP.CURRENT_SESSION_SERIAL") == true)
     }

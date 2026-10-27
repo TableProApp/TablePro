@@ -7,6 +7,9 @@ import SwiftUI
 import TableProPluginKit
 
 // The call stack beside the source, and under them Xcode's debug area: its bar of controls and status, then variables beside the output.
+// Nested split views first lay out at their minimums, before the window gives them room, so holding priorities, not
+// thickness fractions, decide the layout: the source takes the room, the debug area and the stack keep their size, and
+// variables and output share theirs.
 internal struct RoutineDebugTabView: View {
     @ObservedObject var controller: RoutineDebugController
     let databaseType: DatabaseType
@@ -16,15 +19,13 @@ internal struct RoutineDebugTabView: View {
             autosaveName: "com.TablePro.routineDebug.sourceAndPanes",
             isVertical: false,
             primaryMinimum: 160,
-            secondaryMinimum: 140,
-            primaryThicknessFraction: 0.6
+            secondaryMinimum: 200,
+            primaryHoldingPriority: .splitPaneFlexible
         ) {
             AutosavingSplitView(
                 autosaveName: "com.TablePro.routineDebug.stackAndSource",
-                primaryMinimum: 160,
-                secondaryMinimum: 280,
-                primaryThicknessFraction: 0.25,
-                primaryAutomaticMaximum: 320
+                primaryMinimum: 200,
+                secondaryMinimum: 280
             ) {
                 RoutineDebugCallStackView(controller: controller)
             } secondary: {
@@ -38,7 +39,7 @@ internal struct RoutineDebugTabView: View {
                     autosaveName: "com.TablePro.routineDebug.variablesAndOutput",
                     primaryMinimum: 220,
                     secondaryMinimum: 220,
-                    primaryThicknessFraction: 0.5
+                    primaryHoldingPriority: .defaultLow
                 ) {
                     RoutineDebugVariablesView(controller: controller)
                 } secondary: {

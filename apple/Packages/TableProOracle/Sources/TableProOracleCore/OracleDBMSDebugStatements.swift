@@ -62,9 +62,12 @@ public enum OracleDBMSDebugStatements {
     // Read before DEBUG_ON, so the target's own PL/SQL does not stop it. DBMS_DEBUG_JDWP's functions answer for any
     // user (EXECUTE is granted to PUBLIC, measured); V$SESSION needs SELECT_CATALOG_ROLE; the SID alone always works.
     public static let sessionIdentityQueries = [
-        "SELECT SYS.DBMS_DEBUG_JDWP.CURRENT_SESSION_ID, SYS.DBMS_DEBUG_JDWP.CURRENT_SESSION_SERIAL FROM SYS.DUAL",
-        "SELECT SID, SERIAL# FROM SYS.V_$SESSION WHERE SID = SYS_CONTEXT('USERENV', 'SID')",
-        "SELECT SYS_CONTEXT('USERENV', 'SID'), NULL FROM SYS.DUAL"
+        """
+        SELECT SYS.DBMS_DEBUG_JDWP.CURRENT_SESSION_ID, SYS.DBMS_DEBUG_JDWP.CURRENT_SESSION_SERIAL, \
+        SYS_CONTEXT('USERENV', 'INSTANCE') FROM SYS.DUAL
+        """,
+        "SELECT SID, SERIAL#, SYS_CONTEXT('USERENV', 'INSTANCE') FROM SYS.V_$SESSION WHERE SID = SYS_CONTEXT('USERENV', 'SID')",
+        "SELECT SYS_CONTEXT('USERENV', 'SID'), NULL, SYS_CONTEXT('USERENV', 'INSTANCE') FROM SYS.DUAL"
     ]
 
     public static func sessionIdentity(fromRow row: [String?]) -> OracleDebugSessionIdentity? {
@@ -72,13 +75,14 @@ public enum OracleDBMSDebugStatements {
             (row.count > index ? row[index] : nil).flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         }
         guard let sid = number(0) else { return nil }
-        return OracleDebugSessionIdentity(sid: sid, serial: number(1))
+        return OracleDebugSessionIdentity(sid: sid, serial: number(1), instance: number(2))
     }
 
     // Ends a target the supervisor cannot reach between breakpoints. Needs ALTER SYSTEM; ORA-01031 otherwise.
     public static func killSession(_ identity: OracleDebugSessionIdentity) -> String? {
         guard let serial = identity.serial else { return nil }
-        return "ALTER SYSTEM KILL SESSION '\(identity.sid),\(serial)' IMMEDIATE"
+        let instance = identity.instance.map { ",@\($0)" } ?? ""
+        return "ALTER SYSTEM KILL SESSION '\(identity.sid),\(serial)\(instance)' IMMEDIATE"
     }
 
     // MARK: - Supervisor

@@ -162311,7 +162311,7 @@
         }
       }
     },
-    "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with ALTER SYSTEM KILL SESSION '%1$d,%2$d' IMMEDIATE." : {
+    "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with %4$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

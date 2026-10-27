@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProPostgreSQLCore
 import Testing
 
 // Replies, rows and errors below are copied from PostgreSQL 17.11 with pldebugger 1.10
@@ -99,6 +100,18 @@ struct PostgreSQLRoutineDebugProtocolTests {
     func emptyStopIsNoLocation() {
         #expect(PostgreSQLRoutineDebugProtocol.location(fromBreakpointRow: []) == nil)
         #expect(PostgreSQLRoutineDebugProtocol.location(fromBreakpointRow: [nil, nil, nil]) == nil)
+    }
+
+    @Test("The catalog reads name the trigger types rather than cast to one a 9.1 or 9.2 server lacks")
+    func triggerTypesAreNamedNotCast() {
+        let statements = [
+            PostgreSQLRoutineDebugProtocol.routineQuery(oid: 16_431, capabilities: PostgreSQLCapabilities(serverVersion: 90_100)),
+            PostgreSQLRoutineDebugProtocol.targetListQuery(schema: "public", hasProcedureKind: false)
+        ]
+        for statement in statements {
+            #expect(!statement.contains("event_trigger'::"))
+            #expect(statement.contains("rt.typname IN ('trigger', 'event_trigger')"))
+        }
     }
 
     @Test("Breakpoints are set on the source line, unshifted")
