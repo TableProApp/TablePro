@@ -21,6 +21,7 @@ public struct OraclePLSQLDeclarationScan: Sendable, Equatable {
         public let kind: Kind
         // Nil for a package-level variable.
         public let subprogram: Int?
+        let block: Int?
 
         // GET_VALUE reads its name as an identifier path, so `"a.b"` unquoted would name member b of a, and a lower
         // case or spaced name would not be found at all.
@@ -37,8 +38,14 @@ public struct OraclePLSQLDeclarationScan: Sendable, Equatable {
         public var depth: Int = 1
     }
 
+    struct Block: Sendable, Equatable {
+        let startLine: Int
+        var endLine: Int?
+    }
+
     public private(set) var declarations: [Declaration] = []
     public private(set) var subprograms: [Subprogram] = []
+    private var blocks: [Block] = []
 
     public init(source: String) {
         var parser = Parser(tokens: Lexer.tokens(of: source))
@@ -48,6 +55,7 @@ public struct OraclePLSQLDeclarationScan: Sendable, Equatable {
             return parser.subprograms[index].isDefinition
         }
         subprograms = parser.subprograms
+        blocks = parser.blocks
     }
 
     // The header lines of the unit-level subprograms named `name`: every overload, since the first one entered is the
@@ -75,17 +83,27 @@ public struct OraclePLSQLDeclarationScan: Sendable, Equatable {
             chain.append(index)
             current = subprograms[index].parent
         }
-        var seen: Set<String> = []
-        var result: [Declaration] = []
+        var visible: [Declaration] = []
+        // The lexer upper-cases unquoted names, so `name` compares as Oracle resolves: `y` is `"Y"`, `x` is not `"x"`.
+        var innermostBlock: [String: Int] = [:]
         for index in chain {
-            // A loop index exists only inside its loop, which starts at or after its own line.
-            for declaration in declarations where declaration.subprogram == index && !seen.contains(declaration.name)
-                && (declaration.kind != .iterator || declaration.line <= line) {
-                seen.insert(declaration.name)
-                result.append(declaration)
+            for declaration in declarations where declaration.subprogram == index && encloses(declaration.block, line) {
+                visible.append(declaration)
+                // Blocks are numbered as they open, so of the blocks around one line the innermost has the highest.
+                if let block = declaration.block, block > innermostBlock[declaration.name] ?? -1 {
+                    innermostBlock[declaration.name] = block
+                }
             }
         }
-        return result
+        var seen: Set<String> = []
+        return visible.filter { declaration in
+            declaration.block == innermostBlock[declaration.name] && seen.insert(declaration.name).inserted
+        }
+    }
+
+    private func encloses(_ block: Int?, _ line: Int) -> Bool {
+        guard let block else { return false }
+        return blocks[block].startLine <= line && line <= (blocks[block].endLine ?? Int.max)
     }
 
     public var packageVariables: [Declaration] {
@@ -230,9 +248,11 @@ extension OraclePLSQLDeclarationScan {
 
         enum Frame {
             case unit(Phase)
-            case subprogram(Int, Phase)
-            case block(Phase)
+            case subprogram(Int, block: Int, Phase)
+            case block(Int, Phase)
             case caseExpression
+            // A FOR loop's block holds its index, from the FOR to its END LOOP; other loops hold nothing.
+            case loop(Int?)
         }
 
         let tokens: [Token]
@@ -240,6 +260,8 @@ extension OraclePLSQLDeclarationScan {
         var stack: [Frame] = []
         var declarations: [Declaration] = []
         var subprograms: [Subprogram] = []
+        var blocks: [Block] = []
+        var pendingLoopBlock: Int?
 
         init(tokens: [Token]) {
             self.tokens = tokens
@@ -253,7 +275,17 @@ extension OraclePLSQLDeclarationScan {
 
         var currentSubprogram: Int? {
             for frame in stack.reversed() {
-                if case .subprogram(let index, _) = frame { return index }
+                if case .subprogram(let index, _, _) = frame { return index }
+            }
+            return nil
+        }
+
+        var currentBlock: Int? {
+            for frame in stack.reversed() {
+                switch frame {
+                case .subprogram(_, let block, _), .block(let block, _): return block
+                case .unit, .caseExpression, .loop: continue
+                }
             }
             return nil
         }
@@ -272,10 +304,10 @@ extension OraclePLSQLDeclarationScan {
                     if token.isWord("PROCEDURE", "FUNCTION") {
                         readSubprogramHeader()
                     } else if token.isWord("DECLARE") {
-                        stack.append(.block(.declare))
+                        stack.append(.block(openBlock(at: token.line), .declare))
                         position += 1
                     } else if token.isWord("BEGIN") {
-                        stack.append(.block(.body))
+                        stack.append(.block(openBlock(at: token.line), .body))
                         position += 1
                     } else {
                         position += 1
@@ -283,9 +315,9 @@ extension OraclePLSQLDeclarationScan {
                     continue
                 }
                 switch frame {
-                case .unit(.declare), .subprogram(_, .declare), .block(.declare):
+                case .unit(.declare), .subprogram(_, _, .declare), .block(_, .declare):
                     readDeclaration()
-                case .unit(.body), .subprogram(_, .body), .block(.body), .caseExpression:
+                case .unit(.body), .subprogram(_, _, .body), .block(_, .body), .caseExpression, .loop:
                     readBodyToken()
                 }
             }
@@ -325,8 +357,10 @@ extension OraclePLSQLDeclarationScan {
             )
             subprogram.depth = subprogramDepth + 1
             subprograms.append(subprogram)
+            // From the header line: the first stop is there, with the parameters already bound.
+            let block = openBlock(at: keyword.line)
             if current?.isSymbol("(") == true {
-                readParameters(of: index)
+                readParameters(of: index, block: block)
             }
             var depth = 0
             while let token = current {
@@ -344,14 +378,14 @@ extension OraclePLSQLDeclarationScan {
                         return
                     }
                     subprograms[index].isDefinition = true
-                    stack.append(.subprogram(index, .declare))
+                    stack.append(.subprogram(index, block: block, .declare))
                     return
                 }
                 position += 1
             }
         }
 
-        mutating func readParameters(of subprogram: Int) {
+        mutating func readParameters(of subprogram: Int, block: Int) {
             position += 1
             var parts: [Token] = []
             var depth = 1
@@ -361,12 +395,12 @@ extension OraclePLSQLDeclarationScan {
                 if token.isSymbol(")") {
                     depth -= 1
                     if depth == 0 {
-                        addParameter(parts, subprogram: subprogram)
+                        addParameter(parts, subprogram: subprogram, block: block)
                         return
                     }
                 }
                 if depth == 1, token.isSymbol(",") {
-                    addParameter(parts, subprogram: subprogram)
+                    addParameter(parts, subprogram: subprogram, block: block)
                     parts = []
                     continue
                 }
@@ -374,7 +408,7 @@ extension OraclePLSQLDeclarationScan {
             }
         }
 
-        mutating func addParameter(_ parts: [Token], subprogram: Int) {
+        mutating func addParameter(_ parts: [Token], subprogram: Int, block: Int) {
             guard let name = parts.first, name.isName else { return }
             var rest = parts.dropFirst()
             while let mode = rest.first, mode.isWord("IN", "OUT", "NOCOPY") { rest = rest.dropFirst() }
@@ -385,7 +419,8 @@ extension OraclePLSQLDeclarationScan {
                 typeText: Self.typeText(type),
                 line: name.line,
                 kind: .parameter,
-                subprogram: subprogram
+                subprogram: subprogram,
+                block: block
             ))
         }
 
@@ -395,8 +430,9 @@ extension OraclePLSQLDeclarationScan {
                 position += 1
                 switch frame {
                 case .unit: replaceTop(with: .unit(.body))
-                case .subprogram(let index, _): replaceTop(with: .subprogram(index, .body))
-                default: replaceTop(with: .block(.body))
+                case .subprogram(let index, let block, _): replaceTop(with: .subprogram(index, block: block, .body))
+                case .block(let block, _): replaceTop(with: .block(block, .body))
+                case .caseExpression, .loop: break
                 }
                 return
             }
@@ -443,7 +479,8 @@ extension OraclePLSQLDeclarationScan {
                 typeText: Self.typeText(typeTokens[...]),
                 line: token.line,
                 kind: isConstant ? .constant : .variable,
-                subprogram: currentSubprogram
+                subprogram: currentSubprogram,
+                block: currentBlock
             ))
             skipStatement()
         }
@@ -452,13 +489,19 @@ extension OraclePLSQLDeclarationScan {
             guard let token = current else { return }
             position += 1
             if token.isWord("BEGIN") {
-                stack.append(.block(.body))
+                stack.append(.block(openBlock(at: token.line), .body))
             } else if token.isWord("DECLARE") {
-                stack.append(.block(.declare))
+                stack.append(.block(openBlock(at: token.line), .declare))
             } else if token.isWord("CASE") {
                 stack.append(.caseExpression)
+            } else if token.isWord("LOOP") {
+                stack.append(.loop(pendingLoopBlock))
+                pendingLoopBlock = nil
             } else if token.isWord("END") {
-                if current?.isWord("IF", "LOOP") == true {
+                if current?.isWord("LOOP") == true {
+                    position += 1
+                    if case .loop = stack.last { closeFrame(at: token.line) }
+                } else if current?.isWord("IF") == true {
                     position += 1
                 } else if current?.isWord("CASE") == true {
                     position += 1
@@ -470,13 +513,16 @@ extension OraclePLSQLDeclarationScan {
                     skipStatement()
                 }
             } else if token.isWord("FOR"), let name = current, name.isName, peekToken(at: 1)?.isWord("IN") == true {
+                let block = openBlock(at: name.line)
+                pendingLoopBlock = block
                 declarations.append(Declaration(
                     name: name.text,
                     isQuoted: name.kind == .quoted,
                     typeText: nil,
                     line: name.line,
                     kind: .iterator,
-                    subprogram: currentSubprogram
+                    subprogram: currentSubprogram,
+                    block: block
                 ))
             }
         }
@@ -487,9 +533,20 @@ extension OraclePLSQLDeclarationScan {
 
         mutating func closeFrame(at line: Int) {
             guard let frame = stack.popLast() else { return }
-            if case .subprogram(let index, _) = frame {
+            switch frame {
+            case .subprogram(let index, let block, _):
                 subprograms[index].endLine = line
+                blocks[block].endLine = line
+            case .block(let block, _), .loop(let block?):
+                blocks[block].endLine = line
+            case .unit, .caseExpression, .loop(nil):
+                break
             }
+        }
+
+        mutating func openBlock(at line: Int) -> Int {
+            blocks.append(Block(startLine: line))
+            return blocks.count - 1
         }
 
         mutating func replaceTop(with frame: Frame) {

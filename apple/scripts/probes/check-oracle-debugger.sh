@@ -3,12 +3,12 @@
 # Debug PL/SQL against a real Oracle server through both of the Oracle plugin's mechanisms: DBMS_DEBUG_JDWP, where the
 # database connects back to this Mac, and DBMS_DEBUG, two client sessions. Runs TableProOracleCore's engine as the
 # plugin does: the first stop, breakpoints moving to the next line with code, stepping, step out, the stack, variables
-# (package, record, collection, quoted names), function results, overloads that differ only in a parameter's type,
-# the refusal of a call two overloads both match once defaults are left out, a unit loaded before the debugger
-# attached, Stop while paused, while reads and breakpoint calls run, while running and inside a call that never returns
-# to PL/SQL, and what Stop answers when it cannot end the target, the fallback from JDWP when the ACL refuses it, the
-# database never connects or the connection comes from an address that is not the database's, a start the caller
-# cancels, and the privilege refusal.
+# (package, record, collection, quoted names, a name an inner block shadows), function results, overloads that differ
+# only in a parameter's type, the refusal of a call two overloads both match once defaults are left out, a unit loaded
+# before the debugger attached, Stop while paused, while reads and breakpoint calls run, while running and inside a
+# call that never returns to PL/SQL, and what Stop answers when it cannot end the target, the fallback from JDWP when
+# the ACL refuses it, the database never connects or the connection comes from an address that is not the database's,
+# a start the caller cancels, and the privilege refusal.
 #
 # Usage:
 #   scripts/probes/check-oracle-debugger.sh [container] [host] [port] [debugger host]
@@ -20,7 +20,7 @@
 #
 # Setup runs as SYS inside the container: DEBUG CONNECT SESSION for PROBE, users NOACL (no ACE) and NODEBUG (no
 # DEBUG CONNECT SESSION), jdwp ACEs for the debugger host and for 10.255.255.1 (which drops packets, for the timeout),
-# and PROBE's units PKG_CALC, PKG_OVER, PKG_AMBIG, P_WRITE, F_CALC, P_SPIN and P_BLOCKED compiled at
+# and PROBE's units PKG_CALC, PKG_OVER, PKG_AMBIG, P_WRITE, F_CALC, P_SPIN, P_BLOCKED and P_SHADOW compiled at
 # PLSQL_OPTIMIZE_LEVEL 1.
 # ALTER SYSTEM is granted to PROBE only for the scenarios that kill a target, then revoked. The listener uses ports
 # 15400-15420; macOS may ask once whether the probe may accept incoming connections. Exits non-zero on a
@@ -196,6 +196,19 @@ begin
   dbms_output.put_line('slept');
 end p_blocked;
 /
+create or replace procedure p_shadow(p_n number) is
+  x constant number := 1;
+begin
+  declare
+    x varchar2(20) := 'inner';
+    l_b number := 2;
+  begin
+    dbms_output.put_line(x || l_b);
+  end;
+  dbms_output.put_line(x || p_n);
+end p_shadow;
+/
+alter procedure p_shadow compile plsql_optimize_level=1 reuse settings;
 alter procedure p_blocked compile plsql_optimize_level=1 reuse settings;
 alter package pkg_over compile body plsql_optimize_level=1 reuse settings;
 alter package pkg_ambig compile body plsql_optimize_level=1 reuse settings;
@@ -355,6 +368,7 @@ let pSpin = OracleDebugUnit(owner: "PROBE", name: "P_SPIN", kind: .procedure)
 let overBody = OracleDebugUnit(owner: "PROBE", name: "PKG_OVER", kind: .packageBody)
 let pBlocked = OracleDebugUnit(owner: "PROBE", name: "P_BLOCKED", kind: .procedure)
 let ambigBody = OracleDebugUnit(owner: "PROBE", name: "PKG_AMBIG", kind: .packageBody)
+let pShadow = OracleDebugUnit(owner: "PROBE", name: "P_SHADOW", kind: .procedure)
 
 func output(_ notices: Task<[OracleDebugNotice], Never>) async -> [String] {
     await notices.value.compactMap { notice -> String? in
@@ -809,6 +823,34 @@ func ambiguous() async throws {
     }
 }
 
+// DBMS_DEBUG names the variables from the source text. P_SHADOW's inner block declares its own X, and GET_VALUE reads
+// whichever X is live at the stop, so the row must carry that declaration's type and constant flag.
+func shadowed() async throws {
+    log("=== dbms_debug, a name an inner block shadows")
+    let opened = Opened()
+    defer { opened.closeAll() }
+    guard let entry = try await entryPoints(pShadow).first else { check(false, "P_SHADOW entry"); return }
+    let engine = try await launch(entry, arguments: ["P_N": .text("3")], breakpoints: [.init(unit: pShadow, line: 8), .init(unit: pShadow, line: 10)], preference: .dbmsDebug, opened: opened)
+    let notices = drain(engine)
+    log("first: \(describe(try await engine.firstStop()))")
+    let inner = try await engine.perform(.continueExecution)
+    check(inner == .paused(OracleDebugLocation(unit: pShadow, line: 8)), "shadow: stops inside the inner block at 8 (\(describe(inner)))")
+    let inside = try await engine.variables(inFrame: 0)
+    log("vars at 8: \(describe(inside))")
+    check(inside.filter { $0.name == "X" } == [OracleDebugVariable(name: "X", kind: .local, typeName: "VARCHAR2(20)", value: .scalar("inner"), isConstant: false)], "shadow: X at 8 is the inner VARCHAR2(20) = inner")
+    check(inside.contains { $0.name == "L_B" && $0.value == .scalar("2") }, "shadow: the inner block's L_B = 2 at 8")
+    let outer = try await engine.perform(.continueExecution)
+    check(outer == .paused(OracleDebugLocation(unit: pShadow, line: 10)), "shadow: stops after the inner block at 10 (\(describe(outer)))")
+    let after = try await engine.variables(inFrame: 0)
+    log("vars at 10: \(describe(after))")
+    check(after.filter { $0.name == "X" } == [OracleDebugVariable(name: "X", kind: .local, typeName: "NUMBER", value: .scalar("1"), isConstant: true)], "shadow: X at 10 is the outer constant NUMBER = 1")
+    check(!after.contains { $0.name == "L_B" }, "shadow: L_B is gone at 10")
+    let end = try await engine.perform(.continueExecution)
+    if case .finished = end { check(true, "shadow: finished") } else { check(false, "shadow: finished (\(describe(end)))") }
+    check(await output(notices) == ["inner2", "13"], "shadow: each put_line read its own X")
+    check(await engine.stop() == .ended, "shadow: Stop after P_SHADOW finished answers ended")
+}
+
 let scenarios: [String: () async throws -> Void] = [
     "walk-jdwp": { try await walkthrough(.jdwp) },
     "walk-dbms": { try await walkthrough(.dbmsDebug) },
@@ -832,10 +874,11 @@ let scenarios: [String: () async throws -> Void] = [
     "stop-reading-jdwp": { try await stopReading(.jdwp) },
     "stop-reading-dbms": { try await stopReading(.dbmsDebug) },
     "ambiguous": { try await ambiguous() },
+    "shadow-dbms": { try await shadowed() },
 ]
 let order = [
-    "walk-jdwp", "walk-dbms", "out-jdwp", "out-dbms", "overload-jdwp", "overload-dbms", "ambiguous", "stop-paused-jdwp",
-    "stop-paused-dbms", "stop-reading-jdwp", "stop-reading-dbms", "stop-running-jdwp", "stop-running-dbms", "blocked-jdwp", "fallback", "timeout", "peer-check", "cancel", "preloaded",
+    "walk-jdwp", "walk-dbms", "out-jdwp", "out-dbms", "shadow-dbms", "overload-jdwp", "overload-dbms", "ambiguous",
+    "stop-paused-jdwp", "stop-paused-dbms", "stop-reading-jdwp", "stop-reading-dbms", "stop-running-jdwp", "stop-running-dbms", "blocked-jdwp", "fallback", "timeout", "peer-check", "cancel", "preloaded",
     "privilege"
 ]
 let chosen = scenario == "all" ? order : scenario.split(separator: ",").map(String.init)

@@ -48,6 +48,25 @@ struct OraclePLSQLDeclarationScanTests {
         #expect(scan.packageVariables.map(\.name) == ["G_RATE"])
     }
 
+    // A FOR loop's index lives from its FOR to its END LOOP, and shadows a local of the same name only there.
+    @Test func testALoopIndexIsVisibleOnlyInsideItsLoop() {
+        let scan = OraclePLSQLDeclarationScan(source: packageBody)
+        #expect(scan.candidates(atLine: 16).map(\.name) == ["P_N", "L_TOTAL", "L_NAME"])
+
+        let shadowing = OraclePLSQLDeclarationScan(source: """
+            procedure p is
+              i varchar2(10) := 'outer';
+            begin
+              for i in 1 .. 2 loop
+                null;
+              end loop;
+              null;
+            end p;
+            """)
+        #expect(shadowing.candidates(atLine: 5).first { $0.name == "I" }?.kind == .iterator)
+        #expect(shadowing.candidates(atLine: 7).first { $0.name == "I" }?.kind == .variable)
+    }
+
     @Test func testTypesCursorsExceptionsAndConstantsAreTold() {
         let scan = OraclePLSQLDeclarationScan(source: """
             function f_calc(p_a number, p_b in out nocopy varchar2 default 'x') return number is
@@ -86,7 +105,79 @@ struct OraclePLSQLDeclarationScanTests {
             """)
         #expect(scan.subprograms.map(\.name) == ["P"])
         #expect(scan.subprograms.first?.endLine == 14)
-        #expect(scan.candidates(atLine: 7).map(\.name) == ["L_TEXT", "Mixed Case", "L_INNER"])
+        #expect(scan.candidates(atLine: 7).map(\.name) == ["L_TEXT", "Mixed Case"])
+        #expect(scan.candidates(atLine: 11).map(\.name) == ["L_TEXT", "Mixed Case", "L_INNER"])
+    }
+
+    // GET_VALUE reads the innermost binding of a name, so the row must carry that declaration's type.
+    @Test func testAnInnerBlockShadowsAnOuterNameOnlyWhileItRuns() {
+        let scan = OraclePLSQLDeclarationScan(source: """
+            procedure p_shadow is
+              x constant number := 1;
+              l_outer number := 2;
+            begin
+              declare
+                x varchar2(20) := 'inner';
+              begin
+                l_outer := l_outer + 1;
+              end;
+              l_outer := x;
+            end p_shadow;
+            """)
+        let inside = scan.candidates(atLine: 8)
+        #expect(inside.map(\.name) == ["L_OUTER", "X"])
+        #expect(inside.first { $0.name == "X" }?.typeText == "VARCHAR2(20)")
+        #expect(inside.first { $0.name == "X" }?.kind == .variable)
+        let after = scan.candidates(atLine: 10)
+        #expect(after.map(\.name) == ["X", "L_OUTER"])
+        #expect(after.first { $0.name == "X" }?.typeText == "NUMBER")
+        #expect(after.first { $0.name == "X" }?.kind == .constant)
+    }
+
+    @Test func testANestedBlockIsVisibleOnlyInsideItAndToSubprogramsItDeclares() {
+        let scan = OraclePLSQLDeclarationScan(source: """
+            procedure p_nested(p_n number) is
+              l_a number := 1;
+            begin
+              declare
+                l_b number := 2;
+                procedure show(p_v number) is
+                begin
+                  dbms_output.put_line(p_v + l_b);
+                end show;
+              begin
+                show(l_a);
+              end;
+              l_a := l_a + p_n;
+            end p_nested;
+            """)
+        #expect(scan.candidates(atLine: 8).map(\.name) == ["P_V", "P_N", "L_A", "L_B"])
+        #expect(scan.candidates(atLine: 11).map(\.name) == ["P_N", "L_A", "L_B"])
+        #expect(scan.candidates(atLine: 13).map(\.name) == ["P_N", "L_A"])
+    }
+
+    // Oracle folds an unquoted name to upper case: `y` is `"Y"`, but `x` is not `"x"`.
+    @Test func testAQuotedNameIsShadowedOnlyByTheSameName() {
+        let scan = OraclePLSQLDeclarationScan(source: """
+            procedure p_case is
+              "x" number := 1;
+              "Y" number := 2;
+            begin
+              declare
+                x varchar2(20) := 'upper';
+                y varchar2(5) := 'y';
+              begin
+                null;
+              end;
+              null;
+            end p_case;
+            """)
+        let inside = scan.candidates(atLine: 9)
+        #expect(inside.map(\.lookupName) == ["\"x\"", "X", "Y"])
+        #expect(inside.map(\.typeText) == ["NUMBER", "VARCHAR2(20)", "VARCHAR2(5)"])
+        let after = scan.candidates(atLine: 11)
+        #expect(after.map(\.lookupName) == ["\"x\"", "\"Y\""])
+        #expect(after.map(\.typeText) == ["NUMBER", "NUMBER"])
     }
 
     // A quoted name keeps its case and its dots and spaces; GET_VALUE gets it quoted, the Variables list shows it bare.
