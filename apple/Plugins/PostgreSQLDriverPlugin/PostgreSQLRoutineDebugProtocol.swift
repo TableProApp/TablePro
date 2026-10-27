@@ -54,6 +54,11 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
     let parameters: [PluginDebugParameter]
     let takesPseudoType: Bool
     let configuration: [String]
+    // Each argument's type as its quoted, schema-qualified pg_type name ("pg_catalog"."bit"), parallel to
+    // `parameters`. It names exactly the declared type and no length: format_type's character and bit mean
+    // character(1) and bit(1) and cut the value, and bpchar or varbit pick an f(bit varying) overload over the
+    // f(bit) being debugged (both measured).
+    let argumentCastTypes: [String]
 
     // The columns of `PostgreSQLRoutineDebugProtocol.routineQuery`, in order.
     init(row: [String?], identity: String) {
@@ -81,6 +86,7 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
         )
         takesPseudoType = flag(17)
         configuration = PostgreSQLTextArray.values(text(18))
+        argumentCastTypes = PostgreSQLTextArray.values(text(19))
     }
 
     var isProcedure: Bool { kind == "p" }
@@ -246,7 +252,15 @@ enum PostgreSQLRoutineDebugProtocol {
                 p.proargmodes::pg_catalog.text[],
                 p.pronargdefaults,
                 \(pseudoTypeArgumentTest),
-                p.proconfig
+                p.proconfig,
+                ARRAY(
+                    SELECT '"' || pg_catalog.replace(tn.nspname, '"', '""') || '"."'
+                        || pg_catalog.replace(ty.typname, '"', '""') || '"'
+                    FROM pg_catalog.generate_subscripts(\(argumentTypes), 1) AS s(i)
+                    JOIN pg_catalog.pg_type ty ON ty.oid = (\(argumentTypes))[s.i]
+                    JOIN pg_catalog.pg_namespace tn ON tn.oid = ty.typnamespace
+                    ORDER BY s.i
+                )
             FROM (SELECT 1) AS one
             LEFT JOIN pg_catalog.pg_proc p ON p.oid = \(oidLiteral(oid))
             LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -521,12 +535,15 @@ enum PostgreSQLRoutineDebugProtocol {
         var expressions: [String] = []
         var bound: [PluginCellValue] = []
         var skipped: String?
-        for parameter in routine.parameters {
+        for (index, parameter) in routine.parameters.enumerated() {
+            let castType = routine.argumentCastTypes.indices.contains(index)
+                ? routine.argumentCastTypes[index]
+                : parameter.typeName
             var expression: String
             if parameter.mode == .output {
                 // CALL takes a placeholder for each OUT parameter; a function call takes none.
                 guard routine.isProcedure else { continue }
-                expression = "NULL" + cast(to: parameter.typeName)
+                expression = "NULL::\(castType)"
             } else {
                 let value = values[parameter.name] ?? (parameter.hasDefault ? .defaultValue : .null)
                 guard let cell = try boundValue(value, for: parameter) else {
@@ -534,7 +551,7 @@ enum PostgreSQLRoutineDebugProtocol {
                     continue
                 }
                 bound.append(cell)
-                expression = "$\(bound.count)" + cast(to: parameter.typeName)
+                expression = "$\(bound.count)::\(castType)"
             }
             // After an omitted argument the rest can only be passed by name.
             if let skipped {
@@ -579,23 +596,6 @@ enum PostgreSQLRoutineDebugProtocol {
             return nil
         @unknown default:
             return .null
-        }
-    }
-
-    private static func cast(to typeName: String) -> String {
-        "::\(castTypeName(typeName))"
-    }
-
-    // pg_proc keeps no length, and format_type then spells bpchar and bit as character and bit, which mean
-    // character(1) and bit(1): a cast to either cuts the argument to one character or bit. Their unlimited forms
-    // keep it whole.
-    static func castTypeName(_ typeName: String) -> String {
-        switch typeName {
-        case "character": return "pg_catalog.bpchar"
-        case "character[]": return "pg_catalog.bpchar[]"
-        case "bit": return "pg_catalog.varbit"
-        case "bit[]": return "pg_catalog.varbit[]"
-        default: return typeName
         }
     }
 

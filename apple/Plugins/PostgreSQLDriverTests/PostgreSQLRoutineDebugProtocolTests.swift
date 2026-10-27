@@ -393,31 +393,36 @@ struct PostgreSQLRoutineDebugProtocolTests {
         }
     }
 
-    @Test("char(n) and bit(n) arguments are cast to their unlimited forms so nothing is cut")
-    func characterAndBitKeepTheirLength() throws {
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("character") == "pg_catalog.bpchar")
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("character[]") == "pg_catalog.bpchar[]")
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("bit") == "pg_catalog.varbit")
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("bit[]") == "pg_catalog.varbit[]")
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("character varying") == "character varying")
-        #expect(PostgreSQLRoutineDebugProtocol.castTypeName("\"char\"") == "\"char\"")
+    @Test("Each argument is cast to its exact pg_type name, so the selected overload runs and nothing is cut")
+    func argumentsCastToTheirExactType() throws {
         let routine = Self.routine([
-            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "codes",
-            "code character, flags bit, many character[]", "f", "f", "{character,bit,character[]}",
-            "{code,flags,many}", nil, "0", "f", nil
+            "postgres", "public", "t", "t", "t", "f", "v", "plpgsql", "public", "pick",
+            "v bit, w character, x character[], y bit varying[], z app.\"Code3\"", "f", "f",
+            "{bit,character,character[],\"bit varying[]\",\"app.\\\"Code3\\\"\"}", "{v,w,x,y,z}", nil, "0", "f", nil,
+            #"{"\"pg_catalog\".\"bit\"","\"pg_catalog\".\"bpchar\"","\"pg_catalog\".\"_bpchar\"","\"pg_catalog\".\"_varbit\"","\"app\".\"Code3\""}"#
+        ])
+        #expect(routine.argumentCastTypes == [
+            #""pg_catalog"."bit""#, #""pg_catalog"."bpchar""#, #""pg_catalog"."_bpchar""#, #""pg_catalog"."_varbit""#,
+            #""app"."Code3""#
         ])
         let call = try PostgreSQLRoutineDebugProtocol.call(
             for: routine,
-            arguments: [
-                Self.argument("code", .text("ABC")),
-                Self.argument("flags", .text("101")),
-                Self.argument("many", .text("{XY,ZW}"))
-            ]
+            arguments: ["v", "w", "x", "y", "z"].map { Self.argument($0, .text("1")) }
         )
-        #expect(
-            call.sql
-                == "SELECT * FROM \"public\".\"codes\"($1::pg_catalog.bpchar, $2::pg_catalog.varbit, $3::pg_catalog.bpchar[])"
-        )
+        let expected = #"SELECT * FROM "public"."pick"($1::"pg_catalog"."bit", $2::"pg_catalog"."bpchar", "#
+            + #"$3::"pg_catalog"."_bpchar", $4::"pg_catalog"."_varbit", $5::"app"."Code3")"#
+        #expect(call.sql == expected)
+    }
+
+    @Test("A procedure's OUT placeholder uses the exact type too")
+    func outPlaceholderUsesTheExactType() throws {
+        let routine = Self.routine([
+            "postgres", "public", "t", "t", "t", "p", "v", "plpgsql", "public", "p",
+            "IN a integer, OUT b character", "t", "f", "{integer,character}", "{a,b}", "{i,o}", "0", "f", nil,
+            #"{"\"pg_catalog\".\"int4\"","\"pg_catalog\".\"bpchar\""}"#
+        ])
+        let call = try PostgreSQLRoutineDebugProtocol.call(for: routine, arguments: [Self.argument("a", .text("1"))])
+        #expect(call.sql == #"CALL "public"."p"($1::"pg_catalog"."int4", NULL::"pg_catalog"."bpchar")"#)
     }
 
     @Test("A polymorphic routine is not offered for debugging")

@@ -64,7 +64,8 @@ for fragment in \
     "WHERE ty.typtype = 'p'" \
     "p.proconfig" \
     "message.contains(\"select() failed\")" \
-    "case \"character\": return \"pg_catalog.bpchar\"" \
+    "JOIN pg_catalog.pg_type ty ON ty.oid = (\\(argumentTypes))[s.i]" \
+    "|| pg_catalog.replace(ty.typname, '\"', '\"\"') || '\"'" \
     "quoteLiteral(String(oid)))::pg_catalog.oid" \
     "PLDBGBREAK:" \
     "\"08006\"" \
@@ -145,8 +146,18 @@ CREATE ROLE dev LOGIN;
 CREATE ROLE other LOGIN;
 CREATE EXTENSION pldbgapi;
 GRANT CREATE ON SCHEMA public TO dev;
+GRANT CREATE ON DATABASE postgres TO dev;
 CREATE DATABASE noext OWNER dev;
 SET ROLE dev;
+CREATE SCHEMA app;
+CREATE DOMAIN app."Code3" AS char(3);
+CREATE FUNCTION pick(v bit) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'bit:' || v::text; END; $$;
+CREATE FUNCTION pick(v bit varying) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'varbit:' || v::text; END; $$;
+CREATE FUNCTION pick(v char(3)) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'char:' || v::text; END; $$;
+CREATE FUNCTION pick(v varchar) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'varchar:' || v::text; END; $$;
+CREATE FUNCTION pick(v bit[]) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'bit[]:' || v::text; END; $$;
+CREATE FUNCTION pick(v bit varying[]) RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'varbit[]:' || v::text; END; $$;
+CREATE FUNCTION pick(v app."Code3") RETURNS text LANGUAGE plpgsql AS $$ BEGIN RETURN 'domain:' || v::text; END; $$;
 CREATE TABLE audit_log(id serial PRIMARY KEY, note text);
 CREATE FUNCTION add_tax(amount numeric, rate numeric DEFAULT 0.1)
 RETURNS numeric LANGUAGE plpgsql AS $$
@@ -267,7 +278,15 @@ SELECT
         JOIN pg_catalog.pg_type ty ON ty.oid = a.t
         WHERE ty.typtype = 'p'
     ),
-    p.proconfig
+    p.proconfig,
+    ARRAY(
+        SELECT '"' || pg_catalog.replace(tn.nspname, '"', '""') || '"."'
+            || pg_catalog.replace(ty.typname, '"', '""') || '"'
+        FROM pg_catalog.generate_subscripts(COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]), 1) AS s(i)
+        JOIN pg_catalog.pg_type ty ON ty.oid = (COALESCE(p.proallargtypes, p.proargtypes::pg_catalog.oid[]))[s.i]
+        JOIN pg_catalog.pg_namespace tn ON tn.oid = ty.typnamespace
+        ORDER BY s.i
+    )
 FROM (SELECT 1) AS one
 LEFT JOIN pg_catalog.pg_proc p ON p.oid = :'oid'::pg_catalog.oid
 LEFT JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
@@ -280,6 +299,8 @@ sql dev postgres -v oid="$ORDER_TOTAL" < "$WORK/routine.sql" > "$WORK/routine.ow
 expect "$WORK/routine.owner.log" \
     "postgres|public|t|t|t|f|v|plpgsql|public|order_total|qty integer, unit_price numeric|f|f|{integer,numeric}|{qty,unit_price}||0|f|" \
     "the owner may debug order_total; one row has every fact prepareDebug needs"
+expect "$WORK/routine.owner.log" '|{"\"pg_catalog\".\"int4\"","\"pg_catalog\".\"numeric\""}' \
+    "each argument's exact type comes back as its quoted pg_type name"
 sql dev postgres -v oid="$LOG_NOTE" < "$WORK/routine.sql" > "$WORK/routine.procedure.log" 2>&1
 expect "$WORK/routine.procedure.log" \
     "postgres|public|t|t|t|p|v|plpgsql|public|log_note|IN msg text, INOUT n integer, IN label text|t|f|{text,integer,text}|{msg,n,label}|{i,b,i}|2|f|" \
@@ -291,7 +312,7 @@ expect "$WORK/routine.noext.log" "noext||t|t|t|f|v|plpgsql|public|g|" \
     "no extension in this database, but the server offers it"
 for pseudo in "$POLY_ELEM" "$REC_IN"; do
     sql dev postgres -v oid="$pseudo" < "$WORK/routine.sql" > "$WORK/routine.pseudo.log" 2>&1
-    if [ "$(awk -F'|' '{ print $(NF - 1) }' "$WORK/routine.pseudo.log")" = "t" ]; then
+    if [ "$(awk -F'|' '{ print $(NF - 2) }' "$WORK/routine.pseudo.log")" = "t" ]; then
         pass "an anyelement or record argument is flagged, since the debugger cannot bind one"
     else
         fail "an anyelement or record argument is flagged, since the debugger cannot bind one"
@@ -660,11 +681,28 @@ else
     fail "no PLDBGBREAK notice"
 fi
 docker exec -i "$CONTAINER" psql -X -At -U dev -d postgres > "$WORK/codes.log" 2>&1 <<'SQL'
-SELECT * FROM "public"."codes"($1::pg_catalog.bpchar, $2::pg_catalog.varbit, $3::pg_catalog.bpchar[]) \bind ABC 101 {XY,ZW} \g
+SELECT * FROM "public"."codes"($1::"pg_catalog"."bpchar", $2::"pg_catalog"."bit", $3::"pg_catalog"."_bpchar") \bind ABC 101 {XY,ZW} \g
 SELECT * FROM "public"."codes"($1::character, $2::bit, $3::character[]) \bind ABC 101 {XY,ZW} \g
+SELECT * FROM "public"."pick"($1::"pg_catalog"."bit") \bind 101 \g
+SELECT * FROM "public"."pick"($1::"pg_catalog"."varbit") \bind 101 \g
+SELECT * FROM "public"."pick"($1::"pg_catalog"."bpchar") \bind ABCD \g
+SELECT * FROM "public"."pick"($1::"pg_catalog"."_bit") \bind {101,11} \g
+SELECT * FROM "public"."pick"($1::"app"."Code3") \bind AB \g
+\echo ==unlimited-spelling
+SELECT * FROM "public"."pick"($1::pg_catalog.varbit) \bind 101 \g
 SQL
-expect "$WORK/codes.log" "ABC/101/{XY,ZW}" "arguments cast to bpchar and varbit keep their length"
+expect "$WORK/codes.log" "ABC/101/{XY,ZW}" "arguments cast to their quoted pg_type names keep their length"
 expect "$WORK/codes.log" "A/1/{X,Z}" "a cast to character or bit, as format_type spells them, cuts them to one"
+for result in "bit:101" "varbit:101" "char:ABCD" "bit[]:{101,11}" "domain:AB"; do
+    if grep -qxF -- "$result" "$WORK/codes.log"; then
+        pass "the quoted pg_type name calls exactly that overload and keeps the value ($result)"
+    else
+        fail "the quoted pg_type name calls exactly that overload and keeps the value ($result)"
+        sed 's/^/    /' "$WORK/codes.log"
+    fi
+done
+expect_after "$WORK/codes.log" "==unlimited-spelling" "varbit:101" \
+    "varbit is not a way to keep a bit(n) argument: it calls the bit varying overload"
 
 # --- The proxy's two 08006 errors -----------------------------------------------------------------------------
 
