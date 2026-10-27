@@ -1,8 +1,11 @@
 import Foundation
+import os
 @testable import TableProOracleCore
 import Testing
 
 struct OracleDBMSDebugSessionTests {
+    private struct RefusedDelete: Error {}
+
     private typealias Statements = OracleDBMSDebugStatements
 
     private static let runCalc = OracleDebugUnit(owner: "PROBE", name: "RUN_CALC", kind: .procedure)
@@ -99,6 +102,33 @@ struct OracleDBMSDebugSessionTests {
         let stop = await finished(within: 5) { try await session.firstStop() }
         #expect(stop == .failed(.stillRunning(Self.identity)))
         #expect(!target.sent.contains("ROLLBACK"))
+    }
+
+    // A delete the server refuses leaves the breakpoint set, so removing it again deletes it again.
+    @Test func testARefusedDeleteCanBeRetried() async throws {
+        let ended = Latch()
+        defer { ended.open() }
+        let refusals = OSAllocatedUnfairLock(initialState: 1)
+        let (session, _, supervisor) = makeSession(ended: ended) { sql in
+            if sql.contains("GET_LINE_MAP") { return Self.lineMap }
+            if sql.contains("SYNCHRONIZE") { return Self.event(line: 1, frames: [Self.anonymousFrame]) }
+            if sql.contains("SET_BREAKPOINT(l_program, 3,") { return Self.payload(["0", "1"]) }
+            if sql.contains("SET_BREAKPOINT(l_program, 5,") { return Self.payload(["0", "2"]) }
+            if Self.isContinue(sql, flags: Statements.BreakFlags.breakpointsOnly) {
+                return Self.event(line: 3, breakpoint: 1, frames: [Self.anonymousFrame, Self.runCalcFrame])
+            }
+            if sql.contains("DELETE_BREAKPOINT(2)"), refusals.withLock({ left in defer { left -= 1 }; return left > 0 }) {
+                throw RefusedDelete()
+            }
+            return []
+        }
+        try await session.start(breakpoints: [(unit: Self.runCalc, line: 5)])
+        #expect(try await session.firstStop() == .paused(OracleDebugLocation(unit: Self.runCalc, line: 3)))
+
+        await #expect(throws: (any Error).self) { try await session.removeBreakpoint(in: Self.runCalc, line: 5) }
+        try await session.removeBreakpoint(in: Self.runCalc, line: 5)
+        #expect(supervisor.sent.filter { $0.contains("DELETE_BREAKPOINT(2)") }.count == 2)
+        #expect(await session.stop() == .ended)
     }
 
     // A breakpoint sent at start on line 4 lands on line 5; the host never learns that and removes it by line 4.

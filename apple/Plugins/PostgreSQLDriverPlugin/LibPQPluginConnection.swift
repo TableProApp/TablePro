@@ -174,11 +174,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
     }
 
     func cancelConnect() {
-        stateLock.lock()
-        _isConnectCancelled = true
-        let currentConnection = conn
-        stateLock.unlock()
-        if let currentConnection { requestServerCancel(on: currentConnection, evenWhenSuppressed: true) }
+        stateLock.withLock { _isConnectCancelled = true }
+        requestServerCancelOnCurrentConnection(evenWhenSuppressed: true)
     }
 
     private var isConnectCancelled: Bool {
@@ -538,6 +535,19 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
     }
 
+    // PQgetCancel copies what the request needs while the lock is held: disconnect() takes `conn` under that lock
+    // before the PQfinish it queues can free the connection.
+    private func requestServerCancelOnCurrentConnection(evenWhenSuppressed: Bool = false) {
+        let request: LibPQCancelRequest? = stateLock.withLock {
+            guard evenWhenSuppressed || !suppressServerSideCancel, let conn, let cancelObject = PQgetCancel(conn) else {
+                return nil
+            }
+            return LibPQCancelRequest(cancelObject)
+        }
+        guard let request else { return }
+        Self.cancellationQueue.async { request.perform() }
+    }
+
     private func requestServerCancel(on connection: OpaquePointer, evenWhenSuppressed: Bool = false) {
         guard evenWhenSuppressed || !suppressServerSideCancel,
               let cancelObject = PQgetCancel(connection) else { return }
@@ -619,13 +629,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     func cancelCurrentQuery() {
         guard cancellationGate.cancel() != nil else { return }
-
-        stateLock.lock()
-        let currentConn = conn
-        stateLock.unlock()
-
-        guard let currentConn else { return }
-        requestServerCancel(on: currentConn)
+        requestServerCancelOnCurrentConnection()
     }
 
     // MARK: - Query Execution
@@ -1470,7 +1474,6 @@ extension LibPQPluginConnection {
     // Leaves the cancellation gate alone, so the server's reply decides how the call ended: a cancel that lands
     // after a routine returned must not turn its committed result into a cancellation.
     func requestServerCancelKeepingReply() {
-        guard let current = stateLock.withLock({ conn }) else { return }
-        requestServerCancel(on: current)
+        requestServerCancelOnCurrentConnection()
     }
 }

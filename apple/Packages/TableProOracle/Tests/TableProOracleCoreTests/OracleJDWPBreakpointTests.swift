@@ -11,6 +11,7 @@ struct OracleJDWPBreakpointTests {
     private final class VM: @unchecked Sendable {
         private struct State {
             var isLoaded: Bool
+            var refusesNextClear = false
             var nextRequest: Int32 = 0
             var breakpoints: [Int64: Int32] = [:]
         }
@@ -25,6 +26,10 @@ struct OracleJDWPBreakpointTests {
 
         func load() {
             state.withLock { $0.isLoaded = true }
+        }
+
+        func refuseNextClear() {
+            state.withLock { $0.refusesNextClear = true }
         }
 
         func request(atLine line: Int) -> Int32? {
@@ -59,6 +64,13 @@ struct OracleJDWPBreakpointTests {
                     writer.i64(Int64(line))
                     writer.i32(Int32(line))
                 }
+            case (OracleJDWPCommand.eventRequest, OracleJDWPCommand.clear):
+                let refuses = state.withLock { current -> Bool in
+                    defer { current.refusesNextClear = false }
+                    return current.refusesNextClear
+                }
+                // INVALID_EVENT_TYPE, with the session still up.
+                if refuses { return ([], 102, Data()) }
             case (OracleJDWPCommand.eventRequest, OracleJDWPCommand.set):
                 let id = state.withLock { current -> Int32 in
                     current.nextRequest += 1
@@ -151,6 +163,20 @@ struct OracleJDWPBreakpointTests {
         #expect(clears(peer).isEmpty)
         try await session.removeBreakpoint(in: Self.calcBody, line: 5)
         #expect(clears(peer) == [clear(vm.request(atLine: 5))])
+        #expect(await session.stop() == .ended)
+    }
+
+    // A Clear the VM refuses leaves the breakpoint set, so removing it again sends another Clear.
+    @Test func testARefusedClearCanBeRetried() async throws {
+        let vm = VM(lines: [3, 5, 6], isLoaded: true)
+        let (session, peer) = try await makeSession(vm)
+        try await session.start(breakpoints: [])
+        #expect(try await session.setBreakpoint(in: Self.calcBody, line: 5) == 5)
+        vm.refuseNextClear()
+
+        await #expect(throws: (any Error).self) { try await session.removeBreakpoint(in: Self.calcBody, line: 5) }
+        try await session.removeBreakpoint(in: Self.calcBody, line: 5)
+        #expect(clears(peer) == [clear(vm.request(atLine: 5)), clear(vm.request(atLine: 5))])
         #expect(await session.stop() == .ended)
     }
 

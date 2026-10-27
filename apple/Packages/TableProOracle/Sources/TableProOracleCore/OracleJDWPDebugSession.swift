@@ -601,12 +601,19 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
         let key = BreakpointKey(unit: unit, line: landed)
         pending.remove(key)
         guard let request = placed.removeValue(forKey: key) else { return }
-        try await guarded {
-            _ = try await connection.send(
-                OracleJDWPCommand.eventRequest,
-                OracleJDWPCommand.clear,
-                OracleJDWPRequest.clear(kind: .breakpoint, requestID: request, sizes: sizes)
-            )
+        do {
+            try await guarded {
+                _ = try await connection.send(
+                    OracleJDWPCommand.eventRequest,
+                    OracleJDWPCommand.clear,
+                    OracleJDWPRequest.clear(kind: .breakpoint, requestID: request, sizes: sizes)
+                )
+            }
+        } catch {
+            // Still set in the VM, so removing it again has to find it.
+            holds.hold(landed, in: unit, by: line)
+            placed[key] = request
+            throw error
         }
     }
 

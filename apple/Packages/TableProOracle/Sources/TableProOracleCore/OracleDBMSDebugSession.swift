@@ -404,8 +404,15 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         let key = BreakpointKey(unit: unit, line: landed)
         pending.remove(key)
         guard let number = placed.removeValue(forKey: key), state == .paused else { return }
-        try await readable {
-            _ = try await supervisor.executeDirect(Statements.deleteBreakpoints([number]))
+        do {
+            try await readable {
+                _ = try await supervisor.executeDirect(Statements.deleteBreakpoints([number]))
+            }
+        } catch {
+            // Still set on the server, so removing it again has to find it.
+            holds.hold(landed, in: unit, by: line)
+            placed[key] = number
+            throw error
         }
     }
 
