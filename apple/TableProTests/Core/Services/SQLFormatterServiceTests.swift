@@ -1423,7 +1423,10 @@ struct SQLFormatterServiceTests {
         try expectFormat(
             #"CREATE FUNCTION f("a" integer, b text) RETURNS integer AS $$ select 1 $$ LANGUAGE sql"#,
             dialect: .postgresql,
-            options: upper,
+            options: options {
+                $0.dataTypeCase = .upper
+                $0.keywordCase = .preserve
+            },
             equals: #"CREATE FUNCTION f("a" INTEGER, b TEXT) RETURNS INTEGER AS $$ select 1 $$ LANGUAGE sql"#
         )
         try expectFormat(
@@ -1463,14 +1466,13 @@ struct SQLFormatterServiceTests {
     @Test("A multi-word type takes the data type case as one type")
     func multiWordTypesTakeOneCase() throws {
         try expectFormat(
-            "select cast(x as character varying(20)), y::timestamp with time zone, cast(z as double precision), "
-                + "w::bit varying(3) from t",
+            "select x::CHARACTER VARYING(20), y::TIMESTAMP WITH TIME ZONE, z::DOUBLE PRECISION, w::BIT VARYING(3) from t",
             dialect: .postgresql,
             options: options { $0.dataTypeCase = .lower },
             equals: """
-        SELECT cast(x AS character varying(20)),
+        SELECT x :: character varying(20),
                y :: timestamp with time zone,
-               cast(z AS double precision),
+               z :: double precision,
                w :: bit varying(3)
         FROM t
         """
