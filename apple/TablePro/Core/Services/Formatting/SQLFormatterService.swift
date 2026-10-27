@@ -728,7 +728,7 @@ internal struct SQLTokenFormatter {
         case "::", "RETURNS", "SETOF":
             return true
         case "TYPE":
-            return beforePrev.map { $0.type == .identifier || $0.upperValue == "DATA" } ?? false
+            return beforePrev.map { ($0.type != .keyword && Self.isNameToken($0)) || $0.upperValue == "DATA" } ?? false
         case "AS":
             if let beforePrev, Self.isVariable(beforePrev), declaresVariables { return true }
             guard currentContext == .inlineParen, let opener = parenOpeners[clauseStack.count - 1] else { return false }
@@ -740,19 +740,19 @@ internal struct SQLTokenFormatter {
         let beforeUpper = beforePrev?.upperValue ?? ""
         // A table variable's or table type's columns: `DECLARE @t TABLE (a int)`, `RETURNS @t TABLE (a int)`.
         if currentContext == .inlineParen, parenOpeners[clauseStack.count - 1] == "TABLE",
-           ["(", ","].contains(beforeUpper), Self.isWord(prev) {
+           ["(", ","].contains(beforeUpper), Self.isNameToken(prev) {
             return true
         }
-        if ["DECLARE", "COLUMN", "ADD", "MODIFY"].contains(beforeUpper), Self.isWord(prev), prevUpper != "IF" {
+        if ["DECLARE", "COLUMN", "ADD", "MODIFY"].contains(beforeUpper), Self.isNameToken(prev), prevUpper != "IF" {
             return true
         }
-        if currentContext == .createTableBody, ["(", ","].contains(beforeUpper), Self.isWord(prev) {
+        if currentContext == .createTableBody, ["(", ","].contains(beforeUpper), Self.isNameToken(prev) {
             return true
         }
         guard currentContext == .inlineParen, parenOpeners[clauseStack.count - 1] == Self.parameterListOpener else {
             return false
         }
-        if Self.isWord(prev), ["(", ","].contains(beforeUpper) || Self.parameterModes.contains(beforeUpper) {
+        if Self.isNameToken(prev), ["(", ","].contains(beforeUpper) || Self.parameterModes.contains(beforeUpper) {
             return true
         }
         let next = token(at: index + 1)?.value
@@ -761,6 +761,12 @@ internal struct SQLTokenFormatter {
 
     private static func isWord(_ token: SQLToken) -> Bool {
         token.type == .identifier || token.type == .keyword
+    }
+
+    // A name as a declaration writes it: a word, or a quoted identifier (`"id"`, `[id]`, `` `id` ``). The tokenizer
+    // keeps `"..."` a string, as the query fingerprint reads it.
+    private static func isNameToken(_ token: SQLToken) -> Bool {
+        isWord(token) || (token.type == .string && token.value.hasPrefix("\""))
     }
 
     private static func isVariable(_ token: SQLToken) -> Bool {

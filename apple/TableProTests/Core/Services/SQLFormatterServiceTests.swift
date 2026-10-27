@@ -1363,6 +1363,61 @@ struct SQLFormatterServiceTests {
         )
     }
 
+    @Test("A quoted column name declares its type like a plain one")
+    func quotedColumnNamesTakeTypeCase() throws {
+        let upper = options { $0.dataTypeCase = .upper }
+        try expectFormat(
+            #"CREATE TABLE t ("id" integer, "Name" text); ALTER TABLE t ADD COLUMN "d" date, ALTER COLUMN "e" TYPE text"#,
+            dialect: .postgresql,
+            options: upper,
+            equals: #"""
+        CREATE TABLE t (
+          "id" INTEGER,
+          "Name" TEXT
+        );
+        ALTER TABLE t ADD COLUMN "d" DATE, ALTER COLUMN "e" TYPE TEXT
+        """#
+        )
+        try expectFormat(
+            #"CREATE FUNCTION f("a" integer, b text) RETURNS integer AS $$ select 1 $$ LANGUAGE sql"#,
+            dialect: .postgresql,
+            options: upper,
+            equals: #"CREATE FUNCTION f("a" INTEGER, b TEXT) RETURNS INTEGER AS $$ select 1 $$ LANGUAGE sql"#
+        )
+        try expectFormat(
+            "CREATE TABLE t ([id] int, [d] date); ALTER TABLE t ADD [x] int; ALTER TABLE t ALTER COLUMN [y] date; "
+                + "DECLARE @t TABLE ([a] int)",
+            dialect: .mssql,
+            options: upper,
+            equals: """
+        CREATE TABLE t (
+          [id] INT,
+          [d] DATE
+        );
+        ALTER TABLE t ADD [x] INT;
+        ALTER TABLE t ALTER COLUMN [y] DATE;
+        DECLARE @t TABLE ([a] INT)
+        """
+        )
+        try expectFormat(
+            "CREATE TABLE t (`id` int, `d` date); ALTER TABLE t ADD `x` int, MODIFY COLUMN `y` datetime, MODIFY `z` text",
+            options: upper,
+            equals: """
+        CREATE TABLE t (
+          `id` INT,
+          `d` DATE
+        );
+        ALTER TABLE t ADD `x` INT, MODIFY COLUMN `y` DATETIME, MODIFY `z` TEXT
+        """
+        )
+        try expectFormat(
+            #"select "date", date from t where "d" = 1"#,
+            dialect: .postgresql,
+            options: upper,
+            equals: #"SELECT "date",\#n       date\#nFROM t\#nWHERE "d" = 1"#
+        )
+    }
+
     @Test("A multi-word type takes the data type case as one type")
     func multiWordTypesTakeOneCase() throws {
         try expectFormat(
