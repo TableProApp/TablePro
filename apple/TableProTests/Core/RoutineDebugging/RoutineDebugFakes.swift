@@ -96,6 +96,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
     private let frames: [PluginDebugFrame]
     private let laterStackGate: AsyncGate?
     private let failsLaterVariables: Bool
+    private let performAnswer: PluginDebugStop?
     private var calls: [String] = []
     private var removedBreakpoints: [PluginDebugBreakpoint] = []
     private var stepInFlight = false
@@ -125,7 +126,8 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         relayedOutput: (gate: AsyncGate, lines: [String])? = nil,
         frames: [PluginDebugFrame] = [PluginDebugFrame(level: 0, location: nil, arguments: nil)],
         laterStackGate: AsyncGate? = nil,
-        failsLaterVariables: Bool = false
+        failsLaterVariables: Bool = false,
+        performAnswer: PluginDebugStop? = nil
     ) {
         self.supportedCommands = supportedCommands
         self.firstStopLine = firstStopLine
@@ -141,6 +143,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         self.frames = frames
         self.laterStackGate = laterStackGate
         self.failsLaterVariables = failsLaterVariables
+        self.performAnswer = performAnswer
         self.nextPerformLine = firstStopLine + 1
         var continuation: AsyncStream<String>.Continuation?
         output = AsyncStream { continuation = $0 }
@@ -198,6 +201,7 @@ internal final class FakeDebugSession: PluginDebugSession, @unchecked Sendable {
         }
         defer { lock.withLock { stepInFlight = false } }
         await stepGate?.wait()
+        if let performAnswer { return performAnswer }
         if performBlocksUntilStop {
             await stopGate.wait()
             return stopAnswer

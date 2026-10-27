@@ -445,6 +445,11 @@ internal final class RoutineDebugController: ObservableObject {
     }
 
     private func run() async {
+        // A stop that landed before this task ran found nothing to cancel, so nothing may be asked or opened.
+        guard !isStopping else {
+            await end(.stopped(nil))
+            return
+        }
         let decision = await authorize(OperationRequest(
             connectionId: connectionId,
             databaseType: databaseType,
@@ -615,6 +620,10 @@ internal final class RoutineDebugController: ObservableObject {
         case .finished(let result):
             await end(.finished(result))
         case .failed(let message, let detail):
+            // A target the plugin gave up on may still run: its stop says so, and may still end it, before the drivers close.
+            if let session {
+                await endTarget(session)
+            }
             await end(.failed(Self.join(message, detail)))
         @unknown default:
             if let session {
@@ -706,7 +715,7 @@ internal final class RoutineDebugController: ObservableObject {
         case .stopped(.none):
             final = .stopped(unconfirmedStop ?? stopMessage)
         case .failed(let message):
-            if let unconfirmedStop {
+            if let unconfirmedStop, unconfirmedStop != message {
                 final = .failed(Self.join(message, unconfirmedStop))
             }
         default:

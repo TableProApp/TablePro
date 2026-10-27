@@ -235,6 +235,42 @@ struct RoutineDebugControllerTests {
         await controller.waitUntilEnded()
     }
 
+    @Test("A stop that lands before the run begins asks nothing and opens nothing")
+    func stopBeforeTheRunBegins() async throws {
+        let gate = WaitingGate()
+        let drivers = DebugDriverLog()
+        let (controller, _) = RoutineDebugFixtures.controller(drivers: drivers, gate: gate)
+        controller.start()
+        controller.stop()
+        try await waitUntil { controller.hasEnded }
+
+        #expect(gate.askedCount == 0)
+        #expect(drivers.openedCount == 0)
+        guard case .stopped = controller.state else {
+            Issue.record("expected stopped, got \(controller.state)")
+            return
+        }
+    }
+
+    @Test("A step that fails with its target left running stops the session before its drivers close, and says so once")
+    func failedStepStopsTheSession() async throws {
+        let words = "Server process 4242 may still be running."
+        let session = FakeDebugSession(
+            stopOutcome: .unconfirmed(message: words, detail: nil),
+            performAnswer: .failed(message: words, detail: nil)
+        )
+        let (controller, _) = RoutineDebugFixtures.controller(session: session)
+        controller.start()
+        try await waitUntil { controller.state.pausedLocation != nil }
+
+        controller.perform(.continueExecution)
+        try await waitUntil { controller.hasEnded }
+
+        #expect(session.stopCount == 1)
+        #expect(controller.unconfirmedStop == words)
+        #expect(controller.statusText == words)
+    }
+
     @Test("Stop while the gate is still asking withdraws its prompt and ends the run Stopped, opening nothing")
     func stopWhileTheGateAsks() async throws {
         let gate = WaitingGate()
