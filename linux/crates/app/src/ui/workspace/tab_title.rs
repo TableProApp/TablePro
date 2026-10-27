@@ -13,6 +13,20 @@ pub(crate) struct TabTitle {
     pub tooltip: Option<String>,
 }
 
+/// A tab of a window that holds several connections names its own,
+/// after its title, which stays the useful part once ellipsized. The
+/// tooltip names it on a line of its own, which a cut label loses.
+pub(crate) fn name_connection(title: TabTitle, connection: &str) -> TabTitle {
+    let tooltip = [title.tooltip.as_deref().unwrap_or(&title.label), connection].join("\n");
+    TabTitle {
+        label: crate::i18n::gettext_f(
+            "{title} · {connection}",
+            &[("title", &title.label), ("connection", connection)],
+        ),
+        tooltip: Some(tooltip),
+    }
+}
+
 /// The one place a tab's title is made. Unsaved changes never change it;
 /// the page's icon says so.
 pub(crate) fn resolve_tab_title(identity: &TabIdentity, naming: TableNaming) -> TabTitle {

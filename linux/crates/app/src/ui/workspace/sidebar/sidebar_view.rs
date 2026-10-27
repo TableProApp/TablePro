@@ -19,6 +19,7 @@ use super::sidebar_menu::{
     SHOW_DIAGRAM, SHOW_SCHEMA_DIAGRAM, object_menu, offers,
 };
 use super::sidebar_model::{RowsAsked, RowsWorkedOut, SidebarModel};
+use super::sidebar_object::SidebarObject;
 use super::sidebar_row_factory::row_factory;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 
@@ -216,6 +217,23 @@ impl SidebarView {
         self.inner.model.select(table);
     }
 
+    /// The object of `table`'s row, when the search shows it.
+    pub(crate) fn object_of(&self, table: &TableRef) -> Option<SidebarObject> {
+        let model = &self.inner.model;
+        model.object_at(model.position_of(table)?)
+    }
+
+    /// The object of the row of the table the tab in front shows. The
+    /// list makes a new object for it with each new list.
+    pub(crate) fn active_object(&self) -> Option<SidebarObject> {
+        self.object_of(self.inner.active.borrow().as_ref()?)
+    }
+
+    /// Whether the tab in front shows a table, listed or not.
+    pub(crate) fn follows_table(&self) -> bool {
+        self.inner.active.borrow().is_some()
+    }
+
     /// A reconnect can reach a server that edits less, so the headers are
     /// bound again with what it offers.
     pub(crate) fn set_affordances(&self, affordances: SidebarAffordances) {
@@ -228,7 +246,9 @@ impl SidebarView {
         }
     }
 
-    /// Filter as the user types in `entry`.
+    /// Filter as the user types in `entry`, and by what it holds now: a
+    /// session that joins the window under a search lists only what the
+    /// search finds.
     pub(crate) fn follow_search(&self, entry: &gtk::SearchEntry) {
         let view = Rc::downgrade(&self.inner);
         let handler = entry.connect_search_changed(move |entry| {
@@ -237,6 +257,7 @@ impl SidebarView {
             }
         });
         self.inner.remember(entry, handler);
+        self.set_query(&entry.text());
     }
 
     /// Ask for a new listing as the user types in `entry`; the server
@@ -288,7 +309,7 @@ impl SidebarView {
             .inner
             .bound_rows()
             .filter_map(|item| {
-                let object = item.item().and_downcast::<super::sidebar_object::SidebarObject>()?;
+                let object = item.item().and_downcast::<SidebarObject>()?;
                 Some((object.name(), item.accessible_description().to_string()))
             })
             .collect();

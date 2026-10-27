@@ -133,11 +133,17 @@ impl TestApp {
             .join(OpenSessionsRecord::FILE_NAME)
     }
 
-    /// Write `keys` as the sessions open at the last quit.
+    /// Write `keys` as the sessions open at the last quit, each in a
+    /// window of its own.
     fn record(&self, keys: &[SessionKey]) {
+        self.record_windows(keys.iter().map(std::slice::from_ref));
+    }
+
+    /// Write each group of keys as one window's sessions at the last quit.
+    fn record_windows<'a>(&self, windows: impl IntoIterator<Item = &'a [SessionKey]>) {
         let path = self.record_path();
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("the workspaces directory");
-        let bytes = encode_document(&OpenSessionsRecord::from_keys(keys)).expect("encode");
+        let bytes = encode_document(&OpenSessionsRecord::from_windows(windows)).expect("encode");
         std::fs::write(&path, bytes).expect("write the record");
     }
 
@@ -177,7 +183,7 @@ impl TestApp {
         quit
     }
 
-    /// Wait for every key to show its workspace in a window of its own.
+    /// Wait for every key to show its workspace in a window.
     fn wait_for_sessions(&self, keys: &[SessionKey]) {
         let services = self.services();
         wait_until(WAIT, || {
@@ -334,6 +340,23 @@ fn activate_restores_the_recorded_sessions_in_order() {
         "a picker opened beside the restored windows"
     );
     assert_eq!(services.open_sessions().keys(), [first, second]);
+}
+
+#[gtk4::test]
+fn activate_restores_a_recorded_window_with_all_its_sessions() {
+    let test = TestApp::started("RestoreShared");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    let shared = [first.clone(), second.clone()];
+    test.record_windows([&shared[..]]);
+
+    test.app.activate();
+    test.wait_for_sessions(&shared);
+
+    let services = test.services();
+    let ids = [&first, &second].map(|key| services.sessions.window_for(key).expect("a window"));
+    assert_eq!(ids[0], ids[1], "the recorded window's sessions opened apart");
+    assert_eq!(test.app.windows().len(), 1, "a window opened beside the restored one");
+    assert_eq!(services.open_sessions().windows(), [shared.to_vec()]);
 }
 
 #[gtk4::test]

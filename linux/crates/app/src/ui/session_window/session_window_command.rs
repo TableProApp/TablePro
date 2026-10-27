@@ -1,6 +1,6 @@
 use tablepro_core::credentials::SecretKind;
-use tablepro_session::PendingSession;
 use tablepro_session::connect::AttemptGeneration;
+use tablepro_session::{PendingSession, SessionKey};
 use tablepro_storage::SavedConnection;
 
 use crate::ui::error_text::TlsRemedy;
@@ -12,6 +12,13 @@ pub(crate) enum SessionWindowCommand {
     /// result that lands after the user moved on is discarded.
     Attempt {
         generation: AttemptGeneration,
+        result: Result<Connected, AttemptError>,
+    },
+    /// A connect beside the window's sessions ended. Its key and serial
+    /// say which, so a result for one the window stopped is closed.
+    BackgroundAttempt {
+        key: SessionKey,
+        serial: u64,
         result: Result<Connected, AttemptError>,
     },
 }
@@ -42,7 +49,7 @@ pub(crate) enum AttemptError {
 
 /// What the failed page says, and the setting that would fix it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConnectFailure {
+pub struct ConnectFailure {
     pub message: String,
     pub remedy: Option<TlsRemedy>,
     /// The secret the server refused, which the user can type again in

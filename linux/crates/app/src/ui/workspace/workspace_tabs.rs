@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -582,23 +583,82 @@ impl WorkspaceModel {
 /// The tab view's own signals, as the workspace's inputs. The view is
 /// the shell's, which every session of the window shares, so a session
 /// closes only its own pages and leaves the others to theirs.
-pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, input: &WorkspaceSender) {
-    // A tab with unsaved work asks first, so the workspace finishes the close.
+pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, input: &WorkspaceSender) -> TabViewWatch {
+    let leaving: Rc<RefCell<Vec<adw::TabPage>>> = Rc::default();
+    // A tab with unsaved work asks first, so the workspace finishes the
+    // close. A page of a session going away asked with the session.
     let close_input = input.clone();
     let close_index = index.clone();
-    tab_view.connect_close_page(move |_view, page| match close_index.id_of(page) {
-        Some(id) => {
-            close_input.deliver(WorkspaceInput::WorkspaceTabClosed(id));
-            glib::Propagation::Stop
+    let close_leaving = leaving.clone();
+    let close = tab_view.connect_close_page(move |view, page| {
+        if close_leaving.borrow().contains(page) {
+            view.close_page_finish(page, true);
+            return glib::Propagation::Stop;
         }
-        None => glib::Propagation::Proceed,
+        match close_index.id_of(page) {
+            Some(id) => {
+                close_input.deliver(WorkspaceInput::WorkspaceTabClosed(id));
+                glib::Propagation::Stop
+            }
+            None => glib::Propagation::Proceed,
+        }
     });
 
     // A drag reorder changes only `pages`, and it has to persist too.
     let selected_input = input.clone();
-    tab_view.connect_selected_page_notify(move |_| selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
+    let selected_index = index.clone();
+    let selected = tab_view.connect_selected_page_notify(move |view| {
+        selected_index.note_selected(view.selected_page().as_ref());
+        selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
+    });
     let pages_input = input.clone();
-    tab_view.connect_pages_notify(move |_| pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
+    let pages = tab_view.connect_pages_notify(move |_| pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged));
+    TabViewWatch {
+        view: tab_view.downgrade(),
+        handlers: vec![close, selected, pages],
+        leaving,
+    }
+}
+
+/// What a session hooked on the shared tab view, which outlives it.
+pub(super) struct TabViewWatch {
+    view: glib::WeakRef<adw::TabView>,
+    handlers: Vec<glib::SignalHandlerId>,
+    leaving: Rc<RefCell<Vec<adw::TabPage>>>,
+}
+
+impl TabViewWatch {
+    /// Stop hearing the view, closing `pages` first when the window
+    /// keeps its other sessions. The session's prompts asked about them
+    /// already, so they close without asking again and without going on
+    /// the closed-tab list, which would discard the drafts its reopen
+    /// restores.
+    pub(super) fn release(self, pages: Vec<adw::TabPage>) {
+        let Some(view) = self.view.upgrade() else {
+            return;
+        };
+        let mut handlers = self.handlers.into_iter();
+        let close = handlers.next();
+        // Its own selection handlers would persist a session going away.
+        for handler in handlers {
+            view.disconnect(handler);
+        }
+        self.leaving.replace(pages.clone());
+        for page in &pages {
+            view.close_page(page);
+        }
+        // A page whose own close prompt is still open was closing
+        // already, and `close_page` passes it by.
+        for page in &pages {
+            if view.page_position(page) >= 0 {
+                view.close_page_finish(page, true);
+            }
+        }
+        self.leaving.replace(Vec::new());
+        if let Some(close) = close {
+            view.disconnect(close);
+        }
+    }
 }
 
 fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {

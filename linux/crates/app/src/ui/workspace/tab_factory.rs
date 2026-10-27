@@ -18,7 +18,7 @@ use super::tab_title::resolve_tab_title;
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
-    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TableTabSlot, WorkspaceInput,
+    DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TabConnection, TableTabSlot, WorkspaceInput,
     WorkspaceSender, WorkspaceTab, apply_tab_title,
 };
 use crate::runtime::DeliverInput;
@@ -55,6 +55,8 @@ pub(super) struct TabFactoryParts {
     pub read_only: bool,
     /// Whether a tab's title names the table's schema.
     pub naming: Rc<Cell<TableNaming>>,
+    /// Whether a tab's title names its connection.
+    pub shares_window: Rc<Cell<bool>>,
     /// The window's assistant, which editor tabs ask.
     pub assistant: Rc<crate::ui::assistant::AssistantAccess>,
     pub snippets: Rc<crate::services::snippet_library::SnippetLibrary>,
@@ -121,6 +123,11 @@ impl TabFactory {
         Some(self.insert(id, slot))
     }
 
+    /// Whether the tabs name their connection.
+    pub(super) fn shares_window(&self) -> &Cell<bool> {
+        &self.parts.shares_window
+    }
+
     /// The overview's new-tab button needs its page back at once.
     pub(super) fn create_editor(&self) -> adw::TabPage {
         let id = Uuid::new_v4();
@@ -130,7 +137,12 @@ impl TabFactory {
 
     fn insert(&self, id: Uuid, slot: WorkspaceTab) -> adw::TabPage {
         let page = slot.page().clone();
-        apply_tab_title(&page, &resolve_tab_title(&slot.identity(), self.parts.naming.get()));
+        let connection = TabConnection::of(&self.parts.context, &self.parts.shares_window);
+        apply_tab_title(
+            &page,
+            &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
+            &connection,
+        );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         page

@@ -52,7 +52,7 @@ impl SessionWindow {
         imp.page_toasts.replace(None);
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
         for open in sessions {
-            self.close_open_session(&shell, open);
+            self.close_open_session(&shell, open, false);
         }
         shell.shutdown();
         self.withdraw_notifications();
@@ -87,7 +87,7 @@ impl SessionWindow {
         let shell = shell.clone();
         drop(page);
         open.workspace.flush();
-        self.close_open_session(&shell, open);
+        self.close_open_session(&shell, open, true);
         self.withdraw_closed_notifications();
         self.refresh_dirty();
         self.sync_front();
@@ -95,8 +95,10 @@ impl SessionWindow {
     }
 
     /// Shut `open`'s workspace down, take it off the shell, drop its
-    /// claim and record, and close its session.
-    fn close_open_session(&self, shell: &WorkspaceShell, open: OpenSession) {
+    /// claim and record, and close its session. Its pages leave the tab
+    /// view first when `close_pages`, so the shell picks the next front
+    /// from a page that stays.
+    fn close_open_session(&self, shell: &WorkspaceShell, open: OpenSession, close_pages: bool) {
         let Some(state) = self.state() else {
             return;
         };
@@ -107,7 +109,7 @@ impl SessionWindow {
         } = open;
         let editor_sessions = workspace.take_editor_sessions();
         let key = claim.key().clone();
-        workspace.shutdown();
+        workspace.shutdown(close_pages);
         shell.remove_session(&workspace, &key);
         drop(workspace);
         drop(claim);

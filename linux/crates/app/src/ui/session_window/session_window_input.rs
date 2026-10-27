@@ -21,7 +21,7 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
-    /// Open a session that was open when the application last quit.
+    /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The restored saved connection as the list holds it now, or `None`
     /// once it is deleted.
@@ -54,8 +54,6 @@ pub(crate) enum SessionWindowInput {
     Disconnect,
     /// Close the session open under the key through its prompts.
     DisconnectSession(SessionKey),
-    /// The prompts approved closing every session the window holds.
-    TeardownApproved,
     /// The prompts approved closing the session under the key.
     SessionTeardownApproved(SessionKey),
     /// Bring the session under the key to the front.

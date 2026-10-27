@@ -123,7 +123,7 @@ nothing reaches outside it.
 | `column_widths_file()` | `$XDG_CONFIG_HOME/<dir>/column_widths.json`: each table's column layout (order, hidden columns, widths the user set), version 2; a version 1 file of widths alone is upgraded on read |
 | `filter_settings_file()` | `$XDG_CONFIG_HOME/<dir>/filter_settings.json` |
 | `history_database()` | `$XDG_STATE_HOME/<dir>/history.db` |
-| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json` |
+| `workspaces_dir()` | `$XDG_STATE_HOME/<dir>/workspaces`: one file per session, and `open-sessions.json`, version 2: the sessions open at the last quit as `windows`, one list of keys per window, windows in the order they opened and keys in the order each window adopted them; a version 1 file of `sessions` alone is upgraded on read to one window per session |
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 | `snippets_dir()` | `$XDG_DATA_HOME/<dir>/snippets`: the user's SQL editor snippets, made when Preferences opens it ([README](../README.md#snippets)) |
 | `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |

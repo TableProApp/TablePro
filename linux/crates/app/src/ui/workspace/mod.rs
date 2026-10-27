@@ -163,6 +163,8 @@ pub(crate) struct WorkspaceModel {
     tab_view: adw::TabView,
     /// Which tab each page shows.
     index: Rc<tab_index::TabIndex>,
+    /// The session's hold on the shared tab view, let go of at shutdown.
+    tab_view_watch: Option<workspace_tabs::TabViewWatch>,
     /// Builds every tab the workspace opens.
     factory: Rc<tab_factory::TabFactory>,
     /// Whether tab titles name the schema, from the session's schemas.
@@ -280,6 +282,7 @@ struct WorkspaceTabParts {
     workspace_handle: WorkspaceHandle,
     /// What the window's assistant may send, which editor tabs ask.
     assistant: Rc<crate::ui::assistant::AssistantAccess>,
+    tab_view_watch: workspace_tabs::TabViewWatch,
 }
 
 /// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
@@ -441,7 +444,16 @@ impl WorkspaceTab {
 /// as none, which clears the last one. The tooltip says what the unsaved
 /// icon shows, since a screen reader reads a tab's tooltip and not its
 /// icon.
-pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle) {
+pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle, connection: &TabConnection) {
+    // The overview's search finds a connection's tabs by its name.
+    page.set_keyword(&connection.name);
+    let named;
+    let title = if connection.shares_window {
+        named = tab_title::name_connection(title.clone(), &connection.name);
+        &named
+    } else {
+        title
+    };
     page.set_title(&title.label);
     let unsaved = page.icon().is_some().then(|| crate::i18n::gettext("Unsaved changes"));
     let lines: Vec<&str> = [title.tooltip.as_deref(), unsaved.as_deref()]
@@ -449,6 +461,29 @@ pub(crate) fn apply_tab_title(page: &adw::TabPage, title: &tab_title::TabTitle) 
         .flatten()
         .collect();
     page.set_tooltip(&lines.join("\n"));
+}
+
+/// The connection a tab belongs to, as its title names it.
+pub(crate) struct TabConnection {
+    pub name: String,
+    /// The window holds other connections' tabs beside this one's. With
+    /// one connection the window's title names it already.
+    pub shares_window: bool,
+}
+
+impl TabConnection {
+    /// Read as the tab is titled, so a renamed connection retitles too.
+    pub(crate) fn of(context: &SessionContext, shares_window: &Cell<bool>) -> Self {
+        let name = context
+            .active
+            .metadata()
+            .map(|metadata| metadata.name.clone())
+            .unwrap_or_default();
+        Self {
+            name,
+            shares_window: shares_window.get(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -471,6 +506,8 @@ fn close_if_presented(dialog: &adw::Dialog) {
 #[derive(Debug)]
 pub(crate) enum WorkspaceInput {
     HealthChanged(SessionHealth),
+    /// The window holds other connections beside this one, or no longer.
+    SharesWindow(bool),
     /// The banner's Review Key, for a session parked on a host key.
     ReviewHostKey,
     HostKeyReviewed {
@@ -731,10 +768,11 @@ fn build_tabs(shell: &WorkspaceShell, init: TabsInit<'_>, input: &WorkspaceSende
         exports: exports.clone(),
         read_only: session.read_only(),
         naming: naming.clone(),
+        shares_window: Rc::new(Cell::new(false)),
         assistant: assistant.clone(),
         snippets: services.snippets.clone(),
     });
-    workspace_tabs::connect_tab_view(&tab_view, &index, input);
+    let tab_view_watch = workspace_tabs::connect_tab_view(&tab_view, &index, input);
     WorkspaceTabParts {
         tab_view,
         index,
@@ -745,6 +783,7 @@ fn build_tabs(shell: &WorkspaceShell, init: TabsInit<'_>, input: &WorkspaceSende
         factory,
         workspace_handle,
         assistant,
+        tab_view_watch,
     }
 }
 
@@ -829,6 +868,7 @@ impl Workspace {
             reviewing_host_key: false,
             tab_view: tabs.tab_view,
             index: tabs.index,
+            tab_view_watch: Some(tabs.tab_view_watch),
             factory: tabs.factory,
             naming: tabs.naming,
             workspace_tabs: tabs.workspace_tabs,
@@ -935,6 +975,11 @@ impl Workspace {
             .unwrap_or(false)
     }
 
+    /// Whether a save of the workspace's is still being written.
+    pub(crate) fn is_saving(&self) -> bool {
+        self.handle().is_some_and(|handle| handle.ledger().in_flight() > 0)
+    }
+
     /// The session is now the one in front: it adds the window's actions
     /// and names the header bars. One busy with its input does so once
     /// it is done.
@@ -1017,7 +1062,11 @@ impl Workspace {
     /// Stop the tabs, their reads and the watchers, take the
     /// workspace's actions off the window and drop what it holds. Any
     /// reply still on its way is dropped with the input queue.
-    pub(crate) fn shutdown(&self) {
+    /// Shut the workspace down. With `close_pages` its pages leave the
+    /// shared tab view too, for a window that keeps its other sessions;
+    /// a window that closes whole lets the view go with its shell, so no
+    /// session sees another's page come forward as it goes.
+    pub(crate) fn shutdown(&self, close_pages: bool) {
         let imp = self.imp();
         if let Some(pump) = imp.pump.take() {
             pump.abort();
@@ -1030,7 +1079,7 @@ impl Workspace {
             }
         };
         if let Some(model) = model {
-            model.shutdown();
+            model.shutdown(close_pages);
         }
     }
 
@@ -1174,8 +1223,9 @@ impl WorkspaceModel {
         let Some(title) = self.tab_title(id) else {
             return;
         };
+        let connection = TabConnection::of(&self.context, self.factory.shares_window());
         if let Some(tab) = self.workspace_tabs.borrow().get(&id) {
-            apply_tab_title(tab.page(), &title);
+            apply_tab_title(tab.page(), &title, &connection);
         }
         if self.selected_workspace_tab_id() == Some(id) {
             self.refresh_window_title();
@@ -1189,6 +1239,27 @@ impl WorkspaceModel {
         if self.naming.replace(naming) == naming {
             return;
         }
+        self.retitle_tabs();
+    }
+
+    /// Title every tab again when the window starts or stops holding
+    /// other connections beside this one.
+    fn on_shares_window(&self, shares: bool) {
+        if self.factory.shares_window().replace(shares) == shares {
+            return;
+        }
+        self.retitle_tabs();
+    }
+
+    fn on_saved_connections_changed(&self) {
+        if self.factory.shares_window().get() {
+            self.retitle_tabs();
+        }
+        self.refresh_window_title();
+        self.refresh_assistant();
+    }
+
+    fn retitle_tabs(&self) {
         let ids: Vec<Uuid> = self.workspace_tabs.borrow().keys().copied().collect();
         for id in ids {
             self.retitle_tab(id);
@@ -1196,7 +1267,7 @@ impl WorkspaceModel {
         self.refresh_window_title();
     }
 
-    fn shutdown(mut self) {
+    fn shutdown(mut self, close_pages: bool) {
         if let Some(gate) = self.history_gate.take() {
             gate.abort();
         }
@@ -1223,7 +1294,11 @@ impl WorkspaceModel {
                 window.remove_action(action);
             }
         }
+        let pages = if close_pages { self.index.pages() } else { Vec::new() };
         self.close_tabs();
+        if let Some(watch) = self.tab_view_watch.take() {
+            watch.release(pages);
+        }
         // The close asked about them already; one started since has no
         // window left to finish in.
         self.exports.shut_down();
@@ -1310,9 +1385,9 @@ impl WorkspaceModel {
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_window_title(),
+            WorkspaceInput::SharesWindow(shares) => self.on_shares_window(shares),
             WorkspaceInput::SavedConnectionsChanged => {
-                self.refresh_window_title();
-                self.refresh_assistant();
+                self.on_saved_connections_changed();
             }
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
             WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(

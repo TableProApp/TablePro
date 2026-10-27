@@ -2,12 +2,15 @@
 //! and keeping the record of open sessions in step with the window.
 
 use gtk4::glib;
+use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
+use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
+use crate::application::WindowLaunch;
 use crate::runtime::DeliverInput;
 
 impl SessionWindow {
@@ -52,6 +55,7 @@ impl SessionWindow {
             None => {
                 self.forget_session(&SessionKey::Saved(id));
                 self.show_toast(&crate::i18n::gettext("The connection was deleted."));
+                self.continue_restore();
             }
         }
     }
@@ -65,7 +69,7 @@ impl SessionWindow {
             SessionKey::Saved(_) => saved.is_some(),
         };
         if restorable && let Some(state) = self.state() {
-            state.services.open_sessions().add(key.clone());
+            state.services.open_sessions().add(key.clone(), self.id());
         }
     }
 
@@ -78,16 +82,48 @@ impl SessionWindow {
     /// The restore has its answer, and the page the window shows next
     /// speaks for the key.
     pub(super) fn end_restore(&self, key: &SessionKey) {
-        let restoring = &self.imp().restoring;
-        if restoring.borrow().as_ref() == Some(key) {
-            restoring.replace(None);
+        self.imp().restoring.borrow_mut().retain(|restoring| restoring != key);
+    }
+
+    /// Start the keys still waiting to be restored once the window can
+    /// take them: all of them beside the workspace the first one opened,
+    /// or the next one on the picker when the one before did not open.
+    /// A failed page keeps the window, so the rest go to a window of
+    /// their own.
+    pub(super) fn continue_restore(&self) {
+        let imp = self.imp();
+        if imp.restore_waiting.borrow().is_empty() {
+            return;
+        }
+        let Some(input) = self.input() else {
+            return;
+        };
+        let started: Vec<SessionKey> = match &*imp.page.borrow() {
+            SessionPage::Workspace { .. } => imp.restore_waiting.take(),
+            SessionPage::Picker => {
+                let mut waiting = imp.restore_waiting.borrow_mut();
+                vec![waiting.remove(0)]
+            }
+            SessionPage::ConnectFailed { .. } => {
+                let rest = imp.restore_waiting.take();
+                imp.restoring.borrow_mut().retain(|key| !rest.contains(key));
+                if let Some(state) = self.state() {
+                    state.host.open_window(WindowLaunch::Restore(rest));
+                }
+                Vec::new()
+            }
+            SessionPage::Connecting { .. } => Vec::new(),
+        };
+        for key in started {
+            input.deliver(SessionWindowInput::Restore(key));
         }
     }
 
     /// A window closed before its restore had an answer holds no claim
-    /// whose release would forget the key.
+    /// whose release would forget the keys.
     pub(super) fn abandon_restore(&self) {
-        if let Some(key) = self.imp().restoring.take() {
+        self.imp().restore_waiting.take();
+        for key in self.imp().restoring.take() {
             self.forget_unclaimed(&key);
         }
     }
@@ -107,7 +143,6 @@ impl SessionWindow {
 mod tests {
     use std::time::Duration;
 
-    use gtk4::prelude::*;
     use tablepro_session::fakes::{FakeConnector, FakeEstablish};
     use tablepro_session::{PendingSave, SessionKey};
     use tablepro_test_support::ConnectionScript;
@@ -128,9 +163,9 @@ mod tests {
         fn restored_window(&self, key: &SessionKey) -> SessionWindow {
             self.services
                 .open_sessions()
-                .restore(OpenSessionsRecord::from_keys([key]));
+                .restore(OpenSessionsRecord::from_windows([[key]]));
             self.app
-                .open_window(WindowLaunch::Restore(key.clone()))
+                .open_window(WindowLaunch::Restore(vec![key.clone()]))
                 .and_then(|window| window.downcast::<SessionWindow>().ok())
                 .expect("a restored window")
         }

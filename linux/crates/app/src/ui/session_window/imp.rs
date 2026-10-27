@@ -6,13 +6,13 @@ use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
-use tablepro_session::{ConnectAttempts, ConnectSource, SessionClaim, SessionKey};
+use tablepro_session::{ConnectAttempts, SessionKey};
 
 use super::connections::LevelSave;
 use super::crash_notice::CrashNotice;
 use super::locate_file::LocateChooser;
 use super::picker_page::PickerPage;
-use super::session_page::SessionPage;
+use super::session_page::{BackgroundConnect, SessionPage};
 use super::work_notifier::WorkNotifier;
 use super::{SessionWindowInput, WindowState};
 use crate::runtime::InputSender;
@@ -39,12 +39,18 @@ pub struct SessionWindow {
     pub(super) page: RefCell<SessionPage>,
     /// Which connect attempt is current, so a late result is discarded.
     pub(super) attempts: ConnectAttempts,
-    /// A connect running while the window shows its sessions, whose
-    /// session joins them. The page keeps showing them meanwhile.
-    pub(super) background: RefCell<Option<(SessionClaim, ConnectSource)>>,
-    /// The recorded session the window was opened to restore, until the
-    /// saved connection is looked up or the file resolved.
-    pub(super) restoring: RefCell<Option<SessionKey>>,
+    /// The connects running while the window shows its sessions, in the
+    /// order they started. The page keeps showing the sessions meanwhile.
+    pub(super) background: RefCell<Vec<BackgroundConnect>>,
+    /// Numbers each background connect, whose result carries it.
+    pub(super) background_serial: Cell<u64>,
+    /// The recorded sessions the window was opened to restore, until
+    /// each saved connection is looked up or each file resolved. The
+    /// first opens on the window's own page; the others join it there.
+    pub(super) restoring: RefCell<Vec<SessionKey>>,
+    /// The restoring keys not started yet, which wait for the first to
+    /// open the window's workspace and then connect beside it.
+    pub(super) restore_waiting: RefCell<Vec<SessionKey>>,
     /// One close prompt at a time, for a tab, the window or a
     /// disconnect.
     pub(super) close_guards: OnceCell<Rc<CloseGuards>>,

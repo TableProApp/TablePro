@@ -1,12 +1,16 @@
 //! Several sessions in one window: a connection opened while the window
 //! shows its sessions joins them, and a disconnect closes only its own.
 
+use std::time::Duration;
+
 use gtk4::prelude::*;
 use tablepro_session::SessionKey;
+use tablepro_session::fakes::FakeEstablish;
 use tablepro_storage::SavedConnection;
+use tablepro_test_support::ConnectionScript;
 
-use super::{TestWindow, WAIT};
-use crate::test_support::wait_until;
+use super::{Script, TestWindow, WAIT};
+use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::SessionWindowInput;
 
 /// A second saved connection beside the test's, once the list has it.
@@ -106,4 +110,127 @@ fn disconnecting_the_last_session_returns_to_the_picker() {
     test.wait_for_page("picker");
 
     assert_eq!(test.services.sessions.window_for(&test.key()), None);
+}
+
+#[gtk4::test]
+fn disconnecting_a_session_closes_its_tabs() {
+    let (test, other) = open_both("DisconnectTabs");
+    let shell = test.window.shell().expect("the shell");
+    for workspace in test.window.workspaces() {
+        workspace.create_editor_page().expect("an editor tab");
+    }
+
+    test.window
+        .send(SessionWindowInput::DisconnectSession(SessionKey::Saved(other.id)));
+    wait_until(WAIT, || test.window.workspaces().len() == 1).expect("one session to go");
+
+    assert_eq!(shell.tab_view().n_pages(), 1, "the session's tab stayed in the bar");
+    let left = shell.tab_view().nth_page(0);
+    assert_eq!(
+        shell.owner_of(&left).and_then(|(workspace, _)| workspace.key()),
+        Some(test.key()),
+        "the tab left is not the first session's"
+    );
+}
+
+#[gtk4::test]
+fn tabs_name_their_connection_while_another_shares_the_window() {
+    let (test, other) = open_both("TabTitles");
+    let first = test.window.workspaces().into_iter().next().expect("the first session");
+    let page = first.create_editor_page().expect("an editor tab");
+    wait_until(WAIT, || page.title().ends_with(" · Fake")).expect("the tab to name its connection");
+    assert_eq!(page.keyword().as_deref(), Some("Fake"));
+
+    test.window
+        .send(SessionWindowInput::DisconnectSession(SessionKey::Saved(other.id)));
+    wait_until(WAIT, || !page.title().contains(" · Fake")).expect("the tab to drop the name with one session left");
+}
+
+#[gtk4::test]
+fn two_connects_beside_the_sessions_both_join() {
+    let test = TestWindow::with_script(
+        "TwoBeside",
+        Script {
+            establish: vec![
+                FakeEstablish::Connect(ConnectionScript::default()),
+                FakeEstablish::Late {
+                    after: Duration::from_millis(300),
+                    script: ConnectionScript::default(),
+                },
+            ],
+            ..Script::default()
+        },
+    );
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let second = second_connection(&test);
+    let third = SavedConnection {
+        id: uuid::Uuid::new_v4(),
+        name: "Third".to_owned(),
+        database: test.dir().join("third.db").display().to_string(),
+        ..test.saved.clone()
+    };
+    test.services
+        .storage
+        .connections()
+        .upsert_blocking(third.clone())
+        .expect("save the third connection");
+    wait_until(WAIT, || test.services.saved_connections.get(third.id).is_some()).expect("the list to have it");
+
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(second.clone())));
+    test.window.send(SessionWindowInput::OpenSaved(Box::new(third.clone())));
+    wait_until(WAIT, || test.window.workspaces().len() == 3).expect("both connects to join");
+
+    let window = Some(test.window.id());
+    assert_eq!(test.services.sessions.window_for(&SessionKey::Saved(second.id)), window);
+    assert_eq!(test.services.sessions.window_for(&SessionKey::Saved(third.id)), window);
+}
+
+#[gtk4::test]
+fn f002_a_connect_beside_the_last_session_carries_on_and_its_stopped_result_closes() {
+    let test = TestWindow::with_script(
+        "BesideTheLast",
+        Script {
+            establish: vec![
+                FakeEstablish::Connect(ConnectionScript::default()),
+                FakeEstablish::Late {
+                    after: Duration::from_millis(300),
+                    script: ConnectionScript::default(),
+                },
+            ],
+            ..Script::default()
+        },
+    );
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.wait_for_page("workspace");
+    let other = second_connection(&test);
+    let other_key = SessionKey::Saved(other.id);
+    test.window.send(SessionWindowInput::OpenSaved(Box::new(other.clone())));
+    wait_until(WAIT, || test.connector.calls().len() == 2).expect("the connect beside to reach the driver");
+
+    test.window.send(SessionWindowInput::Disconnect);
+    wait_until(WAIT, || {
+        test.window
+            .workspaces()
+            .first()
+            .and_then(crate::ui::workspace::Workspace::key)
+            == Some(other_key.clone())
+    })
+    .expect("the connect to carry on as the window's own");
+    // The first session's, closed by the disconnect, and the stopped
+    // connect's, which landed after the one that carried on.
+    wait_until(WAIT, || {
+        let connections = test.connector.connections();
+        connections.len() == 3 && connections.iter().filter(|connection| connection.is_closed()).count() == 2
+    })
+    .expect("the stopped connect's late connection to close");
+    drain_main_context();
+
+    assert_eq!(test.window.workspaces().len(), 1);
+    assert_eq!(test.services.sessions.window_for(&other_key), Some(test.window.id()));
+    assert_eq!(test.services.sessions.window_for(&test.key()), None);
+    assert_eq!(test.services.sessions.live_count(), 1);
 }

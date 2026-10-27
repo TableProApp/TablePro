@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::object_key::ObjectKey;
 use super::schema_slice::SchemaSlice;
 use super::sidebar_event::SidebarEvent;
+use super::sidebar_index::search_key;
 use super::sidebar_list::SidebarList;
 use super::sidebar_menu::{GROUP, NEW_TABLE, SHOW_SCHEMA_DIAGRAM, object_menu};
 use super::sidebar_object::SidebarObject;
@@ -33,6 +34,9 @@ const DISCONNECT: &str = "disconnect";
 const NEW_QUERY: &str = "new-query";
 const REFRESH: &str = "refresh";
 const EDIT: &str = "edit";
+
+const LIST_PAGE: &str = "list";
+const EMPTY_PAGE: &str = "empty";
 
 /// What the tree asks of the window or of a session's workspace.
 #[derive(Debug, Clone)]
@@ -56,10 +60,15 @@ pub(crate) struct ConnectionTree {
 }
 
 struct TreeInner {
-    root: gtk::ScrolledWindow,
+    root: gtk::Stack,
     list_view: gtk::ListView,
+    selection: gtk::SingleSelection,
     roots: gio::ListStore,
     tree: gtk::TreeListModel,
+    /// Hides the connections and groups the search does not find. It
+    /// filters the roots and each group's connections, never the
+    /// flattened tree, which would leave a hidden row's children behind.
+    filter: gtk::CustomFilter,
     popover: gtk::PopoverMenu,
     /// The row whose menu is open.
     menu_target: RefCell<Option<TreeNode>>,
@@ -69,8 +78,14 @@ struct TreeInner {
     saved: Rc<SavedConnectionList>,
     saved_watch: Cell<Option<glib::SignalHandlerId>>,
     requests: RefCell<Option<TreeRequests>>,
-    /// The search, which opens the schemas whose tables it finds.
-    query: RefCell<String>,
+    /// The search as `search_key` folds it, empty for none. It opens the
+    /// schemas whose tables it finds.
+    query: Rc<RefCell<String>>,
+    /// Which rows were open before the search, to open or fold them
+    /// again once it is cleared.
+    before_search: RefCell<Option<Expansion>>,
+    /// The session whose tab is in front, whose row the selection follows.
+    followed: RefCell<Option<Followed>>,
     /// Each bound row's bindings to its node, let go of when the row is
     /// bound to another.
     bindings: RefCell<HashMap<gtk::ListItem, Vec<glib::Binding>>>,
@@ -83,6 +98,20 @@ type TreeRequests = Box<dyn Fn(TreeRequest)>;
 
 /// A bound connection row and its watch on its arrow.
 type ExpandWatch = (gtk::TreeListRow, glib::SignalHandlerId);
+
+/// Whether each group's, connection's and schema's row is open. A filter
+/// change can take out and put back rows it does not hide, which folds
+/// them.
+type Expansion = HashMap<TreeNode, bool>;
+
+/// The session the selection follows, and whether its table's row is
+/// still to be opened and scrolled to: its list was not read yet, or the
+/// search hid it.
+#[derive(Clone)]
+struct Followed {
+    key: SessionKey,
+    unrevealed: bool,
+}
 
 /// An open session's part of the tree: its connection row's schemas,
 /// each a slice of the session's list.
@@ -100,29 +129,26 @@ struct SessionBranch {
 impl ConnectionTree {
     pub(crate) fn new(saved: Rc<SavedConnectionList>) -> Self {
         let roots = gio::ListStore::new::<TreeNode>();
-        let tree = gtk::TreeListModel::new(roots.clone(), false, false, |item| {
-            item.downcast_ref::<TreeNode>().and_then(TreeNode::children)
-        });
+        let query = Rc::new(RefCell::new(String::new()));
+        let (tree, filter) = tree_model(&roots, &query);
         let selection = gtk::SingleSelection::new(Some(tree.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
-        let list_view = gtk::ListView::new(Some(selection), None::<gtk::ListItemFactory>);
+        let list_view = gtk::ListView::new(Some(selection.clone()), None::<gtk::ListItemFactory>);
         list_view.add_css_class("navigation-sidebar");
         list_view.set_single_click_activate(true);
         list_view.update_property(&[gtk::accessible::Property::Label(&crate::i18n::gettext("Connections"))]);
-        let root = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vexpand(true)
-            .child(&list_view)
-            .build();
+        let root = tree_root(&list_view);
         let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
         popover.set_has_arrow(true);
         popover.set_parent(&list_view);
         let inner = Rc::new(TreeInner {
             root,
             list_view,
+            selection,
             roots,
             tree,
+            filter,
             popover,
             menu_target: RefCell::new(None),
             groups: RefCell::new(HashMap::new()),
@@ -131,7 +157,9 @@ impl ConnectionTree {
             saved,
             saved_watch: Cell::new(None),
             requests: RefCell::new(None),
-            query: RefCell::new(String::new()),
+            query,
+            before_search: RefCell::new(None),
+            followed: RefCell::new(None),
             bindings: RefCell::new(HashMap::new()),
             expand_watches: RefCell::new(HashMap::new()),
         });
@@ -150,11 +178,12 @@ impl ConnectionTree {
             }
         });
         inner.saved_watch.set(Some(watch));
+        connect_hover(&inner);
         inner.rebuild_roots();
         Self { inner }
     }
 
-    pub(crate) fn widget(&self) -> &gtk::ScrolledWindow {
+    pub(crate) fn widget(&self) -> &gtk::Stack {
         &self.inner.root
     }
 
@@ -163,14 +192,31 @@ impl ConnectionTree {
         self.inner.requests.replace(Some(Box::new(requests)));
     }
 
-    /// Open the schemas whose tables `entry` finds as the user types.
+    /// Show only the connections whose names `entry` finds, or whose
+    /// tables it finds, and open the schemas of those tables, as the user
+    /// types and for what it holds now.
     pub(crate) fn follow_search(&self, entry: &gtk::SearchEntry) {
         let view = Rc::downgrade(&self.inner);
         entry.connect_search_changed(move |entry| {
             if let Some(view) = view.upgrade() {
-                view.query.replace(entry.text().trim().to_owned());
+                view.apply_query(&entry.text());
             }
         });
+        self.inner.apply_query(&entry.text());
+    }
+
+    /// Select the row of `object` under the session `key`, opening the
+    /// rows above it, or the connection's row when the tab in front shows
+    /// no object or the tree does not show it. The keyboard stays in the
+    /// tab.
+    pub(crate) fn select(&self, key: &SessionKey, object: Option<&SidebarObject>) {
+        let inner = &self.inner;
+        let wanted = object.is_some() || inner.view_of(key).is_some_and(|view| view.follows_table());
+        let shown = inner.show_selection(key, object, true);
+        inner.followed.replace(Some(Followed {
+            key: key.clone(),
+            unrevealed: wanted && !shown,
+        }));
     }
 
     /// The session under `key` opened in this window: its row says so and
@@ -227,6 +273,14 @@ impl ConnectionTree {
             }
             branch.node.set_open(false);
         }
+        let followed = inner
+            .followed
+            .borrow()
+            .as_ref()
+            .is_some_and(|followed| &followed.key == key);
+        if followed {
+            inner.followed.replace(None);
+        }
         inner.rebuild_roots();
     }
 
@@ -255,6 +309,32 @@ impl ConnectionTree {
             .collect();
         found.sort();
         found
+    }
+
+    /// Each row's name, in the tree's order.
+    #[cfg(test)]
+    pub(crate) fn shown_rows(&self) -> Vec<String> {
+        let tree = &self.inner.tree;
+        (0..tree.n_items())
+            .filter_map(|position| tree.row(position))
+            .filter_map(|row| row_title(&row))
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn selected_row(&self) -> Option<String> {
+        let row = self
+            .inner
+            .selection
+            .selected_item()
+            .and_downcast::<gtk::TreeListRow>()?;
+        row_title(&row)
+    }
+
+    /// Whether the tree says the search found nothing.
+    #[cfg(test)]
+    pub(crate) fn says_nothing_found(&self) -> bool {
+        self.inner.root.visible_child_name().as_deref() == Some(EMPTY_PAGE)
     }
 
     /// The names of the connections the tree says are open.
@@ -380,6 +460,8 @@ impl TreeInner {
         self.connections.borrow_mut().retain(|key, _| kept.contains(key));
         set_store(&self.roots, &desired);
         self.reveal_branches();
+        // A group shows by its connections, which this may have moved.
+        self.refilter();
     }
 
     /// Open the row of each session whose row was never opened, once the
@@ -397,6 +479,11 @@ impl TreeInner {
                 row.set_expanded(true);
                 if let Some(branch) = self.branches.borrow_mut().get_mut(&key) {
                     branch.revealed = true;
+                }
+                // Clearing the search does not fold a session that
+                // opened under it.
+                if let Some(before) = self.before_search.borrow_mut().as_mut() {
+                    before.remove(&node);
                 }
             }
         }
@@ -450,13 +537,230 @@ impl TreeInner {
                 self.set_expanded(&node, true);
             }
         }
+        // Whether the search shows the connection depends on its rows.
+        self.refilter();
     }
 
-    /// The tree's row showing `node`, when its parents are open.
+    /// The tree's row showing `node`, when its parents are open. It walks
+    /// down from the roots, so it never looks through a schema's tables.
     fn row_of(&self, node: &TreeNode) -> Option<gtk::TreeListRow> {
-        (0..self.tree.n_items())
-            .filter_map(|position| self.tree.row(position))
-            .find(|row| row.item().as_ref() == Some(node.upcast_ref::<glib::Object>()))
+        match node.kind() {
+            NodeKind::Group => self.top_row(node),
+            NodeKind::Connection => self.connection_row(node, false),
+            NodeKind::Schema => {
+                let connection = self
+                    .branches
+                    .borrow()
+                    .values()
+                    .find(|branch| branch.schemas.values().any(|(schema, _)| schema == node))
+                    .map(|branch| branch.node.clone())?;
+                child_row(&self.connection_row(&connection, false)?, node)
+            }
+        }
+    }
+
+    fn top_row(&self, node: &TreeNode) -> Option<gtk::TreeListRow> {
+        let position = index_in(&self.tree.model(), node)?;
+        self.tree.child_row(position)
+    }
+
+    /// The row of the connection `node`, among the roots or in its
+    /// group; `open` opens the group to show it.
+    fn connection_row(&self, node: &TreeNode, open: bool) -> Option<gtk::TreeListRow> {
+        if let Some(row) = self.top_row(node) {
+            return Some(row);
+        }
+        let group = self
+            .groups
+            .borrow()
+            .values()
+            .find(|group| {
+                group
+                    .child_store()
+                    .is_some_and(|store| position_in(&store, node, 0).is_some())
+            })
+            .cloned()?;
+        let row = self.top_row(&group)?;
+        if open {
+            expand(&row);
+        }
+        child_row(&row, node)
+    }
+
+    fn view_of(&self, key: &SessionKey) -> Option<SidebarView> {
+        self.branches.borrow().get(key).map(|branch| branch.view.clone())
+    }
+
+    /// The schema whose slice holds `object` in the session's list, and
+    /// where in the slice. The list finds the row through its index, so
+    /// no row is looked through.
+    fn schema_offset(&self, key: &SessionKey, object: &SidebarObject) -> Option<(TreeNode, u32)> {
+        let branches = self.branches.borrow();
+        let branch = branches.get(key)?;
+        let entry = branch.list.index().find(&object.table_ref())?;
+        let position = branch.list.position_of_entry(entry)?;
+        branch
+            .schemas
+            .values()
+            .find_map(|(schema, slice)| Some((schema.clone(), slice.offset_of(position)?)))
+    }
+
+    /// The position of `object`'s row under the connection `key`, or of
+    /// the connection's row when the tree does not show the object's, and
+    /// whether it is the object's. `open` opens the rows above the
+    /// object's.
+    fn locate(&self, key: &SessionKey, object: Option<&SidebarObject>, open: bool) -> Option<(u32, bool)> {
+        let node = self.connections.borrow().get(key).cloned()?;
+        let connection = self.connection_row(&node, open)?;
+        let found = object
+            .and_then(|object| self.schema_offset(key, object))
+            .and_then(|(schema, offset)| object_row(&connection, &schema, offset, open));
+        Some(found.map_or((connection.position(), false), |row| (row.position(), true)))
+    }
+
+    /// Select the row `locate` finds, or none. `reveal` opens the rows
+    /// above it and scrolls to it. True when the row is the object's.
+    fn show_selection(&self, key: &SessionKey, object: Option<&SidebarObject>, reveal: bool) -> bool {
+        let Some((position, is_object)) = self.locate(key, object, reveal) else {
+            if self.selection.selected() != gtk::INVALID_LIST_POSITION {
+                self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+            }
+            return false;
+        };
+        if reveal {
+            // Without FOCUS: the keyboard stays in the editor or the grid.
+            self.list_view.scroll_to(position, gtk::ListScrollFlags::SELECT, None);
+        } else if self.selection.selected() != position {
+            self.selection.set_selected(position);
+        }
+        is_object
+    }
+
+    /// Select again the row of the session the selection follows, once
+    /// its rows moved or the pointer left: activation on a single click
+    /// selects rows on hover.
+    fn reselect(&self) {
+        let Some(followed) = self.followed.borrow().clone() else {
+            return;
+        };
+        let object = self.view_of(&followed.key).and_then(|view| view.active_object());
+        let reveal = followed.unrevealed && object.is_some();
+        let shown = self.show_selection(&followed.key, object.as_ref(), reveal);
+        if reveal
+            && shown
+            && let Some(followed) = self.followed.borrow_mut().as_mut()
+        {
+            followed.unrevealed = false;
+        }
+    }
+
+    /// Filter by `text` as `search_key` folds it. Each row the filter
+    /// keeps stays open or folded, and clearing the search opens and
+    /// folds the rows as they were before it.
+    fn apply_query(&self, text: &str) {
+        let text = text.trim();
+        let query = if text.is_empty() {
+            String::new()
+        } else {
+            search_key(text)
+        };
+        if *self.query.borrow() == query {
+            return;
+        }
+        let states = self.expansion();
+        let started = self.query.borrow().is_empty();
+        let ended = query.is_empty();
+        self.query.replace(query);
+        let states = if started {
+            self.before_search.replace(Some(states.clone()));
+            states
+        } else if ended {
+            self.before_search.take().unwrap_or(states)
+        } else {
+            states
+        };
+        self.refilter_keeping(&states);
+    }
+
+    /// What a branch or the saved connections hold changed, which can
+    /// change what the search shows.
+    fn refilter(&self) {
+        if self.query.borrow().is_empty() {
+            self.reselect();
+            return;
+        }
+        let states = self.expansion();
+        self.refilter_keeping(&states);
+    }
+
+    fn refilter_keeping(&self, states: &Expansion) {
+        self.filter.changed(gtk::FilterChange::Different);
+        self.restore(states);
+        if !self.query.borrow().is_empty() {
+            self.open_matches();
+        }
+        let nothing = !self.query.borrow().is_empty() && self.tree.model().n_items() == 0;
+        self.root
+            .set_visible_child_name(if nothing { EMPTY_PAGE } else { LIST_PAGE });
+        self.reselect();
+    }
+
+    fn expansion(&self) -> Expansion {
+        let mut states = Expansion::new();
+        let mut rows = top_rows(&self.tree);
+        while let Some(row) = rows.pop() {
+            let Some(node) = row.item().and_downcast::<TreeNode>() else {
+                continue;
+            };
+            if row.is_expanded() && node.kind() != NodeKind::Schema {
+                rows.extend(child_rows(&row));
+            }
+            states.insert(node, row.is_expanded());
+        }
+        states
+    }
+
+    /// Open or fold each row as `states` has it. A closed connection's
+    /// row is never opened: that connects it.
+    fn restore(&self, states: &Expansion) {
+        let mut rows = top_rows(&self.tree);
+        while let Some(row) = rows.pop() {
+            let Some(node) = row.item().and_downcast::<TreeNode>() else {
+                continue;
+            };
+            if let Some(&expanded) = states.get(&node)
+                && expanded != row.is_expanded()
+                && (!expanded || node.kind() != NodeKind::Connection || node.open())
+            {
+                row.set_expanded(expanded);
+            }
+            if row.is_expanded() && node.kind() != NodeKind::Schema {
+                rows.extend(child_rows(&row));
+            }
+        }
+    }
+
+    /// Open each group the search shows, each open connection with tables
+    /// it found and their schemas, so what it found is in view.
+    fn open_matches(&self) {
+        let mut rows = top_rows(&self.tree);
+        while let Some(row) = rows.pop() {
+            let Some(node) = row.item().and_downcast::<TreeNode>() else {
+                continue;
+            };
+            match node.kind() {
+                NodeKind::Group => {
+                    expand(&row);
+                    rows.extend(child_rows(&row));
+                }
+                NodeKind::Connection if node.open() && has_schemas(&node) => {
+                    expand(&row);
+                    rows.extend(child_rows(&row));
+                }
+                NodeKind::Schema => expand(&row),
+                NodeKind::Connection => {}
+            }
+        }
     }
 
     fn set_expanded(&self, node: &TreeNode, expanded: bool) {
@@ -645,6 +949,137 @@ fn set_store(store: &gio::ListStore, desired: &[TreeNode]) {
     while store.n_items() > position {
         store.remove(position);
     }
+}
+
+/// The tree over `roots`: each group's connections and the roots go
+/// through the search's filter, and the filter it returns.
+fn tree_model(roots: &gio::ListStore, query: &Rc<RefCell<String>>) -> (gtk::TreeListModel, gtk::CustomFilter) {
+    let shown = query.clone();
+    let filter = gtk::CustomFilter::new(move |item| shows(item, &shown.borrow()));
+    let groups = filter.clone();
+    let shown_roots = gtk::FilterListModel::new(Some(roots.clone()), Some(filter.clone()));
+    let tree = gtk::TreeListModel::new(shown_roots, false, false, move |item| {
+        let node = item.downcast_ref::<TreeNode>()?;
+        let children = node.children()?;
+        if node.kind() == NodeKind::Group {
+            return Some(gtk::FilterListModel::new(Some(children), Some(groups.clone())).upcast::<gio::ListModel>());
+        }
+        Some(children)
+    });
+    (tree, filter)
+}
+
+/// The tree's rows, or a page that says the search found nothing.
+fn tree_root(list_view: &gtk::ListView) -> gtk::Stack {
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vexpand(true)
+        .child(list_view)
+        .build();
+    let empty = adw::StatusPage::builder()
+        .icon_name(crate::ui::icons::SYSTEM_SEARCH)
+        .title(crate::i18n::gettext("No Results Found"))
+        .description(crate::i18n::gettext("Try a different search."))
+        .build();
+    empty.add_css_class("compact");
+    let root = gtk::Stack::new();
+    root.add_named(&scroll, Some(LIST_PAGE));
+    root.add_named(&empty, Some(EMPTY_PAGE));
+    root
+}
+
+/// Activation on a single click selects the row under the pointer, so
+/// the selection goes back to the tab in front's row when it leaves.
+fn connect_hover(inner: &Rc<TreeInner>) {
+    let hover = gtk::EventControllerMotion::new();
+    let view = Rc::downgrade(inner);
+    hover.connect_leave(move |_| {
+        if let Some(view) = view.upgrade() {
+            view.reselect();
+        }
+    });
+    inner.list_view.add_controller(hover);
+}
+
+/// Whether the search `query` shows `item`: a connection whose name it
+/// finds or whose session lists tables it finds, and a group with such a
+/// connection. A session's list is already filtered by the search.
+fn shows(item: &glib::Object, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let Some(node) = item.downcast_ref::<TreeNode>() else {
+        return true;
+    };
+    match node.kind() {
+        NodeKind::Connection => connection_shows(node, query),
+        NodeKind::Group => node.child_store().is_some_and(|store| {
+            (0..store.n_items())
+                .filter_map(|position| store.item(position).and_downcast::<TreeNode>())
+                .any(|connection| connection_shows(&connection, query))
+        }),
+        NodeKind::Schema => true,
+    }
+}
+
+fn connection_shows(node: &TreeNode, query: &str) -> bool {
+    search_key(&node.title()).contains(query) || has_schemas(node)
+}
+
+/// A closed connection lists no schema, and an open one lists only the
+/// schemas whose tables the search finds.
+fn has_schemas(node: &TreeNode) -> bool {
+    node.child_store().is_some_and(|store| store.n_items() > 0)
+}
+
+fn top_rows(tree: &gtk::TreeListModel) -> Vec<gtk::TreeListRow> {
+    let count = tree.model().n_items();
+    (0..count).filter_map(|position| tree.child_row(position)).collect()
+}
+
+fn child_rows(row: &gtk::TreeListRow) -> Vec<gtk::TreeListRow> {
+    let count = row.children().map_or(0, |children| children.n_items());
+    (0..count).filter_map(|position| row.child_row(position)).collect()
+}
+
+/// The row of `node` among the children of the open row `parent`.
+fn child_row(parent: &gtk::TreeListRow, node: &TreeNode) -> Option<gtk::TreeListRow> {
+    let position = index_in(&parent.children()?, node)?;
+    parent.child_row(position)
+}
+
+/// The row at `offset` in `schema` under the open connection's row,
+/// opening the schema and the connection when `open`.
+fn object_row(connection: &gtk::TreeListRow, schema: &TreeNode, offset: u32, open: bool) -> Option<gtk::TreeListRow> {
+    if open {
+        expand(connection);
+    }
+    let schema = child_row(connection, schema)?;
+    if open {
+        expand(&schema);
+    }
+    schema.child_row(offset)
+}
+
+fn expand(row: &gtk::TreeListRow) {
+    if !row.is_expanded() {
+        row.set_expanded(true);
+    }
+}
+
+/// Where `node` is in `model`: the roots, a group's connections or a
+/// connection's schemas, never a schema's tables.
+fn index_in(model: &gio::ListModel, node: &TreeNode) -> Option<u32> {
+    (0..model.n_items()).find(|&at| model.item(at).as_ref() == Some(node.upcast_ref::<glib::Object>()))
+}
+
+#[cfg(test)]
+fn row_title(row: &gtk::TreeListRow) -> Option<String> {
+    let item = row.item()?;
+    if let Some(object) = item.downcast_ref::<SidebarObject>() {
+        return Some(object.name());
+    }
+    item.downcast_ref::<TreeNode>().map(TreeNode::title)
 }
 
 /// Where `node` is in `store` at or after `from`.
@@ -964,4 +1399,171 @@ fn click_gesture(view: Weak<TreeInner>, item: &gtk::ListItem) -> gtk::GestureCli
         }
     });
     gesture
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use tablepro_core::DriverRegistry;
+    use tablepro_core::meta::{ObjectInfo, ObjectKind, SchemaInfo, TableRef};
+    use tablepro_storage::{ConnectionGroupName, ConnectionStore, SavedConnection, StoragePaths};
+
+    use super::super::SidebarAffordances;
+    use super::*;
+    use crate::test_support::wait_until;
+
+    const WAIT: Duration = Duration::from_secs(10);
+
+    fn connection(name: &str, group: Option<&str>) -> SavedConnection {
+        SavedConnection {
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
+            driver_id: "postgres".to_owned(),
+            host: "db".to_owned(),
+            port: 5432,
+            database: "app".to_owned(),
+            username: "postgres".to_owned(),
+            tls: tablepro_core::TlsConfig::verify_full(),
+            safe_mode: tablepro_core::SafeModeLevel::Off,
+            external_access: tablepro_core::ExternalAccess::ReadOnly,
+            ai_policy: tablepro_core::AiPolicy::Ask,
+            auth_mode: tablepro_core::AuthMode::Password,
+            ssh: None,
+            last_opened_at: None,
+            color: None,
+            group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
+            tags: Vec::new(),
+            icon: None,
+            options: Default::default(),
+        }
+    }
+
+    /// A tree over a store holding `connections`, and the directory the
+    /// store writes to.
+    fn tree_of(connections: &[SavedConnection]) -> (tempfile::TempDir, ConnectionTree) {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        for saved in connections {
+            store.upsert_blocking(saved.clone()).expect("save the connection");
+        }
+        wait_until(WAIT, || list.model().n_items() as usize == connections.len()).expect("the list to have them");
+        (dir, ConnectionTree::new(list))
+    }
+
+    /// A session's sidebar listing `tables`, each a schema and a name.
+    fn session_view(tables: &[(&str, &str)]) -> SidebarView {
+        let objects: Vec<ObjectInfo> = tables
+            .iter()
+            .map(|(schema, name)| ObjectInfo {
+                schema: Some((*schema).to_owned()),
+                name: (*name).to_owned(),
+                kind: ObjectKind::Table,
+            })
+            .collect();
+        let mut schemas: Vec<SchemaInfo> = tables
+            .iter()
+            .map(|(schema, _)| SchemaInfo {
+                name: (*schema).to_owned(),
+                is_default: *schema == "public",
+                is_system: false,
+            })
+            .collect();
+        schemas.dedup_by(|left, right| left.name == right.name);
+        let view = SidebarView::new(|_| {}, SidebarAffordances::default(), None);
+        view.apply_objects(&objects, &schemas);
+        view
+    }
+
+    #[gtk4::test]
+    fn a_search_hides_the_connections_and_groups_it_does_not_find() {
+        let (_dir, tree) = tree_of(&[
+            connection("Alpha", Some("Work")),
+            connection("Beta", None),
+            connection("Gamma", Some("Home")),
+        ]);
+        let entry = gtk::SearchEntry::new();
+        tree.follow_search(&entry);
+        assert_eq!(tree.shown_rows(), ["Home", "Work", "Beta"]);
+
+        entry.set_text("ALP");
+        wait_until(WAIT, || tree.shown_rows() == ["Work", "Alpha"]).expect("only Alpha, in its group opened");
+        assert!(!tree.says_nothing_found());
+
+        entry.set_text("nothing like it");
+        wait_until(WAIT, || tree.says_nothing_found()).expect("the tree to say nothing was found");
+        assert!(tree.shown_rows().is_empty());
+
+        entry.set_text("");
+        wait_until(WAIT, || tree.shown_rows() == ["Home", "Work", "Beta"])
+            .expect("every row back, the groups folded as before the search");
+        assert!(!tree.says_nothing_found());
+    }
+
+    #[gtk4::test]
+    fn a_search_keeps_a_connection_whose_tables_it_finds() {
+        let alpha = connection("Alpha", None);
+        let (_dir, tree) = tree_of(&[alpha.clone(), connection("Beta", None)]);
+        let view = session_view(&[("public", "orders"), ("public", "users")]);
+        tree.add_session(&SessionKey::Saved(alpha.id), "Alpha", &view);
+        let entry = gtk::SearchEntry::new();
+        tree.follow_search(&entry);
+        view.follow_search(&entry);
+        assert_eq!(tree.shown_rows(), ["Alpha", "public", "orders", "users", "Beta"]);
+
+        entry.set_text("ord");
+
+        wait_until(WAIT, || tree.shown_rows() == ["Alpha", "public", "orders"])
+            .expect("Alpha by its table, and Beta hidden");
+    }
+
+    #[gtk4::test]
+    fn a_session_joining_under_a_search_lists_only_what_it_finds() {
+        let alpha = connection("Alpha", None);
+        let (_dir, tree) = tree_of(&[alpha.clone(), connection("Beta", None)]);
+        let entry = gtk::SearchEntry::new();
+        tree.follow_search(&entry);
+        entry.set_text("ord");
+        wait_until(WAIT, || tree.says_nothing_found()).expect("no connection named so");
+
+        let view = session_view(&[("public", "orders"), ("public", "users")]);
+        view.follow_search(&entry);
+        tree.add_session(&SessionKey::Saved(alpha.id), "Alpha", &view);
+
+        wait_until(WAIT, || tree.shown_rows() == ["Alpha", "public", "orders"])
+            .expect("the new session's tables filtered by the search at once");
+        assert!(!tree.says_nothing_found());
+    }
+
+    #[gtk4::test]
+    fn the_tree_selects_the_table_in_front_or_its_connection() {
+        let alpha = connection("Alpha", Some("Work"));
+        let (_dir, tree) = tree_of(&[alpha.clone(), connection("Beta", None)]);
+        let view = session_view(&[("public", "orders"), ("public", "users"), ("sales", "leads")]);
+        let key = SessionKey::Saved(alpha.id);
+        tree.add_session(&key, "Alpha", &view);
+
+        tree.select(&key, None);
+        assert_eq!(
+            tree.selected_row().as_deref(),
+            Some("Alpha"),
+            "the group was not opened to the connection"
+        );
+
+        let users = view
+            .object_of(&TableRef::new(Some("public".to_owned()), "users"))
+            .expect("the users row");
+        tree.select(&key, Some(&users));
+        assert_eq!(tree.selected_row().as_deref(), Some("users"));
+        assert!(tree.shown_rows().contains(&"users".to_owned()));
+
+        tree.select(&SessionKey::Saved(Uuid::new_v4()), None);
+        assert_eq!(
+            tree.selected_row(),
+            None,
+            "a connection the tree lacks kept a row selected"
+        );
+    }
 }

@@ -23,9 +23,10 @@ A `SessionWindow` holds any number of sessions, each under its own `SessionClaim
 ## Consequences
 
 - This supersedes 0012 for what a window holds. The application, the subclasses and the input queues it decided stay.
-- A connection opened from the tree connects beside the window's sessions. A failure says so in a toast instead of the failed page, which only the window's first connect shows.
-- The window's close asks each session's prompts in turn. A disconnect asks only that session's tabs, and the last one returns the window to the picker.
-- The restore record still lists keys without their window, so a restore opens a window per session.
+- A connection opened from the tree connects beside the window's sessions, each with its own attempt, so several connect at once and stopping one leaves the others. A failure the tree's row can try again says so in a toast. One that needs the failed page's remedies, or a connection the dialog has not saved, gets that page in a window of its own, without connecting again.
+- The window's close asks each session's prompts in turn. A disconnect asks only that session's tabs and closes them. When the last one goes, the newest connect still running beside it becomes the window's own on the connecting page; with none, the window returns to the picker.
+- Each tab names its connection after its own title while another connection's tabs share the bar.
+- The restore record groups the keys by window, so a restore opens each window with the sessions it held.
 
 ## Alternatives considered
 

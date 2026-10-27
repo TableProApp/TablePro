@@ -473,6 +473,7 @@ crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
+crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs

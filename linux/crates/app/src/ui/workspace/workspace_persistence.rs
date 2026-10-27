@@ -134,7 +134,10 @@ pub(super) fn workspace_record(
         .collect();
     keep_filters_within(&mut snapshots, KEPT_FILTER_BUDGET);
     keep_places_within(&mut snapshots, KEPT_PLACES_BUDGET);
-    let selected = view.selected_page().and_then(|page| index.id_of(&page));
+    let selected = view
+        .selected_page()
+        .and_then(|page| index.id_of(&page))
+        .or_else(|| index.last_selected());
     let mut record = crate::workspace::workspace_record(&snapshots, selected);
     record.shrink_to_fit();
     record

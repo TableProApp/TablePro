@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tablepro_session::{ConnectSource, Session, SessionClaim, SessionKey};
+use tablepro_session::{ConnectAttempts, ConnectSource, Session, SessionClaim, SessionKey};
 
 use super::session_window_command::ConnectFailure;
 use crate::ui::workspace::{Workspace, WorkspaceShell};
@@ -11,6 +11,20 @@ pub(crate) struct OpenSession {
     pub(crate) claim: SessionClaim,
     pub(crate) session: Arc<Session>,
     pub(crate) workspace: Workspace,
+}
+
+/// A connect running while the window shows its sessions, whose
+/// session joins them once it works.
+pub(crate) struct BackgroundConnect {
+    pub(crate) claim: SessionClaim,
+    pub(crate) source: ConnectSource,
+    /// Which result is this connect's: a key connected again after it
+    /// was stopped starts its count over, so the generation alone could
+    /// take the stopped one's late reply for its own.
+    pub(crate) serial: u64,
+    /// Its own attempts, so connects beside each other run at once and
+    /// stopping one cancels only it.
+    pub(crate) attempts: ConnectAttempts,
 }
 
 /// Which page a window shows, and what it holds for that page. The

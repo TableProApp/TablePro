@@ -592,7 +592,10 @@ impl SessionWindow {
         if !self.tear_down_session(&SessionKey::Saved(id)) {
             return;
         }
+        // The connect goes ahead on this window's own page, which a
+        // connect still running beside the last session would take.
         if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+            self.stop_background_connects();
             self.show_page(SessionPage::Picker);
         }
         match stored {

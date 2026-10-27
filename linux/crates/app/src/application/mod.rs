@@ -158,25 +158,34 @@ impl TableProApplication {
             // A quit approved during the read leaves the record for the
             // next launch and opens nothing.
             if app.imp().restore.get() == imp::RestoreState::Loading {
-                let keys = match loaded {
+                let windows = match loaded {
                     OpenSessionsLoad::Restored(record) => services.open_sessions().restore(record),
                     OpenSessionsLoad::Empty => Vec::new(),
                 };
                 app.imp().restore.set(imp::RestoreState::Done);
-                app.finish_restore(keys);
+                app.finish_restore(windows);
             }
             drop(hold);
         });
         imp.restoring.replace(Some(restoring));
     }
 
-    fn finish_restore(&self, keys: Vec<SessionKey>) {
+    /// One window for each recorded group of keys. Each group's keys are
+    /// filed under its window as soon as the window has an id, so the
+    /// record never groups them under a window that is gone.
+    fn finish_restore(&self, windows: Vec<Vec<SessionKey>>) {
         let files = self.imp().pending_files.take();
-        if keys.is_empty() && files.is_empty() {
+        if windows.is_empty() && files.is_empty() {
             self.open_window(WindowLaunch::Picker);
         }
-        for key in keys {
-            self.open_window(WindowLaunch::Restore(key));
+        let open_sessions = self.services().map(|services| services.open_sessions().clone());
+        for keys in windows {
+            let Some(window) = self.open_window(WindowLaunch::Restore(keys.clone())) else {
+                continue;
+            };
+            if let Some(open_sessions) = &open_sessions {
+                open_sessions.assign(&keys, window.id());
+            }
         }
         self.open_files(&files);
     }

@@ -73,7 +73,7 @@ impl ObjectImpl for Workspace {
     /// A workspace dropped without a teardown still stops its reads and
     /// lets go of its tabs.
     fn dispose(&self) {
-        self.obj().shutdown();
+        self.obj().shutdown(false);
     }
 }
 

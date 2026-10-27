@@ -39,6 +39,7 @@ Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in 
 | F-002 | unit | `f002_late_reconnect_after_cancel_is_discarded_and_closed` | [crates/session/src/health/health_monitor.rs](../crates/session/src/health/health_monitor.rs) |
 | F-002 | gtk | `f002_cancel_connect_discards_late_attempt` | [crates/app/src/ui/session_window/tests/mod.rs](../crates/app/src/ui/session_window/tests/mod.rs) |
 | F-002 | gtk | `f002_late_show_create_reply_after_disconnect_is_dropped` | [crates/app/src/ui/session_window/tests/mod.rs](../crates/app/src/ui/session_window/tests/mod.rs) |
+| F-002 | gtk | `f002_a_connect_beside_the_last_session_carries_on_and_its_stopped_result_closes` | [crates/app/src/ui/session_window/tests/sessions.rs](../crates/app/src/ui/session_window/tests/sessions.rs) |
 | F-002 | gtk | `f002_a_late_catalog_commit_after_the_watch_drops_is_not_delivered` | [crates/app/src/ui/workspace/sidebar/catalog_watch.rs](../crates/app/src/ui/workspace/sidebar/catalog_watch.rs) |
 | F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
 | F-003 | unit | `f003_a_newer_version_is_never_written` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |

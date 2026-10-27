@@ -39,6 +39,7 @@ pub(crate) use connection_tree::{ConnectionTree, TreeRequest};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
+pub(crate) use sidebar_object::SidebarObject;
 pub(super) use sidebar_view::SidebarView;
 
 use super::table_naming::TableNaming;
@@ -398,10 +399,18 @@ impl WorkspaceModel {
 
     /// With no table tab in front, no row stays selected: one would say
     /// the editor shows that table.
+    /// The window's tree follows too, but only from the session whose
+    /// tab is in front: every session hears the shared tab view, and one
+    /// without the tab would take the row away from the one with it.
     pub(super) fn sync_sidebar_selection(&self) {
-        let shown = self
-            .selected_workspace_tab_id()
-            .and_then(|id| self.workspace_tabs.borrow().get(&id)?.sidebar_object());
+        let front = self.selected_workspace_tab_id();
+        let shown = front.and_then(|id| self.workspace_tabs.borrow().get(&id)?.sidebar_object());
         self.sidebar.sync_selection(shown.as_ref());
+        if front.is_some()
+            && let Some(shell) = self.shell.upgrade()
+        {
+            let object = shown.as_ref().and_then(|table| self.sidebar.object_of(table));
+            shell.select_in_tree(&self.key, object.as_ref());
+        }
     }
 }

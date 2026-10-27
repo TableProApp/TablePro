@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use libadwaita as adw;
@@ -9,6 +9,10 @@ use uuid::Uuid;
 #[derive(Debug, Default)]
 pub(crate) struct TabIndex {
     ids: RefCell<HashMap<adw::TabPage, Uuid>>,
+    /// The workspace's tab the view selected last. The view is shared by
+    /// the window's sessions, so it may show another's while this one's
+    /// stays the tab to come back to.
+    last_selected: Cell<Option<Uuid>>,
 }
 
 impl TabIndex {
@@ -24,8 +28,24 @@ impl TabIndex {
         self.ids.borrow_mut().remove(page)
     }
 
+    pub(crate) fn pages(&self) -> Vec<adw::TabPage> {
+        self.ids.borrow().keys().cloned().collect()
+    }
+
+    /// Remember `page` as the one to come back to, when it is ours.
+    pub(crate) fn note_selected(&self, page: Option<&adw::TabPage>) {
+        if let Some(id) = page.and_then(|page| self.id_of(page)) {
+            self.last_selected.set(Some(id));
+        }
+    }
+
+    pub(crate) fn last_selected(&self) -> Option<Uuid> {
+        self.last_selected.get()
+    }
+
     /// Let go of every page, so a closed workspace holds none of them.
     pub(crate) fn clear(&self) {
+        self.last_selected.set(None);
         self.ids.borrow_mut().clear();
     }
 }
@@ -54,6 +74,22 @@ mod tests {
         assert_eq!(index.remove(&first), Some(a));
         assert_eq!(index.id_of(&first), None);
         assert_eq!(index.id_of(&second), Some(b));
+    }
+
+    #[gtk4::test]
+    fn another_sessions_page_leaves_the_last_selected_tab() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let view = adw::TabView::new();
+        let ours = view.append(&gtk::Label::new(None));
+        let theirs = view.append(&gtk::Label::new(None));
+        let index = TabIndex::default();
+        let id = Uuid::new_v4();
+        index.insert(&ours, id);
+
+        index.note_selected(Some(&ours));
+        index.note_selected(Some(&theirs));
+
+        assert_eq!(index.last_selected(), Some(id));
     }
 
     #[gtk4::test]

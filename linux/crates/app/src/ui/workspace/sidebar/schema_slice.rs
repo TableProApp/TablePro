@@ -73,4 +73,13 @@ impl SchemaSlice {
             self.items_changed(0, removed, added);
         }
     }
+
+    /// Where the list's row at `position` is in the slice, when the slice
+    /// holds it.
+    pub(crate) fn offset_of(&self, position: u32) -> Option<u32> {
+        let imp = self.imp();
+        position
+            .checked_sub(imp.start.get())
+            .filter(|_| position < imp.end.get())
+    }
 }

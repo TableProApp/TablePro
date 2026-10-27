@@ -277,6 +277,15 @@ impl WorkspaceShell {
         }
     }
 
+    /// The tree selects the row of `object` under the session `key`, or
+    /// that session's connection when the tab in front shows no object.
+    pub(crate) fn select_in_tree(&self, key: &SessionKey, object: Option<&super::sidebar::SidebarObject>) {
+        let tree = self.imp().tree.borrow().clone();
+        if let Some(tree) = tree {
+            tree.select(key, object);
+        }
+    }
+
     /// Let go of the tree and what it watches, and take the shell's
     /// actions off the window: `show-sidebar` holds the split view, and
     /// with it every tab, for as long as the window has it.
@@ -326,7 +335,18 @@ impl WorkspaceShell {
         if let (Some(jobs), Some(exports)) = (imp.export_jobs.borrow().as_ref(), workspace.exports()) {
             jobs.append(&exports.jobs());
         }
+        self.tell_sharing();
         self.set_front(workspace);
+    }
+
+    /// Each session's tabs name their connection while another one's
+    /// share the tab bar.
+    fn tell_sharing(&self) {
+        let sessions = self.sessions();
+        let shares = sessions.len() > 1;
+        for input in sessions.iter().filter_map(Workspace::input) {
+            input.deliver(WorkspaceInput::SharesWindow(shares));
+        }
     }
 
     /// Let go of `workspace`, which has shut down. Another session comes
@@ -344,6 +364,7 @@ impl WorkspaceShell {
         if let Some(jobs) = imp.export_jobs.borrow().as_ref() {
             prune_export_jobs(jobs, &self.sessions());
         }
+        self.tell_sharing();
         let was_front = imp.front.borrow().as_ref() == Some(workspace);
         if !was_front {
             return;
