@@ -76,6 +76,26 @@ struct OracleDebugStopBudgetTests {
         #expect(!waited.withLock { $0 })
     }
 
+    // ORA-00028 is how a killed target's call fails (measured); a transport the connection lost, or never had, says
+    // nothing about the server session.
+    @Test func testOnlyTheServersAnswerProvesTheCallEnded() {
+        let answered: [Result<[String?], Error>] = [
+            .success([]),
+            .failure(OracleCoreError.queryFailed("ORA-00028: your session has been killed")),
+            .failure(OracleDebugError.server(code: 6_543, message: "ORA-06543"))
+        ]
+        let unanswered: [Result<[String?], Error>] = [
+            .failure(OracleCoreError.connectionClosed),
+            .failure(OracleCoreError.notConnected),
+            .failure(OracleCoreError.protocolError),
+            .failure(OracleCoreError.queryFailed(String(format: OracleCoreError.driverErrorFormat, "uncleanShutdown"))),
+            .failure(OracleCoreError.queryFailed("IOError: Connection reset by peer (errno: 54)")),
+            .failure(CancellationError())
+        ]
+        #expect(answered.map { OracleDebugSupport.endedOnServer($0) } == [true, true, true])
+        #expect(unanswered.map { OracleDebugSupport.endedOnServer($0) } == Array(repeating: false, count: 6))
+    }
+
     // The kill can wait one supervisor poll on the gate; that and the cleanup still leave time to see the end.
     @Test func testTheSupervisorPollFitsInsideTheBudget() {
         let poll = Duration.seconds(OracleDBMSDebugStatements.supervisorTimeoutSeconds)

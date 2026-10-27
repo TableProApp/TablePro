@@ -856,8 +856,8 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: OracleDebugStopBudget.total - OracleDebugStopBudget.cleanup)
             // A call that never returns to PL/SQL (DBMS_SESSION.SLEEP, measured) does not see the close, so it is
-            // killed from the helper session.
-            var ended = await OracleDebugSupport.value(of: call, within: 1) != nil
+            // killed from the helper session, as is one whose own connection failed under it.
+            var ended = await OracleDebugSupport.endedOnServer(call, within: 1)
             if !ended {
                 ended = await OracleDebugStopBudget.endRunningTarget(clock: clock, budget: clock.now.duration(to: deadline)) {
                     await OracleDebugSupport.kill(
@@ -866,7 +866,7 @@ public actor OracleJDWPDebugSession: OracleDebugEngine {
                         within: OracleDebugStopBudget.seconds(clock.now.duration(to: deadline))
                     )
                 } waitForEnd: { remaining in
-                    await OracleDebugSupport.value(of: call, within: OracleDebugStopBudget.seconds(remaining)) != nil
+                    await OracleDebugSupport.endedOnServer(call, within: OracleDebugStopBudget.seconds(remaining))
                 }
             }
             if !ended {

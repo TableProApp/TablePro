@@ -96,16 +96,36 @@ struct OracleDBMSDebugStatementsTests {
             .init(name: "P_AMOUNT", frame: 0),
             .init(name: "G_RATE", package: OracleDebugUnit(owner: "PROBE", name: "PKG_CALC", kind: .packageBody))
         ])
-        #expect(values.contains("GET_VALUE('P_AMOUNT', 0, l_value, NULL)"))
-        #expect(values.contains("GET_VALUE('G_RATE', l_handle, l_value, NULL)"))
+        #expect(values.block.contains("GET_VALUE(:1, 0, l_value, NULL)"))
+        #expect(values.block.contains("GET_VALUE(:2, l_handle, l_value, NULL)"))
+        #expect(values.binds == [.text("P_AMOUNT"), .text("G_RATE")])
         #expect(Statements.deleteBreakpoints([]).contains("NULL;"))
+    }
+
+    // A quoted declaration is asked for quoted, so GET_VALUE reads one identifier, and the name stays a bind.
+    @Test func testQuotedVariableNamesAreBoundQuoted() {
+        let scan = OraclePLSQLDeclarationScan(source: """
+            procedure p is
+              "a.b" number;
+              "lower" number;
+              "with space" number;
+              l_plain number;
+            begin
+              null;
+            end p;
+            """)
+        let requests = scan.candidates(atLine: 7).map { Statements.ValueRequest(name: $0.lookupName, frame: 0) }
+        let values = Statements.values(requests)
+        #expect(values.binds == [.text("\"a.b\""), .text("\"lower\""), .text("\"with space\""), .text("L_PLAIN")])
+        #expect(values.block.contains("GET_VALUE(:4, 0, l_value, NULL)"))
+        #expect(!values.block.contains("a.b") && !values.block.contains("lower") && !values.block.contains("L_PLAIN"))
     }
 
     // Every block that declares the payload helpers declares them last: PL/SQL wants items before subprograms.
     @Test func testPayloadHelpersComeLastInEachDeclareSection() throws {
         let unit = OracleDebugUnit(owner: "PROBE", name: "PKG_CALC", kind: .packageBody)
         for block in [Statements.resume(flags: 0), Statements.setBreakpoint(unit: unit, line: 1),
-                      Statements.lineMap(of: unit), Statements.values([.init(name: "X", frame: 0)])] {
+                      Statements.lineMap(of: unit), Statements.values([.init(name: "X", frame: 0)]).block] {
             let helper = try #require(block.range(of: "PROCEDURE put"))
             let lastDeclaration = try #require(block.range(of: "l_status BINARY_INTEGER;"))
             #expect(lastDeclaration.lowerBound < helper.lowerBound)

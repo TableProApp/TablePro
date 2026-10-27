@@ -232,27 +232,29 @@ public enum OracleDBMSDebugStatements {
         }
     }
 
-    public static func values(_ requests: [ValueRequest]) -> String {
-        let reads = requests.map { request -> String in
+    // A name comes from the unit's source text, so request n's goes in as bind :n, never as SQL.
+    public static func values(_ requests: [ValueRequest]) -> (block: String, binds: [OracleBindValue]) {
+        let reads = requests.enumerated().map { index, request -> String in
+            let name = ":\(index + 1)"
             if let package = request.package {
                 return """
                       l_handle.Namespace := \(package.kind.namespace);
                       l_handle.Owner := \(OracleDebugUnit.literal(package.owner));
                       l_handle.Name := \(OracleDebugUnit.literal(package.name));
                       l_value := NULL;
-                      l_status := SYS.DBMS_DEBUG.GET_VALUE(\(OracleDebugUnit.literal(request.name)), l_handle, l_value, NULL);
+                      l_status := SYS.DBMS_DEBUG.GET_VALUE(\(name), l_handle, l_value, NULL);
                       put(TO_CHAR(l_status));
                       put(l_value);
                     """
             }
             return """
                   l_value := NULL;
-                  l_status := SYS.DBMS_DEBUG.GET_VALUE(\(OracleDebugUnit.literal(request.name)), \(request.frame ?? 0), l_value, NULL);
+                  l_status := SYS.DBMS_DEBUG.GET_VALUE(\(name), \(request.frame ?? 0), l_value, NULL);
                   put(TO_CHAR(l_status));
                   put(l_value);
                 """
         }
-        return """
+        let block = """
             DECLARE
               l_handle SYS.DBMS_DEBUG.PROGRAM_INFO;
               l_value VARCHAR2(32767);
@@ -263,6 +265,7 @@ public enum OracleDBMSDebugStatements {
             \(OracleDebugPayload.openCursor)
             END;
             """
+        return (block, requests.map { .text($0.name) })
     }
 
     // MARK: - Answers

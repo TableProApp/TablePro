@@ -89,6 +89,30 @@ struct OraclePLSQLDeclarationScanTests {
         #expect(scan.candidates(atLine: 7).map(\.name) == ["L_TEXT", "Mixed Case", "L_INNER"])
     }
 
+    // A quoted name keeps its case and its dots and spaces; GET_VALUE gets it quoted, the Variables list shows it bare.
+    @Test func testAQuotedNameIsLookedUpQuotedAndShownBare() {
+        let scan = OraclePLSQLDeclarationScan(source: """
+            package body pkg_quoted as
+              "g.Rate" number := 0.2;
+              procedure run("p.in" number) is
+                "a.b" number := 7;
+                "lower" number;
+                "with space" varchar2(10);
+                l_plain number;
+              begin
+                for "i.x" in 1 .. 2 loop
+                  null;
+                end loop;
+              end run;
+            end pkg_quoted;
+            """)
+        let candidates = scan.candidates(atLine: 10)
+        #expect(candidates.map(\.name) == ["p.in", "a.b", "lower", "with space", "L_PLAIN", "i.x"])
+        #expect(candidates.map(\.lookupName) == ["\"p.in\"", "\"a.b\"", "\"lower\"", "\"with space\"", "L_PLAIN", "\"i.x\""])
+        #expect(scan.packageVariables.map(\.name) == ["g.Rate"])
+        #expect(scan.packageVariables.map(\.lookupName) == ["\"g.Rate\""])
+    }
+
     // A specification's forward declarations are not definitions, and their parameters are nobody's locals.
     @Test func testASpecificationListsOnlyItsVariables() {
         let scan = OraclePLSQLDeclarationScan(source: """

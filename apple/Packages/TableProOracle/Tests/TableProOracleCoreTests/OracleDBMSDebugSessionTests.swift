@@ -36,16 +36,17 @@ struct OracleDBMSDebugSessionTests {
         sql.contains("CONTINUE(l_info, \(flags),")
     }
 
-    // The routine's call waits until `ended` opens, as a target paused at the supervisor does.
+    // The routine's call waits until `ended` opens, as a target paused at the supervisor does, then fails with `endedWith`.
     private func makeSession(
         ended: Latch,
+        endedWith: any Error = OracleDebugError.server(code: 6_543, message: "ORA-06543"),
         callEndWait: Duration = OracleDebugSupport.callEndWait,
         supervisor respond: @escaping @Sendable (String) async throws -> [String?]
     ) -> (OracleDBMSDebugSession, target: ScriptedChannel, supervisor: ScriptedChannel) {
         let target = ScriptedChannel(rows: [[.string("42"), .string("7")]]) { sql in
             guard sql == Self.invocationBlock else { return [] }
             await ended.wait()
-            throw OracleDebugError.server(code: 6_543, message: "ORA-06543")
+            throw endedWith
         }
         let supervisor = ScriptedChannel { sql in
             if Self.isContinue(sql, flags: Statements.BreakFlags.abortExecution) {
@@ -89,6 +90,33 @@ struct OracleDBMSDebugSessionTests {
         #expect(!sent.contains { $0.contains("ALTER SYSTEM KILL") })
     }
 
+    // The target's own connection failed as the abort reached it, so its call ended on this side only and the server
+    // session may still hold its locks: Stop kills it through the supervisor and cannot confirm the end. An ORA- error
+    // is the server's answer, which does confirm it.
+    @Test(arguments: [
+        (OracleCoreError.connectionClosed, false),
+        (OracleCoreError.queryFailed("ORA-06543: PL/SQL: execution aborted"), true)
+    ])
+    func testStopConfirmsTheEndOnlyFromTheServersAnswer(endedWith: OracleCoreError, serverAnswered: Bool) async throws {
+        let ended = Latch()
+        defer { ended.open() }
+        let (session, _, supervisor) = makeSession(ended: ended, endedWith: endedWith) { sql in
+            if sql.contains("GET_LINE_MAP") { return Self.lineMap }
+            if sql.contains("SYNCHRONIZE") { return Self.event(line: 1, frames: [Self.anonymousFrame]) }
+            if sql.contains("SET_BREAKPOINT(l_program, 3,") { return Self.payload(["0", "1"]) }
+            if Self.isContinue(sql, flags: Statements.BreakFlags.breakpointsOnly) {
+                return Self.event(line: 3, breakpoint: 1, frames: [Self.anonymousFrame, Self.runCalcFrame])
+            }
+            return []
+        }
+        try await session.start(breakpoints: [])
+        #expect(try await session.firstStop() == .paused(OracleDebugLocation(unit: Self.runCalc, line: 3)))
+
+        let outcome = await session.stop()
+        #expect(outcome == (serverAnswered ? .ended : .unconfirmed(Self.identity)))
+        #expect(supervisor.sent.contains(where: { $0.hasPrefix("ALTER SYSTEM KILL SESSION '42,7'") }) == !serverAnswered)
+    }
+
     // The supervisor saw the routine end, but its call has not returned. A ROLLBACK would queue behind that call on
     // the target with no bound, so the run ends unconfirmed instead.
     @Test func testARunWhoseCallStillRunsEndsUnconfirmedWithoutQueueingARollback() async throws {
@@ -129,6 +157,35 @@ struct OracleDBMSDebugSessionTests {
         try await session.removeBreakpoint(in: Self.runCalc, line: 5)
         #expect(supervisor.sent.filter { $0.contains("DELETE_BREAKPOINT(2)") }.count == 2)
         #expect(await session.stop() == .ended)
+    }
+
+    // A call that failed on its own dropped connection is not a routine that raised an error and rolled back.
+    @Test func testACallWhoseConnectionDroppedIsReportedAsALostConnection() async {
+        let entryPoint = OracleDebugEntryPoint(
+            entry: OracleDebugEntry(unit: Self.runCalc, subprogram: "RUN_CALC", subprogramID: 1),
+            overload: nil,
+            parameters: [],
+            result: nil
+        )
+        func conclude(_ error: Error) async -> OracleDebugStop {
+            await OracleDebugSupport.conclude(
+                .failure(error),
+                stopped: false,
+                entryPoint: entryPoint,
+                target: ScriptedChannel(),
+                targetIdentity: Self.identity,
+                notice: { _ in }
+            )
+        }
+
+        guard case .failed(.connectionLost) = await conclude(OracleCoreError.connectionClosed) else {
+            Issue.record("a dropped connection read as the routine's own failure")
+            return
+        }
+        guard case .failed(.routineFailed) = await conclude(OracleCoreError.queryFailed("ORA-01476: divisor is equal to zero")) else {
+            Issue.record("the server's error did not read as the routine's failure")
+            return
+        }
     }
 
     // A breakpoint sent at start on line 4 lands on line 5; the host never learns that and removes it by line 4.

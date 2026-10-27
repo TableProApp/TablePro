@@ -64,7 +64,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
     private var gaveUp = false
     private var stopResult = OracleDebugStopResult.ended
     private var targetIdentity: OracleDebugSessionIdentity?
-    private var callEnded = false
+    private var callResult: Result<[String?], Error>?
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
 
     init(
@@ -117,8 +117,8 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         }
         self.call = call
         Task { [weak self] in
-            _ = await call.value
-            await self?.markCallEnded()
+            let result = await call.value
+            await self?.markCallEnded(result)
         }
         isDriving = true
         defer { isDriving = false }
@@ -271,9 +271,13 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         return event
     }
 
-    private func markCallEnded() {
-        callEnded = true
+    private func markCallEnded(_ result: Result<[String?], Error>) {
+        callResult = result
     }
+
+    private var callEnded: Bool { callResult != nil }
+
+    private var callEndedOnServer: Bool { callResult.map(OracleDebugSupport.endedOnServer) ?? false }
 
     private func location(of event: Statements.Event) -> OracleDebugLocation? {
         guard let top = event.backtrace.last, let unit = top.unit, let line = event.line ?? top.line, line > 0 else {
@@ -472,24 +476,28 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         let frame = frames[level]
         let unit = frame.location.unit
         let candidates = (try? await scan(of: unit))?.candidates(atLine: frame.location.line) ?? []
-        var requests = candidates.map { Statements.ValueRequest(name: $0.name, frame: frame.valueFrame) }
+        var requests = candidates.map { Statements.ValueRequest(name: $0.lookupName, frame: frame.valueFrame) }
         var package: [(declaration: OraclePLSQLDeclarationScan.Declaration, unit: OracleDebugUnit)] = []
         if unit.kind == .packageBody || unit.kind == .package {
             for kind in [OracleDebugUnitKind.packageBody, .package] {
                 let owner = OracleDebugUnit(owner: unit.owner, name: unit.name, kind: kind)
                 for declaration in (try? await scan(of: owner))?.packageVariables ?? [] {
                     package.append((declaration, owner))
-                    requests.append(Statements.ValueRequest(name: declaration.name, package: owner))
+                    requests.append(Statements.ValueRequest(name: declaration.lookupName, package: owner))
                 }
             }
         }
         guard !requests.isEmpty else { return [] }
-        let fields = try await OracleDebugSupport.payload(Statements.values(requests), on: supervisor)
+        let values = Statements.values(requests)
+        let fields = try await OracleDebugSupport.payload(values.block, binds: values.binds, on: supervisor)
         let answers = try Statements.valueAnswers(fromPayload: fields, count: requests.count)
         var result: [OracleDebugVariable] = []
         for (index, answer) in answers.enumerated() {
-            guard let value = Statements.value(status: answer.status, text: answer.value) else { continue }
             let declaration = index < candidates.count ? candidates[index] : package[index - candidates.count].declaration
+            // GET_VALUE resolves a quoted name with a dot but not one with a space (measured), so that one is shown unreadable.
+            guard let value = Statements.value(status: answer.status, text: answer.value)
+                ?? (declaration.name.contains(where: \.isWhitespace) ? .unavailable : nil)
+            else { continue }
             let kind: OracleDebugVariableKind
             if index >= candidates.count {
                 kind = .package
@@ -547,7 +555,7 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
                     await callEnds(call, before: clock.now.advanced(by: remaining))
                 }
             }
-            ended = ended || callEnded
+            ended = ended || callEndedOnServer
             if ended {
                 await bounded(by: deadline, closing: target) { target in
                     _ = try? await target.executeDirect("ROLLBACK")
@@ -576,10 +584,11 @@ public actor OracleDBMSDebugSession: OracleDebugEngine {
         return stopResult
     }
 
+    // A call that failed on its own connection ended only on this side, so Stop goes on as for one still running.
     private func callEnds(_ call: Task<Result<[String?], Error>, Never>, before deadline: ContinuousClock.Instant) async -> Bool {
         let remaining = ContinuousClock.now.duration(to: deadline)
-        guard remaining > .zero else { return callEnded }
-        return await OracleDebugSupport.value(of: call, within: OracleDebugStopBudget.seconds(remaining)) != nil
+        guard remaining > .zero else { return callEndedOnServer }
+        return await OracleDebugSupport.endedOnServer(call, within: OracleDebugStopBudget.seconds(remaining))
     }
 
     // A statement that would run past the budget has its channel closed, which is what ends it.

@@ -3,12 +3,12 @@
 # Debug PL/SQL against a real Oracle server through both of the Oracle plugin's mechanisms: DBMS_DEBUG_JDWP, where the
 # database connects back to this Mac, and DBMS_DEBUG, two client sessions. Runs TableProOracleCore's engine as the
 # plugin does: the first stop, breakpoints moving to the next line with code, stepping, step out, the stack, variables
-# (package, record, collection), function results, overloads that differ only in a parameter's type, the refusal of a
-# call two overloads both match once defaults are left out, a unit loaded before the debugger attached, Stop while
-# paused, while reads and breakpoint calls run, while running and inside a call that never returns to PL/SQL, and what
-# Stop answers when it cannot end the target, the fallback from JDWP when the ACL refuses it, the database never
-# connects or the connection comes from an address that is not the database's, a start the caller cancels, and the
-# privilege refusal.
+# (package, record, collection, quoted names), function results, overloads that differ only in a parameter's type,
+# the refusal of a call two overloads both match once defaults are left out, a unit loaded before the debugger
+# attached, Stop while paused, while reads and breakpoint calls run, while running and inside a call that never returns
+# to PL/SQL, and what Stop answers when it cannot end the target, the fallback from JDWP when the ACL refuses it, the
+# database never connects or the connection comes from an address that is not the database's, a start the caller
+# cancels, and the privilege refusal.
 #
 # Usage:
 #   scripts/probes/check-oracle-debugger.sh [container] [host] [port] [debugger host]
@@ -90,7 +90,7 @@ create or replace package pkg_calc as
 end pkg_calc;
 /
 create or replace package body pkg_calc as
-  g_rate number := 0.1;
+  g_rate number := 0.1; "g.Rate" number := 0.2;
   function add_tax(p_amount number) return number is
     l_tax number;
   begin
@@ -99,7 +99,7 @@ create or replace package body pkg_calc as
   end add_tax;
   procedure run(p_n pls_integer) is
     l_total number := 0;
-    l_name  varchar2(30) := 'probe';
+    l_name  varchar2(30) := 'probe'; "a.b" number := 7; "Mixed case" varchar2(10) := 'mc';
   begin
     for i in 1 .. p_n loop
       l_total := l_total + add_tax(i);
@@ -401,6 +401,13 @@ func walkthrough(_ preference: OracleDebugProtocolPreference) async throws {
     let caller = try await engine.variables(inFrame: 1)
     log("vars 1: \(describe(caller))")
     check(caller.contains { $0.name == "L_NAME" && $0.value == .scalar("probe") }, "\(preference): caller L_NAME = probe")
+    if engine.mechanism == .dbmsDebug {
+        // Asked for unquoted, GET_VALUE reads "a.b" as member b of a. Quoted, it finds "a.b" and "g.Rate", but never a
+        // name with a space.
+        check(caller.contains { $0.name == "a.b" && $0.value == .scalar("7") }, "dbmsDebug: caller \"a.b\" = 7")
+        check(caller.contains { $0.name == "Mixed case" && $0.value == .unavailable }, "dbmsDebug: caller \"Mixed case\" shows as not readable")
+        check(top.contains { $0.name == "g.Rate" && $0.kind == .package && $0.value == .scalar(".2") }, "dbmsDebug: \"g.Rate\" = .2 as package variable")
+    }
     let over = try await engine.perform(.stepOver)
     log("step over: \(describe(over))")
     check(over == .paused(OracleDebugLocation(unit: calcBody, line: 7)), "\(preference): step over reaches 7")

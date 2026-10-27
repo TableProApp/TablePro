@@ -15,11 +15,16 @@ public struct OraclePLSQLDeclarationScan: Sendable, Equatable {
 
     public struct Declaration: Sendable, Equatable {
         public let name: String
+        public let isQuoted: Bool
         public let typeText: String?
         public let line: Int
         public let kind: Kind
         // Nil for a package-level variable.
         public let subprogram: Int?
+
+        // GET_VALUE reads its name as an identifier path, so `"a.b"` unquoted would name member b of a, and a lower
+        // case or spaced name would not be found at all.
+        public var lookupName: String { isQuoted ? "\"\(name)\"" : name }
     }
 
     public struct Subprogram: Sendable, Equatable {
@@ -376,6 +381,7 @@ extension OraclePLSQLDeclarationScan {
             let type = rest.prefix { !$0.isSymbol(":=") && !$0.isWord("DEFAULT") }
             declarations.append(Declaration(
                 name: name.text,
+                isQuoted: name.kind == .quoted,
                 typeText: Self.typeText(type),
                 line: name.line,
                 kind: .parameter,
@@ -433,6 +439,7 @@ extension OraclePLSQLDeclarationScan {
             }
             declarations.append(Declaration(
                 name: token.text,
+                isQuoted: token.kind == .quoted,
                 typeText: Self.typeText(typeTokens[...]),
                 line: token.line,
                 kind: isConstant ? .constant : .variable,
@@ -465,6 +472,7 @@ extension OraclePLSQLDeclarationScan {
             } else if token.isWord("FOR"), let name = current, name.isName, peekToken(at: 1)?.isWord("IN") == true {
                 declarations.append(Declaration(
                     name: name.text,
+                    isQuoted: name.kind == .quoted,
                     typeText: nil,
                     line: name.line,
                     kind: .iterator,

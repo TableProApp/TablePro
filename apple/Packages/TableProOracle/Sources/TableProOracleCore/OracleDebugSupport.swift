@@ -25,6 +25,23 @@ enum OracleDebugSupport {
         }
     }
 
+    // The call ending proves the target session ended only when the server answered it: the call returned, or failed
+    // with an ORA- error the server sent. A call that failed because its own transport did (a dropped connection, a
+    // closed tunnel) may have left that session running in the server and holding its locks.
+    static func endedOnServer(_ result: Result<[String?], Error>) -> Bool {
+        guard case .failure(let error) = result else { return true }
+        if case .server(let code, _) = error as? OracleDebugError {
+            return code != nil
+        }
+        guard case .queryFailed(let message) = error as? OracleCoreError else { return false }
+        return !OracleDebugStatements.errorCodes(in: message).isEmpty
+    }
+
+    // False while the call runs past `seconds`, and for a call that ended without the server's answer.
+    static func endedOnServer(_ call: Task<Result<[String?], Error>, Never>, within seconds: Double) async -> Bool {
+        await value(of: call, within: seconds).map(endedOnServer) ?? false
+    }
+
     static func rows(_ result: OracleRawResult) -> [[String?]] {
         result.rows.map { row in row.map(\.stringValue) }
     }
@@ -99,6 +116,8 @@ enum OracleDebugSupport {
             return .failed(.routineFailed(report.error ?? ""))
         }
         if case .failure(let error) = result {
+            // Only the server's own error says the routine failed and rolled back; a dropped connection says neither.
+            guard endedOnServer(result) else { return .failed(.connectionLost(Self.message(of: error))) }
             return .failed(.routineFailed(Self.message(of: error)))
         }
         return .failed(.connectionLost(nil))
