@@ -1178,6 +1178,7 @@ impl WorkspaceModel {
             ));
         }
         self.assistant.attach();
+        self.set_row_op_in_flight(self.workspace_handle.ledger().in_flight() > 0);
         if let Some(shell) = self.shell.upgrade() {
             sidebar::describe(&shell, self.data_model);
         }

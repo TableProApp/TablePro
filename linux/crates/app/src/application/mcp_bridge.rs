@@ -230,16 +230,17 @@ fn approve(
     approval: WriteApproval,
     mut reply: oneshot::Sender<bool>,
 ) {
-    let window = services
-        .sessions
-        .window_for(&SessionKey::Saved(approval.connection_id))
-        .and_then(|id| app.window_by_id(id));
-    let Some(window) = window else {
+    let key = SessionKey::Saved(approval.connection_id);
+    let owner = services.sessions.window_for(&key);
+    let window = owner.and_then(|id| app.window_by_id(id));
+    let (Some(owner), Some(window)) = (owner, window) else {
         let _ = reply.send(false);
         return;
     };
     let confirmation = WriteConfirmation::external(&approval.connection_name, &approval.sql, approval.destructive);
-    window.present();
+    // The question comes over the connection it is about, which may be
+    // behind another session of the window.
+    app.present_session(owner, &key);
     glib::spawn_future_local(async move {
         let asked = approval.cancel.child_token();
         let parent: gtk4::Widget = window.upcast();

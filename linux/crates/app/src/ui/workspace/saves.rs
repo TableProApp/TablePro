@@ -66,7 +66,10 @@ impl WorkspaceModel {
     }
 
     pub(super) fn on_saves_in_flight_changed(&mut self, count: usize) {
-        self.set_row_op_in_flight(count > 0);
+        // The spinner is the window's, and says what the front is doing.
+        if self.attached {
+            self.set_row_op_in_flight(count > 0);
+        }
         if let Some(workspace) = self.this.upgrade() {
             let count = u32::try_from(count).unwrap_or(u32::MAX);
             workspace.emit_by_name::<()>("saves-in-flight-changed", &[&count]);

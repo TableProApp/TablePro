@@ -112,6 +112,9 @@ type Expansion = HashMap<TreeNode, bool>;
 #[derive(Clone)]
 struct Followed {
     key: SessionKey,
+    /// The object it selected last, so the rows above it open only when
+    /// the tab in front shows another one, not on each change of tabs.
+    object: Option<SidebarObject>,
     unrevealed: bool,
 }
 
@@ -214,9 +217,14 @@ impl ConnectionTree {
     pub(crate) fn select(&self, key: &SessionKey, object: Option<&SidebarObject>) {
         let inner = &self.inner;
         let wanted = object.is_some() || inner.view_of(key).is_some_and(|view| view.follows_table());
-        let shown = inner.show_selection(key, object, true);
+        let same =
+            inner.followed.borrow().as_ref().is_some_and(|followed| {
+                &followed.key == key && followed.object.as_ref() == object && !followed.unrevealed
+            });
+        let shown = inner.show_selection(key, object, !same);
         inner.followed.replace(Some(Followed {
             key: key.clone(),
+            object: object.cloned(),
             unrevealed: wanted && !shown,
         }));
     }
@@ -273,6 +281,14 @@ impl ConnectionTree {
         let inner = &self.inner;
         let branch = inner.branches.borrow_mut().remove(key);
         if let Some(mut branch) = branch {
+            // The search's memory of open rows lets go of its rows, which
+            // hold the session's whole list.
+            if let Some(before) = inner.before_search.borrow_mut().as_mut() {
+                before.remove(&branch.node);
+                for (node, _) in branch.schemas.values() {
+                    before.remove(node);
+                }
+            }
             if let Some(handler) = branch.handler.take() {
                 branch.list.disconnect(handler);
             }

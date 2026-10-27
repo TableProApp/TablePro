@@ -335,7 +335,9 @@ impl WorkspaceShell {
             tree.add_session(&key, &workspace.connection_name().unwrap_or_default(), &view);
         }
         if let (Some(jobs), Some(exports)) = (imp.export_jobs.borrow().as_ref(), workspace.exports()) {
-            jobs.append(&exports.jobs());
+            let list = exports.jobs();
+            jobs.append(&list);
+            imp.export_lists.borrow_mut().push((workspace.downgrade(), list));
         }
         self.tell_sharing();
         // The front follows the tab on screen: a session that joins
@@ -380,8 +382,20 @@ impl WorkspaceShell {
         if let Some(tree) = tree {
             tree.remove_session(key);
         }
+        let gone: Vec<gio::ListStore> = {
+            let mut lists = imp.export_lists.borrow_mut();
+            let (gone, kept) = lists
+                .drain(..)
+                .partition(|(held, _)| held.upgrade().is_none_or(|held| &held == workspace));
+            *lists = kept;
+            gone.into_iter().map(|(_, list)| list).collect()
+        };
         if let Some(jobs) = imp.export_jobs.borrow().as_ref() {
-            prune_export_jobs(jobs, &self.sessions());
+            for list in gone {
+                if let Some(position) = jobs.find(&list) {
+                    jobs.remove(position);
+                }
+            }
         }
         self.tell_sharing();
         let was_front = imp.front.borrow().as_ref() == Some(workspace);
@@ -447,25 +461,6 @@ impl WorkspaceShell {
 }
 
 /// Keep only the export lists of the sessions still held.
-fn prune_export_jobs(jobs: &gio::ListStore, sessions: &[Workspace]) {
-    let kept: Vec<gio::ListStore> = sessions
-        .iter()
-        .filter_map(|workspace| workspace.exports().map(|exports| exports.jobs()))
-        .collect();
-    let mut position = 0;
-    while position < jobs.n_items() {
-        let held = jobs
-            .item(position)
-            .and_downcast::<gio::ListStore>()
-            .is_some_and(|list| kept.contains(&list));
-        if held {
-            position += 1;
-        } else {
-            jobs.remove(position);
-        }
-    }
-}
-
 /// `win.show-assistant`, which follows the column whoever opens it.
 fn assistant_action(shell: &WorkspaceShell) -> gio::SimpleAction {
     let imp = shell.imp();

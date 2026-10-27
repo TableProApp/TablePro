@@ -738,15 +738,11 @@ impl SessionWindow {
             shell.set_connecting(key, self.connecting_beside(key));
             return;
         };
-        // The front follows the tab on screen, so a session with none
-        // gets a query tab to come forward with.
-        match workspace.some_page() {
-            Some(page) => shell.tab_view().set_selected_page(&page),
-            None => {
-                if let Some(page) = workspace.create_editor_page() {
-                    shell.tab_view().set_selected_page(&page);
-                }
-            }
+        // The front follows the tab on screen. A session with no tab
+        // stays behind until the user opens one, from its row's New Query
+        // or a table; a tab nobody asked for would be saved with it.
+        if let Some(page) = workspace.some_page() {
+            shell.tab_view().set_selected_page(&page);
         }
     }
 
@@ -1170,11 +1166,13 @@ impl SessionWindow {
 
     /// Stop every connect running beside the sessions. A result that
     /// still lands finds none waiting for it and is closed.
-    fn stop_background_connects(&self) {
+    fn stop_background_connects(&self) -> Vec<SessionKey> {
         let stopped = self.imp().background.take();
+        let keys = stopped.iter().map(|running| running.claim.key().clone()).collect();
         for running in stopped {
             self.stop_background_connect(running);
         }
+        keys
     }
 
     /// The user stopped a connect running beside the sessions.
@@ -1342,7 +1340,10 @@ impl SessionWindow {
     /// The window keeps its other sessions; the picker comes back once
     /// none is left.
     fn on_session_teardown_approved(&self, key: &SessionKey) {
-        if self.tear_down_session(key) && !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+        if !self.tear_down_session(key) {
+            return;
+        }
+        if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
             self.after_last_session();
         }
         tracing::info!("disconnected");
@@ -1443,7 +1444,7 @@ impl SessionWindow {
     /// Close the session the window shows, or stop the connect it runs.
     fn release_session(&self) {
         self.abandon_restore();
-        self.stop_background_connects();
+        drop(self.stop_background_connects());
         if self.tear_down() {
             return;
         }

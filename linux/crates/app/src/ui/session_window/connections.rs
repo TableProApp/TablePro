@@ -594,8 +594,11 @@ impl SessionWindow {
         }
         // The connect goes ahead on this window's own page, which a
         // connect still running beside the last session would take.
+        // Those start again beside it once it is back, as a restore's
+        // waiting sessions do.
         if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-            self.stop_background_connects();
+            let stopped = self.stop_background_connects();
+            self.imp().restore_waiting.borrow_mut().extend(stopped);
             self.show_page(SessionPage::Picker);
         }
         match stored {

@@ -88,6 +88,9 @@ pub struct WorkspaceShell {
     /// Every session's running exports, which the one operations button
     /// lists together.
     pub(super) export_jobs: RefCell<Option<gio::ListStore>>,
+    /// Each session's export list, as it was added, so the right one
+    /// leaves with its session whatever that session is busy with.
+    pub(super) export_lists: RefCell<Vec<(glib::WeakRef<Workspace>, gio::ListStore)>>,
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
     pub(super) tree: RefCell<Option<super::sidebar::ConnectionTree>>,
