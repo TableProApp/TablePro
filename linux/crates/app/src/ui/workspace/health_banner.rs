@@ -25,7 +25,9 @@ impl WorkspaceModel {
     /// refused again.
     pub(super) fn refresh_health_banner(&self, health: &SessionHealth) {
         let review = self.host_key_to_review(health);
-        if let Some(window) = self.window() {
+        if self.attached
+            && let Some(window) = self.window()
+        {
             super::workspace_actions::set_enabled(&window, REVIEW_HOST_KEY, review.is_some());
         }
         let title = self

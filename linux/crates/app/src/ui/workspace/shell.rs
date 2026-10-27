@@ -1,7 +1,6 @@
-//! The workspace's two header bars, the sidebar's and the content's,
-//! and what they need beyond the template: the main menu, the button
-//! labels, the sidebar toggle, the overview's new tab and the saved
-//! connection's icon beside the title.
+//! What a session's workspace sets up on the window's shell: the saved
+//! connection's icon beside the title, and the watch that titles the
+//! window again when the saved connections change.
 
 use std::rc::Rc;
 
@@ -9,26 +8,15 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use libadwaita as adw;
 use tablepro_session::SessionKey;
 
-use super::tab_factory::TabFactory;
-use super::{Workspace, WorkspaceInput, WorkspaceSender};
+use super::{WorkspaceInput, WorkspaceSender, WorkspaceShell};
 use crate::application::AppServices;
 use crate::runtime::DeliverInput;
 use crate::services::saved_connection_list::SavedConnectionList;
-use crate::ui::a11y::describe_icon_button;
-use crate::ui::shell::{PRIMARY_MENU, TAB_OVERVIEW_MENU, app_menu, primary_menu_button};
-
-/// The window action that shows and hides the sidebar, as GNOME Files
-/// names it.
-pub(super) const SHOW_SIDEBAR: &str = "show-sidebar";
 
 /// What `install` connected outside the template, let go of at shutdown.
 pub(super) struct ShellHandles {
-    overview: glib::WeakRef<adw::TabOverview>,
-    create_tab: Option<glib::SignalHandlerId>,
-    sidebar_toggle: Option<gtk::ExpressionWatch>,
     saved_connections: Rc<SavedConnectionList>,
     /// Shows an icon picked while the window is open.
     saved_connections_watch: Option<glib::SignalHandlerId>,
@@ -50,138 +38,20 @@ impl ShellHandles {
         if let Some(watch) = self.saved_connections_watch.take() {
             self.saved_connections.model().disconnect(watch);
         }
-        if let Some(watch) = self.sidebar_toggle.take() {
-            watch.unwatch();
-        }
-        if let Some(handler) = self.create_tab.take()
-            && let Some(overview) = self.overview.upgrade()
-        {
-            overview.disconnect(handler);
-        }
     }
 }
 
-/// Run as the workspace is built, so its buttons are named before any
-/// window holds it.
-pub(super) fn describe_buttons(workspace: &Workspace) {
-    let imp = workspace.imp();
-    describe_icon_button(
-        &imp.table_search_toggle.get(),
-        &crate::i18n::gettext("Search Tables"),
-        None,
-    );
-    describe_icon_button(
-        &imp.refresh_tables_button.get(),
-        &crate::i18n::gettext("Refresh Tables"),
-        Some("win.refresh-tables"),
-    );
-    describe_icon_button(
-        &imp.sidebar_toggle.get(),
-        &crate::i18n::gettext("Show Sidebar"),
-        Some("win.show-sidebar"),
-    );
-    describe_icon_button(
-        &imp.new_tab_button.get(),
-        &crate::i18n::gettext("New Query"),
-        Some("win.new-editor-tab"),
-    );
-    describe_icon_button(&imp.tab_button.get(), &crate::i18n::gettext("View Open Tabs"), None);
-    describe_icon_button(
-        &imp.assistant_toggle.get(),
-        &crate::i18n::gettext("Show the Assistant"),
-        Some("win.show-assistant"),
-    );
-}
-
-pub(super) fn install(
-    workspace: &Workspace,
-    window: &adw::ApplicationWindow,
-    factory: &Rc<TabFactory>,
-    services: &AppServices,
-    input: &WorkspaceSender,
-) -> ShellHandles {
-    let imp = workspace.imp();
-    let app = window.application();
-    let menu_button = primary_menu_button(app.as_ref());
-    if let Some(menu) = app_menu(app.as_ref(), PRIMARY_MENU) {
-        menu_button.set_menu_model(Some(&with_safe_mode(&menu)));
-    }
-    imp.sidebar_header.pack_end(&menu_button);
-
-    window.add_action(&gio::PropertyAction::new(
-        SHOW_SIDEBAR,
-        &imp.split_view.get(),
-        "show-sidebar",
-    ));
-    let sidebar_toggle = follow_sidebar(&imp.split_view, &imp.sidebar_toggle);
-
-    imp.tab_view
-        .bind_property("n-pages", &imp.tab_stack.get(), "visible-child-name")
-        .transform_to(|_, pages: i32| Some(if pages > 0 { "tabs" } else { "empty" }))
-        .sync_create()
-        .build();
-
-    let overview = imp.tab_overview.get();
-    if let Some(menu) = app_menu(app.as_ref(), TAB_OVERVIEW_MENU) {
-        overview.set_secondary_menu(Some(&menu));
-    }
-    // The overview selects the page it gets back.
-    let factory = factory.clone();
-    let create_tab = overview.connect_create_tab(move |_| factory.create_editor());
+pub(super) fn install(shell: &WorkspaceShell, services: &AppServices, input: &WorkspaceSender) -> ShellHandles {
     let saved_connections = services.saved_connections.clone();
     let changed = input.clone();
     let saved_connections_watch = saved_connections
         .model()
         .connect_items_changed(move |_, _, _, _| changed.deliver(WorkspaceInput::SavedConnectionsChanged));
     ShellHandles {
-        overview: overview.downgrade(),
-        create_tab: Some(create_tab),
-        sidebar_toggle: Some(sidebar_toggle),
         saved_connections,
         saved_connections_watch: Some(saved_connections_watch),
-        connection_icon: imp.connection_icon.get(),
+        connection_icon: shell.imp().connection_icon.get(),
     }
-}
-
-/// The main menu with the session's Safe Mode levels on top, as radio
-/// items of the window's stateful `safe-mode` action.
-fn with_safe_mode(menu: &gio::MenuModel) -> gio::Menu {
-    let levels = gio::Menu::new();
-    for level in tablepro_core::SafeModeLevel::ALL {
-        let item = gio::MenuItem::new(Some(&crate::ui::safe_mode::label(level)), None);
-        item.set_action_and_target_value(
-            Some("win.safe-mode"),
-            Some(&crate::ui::safe_mode::action_target(level).to_variant()),
-        );
-        levels.append_item(&item);
-    }
-    let section = gio::Menu::new();
-    section.append_submenu(Some(&crate::i18n::gettext("Safe Mode")), &levels);
-    let whole = gio::Menu::new();
-    whole.append_section(None, &section);
-    whole.append_section(None, menu);
-    whole
-}
-
-/// The toggle shows only while the sidebar is out of view: collapsed
-/// into an overlay, or hidden. Beside a shown sidebar it would only hide
-/// the list the user is looking at.
-fn follow_sidebar(split_view: &adw::OverlaySplitView, toggle: &gtk::ToggleButton) -> gtk::ExpressionWatch {
-    let collapsed = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "collapsed",
-    );
-    let shown = gtk::PropertyExpression::new(
-        adw::OverlaySplitView::static_type(),
-        None::<&gtk::Expression>,
-        "show-sidebar",
-    );
-    let visible = gtk::ClosureExpression::new::<bool>(
-        [collapsed, shown],
-        glib::closure!(|_: Option<glib::Object>, collapsed: bool, shown: bool| collapsed || !shown),
-    );
-    visible.bind(toggle, "visible", Some(split_view))
 }
 
 #[cfg(test)]

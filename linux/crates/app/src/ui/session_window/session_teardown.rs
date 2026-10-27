@@ -13,24 +13,27 @@ use tablepro_core::EditorSession;
 use tablepro_session::Session;
 use tablepro_session::runtime::{ProcessHold, Tasks};
 
+use tablepro_session::SessionKey;
+
 use super::SessionWindow;
-use super::session_page::SessionPage;
+use super::session_page::{OpenSession, SessionPage};
+use crate::ui::workspace::WorkspaceShell;
 
 impl SessionWindow {
-    /// Take the workspace down once its close prompts approved, and
-    /// close the session under one hold. False when the window shows
-    /// no workspace.
+    /// Take every session's workspace down once the close prompts
+    /// approved, and close the sessions under one hold each. False when
+    /// the window shows no workspace.
     ///
-    /// The order matters. What the workspace shows is written before it
+    /// The order matters. What a workspace shows is written before it
     /// is freed; the workspace goes before the claim, so nothing of it
     /// reads for a key another window can now claim; and the claim goes
     /// before the close finishes, so the same connection can be picked
     /// again at once.
     pub(super) fn tear_down(&self) -> bool {
         let imp = self.imp();
-        let Some(state) = self.state() else {
+        if self.state().is_none() {
             return false;
-        };
+        }
         let Ok(mut page) = imp.page.try_borrow_mut() else {
             tracing::warn!("the session was torn down while its page was in use");
             return false;
@@ -38,24 +41,75 @@ impl SessionWindow {
         if !matches!(*page, SessionPage::Workspace { .. }) {
             return false;
         }
-        let SessionPage::Workspace {
-            claim,
-            session,
-            workspace,
-        } = std::mem::take(&mut *page)
-        else {
+        let SessionPage::Workspace { shell, sessions } = std::mem::take(&mut *page) else {
             return false;
         };
         drop(page);
-        workspace.flush();
-        let editor_sessions = workspace.take_editor_sessions();
+        for open in &sessions {
+            open.workspace.flush();
+        }
         self.set_content(gtk::Widget::NONE);
         imp.page_toasts.replace(None);
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
-        workspace.shutdown();
-        drop(workspace);
+        for open in sessions {
+            self.close_open_session(&shell, open);
+        }
+        shell.shutdown();
         self.withdraw_notifications();
+        imp.dirty.set(false);
+        imp.saving.set(false);
+        self.refresh_inhibitor();
+        super::window_actions::sync(self.upcast_ref(), &SessionPage::Picker, false);
+        true
+    }
+
+    /// Take down the one session under `key`, in the same order, while
+    /// the window keeps its others. The last one tears the whole page
+    /// down, and true then means the window shows no workspace. False
+    /// when the window does not hold `key`.
+    pub(super) fn tear_down_session(&self, key: &SessionKey) -> bool {
+        let imp = self.imp();
+        let Ok(mut page) = imp.page.try_borrow_mut() else {
+            tracing::warn!("a session was torn down while its page was in use");
+            return false;
+        };
+        let SessionPage::Workspace { shell, sessions } = &mut *page else {
+            return false;
+        };
+        let Some(position) = sessions.iter().position(|open| open.claim.key() == key) else {
+            return false;
+        };
+        if sessions.len() == 1 {
+            drop(page);
+            return self.tear_down();
+        }
+        let open = sessions.remove(position);
+        let shell = shell.clone();
+        drop(page);
+        open.workspace.flush();
+        self.close_open_session(&shell, open);
+        self.withdraw_closed_notifications();
+        self.refresh_dirty();
+        self.sync_front();
+        true
+    }
+
+    /// Shut `open`'s workspace down, take it off the shell, drop its
+    /// claim and record, and close its session.
+    fn close_open_session(&self, shell: &WorkspaceShell, open: OpenSession) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let OpenSession {
+            claim,
+            session,
+            workspace,
+        } = open;
+        let editor_sessions = workspace.take_editor_sessions();
         let key = claim.key().clone();
+        workspace.shutdown();
+        shell.remove_session(&workspace, &key);
+        drop(workspace);
         drop(claim);
         // A quit freezes the record first, so only a disconnect or a
         // window closed by hand takes the session off it.
@@ -67,11 +121,6 @@ impl SessionWindow {
             &state.services.tasks,
             state.context.close_timeout(),
         );
-        imp.dirty.set(false);
-        imp.saving.set(false);
-        self.refresh_inhibitor();
-        super::window_actions::sync(self.upcast_ref(), &SessionPage::Picker, false);
-        true
     }
 }
 

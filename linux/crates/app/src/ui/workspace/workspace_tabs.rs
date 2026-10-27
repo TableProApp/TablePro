@@ -1,9 +1,8 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use gtk4 as gtk;
-use gtk4::{gio, glib};
+use gtk4::glib;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
@@ -24,7 +23,6 @@ use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
-use super::workspace_tab_view::keep_child_navigation_keys;
 use super::{
     CLOSED_TABS_CAPACITY, ClosedTabDescriptor, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab,
 };
@@ -285,7 +283,8 @@ impl WorkspaceModel {
             let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
                 continue;
             };
-            if self.index.id_of(&page) == Some(keep_id) {
+            // Another session's tab, which this close leaves alone.
+            if self.index.id_of(&page).is_none_or(|id| id == keep_id) {
                 continue;
             }
             targets.push(page);
@@ -319,6 +318,9 @@ impl WorkspaceModel {
             let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
                 continue;
             };
+            if self.index.id_of(&page).is_none() {
+                continue;
+            }
             targets.push(page);
         }
         for page in targets {
@@ -577,54 +579,20 @@ impl WorkspaceModel {
     }
 }
 
-/// The tab view's own signals, as the workspace's inputs. The view and
-/// its tab bar are in the template.
+/// The tab view's own signals, as the workspace's inputs. The view is
+/// the shell's, which every session of the window shares, so a session
+/// closes only its own pages and leaves the others to theirs.
 pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, input: &WorkspaceSender) {
-    keep_child_navigation_keys(tab_view);
-
     // A tab with unsaved work asks first, so the workspace finishes the close.
     let close_input = input.clone();
     let close_index = index.clone();
-    tab_view.connect_close_page(move |_view, page| {
-        if let Some(id) = close_index.id_of(page) {
+    tab_view.connect_close_page(move |_view, page| match close_index.id_of(page) {
+        Some(id) => {
             close_input.deliver(WorkspaceInput::WorkspaceTabClosed(id));
+            glib::Propagation::Stop
         }
-        glib::Propagation::Stop
+        None => glib::Propagation::Proceed,
     });
-
-    // The view names the right-clicked page only while its menu is
-    // open, so the actions read it from here.
-    let menu_target: Rc<RefCell<Option<adw::TabPage>>> = Rc::new(RefCell::new(None));
-    let menu_target_setup = menu_target.clone();
-    tab_view.connect_setup_menu(move |_view, page| {
-        *menu_target_setup.borrow_mut() = page.cloned();
-    });
-    let action_group = gio::SimpleActionGroup::new();
-    let menu_action = |name: &str, message: fn(Uuid) -> WorkspaceInput| {
-        let action = gio::SimpleAction::new(name, None);
-        let (target, index, input) = (menu_target.clone(), index.clone(), input.clone());
-        action.connect_activate(move |_, _| {
-            let page = target.borrow().clone();
-            if let Some(id) = page.and_then(|page| index.id_of(&page)) {
-                input.deliver(message(id));
-            }
-        });
-        action
-    };
-    action_group.add_action(&menu_action("close-others", WorkspaceInput::CloseOtherWorkspaceTabs));
-    action_group.add_action(&menu_action("close-right", WorkspaceInput::CloseWorkspaceTabsToRight));
-    tab_view.insert_action_group("tab", Some(&action_group));
-
-    let bulk_menu = gio::Menu::new();
-    bulk_menu.append(
-        Some(&crate::i18n::gettext("Close Other Tabs")),
-        Some("tab.close-others"),
-    );
-    bulk_menu.append(
-        Some(&crate::i18n::gettext("Close Tabs to the Right")),
-        Some("tab.close-right"),
-    );
-    tab_view.set_menu_model(Some(&bulk_menu));
 
     // A drag reorder changes only `pages`, and it has to persist too.
     let selected_input = input.clone();

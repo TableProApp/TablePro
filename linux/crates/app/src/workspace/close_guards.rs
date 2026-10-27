@@ -63,21 +63,19 @@ impl CloseGuards {
 
     /// The window closes only once its prompts approve; `on_close` runs
     /// as it does. A close request while they decide is dropped, since
-    /// their dialog is already on screen. `handle` gives the workspace
-    /// the window shows at the time, and a window with none closes at
-    /// once.
+    /// their dialog is already on screen. `handles` gives the workspace
+    /// of each session the window holds at the time, asked one after the
+    /// other, and a window with none closes at once.
     pub(crate) fn connect_window<W: IsA<gtk::Window>>(
         self: &Rc<Self>,
         window: &W,
-        handle: impl Fn() -> Option<WorkspaceHandle> + 'static,
+        handles: impl Fn() -> Vec<WorkspaceHandle> + 'static,
         on_close: impl Fn(&W) + 'static,
     ) {
         let guards = self.clone();
         window.connect_close_request(move |window| {
             guards.requests.set(guards.requests.get() + 1);
-            if let Some(handle) = handle()
-                && !guards.window_may_close(window.upcast_ref(), &handle)
-            {
+            if !guards.window_may_close(window.upcast_ref(), handles()) {
                 return glib::Propagation::Stop;
             }
             on_close(window);
@@ -113,21 +111,31 @@ impl CloseGuards {
         }
     }
 
-    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handle: &WorkspaceHandle) -> bool {
+    fn window_may_close(self: &Rc<Self>, window: &gtk::Window, handles: Vec<WorkspaceHandle>) -> bool {
         match self.window.get() {
             WindowClose::Asking => return false,
             WindowClose::Approved => return true,
             WindowClose::Open => {}
         }
-        if handle.close_step(CloseScope::Window, &HashSet::new()) == CloseStep::Approve {
+        let asking: Vec<WorkspaceHandle> = handles
+            .into_iter()
+            .filter(|handle| handle.close_step(CloseScope::Window, &HashSet::new()) != CloseStep::Approve)
+            .collect();
+        if asking.is_empty() {
             return true;
         }
         self.window.set(WindowClose::Asking);
-        let (guards, handle, window) = (self.clone(), handle.clone(), window.clone());
+        let (guards, window) = (self.clone(), window.clone());
         glib::spawn_future_local(async move {
-            let decision = guards
-                .run(window.upcast_ref(), &handle, CloseScope::Window, &mut HashSet::new())
-                .await;
+            let mut decision = CloseDecision::Approved;
+            for handle in &asking {
+                decision = guards
+                    .run(window.upcast_ref(), handle, CloseScope::Window, &mut HashSet::new())
+                    .await;
+                if decision != CloseDecision::Approved {
+                    break;
+                }
+            }
             match decision {
                 CloseDecision::Approved => {
                     guards.window.set(WindowClose::Approved);

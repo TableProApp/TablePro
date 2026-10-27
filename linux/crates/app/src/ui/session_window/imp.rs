@@ -6,7 +6,7 @@ use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
-use tablepro_session::{ConnectAttempts, SessionKey};
+use tablepro_session::{ConnectAttempts, ConnectSource, SessionClaim, SessionKey};
 
 use super::connections::LevelSave;
 use super::crash_notice::CrashNotice;
@@ -39,6 +39,9 @@ pub struct SessionWindow {
     pub(super) page: RefCell<SessionPage>,
     /// Which connect attempt is current, so a late result is discarded.
     pub(super) attempts: ConnectAttempts,
+    /// A connect running while the window shows its sessions, whose
+    /// session joins them. The page keeps showing them meanwhile.
+    pub(super) background: RefCell<Option<(SessionClaim, ConnectSource)>>,
     /// The recorded session the window was opened to restore, until the
     /// saved connection is looked up or the file resolved.
     pub(super) restoring: RefCell<Option<SessionKey>>,

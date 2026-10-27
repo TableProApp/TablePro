@@ -3,7 +3,15 @@ use std::sync::Arc;
 use tablepro_session::{ConnectSource, Session, SessionClaim, SessionKey};
 
 use super::session_window_command::ConnectFailure;
-use crate::ui::workspace::Workspace;
+use crate::ui::workspace::{Workspace, WorkspaceShell};
+
+/// A session the window holds, with the claim on its key and the
+/// workspace that shows it.
+pub(crate) struct OpenSession {
+    pub(crate) claim: SessionClaim,
+    pub(crate) session: Arc<Session>,
+    pub(crate) workspace: Workspace,
+}
 
 /// Which page a window shows, and what it holds for that page. The
 /// claim on the session's key lives here, so leaving the page releases
@@ -22,21 +30,50 @@ pub(crate) enum SessionPage {
         source: ConnectSource,
         failure: ConnectFailure,
     },
+    /// The shell, and every session the window holds, in the order they
+    /// opened. Never empty: the last disconnect returns to the picker.
     Workspace {
-        claim: SessionClaim,
-        session: Arc<Session>,
-        workspace: Workspace,
+        shell: WorkspaceShell,
+        sessions: Vec<OpenSession>,
     },
 }
 
 impl SessionPage {
-    /// The key the page holds a claim on.
+    /// The key the page holds a claim on: the session in front's, on
+    /// the workspace.
     pub(crate) fn key(&self) -> Option<&SessionKey> {
         match self {
             Self::Picker => None,
-            Self::Connecting { claim, .. } | Self::ConnectFailed { claim, .. } | Self::Workspace { claim, .. } => {
-                Some(claim.key())
-            }
+            Self::Connecting { claim, .. } | Self::ConnectFailed { claim, .. } => Some(claim.key()),
+            Self::Workspace { .. } => self.front().map(|open| open.claim.key()),
+        }
+    }
+
+    /// The session the shell has in front, or the newest.
+    pub(crate) fn front(&self) -> Option<&OpenSession> {
+        let Self::Workspace { shell, sessions } = self else {
+            return None;
+        };
+        let front = shell.front();
+        sessions
+            .iter()
+            .find(|open| Some(&open.workspace) == front.as_ref())
+            .or_else(|| sessions.last())
+    }
+
+    /// The open session under `key`.
+    pub(crate) fn session(&self, key: &SessionKey) -> Option<&OpenSession> {
+        match self {
+            Self::Workspace { sessions, .. } => sessions.iter().find(|open| open.claim.key() == key),
+            _ => None,
+        }
+    }
+
+    /// Every session the window holds.
+    pub(crate) fn sessions(&self) -> &[OpenSession] {
+        match self {
+            Self::Workspace { sessions, .. } => sessions,
+            _ => &[],
         }
     }
 
@@ -61,7 +98,10 @@ impl std::fmt::Debug for SessionPage {
                 .field("key", claim.key())
                 .field("failure", failure)
                 .finish(),
-            Self::Workspace { claim, .. } => f.debug_struct("Workspace").field("key", claim.key()).finish(),
+            Self::Workspace { sessions, .. } => f
+                .debug_list()
+                .entries(sessions.iter().map(|open| open.claim.key()))
+                .finish(),
         }
     }
 }

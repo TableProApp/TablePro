@@ -1,6 +1,6 @@
 # 0012: One window per connection session, built from gtk-rs subclasses
 
-- **Status**: Accepted
+- **Status**: Accepted; what a window holds superseded by 0028
 - **Date**: 2026-10-14
 
 ## Context

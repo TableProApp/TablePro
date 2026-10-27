@@ -481,9 +481,9 @@ impl SessionWindow {
     /// connection opened again, so the window reconnects once the tabs
     /// may go; until then the saved level waits for the next connect.
     pub(super) fn on_set_safe_mode(&self, level: SafeModeLevel) {
-        let (key, session) = match &*self.imp().page.borrow() {
-            SessionPage::Workspace { claim, session, .. } => (claim.key().clone(), session.clone()),
-            _ => return,
+        let (key, session) = match self.imp().page.borrow().front() {
+            Some(open) => (open.claim.key().clone(), open.session.clone()),
+            None => return,
         };
         let saved = match key {
             SessionKey::Saved(id) => self.stored_connection(id),
@@ -558,15 +558,19 @@ impl SessionWindow {
 
     /// Ask the tabs, as Disconnect does, then connect again.
     fn reopen_after_teardown(&self, id: Uuid) {
-        let (Some(handle), Some(guards), Some(input)) = (self.workspace_handle(), self.close_guards(), self.input())
-        else {
+        let workspace = self
+            .imp()
+            .page
+            .borrow()
+            .session(&SessionKey::Saved(id))
+            .map(|open| open.workspace.clone());
+        let Some(workspace) = workspace else {
             return;
         };
-        if !self.page_is(
-            |page| matches!(page, SessionPage::Workspace { claim, .. } if *claim.key() == SessionKey::Saved(id)),
-        ) {
+        workspace.commit_cell_edits();
+        let (Some(handle), Some(guards), Some(input)) = (workspace.handle(), self.close_guards(), self.input()) else {
             return;
-        }
+        };
         guards.begin_teardown();
         if guards.may_tear_down(&handle) {
             input.deliver(SessionWindowInput::ReopenApproved(id));
@@ -585,10 +589,12 @@ impl SessionWindow {
 
     pub(super) fn on_reopen_approved(&self, id: Uuid) {
         let stored = self.stored_connection(id);
-        if !self.tear_down() {
+        if !self.tear_down_session(&SessionKey::Saved(id)) {
             return;
         }
-        self.show_page(SessionPage::Picker);
+        if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+            self.show_page(SessionPage::Picker);
+        }
         match stored {
             Some(saved) => self.on_open_saved(saved),
             None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
@@ -598,10 +604,7 @@ impl SessionWindow {
     /// Tick the session's level in the main menu and name it in the
     /// title.
     pub(super) fn show_safe_mode(&self) {
-        let level = match &*self.imp().page.borrow() {
-            SessionPage::Workspace { session, .. } => Some(session.safe_mode()),
-            _ => None,
-        };
+        let level = self.imp().page.borrow().front().map(|open| open.session.safe_mode());
         super::window_actions::show_safe_mode(self.upcast_ref(), level);
         if let Some(input) = self.workspace().and_then(|workspace| workspace.input()) {
             input.deliver(WorkspaceInput::SafeModeChanged);

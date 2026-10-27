@@ -1,7 +1,10 @@
-//! One window per connection session. It opens on the picker, shows
-//! the connect while it runs and the failure when it fails, then the
-//! session's workspace. A disconnect tears the workspace down in order
-//! and returns to the picker; it never moves to another session.
+//! A window of connection sessions. It opens on the picker, shows the
+//! first connect while it runs and the failure when it fails, then the
+//! shell with the session's workspace. Connections opened from then on
+//! connect beside it and join the shell, each with its own workspace.
+//! A disconnect tears one session's workspace down in order; the last
+//! one returns the window to the picker. A workspace never moves to
+//! another session.
 
 mod application_notification_sink;
 mod connect_failed_page;
@@ -56,7 +59,7 @@ pub(super) use self::connecting_page::ConnectingPage;
 use self::file_location_dialog::FileCheck;
 pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
-use self::session_page::SessionPage;
+use self::session_page::{OpenSession, SessionPage};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
 pub(crate) use self::session_window_input::SessionWindowInput;
 use crate::application::{AppServices, WindowHost, WindowLaunch};
@@ -64,7 +67,7 @@ use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
 use crate::ui::connect_dialog::{ConnectDialogMode, ConnectSubmission};
 use crate::ui::welcome_view::WelcomeView;
-use crate::ui::workspace::{Workspace, WorkspaceInit, WorkspaceInput};
+use crate::ui::workspace::{TreeRequest, Workspace, WorkspaceInit, WorkspaceInput, WorkspaceShell};
 use crate::workspace::{
     ApplicationInhibit, CloseDecision, CloseGuards, CloseReason, InhibitReason, WindowInhibitor, WorkspaceHandle,
 };
@@ -137,7 +140,12 @@ impl SessionWindow {
         let window = self.downgrade();
         guards.connect_window(
             self,
-            move || window.upgrade().and_then(|window| window.workspace_handle()),
+            move || {
+                window
+                    .upgrade()
+                    .map(|window| window.workspace_handles())
+                    .unwrap_or_default()
+            },
             SessionWindow::on_close_approved,
         );
         let _ = imp.close_guards.set(guards);
@@ -248,9 +256,10 @@ impl SessionWindow {
     /// changes or for an export its workspace is writing.
     pub(crate) fn is_inhibiting(&self) -> bool {
         let exporting = self
-            .workspace()
-            .and_then(|workspace| workspace.exports())
-            .is_some_and(|exports| exports.is_inhibiting());
+            .workspaces()
+            .iter()
+            .filter_map(Workspace::exports)
+            .any(|exports| exports.is_inhibiting());
         exporting
             || self
                 .imp()
@@ -306,20 +315,95 @@ impl SessionWindow {
         self.imp().page.try_borrow().is_ok_and(|page| matches(&page))
     }
 
-    /// The page's workspace, while the window shows one.
+    /// The workspace of the session in front, while the window shows
+    /// its sessions.
     pub(crate) fn workspace(&self) -> Option<Workspace> {
+        let page = self.imp().page.try_borrow().ok()?;
+        page.front().map(|open| open.workspace.clone())
+    }
+
+    /// The workspace of every session the window holds.
+    pub(crate) fn workspaces(&self) -> Vec<Workspace> {
+        self.imp().page.try_borrow().map_or_else(
+            |_| Vec::new(),
+            |page| page.sessions().iter().map(|open| open.workspace.clone()).collect(),
+        )
+    }
+
+    /// The workspace that holds tab `tab`.
+    pub(crate) fn workspace_with_tab(&self, tab: uuid::Uuid) -> Option<Workspace> {
+        self.workspaces()
+            .into_iter()
+            .find(|workspace| workspace.open_tabs().is_some_and(|tabs| tabs.contains(&tab)))
+    }
+
+    /// The window's shell, while it shows its sessions.
+    pub(crate) fn shell(&self) -> Option<WorkspaceShell> {
         match &*self.imp().page.try_borrow().ok()? {
-            SessionPage::Workspace { workspace, .. } => Some(workspace.clone()),
+            SessionPage::Workspace { shell, .. } => Some(shell.clone()),
             _ => None,
         }
     }
 
-    /// What the close prompts ask about, with a value typed into a cell
-    /// counted among the unsaved changes.
-    fn workspace_handle(&self) -> Option<WorkspaceHandle> {
-        let workspace = self.workspace()?;
-        workspace.commit_cell_edits();
-        workspace.handle()
+    /// The shell for the window's first session. The window's actions and
+    /// Safe Mode level follow whichever session comes to its front.
+    fn new_shell(
+        &self,
+        saved: &std::rc::Rc<crate::services::saved_connection_list::SavedConnectionList>,
+    ) -> WorkspaceShell {
+        let shell = WorkspaceShell::new(self.upcast_ref(), saved.clone());
+        let (input, list) = (self.input(), Some(saved.clone()));
+        shell.set_tree_requests(move |request| {
+            let (Some(input), Some(list)) = (input.as_ref(), list.as_ref()) else {
+                return;
+            };
+            let message = match request {
+                TreeRequest::Connect(SessionKey::Saved(id)) => match list.get(id) {
+                    Some(saved) => SessionWindowInput::OpenSaved(Box::new(saved)),
+                    None => SessionWindowInput::ShowToast(crate::i18n::gettext("The connection was deleted.")),
+                },
+                TreeRequest::Connect(key) | TreeRequest::Show(key) => SessionWindowInput::ShowSession(key),
+                TreeRequest::Disconnect(key) => SessionWindowInput::DisconnectSession(key),
+                TreeRequest::Edit(id) => SessionWindowInput::EditSavedConnection(id),
+                TreeRequest::NewQuery(_) | TreeRequest::Refresh(_) | TreeRequest::Table(..) => return,
+            };
+            input.deliver(message);
+        });
+        let window = self.downgrade();
+        shell.connect_front_changed(move |_| {
+            if let Some(window) = window.upgrade() {
+                window.sync_front();
+                window.show_safe_mode();
+            }
+        });
+        shell
+    }
+
+    /// Every session's, for the window's own close.
+    fn workspace_handles(&self) -> Vec<WorkspaceHandle> {
+        self.workspaces()
+            .iter()
+            .filter_map(|workspace| {
+                workspace.commit_cell_edits();
+                workspace.handle()
+            })
+            .collect()
+    }
+
+    /// Whether any session has something to lose.
+    fn refresh_dirty(&self) {
+        let dirty = self.workspaces().iter().any(Workspace::is_dirty);
+        self.imp().dirty.set(dirty);
+        self.refresh_inhibitor();
+    }
+
+    /// The window's actions, title and Safe Mode level follow the
+    /// session that came to the front.
+    fn sync_front(&self) {
+        let Ok(page) = self.imp().page.try_borrow() else {
+            return;
+        };
+        window_actions::sync(self.upcast_ref(), &page, false);
     }
 
     fn handle_input(&self, message: SessionWindowInput) {
@@ -340,19 +424,22 @@ impl SessionWindow {
             SessionWindowInput::EditConnection => self.on_edit_connection(),
             SessionWindowInput::EditSavedConnection(id) => self.on_edit_saved_connection(id),
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
-            SessionWindowInput::Disconnect => self.on_disconnect(),
+            SessionWindowInput::Disconnect => self.on_disconnect_front(),
+            SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::TeardownApproved => {
                 if self.tear_down() {
                     self.show_page(SessionPage::Picker);
                     tracing::info!("disconnected");
                 }
             }
+            SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
+            SessionWindowInput::ShowSession(key) => self.show_session(&key),
             SessionWindowInput::SetSafeMode(level) => self.on_set_safe_mode(level),
             SessionWindowInput::ReopenApproved(id) => self.on_reopen_approved(id),
             SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => {
-                if let SessionPage::Workspace { session, .. } = &*self.imp().page.borrow() {
-                    session.signal(MonitorSignal::RetryNow);
+                if let Some(open) = self.imp().page.borrow().front() {
+                    open.session.signal(MonitorSignal::RetryNow);
                 }
             }
             SessionWindowInput::ResetWorkspaceLayout => {
@@ -372,7 +459,8 @@ impl SessionWindow {
             // torn down has nothing left to lose.
             SessionWindowInput::DirtyChanged(dirty) => {
                 if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-                    self.imp().dirty.set(dirty);
+                    let others = self.workspaces().iter().any(Workspace::is_dirty);
+                    self.imp().dirty.set(dirty || others);
                     self.refresh_inhibitor();
                 }
             }
@@ -465,9 +553,9 @@ impl SessionWindow {
                 let toasts = failed.toast_overlay();
                 (Some(failed.clone().upcast()), Some(toasts), ShownPage::Failed(failed))
             }
-            SessionPage::Workspace { workspace, .. } => (
-                Some(workspace.clone().upcast()),
-                Some(workspace.toast_overlay()),
+            SessionPage::Workspace { shell, .. } => (
+                Some(shell.clone().upcast()),
+                Some(shell.toast_overlay()),
                 ShownPage::Other,
             ),
         };
@@ -498,8 +586,15 @@ impl SessionWindow {
         result: Result<Connected, AttemptError>,
     ) {
         let imp = self.imp();
-        let current =
-            imp.attempts.accepts(generation) && self.page_is(|page| matches!(page, SessionPage::Connecting { .. }));
+        let accepted = imp.attempts.accepts(generation);
+        if accepted && self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+            let background = imp.background.take();
+            if let Some((claim, source)) = background {
+                self.on_background_attempt(claim, source, result);
+                return;
+            }
+        }
+        let current = accepted && self.page_is(|page| matches!(page, SessionPage::Connecting { .. }));
         if !current {
             if let Ok(connected) = result {
                 self.discard_pending(connected.pending);
@@ -539,7 +634,76 @@ impl SessionWindow {
         }
     }
 
-    /// Start the session that connected and build its workspace.
+    /// A connect that ran beside the window's sessions ended. Its session
+    /// joins them; a failure says why in a toast and leaves the window as
+    /// it was.
+    fn on_background_attempt(
+        &self,
+        claim: SessionClaim,
+        source: ConnectSource,
+        result: Result<Connected, AttemptError>,
+    ) {
+        let key = claim.key().clone();
+        if let Some(shell) = self.shell() {
+            shell.set_connecting(&key, false);
+        }
+        match result {
+            Ok(connected) => self.adopt(claim, source, connected),
+            Err(AttemptError::Cancelled) => {
+                drop(claim);
+                self.forget_session(&key);
+            }
+            // Asking about the file's location belongs to a window of its
+            // own, as the first connect of a window asks it.
+            Err(AttemptError::AskLocation(_)) => {
+                drop(claim);
+                self.forget_session(&key);
+                self.open_in_new_window(source);
+            }
+            Err(AttemptError::Failed(failure)) => {
+                tracing::warn!(error = %failure.message, "connect failed");
+                drop(claim);
+                self.forget_session(&key);
+                self.show_toast(&crate::i18n::gettext_f(
+                    "Could not connect to {name}. {reason}",
+                    &[("name", &source_name(&source)), ("reason", &failure.message)],
+                ));
+            }
+        }
+    }
+
+    fn open_in_new_window(&self, source: ConnectSource) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        match source {
+            ConnectSource::Saved(saved) => state.host.open_window(WindowLaunch::Connect(saved)),
+            ConnectSource::File(identity) => {
+                state
+                    .host
+                    .open_window(WindowLaunch::OpenFile(gio::File::for_uri(&identity.uri)));
+            }
+            ConnectSource::Intent(_) => {}
+        }
+    }
+
+    /// Bring the session under `key` to the front, with one of its tabs.
+    fn show_session(&self, key: &SessionKey) {
+        let (Some(shell), Some(workspace)) = (
+            self.shell(),
+            self.imp().page.borrow().session(key).map(|open| open.workspace.clone()),
+        ) else {
+            return;
+        };
+        if let Some(page) = workspace.some_page() {
+            shell.tab_view().set_selected_page(&page);
+        }
+        shell.set_front(&workspace);
+        self.sync_front();
+    }
+
+    /// Start the session that connected and build its workspace, in the
+    /// window's shell, which it builds for the first session.
     fn adopt(&self, claim: SessionClaim, source: ConnectSource, connected: Connected) {
         let Connected {
             pending,
@@ -564,6 +728,10 @@ impl SessionWindow {
         {
             tracing::warn!(%error, "could not remember the connect dialog driver");
         }
+        let held = self.shell();
+        let shell = held
+            .clone()
+            .unwrap_or_else(|| self.new_shell(&state.services.saved_connections));
         let workspace = Workspace::new(WorkspaceInit {
             key: key.clone(),
             session: session.clone(),
@@ -571,14 +739,27 @@ impl SessionWindow {
             context: state.context.clone(),
             window: self.clone().upcast(),
             close_guards: guards.clone(),
+            shell: shell.clone(),
         });
         self.connect_workspace(&workspace);
-        self.show_page(SessionPage::Workspace {
+        let open = OpenSession {
             claim,
             session,
             workspace: workspace.clone(),
-        });
+        };
+        if held.is_some() {
+            if let SessionPage::Workspace { sessions, .. } = &mut *self.imp().page.borrow_mut() {
+                sessions.push(open);
+            }
+        } else {
+            self.show_page(SessionPage::Workspace {
+                shell: shell.clone(),
+                sessions: vec![open],
+            });
+        }
+        shell.add_session(&workspace);
         workspace.start();
+        self.sync_front();
         drop(self.imp().dialog.take());
         for warning in warnings {
             self.show_toast(&warning);
@@ -647,9 +828,25 @@ impl SessionWindow {
             self.show_toast(&crate::i18n::gettext("The connection was deleted."));
             return;
         };
+        let key = SessionKey::Saved(saved.id);
+        if self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+            let held = self.imp().page.borrow().session(&key).is_some();
+            if held {
+                self.show_session(&key);
+            } else if let Some(claim) = self.claim(key.clone()) {
+                if let Some(shell) = self.shell() {
+                    shell.set_connecting(&key, true);
+                }
+                self.begin_background_connect(claim, ConnectSource::Saved(Box::new(saved)));
+                return;
+            }
+            if let Some(shell) = self.shell() {
+                shell.set_connecting(&key, false);
+            }
+            return;
+        }
         if !self.page_is(|page| matches!(page, SessionPage::Picker)) {
-            // This window has its session; another one opens this.
-            let key = SessionKey::Saved(saved.id);
+            // This window is connecting; another one opens this.
             if let Some(owner) = state.context.sessions.window_for(&key)
                 && state.host.present_window(owner)
             {
@@ -739,12 +936,28 @@ impl SessionWindow {
 
     fn on_connect_from_dialog(&self, submission: ConnectSubmission) {
         let ConnectSubmission { request, pending_save } = submission;
-        match &*self.imp().page.borrow() {
-            SessionPage::Picker | SessionPage::ConnectFailed { .. } => {}
-            SessionPage::Connecting { .. } | SessionPage::Workspace { .. } => {
-                tracing::warn!("a connect from the dialog reached a window with a session");
+        let beside = match &*self.imp().page.borrow() {
+            SessionPage::Picker | SessionPage::ConnectFailed { .. } => false,
+            SessionPage::Workspace { .. } => true,
+            SessionPage::Connecting { .. } => {
+                tracing::warn!("a connect from the dialog reached a window that is connecting");
                 return;
             }
+        };
+        if beside {
+            let key = SessionKey::Saved(pending_save.connection.id);
+            match self.claim(key.clone()) {
+                Some(claim) => self.begin_background_connect(
+                    claim,
+                    ConnectSource::Intent(Box::new(ConnectIntent {
+                        key,
+                        request,
+                        pending_save: Some(pending_save),
+                    })),
+                ),
+                None => self.persist_pending_save(pending_save),
+            }
+            return;
         }
         // A failed connect's claim goes first: the dialog may be editing
         // that same connection.
@@ -797,6 +1010,46 @@ impl SessionWindow {
         let cancel = ticket.cancel().clone();
         let work = connect_work(state, &source, check, demand, cancel);
         self.show_page(SessionPage::Connecting { claim, source });
+        self.deliver_attempt(work, generation);
+    }
+
+    /// Connect `source` while the window keeps showing its sessions. A
+    /// connect already running beside them is replaced.
+    fn begin_background_connect(&self, claim: SessionClaim, source: ConnectSource) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let imp = self.imp();
+        if let Some((replaced, _)) = imp.background.take() {
+            let key = replaced.key().clone();
+            drop(replaced);
+            if let Some(shell) = self.shell() {
+                shell.set_connecting(&key, false);
+            }
+            self.forget_session(&key);
+        }
+        let check = self.file_check(&source, None);
+        let ticket = imp.attempts.begin();
+        let generation = ticket.generation();
+        let cancel = ticket.cancel().clone();
+        let work = connect_work(state, &source, check, CredentialDemand::default(), cancel);
+        self.show_toast(&crate::i18n::gettext_f(
+            "Connecting to {name}…",
+            &[("name", &source_name(&source))],
+        ));
+        imp.background.replace(Some((claim, source)));
+        self.deliver_attempt(work, generation);
+    }
+
+    /// Run `work` on the runtime and bring its outcome back as an input.
+    fn deliver_attempt(
+        &self,
+        work: BoxFuture<'static, Result<Connected, AttemptError>>,
+        generation: tablepro_session::connect::AttemptGeneration,
+    ) {
+        let Some(state) = self.state() else {
+            return;
+        };
         let input = self.input();
         let (tasks, hold) = (state.services.tasks.clone(), state.services.hold());
         crate::runtime::spawn_and_deliver(&state.services.tasks, work, move |outcome| {
@@ -890,13 +1143,49 @@ impl SessionWindow {
         }
     }
 
-    fn on_disconnect(&self) {
-        let (Some(handle), Some(guards)) = (self.workspace_handle(), self.close_guards()) else {
+    fn on_disconnect_front(&self) {
+        let key = self.imp().page.borrow().front().map(|open| open.claim.key().clone());
+        if let Some(key) = key {
+            self.on_disconnect(key);
+        }
+    }
+
+    /// The window keeps its other sessions; the picker comes back once
+    /// none is left.
+    fn on_session_teardown_approved(&self, key: &SessionKey) {
+        if self.tear_down_session(key) && !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
+            self.show_page(SessionPage::Picker);
+        }
+        tracing::info!("disconnected");
+    }
+
+    /// Close the session under `key` through its prompts. With no other
+    /// session, the whole page goes and the picker comes back.
+    fn on_disconnect(&self, key: SessionKey) {
+        let (workspace, last) = {
+            let page = self.imp().page.borrow();
+            (
+                page.session(&key).map(|open| open.workspace.clone()),
+                page.sessions().len() <= 1,
+            )
+        };
+        let Some(workspace) = workspace else {
             return;
+        };
+        workspace.commit_cell_edits();
+        let (Some(handle), Some(guards)) = (workspace.handle(), self.close_guards()) else {
+            return;
+        };
+        let approved = move || {
+            if last {
+                SessionWindowInput::TeardownApproved
+            } else {
+                SessionWindowInput::SessionTeardownApproved(key.clone())
+            }
         };
         guards.begin_teardown();
         if guards.may_tear_down(&handle) {
-            self.send(SessionWindowInput::TeardownApproved);
+            self.send(approved());
             return;
         }
         let input = self.input();
@@ -904,7 +1193,7 @@ impl SessionWindow {
             if decision == CloseDecision::Approved
                 && let Some(input) = input
             {
-                input.deliver(SessionWindowInput::TeardownApproved);
+                input.deliver(approved());
             }
         });
     }
@@ -930,6 +1219,12 @@ impl SessionWindow {
     /// Close the session the window shows, or stop the connect it runs.
     fn release_session(&self) {
         self.abandon_restore();
+        if let Some((claim, _)) = self.imp().background.take() {
+            stop_connecting(&self.imp().attempts);
+            let key = claim.key().clone();
+            drop(claim);
+            self.forget_session(&key);
+        }
         if self.tear_down() {
             return;
         }

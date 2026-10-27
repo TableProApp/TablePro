@@ -55,7 +55,7 @@ impl SessionWindow {
     }
 
     pub(super) fn on_work_completed(&self, work: CompletedWork) {
-        let Some(workspace) = self.workspace() else {
+        let Some(workspace) = self.workspace_with_tab(work.tab) else {
             return;
         };
         let Some(label) = workspace.notice_label(work.tab) else {
@@ -73,21 +73,30 @@ impl SessionWindow {
         let Some(notifier) = notifier.as_ref().filter(|notifier| notifier.has_sent()) else {
             return;
         };
-        let Some(workspace) = self.workspace() else {
+        let workspaces = self.workspaces();
+        if workspaces.is_empty() {
             return;
-        };
-        if let Some(open) = workspace.open_tabs() {
-            notifier.withdraw_closed(|tab| open.contains(&tab));
         }
+        let open: Vec<_> = workspaces.iter().filter_map(Workspace::open_tabs).collect();
+        notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
         if self.window_is_active()
-            && let Some(tab) = workspace.selected_tab()
+            && let Some(tab) = workspaces.iter().find_map(Workspace::selected_tab)
         {
             notifier.tab_became_active(tab);
         }
     }
 
+    /// The notifications of tabs no session holds any more, after one of
+    /// the window's sessions closed.
+    pub(super) fn withdraw_closed_notifications(&self) {
+        let open: Vec<_> = self.workspaces().iter().filter_map(Workspace::open_tabs).collect();
+        if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
+            notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
+        }
+    }
+
     pub(super) fn on_focus_tab(&self, tab: Uuid) {
-        match self.workspace().and_then(|workspace| workspace.input()) {
+        match self.workspace_with_tab(tab).and_then(|workspace| workspace.input()) {
             Some(input) => input.deliver(WorkspaceInput::FocusTab(tab)),
             None => tracing::debug!("a notification named a tab of a session the window no longer shows"),
         }

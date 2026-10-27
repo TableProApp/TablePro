@@ -57,7 +57,7 @@ impl Default for ExportOperationsButton {
 
 impl ExportOperationsButton {
     /// List `jobs`, and show the button only while there is one.
-    pub(crate) fn bind(&self, jobs: &gio::ListStore) {
+    pub(crate) fn bind(&self, jobs: &impl IsA<gio::ListModel>) {
         let imp = self.imp();
         imp.job_list.bind_model(Some(jobs), |item| {
             item.downcast_ref::<ExportJobItem>()

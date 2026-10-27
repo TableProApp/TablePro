@@ -49,11 +49,17 @@ pub(crate) enum SessionWindowInput {
     EditSavedConnection(Uuid),
     /// The connect dialog saved its changes to a saved connection.
     ConnectionSaved(Uuid),
-    /// Close the workspace through its prompts and return to the
-    /// picker.
+    /// Close the session in front through its prompts. The last one
+    /// returns the window to the picker.
     Disconnect,
-    /// The prompts approved the disconnect.
+    /// Close the session open under the key through its prompts.
+    DisconnectSession(SessionKey),
+    /// The prompts approved closing every session the window holds.
     TeardownApproved,
+    /// The prompts approved closing the session under the key.
+    SessionTeardownApproved(SessionKey),
+    /// Bring the session under the key to the front.
+    ShowSession(SessionKey),
     /// The main menu's Safe Mode level for the session on screen.
     SetSafeMode(SafeModeLevel),
     /// The prompts approved connecting the saved connection again at the

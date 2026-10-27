@@ -134,8 +134,26 @@ impl SidebarView {
         Self { inner }
     }
 
+    /// The list on its own, as the tests show it. The window shows its
+    /// rows through the connection tree.
+    #[cfg(test)]
     pub(crate) fn widget(&self) -> &gtk::Stack {
         &self.inner.root
+    }
+
+    /// The list's rows, which the connection tree shows a schema at a
+    /// time.
+    pub(crate) fn list(&self) -> super::sidebar_list::SidebarList {
+        self.inner.model.list().clone()
+    }
+
+    /// The table actions its menus name, for the tree's menus to reach.
+    pub(crate) fn actions(&self) -> &gio::SimpleActionGroup {
+        &self.inner.actions
+    }
+
+    pub(crate) fn affordances(&self) -> SidebarAffordances {
+        self.inner.affordances.get()
     }
 
     /// Show a new object list under the search, once its rows are worked

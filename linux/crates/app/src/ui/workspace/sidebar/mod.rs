@@ -1,9 +1,13 @@
 //! The sidebar of the session's tables: every schema's tables and views
-//! in one recycling list, a section per schema, with one shared menu.
+//! in one recycling list, a section per schema, with one shared menu. The
+//! window's connection tree shows that list's sections as the schemas
+//! under the session's connection.
 
 mod catalog_watch;
+mod connection_tree;
 mod key_listing;
 mod object_key;
+mod schema_slice;
 mod sidebar_affordances;
 mod sidebar_event;
 mod sidebar_header_factory;
@@ -18,130 +22,132 @@ mod sidebar_row_factory;
 mod sidebar_view;
 #[cfg(test)]
 mod tests;
+mod tree_node;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use libadwaita::prelude::*;
 use tablepro_core::DataModel;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
+pub(crate) use connection_tree::{ConnectionTree, TreeRequest};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
 pub(super) use sidebar_view::SidebarView;
 
 use super::table_naming::TableNaming;
-use super::{OpenMode, Workspace, WorkspaceInput, WorkspaceModel, WorkspaceSender};
+use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceShell};
 use crate::runtime::DeliverInput;
-use sidebar_event::SidebarEvent;
+pub(super) use sidebar_event::SidebarEvent;
 
-/// Build the sidebar into the workspace's template, sending what the
-/// user asks of it to `input`. A sidebar of keys searches on the server,
-/// so its search asks the workspace for a new listing; one of
-/// collections lists them as tables are listed, in its own words.
+/// Build the session's sidebar, sending what the user asks of it to
+/// `input`. It follows the shell's one search: a sidebar of keys searches
+/// on the server, so its search asks the workspace for a new listing; one
+/// of collections lists them as tables are listed, in its own words.
 pub(super) fn build(
-    workspace: &Workspace,
+    shell: &WorkspaceShell,
     input: &WorkspaceSender,
     session: &Session,
     tasks: &Tasks,
     model: DataModel,
 ) -> SidebarView {
-    let imp = workspace.imp();
+    let imp = shell.imp();
     let events = input.clone();
     let view = SidebarView::new(
         move |event| events.deliver(workspace_input(event)),
         SidebarAffordances::for_session(session),
         Some(tasks.clone()),
     );
-    imp.sidebar_slot.set_child(Some(view.widget()));
     match model {
         DataModel::KeyValue => {
             view.hold_keys();
             let listing = input.clone();
             view.follow_key_search(&imp.table_search, move || listing.deliver(WorkspaceInput::ListKeys));
-            describe_key_search(workspace);
-            describe_key_empty_page(workspace);
         }
         DataModel::Document => {
             view.hold_collections();
             view.follow_search(&imp.table_search);
-            describe_collections(workspace);
         }
         DataModel::Relational => view.follow_search(&imp.table_search),
     }
-    imp.table_search_bar.connect_entry(&*imp.table_search);
-    imp.table_search_bar.set_key_capture_widget(Some(&*imp.sidebar_root));
-    imp.table_search_toggle
-        .bind_property("active", &*imp.table_search_bar, "search-mode-enabled")
-        .bidirectional()
-        .sync_create()
-        .build();
     view
 }
 
-/// The search and its buttons name keys, not tables.
-fn describe_key_search(workspace: &Workspace) {
-    let imp = workspace.imp();
-    let filter = crate::i18n::gettext("Filter keys");
-    imp.table_search
-        .set_placeholder_text(Some(&crate::i18n::gettext("Filter keys…")));
-    imp.table_search
-        .update_property(&[gtk4::accessible::Property::Label(&filter)]);
-    crate::ui::a11y::describe_icon_button(
-        &imp.table_search_toggle.get(),
-        &crate::i18n::gettext("Search Keys"),
-        None,
-    );
-    crate::ui::a11y::describe_icon_button(
-        &imp.refresh_tables_button.get(),
-        &crate::i18n::gettext("Refresh Keys"),
-        Some("win.refresh-tables"),
-    );
+/// Name the shell's search, its buttons and the page with no tab open
+/// after what the session in front holds.
+pub(super) fn describe(shell: &WorkspaceShell, model: DataModel) {
+    match model {
+        DataModel::KeyValue => {
+            describe_search(
+                shell,
+                &crate::i18n::gettext("Filter keys…"),
+                &crate::i18n::gettext("Filter keys"),
+                &crate::i18n::gettext("Search Keys"),
+                &crate::i18n::gettext("Refresh Keys"),
+            );
+            describe_empty_page(
+                shell,
+                &crate::i18n::gettext("Select a Key"),
+                &crate::i18n::gettext("Choose a key in the sidebar or open the editor."),
+                &crate::i18n::gettext("Open Editor"),
+            );
+        }
+        DataModel::Document => {
+            describe_search(
+                shell,
+                &crate::i18n::gettext("Filter collections…"),
+                &crate::i18n::gettext("Filter collections"),
+                &crate::i18n::gettext("Search Collections"),
+                &crate::i18n::gettext("Refresh Collections"),
+            );
+            describe_empty_page(
+                shell,
+                &crate::i18n::gettext("Select a Collection"),
+                &crate::i18n::gettext("Choose a collection in the sidebar or open the editor."),
+                &crate::i18n::gettext("Open Editor"),
+            );
+        }
+        DataModel::Relational => {
+            describe_search(
+                shell,
+                &crate::i18n::gettext("Filter tables…"),
+                &crate::i18n::gettext("Filter tables"),
+                &crate::i18n::gettext("Search Tables"),
+                &crate::i18n::gettext("Refresh Tables"),
+            );
+            describe_empty_page(
+                shell,
+                &crate::i18n::gettext("Select a Table"),
+                &crate::i18n::gettext("Choose a table in the sidebar or open the SQL editor."),
+                &crate::i18n::gettext("Open SQL Editor"),
+            );
+        }
+    }
 }
 
-/// The page with no tab open speaks of keys and an editor of commands.
-fn describe_key_empty_page(workspace: &Workspace) {
-    let imp = workspace.imp();
-    imp.empty_page.set_title(&crate::i18n::gettext("Select a Key"));
-    imp.empty_page.set_description(Some(&crate::i18n::gettext(
-        "Choose a key in the sidebar or open the editor.",
-    )));
-    imp.empty_editor_button.set_label(&crate::i18n::gettext("Open Editor"));
+fn describe_search(shell: &WorkspaceShell, placeholder: &str, filter: &str, search: &str, refresh: &str) {
+    let imp = shell.imp();
+    imp.table_search.set_placeholder_text(Some(placeholder));
+    imp.table_search
+        .update_property(&[gtk4::accessible::Property::Label(filter)]);
+    crate::ui::a11y::describe_icon_button(&imp.table_search_toggle.get(), search, None);
+    crate::ui::a11y::describe_icon_button(&imp.refresh_tables_button.get(), refresh, Some("win.refresh-tables"));
 }
 
-/// The search, its buttons and the page with no tab open name
-/// collections, and the editor takes the engine's shell, not SQL.
-fn describe_collections(workspace: &Workspace) {
-    let imp = workspace.imp();
-    let filter = crate::i18n::gettext("Filter collections");
-    imp.table_search
-        .set_placeholder_text(Some(&crate::i18n::gettext("Filter collections…")));
-    imp.table_search
-        .update_property(&[gtk4::accessible::Property::Label(&filter)]);
-    crate::ui::a11y::describe_icon_button(
-        &imp.table_search_toggle.get(),
-        &crate::i18n::gettext("Search Collections"),
-        None,
-    );
-    crate::ui::a11y::describe_icon_button(
-        &imp.refresh_tables_button.get(),
-        &crate::i18n::gettext("Refresh Collections"),
-        Some("win.refresh-tables"),
-    );
-    imp.empty_page.set_title(&crate::i18n::gettext("Select a Collection"));
-    imp.empty_page.set_description(Some(&crate::i18n::gettext(
-        "Choose a collection in the sidebar or open the editor.",
-    )));
-    imp.empty_editor_button.set_label(&crate::i18n::gettext("Open Editor"));
+fn describe_empty_page(shell: &WorkspaceShell, title: &str, description: &str, editor: &str) {
+    let imp = shell.imp();
+    imp.empty_page.set_title(title);
+    imp.empty_page.set_description(Some(description));
+    imp.empty_editor_button.set_label(editor);
 }
 
-fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
+pub(super) fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
     let select = |table: TableRef, open_mode| WorkspaceInput::SelectTable {
         schema: table.schema,
         name: table.name,

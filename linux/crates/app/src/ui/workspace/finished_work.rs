@@ -83,8 +83,8 @@ impl WorkspaceModel {
             return;
         };
         self.tab_view.set_selected_page(&page);
-        if let Some(workspace) = self.this.upgrade() {
-            workspace.imp().tab_overview.set_open(false);
+        if let Some(shell) = self.shell.upgrade() {
+            shell.imp().tab_overview.set_open(false);
         }
     }
 

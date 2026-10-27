@@ -14,21 +14,24 @@ use tablepro_storage::settings::keys;
 
 use super::tab_index::TabIndex;
 use super::workspace_persistence::WorkspaceTabs;
-use super::{Workspace, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab, WorkspaceTabParts};
+use super::workspace_shell::SHOW_ASSISTANT;
+use super::{WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceShell, WorkspaceTab, WorkspaceTabParts};
 use crate::application::AppServices;
 use crate::runtime::DeliverInput;
 use crate::services::active_session::ActiveSession;
 use crate::ui::assistant::{AssistantAccess, AssistantRequest, Availability, PaneHooks};
 use crate::ui::handler_guard::HandlerGuard;
 
-pub(super) const SHOW_ASSISTANT: &str = "show-assistant";
-
 pub(super) struct AssistantShell {
     access: Rc<AssistantAccess>,
-    action: gio::SimpleAction,
     split: adw::OverlaySplitView,
     pane: crate::ui::assistant::AssistantPane,
     toggle: gtk::ToggleButton,
+    window: glib::WeakRef<adw::ApplicationWindow>,
+    /// What the pane asks this session for, bound while it is in front.
+    hooks: Rc<dyn Fn() -> PaneHooks>,
+    /// Whether the pane speaks for this session now.
+    attached: std::cell::Cell<bool>,
     _watches: Vec<HandlerGuard>,
 }
 
@@ -49,53 +52,36 @@ pub(super) fn access(
     })
 }
 
+/// The shell's one pane serves the session in front, so the session
+/// only binds it in `attach`.
 pub(super) fn install(
-    workspace: &Workspace,
+    shell: &WorkspaceShell,
     window: &adw::ApplicationWindow,
     parts: &WorkspaceTabParts,
     input: &WorkspaceSender,
 ) -> AssistantShell {
     let access = parts.assistant.clone();
     let (tabs, index) = (parts.workspace_tabs.clone(), parts.index.clone());
-    let imp = workspace.imp();
-    let split = imp.assistant_split.get();
-    let action = gio::SimpleAction::new_stateful(SHOW_ASSISTANT, None, &false.to_variant());
-    let shown = split.downgrade();
-    let pane = imp.assistant_pane.get();
-    let focus = pane.downgrade();
-    action.connect_change_state(move |action, state| {
-        let Some(show) = state.and_then(|state| state.get::<bool>()) else {
-            return;
-        };
-        action.set_state(&show.to_variant());
-        if let Some(split) = shown.upgrade() {
-            split.set_show_sidebar(show);
-        }
-        if show && let Some(pane) = focus.upgrade() {
-            pane.focus_composer();
-        }
-    });
-    let followed = action.downgrade();
-    split.connect_show_sidebar_notify(move |split| {
-        if let Some(action) = followed.upgrade() {
-            action.set_state(&split.shows_sidebar().to_variant());
-        }
-    });
-    window.add_action(&action);
-
+    let imp = shell.imp();
     let view = imp.tab_view.downgrade();
-    pane.bind(PaneHooks {
-        access: access.clone(),
-        editor_text: Rc::new(move || active_editor_text(&tabs, &index, &view)),
-        insert: {
-            let input = input.clone();
-            Rc::new(move |code| input.deliver(WorkspaceInput::InsertFromAssistant(code)))
-        },
-        toast: {
-            let input = input.clone();
-            Rc::new(move |text| input.deliver(WorkspaceInput::ShowToast(text)))
-        },
-    });
+    let hooks: Rc<dyn Fn() -> PaneHooks> = {
+        let (access, input) = (access.clone(), input.clone());
+        Rc::new(move || {
+            let (tabs, index, view) = (tabs.clone(), index.clone(), view.clone());
+            PaneHooks {
+                access: access.clone(),
+                editor_text: Rc::new(move || active_editor_text(&tabs, &index, &view)),
+                insert: {
+                    let input = input.clone();
+                    Rc::new(move |code| input.deliver(WorkspaceInput::InsertFromAssistant(code)))
+                },
+                toast: {
+                    let input = input.clone();
+                    Rc::new(move |text| input.deliver(WorkspaceInput::ShowToast(text)))
+                },
+            }
+        })
+    };
     let settings = access.ai().settings().clone();
     let mut watches = Vec::new();
     for key in [keys::AI_PROVIDER, keys::AI_INLINE_SUGGESTIONS] {
@@ -105,17 +91,16 @@ pub(super) fn install(
             .connect_changed(Some(key), move |_, _| changed.deliver(WorkspaceInput::AssistantChanged));
         watches.push(HandlerGuard::new(settings.gio(), handler));
     }
-    let toggle = imp.assistant_toggle.get();
-    let shell = AssistantShell {
+    AssistantShell {
         access,
-        action,
-        split,
-        pane,
-        toggle,
+        split: imp.assistant_split.get(),
+        pane: imp.assistant_pane.get(),
+        toggle: imp.assistant_toggle.get(),
+        window: window.downgrade(),
+        hooks,
+        attached: std::cell::Cell::new(false),
         _watches: watches,
-    };
-    shell.refresh_controls();
-    shell
+    }
 }
 
 fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakRef<adw::TabView>) -> Option<String> {
@@ -131,12 +116,34 @@ fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakR
 }
 
 impl AssistantShell {
+    /// Bind the pane to this session, which is now in front.
+    pub(super) fn attach(&self) {
+        self.attached.set(true);
+        self.pane.bind((self.hooks)());
+        self.refresh_controls();
+    }
+
+    pub(super) fn detach(&self) {
+        self.attached.set(false);
+    }
+
     /// With no provider the column and its toggle go, and the key does
-    /// nothing; under Never the pane says why it is off.
+    /// nothing; under Never the pane says why it is off. Only the session
+    /// in front decides.
     fn refresh_controls(&self) {
+        if !self.attached.get() {
+            return;
+        }
         let available = self.access.availability() != Availability::Off;
         self.toggle.set_visible(available);
-        self.action.set_enabled(available);
+        if let Some(action) = self
+            .window
+            .upgrade()
+            .and_then(|window| window.lookup_action(SHOW_ASSISTANT))
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_enabled(available);
+        }
         if !available {
             self.split.set_show_sidebar(false);
         }
@@ -144,7 +151,9 @@ impl AssistantShell {
     }
 
     pub(super) fn shutdown(&self) {
-        self.pane.shutdown();
+        if self.attached.replace(false) {
+            self.pane.shutdown();
+        }
     }
 }
 

@@ -115,10 +115,7 @@ pub(super) fn sync(window: &adw::ApplicationWindow, page: &SessionPage, editable
             action.set_enabled(enabled);
         }
     }
-    let level = match page {
-        SessionPage::Workspace { session, .. } => Some(session.safe_mode()),
-        _ => None,
-    };
+    let level = page.front().map(|open| open.session.safe_mode());
     show_safe_mode(window, level);
 }
 

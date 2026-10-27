@@ -154,7 +154,6 @@ impl SidebarModel {
         self.list.n_items()
     }
 
-    #[cfg(test)]
     pub(crate) fn list(&self) -> &SidebarList {
         &self.list
     }
