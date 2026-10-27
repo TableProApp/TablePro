@@ -71,6 +71,7 @@ fn open_table(test: &TestWindow, name: &str) -> (Uuid, BrowseTab) {
     })
     .expect("the table's tab");
     let tab = workspace
+        .chrome()
         .imp()
         .tab_view
         .selected_page()
@@ -192,6 +193,7 @@ fn editor_on_file(test: &TestWindow, path: &std::path::Path) -> (Uuid, crate::ui
     });
     let id = workspace.selected_tab().expect("the editor in front");
     let editor = workspace
+        .chrome()
         .imp()
         .tab_view
         .selected_page()
@@ -288,7 +290,12 @@ fn an_editor_asking_to_close_closes_its_own_tab_not_the_one_in_front() {
                 file: None,
             })
         });
-        let page = workspace.imp().tab_view.selected_page().expect("the editor in front");
+        let page = workspace
+            .chrome()
+            .imp()
+            .tab_view
+            .selected_page()
+            .expect("the editor in front");
         let editor = page
             .child()
             .downcast::<crate::ui::editor::SqlEditor>()

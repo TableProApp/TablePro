@@ -90,7 +90,7 @@ fn drawn(diagram: &DiagramTab) {
 #[gtk4::test]
 fn a_schema_has_one_diagram_tab_titled_for_it() {
     let test = TestWindow::connected_with("DiagramOneTab", sales);
-    let view = test.workspace().imp().tab_view.get();
+    let view = test.workspace().chrome().imp().tab_view.get();
 
     show_diagram(&test, "sales");
     wait_until(WAIT, || diagrams(&test).len() == 1).expect("a diagram tab");

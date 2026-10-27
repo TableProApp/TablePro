@@ -1,5 +1,6 @@
 mod notification;
 mod open_file;
+mod sessions;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -444,10 +445,12 @@ fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
     })
     .expect("the level saved back");
 
-    let super::session_page::SessionPage::Workspace { session, .. } = &*test.window.imp().page.borrow() else {
+    let page = test.window.imp().page.borrow();
+    let Some(open) = page.front() else {
         panic!("the window left its workspace");
     };
-    assert_eq!(session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
+    assert_eq!(open.session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
+    drop(page);
     assert_eq!(ticked_level(&test).as_deref(), Some("confirm-writes"));
     assert_eq!(test.connector.calls().len(), 1, "a level that writes reconnected");
 }
@@ -485,7 +488,7 @@ fn the_header_icon_buttons_are_labelled() {
 
     // The tab overview's own header is libadwaita's, outside the
     // workspace's breakpoint bin.
-    let panes = test.workspace().imp().breakpoint_bin.get();
+    let panes = test.workspace().chrome().imp().breakpoint_bin.get();
     for root in [picker.upcast::<gtk4::Widget>(), panes.upcast()] {
         let headers = descendants(&root)
             .into_iter()

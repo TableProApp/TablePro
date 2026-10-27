@@ -743,7 +743,10 @@ mod tests {
     fn a_closed_tab_from_the_overview_is_freed() {
         let test = TestWindow::connected("OverviewTabFreed");
         let workspace = test.workspace();
-        let (view, overview) = (workspace.imp().tab_view.get(), workspace.imp().tab_overview.get());
+        let (view, overview) = (
+            workspace.chrome().imp().tab_view.get(),
+            workspace.chrome().imp().tab_overview.get(),
+        );
 
         overview_new_tab_button(&overview).emit_clicked();
         let page = view.selected_page().expect("the new-tab button made a page");
@@ -792,7 +795,7 @@ mod tests {
     #[gtk4::test]
     fn a_new_editor_tab_takes_the_focus_from_outside_the_tabs() {
         let test = TestWindow::connected("NewEditorFocus");
-        let button = test.workspace().imp().new_tab_button.get();
+        let button = test.workspace().chrome().imp().new_tab_button.get();
         button.grab_focus();
         assert!(button.is_focus(), "the header button holds the focus");
 
@@ -811,7 +814,7 @@ mod tests {
         wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab");
         WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
         wait_until(WAIT, || editors(&test.window).is_empty()).expect("the tab closes");
-        let button = test.workspace().imp().new_tab_button.get();
+        let button = test.workspace().chrome().imp().new_tab_button.get();
         button.grab_focus();
 
         WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
@@ -830,8 +833,8 @@ mod tests {
         }
         wait_until(WAIT, || editors(&test.window).len() == 2).expect("two editor tabs");
         let workspace = test.workspace();
-        let view = workspace.imp().tab_view.downgrade();
-        let overview = workspace.imp().tab_overview.downgrade();
+        let view = workspace.chrome().imp().tab_view.downgrade();
+        let overview = workspace.chrome().imp().tab_overview.downgrade();
         let pages: Vec<_> = editors(&test.window).iter().map(|editor| editor.downgrade()).collect();
         drop(workspace);
 
@@ -885,7 +888,7 @@ mod tests {
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
         test.wait_for_page("workspace");
         let workspace = test.workspace();
-        let view = workspace.imp().tab_view.get();
+        let view = workspace.chrome().imp().tab_view.get();
         wait_until(WAIT, || view.n_pages() == 3).expect("the saved tabs");
         let column_reads = || tablepro_test_support::CallCounters::get(&test.connection().counters().fetch_columns);
         let _ = wait_until(WAIT, || column_reads() > 0);

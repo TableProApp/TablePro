@@ -96,7 +96,7 @@ fn unsaved_marker_never_sets_needs_attention() {
     let (page, id) = new_table_tab(&workspace);
     WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
     wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab in front");
-    assert_ne!(workspace.imp().tab_view.selected_page().as_ref(), Some(&page));
+    assert_ne!(workspace.chrome().imp().tab_view.selected_page().as_ref(), Some(&page));
 
     edit_structure(&workspace, id, a_column_added());
     wait_until(WAIT, || modified(&page)).expect("the unsaved icon");
@@ -121,6 +121,7 @@ fn open_transaction_marks_editor_tab() {
 
     let page = test
         .workspace()
+        .chrome()
         .imp()
         .tab_view
         .selected_page()
@@ -137,7 +138,10 @@ fn another_tabs_open_transaction_is_bannered_until_its_tab_is_shown() {
         script.open_editor_session.always(FakeReply::ok(editor_session));
     });
     let workspace = test.workspace();
-    let (view, banner) = (workspace.imp().tab_view.get(), workspace.imp().transaction_banner.get());
+    let (view, banner) = (
+        workspace.chrome().imp().tab_view.get(),
+        workspace.imp().transaction_banner.get(),
+    );
 
     test.run_in_new_editor_tab();
     let owner = view.selected_page().expect("the editor's page");
@@ -191,7 +195,7 @@ fn restored_workspace_selects_saved_active_tab() {
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("workspace");
     let workspace = test.workspace();
-    wait_until(WAIT, || workspace.imp().tab_view.n_pages() == 2).expect("both tabs restored");
+    wait_until(WAIT, || workspace.chrome().imp().tab_view.n_pages() == 2).expect("both tabs restored");
 
     let selected = workspace
         .read(|model| {
@@ -234,9 +238,9 @@ fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("workspace");
     let workspace = test.workspace();
-    wait_until(WAIT, || workspace.imp().tab_view.n_pages() == 1).expect("the editor tab restored");
+    wait_until(WAIT, || workspace.chrome().imp().tab_view.n_pages() == 1).expect("the editor tab restored");
 
-    let page = workspace.imp().tab_view.nth_page(0);
+    let page = workspace.chrome().imp().tab_view.nth_page(0);
     let editor = editors(&test.window).pop().expect("the editor");
     assert_eq!(editor.file().and_then(|file| file.path()), Some(path.clone()));
     assert!(
@@ -262,7 +266,7 @@ fn window_title_follows_the_tab_in_front() {
         test.window.title().as_deref() == Some("Query 1 (Fake) - TablePro")
     })
     .expect("the tab's title");
-    let heading = test.workspace().imp().window_title.get();
+    let heading = test.workspace().chrome().imp().window_title.get();
     assert_eq!(heading.title(), "Query 1");
     assert_eq!(heading.subtitle(), "Fake");
 }
@@ -308,7 +312,7 @@ fn tabs_name_the_schema_once_the_session_has_two() {
 #[gtk4::test]
 fn a_new_editor_tab_takes_the_lowest_number_no_open_tab_has() {
     let test = TestWindow::connected("LowestFreeQueryNumber");
-    let view = test.workspace().imp().tab_view.get();
+    let view = test.workspace().chrome().imp().tab_view.get();
     let open = || {
         let before = editors(&test.window).len();
         WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");

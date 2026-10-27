@@ -875,6 +875,12 @@ impl Workspace {
         self.imp().shell.upgrade()
     }
 
+    /// The shell, as a test reaches the header bars and the tab view.
+    #[cfg(test)]
+    pub(crate) fn chrome(&self) -> WorkspaceShell {
+        self.shell().expect("a workspace the window holds is in its shell")
+    }
+
     /// The key the session is open under.
     pub(crate) fn key(&self) -> Option<SessionKey> {
         self.read(|model| model.key.clone())

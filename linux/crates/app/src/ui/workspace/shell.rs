@@ -58,6 +58,7 @@ pub(super) fn install(shell: &WorkspaceShell, services: &AppServices, input: &Wo
 pub(super) mod tests {
     use std::time::Duration;
 
+    use libadwaita as adw;
     use libadwaita::prelude::*;
 
     use super::*;
@@ -112,7 +113,8 @@ pub(super) mod tests {
     fn each_pane_owns_its_header_bar() {
         let test = TestWindow::connected("PaneHeaders");
         let workspace = test.workspace();
-        let imp = workspace.imp();
+        let shell = workspace.chrome();
+        let imp = shell.imp();
 
         let sidebar = top_header(&imp.sidebar_root).expect("the sidebar's header bar");
         let content = top_header(&imp.content_root).expect("the content's header bar");
@@ -145,13 +147,13 @@ pub(super) mod tests {
         let test = TestWindow::connected("OverviewRoot");
 
         let content = test.window.content().expect("the window's content");
-        let workspace = content.downcast::<Workspace>().expect("the workspace page");
-        let overview = workspace
+        let shell = content.downcast::<WorkspaceShell>().expect("the shell page");
+        let overview = shell
             .child()
             .and_downcast::<adw::TabOverview>()
-            .expect("the overview as the workspace's only child");
+            .expect("the overview as the shell's only child");
 
-        assert_eq!(overview.view(), Some(workspace.imp().tab_view.get()));
+        assert_eq!(overview.view(), Some(shell.imp().tab_view.get()));
         assert!(
             overview.child().is_some_and(|child| child.is::<adw::BreakpointBin>()),
             "the overview does not hold the header bars"
@@ -162,7 +164,8 @@ pub(super) mod tests {
     fn tab_bar_is_a_content_top_bar() {
         let test = TestWindow::connected("TabBarTop");
         let workspace = test.workspace();
-        let imp = workspace.imp();
+        let shell = workspace.chrome();
+        let imp = shell.imp();
 
         let bar = imp.tab_bar.get();
 
@@ -181,7 +184,7 @@ pub(super) mod tests {
     #[gtk4::test]
     fn show_sidebar_action_toggles_split_view() {
         let test = TestWindow::connected("ShowSidebar");
-        let split = test.workspace().imp().split_view.get();
+        let split = test.workspace().chrome().imp().split_view.get();
         assert!(split.shows_sidebar());
 
         WidgetExt::activate_action(&test.window, "win.show-sidebar", None).expect("win.show-sidebar");
@@ -195,7 +198,8 @@ pub(super) mod tests {
     fn sidebar_toggle_visible_only_when_collapsed_or_hidden() {
         let test = TestWindow::connected("SidebarToggle");
         let workspace = test.workspace();
-        let imp = workspace.imp();
+        let shell = workspace.chrome();
+        let imp = shell.imp();
         let (split, toggle) = (imp.split_view.get(), imp.sidebar_toggle.get());
         split.set_collapsed(false);
         split.set_show_sidebar(true);
@@ -214,7 +218,8 @@ pub(super) mod tests {
     fn narrow_window_swaps_tab_bar_for_tab_button() {
         let test = sized("Narrow", 360, 294);
         let workspace = test.workspace();
-        let imp = workspace.imp();
+        let shell = workspace.chrome();
+        let imp = shell.imp();
 
         wait_until(Duration::from_secs(2), || {
             imp.breakpoint_bin.current_breakpoint().as_ref() == Some(&imp.narrow_breakpoint.get())
@@ -230,7 +235,8 @@ pub(super) mod tests {
     fn wide_window_shows_tab_bar() {
         let test = sized("Wide", 1200, 760);
         let workspace = test.workspace();
-        let imp = workspace.imp();
+        let shell = workspace.chrome();
+        let imp = shell.imp();
         wait_until(Duration::from_secs(2), || {
             imp.breakpoint_bin.width() > 0 && imp.breakpoint_bin.current_breakpoint().is_none()
         })
@@ -397,12 +403,17 @@ pub(super) mod tests {
     fn overview_new_tab_uses_tab_factory() {
         let test = TestWindow::connected("OverviewNewTab");
         let workspace = test.workspace();
-        let overview = workspace.imp().tab_overview.get();
+        let overview = workspace.chrome().imp().tab_overview.get();
 
         // As the overview's own button emits it: create-tab hands back a
         // page it does not own, which emit_by_name would release.
         overview_new_tab_button(&overview).emit_clicked();
-        let page = workspace.imp().tab_view.selected_page().expect("the new tab's page");
+        let page = workspace
+            .chrome()
+            .imp()
+            .tab_view
+            .selected_page()
+            .expect("the new tab's page");
 
         let slot = workspace
             .read(|model| {

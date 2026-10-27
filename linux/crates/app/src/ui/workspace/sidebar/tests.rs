@@ -759,7 +759,7 @@ fn the_refresh_button_reads_the_tables_again() {
     });
     let workspace = test.workspace();
     wait_until(WAIT, || workspace.read(|model| model.sidebar.shown()) == Some(1)).expect("the table listed");
-    let button = workspace.imp().refresh_tables_button.get();
+    let button = workspace.chrome().imp().refresh_tables_button.get();
     assert_eq!(button.action_name().as_deref(), Some("win.refresh-tables"));
     crate::test_support::assert_labelled(&button).expect("the refresh button is named");
 

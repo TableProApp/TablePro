@@ -92,7 +92,12 @@ fn open_orders(test: &TestWindow) -> (Uuid, libadwaita::TabPage) {
         id.is_some()
     })
     .expect("the orders tab");
-    let page = workspace.imp().tab_view.selected_page().expect("the orders page");
+    let page = workspace
+        .chrome()
+        .imp()
+        .tab_view
+        .selected_page()
+        .expect("the orders page");
     (id.expect("the tab's id"), page)
 }
 
@@ -108,7 +113,7 @@ fn follow(test: &TestWindow, source: Uuid, reference: RowReference) {
 
 /// The table tab in front once it is not `source`.
 fn front_tab_other_than(test: &TestWindow, source: &libadwaita::TabPage) -> (libadwaita::TabPage, BrowseTab) {
-    let view = test.workspace().imp().tab_view.clone();
+    let view = test.workspace().chrome().imp().tab_view.clone();
     let mut front = None;
     wait_until(WAIT, || {
         front = view.selected_page().filter(|page| page != source);
@@ -124,7 +129,7 @@ fn front_tab_other_than(test: &TestWindow, source: &libadwaita::TabPage) -> (lib
 fn a_followed_key_opens_its_table_beside_the_tab_under_the_keys_filter() {
     let test = TestWindow::connected_with("FollowOpensBeside", serving_tables);
     let (source, source_page) = open_orders(&test);
-    let view = test.workspace().imp().tab_view.clone();
+    let view = test.workspace().chrome().imp().tab_view.clone();
     // Another tab at the end, so beside the source is not simply last.
     let pages = view.n_pages();
     test.workspace()
@@ -147,7 +152,7 @@ fn a_followed_key_opens_its_table_beside_the_tab_under_the_keys_filter() {
 fn the_same_rows_followed_again_show_the_tab_already_open() {
     let test = TestWindow::connected_with("FollowReveals", serving_tables);
     let (source, source_page) = open_orders(&test);
-    let view = test.workspace().imp().tab_view.clone();
+    let view = test.workspace().chrome().imp().tab_view.clone();
     follow(&test, source, customer("42"));
     let (opened, _) = front_tab_other_than(&test, &source_page);
     let pages = view.n_pages();
@@ -168,7 +173,7 @@ fn the_same_rows_followed_again_show_the_tab_already_open() {
 fn a_key_to_a_table_that_is_gone_says_so_and_opens_nothing() {
     let test = TestWindow::connected_with("FollowMissing", serving_tables);
     let (source, _) = open_orders(&test);
-    let view = test.workspace().imp().tab_view.clone();
+    let view = test.workspace().chrome().imp().tab_view.clone();
     let pages = view.n_pages();
     let overlay = test.workspace().toast_overlay();
 
@@ -215,11 +220,11 @@ fn a_followed_tab_keeps_its_filter_in_the_saved_tabs_and_through_a_reopen() {
         .collect();
     assert_eq!(kept, [Some(customer("42").filter)]);
 
-    workspace.imp().tab_view.set_selected_page(&page);
+    workspace.chrome().imp().tab_view.set_selected_page(&page);
     let input = workspace.input().expect("the workspace's input");
     input.deliver(WorkspaceInput::CloseActiveWorkspaceTab);
     wait_until(WAIT, || {
-        workspace.imp().tab_view.selected_page().as_ref() == Some(&source_page)
+        workspace.chrome().imp().tab_view.selected_page().as_ref() == Some(&source_page)
     })
     .expect("the tab closes back to its source");
     input.deliver(WorkspaceInput::ReopenClosedTab);

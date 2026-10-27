@@ -86,6 +86,7 @@ impl WorkspaceShell {
         imp.sidebar_slot.set_child(Some(tree.widget()));
         tree.follow_search(&imp.table_search);
         imp.tree.replace(Some(tree));
+        imp.window.set(Some(window));
         let app = window.application();
         let menu_button = primary_menu_button(app.as_ref());
         if let Some(menu) = app_menu(app.as_ref(), PRIMARY_MENU) {
@@ -276,11 +277,40 @@ impl WorkspaceShell {
         }
     }
 
-    /// Let go of the tree and what it watches, as the window goes.
+    /// Let go of the tree and what it watches, and take the shell's
+    /// actions off the window: `show-sidebar` holds the split view, and
+    /// with it every tab, for as long as the window has it.
     pub(crate) fn shutdown(&self) {
-        if let Some(tree) = self.imp().tree.take() {
+        let imp = self.imp();
+        if let Some(tree) = imp.tree.take() {
             tree.shutdown();
         }
+        if let Some(window) = imp.window.upgrade() {
+            window.remove_action(SHOW_SIDEBAR);
+            window.remove_action(SHOW_ASSISTANT);
+        }
+    }
+
+    /// The connections the tree marks as open.
+    #[cfg(test)]
+    pub(crate) fn tree_open_connections(&self) -> Vec<String> {
+        self.imp()
+            .tree
+            .borrow()
+            .as_ref()
+            .map(super::sidebar::ConnectionTree::open_connections)
+            .unwrap_or_default()
+    }
+
+    /// Each bound table row's name and what a screen reader says it is.
+    #[cfg(test)]
+    pub(crate) fn tree_row_descriptions(&self) -> Vec<(String, String)> {
+        self.imp()
+            .tree
+            .borrow()
+            .as_ref()
+            .map(super::sidebar::ConnectionTree::row_descriptions)
+            .unwrap_or_default()
     }
 
     /// Hold `workspace`'s banners, its branch of the tree and its

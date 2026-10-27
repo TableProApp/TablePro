@@ -126,14 +126,15 @@ fn a_key_value_session_lists_its_keys_with_their_types() {
 
     wait_until(WAIT, || shown(&workspace) == 3).expect("the keys listed");
 
-    let rows = workspace
-        .read(|model| model.sidebar.row_descriptions())
-        .unwrap_or_default();
+    let rows = || workspace.chrome().tree_row_descriptions();
+    wait_until(WAIT, || rows().len() == 3).expect("the keys' rows in the tree");
+    let rows = rows();
     assert!(rows.contains(&("user:1".to_owned(), "Hash".to_owned())), "{rows:?}");
     assert!(rows.contains(&("queue".to_owned(), "List".to_owned())), "{rows:?}");
-    let imp = workspace.imp();
+    let shell = workspace.chrome();
+    let imp = shell.imp();
     assert_eq!(imp.table_search.placeholder_text().as_deref(), Some("Filter keys…"));
-    assert!(!imp.key_limit_banner.is_revealed());
+    assert!(!workspace.imp().key_limit_banner.is_revealed());
     assert_eq!(imp.empty_page.title(), "Select a Key");
     assert_eq!(imp.empty_editor_button.label().as_deref(), Some("Open Editor"));
     assert_eq!(
@@ -154,13 +155,13 @@ fn a_search_asks_the_server_for_the_keys_that_match() {
     let workspace = test.workspace();
     wait_until(WAIT, || shown(&workspace) == 3).expect("the keys listed");
 
-    workspace.imp().table_search.set_text("user");
+    workspace.chrome().imp().table_search.set_text("user");
 
     wait_until(WAIT, || shown(&workspace) == 1).expect("the matching key");
     let patterns = test.connection().observed_sql("scan_keys");
     assert_eq!(patterns.last().cloned().flatten().as_deref(), Some("*user*"));
 
-    workspace.imp().table_search.set_text("");
+    workspace.chrome().imp().table_search.set_text("");
 
     wait_until(WAIT, || shown(&workspace) == 3).expect("every key again");
 }
@@ -190,7 +191,7 @@ fn a_key_opens_in_one_tab_that_reads_its_value() {
     wait_until(WAIT, || key_tabs(&workspace) == ["user:2"]).expect("the key's tab");
     open_key(&workspace, "user:2");
 
-    let view = workspace.imp().tab_view.get();
+    let view = workspace.chrome().imp().tab_view.get();
     wait_until(Duration::from_millis(300), || view.n_pages() == 2).expect_err("a second tab for the same key");
     assert_eq!(view.n_pages(), 1);
     assert_eq!(

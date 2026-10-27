@@ -92,6 +92,9 @@ struct SessionBranch {
     node: TreeNode,
     schemas: HashMap<String, (TreeNode, SchemaSlice)>,
     handler: Option<glib::SignalHandlerId>,
+    /// Whether the connection's row was opened once, which happens the
+    /// first time the row is in the tree. After that the user decides.
+    revealed: bool,
 }
 
 impl ConnectionTree {
@@ -203,11 +206,11 @@ impl ConnectionTree {
                 node: node.clone(),
                 schemas: HashMap::new(),
                 handler: Some(handler),
+                revealed: false,
             },
         );
         inner.rebuild_roots();
         inner.refresh_branch(key);
-        inner.set_expanded(&node, true);
     }
 
     /// The session under `key` closed: its row folds up and lists nothing.
@@ -233,6 +236,40 @@ impl ConnectionTree {
         if let Some(node) = self.inner.connections.borrow().get(key) {
             node.set_connecting(connecting);
         }
+    }
+
+    /// Each bound table row's name and what a screen reader says it is.
+    #[cfg(test)]
+    pub(crate) fn row_descriptions(&self) -> Vec<(String, String)> {
+        let mut found: Vec<(String, String)> = self
+            .inner
+            .bindings
+            .borrow()
+            .keys()
+            .filter_map(|item| {
+                let row = item.item().and_downcast::<gtk::TreeListRow>()?;
+                let object = row.item().and_downcast::<SidebarObject>()?;
+                let description = item.property::<Option<String>>("accessible-description")?;
+                Some((object.name(), description))
+            })
+            .collect();
+        found.sort();
+        found
+    }
+
+    /// The names of the connections the tree says are open.
+    #[cfg(test)]
+    pub(crate) fn open_connections(&self) -> Vec<String> {
+        let mut open: Vec<String> = self
+            .inner
+            .connections
+            .borrow()
+            .values()
+            .filter(|node| node.open())
+            .map(TreeNode::title)
+            .collect();
+        open.sort();
+        open
     }
 
     pub(crate) fn shutdown(&self) {
@@ -328,13 +365,12 @@ impl TreeInner {
         loose.sort_by(|left, right| left.0.cmp(&right.0));
         desired.extend(loose.into_iter().map(|(_, node)| node));
         let branches = self.branches.borrow();
+        // A file opened with no saved connection, or a connection open
+        // before the list was read or deleted since, still has its row.
         let mut files: Vec<(String, TreeNode)> = branches
             .iter()
-            .filter(|(key, _)| matches!(key, SessionKey::File(_)))
-            .map(|(key, branch)| {
-                kept.push(key.clone());
-                (branch.node.title().to_lowercase(), branch.node.clone())
-            })
+            .filter(|(key, _)| !kept.contains(key))
+            .map(|(_, branch)| (branch.node.title().to_lowercase(), branch.node.clone()))
             .collect();
         files.sort_by(|left, right| left.0.cmp(&right.0));
         desired.extend(files.into_iter().map(|(_, node)| node));
@@ -343,6 +379,27 @@ impl TreeInner {
         kept.extend(self.branches.borrow().keys().cloned());
         self.connections.borrow_mut().retain(|key, _| kept.contains(key));
         set_store(&self.roots, &desired);
+        self.reveal_branches();
+    }
+
+    /// Open the row of each session whose row was never opened, once the
+    /// row is in the tree.
+    fn reveal_branches(&self) {
+        let waiting: Vec<(SessionKey, TreeNode)> = self
+            .branches
+            .borrow()
+            .iter()
+            .filter(|(_, branch)| !branch.revealed)
+            .map(|(key, branch)| (key.clone(), branch.node.clone()))
+            .collect();
+        for (key, node) in waiting {
+            if let Some(row) = self.row_of(&node) {
+                row.set_expanded(true);
+                if let Some(branch) = self.branches.borrow_mut().get_mut(&key) {
+                    branch.revealed = true;
+                }
+            }
+        }
     }
 
     /// List the session's schemas again from its list, keeping the rows
@@ -354,6 +411,7 @@ impl TreeInner {
         };
         let list = branch.list.clone();
         let mut desired = Vec::new();
+        let mut born = Vec::new();
         let mut position = 0;
         let count = list.n_items();
         while position < count {
@@ -369,6 +427,7 @@ impl TreeInner {
                 .or_insert_with(|| {
                     let slice = SchemaSlice::new(&list);
                     let node = TreeNode::schema(&title, first.schema(), slice.clone().upcast());
+                    born.push(node.clone());
                     (node, slice)
                 })
                 .clone();
@@ -382,7 +441,11 @@ impl TreeInner {
             set_store(&store, &desired);
         }
         drop(branches);
-        if !self.query.borrow().is_empty() {
+        self.reveal_branches();
+        // A lone schema, as a file or a key-value engine has, opens as it
+        // comes: its row says nothing the connection's does not.
+        let lone = desired.len() == 1 && born.len() == 1;
+        if !self.query.borrow().is_empty() || lone {
             for node in desired {
                 self.set_expanded(&node, true);
             }
@@ -557,17 +620,36 @@ impl Drop for TreeInner {
     }
 }
 
-/// Make `store` hold `desired`, in order, changing it only when it holds
-/// something else, so open rows stay open.
+/// Make `store` hold `desired`, in order. Only what differs is taken out
+/// or put in, so the rows of the nodes that stay keep their place and
+/// stay open.
 fn set_store(store: &gio::ListStore, desired: &[TreeNode]) {
-    let same = store.n_items() as usize == desired.len()
-        && desired
-            .iter()
-            .enumerate()
-            .all(|(position, node)| store.item(position as u32).as_ref() == Some(node.upcast_ref::<glib::Object>()));
-    if !same {
-        store.splice(0, store.n_items(), desired);
+    let mut position: u32 = 0;
+    for node in desired {
+        // A node held here that is wanted nowhere goes first.
+        while let Some(held) = store.item(position).and_downcast::<TreeNode>() {
+            if &held == node || desired.contains(&held) {
+                break;
+            }
+            store.remove(position);
+        }
+        let held = store.item(position).and_downcast::<TreeNode>();
+        if held.as_ref() != Some(node) {
+            if let Some(at) = position_in(store, node, position + 1) {
+                store.remove(at);
+            }
+            store.insert(position, node);
+        }
+        position += 1;
     }
+    while store.n_items() > position {
+        store.remove(position);
+    }
+}
+
+/// Where `node` is in `store` at or after `from`.
+fn position_in(store: &gio::ListStore, node: &TreeNode, from: u32) -> Option<u32> {
+    (from..store.n_items()).find(|&at| store.item(at).as_ref() == Some(node.upcast_ref::<glib::Object>()))
 }
 
 fn connection_menu(node: &TreeNode) -> gio::Menu {
@@ -733,6 +815,9 @@ fn bind_row(view: &Weak<TreeInner>, item: &gtk::ListItem) {
     parts.icon.set_css_classes(&[]);
     parts.label.set_css_classes(&[]);
     parts.icon.set_visible(true);
+    if let Some(view) = view.upgrade() {
+        view.bindings.borrow_mut().insert(item.clone(), Vec::new());
+    }
     let Some(object) = row.item() else {
         return;
     };

@@ -632,7 +632,7 @@ mod tests {
     }
 
     fn has_toast(test: &TestWindow, text: &str) -> bool {
-        descendants(&test.workspace())
+        descendants(&test.workspace().chrome())
             .into_iter()
             .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
             .any(|label| label.label().contains(text))

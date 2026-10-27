@@ -233,7 +233,7 @@ mod tests {
         let handle = workspace.handle.clone();
         guards.connect_window(
             &*window,
-            move || Some(handle.clone()),
+            move || vec![handle.clone()],
             move |_| sink.set(sink.get() + 1),
         );
         (window, closes)
@@ -292,7 +292,7 @@ mod tests {
         let window = window();
         let closes = Rc::new(Cell::new(0));
         let sink = closes.clone();
-        guards.connect_window(&*window, || None, move |_| sink.set(sink.get() + 1));
+        guards.connect_window(&*window, Vec::new, move |_| sink.set(sink.get() + 1));
 
         window.close();
 

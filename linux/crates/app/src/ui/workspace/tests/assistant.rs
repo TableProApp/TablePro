@@ -18,7 +18,8 @@ fn assistant_enabled(test: &TestWindow) -> bool {
 fn with_no_provider_the_assistant_is_out_of_the_way() {
     let test = TestWindow::connected("AssistantOff");
     let workspace = test.workspace();
-    let imp = workspace.imp();
+    let shell = workspace.chrome();
+    let imp = shell.imp();
 
     assert!(!imp.assistant_toggle.is_visible());
     assert!(!assistant_enabled(&test));
@@ -29,7 +30,8 @@ fn with_no_provider_the_assistant_is_out_of_the_way() {
 fn choosing_a_provider_brings_the_toggle_and_the_key_shows_the_pane() {
     let test = TestWindow::connected("AssistantOn");
     let workspace = test.workspace();
-    let imp = workspace.imp();
+    let shell = workspace.chrome();
+    let imp = shell.imp();
 
     test.services
         .settings
@@ -54,7 +56,7 @@ fn choosing_a_provider_brings_the_toggle_and_the_key_shows_the_pane() {
 fn crossing_a_breakpoint_neither_opens_nor_closes_the_assistant() {
     let test = TestWindow::connected("AssistantPinned");
     let workspace = test.workspace();
-    let split = workspace.imp().assistant_split.get();
+    let split = workspace.chrome().imp().assistant_split.get();
     for collapsed in [true, false] {
         split.set_collapsed(collapsed);
         assert!(!split.shows_sidebar(), "the assistant opened unasked");
@@ -97,7 +99,7 @@ fn insert_goes_to_the_editor_in_front_or_a_new_one() {
         .expect("the editor in front");
     assert!(second.contains("-- ") && second.contains("SELECT 2;"), "{second}");
     assert_eq!(
-        workspace.imp().tab_view.n_pages(),
+        workspace.chrome().imp().tab_view.n_pages(),
         2,
         "a tab opened for code an editor could take"
     );

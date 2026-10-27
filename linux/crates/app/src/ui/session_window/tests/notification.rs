@@ -204,7 +204,7 @@ fn activating_tab_withdraws() {
     notified.run(&editor);
     notified.wait_for_sent(1);
 
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.workspace().chrome().imp().tab_view.get();
     view.set_selected_page(&view.nth_page(0));
 
     wait_until(WAIT, || notified.sink.withdrawn() == [notified.id(first)]).expect("the notification to go");
@@ -233,7 +233,7 @@ fn closing_a_tab_withdraws_its_notification() {
     notified.run(&editor);
     notified.wait_for_sent(1);
 
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.workspace().chrome().imp().tab_view.get();
     view.close_page(&view.nth_page(0));
 
     wait_until(WAIT, || notified.sink.withdrawn() == [notified.id(first)]).expect("the notification to go");
@@ -324,7 +324,7 @@ fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
     let notified = Notified::completing("NotifyPromptSave");
     let workspace = notified.test.workspace();
     let table = notified.open_table_tab("orders");
-    let view = workspace.imp().tab_view.get();
+    let view = workspace.chrome().imp().tab_view.get();
     let page = view.selected_page().expect("the table's page");
     let tracker = workspace.row_tracker(table).expect("the table's tracker");
     let _ = tracker.set_target(SaveTarget {
@@ -358,7 +358,7 @@ fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
 fn an_editor_tab_named_by_its_script_is_notified_by_its_number() {
     let notified = Notified::completing("NotifyScriptTab");
     let (first, editor) = notified.open_editor_tab();
-    let view = notified.test.workspace().imp().tab_view.get();
+    let view = notified.test.workspace().chrome().imp().tab_view.get();
     let page = view.selected_page().expect("the editor's page");
     notified.open_editor_tab();
 

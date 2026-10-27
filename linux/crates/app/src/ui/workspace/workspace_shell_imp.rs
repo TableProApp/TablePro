@@ -91,6 +91,8 @@ pub struct WorkspaceShell {
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
     pub(super) tree: RefCell<Option<super::sidebar::ConnectionTree>>,
+    /// The window the shell added its actions to.
+    pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
     /// The tab page whose menu is open: the view names it only then.
     pub(super) menu_target: RefCell<Option<adw::TabPage>>,
 }
