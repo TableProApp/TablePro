@@ -14,9 +14,13 @@ import TableProPluginKit
 /// bindings are re-driven during an animated outline diff. That is the same Apple bug the
 /// connection sidebar's database tree hit, and the same answer: `NSOutlineView`, which also gives
 /// genuinely lazy children for a database holding thousands of objects.
+///
+/// Option columns are real table columns, so each heading sits over its checkboxes whatever the
+/// scroller style.
 internal struct ExportObjectTreeView: NSViewRepresentable {
     @Binding internal var databaseItems: [ExportDatabaseItem]
     internal let formatId: String
+    internal let options: ExportOptionLayout
     internal let databaseType: DatabaseType
 
     /// Reads one object's column names for the row-scope popover. Supplied by the dialog, which is
@@ -34,6 +38,9 @@ internal struct ExportObjectTreeView: NSViewRepresentable {
         let outlineView = CheckboxOutlineView()
         outlineView.headerView = nil
         outlineView.style = .plain
+        outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        outlineView.intercellSpacing = NSSize(width: 4, height: 0)
+        outlineView.allowsColumnReordering = false
         outlineView.rowSizeStyle = .custom
         outlineView.rowHeight = 24
         outlineView.allowsMultipleSelection = true
@@ -48,7 +55,8 @@ internal struct ExportObjectTreeView: NSViewRepresentable {
         }
         outlineView.setAccessibilityLabel(String(localized: "Objects to export"))
 
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ExportObjectColumn"))
+        let column = NSTableColumn(identifier: ExportObjectTreeCoordinator.nameColumn)
+        column.title = String(localized: "Name")
         column.resizingMask = .autoresizingMask
         outlineView.addTableColumn(column)
         outlineView.outlineTableColumn = column
@@ -71,8 +79,14 @@ internal struct ExportObjectTreeView: NSViewRepresentable {
     }
 }
 
+fileprivate extension NSUserInterfaceItemIdentifier {
+    static let exportOptionCell = NSUserInterfaceItemIdentifier("ExportOptionCell")
+}
+
 @MainActor
 internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    internal static let nameColumn = NSUserInterfaceItemIdentifier("ExportObjectColumn")
+
     internal var owner: ExportObjectTreeView
 
     private weak var outlineView: NSOutlineView?
@@ -105,6 +119,9 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         let formatChanged = formatId != self.formatId
         self.databases = databases
         self.formatId = formatId
+        if formatChanged {
+            syncOptionColumns()
+        }
 
         guard fingerprint != shapeFingerprint else {
             guard formatChanged else {
@@ -135,7 +152,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         guard let identities = pendingReloadIdentities else {
             let rows = IndexSet(integersIn: 0 ..< outlineView.numberOfRows)
             guard !rows.isEmpty else { return }
-            outlineView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+            outlineView.reloadData(forRowIndexes: rows, columnIndexes: allColumns(of: outlineView))
             return
         }
         pendingReloadIdentities = nil
@@ -147,7 +164,41 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             rows.insert(row)
         }
         guard !rows.isEmpty else { return }
-        outlineView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+        outlineView.reloadData(forRowIndexes: rows, columnIndexes: allColumns(of: outlineView))
+    }
+
+    private func allColumns(of outlineView: NSOutlineView) -> IndexSet {
+        IndexSet(integersIn: 0 ..< outlineView.numberOfColumns)
+    }
+
+    // As wide as the plugin asks or the translated heading needs.
+    private func syncOptionColumns() {
+        guard let outlineView else { return }
+        for column in outlineView.tableColumns where column.identifier != Self.nameColumn {
+            outlineView.removeTableColumn(column)
+        }
+        let options = owner.options.columns
+        outlineView.headerView = options.isEmpty ? nil : NSTableHeaderView()
+        for (index, option) in options.enumerated() {
+            let column = NSTableColumn(
+                identifier: NSUserInterfaceItemIdentifier("ExportOptionColumn.\(index).\(option.id)")
+            )
+            column.title = option.label
+            column.headerCell.alignment = NSTextAlignment.center
+            let width = max(option.width, ceil(column.headerCell.cellSize.width) + 8)
+            column.width = width
+            column.minWidth = width
+            column.maxWidth = width
+            column.resizingMask = []
+            outlineView.addTableColumn(column)
+        }
+    }
+
+    private func optionIndex(of tableColumn: NSTableColumn?) -> Int? {
+        guard let tableColumn else { return nil }
+        let parts = tableColumn.identifier.rawValue.split(separator: ".")
+        guard parts.count >= 2, parts[0] == "ExportOptionColumn", let index = Int(parts[1]) else { return nil }
+        return owner.options.columns.indices.contains(index) ? index : nil
     }
 
     /// What the builder opened, read once per container when the tree first meets it, so a reload
@@ -238,22 +289,34 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         return false
     }
 
-    /// Space toggles every selected row, which is what the checkbox in each of them does on a
-    /// click. A container row toggles everything beneath it, exactly as clicking its checkbox does.
+    // One direction for every row: on unless every target is already checked.
     internal func toggleSelectedRows() {
         guard let outlineView else { return }
-        let nodes = outlineView.selectedRowIndexes.compactMap {
+        let selected = outlineView.selectedRowIndexes.compactMap {
             outlineView.item(atRow: $0) as? ExportOutlineNode
         }
-        guard !nodes.isEmpty else { return }
-        for node in nodes {
+        // The rows a click could change, minus any row under another of them: toggling both flipped it back.
+        let actionable = selected.filter { node in
+            if case .pending = node.kind { return false }
+            return selectionIsEnabled(for: node)
+        }
+        let identities = Set(actionable.map(\.identity))
+        let targets = actionable.filter { node in
+            var parent = outlineView.parent(forItem: node) as? ExportOutlineNode
+            while let ancestor = parent {
+                if identities.contains(ancestor.identity) { return false }
+                parent = outlineView.parent(forItem: ancestor) as? ExportOutlineNode
+            }
+            return true
+        }
+        guard !targets.isEmpty else { return }
+        let turningOn = targets.contains { selectionState(for: $0) != .checked }
+        for node in targets {
             switch node.kind {
             case .database, .group:
-                toggleContainer(node)
+                setContainer(node, selected: turningOn)
             case .object(let databaseID, let objectID):
-                let isSelected = databases.first(where: { $0.id == databaseID })?
-                    .objects.first(where: { $0.id == objectID })?.isSelected ?? false
-                setSelection(!isSelected, databaseID: databaseID, objectID: objectID)
+                setSelection(turningOn, databaseID: databaseID, objectID: objectID)
             case .pending:
                 continue
             }
@@ -279,6 +342,9 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         item: Any
     ) -> NSView? {
         guard let node = item as? ExportOutlineNode else { return nil }
+        if let index = optionIndex(of: tableColumn) {
+            return optionCell(column: index, node: node, in: outlineView)
+        }
         let identifier = NSUserInterfaceItemIdentifier("ExportObjectRow")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? HostingTableCellView
             ?? HostingTableCellView(identifier: identifier)
@@ -308,6 +374,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
                     state: containerState(for: node),
                     toggle: { [weak self] in self?.toggleContainer(node) }
                 )
+                .disabled(!selectionIsEnabled(for: node))
             )
         case .group(_, let objectKind):
             return AnyView(
@@ -318,6 +385,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
                     state: containerState(for: node),
                     toggle: { [weak self] in self?.toggleContainer(node) }
                 )
+                .disabled(!selectionIsEnabled(for: node))
             )
         case .object(let databaseID, let objectID):
             guard let databaseIndex = databases.firstIndex(where: { $0.id == databaseID }),
@@ -329,14 +397,9 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
             return AnyView(
                 ExportTreeObjectRow(
                     object: object,
-                    offersRowScope: object.offersRowScope(on: owner.databaseType) && formatReadsRows,
-                    optionColumns: optionColumns,
-                    supportsOption: supportsOption,
-                    setSelected: { [weak self] isSelected in
-                        self?.setSelection(isSelected, databaseID: databaseID, objectID: objectID)
-                    },
-                    setOption: { [weak self] index, value in
-                        self?.setOption(index, to: value, databaseID: databaseID, objectID: objectID)
+                    offersRowScope: object.offersRowScope(on: owner.databaseType) && owner.options.readsRows,
+                    toggle: { [weak self] in
+                        self?.toggleObject(databaseID: databaseID, objectID: objectID)
                     },
                     setRowScope: { [weak self] scope in
                         self?.setRowScope(scope, databaseID: databaseID, objectID: objectID)
@@ -359,30 +422,6 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     }
 
     // MARK: - Selection
-
-    private var plugin: (any ExportFormatPlugin)? {
-        PluginManager.shared.exportPlugin(forFormat: formatId)
-    }
-
-    // A format that writes structure alone ignores a row scope, so it offers none.
-    private var formatReadsRows: Bool {
-        plugin.map { !ExportFormatCatalog.writesStructureOnly($0) } ?? true
-    }
-
-    private var optionColumns: [PluginExportOptionColumn] {
-        guard let plugin else { return [] }
-        return type(of: plugin).perTableOptionColumns
-    }
-
-    private var defaultOptionValues: [Bool] {
-        plugin?.defaultTableOptionValues() ?? []
-    }
-
-    private var supportsOption: (String, PluginExportObjectKind) -> Bool {
-        guard let plugin else { return { _, _ in true } }
-        let pluginType = type(of: plugin)
-        return { columnId, kind in pluginType.supportsOption(columnId: columnId, for: kind) }
-    }
 
     private func objects(under node: ExportOutlineNode) -> [ExportObjectItem] {
         switch node.kind {
@@ -408,8 +447,21 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         return database
     }
 
-    private func containerState(for node: ExportOutlineNode) -> TristateCheckbox.State {
+    // An object a column checkbox turned all off stays out of a tick, or click order would decide the dump.
+    private func selectableObjects(under node: ExportOutlineNode) -> [ExportObjectItem] {
+        objects(under: node).filter(owner.options.writesSomething)
+    }
+
+    // A container where every loaded object writes nothing and no unread kind can arrive: a tick would
+    // select nothing. An object row stays enabled, since ticking it restores the format's defaults.
+    internal func selectionIsEnabled(for node: ExportOutlineNode) -> Bool {
+        if case .object = node.kind { return true }
         let items = objects(under: node)
+        return items.isEmpty || unloadedDatabase(at: node) != nil || items.contains(where: owner.options.writesSomething)
+    }
+
+    internal func containerState(for node: ExportOutlineNode) -> TristateCheckbox.State {
+        let items = selectableObjects(under: node)
         guard !items.isEmpty else {
             return unloadedDatabase(at: node)?.selectsLoadedObjects == true ? .checked : .unchecked
         }
@@ -418,14 +470,24 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         return selected == items.count ? .checked : .mixed
     }
 
+    private func selectionState(for node: ExportOutlineNode) -> TristateCheckbox.State {
+        guard case .object(let databaseID, let objectID) = node.kind else { return containerState(for: node) }
+        return object(databaseID: databaseID, objectID: objectID)?.isSelected == true ? .checked : .unchecked
+    }
+
+    private func object(databaseID: UUID, objectID: UUID) -> ExportObjectItem? {
+        databases.first(where: { $0.id == databaseID })?.objects.first(where: { $0.id == objectID })
+    }
+
+    private func toggleContainer(_ node: ExportOutlineNode) {
+        setContainer(node, selected: containerState(for: node) != .checked)
+    }
+
     /// Ticking a container whose kinds are not all read yet also asks for them, and they arrive
     /// selected unless something in it is unticked first.
-    private func toggleContainer(_ node: ExportOutlineNode) {
-        let items = objects(under: node)
+    private func setContainer(_ node: ExportOutlineNode, selected turningOn: Bool) {
+        let items = turningOn ? selectableObjects(under: node) : objects(under: node)
         let unloaded = unloadedDatabase(at: node)
-        let turningOn = items.isEmpty
-            ? !(unloaded?.selectsLoadedObjects ?? true)
-            : items.contains { !$0.isSelected }
         let ids = Set(items.map(\.id))
         var reloading: Set<String> = []
         if let unloaded { reloading.insert("db:\(unloaded.id.uuidString)") }
@@ -447,6 +509,95 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
         normalizeOptions(for: ids)
     }
 
+    internal func toggleObject(databaseID: UUID, objectID: UUID) {
+        guard let object = object(databaseID: databaseID, objectID: objectID) else { return }
+        setSelection(!object.isSelected, databaseID: databaseID, objectID: objectID)
+    }
+
+    // MARK: - Option columns
+
+    private func optionCell(column index: Int, node: ExportOutlineNode, in outlineView: NSOutlineView) -> NSView? {
+        let label = owner.options.columns[index].label
+        let state: NSControl.StateValue
+        let isEnabled: Bool
+        let title: String
+        let action: () -> Void
+        switch node.kind {
+        case .database, .group:
+            guard let containerState = optionState(ofColumn: index, under: node) else { return nil }
+            state = containerState
+            isEnabled = true
+            title = containerTitle(of: node)
+            action = { [weak self] in self?.toggleOption(index, under: node) }
+        case .object(let databaseID, let objectID):
+            guard let object = object(databaseID: databaseID, objectID: objectID),
+                  owner.options.supports(columnAt: index, kind: object.kind)
+            else { return nil }
+            let isOn = object.optionValues[safe: index] ?? owner.options.columns[index].defaultValue
+            state = isOn ? .on : .off
+            isEnabled = object.isSelected
+            title = object.name
+            action = { [weak self] in
+                self?.setOption(index, to: !isOn, databaseID: databaseID, objectID: objectID)
+            }
+        case .pending:
+            return nil
+        }
+        let cell = outlineView.makeView(withIdentifier: .exportOptionCell, owner: self) as? CheckboxTableCellView
+            ?? CheckboxTableCellView(identifier: .exportOptionCell)
+        cell.configure(
+            state: state,
+            isEnabled: isEnabled,
+            accessibilityLabel: String(format: String(localized: "%1$@ for %2$@"), label, title),
+            action: action
+        )
+        return cell
+    }
+
+    private func containerTitle(of node: ExportOutlineNode) -> String {
+        switch node.kind {
+        case .database(let databaseID):
+            return databases.first(where: { $0.id == databaseID })?.name ?? ""
+        case .group(_, let objectKind):
+            return ExportObjectKindPresentation.groupTitle(for: objectKind)
+        case .object, .pending:
+            return ""
+        }
+    }
+
+    private func optionValues(ofColumn index: Int, under node: ExportOutlineNode) -> [Bool] {
+        let unloaded = unloadedDatabase(at: node)
+        return owner.options.values(
+            ofColumn: index,
+            in: objects(under: node),
+            unloadedKinds: unloaded?.unloadedKinds ?? [],
+            arriving: unloaded?.arrivingOptionValues ?? [:]
+        )
+    }
+
+    internal func optionState(ofColumn index: Int, under node: ExportOutlineNode) -> NSControl.StateValue? {
+        let values = optionValues(ofColumn: index, under: node)
+        guard !values.isEmpty else { return nil }
+        if values.allSatisfy({ $0 }) { return .on }
+        return values.contains(true) ? .mixed : .off
+    }
+
+    // Never selects: on a container with nothing ticked it sets what each object carries once ticked.
+    internal func toggleOption(_ index: Int, under node: ExportOutlineNode) {
+        guard let state = optionState(ofColumn: index, under: node) else { return }
+        let turningOn = state != .on
+        let options = owner.options
+        let ids = Set(objects(under: node).filter { options.supports(columnAt: index, kind: $0.kind) }.map(\.id))
+        let unloaded = unloadedDatabase(at: node).flatMap { database in
+            database.unloadedKinds.contains { options.supports(columnAt: index, kind: $0) } ? database : nil
+        }
+        var reloading: Set<String> = []
+        if let unloaded { reloading.insert("db:\(unloaded.id.uuidString)") }
+        mutateDatabases(touching: ids, reloading: reloading) { databases in
+            databases = databases.settingOption(index, to: turningOn, objectIDs: ids, arrivingIn: unloaded?.id)
+        }
+    }
+
     private func setSelection(_ isSelected: Bool, databaseID: UUID, objectID: UUID) {
         mutateDatabases(touching: [objectID]) { databases in
             guard let databaseIndex = databases.firstIndex(where: { $0.id == databaseID }),
@@ -461,10 +612,10 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
     /// A row selected with every one of its options off would be counted as selected and export
     /// nothing, so selecting it restores the format's defaults for the kinds that support them.
     private func normalizeOptions(for ids: Set<UUID>) {
-        let columns = optionColumns
+        let columns = owner.options.columns
         guard !columns.isEmpty else { return }
-        let defaults = defaultOptionValues
-        let supports = supportsOption
+        let defaults = owner.options.defaultValues
+        let supports = owner.options.supports
         mutateDatabases(touching: ids) { databases in
             for databaseIndex in databases.indices {
                 for objectIndex in databases[databaseIndex].objects.indices
@@ -483,13 +634,7 @@ internal final class ExportObjectTreeCoordinator: NSObject, NSOutlineViewDataSou
 
     private func setOption(_ index: Int, to value: Bool, databaseID: UUID, objectID: UUID) {
         mutateDatabases(touching: [objectID]) { databases in
-            guard let databaseIndex = databases.firstIndex(where: { $0.id == databaseID }),
-                  let objectIndex = databases[databaseIndex].objects.firstIndex(where: { $0.id == objectID }),
-                  databases[databaseIndex].objects[objectIndex].optionValues.indices.contains(index)
-            else { return }
-            databases[databaseIndex].objects[objectIndex].optionValues[index] = value
-            databases[databaseIndex].objects[objectIndex].isSelected =
-                databases[databaseIndex].objects[objectIndex].optionValues.contains(true)
+            databases = databases.settingOption(index, to: value, objectIDs: [objectID])
         }
     }
 

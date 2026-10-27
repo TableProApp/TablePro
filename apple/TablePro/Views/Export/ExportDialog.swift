@@ -30,6 +30,7 @@ struct ExportDialog: View {
     /// Which object kinds the last load actually read, so a format switch knows whether the tree it
     /// already holds can answer for the new format without another round trip.
     @State private var loadedObjectKinds: Set<PluginExportObjectKind> = []
+    @State private var formatReconciliation: Task<Void, Never>?
 
     /// Bumped each time a reload replaces the tree, so a container read started against the old
     /// tree cannot land in the new one.
@@ -159,10 +160,6 @@ struct ExportDialog: View {
                 restoreSettingsSnapshot()
             }
         }
-        .onChange(of: config.formatId) { _ in
-            resetOptionValues()
-            Task { await reconcileObjectKindsForFormat() }
-        }
         .onExitCommand {
             if !isExporting {
                 isPresented = false
@@ -238,7 +235,7 @@ struct ExportDialog: View {
             get: { config.formatId },
             set: { newValue in
                 guard let format = formatsToOffer.first(where: { Self.offerTag(for: $0) == newValue }) else {
-                    config.formatId = newValue
+                    selectFormat(newValue)
                     return
                 }
                 Task { await installOfferedFormat(format) }
@@ -254,16 +251,30 @@ struct ExportDialog: View {
         if let settable = plugin as? any SettablePluginDiscoverable {
             settingsSnapshot?.include(settable)
         }
-        config.formatId = format.formatId
+        selectFormat(format.formatId)
     }
 
-    private var currentOptionColumnCount: Int {
-        guard let plugin = currentPlugin else { return 0 }
-        return type(of: plugin).perTableOptionColumns.count
+    // One path for every format change, so a profile can wait for the reset and reload instead of racing it.
+    @discardableResult
+    private func selectFormat(_ formatId: String) -> Task<Void, Never>? {
+        guard formatId != config.formatId else { return formatReconciliation }
+        config.formatId = formatId
+        resetOptionValues()
+        let reconciliation = Task { await reconcileObjectKindsForFormat() }
+        formatReconciliation = reconciliation
+        return reconciliation
     }
 
-    private var currentDefaultOptionValues: [Bool] {
-        currentPlugin?.defaultTableOptionValues() ?? []
+    private var optionLayout: ExportOptionLayout {
+        guard let plugin = currentPlugin else { return .none }
+        let pluginType = type(of: plugin)
+        return ExportOptionLayout(
+            columns: pluginType.perTableOptionColumns,
+            defaultValues: plugin.defaultTableOptionValues(),
+            readsRows: !ExportFormatCatalog.writesStructureOnly(plugin)
+        ) { columnId, kind in
+            pluginType.supportsOption(columnId: columnId, for: kind)
+        }
     }
 
     // MARK: - Layout Constants
@@ -293,15 +304,6 @@ struct ExportDialog: View {
                 profileMenu
 
                 Spacer()
-
-                if let plugin = currentPlugin {
-                    ForEach(type(of: plugin).perTableOptionColumns) { column in
-                        Text(column.label)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: column.width, alignment: .center)
-                    }
-                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -336,6 +338,7 @@ struct ExportDialog: View {
                 ExportObjectTreeView(
                     databaseItems: $databaseItems,
                     formatId: config.formatId,
+                    options: optionLayout,
                     databaseType: databaseType,
                     loadColumns: { await columnNames(for: $0) },
                     onNeedsObjects: { databaseID in
@@ -418,18 +421,19 @@ struct ExportDialog: View {
     private func applyProfile(_ profile: ExportProfile) async {
         profileApplication &+= 1
         let application = profileApplication
+        let reconcile = availableFormatIds.contains(profile.formatId)
+            ? selectFormat(profile.formatId)
+            : formatReconciliation
+        let formatId = config.formatId
+        await reconcile?.value
         let named = Set(profile.entries.map(\.container))
         for item in databaseItems where item.hasUnloadedObjects && named.contains(item.name) {
+            guard application == profileApplication else { return }
             await loadUnloadedObjects(databaseID: item.id)
         }
-        // A profile picked while this one waited for its reads is the user's latest choice.
-        guard application == profileApplication else { return }
-        if availableFormatIds.contains(profile.formatId) {
-            config.formatId = profile.formatId
-        }
-        databaseItems = normalizedForCurrentFormat(
-            ExportProfileStorage.apply(profile, to: databaseItems)
-                .clearingRowScopes(unavailableOn: databaseType))
+        // A profile or a format picked while this one waited for its reads is the user's latest choice.
+        guard application == profileApplication, formatId == config.formatId else { return }
+        databaseItems = databaseItems.applyingProfile(profile, layout: optionLayout, databaseType: databaseType)
     }
 
     private func saveProfile() {
@@ -653,33 +657,24 @@ struct ExportDialog: View {
     @MainActor
     private func reconcileObjectKindsForFormat() async {
         guard case .tables(let connection, _) = mode else { return }
-        let wanted = supportedObjectKinds
-        guard !loadedObjectKinds.isEmpty else { return }
-        guard wanted.isSubset(of: loadedObjectKinds) else {
-            await loadDatabaseItems(of: connection)
+        switch ExportKindReconciliation.next(loadedKinds: loadedObjectKinds, wanted: supportedObjectKinds) {
+        case .unchanged:
             return
+        case .narrowed(let kinds):
+            databaseItems = databaseItems.narrowed(to: kinds)
+            loadedObjectKinds = kinds
+        case .reload:
+            await loadDatabaseItems(of: connection)
         }
-        databaseItems = databaseItems.narrowed(to: wanted)
     }
 
     private func resetOptionValues() {
         databaseItems = normalizedForCurrentFormat(
-            databaseItems.resettingOptionValues(to: currentDefaultOptionValues))
+            databaseItems.resettingOptionValues(to: optionLayout.defaultValues))
     }
 
-    /// Aligns every row's option values with the chosen format's columns and clears the ones the
-    /// row's kind does not support, so a routine never carries a `Data` flag that would count it as
-    /// exportable for a phase it has no rows for.
     private func normalizedForCurrentFormat(_ items: [ExportDatabaseItem]) -> [ExportDatabaseItem] {
-        let normalized = items.normalizingOptionValues(
-            optionColumnCount: currentOptionColumnCount,
-            defaultOptionValues: currentDefaultOptionValues
-        )
-        guard let plugin = currentPlugin else { return normalized }
-        let pluginType = type(of: plugin)
-        return normalized.maskingUnsupportedOptions(columns: pluginType.perTableOptionColumns) { columnId, kind in
-            pluginType.supportsOption(columnId: columnId, for: kind)
-        }
+        items.normalized(for: optionLayout)
     }
 
     // MARK: - Actions
@@ -769,13 +764,18 @@ struct ExportDialog: View {
     @MainActor
     private func loadDatabaseItems(of connection: DatabaseConnection) async {
         let priorRows = ExportTreeBuilder.snapshots(of: databaseItems)
+        let kinds = supportedObjectKinds
         do {
             let items = try await treeBuilder(for: connection).build(priorRows: priorRows)
-            loadedObjectKinds = supportedObjectKinds
+            loadedObjectKinds = kinds
             treeGeneration += 1
             databaseItems = normalizedForCurrentFormat(items.adoptingIdentities(of: databaseItems))
             isLoading = false
             applyDefaultFileName(for: connection)
+            // The format changed while this read ran, and its reconcile had no tree to work on yet.
+            if kinds != supportedObjectKinds {
+                await reconcileObjectKindsForFormat()
+            }
         } catch is CancellationError {
             isLoading = false
         } catch {
@@ -845,12 +845,11 @@ struct ExportDialog: View {
         guard generation == treeGeneration,
               let index = databaseItems.firstIndex(where: { $0.id == databaseID })
         else { return }
-        let merged = databaseItems[index].mergingLoadedObjects(loaded)
-        guard !merged.objects.isEmpty, let normalized = normalizedForCurrentFormat([merged]).first else {
+        guard let merged = databaseItems[index].mergingLoadedObjects(loaded, layout: optionLayout) else {
             databaseItems.remove(at: index)
             return
         }
-        databaseItems[index] = normalized
+        databaseItems[index] = merged
     }
 
     private func applyDefaultFileName(for connection: DatabaseConnection) {

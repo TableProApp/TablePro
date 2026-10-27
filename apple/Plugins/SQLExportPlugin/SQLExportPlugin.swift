@@ -20,9 +20,10 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     static let excludedDatabaseTypeIds = ["MongoDB", "Redis"]
 
     static let perTableOptionColumns: [PluginExportOptionColumn] = [
-        PluginExportOptionColumn(id: "structure", label: "Structure", width: 56),
+        PluginExportOptionColumn(id: "structure", label: String(localized: "Structure", bundle: .main), width: 56),
+        // The DROP statement, left untranslated: the catalog's "Drop" is the verb that deletes a table.
         PluginExportOptionColumn(id: "drop", label: "Drop", width: 44),
-        PluginExportOptionColumn(id: "data", label: "Data", width: 44)
+        PluginExportOptionColumn(id: "data", label: String(localized: "Data", bundle: .main), width: 44)
     ]
 
     static let supportedObjectKinds: [PluginExportObjectKind] = [

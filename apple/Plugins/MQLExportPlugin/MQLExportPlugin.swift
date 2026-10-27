@@ -19,9 +19,10 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
     static let supportedDatabaseTypeIds = ["MongoDB"]
 
     static let perTableOptionColumns: [PluginExportOptionColumn] = [
+        // The DROP statement, left untranslated: the catalog's "Drop" is the verb that deletes a table.
         PluginExportOptionColumn(id: "drop", label: "Drop", width: 44),
-        PluginExportOptionColumn(id: "indexes", label: "Indexes", width: 44),
-        PluginExportOptionColumn(id: "data", label: "Data", width: 44)
+        PluginExportOptionColumn(id: "indexes", label: String(localized: "Indexes", bundle: .main), width: 44),
+        PluginExportOptionColumn(id: "data", label: String(localized: "Data", bundle: .main), width: 44)
     ]
 
     typealias Settings = MQLExportOptions
@@ -39,6 +40,11 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
     func isTableExportable(optionValues: [Bool]) -> Bool {
         optionValues.contains(true)
+    }
+
+    // Without it, Data off still counts every collection's rows and the progress sits at 0 of N.
+    func readsRows(optionValues: [Bool], kind: PluginExportObjectKind) -> Bool {
+        optionValues.count <= 2 || optionValues[2]
     }
 
     @MainActor
