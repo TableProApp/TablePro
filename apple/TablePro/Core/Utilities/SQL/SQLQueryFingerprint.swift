@@ -69,11 +69,6 @@ enum SQLQueryFingerprint {
             case .comment, .whitespace, .directive:
                 continue
 
-            case .placeholder where token.value.hasPrefix("@@"):
-                // A system variable names a setting; it is not a value, so `@@version` and `@@sql_mode` stay apart.
-                parts.append(Part(token.value))
-                previousWasLiteral = false
-
             case .number, .placeholder:
                 appendLiteral(to: &parts, previousWasLiteral: &previousWasLiteral)
 

@@ -35,6 +35,9 @@ struct SQLToken: Equatable {
 
 // Comments, literals, quoted identifiers and batch lines end where the engine's grammar says (`SQLNonCodeSpan`), so a
 // formatted query keeps every one of them byte for byte. Only code between them is split into words and operators.
+//
+// Without a grammar the text is read exactly as before the formatter read grammars, because the query fingerprint is
+// the one caller and its hashes are stored: a different reading would split or merge history groups after an upgrade.
 struct SQLTokenizer {
     private static let standardKeywords: Set<String> = [
         // DML
@@ -73,8 +76,11 @@ struct SQLTokenizer {
         "RETURNING", "CONFLICT", "DO", "NOTHING",
         "EXPLAIN", "ANALYZE", "TRUNCATE",
         "GRANT", "REVOKE", "DENY",
-        "TOP", "PERCENT", "APPLY",
+        "TOP", "PERCENT",
     ]
+
+    // Keywords a grammar reading adds, which the fingerprint's reading does not know.
+    private static let grammarKeywords: Set<String> = ["APPLY"]
 
     // No engine reads one of these as two valid operators, so a run written together stays together whatever the
     // dialect declares: T-SQL's `+=`, SQLite's `==`, Oracle's `^=` and `**`, DuckDB's `//`. `<@` is not here: T-SQL
@@ -82,12 +88,6 @@ struct SQLTokenizer {
     private static let commonOperators: Set<String> = [
         ">=", "<=", "<>", "!=", "!<", "!>", "||", "::", "->", "->>", ":=", "=>", "<=>", "&&", "<<", ">>",
         "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "~=", "==", "**", "//",
-    ]
-
-    // How text reads with no engine at hand: a backslash escapes in every quote, `--` and flat `/* */` are the only
-    // comments, and a backtick quotes a name.
-    static let grammarFreeReading: SQLLexicalGrammar = [
-        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks, .backtickQuotes,
     ]
 
     private let dialectKeywords: Set<String>
@@ -106,15 +106,12 @@ struct SQLTokenizer {
         self.operatorsByFirstUnit = byFirst.mapValues { $0.sorted { $0.utf16.count > $1.utf16.count } }
     }
 
-    // With no engine at hand no word is a literal prefix, so `N'a'` stays a word and a string, as the query fingerprint
-    // has always read it, and `SELECT b'alias'` keeps its column.
     func tokenize(_ sql: String) -> [SQLToken] {
-        var lexer = Lexer(text: sql as NSString, grammar: Self.grammarFreeReading, tokenizer: self, readsLiteralPrefixes: false)
-        return lexer.run()
+        readsWithoutGrammar(sql)
     }
 
     func tokenize(_ sql: String, grammar: SQLLexicalGrammar) -> [SQLToken] {
-        var lexer = Lexer(text: sql as NSString, grammar: grammar, tokenizer: self, readsLiteralPrefixes: true)
+        var lexer = Lexer(text: sql as NSString, grammar: grammar, tokenizer: self)
         return lexer.run()
     }
 
@@ -130,11 +127,174 @@ struct SQLTokenizer {
     }
 
     fileprivate func isKeyword(_ upperWord: String) -> Bool {
-        Self.standardKeywords.contains(upperWord) || dialectKeywords.contains(upperWord)
+        Self.standardKeywords.contains(upperWord) || Self.grammarKeywords.contains(upperWord)
+            || dialectKeywords.contains(upperWord)
     }
 
     fileprivate func operatorCandidates(startingWith unit: UInt16) -> [String] {
         operatorsByFirstUnit[unit] ?? []
+    }
+
+    private func readsWithoutGrammar(_ sql: String) -> [SQLToken] {
+        var tokens: [SQLToken] = []
+        let chars = Array(sql)
+        let count = chars.count
+        var i = 0
+
+        while i < count {
+            let ch = chars[i]
+
+            // Line comment: -- ...
+            if ch == "-" && i + 1 < count && chars[i + 1] == "-" {
+                let start = i
+                i += 2
+                while i < count && chars[i] != "\n" {
+                    i += 1
+                }
+                tokens.append(SQLToken(type: .comment, value: String(chars[start..<i])))
+                continue
+            }
+
+            // Block comment: /* ... */
+            if ch == "/" && i + 1 < count && chars[i + 1] == "*" {
+                let start = i
+                i += 2
+                while i + 1 < count && !(chars[i] == "*" && chars[i + 1] == "/") {
+                    i += 1
+                }
+                if i + 1 < count {
+                    i += 2 // skip */
+                } else {
+                    i = count // unterminated, so the comment runs to the end of the input
+                }
+                tokens.append(SQLToken(type: .comment, value: String(chars[start..<i])))
+                continue
+            }
+
+            // String literals: 'single', "double", `backtick`
+            if ch == "'" || ch == "\"" || ch == "`" {
+                let start = i
+                let quote = ch
+                i += 1
+                while i < count {
+                    if chars[i] == "\\" {
+                        i = min(i + 2, count) // skip escaped char, or stop at a trailing backslash
+                        continue
+                    }
+                    if chars[i] == quote {
+                        // Check for doubled quote escape: '' or ""
+                        if i + 1 < count && chars[i + 1] == quote {
+                            i += 2
+                            continue
+                        }
+                        i += 1
+                        break
+                    }
+                    i += 1
+                }
+                let value = String(chars[start..<i])
+                // Backtick-quoted identifiers are identifiers, not strings
+                let type: SQLTokenType = (quote == "`") ? .identifier : .string
+                tokens.append(SQLToken(type: type, value: value))
+                continue
+            }
+
+            // Whitespace
+            if ch.isWhitespace {
+                let start = i
+                while i < count && chars[i].isWhitespace {
+                    i += 1
+                }
+                tokens.append(SQLToken(type: .whitespace, value: String(chars[start..<i])))
+                continue
+            }
+
+            // Numbers
+            if ch.isNumber || (ch == "." && i + 1 < count && chars[i + 1].isNumber) {
+                let start = i
+                if ch == "." { i += 1 }
+                while i < count && (chars[i].isNumber || chars[i] == ".") {
+                    i += 1
+                }
+                // Scientific notation: 1e10, 1.5E-3
+                if i < count && (chars[i] == "e" || chars[i] == "E") {
+                    i += 1
+                    if i < count && (chars[i] == "+" || chars[i] == "-") {
+                        i += 1
+                    }
+                    while i < count && chars[i].isNumber {
+                        i += 1
+                    }
+                }
+                tokens.append(SQLToken(type: .number, value: String(chars[start..<i])))
+                continue
+            }
+
+            // Placeholders: $1, $name, ?, :name, @name
+            if ch == "?" {
+                tokens.append(SQLToken(type: .placeholder, value: "?"))
+                i += 1
+                continue
+            }
+            if (ch == "$" || ch == ":" || ch == "@") && i + 1 < count && (chars[i + 1].isLetter || chars[i + 1].isNumber || chars[i + 1] == "_") {
+                let start = i
+                i += 1
+                while i < count && (chars[i].isLetter || chars[i].isNumber || chars[i] == "_") {
+                    i += 1
+                }
+                tokens.append(SQLToken(type: .placeholder, value: String(chars[start..<i])))
+                continue
+            }
+
+            // Multi-character operators: >=, <=, <>, !=, ||, ::, ->>, ->
+            if i + 1 < count {
+                let twoChar = String([chars[i], chars[i + 1]])
+                if [">=", "<=", "<>", "!=", "||", "::", "->"].contains(twoChar) {
+                    if twoChar == "->" && i + 2 < count && chars[i + 2] == ">" {
+                        tokens.append(SQLToken(type: .operator, value: "->>"))
+                        i += 3
+                    } else {
+                        tokens.append(SQLToken(type: .operator, value: twoChar))
+                        i += 2
+                    }
+                    continue
+                }
+            }
+
+            // Single-character operators
+            if "=<>+-*/%&|^~!".contains(ch) {
+                tokens.append(SQLToken(type: .operator, value: String(ch)))
+                i += 1
+                continue
+            }
+
+            // Punctuation: ( ) , ; .
+            if "(),;.".contains(ch) {
+                tokens.append(SQLToken(type: .punctuation, value: String(ch)))
+                i += 1
+                continue
+            }
+
+            // Words: keywords or identifiers
+            if ch.isLetter || ch == "_" {
+                let start = i
+                i += 1
+                while i < count && (chars[i].isLetter || chars[i].isNumber || chars[i] == "_") {
+                    i += 1
+                }
+                let word = String(chars[start..<i])
+                let isKW = Self.standardKeywords.contains(word.uppercased())
+                    || dialectKeywords.contains(word.uppercased())
+                tokens.append(SQLToken(type: isKW ? .keyword : .identifier, value: word))
+                continue
+            }
+
+            // Unknown character, treated as an operator
+            tokens.append(SQLToken(type: .operator, value: String(ch)))
+            i += 1
+        }
+
+        return tokens
     }
 }
 
@@ -172,19 +332,17 @@ private struct Lexer {
     let length: Int
     let grammar: SQLLexicalGrammar
     let tokenizer: SQLTokenizer
-    let readsLiteralPrefixes: Bool
     private let batchSeparatorEnds: [Int: Int]
     private var delimiter = ";"
     private var atStatementStart = true
     private var tokens: [SQLToken] = []
     private var index = 0
 
-    init(text: NSString, grammar: SQLLexicalGrammar, tokenizer: SQLTokenizer, readsLiteralPrefixes: Bool) {
+    init(text: NSString, grammar: SQLLexicalGrammar, tokenizer: SQLTokenizer) {
         self.text = text
         self.length = text.length
         self.grammar = grammar
         self.tokenizer = tokenizer
-        self.readsLiteralPrefixes = readsLiteralPrefixes
         var ends: [Int: Int] = [:]
         for separator in SQLStatementScanner.batchSeparators(in: text as String, grammar: grammar) {
             ends[separator.range.location] = NSMaxRange(separator.range)
@@ -340,9 +498,11 @@ private struct Lexer {
         return !isWordPart(before) && ![Self.backtick, Self.doubleQuote, Self.closeBracket, Self.closeParen].contains(before)
     }
 
+    // `0xFF` and `0b101` are literals; MySQL's `0bar` and `0xyz` are names, since their digits are not hex or binary.
     private static func isNumberLiteral(_ value: String) -> Bool {
         let lower = value.lowercased()
-        if lower.hasPrefix("0x") || lower.hasPrefix("0b") { return true }
+        if lower.count > 2, lower.hasPrefix("0x") { return lower.dropFirst(2).allSatisfy(\.isHexDigit) }
+        if lower.count > 2, lower.hasPrefix("0b") { return lower.dropFirst(2).allSatisfy { $0 == "0" || $0 == "1" } }
         return lower.allSatisfy { $0.isNumber || $0 == "." || $0 == "e" || $0 == "+" || $0 == "-" }
     }
 
@@ -376,14 +536,14 @@ private struct Lexer {
             append(SQLToken(type: .keyword, value: word))
             return
         }
-        if readsLiteralPrefixes, upper == "U", index + 1 < length, text.character(at: index) == Self.ampersand,
+        if upper == "U", index + 1 < length, text.character(at: index) == Self.ampersand,
            let span = quotedSpan(at: index + 1) {
             let opener = text.character(at: index + 1)
             index = span.end
             append(SQLToken(type: opener == Self.singleQuote ? .string : .identifier, value: substring(from: start, to: index)))
             return
         }
-        if readsLiteralPrefixes, Self.isLiteralIntroducer(upper), index < length, text.character(at: index) == Self.singleQuote,
+        if Self.isLiteralIntroducer(upper), index < length, text.character(at: index) == Self.singleQuote,
            let span = quotedSpan(at: index) {
             index = span.end
             append(SQLToken(type: .string, value: substring(from: start, to: index)))
