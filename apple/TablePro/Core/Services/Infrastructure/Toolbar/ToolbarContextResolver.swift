@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import TableProPluginKit
 
 /// Which of the connection window's toolbar items a context shows, and which of them answer.
 ///
@@ -39,20 +38,12 @@ internal enum ToolbarContextResolver {
     /// from early at about 2.5ns a write.
     internal static let hideableIdentifiers = Set(MainWindowToolbar.defaultItemIdentifiers)
 
-    // The debug controls belong to their module, so all of them, the palette's steps included, may leave the titlebar
-    // while it is on; with it off none is vended.
-    internal static func hideableItems(showsDebugItems: Bool) -> Set<NSToolbarItem.Identifier> {
-        showsDebugItems ? hideableIdentifiers.union(MainWindowToolbar.debugItemIdentifiers) : hideableIdentifiers
-    }
-
     /// What this context takes out of the titlebar, already confined to what may be taken.
     ///
     /// The confinement lives here rather than at the call site, so it is a property of the answer
     /// and a second caller cannot skip it.
     internal static func visibility(for key: ToolbarContext.VisibilityKey) -> ToolbarVisibility {
-        ToolbarVisibility(
-            hidden: contextualHidden(key).intersection(hideableItems(showsDebugItems: key.showsDebugItems))
-        )
+        ToolbarVisibility(hidden: contextualHidden(key).intersection(hideableIdentifiers))
     }
 
     /// The commit control's label: the verb its tab commits with.
@@ -69,8 +60,7 @@ internal enum ToolbarContextResolver {
             String(localized: "Create Table")
         case .usersRoles:
             String(localized: "Apply Changes")
-        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing,
-             .routineDebug, nil:
+        case .query, .table, .erDiagram, .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing, nil:
             String(localized: "Save Changes")
         }
     }
@@ -82,11 +72,6 @@ internal enum ToolbarContextResolver {
         /// second capsule has never been clickable on SQLite or DuckDB.
         if key.isFileBased || !key.supportsContainerSwitching {
             hidden.insert(MainWindowToolbar.database)
-        }
-
-        // The debug controls exist only while the module is on, and mean something only over a debug tab.
-        if key.contentMode == .agent || (key.tabKind != nil && key.tabKind != .routineDebug) {
-            hidden.formUnion(MainWindowToolbar.debugItemIdentifiers)
         }
 
         switch key.contentMode {
@@ -113,9 +98,6 @@ internal enum ToolbarContextResolver {
         case .serverDashboard, .insights, .objectSource, .versionHistory, .tableListing:
             /// None of these can stage a change, so the commit control could only ever be dim.
             return [MainWindowToolbar.saveChanges]
-        case .routineDebug:
-            // A debug run has nothing to reload or commit; its own controls take that place.
-            return [MainWindowToolbar.refresh, MainWindowToolbar.saveChanges]
         case .query, .table, .usersRoles, .erDiagram:
             return []
         }
@@ -206,16 +188,6 @@ internal enum ToolbarContextResolver {
             return context.isConnected
         case MainWindowToolbar.importTables:
             return context.isConnected && !context.blocksAllWrites && context.supportsImport
-        case MainWindowToolbar.debugContinue:
-            return context.debugCommands.contains(.continueExecution)
-        case MainWindowToolbar.debugStepOver:
-            return context.debugCommands.contains(.stepOver)
-        case MainWindowToolbar.debugStepInto:
-            return context.debugCommands.contains(.stepInto)
-        case MainWindowToolbar.debugStepOut:
-            return context.debugCommands.contains(.stepOut)
-        case MainWindowToolbar.debugStop:
-            return context.canStopDebugging
         default:
             return false
         }

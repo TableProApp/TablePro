@@ -260,10 +260,6 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.cancelCurrentQuery()
     }
 
-    func observeServerNotices(_ observer: (@Sendable (LibPQServerNotice) -> Void)?) {
-        libpqConnection?.observeServerNotices(observer)
-    }
-
     func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
         libpqConnection?.setPostgisOidMap(map)
     }

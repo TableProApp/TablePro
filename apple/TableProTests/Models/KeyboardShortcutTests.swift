@@ -225,7 +225,7 @@ struct BareKeyValidationTests {
 
     @Test("Every bare-key default belongs to an action that allows bare keys")
     func bareKeyDefaultsAreAllowed() {
-        for (action, key) in KeyboardSettings.defaultShortcuts where !key.hasModifier && !key.isFunctionKey {
+        for (action, key) in KeyboardSettings.defaultShortcuts where !key.hasModifier {
             #expect(action.allowsBareKey, "\(action.rawValue) ships a bare-key default but does not allow bare keys")
         }
     }

@@ -67,7 +67,7 @@ enum StructureTableRebuildHandler {
                     localized: """
                         Could not build the table rebuild for this change. If this engine's driver \
                         was installed before foreign key editing shipped, update it in \
-                        Settings > Extensions.
+                        Settings > Plugins.
                         """
                 )
             }

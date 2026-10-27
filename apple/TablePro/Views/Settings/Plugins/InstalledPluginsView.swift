@@ -9,7 +9,6 @@ struct InstalledPluginsView: View {
     // isInstalling reads the tracker, which the plugin manager does not republish.
     @ObservedObject private var installTracker = PluginInstallTracker.shared
     @ObservedObject private var navigation = PluginsSettingsNavigation.shared
-    @ObservedObject private var modules = AppModuleSettings.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -26,10 +25,6 @@ struct InstalledPluginsView: View {
     private var filteredPlugins: [PluginEntry] {
         if searchText.isEmpty { return pluginManager.plugins }
         return pluginManager.plugins.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-    }
-
-    private var filteredModules: [AppModule] {
-        AppModule.allCases.filter { $0.matches(filter: searchText) }
     }
 
     var body: some View {
@@ -247,20 +242,10 @@ struct InstalledPluginsView: View {
 
             ScrollViewReader { proxy in
                 List(selection: $selectedPluginId) {
-                    if !filteredModules.isEmpty {
-                        // Untagged, so a module row toggles but never takes the plugin selection.
-                        Section(String(localized: "Modules")) {
-                            ForEach(filteredModules, id: \.self) { module in
-                                ModuleToggleRow(module: module, settings: modules)
-                            }
-                        }
-                    }
-                    Section(String(localized: "Plugins")) {
-                        ForEach(filteredPlugins) { plugin in
-                            pluginRow(plugin)
-                                .tag(plugin.id)
-                                .id(plugin.id)
-                        }
+                    ForEach(filteredPlugins) { plugin in
+                        pluginRow(plugin)
+                            .tag(plugin.id)
+                            .id(plugin.id)
                     }
                 }
                 .listStyle(.inset)

@@ -98,7 +98,6 @@ internal final class TabPersistenceCoordinator: ObservableObject {
         selectedTabId: UUID?,
         path: String
     ) -> (tabs: [PersistedTab], selectedTabId: UUID?, database: String?, schema: String?)? {
-        let tabs = tabs.filter { !$0.tabType.isTransient }
         guard !tabs.isEmpty else {
             Self.logger.debug(
                 "[persist] \(path, privacy: .private(mask: .hash)) skipped empty tab set connId=\(self.connectionId, privacy: .public)"

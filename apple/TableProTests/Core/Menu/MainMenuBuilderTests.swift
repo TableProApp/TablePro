@@ -11,8 +11,8 @@ import TableProPluginKit
 import Testing
 
 @MainActor
-private func buildMenu(_ keyboard: KeyboardSettings = KeyboardSettings(), modules: Set<AppModule> = []) -> NSMenu {
-    MainMenuBuilder.build(keyboard: keyboard, modules: modules).bar
+private func buildMenu(_ keyboard: KeyboardSettings = KeyboardSettings()) -> NSMenu {
+    MainMenuBuilder.build(keyboard: keyboard).bar
 }
 
 private func flatten(_ menu: NSMenu) -> [NSMenuItem] {
@@ -186,10 +186,9 @@ struct MainMenuStructureTests {
 
 @MainActor
 struct MainMenuShortcutCoverageTests {
-    // Every module on: a module's actions have menu items only while it is.
     @Test("Every customizable action reaches exactly one menu item")
     func everyShortcutActionIsReachable() {
-        let identifiers = flatten(buildMenu(modules: Set(AppModule.allCases))).compactMap(\.identifier?.rawValue)
+        let identifiers = flatten(buildMenu()).compactMap(\.identifier?.rawValue)
         for action in ShortcutAction.allCases {
             let expected = MenuItemFactory.identifier(for: action).rawValue
             let matches = identifiers.filter { $0 == expected }.count

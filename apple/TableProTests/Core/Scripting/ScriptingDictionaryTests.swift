@@ -353,10 +353,8 @@ struct ScriptingDictionaryTests {
             TabType.query, .table, .createTable, .erDiagram,
             .serverDashboard, .usersRoles, .insights, .objectSource, .versionHistory, .tableListing
         ] {
-            let code = try #require(ScriptEnumerations.code(for: kind), "no code for \(kind)")
-            #expect(declared.contains(code), "no enumerator for \(kind)")
+            #expect(declared.contains(ScriptEnumerations.code(for: kind)), "no enumerator for \(kind)")
         }
-        #expect(ScriptEnumerations.code(for: .routineDebug) == nil)
         for color in ConnectionColor.allCases {
             #expect(declared.contains(ScriptEnumerations.code(for: color)), "no enumerator for \(color)")
         }

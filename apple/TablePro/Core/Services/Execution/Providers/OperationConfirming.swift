@@ -104,16 +104,9 @@ internal struct AlertOperationConfirming: OperationConfirming {
             preferring: NSApp.keyWindow
         ).map(Self.frontmostSheet(of:))
 
-        guard !Task.isCancelled else { return false }
         guard let statement = OperationConfirmationPrompt.statement(of: request) else {
             let alert = OperationConfirmationPrompt.makeAlert(for: request)
-            let withdrawal = AlertWithdrawal(alert)
-            // A caller that gives up (a debug run stopped while it waits) takes the alert down as Cancel.
-            return await withTaskCancellationHandler {
-                await AlertHelper.response(to: alert, in: window) == .alertFirstButtonReturn
-            } onCancel: {
-                withdrawal.withdraw()
-            }
+            return await AlertHelper.response(to: alert, in: window) == .alertFirstButtonReturn
         }
 
         return await AlertHelper.runStatementConfirmation(
@@ -137,25 +130,5 @@ internal struct AlertOperationConfirming: OperationConfirming {
             frontmost = sheet
         }
         return frontmost
-    }
-}
-
-// Lets a cancellation, which can arrive on any thread, answer an alert on the main actor.
-private final class AlertWithdrawal: @unchecked Sendable {
-    private weak var alert: NSAlert?
-
-    init(_ alert: NSAlert) {
-        self.alert = alert
-    }
-
-    func withdraw() {
-        Task { @MainActor [weak alert] in
-            guard let alert else { return }
-            if let parent = alert.window.sheetParent {
-                parent.endSheet(alert.window, returnCode: .cancel)
-            } else if NSApp.modalWindow === alert.window {
-                NSApp.stopModal(withCode: .cancel)
-            }
-        }
     }
 }

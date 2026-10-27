@@ -77,11 +77,11 @@ extension DatabaseAccessBridge {
             )
         case .statements:
             throw DatabaseAccessError.invalidArgument(
-                String(localized: "Update the database driver in Settings > Extensions to run several statements in one call.")
+                String(localized: "Update the database driver in Settings > Plugins to run several statements in one call.")
             )
         case .needsBatchDriver:
             throw DatabaseAccessError.invalidArgument(
-                String(localized: "Update the database driver in Settings > Extensions to run a batch more than once with GO.")
+                String(localized: "Update the database driver in Settings > Plugins to run a batch more than once with GO.")
             )
         case nil:
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))

@@ -39,7 +39,7 @@ internal enum ScriptingSnapshot {
         guard isVisibleToScripts(connectionId: connectionId) else { return [] }
         let container = ScriptingSpecifiers.connection(uniqueId: connectionId.uuidString)
         return coordinators(forConnection: connectionId).flatMap { coordinator in
-            coordinator.tabManager.tabs.compactMap {
+            coordinator.tabManager.tabs.map {
                 ScriptTab(tab: $0, connectionId: connectionId, container: container)
             }
         }

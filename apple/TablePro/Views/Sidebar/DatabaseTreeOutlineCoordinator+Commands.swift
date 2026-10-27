@@ -139,8 +139,6 @@ extension DatabaseTreeOutlineCoordinator {
             ClipboardService.shared.writeText(text)
         case .showObjectSource(let ref):
             mainCoordinator?.showObjectSource(ref)
-        case .debugRoutine(let ref):
-            debugRoutine(ref)
         case .dropUserType, .renameUserType, .newUserType:
             performUserTypeCommand(command)
         case .refreshRedisKeys:
@@ -233,12 +231,6 @@ extension DatabaseTreeOutlineCoordinator {
             await activate(ref)
             body()
         }
-    }
-
-    // The run dials its own connections on the row's database, so the browse cursor never has to move, and a switch that
-    // fails or is cancelled cannot leave the run on another database.
-    private func debugRoutine(_ ref: DatabaseTreeRoutineRef) {
-        mainCoordinator?.debugRoutine(ref.routine, database: ref.database, schema: ref.schema)
     }
 
     private func performUserTypeCommand(_ command: SidebarMenuCommand) {

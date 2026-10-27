@@ -39,9 +39,6 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |
-| Module on/off (Settings > Extensions) | UserDefaults, device-local, never synced | `AppModuleSettings` |
-| Routine debugger start options, per connection and field | UserDefaults, device-local | `RoutineDebugOptionStore` |
-| Whether the toolbar arrangement already carries the debug items | UserDefaults, device-local | `MainWindowToolbar` |
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

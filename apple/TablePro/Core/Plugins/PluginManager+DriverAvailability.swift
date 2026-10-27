@@ -25,7 +25,7 @@ extension PluginManager {
         let typeId = databaseType.pluginTypeId
         if let entry = installedEntry(servingTypeId: typeId), !entry.serves(databaseType.rawValue) {
             return .outdated(reason: String(
-                format: String(localized: "The installed %1$@ does not support %2$@. Update it in Settings > Extensions."),
+                format: String(localized: "The installed %1$@ does not support %2$@. Update it in Settings > Plugins."),
                 entry.name,
                 Self.registryDisplayName(of: databaseType)
             ))

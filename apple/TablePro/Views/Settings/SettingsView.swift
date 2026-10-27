@@ -19,8 +19,7 @@ enum SettingsPane: String, CaseIterable {
         case .notifications: String(localized: "Notifications")
         case .ai: String(localized: "AI")
         case .mcp: "MCP"
-        // The rawValue and the URL id stay "plugins": they are the stored pane and a published link.
-        case .plugins: String(localized: "Extensions")
+        case .plugins: String(localized: "Plugins")
         case .sync: String(localized: "Sync")
         /// The stored rawValue stays "account": it is the tab item identifier and the pane the
         /// window restores, so renaming it would silently reset everyone's last-used pane.

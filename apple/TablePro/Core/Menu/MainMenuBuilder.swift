@@ -15,14 +15,11 @@ struct BuiltMainMenu {
     let helpMenu: NSMenu?
 }
 
-// Menu order follows the macOS HIG: the app menu, File, Edit, View, the app's own menus, then Window and Help.
+/// Builds the whole menu bar. Menu order follows the macOS HIG: the app menu, the
+/// standard File/Edit/View menus, app-specific menus, then Window and Help.
 @MainActor
 enum MainMenuBuilder {
     static func build(keyboard: KeyboardSettings) -> BuiltMainMenu {
-        build(keyboard: keyboard, modules: AppModuleSettings.shared.enabledModules)
-    }
-
-    static func build(keyboard: KeyboardSettings, modules: Set<AppModule>) -> BuiltMainMenu {
         let services = NSMenu(title: String(localized: "Services"))
         let window = WindowMenuBuilder.build(keyboard: keyboard)
         let help = HelpMenuBuilder.build()
@@ -34,9 +31,6 @@ enum MainMenuBuilder {
         bar.addItem(ViewMenuBuilder.build(keyboard: keyboard))
         bar.addItem(DatabaseMenuBuilder.build(keyboard: keyboard))
         bar.addItem(QueryMenuBuilder.build(keyboard: keyboard))
-        if modules.contains(.routineDebugger) {
-            bar.addItem(DebugMenuBuilder.build(keyboard: keyboard))
-        }
         bar.addItem(window)
         bar.addItem(help)
 
@@ -54,25 +48,6 @@ enum MainMenuBuilder {
         NSApp.windowsMenu = built.windowsMenu
         NSApp.helpMenu = built.helpMenu
         NSApp.mainMenu = built.bar
-    }
-
-    // Adds or removes a module's menu in the installed bar; rebuilding the bar would orphan the Window menu's window list.
-    static func applyModules(
-        _ modules: Set<AppModule>,
-        keyboard: KeyboardSettings,
-        to bar: NSMenu,
-        windowsMenu: NSMenu?
-    ) {
-        let existing = bar.items.first { $0.identifier == DebugMenuBuilder.identifier }
-        switch (modules.contains(.routineDebugger), existing) {
-        case (true, nil):
-            let index = bar.items.firstIndex { $0.submenu != nil && $0.submenu === windowsMenu } ?? bar.items.count
-            bar.insertItem(DebugMenuBuilder.build(keyboard: keyboard), at: index)
-        case (false, let item?):
-            bar.removeItem(item)
-        default:
-            return
-        }
     }
 
     /// The menu bar's key equivalents are one global resource, so exactly one function

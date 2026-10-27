@@ -1447,10 +1447,3 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return LibPQPluginError(message: message, sqlState: nil, detail: nil)
     }
 }
-
-extension LibPQPluginConnection {
-    func observeServerNotices(_ observer: (@Sendable (LibPQServerNotice) -> Void)?) {
-        let sink = stateLock.withLock { serverMessages?.takeUnretainedValue() }
-        sink?.observeNotices(observer)
-    }
-}

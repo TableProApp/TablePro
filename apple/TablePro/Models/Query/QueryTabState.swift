@@ -20,14 +20,6 @@ enum TabType: Equatable, Codable, Hashable {
     case versionHistory
     // Read-only grid of one database's or schema's tables, rebuilt from the catalog on each load, never from saved SQL.
     case tableListing
-    case routineDebug
-}
-
-extension TabType {
-    // A live debug session cannot be restored, and the debugger is a module, so its tab never reaches disk or an outside client.
-    var isTransient: Bool {
-        self == .routineDebug
-    }
 }
 
 struct PersistedTab: Codable {

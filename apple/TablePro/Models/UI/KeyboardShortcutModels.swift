@@ -40,7 +40,6 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
     case dataGrid
     case navigation
     case connections
-    case debug
     case app
 
     var id: String { rawValue }
@@ -51,7 +50,6 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
         case .dataGrid: return String(localized: "Data Grid")
         case .navigation: return String(localized: "Navigation")
         case .connections: return String(localized: "Connections")
-        case .debug: return String(localized: "Debug")
         case .app: return String(localized: "App")
         }
     }
@@ -183,13 +181,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case showPreviousWorkspace
     case showNextWorkspace
 
-    // Debug, listed only while the Routine Debugger module is on
-    case debugContinue
-    case debugStepOver
-    case debugStepInto
-    case debugStepOut
-    case toggleBreakpoint
-
     var id: String { rawValue }
 
     var category: ShortcutCategory {
@@ -224,26 +215,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .showPreviousWindowTab, .showNextWindowTab,
              .toggleWorkspaceRail, .showPreviousWorkspace, .showNextWorkspace:
             return .navigation
-        case .debugContinue, .debugStepOver, .debugStepInto, .debugStepOut, .toggleBreakpoint:
-            return .debug
         }
-    }
-
-    var module: AppModule? {
-        Self.routineDebuggerActions.contains(self) ? .routineDebugger : nil
-    }
-
-    private static let routineDebuggerActions: Set<ShortcutAction> = [
-        .debugContinue, .debugStepOver, .debugStepInto, .debugStepOut, .toggleBreakpoint,
-    ]
-
-    // An action of a module that is off has no row, no menu item and no say in a conflict.
-    func isAvailable(enabledModules: Set<AppModule>) -> Bool {
-        module.map { enabledModules.contains($0) } ?? true
-    }
-
-    static func settingsRows(in category: ShortcutCategory, enabledModules: Set<AppModule>) -> [ShortcutAction] {
-        allCases.filter { $0.category == category && $0.isAvailable(enabledModules: enabledModules) }
     }
 
     /// A command that dispatches to whichever surface holds focus must be `.global`, or the
@@ -403,11 +375,6 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .aiReviewQuery: return String(localized: "Review with AI")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
-        case .debugContinue: return String(localized: "Continue")
-        case .debugStepOver: return String(localized: "Step Over")
-        case .debugStepInto: return String(localized: "Step Into")
-        case .debugStepOut: return String(localized: "Step Out")
-        case .toggleBreakpoint: return String(localized: "Toggle Breakpoint")
         }
     }
 }
@@ -559,9 +526,6 @@ struct KeyboardSettings: Codable, Equatable {
                 continue
             }
             guard override == key, other.context.overlaps(action.context) else { continue }
-            if let module = other.module, !AppModule.storedEnabledModules().contains(module) {
-                continue
-            }
             return other
         }
         return nil
@@ -574,16 +538,8 @@ struct KeyboardSettings: Codable, Equatable {
     /// Find a conflicting action for the given combo within an overlapping
     /// context, excluding the specified action.
     func findConflict(for key: BoundKey, excluding action: ShortcutAction) -> ShortcutAction? {
-        findConflict(for: key, excluding: action, enabledModules: AppModule.storedEnabledModules())
-    }
-
-    func findConflict(
-        for key: BoundKey,
-        excluding action: ShortcutAction,
-        enabledModules: Set<AppModule>
-    ) -> ShortcutAction? {
         guard !key.isCleared else { return nil }
-        for other in ShortcutAction.allCases where other != action && other.isAvailable(enabledModules: enabledModules) {
+        for other in ShortcutAction.allCases where other != action {
             guard action.context.overlaps(other.context),
                   let otherKey = shortcut(for: other), !otherKey.isCleared,
                   otherKey == key else { continue }
@@ -759,13 +715,7 @@ struct KeyboardSettings: Codable, Equatable {
         .switchToLeastRecentTab: .special(.tab, shift: true, control: true),
         .toggleWorkspaceRail: .character("0", command: true, option: true),
         .showPreviousWorkspace: .special(.upArrow, command: true, control: true),
-        .showNextWorkspace: .special(.downArrow, command: true, control: true),
-
-        // Xcode's keys. Toggle Breakpoint ships unbound: current macOS lists Command-Backslash as a system hotkey, which the recorder refuses.
-        .debugContinue: .character("y", command: true, control: true),
-        .debugStepOver: .special(.f6),
-        .debugStepInto: .special(.f7),
-        .debugStepOut: .special(.f8)
+        .showNextWorkspace: .special(.downArrow, command: true, control: true)
     ]
 }
 

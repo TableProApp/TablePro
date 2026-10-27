@@ -12,7 +12,6 @@ import SwiftUI
 struct KeyboardSettingsView: View {
     @Binding var settings: KeyboardSettings
 
-    @ObservedObject private var modules = AppModuleSettings.shared
     @State private var searchText = ""
     @State private var conflictAlert: ConflictAlertState?
     @State private var systemReservedAlert: ShortcutAction?
@@ -181,7 +180,7 @@ struct KeyboardSettingsView: View {
     // MARK: - Helpers
 
     private func filteredActions(for category: ShortcutCategory) -> [ShortcutAction] {
-        let categoryActions = ShortcutAction.settingsRows(in: category, enabledModules: modules.enabledModules)
+        let categoryActions = ShortcutAction.allCases.filter { $0.category == category }
         if searchText.isEmpty {
             return categoryActions
         }

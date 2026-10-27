@@ -122,10 +122,7 @@ extension DatabaseTreeOutlineCoordinator: NSMenuDelegate {
             tableFolderOptions: tableFolderMenuOptions(clicked: clicked, selected: selectedRefs()),
             offersBrowsedFolders: creation.offersBrowsedFolders,
             canShowAllTables: mainCoordinator?.allTablesListing() != nil,
-            listsAttachedSchemas: listsAttachedSchemas,
-            canDebugRoutine: DatabaseTreeMenuContext.canDebugRoutine(clicked?.kind, modules: .shared) {
-                mainCoordinator?.routineDebugTarget(for: $0)
-            }
+            listsAttachedSchemas: listsAttachedSchemas
         )
     }
 

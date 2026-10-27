@@ -213,8 +213,6 @@ internal extension MainSplitViewController {
             return "clock.arrow.circlepath"
         case .tableListing:
             return "list.bullet.rectangle"
-        case .routineDebug:
-            return "ladybug"
         }
     }
 }

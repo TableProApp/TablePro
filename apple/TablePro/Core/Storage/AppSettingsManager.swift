@@ -279,6 +279,5 @@ final class AppSettingsManager: ObservableObject {
         storage.resetToDefaults()
         connectionListPreferences.resetShowsRecent()
         SoftwareUpdater.shared.resetUpdatePreferences()
-        AppModuleActivation.resetToDefaults()
     }
 }

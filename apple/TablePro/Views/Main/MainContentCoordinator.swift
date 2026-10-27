@@ -418,15 +418,12 @@ final class MainContentCoordinator: ObservableObject {
     }
 
     // Union across windows: saving one window's tabs erased torn-off ones. Deduped, since SwiftUI's throwaway coordinators repeat tabs.
-    // The connection's saved tab set. A debug tab is never saved, so a window holding only debug tabs counts as empty.
     static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         var seen = Set<UUID>()
         return activeCoordinators.values
             .filter { $0.connectionId == connectionId }
             .flatMap { coordinator in
-                coordinator.tabManager.tabs
-                    .filter { !$0.tabType.isTransient }
-                    .map(coordinator.enrichedForPersistence)
+                coordinator.tabManager.tabs.map(coordinator.enrichedForPersistence)
             }
             .filter { seen.insert($0.id).inserted }
     }
@@ -876,10 +873,6 @@ final class MainContentCoordinator: ObservableObject {
         columnScopeRequeryTask?.cancel()
         releaseImportFile()
 
-        let debugTabIds = tabManager.tabs.filter { $0.tabType.isTransient }.map(\.id)
-        if !debugTabIds.isEmpty {
-            RoutineDebugSessions.shared.endSessions(forTabs: debugTabIds)
-        }
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil
 

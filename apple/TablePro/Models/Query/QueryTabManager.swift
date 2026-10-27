@@ -582,23 +582,6 @@ final class QueryTabManager: ObservableObject {
         return newTab.id
     }
 
-    // One tab per run: debugging the same routine again starts a second session rather than taking over a live one.
-    @discardableResult
-    func addRoutineDebugTab(id: UUID = UUID(), title: String, databaseName: String, schemaName: String?) -> UUID {
-        var newTab = QueryTab(id: id, title: title, tabType: .routineDebug)
-        newTab.tableContext.isEditable = false
-        newTab.tableContext.databaseName = databaseName
-        newTab.tableContext.schemaName = schemaName.flatMap { $0.isEmpty ? nil : $0 }
-        newTab.hasUserInteraction = true
-        tabs.append(newTab)
-        selectedTabId = newTab.id
-        return newTab.id
-    }
-
-    static func routineDebugTitle(for name: String) -> String {
-        String(format: String(localized: "Debug %@"), name)
-    }
-
     // Qualified by schema where tables are listed per schema, or two listings in one database would share a label.
     static func tableListingTitle(kindTitle: String, schemaName: String?) -> String {
         guard let schemaName, !schemaName.isEmpty else { return kindTitle }
@@ -761,11 +744,8 @@ extension QueryTabManager {
         return visible
     }
 
-    // A debug tab names no entry: its paused target holds locks whichever database the sidebar shows, so it stays in
-    // sight everywhere while its run keeps the database it was started in.
     func containerName(of tab: QueryTab) -> String? {
-        guard !tab.tabType.isTransient else { return nil }
-        return WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
+        WorkspaceAnchoring.containerName(of: tab, target: containerTarget)
     }
 
     // A tab naming no container (a server dashboard, a query tab on a browse-following engine) shows in every entry.
@@ -832,8 +812,7 @@ extension QueryTabManager {
         switch type {
         case .query, .table, .createTable, .erDiagram, .objectSource, .tableListing:
             return true
-        // A paused debug target holds locks, so its tab stays in sight whichever entry the sidebar shows.
-        case .serverDashboard, .usersRoles, .insights, .versionHistory, .routineDebug:
+        case .serverDashboard, .usersRoles, .insights, .versionHistory:
             return false
         }
     }

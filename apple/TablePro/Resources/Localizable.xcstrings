@@ -195,10 +195,6 @@
     "Add one row to a table on a saved connection. Provide the row as a JSON object or a CSV row." : {
 
     },
-    "Add plugin_debugger to shared_preload_libraries and restart the server." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Add rows to ${table}" : {
 
     },
@@ -477,10 +473,6 @@
     "Only Left" : {
 
     },
-    "Only PL/pgSQL functions and procedures can be debugged." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Only Right" : {
 
     },
@@ -642,22 +634,6 @@
       "generatesSymbol" : false
     },
     "TablePro and the SSH server have no signature algorithm in common for this key." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "TablePro can't pass any value of type %2$@ to %1$@." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "TablePro can't read %@. Check that this account can see its source." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "TablePro can't read this unit's source." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "TablePro can't turn text into a %2$@ value for %1$@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -1848,10 +1824,6 @@
           }
         }
       }
-    },
-    "“%@” isn't a port or a range of ports, such as 4000-4999." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "“%@” now holds the current result of its query." : {
       "localizations" : {
@@ -3231,10 +3203,6 @@
         }
       }
     },
-    "%@ (specification)" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "%@ (You)" : {
       "localizations" : {
         "fr" : {
@@ -4320,14 +4288,6 @@
     "%@ has no column to create." : {
 
     },
-    "%@ has no default value." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "%@ has no public procedure or function to start from." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -4917,10 +4877,6 @@
           }
         }
       }
-    },
-    "%@ isn't compiled for debugging." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "%@ lines have unreadable characters" : {
       "localizations" : {
@@ -15990,10 +15946,6 @@
         }
       }
     },
-    "A connection came from %@, which isn't the database server's address, so TablePro closed it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "A connection can use only one connection method at a time. Enabled: %@." : {
       "localizations" : {
         "fr" : {
@@ -16164,14 +16116,6 @@
           }
         }
       }
-    },
-    "A DBA can grant it with GRANT DEBUG CONNECT SESSION TO %@." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "A DBA can grant it with GRANT DEBUG ON %1$@ TO %2$@, or grant DEBUG ANY PROCEDURE." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "a destructive statement" : {
       "localizations" : {
@@ -21288,10 +21232,6 @@
           }
         }
       }
-    },
-    "Address the database server can reach this Mac at" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Adds a narrow strip on the window's leading edge listing every connection and database you have open, so one click switches to it." : {
       "localizations" : {
@@ -28211,10 +28151,6 @@
         }
       }
     },
-    "Ask a superuser to run CREATE EXTENSION pldbgapi in this database." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Ask about step %d" : {
       "localizations" : {
         "fr" : {
@@ -30027,8 +29963,6 @@
       }
     },
     "Automatic" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -32355,14 +32289,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Breakpoint, line %d" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Breakpoints" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Briefcase" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -33480,9 +33406,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Call Stack" : {
-
-    },
     "Calling" : {
       "localizations" : {
         "fr" : {
@@ -33642,12 +33565,6 @@
           }
         }
       }
-    },
-    "Can't Debug %@" : {
-
-    },
-    "Can't List Routines" : {
-
     },
     "Can't List Tables" : {
       "localizations" : {
@@ -36436,14 +36353,6 @@
         }
       }
     },
-    "Changes the procedure makes are committed when it commits or finishes. Stop rolls back what it hasn't committed." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Changes the routine makes are committed when it finishes. Stop rolls them back." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Changes Unavailable" : {
 
     },
@@ -38709,10 +38618,6 @@
         }
       }
     },
-    "Choose DBMS_DEBUG as the protocol." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Choose Destination…" : {
       "localizations" : {
         "fr" : {
@@ -38872,10 +38777,6 @@
           }
         }
       }
-    },
-    "Choose other Debugger Ports, or DBMS_DEBUG as the protocol." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Choose port automatically" : {
       "localizations" : {
@@ -43398,10 +43299,6 @@
         }
       }
     },
-    "Collection" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Collection %@ no longer exists." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -43425,14 +43322,6 @@
           }
         }
       }
-    },
-    "Collection of %d elements" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Collection of 1 element" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "collections" : {
       "localizations" : {
@@ -46258,10 +46147,6 @@
           }
         }
       }
-    },
-    "Compile for Debug" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Complete Sign In" : {
       "localizations" : {
@@ -52600,9 +52485,6 @@
         }
       }
     },
-    "Could not build the column reorder for this table. If this engine's driver was installed before column reorder shipped, update it in Settings > Extensions." : {
-
-    },
     "Could not build the column reorder for this table. If this engine's driver was installed before column reorder shipped, update it in Settings > Plugins." : {
       "localizations" : {
         "fr" : {
@@ -52654,9 +52536,6 @@
       }
     },
     "Could not build the query that matches rows" : {
-
-    },
-    "Could not build the table rebuild for this change. If this engine's driver was installed before foreign key editing shipped, update it in Settings > Extensions." : {
 
     },
     "Could not build the table rebuild for this change. If this engine's driver was installed before foreign key editing shipped, update it in Settings > Plugins." : {
@@ -60398,10 +60277,6 @@
         }
       }
     },
-    "DBMS_DEBUG_JDWP needs a Debugger Host for the database to connect back to." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Deactivate" : {
       "localizations" : {
         "fr" : {
@@ -60601,56 +60476,6 @@
           }
         }
       }
-    },
-    "Debug" : {
-
-    },
-    "Debug %@" : {
-
-    },
-    "Debug it from a routine that calls it with that value." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debug Routine" : {
-
-    },
-    "Debug Routine…" : {
-
-    },
-    "Debug Session Ended" : {
-
-    },
-    "Debug…" : {
-
-    },
-    "Debugger Host" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugger Ports" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugging %@ needs the DEBUG privilege on it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugging needs the DEBUG CONNECT SESSION privilege." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugging through DBMS_DEBUG instead." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugging through DBMS_DEBUG_JDWP. The database connected to TablePro at %@." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Debugging through DBMS_DEBUG." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Decimal" : {
       "extractionState" : "manual",
@@ -90758,10 +90583,6 @@
         }
       }
     },
-    "If the server reaches this Mac through NAT or a load balancer, choose DBMS_DEBUG as the protocol." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "If the server stopped answering at the network encryption step, set Network Encryption to Rejected on the Advanced tab and connect again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -95343,10 +95164,6 @@
     "Install the %@ plugin?" : {
 
     },
-    "Install the pldebugger package for this PostgreSQL version on the server, then run CREATE EXTENSION pldbgapi in this database." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Installed" : {
       "localizations" : {
         "fr" : {
@@ -97270,10 +97087,6 @@
         }
       }
     },
-    "Its server session may still be running and holding its locks." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Its structure could not be read." : {
       "localizations" : {
         "fr" : {
@@ -97287,10 +97100,6 @@
     "Its uncommitted changes are discarded." : {
 
     },
-    "Its uncommitted work rolls back when it ends." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Its WHERE clause is not supported here, so it covers every row." : {
       "localizations" : {
         "fr" : {
@@ -97300,10 +97109,6 @@
           }
         }
       }
-    },
-    "JDWP error %d." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Join condition:" : {
 
@@ -99192,10 +98997,6 @@
     },
     "This sequence's settings could not be read, so they cannot be changed here." : {
 
-    },
-    "This server can't show the default value of %@, so enter a value for it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "keyword: %@" : {
       "localizations" : {
@@ -102203,10 +102004,6 @@
         }
       }
     },
-    "Line %1$d of %2$@ has no code to stop at." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Line %1$d: %2$@" : {
       "localizations" : {
         "fr" : {
@@ -102270,9 +102067,6 @@
           }
         }
       }
-    },
-    "Line %d" : {
-
     },
     "Line break" : {
       "extractionState" : "manual",
@@ -115179,9 +114973,6 @@
     "No build of this plugin works with this version of TablePro." : {
 
     },
-    "No Call Stack" : {
-
-    },
     "No cells changed." : {
       "localizations" : {
         "fr" : {
@@ -116386,10 +116177,6 @@
           }
         }
       }
-    },
-    "No debugger host is set, so the database can't connect back to TablePro. Debugging through DBMS_DEBUG." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "No default" : {
       "localizations" : {
@@ -118124,9 +117911,6 @@
         }
       }
     },
-    "No Output" : {
-
-    },
     "No parts found" : {
       "localizations" : {
         "fr" : {
@@ -118248,10 +118032,6 @@
           }
         }
       }
-    },
-    "No port in the Debugger Ports range is free on this Mac." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "No primary key. Choose key columns to compare this table." : {
       "localizations" : {
@@ -120611,9 +120391,6 @@
         }
       }
     },
-    "No Variables" : {
-
-    },
     "No Vault address. Enter one in the credential profile, or set VAULT_ADDR in TablePro's environment." : {
 
     },
@@ -122261,10 +122038,6 @@
         }
       }
     },
-    "Not readable" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Not readable with your permissions" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -123137,9 +122910,6 @@
           }
         }
       }
-    },
-    "Nothing to Debug" : {
-
     },
     "Nothing to Draw" : {
       "localizations" : {
@@ -125989,10 +125759,6 @@
           }
         }
       }
-    },
-    "Only the owner of %@ or a superuser can debug it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Only use the bootstrap address" : {
       "extractionState" : "manual",
@@ -129054,10 +128820,6 @@
         }
       }
     },
-    "Or choose DBMS_DEBUG as the protocol, which needs no ACL entry." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Oracle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -129252,10 +129014,6 @@
           }
         }
       }
-    },
-    "Other sessions using the package lose its state, and their next call to it fails once with ORA-04068." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Other work ran on this connection before you confirmed. Check the transaction and try again." : {
 
@@ -131307,10 +131065,6 @@
         }
       }
     },
-    "Pass NULL or leave it at its default." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Passphrase" : {
       "localizations" : {
         "fr" : {
@@ -132359,20 +132113,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已在 %d 次工具呼叫後暫停。"
-          }
-        }
-      }
-    },
-    "Paused at line %d" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Paused at line %d in %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Paused at line %1$d in %2$@"
           }
         }
       }
@@ -137242,8 +136982,6 @@
       }
     },
     "Procedure" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -138211,10 +137949,6 @@
           }
         }
       }
-    },
-    "Protocol" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "protocol negotiation" : {
       "extractionState" : "manual",
@@ -145527,9 +145261,6 @@
         }
       }
     },
-    "Remove All Breakpoints" : {
-
-    },
     "Remove All Filters" : {
       "localizations" : {
         "fr" : {
@@ -146599,14 +146330,6 @@
           }
         }
       }
-    },
-    "Remove SET client_min_messages from the routine to debug it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Remove SET transaction_timeout from the routine to debug it." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Remove tag %@" : {
       "comment" : "A label for a button that removes a tag from a list of selected tags. The argument is the name of the tag to be removed.",
@@ -151614,9 +151337,6 @@
         }
       }
     },
-    "Routine Debugger" : {
-
-    },
     "Routine name" : {
       "localizations" : {
         "fr" : {
@@ -151666,10 +151386,6 @@
           }
         }
       }
-    },
-    "Routines with polymorphic or record parameters can't be debugged." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Routines, sorted by qualified name" : {
       "localizations" : {
@@ -154295,9 +154011,6 @@
           }
         }
       }
-    },
-    "Running…" : {
-
     },
     "Runs a command you write. It must open the local port itself." : {
       "localizations" : {
@@ -161716,14 +161429,6 @@
         }
       }
     },
-    "Server process %d may still be running and holding its locks." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Server process %d may still be waiting for a debugger and holding its locks. To end it, run SELECT pldbg_attach_to_port(%d) and pass the number it returns to pldbg_abort_target." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Server response: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -162284,14 +161989,6 @@
         }
       }
     },
-    "Session SID %1$d, SERIAL# %2$d. %3$@ A user with ALTER SYSTEM can end it now with ALTER SYSTEM KILL SESSION '%1$d,%2$d' IMMEDIATE." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Session SID %d. %@" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Session state" : {
       "localizations" : {
         "fr" : {
@@ -162634,14 +162331,6 @@
           }
         }
       }
-    },
-    "Set Debugger Host to an address the database server can reach this Mac at, or choose DBMS_DEBUG as the protocol." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Set Debugger Host to an address the server can reach, or choose DBMS_DEBUG as the protocol." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Set DEFAULT" : {
       "localizations" : {
@@ -173396,18 +173085,6 @@
         }
       }
     },
-    "Step Into" : {
-
-    },
-    "Step Out" : {
-
-    },
-    "Step Over" : {
-
-    },
-    "Step through PL/pgSQL and PL/SQL routines with breakpoints." : {
-
-    },
     "Stop" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -173659,9 +173336,6 @@
           }
         }
       }
-    },
-    "Stop Debugging" : {
-
     },
     "Stop Export?" : {
       "localizations" : {
@@ -173992,10 +173666,6 @@
     },
     "Stopped." : {
 
-    },
-    "Stopped. The routine's changes were rolled back." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "Stopping…" : {
       "extractionState" : "stale",
@@ -178913,10 +178583,6 @@
         }
       }
     },
-    "TablePro compiles it again with debug information (PLSQL_OPTIMIZE_LEVEL=1) and keeps its other settings. Compiling commits." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "TablePro connects to the first broker over a tunnel. Partitions led by other brokers cannot be read." : {
       "localizations" : {
         "fr" : {
@@ -183185,10 +182851,6 @@
     "The branch and its upstream branch each have commits the other lacks. Finish this pull in a Git client." : {
 
     },
-    "The breakpoint on line %1$d of %2$@ moved to line %3$d, the next line with code." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "The broker answered a coordinator lookup with no coordinator." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184322,10 +183984,6 @@
         }
       }
     },
-    "The connection from the database didn't complete the debugger handshake." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "The connection has no current DuckDB catalog to read metadata from" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -184685,9 +184343,6 @@
           }
         }
       }
-    },
-    "The connection was closed or reconnected while the debugger was starting. Start it again." : {
-
     },
     "The connection was closed." : {
       "localizations" : {
@@ -185107,18 +184762,6 @@
         }
       }
     },
-    "The database answered the debugger with data TablePro can't read." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The database couldn't reach TablePro at %@." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The database didn't connect to TablePro at %@ in time." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "the database file" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185192,10 +184835,6 @@
           }
         }
       }
-    },
-    "The database isn't allowed to connect to TablePro at %@ (ORA-24247). A DBA can allow it with DBMS_NETWORK_ACL_ADMIN.APPEND_HOST_ACE and the jdwp privilege." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "The database name is longer than the 128 bytes FreeTDS takes." : {
       "extractionState" : "manual",
@@ -185332,41 +184971,6 @@
       }
     },
     "The Database URL is not valid." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The database's debugger refused the request." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The database's debugger sent data TablePro can't read, so the session ended." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The database's debugger stopped answering, so the session ended." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The debug session has ended." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The debug session's connection closed." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The debugger couldn't finish this step." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The debugger couldn't start." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The debugger stopped for a reason TablePro doesn't know." : {
-
-    },
-    "The debugger's session was interrupted while it waited, so the routine was stopped and its uncommitted changes were rolled back. A cancel or the server's transaction_timeout can cause this." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -186491,9 +186095,6 @@
           }
         }
       }
-    },
-    "The installed %1$@ does not support %2$@. Update it in Settings > Extensions." : {
-
     },
     "The installed %1$@ does not support %2$@. Update it in Settings > Plugins." : {
 
@@ -188014,14 +187615,6 @@
         }
       }
     },
-    "The PL/pgSQL debugger can't step out of a routine." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The PL/pgSQL debugger isn't installed in “%@”." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "The plan setting could not be turned off again, so the connection was closed. Reconnect to go on." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -189077,26 +188670,6 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "The routine couldn't be stopped on the server." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The routine is still running on the server. DBMS_DEBUG can't interrupt it between breakpoints." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The routine isn't paused." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The routine raised an error. Its changes were rolled back." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "The routine was stopped, and its uncommitted changes were rolled back." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "The row filter on %@ was not a single expression, so every row was exported." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189869,10 +189442,6 @@
     },
     "The server computes this column, so it is left out." : {
 
-    },
-    "The server couldn't start the debugger." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "The server did not accept the client certificate. %@" : {
       "extractionState" : "manual",
@@ -193836,13 +193405,6 @@
         }
       }
     },
-    "This connection can't open the separate sessions the debugger needs." : {
-
-    },
-    "This connection can't run the PL/pgSQL debugger." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "This connection does not support user and role management." : {
       "localizations" : {
         "fr" : {
@@ -194416,9 +193978,6 @@
         }
       }
     },
-    "This connection's driver can't debug routines." : {
-
-    },
     "This connection's driver does not list its tables." : {
       "localizations" : {
         "fr" : {
@@ -194828,10 +194387,6 @@
           }
         }
       }
-    },
-    "This database doesn't provide DBMS_DEBUG_JDWP." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "This database has an open transaction. Closing it rolls the transaction back and discards its uncommitted changes." : {
       "localizations" : {
@@ -198017,17 +197572,6 @@
         }
       }
     },
-    "This routine sets client_min_messages to %@, which hides the notice the debugger starts with." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "This routine sets transaction_timeout to %@, which would end it while it waits at a breakpoint." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "This routine takes no arguments." : {
-
-    },
     "This row does not name a stored document." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -198359,10 +197903,6 @@
           }
         }
       }
-    },
-    "This server has no PL/pgSQL debugger." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
     },
     "This server has no users or roles you can manage." : {
       "localizations" : {
@@ -200574,9 +200114,6 @@
         }
       }
     },
-    "Toggle Breakpoint" : {
-
-    },
     "Toggle Comment" : {
       "localizations" : {
         "fr" : {
@@ -202231,8 +201768,6 @@
       "generatesSymbol" : false
     },
     "Trigger" : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -203097,9 +202632,6 @@
       }
     },
     "Try again and answer the prompt in TablePro." : {
-
-    },
-    "Try again, or install the plugin from Settings > Extensions." : {
 
     },
     "Try again, or install the plugin from Settings > Plugins." : {
@@ -206361,9 +205893,6 @@
         }
       }
     },
-    "Update or reinstall the plugin in Settings > Extensions." : {
-
-    },
     "Update or reinstall the plugin in Settings > Plugins." : {
       "localizations" : {
         "fr" : {
@@ -206542,12 +206071,6 @@
           }
         }
       }
-    },
-    "Update the database driver in Settings > Extensions to run a batch more than once with GO." : {
-
-    },
-    "Update the database driver in Settings > Extensions to run several statements in one call." : {
-
     },
     "Update the database driver in Settings > Plugins to run a batch more than once with GO." : {
       "localizations" : {
@@ -209601,9 +209124,6 @@
           }
         }
       }
-    },
-    "Variables" : {
-
     },
     "Variant id" : {
       "localizations" : {

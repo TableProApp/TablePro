@@ -210,9 +210,6 @@ struct MainEditorContentView: View {
             versionHistoryContent(tab: tab)
         case .tableListing:
             tableListingContent(tab: tab)
-        case .routineDebug:
-            RoutineDebugTabContent(tabId: tab.id, databaseType: connection.type)
-                .id(tab.id)
         }
     }
 

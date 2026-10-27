@@ -165,8 +165,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard QuitApproval.approve() else { return .terminateCancel }
 
         Task {
-            // First, while the drivers are open: a debug stop rolls back the routine's transaction.
-            await AppModuleTermination.stopModuleWork()
             await MCPServerManager.shared.stop()
             await DatabaseManager.shared.runPostDisconnectScriptsBeforeQuit()
             NSApp.reply(toApplicationShouldTerminate: true)

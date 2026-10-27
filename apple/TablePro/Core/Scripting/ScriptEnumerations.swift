@@ -32,8 +32,7 @@ internal enum ScriptEnumerations {
         }
     }
 
-    // Nil for a tab scripts never see: a debug tab belongs to a module, which adds no AppleScript surface.
-    internal static func code(for tabType: TabType) -> FourCharCode? {
+    internal static func code(for tabType: TabType) -> FourCharCode {
         switch tabType {
         case .query: fourCharCode("TPk1")
         case .table: fourCharCode("TPk2")
@@ -45,7 +44,6 @@ internal enum ScriptEnumerations {
         case .objectSource: fourCharCode("TPk8")
         case .versionHistory: fourCharCode("TPk9")
         case .tableListing: fourCharCode("TPkl")
-        case .routineDebug: nil
         }
     }
 

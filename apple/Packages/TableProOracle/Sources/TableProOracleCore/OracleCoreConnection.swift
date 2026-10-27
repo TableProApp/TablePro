@@ -13,20 +13,20 @@ internal enum QueryGateTurn: Sendable, Equatable {
     case busy(for: Duration)
 }
 
-// What a health check does with its turn: probe an idle channel, call a busy one alive, or call it wedged once a
-// statement has held it past the staleness limit.
+/// What a health check should do with the turn it was given.
 internal enum OraclePingDecision: Sendable, Equatable {
+    /// The probe owns the channel and may run, and may close it if it gets no answer.
     case probe
+    /// Somebody else is using the channel, which answers the question better than a probe could.
     case reportAlive
+    /// Nothing has moved on the channel for longer than any statement is allowed to run.
     case reportWedged
 
-    // No limit for a debug session: its statement is a routine paused at a breakpoint for as long as a person reads it.
-    static func of(_ turn: QueryGateTurn, wedgedAfter: Duration?) -> OraclePingDecision {
+    static func of(_ turn: QueryGateTurn, wedgedAfter: Duration) -> OraclePingDecision {
         switch turn {
         case .acquired:
             return .probe
         case .busy(let held):
-            guard let wedgedAfter else { return .reportAlive }
             return held > wedgedAfter ? .reportWedged : .reportAlive
         }
     }
@@ -111,7 +111,6 @@ public final class OracleCoreConnection: @unchecked Sendable {
         /// Read before the first statement of each session, and again before the statement after one that can
         /// change them, so no result ever waits on them mid-stream.
         var sessionZones: OracleSessionTimeZones?
-        var isReservedForDebugging = false
     }
 
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -410,42 +409,43 @@ public final class OracleCoreConnection: @unchecked Sendable {
     }
 
     public func applyQueryTimeout(_ seconds: Int) {
-        state.withLock { current in
-            guard !current.isReservedForDebugging else { return }
-            current.queryTimeoutSeconds = OracleQueryTimeout.boundedSeconds(seconds)
-        }
-    }
-
-    // A debug session's statement is a routine that waits at a breakpoint for a person: no query timeout, no
-    // staleness limit on the health check, and no silent redial, since a new session would not be the one debugged.
-    public func reserveForDebugging() {
-        state.withLock { current in
-            current.isReservedForDebugging = true
-            current.queryTimeoutSeconds = 0
-        }
-    }
-
-    public var isReservedForDebugging: Bool {
-        state.withLock { $0.isReservedForDebugging }
+        state.withLock { $0.queryTimeoutSeconds = OracleQueryTimeout.boundedSeconds(seconds) }
     }
 
     public func noteSessionSchema(_ schema: String) {
         state.withLock { $0.sessionSchema = schema }
     }
 
-    // The app's own `max(queryTimeout, 300)` staleness rule, read from the timeout it gave the driver so the two
-    // cannot drift. Nil for a debug session.
-    var wedgedStatementLimit: Duration? {
-        state.withLock { current in
-            current.isReservedForDebugging ? nil : .seconds(max(Double(current.queryTimeoutSeconds), 300))
-        }
+    /// How long a statement may hold the channel before a probe that cannot get a turn treats it
+    /// as wedged rather than as evidence the connection is alive. It is the app's own
+    /// `max(queryTimeout, 300)` staleness rule, read from the timeout the app already told the
+    /// driver about, so the two cannot drift. An unlimited query timeout is the user saying a
+    /// statement may run for as long as it runs, and the floor still catches a socket that died
+    /// without closing.
+    private var wedgedStatementSeconds: Double {
+        max(Double(state.withLock { $0.queryTimeoutSeconds }), 300)
     }
 
-    // A probe closes the channel only while it owns it (#3053). A busy channel reads as alive until
-    // `wedgedStatementLimit`; OracleNIO is asked directly, so a dead connection is never replaced by a redial.
+    /// Answers whether this connection still works, without ever taking the channel away from
+    /// whoever is using it.
+    ///
+    /// A probe may close a channel only while it owns it. The old shape wrapped `executeQuery` in
+    /// a ten second deadline, and `executeQuery` opens by waiting on the query gate, so the
+    /// deadline covered the queue rather than the round trip: a probe that never got a turn fired
+    /// `disconnect()` into a healthy statement, which OracleNIO reports to that statement as
+    /// `clientClosedConnection` (#3053).
+    ///
+    /// A statement already in flight answers the question better than a probe could, so a busy
+    /// channel reads as alive. Past ``wedgedStatementSeconds`` it reads as wedged instead, which
+    /// is what keeps the app's own stale-query escape valve working.
+    ///
+    /// It asks OracleNIO directly rather than running `SELECT 1` through the app's statement path:
+    /// there is no transaction role to admit, no autocommit flag to choose, and no silent redial,
+    /// so a connection that has gone away reports that it has gone away instead of reporting the
+    /// health of a replacement nobody asked for.
     public func ping() async throws {
         let turn = await queryGate.takeTurnIfFree()
-        switch OraclePingDecision.of(turn, wedgedAfter: wedgedStatementLimit) {
+        switch OraclePingDecision.of(turn, wedgedAfter: .seconds(wedgedStatementSeconds)) {
         case .reportAlive:
             return
         case .reportWedged:
@@ -535,9 +535,6 @@ public final class OracleCoreConnection: @unchecked Sendable {
         guard state.withLock({ $0.hasEverConnected && $0.close.allowsReconnect }) else {
             throw OracleCoreError.notConnected
         }
-        if state.withLock({ $0.isReservedForDebugging }) {
-            throw OracleCoreError.connectionClosed
-        }
 
         osLogger.notice("Reconnecting to Oracle after the previous connection was closed")
         try await connect()
@@ -618,56 +615,6 @@ public final class OracleCoreConnection: @unchecked Sendable {
         }
         guard let answer else { return nil }
         return answer.rows.first?.first.map { $0 != .null } ?? false
-    }
-
-    // MARK: - Debugging
-
-    // Runs one statement as given: no transaction bookkeeping, session zone read or redial, all of which would send
-    // PL/SQL of their own, and a session in DBMS_DEBUG mode stops at the first PL/SQL it runs. A statement that opens
-    // `:rows` returns that cursor's first column.
-    public func executeDirect(
-        _ sql: String,
-        binds: [OracleBindValue] = [],
-        autoCommit: Bool = false,
-        readsRows: Bool = false
-    ) async throws -> [String?] {
-        await queryGate.acquire()
-        do {
-            let connection = try requireConnection()
-            let rows = try await withQueryDeadline { [self] in
-                try await runDirect(sql, binds: binds, autoCommit: autoCommit, readsRows: readsRows, on: connection)
-            }
-            await queryGate.release()
-            return rows
-        } catch {
-            let mapped = mapExecutionError(error)
-            await queryGate.release()
-            throw mapped
-        }
-    }
-
-    private func runDirect(
-        _ sql: String,
-        binds: [OracleBindValue],
-        autoCommit: Bool,
-        readsRows: Bool,
-        on connection: OracleNIO.OracleConnection
-    ) async throws -> [String?] {
-        var bindings = OracleBindValue.bindings(for: binds)
-        let options = StatementOptions(autoCommit: autoCommit)
-        guard readsRows else {
-            try await discardRows(OracleStatement(unsafeSQL: sql, binds: bindings), options: options, on: connection)
-            return []
-        }
-        let cursorRef = OracleRef(dataType: .cursor)
-        bindings.append(cursorRef, bindName: OracleDebugPayload.cursorBindName, isReturning: false)
-        try await connection.execute(OracleStatement(unsafeSQL: sql, binds: bindings), options: options, logger: nioLogger)
-        let cursor = try cursorRef.decode(as: Cursor.self)
-        var rows: [String?] = []
-        for try await row in try await cursor.execute(on: connection, logger: nioLogger) {
-            rows.append(try row.decode(String?.self))
-        }
-        return rows
     }
 
     // MARK: - Server Output

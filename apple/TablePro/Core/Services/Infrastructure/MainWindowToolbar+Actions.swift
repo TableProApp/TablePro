@@ -5,7 +5,6 @@
 
 import AppKit
 import Combine
-import TableProPluginKit
 
 extension MainWindowToolbar {
     /// Straight to the window, because the switcher is the window's. Every other item here needs
@@ -65,26 +64,6 @@ extension MainWindowToolbar {
 
     @objc func performExport(_ sender: Any?) {
         coordinator?.commandActions?.exportTables()
-    }
-
-    @objc func performDebugContinue(_ sender: Any?) {
-        coordinator?.frontRoutineDebugController?.perform(.continueExecution)
-    }
-
-    @objc func performDebugStepOver(_ sender: Any?) {
-        coordinator?.frontRoutineDebugController?.perform(.stepOver)
-    }
-
-    @objc func performDebugStepInto(_ sender: Any?) {
-        coordinator?.frontRoutineDebugController?.perform(.stepInto)
-    }
-
-    @objc func performDebugStepOut(_ sender: Any?) {
-        coordinator?.frontRoutineDebugController?.perform(.stepOut)
-    }
-
-    @objc func performDebugStop(_ sender: Any?) {
-        coordinator?.frontRoutineDebugController?.stop()
     }
 
     /// The Inspector item on macOS 13, forwarded because the action belongs to the split controller

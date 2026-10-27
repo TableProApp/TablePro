@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import TableProPluginKit
 
 /// Everything the connection window's toolbar is allowed to know about what the window is showing.
 ///
@@ -56,12 +55,6 @@ internal struct ToolbarContext: Equatable {
     /// A type's tab queues changes the commit control saves; every other object tab only reads.
     internal let stagesObjectChanges: Bool
 
-    // Whether the Routine Debugger module puts its controls in the toolbar at all.
-    internal let showsDebugItems: Bool
-    // What the selected debug tab can do now; empty and false everywhere else.
-    internal let debugCommands: Set<PluginDebugCommand>
-    internal let canStopDebugging: Bool
-
     /// The subset of the context that may move an item in or out of the titlebar, or change what
     /// one says.
     ///
@@ -82,7 +75,6 @@ internal struct ToolbarContext: Equatable {
         internal let supportsServerDashboard: Bool
         internal let isAIEnabled: Bool
         internal var stagesObjectChanges = false
-        internal var showsDebugItems = false
     }
 
     internal var visibilityKey: VisibilityKey {
@@ -95,8 +87,7 @@ internal struct ToolbarContext: Equatable {
             supportsImport: supportsImport,
             supportsServerDashboard: supportsServerDashboard,
             isAIEnabled: isAIEnabled,
-            stagesObjectChanges: stagesObjectChanges,
-            showsDebugItems: showsDebugItems
+            stagesObjectChanges: stagesObjectChanges
         )
     }
 
@@ -120,10 +111,7 @@ internal struct ToolbarContext: Equatable {
         supportsImport: Bool = false,
         supportsServerDashboard: Bool = false,
         isAIEnabled: Bool = false,
-        stagesObjectChanges: Bool = false,
-        showsDebugItems: Bool = false,
-        debugCommands: Set<PluginDebugCommand> = [],
-        canStopDebugging: Bool = false
+        stagesObjectChanges: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -145,9 +133,6 @@ internal struct ToolbarContext: Equatable {
         self.supportsServerDashboard = supportsServerDashboard
         self.isAIEnabled = isAIEnabled
         self.stagesObjectChanges = stagesObjectChanges
-        self.showsDebugItems = showsDebugItems
-        self.debugCommands = debugCommands
-        self.canStopDebugging = canStopDebugging
     }
 
     /// The whole context over a key the caller already computed, so the eight slow-moving facts
@@ -164,9 +149,7 @@ internal struct ToolbarContext: Equatable {
         canAddRow: Bool,
         canRestorePreviousValues: Bool,
         canNavigateBack: Bool,
-        canNavigateForward: Bool,
-        debugCommands: Set<PluginDebugCommand> = [],
-        canStopDebugging: Bool = false
+        canNavigateForward: Bool
     ) {
         self.init(
             tabKind: key.tabKind,
@@ -188,10 +171,7 @@ internal struct ToolbarContext: Equatable {
             supportsImport: key.supportsImport,
             supportsServerDashboard: key.supportsServerDashboard,
             isAIEnabled: key.isAIEnabled,
-            stagesObjectChanges: key.stagesObjectChanges,
-            showsDebugItems: key.showsDebugItems,
-            debugCommands: debugCommands,
-            canStopDebugging: canStopDebugging
+            stagesObjectChanges: key.stagesObjectChanges
         )
     }
 }

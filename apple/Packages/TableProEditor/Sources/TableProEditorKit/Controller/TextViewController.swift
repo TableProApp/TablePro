@@ -89,22 +89,6 @@ public class TextViewController: NSViewController {
     ///         strong reference to the delegate is kept *outside* of this variable.
     public weak var completionDelegate: CodeSuggestionDelegate?
 
-    public var breakpointLines: Set<Int> = [] {
-        didSet {
-            guard breakpointLines != oldValue else { return }
-            breakpointLinesDidChange()
-        }
-    }
-
-    public var executionLine: Int? {
-        didSet {
-            guard executionLine != oldValue else { return }
-            executionLineDidChange()
-        }
-    }
-
-    public var onBreakpointToggle: ((Int) -> Void)?
-
     // MARK: - Config Helpers
 
     /// The font to use in the `textView`
@@ -195,8 +179,6 @@ public class TextViewController: NSViewController {
     var snippetSession: SnippetSession?
     var snippetChoicePresenter: SnippetChoicePresenter = SnippetChoiceMenu.present
     var snippetChoiceGeneration = 0
-
-    var executionLineNeedsReveal = false
 
     /// The width of the view floating along the editor's leading edge: the gutter.
     /// ``SourceEditorScrollView`` reserves it so the text scrolls clear of it.
@@ -292,7 +274,6 @@ public class TextViewController: NSViewController {
         for coordinator in textCoordinators.values() {
             coordinator.textViewDidReplaceDocument(controller: self)
         }
-        revealExecutionLineIfNeeded()
         // Deferred because the binding replaces the document from inside a SwiftUI update, where the find panel's
         // model must not publish.
         DispatchQueue.main.async { [weak findViewController] in
