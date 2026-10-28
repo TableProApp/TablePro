@@ -166,6 +166,9 @@ struct TableStructureView: View {
         .onChange(of: foreignKeys) { _ in onForeignKeysChanged() }
         .onChange(of: checkConstraints) { _ in onCheckConstraintsChanged() }
         .onChange(of: session.tableComment) { _ in onTableCommentChanged() }
+        .onChange(of: session.tableOptions) { _ in onTableOptionsChanged() }
+        .onChange(of: session.autoIncrementRead) { read in onAutoIncrementReadChanged(read) }
+        .onChange(of: session.tableOptionsCatalog) { _ in gridAdapter.characterSetCatalogDidChange() }
         .onChange(of: isTableCommentFocused) { isFocused in
             if !isFocused { structureChangeManager.endTableCommentRun() }
         }
@@ -270,7 +273,7 @@ struct TableStructureView: View {
         case .foreignKeys: return foreignKeys.count
         case .triggers: return triggers.count
         case .checkConstraints: return checkConstraints.count
-        case .ddl, .parts: return nil
+        case .options, .ddl, .parts: return nil
         }
     }
 
@@ -327,6 +330,8 @@ struct TableStructureView: View {
                 canEdit: editGate.allowsTriggerEditing,
                 onOpenInEditor: openTriggerInEditor
             )
+        case .options:
+            tableOptionsView
         case .ddl:
             ddlView
         case .parts:

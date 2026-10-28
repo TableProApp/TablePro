@@ -21,7 +21,9 @@ internal extension StructureEditingSession {
             foreignKeys: foreignKeys,
             checkConstraints: checkConstraints,
             primaryKey: primaryKey,
-            tableComment: loadedTableComment
+            tableComment: loadedTableComment,
+            tableOptions: loadedTableOptions,
+            autoIncrementConfirmed: autoIncrementRead == .confirmed
         )
     }
 

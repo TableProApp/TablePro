@@ -58,6 +58,7 @@ enum CreateTableDraftBuilder {
         foreignKeys: [EditableForeignKeyDefinition],
         dialect: ForeignKeyDialect,
         includesEngineOptions: Bool,
+        defaults: CreateTableOptionDefaults = CreateTableOptionDefaults(),
         suppliesItsOwnKey: Bool = false
     ) -> CreateTablePlan {
         var issues: [SchemaDraftIssue] = []
@@ -87,15 +88,16 @@ enum CreateTableDraftBuilder {
         }
 
         let primaryKeyColumns = resolvedColumns.filter(\.isPrimaryKey).map(\.name)
+        let characterSet = includesEngineOptions ? defaults.characterSetClause(for: options) : nil
         let definition = PluginCreateTableDefinition(
             tableName: trimmedName,
             columns: resolvedColumns.map { $0.toPlugin() },
             indexes: [],
             foreignKeys: resolvedForeignKeys.map { $0.toPlugin() },
             primaryKeyColumns: primaryKeyColumns,
-            engine: includesEngineOptions ? options.engine : nil,
-            charset: includesEngineOptions ? options.charset : nil,
-            collation: includesEngineOptions ? options.collation : nil,
+            engine: includesEngineOptions ? defaults.engineClause(for: options) : nil,
+            charset: characterSet?.charset,
+            collation: characterSet?.collation,
             ifNotExists: options.ifNotExists
         )
 

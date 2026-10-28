@@ -64,7 +64,7 @@ struct StructureGridAdapterAddRowTests {
         #expect(manager.workingForeignKeys.count == before + 1)
     }
 
-    @Test("Add Row does nothing on a sub-tab without a grid", arguments: [StructureTab.ddl, .parts, .triggers])
+    @Test("Add Row does nothing on a sub-tab without a grid", arguments: [StructureTab.options, .ddl, .parts, .triggers])
     func gridlessTabAddsNothing(tab: StructureTab) {
         let (adapter, manager) = makeAdapter(selectedTab: tab)
         let before = counts(manager)
@@ -72,7 +72,7 @@ struct StructureGridAdapterAddRowTests {
         #expect(counts(manager) == before)
     }
 
-    @Test("Delete does nothing on a sub-tab without a grid", arguments: [StructureTab.ddl, .parts, .triggers])
+    @Test("Delete does nothing on a sub-tab without a grid", arguments: [StructureTab.options, .ddl, .parts, .triggers])
     func gridlessTabDeletesNothing(tab: StructureTab) {
         let (adapter, manager) = makeAdapter(selectedTab: tab)
         let before = counts(manager)

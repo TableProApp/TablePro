@@ -505,6 +505,7 @@ pub(crate) async fn fetch_table_definition(
         foreign_keys,
         inbound_foreign_keys: inbound,
         source,
+        options: None,
     })
 }
 

@@ -24,7 +24,7 @@ enum StructureFooterPolicy {
         case .indexes: return .addIndex
         case .foreignKeys: return .addForeignKey
         case .checkConstraints: return .addCheckConstraint
-        case .ddl, .parts, .triggers: return nil
+        case .options, .ddl, .parts, .triggers: return nil
         }
     }
 
@@ -34,7 +34,7 @@ enum StructureFooterPolicy {
         case .indexes: return .dropIndex
         case .foreignKeys: return .dropForeignKey
         case .checkConstraints: return .dropCheckConstraint
-        case .ddl, .parts, .triggers: return nil
+        case .options, .ddl, .parts, .triggers: return nil
         }
     }
 
@@ -53,7 +53,7 @@ enum StructureFooterPolicy {
             return (String(localized: "Add Foreign Key"), String(localized: "Remove Foreign Key"))
         case .checkConstraints:
             return (String(localized: "Add Check Constraint"), String(localized: "Remove Check Constraint"))
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return nil
         }
     }

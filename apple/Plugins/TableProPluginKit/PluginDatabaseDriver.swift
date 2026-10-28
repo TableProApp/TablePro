@@ -622,6 +622,20 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// or empty comment removes it. Return nil for a kind the engine cannot comment on.
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String?
 
+    /// The table's default character set, collation and AUTO_INCREMENT counter, read live. Nil where the
+    /// engine has no such table options.
+    func fetchTableOptions(table: String, schema: String?) async throws -> PluginTableOptions?
+
+    /// The character sets, collations and storage engines the server offers any table. Nil where the engine
+    /// has none.
+    func fetchTableOptionsCatalog() async throws -> PluginTableOptionsCatalog?
+
+    /// The character set and collation a new table in `schema` takes when it names none.
+    func fetchDefaultTableOptions(schema: String?) async throws -> PluginTableOptions?
+
+    /// The statement that applies `change` to an existing table. Return nil where the engine cannot.
+    func tableOptionsStatement(table: String, schema: String?, change: PluginTableOptionsChange) -> String?
+
     /// The statement that recomputes a materialized view's stored rows. Return nil where the engine
     /// has no materialized views or keeps them current on its own.
     func refreshMaterializedViewStatement(name: String, schema: String?, concurrently: Bool) -> String?

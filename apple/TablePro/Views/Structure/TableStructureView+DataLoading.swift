@@ -20,6 +20,7 @@ extension TableStructureView {
             isInitialLoading = false
             isLoading = false
             await session.reloadConcurrentRefreshAvailability()
+            await loadTableOptionsCatalogIfNeeded()
             return
         }
         await loadColumns()
@@ -31,9 +32,13 @@ extension TableStructureView {
         guard !Task.isCancelled else { return }
         await loadTableComment()
         guard !Task.isCancelled else { return }
+        await session.readTableOptions()
+        guard !Task.isCancelled else { return }
         adoptFetchedBaseline()
         session.hasLoaded = true
         isInitialLoading = false
+        // After the baseline, so the columns are editable while the catalog is read.
+        await loadTableOptionsCatalogIfNeeded()
     }
 
     func loadColumns() async {
@@ -85,7 +90,7 @@ extension TableStructureView {
                     Self.logger.error("Failed to load triggers: \(error.publicLogShape, privacy: .public)")
                     triggers = []
                 }
-            case .parts:
+            case .parts, .options:
                 return
             }
             tabData.markFetched(tab)
@@ -181,11 +186,13 @@ extension TableStructureView {
         gridAdapter.referenceMenus.invalidateTableLists()
         partsReloadToken += 1
         await reloadCoreTabs()
-        if selectedTab == .ddl {
+        switch selectedTab {
+        case .ddl:
             await fetchTabData(.ddl)
-        }
-        if selectedTab == .triggers, connection.type.supportsTriggers {
+        case .triggers where connection.type.supportsTriggers:
             await fetchTabData(.triggers)
+        case .columns, .indexes, .foreignKeys, .checkConstraints, .triggers, .options, .parts:
+            break
         }
     }
 
@@ -195,14 +202,20 @@ extension TableStructureView {
         defer { isLoading = false }
 
         let includesForeignKeys = connection.type.supportsForeignKeys
+        let offersTableOptions = session.offersTableOptionsTab
         do {
             let reloaded = try await structureLoader.coreTabs(
                 includingForeignKeys: includesForeignKeys,
-                includingTableComment: offersTableComment
+                includingTableComment: offersTableComment,
+                includingTableOptions: offersTableOptions
             )
 
             if let comment = reloaded.tableComment {
                 session.settleTableComment(comment)
+            }
+            // A save never adopts the counter it wrote: the server raises a low value, so this read is what shows.
+            if let options = reloaded.tableOptions {
+                session.settleTableOptions(options)
             }
             columns = reloaded.columns
             indexes = reloaded.indexes
@@ -214,6 +227,10 @@ extension TableStructureView {
             }
             await session.reloadConcurrentRefreshAvailability()
         } catch {
+            // A counter re-read the save started ends unconfirmed, keeping the options already on screen.
+            if offersTableOptions {
+                session.settleTableOptions(.cancelled)
+            }
             guard let message = fetchFailure(error).message else { return }
             Self.logger.error("Failed to reload structure: \(error.publicLogShape, privacy: .public)")
             errorMessage = message

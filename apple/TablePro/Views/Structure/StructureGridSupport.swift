@@ -20,13 +20,26 @@ enum StructureGridEdits {
         tab: StructureTab,
         manager: StructureChangeManager,
         orderedFields: [StructureColumnField],
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        characterSets: ColumnCharacterSetMenus.Context? = nil
     ) -> EditableForeignKeyDefinition? {
         switch tab {
         case .columns:
             guard manager.workingColumns.indices.contains(sourceIndex) else { return nil }
             var column = manager.workingColumns[sourceIndex]
-            StructureEditingSupport.updateColumn(&column, at: field, with: text, orderedFields: orderedFields)
+            let value: String
+            switch characterSetEntry(text, field: field, column: column, orderedFields: orderedFields, characterSets) {
+            case .unchecked:
+                value = text
+            case .unchanged, .refused:
+                return nil
+            case .set(let characterSet, let collation):
+                // The catalog's own spelling; the routing below pairs it with its default or owning set.
+                value = (orderedFields[field] == .charset ? characterSet : collation) ?? ""
+            }
+            StructureEditingSupport.updateColumn(
+                &column, at: field, with: value, orderedFields: orderedFields, catalog: characterSets?.loadedCatalog
+            )
             manager.updateColumn(id: column.id, with: column)
         case .indexes:
             guard manager.workingIndexes.indices.contains(sourceIndex) else { return nil }
@@ -49,10 +62,36 @@ enum StructureGridEdits {
             var constraint = manager.workingCheckConstraints[sourceIndex]
             StructureEditingSupport.updateCheckConstraint(&constraint, at: field, with: text)
             manager.updateCheckConstraint(id: constraint.id, with: constraint)
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             break
         }
         return nil
+    }
+
+    // A Charset or Collation name the catalog does not hold, or one typed while it cannot be checked.
+    static func refuses(
+        _ text: String,
+        field: Int,
+        sourceIndex: Int,
+        tab: StructureTab,
+        manager: StructureChangeManager,
+        orderedFields: [StructureColumnField],
+        characterSets: ColumnCharacterSetMenus.Context?
+    ) -> Bool {
+        guard tab == .columns, manager.workingColumns.indices.contains(sourceIndex) else { return false }
+        let column = manager.workingColumns[sourceIndex]
+        return characterSetEntry(text, field: field, column: column, orderedFields: orderedFields, characterSets) == .refused
+    }
+
+    private static func characterSetEntry(
+        _ text: String,
+        field: Int,
+        column: EditableColumnDefinition,
+        orderedFields: [StructureColumnField],
+        _ characterSets: ColumnCharacterSetMenus.Context?
+    ) -> ColumnCharacterSetMenus.Entry {
+        guard let characterSets, orderedFields.indices.contains(field) else { return .unchecked }
+        return ColumnCharacterSetMenus.entry(text, for: orderedFields[field], column: column, context: characterSets)
     }
 
     // One Cmd+Z brings the whole selection back: the manager registers an undo per row.
@@ -72,7 +111,7 @@ enum StructureGridEdits {
                 case .checkConstraints:
                     guard manager.workingCheckConstraints.indices.contains(index) else { continue }
                     manager.deleteCheckConstraint(id: manager.workingCheckConstraints[index].id)
-                case .ddl, .parts, .triggers:
+                case .options, .ddl, .parts, .triggers:
                     break
                 }
             }
@@ -96,7 +135,7 @@ enum StructureGridEdits {
             case .checkConstraints:
                 guard manager.workingCheckConstraints.indices.contains(index) else { continue }
                 manager.addCheckConstraint(manager.workingCheckConstraints[index].withNewIdentity())
-            case .ddl, .parts, .triggers:
+            case .options, .ddl, .parts, .triggers:
                 break
             }
         }
@@ -108,7 +147,7 @@ enum StructureGridEdits {
         case .indexes: manager.addNewIndex()
         case .foreignKeys: manager.addNewForeignKey()
         case .checkConstraints: manager.addNewCheckConstraint()
-        case .ddl, .parts, .triggers: break
+        case .options, .ddl, .parts, .triggers: break
         }
     }
 
@@ -118,7 +157,7 @@ enum StructureGridEdits {
         case .indexes: manager.workingIndexes.count
         case .foreignKeys: manager.workingForeignKeys.count
         case .checkConstraints: manager.workingCheckConstraints.count
-        case .ddl, .parts, .triggers: 0
+        case .options, .ddl, .parts, .triggers: 0
         }
     }
 
@@ -168,7 +207,7 @@ enum StructureGridEdits {
             let working = manager.workingCheckConstraints[sourceIndex]
             guard let original = manager.currentCheckConstraints.first(where: { $0.id == working.id }) else { return [] }
             return StructureEditingSupport.checkConstraintModifiedIndices(old: original, new: working)
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return []
         }
     }

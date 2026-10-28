@@ -56,6 +56,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 
@@ -68,6 +69,7 @@ mod tests {
             original: Some(original),
             draft,
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 
@@ -82,6 +84,7 @@ mod tests {
             draft,
             changes: TableChanges::default(),
             unparsed_defaults: Vec::new(),
+            invalid_auto_increment: false,
         }
     }
 

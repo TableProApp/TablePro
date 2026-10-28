@@ -35,6 +35,8 @@ static CAPABILITIES: DdlCapabilities = DdlCapabilities {
     column_defaults: true,
     required_columns: true,
     declared_column_order: true,
+    column_collations: false,
+    table_options: false,
 };
 
 const TYPE_SUGGESTIONS: &[&str] = &[
@@ -659,6 +661,7 @@ mod tests {
             foreign_keys: Vec::new(),
             inbound_foreign_keys: Vec::new(),
             source: None,
+            options: None,
         }
     }
 

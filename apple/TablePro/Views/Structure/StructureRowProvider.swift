@@ -22,6 +22,7 @@ final class StructureRowProvider {
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
     private let serverSupport: StructureServerSupport
+    private let picksCharacterSets: Bool
     let orderedColumnFields: [StructureColumnField]
     private let filterText: String?
     private let sortDescriptor: StructureSortDescriptor?
@@ -64,7 +65,7 @@ final class StructureRowProvider {
                 String(localized: "Expression"),
                 String(localized: "Columns")
             ]
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -81,7 +82,12 @@ final class StructureRowProvider {
         switch tab {
         case .foreignKeys: ForeignKeyReferenceMenus.rowDependentColumns
         case .indexes: [Self.indexTypeColumn]
-        case .columns, .checkConstraints, .ddl, .parts, .triggers: []
+        case .columns:
+            // A collation list follows the row's character set, and both cells close on a non-text type.
+            picksCharacterSets
+                ? Set(orderedColumnFields.indices.filter { ColumnCharacterSetMenus.isCharacterSetField(orderedColumnFields[$0]) })
+                : []
+        case .checkConstraints, .options, .ddl, .parts, .triggers: []
         }
     }
 
@@ -121,7 +127,7 @@ final class StructureRowProvider {
                 result[index] = ColumnDefaultVocabulary.options(for: databaseType)
             }
             return result
-        case .checkConstraints, .ddl, .parts, .triggers:
+        case .checkConstraints, .options, .ddl, .parts, .triggers:
             return [:]
         }
     }
@@ -138,7 +144,7 @@ final class StructureRowProvider {
         case .columns:
             if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
-        case .indexes, .foreignKeys, .checkConstraints, .ddl, .parts, .triggers:
+        case .indexes, .foreignKeys, .checkConstraints, .options, .ddl, .parts, .triggers:
             return []
         }
     }
@@ -154,13 +160,15 @@ final class StructureRowProvider {
         additionalFields: Set<StructureColumnField> = [],
         serverSupport: StructureServerSupport,
         filterText: String? = nil,
-        sortDescriptor: StructureSortDescriptor? = nil
+        sortDescriptor: StructureSortDescriptor? = nil,
+        picksCharacterSets: Bool = false
     ) {
         self.changeManager = changeManager
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
         self.serverSupport = serverSupport
+        self.picksCharacterSets = picksCharacterSets
         self.filterText = filterText
         self.sortDescriptor = sortDescriptor
         self.orderedColumnFields = Self.orderedFields(
@@ -238,7 +246,7 @@ final class StructureRowProvider {
                 return nil
             }
             return Self.row(for: original)
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return nil
         }
     }
@@ -272,7 +280,7 @@ final class StructureRowProvider {
             return changeManager.workingCheckConstraints.enumerated().map { index, constraint in
                 IndexedRow(sourceIndex: index, row: row(for: constraint))
             }
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return []
         }
     }

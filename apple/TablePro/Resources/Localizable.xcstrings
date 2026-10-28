@@ -3201,6 +3201,9 @@
         }
       }
     },
+    "%@ (default)" : {
+
+    },
     "%@ (entry point %@)" : {
       "localizations" : {
         "fr" : {
@@ -17969,6 +17972,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A value at or below the highest existing ID becomes that ID plus one." : {
+
+    },
     "A value could not be written as JSON." : {
       "localizations" : {
         "fr" : {
@@ -26592,6 +26598,9 @@
           }
         }
       }
+    },
+    "Applies to columns added later. Existing columns keep their character set." : {
+
     },
     "Applies to grid cells, the inspector, cell popovers and the row diff." : {
 
@@ -37838,6 +37847,9 @@
           }
         }
       }
+    },
+    "Choose a character set first" : {
+
     },
     "Choose a connection" : {
       "localizations" : {
@@ -50073,6 +50085,9 @@
         }
       }
     },
+    "Convert existing columns" : {
+
+    },
     "Convert line break to space" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -50195,6 +50210,9 @@
           }
         }
       }
+    },
+    "Converting the table's character set rewrites every text column and loses characters the new one cannot hold." : {
+
     },
     "Coordination & Config" : {
       "localizations" : {
@@ -54892,6 +54910,9 @@
         }
       }
     },
+    "Couldn't read the character sets" : {
+
+    },
     "Couldn't read the referenced table" : {
       "localizations" : {
         "fr" : {
@@ -54901,6 +54922,15 @@
           }
         }
       }
+    },
+    "Couldn't read the saved value." : {
+
+    },
+    "Couldn't read the server's character sets." : {
+
+    },
+    "Couldn't read the table options" : {
+
     },
     "Couldn't Refresh Materialized View" : {
       "localizations" : {
@@ -70032,6 +70062,9 @@
     "Edit Settings" : {
 
     },
+    "Edit Table Options" : {
+
+    },
     "Edit Sequence" : {
 
     },
@@ -72198,6 +72231,9 @@
           }
         }
       }
+    },
+    "Enter a whole number from 1 to %@." : {
+
     },
     "Enter an absolute path, as it appears on the SSH server." : {
       "localizations" : {
@@ -114567,6 +114603,15 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Next Auto Increment" : {
+
+    },
+    "Next Auto Increment must be between 1 and %@" : {
+
+    },
+    "Next Auto Increment needs a column with AUTO_INCREMENT" : {
+
+    },
     "Next cursor: %@. The scan has not finished." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -142759,6 +142804,12 @@
     "Reading the files…" : {
 
     },
+    "Reading the saved value…" : {
+
+    },
+    "Reading the server's character sets…" : {
+
+    },
     "Reading the source…" : {
       "localizations" : {
         "fr" : {
@@ -151172,6 +151223,9 @@
         }
       }
     },
+    "Rewrites every text column to this character set. TEXT can grow to MEDIUMTEXT, and the table is copied while it runs." : {
+
+    },
     "right curly bracket" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -155427,6 +155481,9 @@
           }
         }
       }
+    },
+    "Save column and primary key changes before converting existing columns." : {
+
     },
     "Save Comparison…" : {
       "localizations" : {
@@ -177644,6 +177701,9 @@
         }
       }
     },
+    "Table Default" : {
+
+    },
     "Table Description" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -183744,6 +183804,10 @@
           }
         }
       }
+    },
+    "The CHECK on column %@ names column %@, which this save renames. Save the rename on its own first." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The cache must be at least 1." : {
 
@@ -198784,6 +198848,9 @@
           }
         }
       }
+    },
+    "This table has no options to change." : {
+
     },
     "This table has no primary key or unique index to match rows on." : {
 

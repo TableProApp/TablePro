@@ -40,6 +40,26 @@ struct StructureTabAvailabilityTests {
         }
     }
 
+    // The gate is the driver's statement probe for the object, so any engine whose driver answers gets the tab.
+    @Test("Options follows the driver's answer, not the engine type")
+    func optionsFollowsTheDriver() {
+        #expect(StructureTabAvailability.tabs(for: .postgresql, serverSupport: .unrestricted, offersTableOptions: true)
+            .contains(.options))
+        #expect(!StructureTabAvailability.tabs(for: .mysql, serverSupport: .unrestricted, offersTableOptions: false)
+            .contains(.options))
+        #expect(!StructureTabAvailability.tabs(for: .mysql, serverSupport: .unrestricted).contains(.options))
+    }
+
+    @Test("Options sits after the editable tabs and before DDL")
+    func optionsSitsBeforeDDL() throws {
+        let tabs = StructureTabAvailability.tabs(for: .mysql, serverSupport: .unrestricted, offersTableOptions: true)
+        let options = try #require(tabs.firstIndex(of: .options))
+        let ddl = try #require(tabs.firstIndex(of: .ddl))
+        let columns = try #require(tabs.firstIndex(of: .columns))
+        #expect(columns < options)
+        #expect(options < ddl)
+    }
+
     @Test("Parts is ClickHouse only, and the server refusal does not reach it")
     func partsIsClickHouseOnly() {
         #expect(StructureTabAvailability.tabs(for: .clickhouse, serverSupport: .unrestricted).contains(.parts))

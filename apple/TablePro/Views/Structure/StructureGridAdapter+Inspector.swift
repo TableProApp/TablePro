@@ -16,7 +16,7 @@ extension StructureGridAdapter: InspectorRowSource {
             tab: selectedTab,
             provider: provider,
             canEditSchema: canEdit,
-            lockedFieldIndices: lockedFieldIndices,
+            lockedFieldIndices: lockedFieldIndices.union(characterSetLockedFields(sourceIndex: sourceIndex)),
             rowOptions: { menuOptions(sourceIndex: sourceIndex, field: $0) }
         )
     }

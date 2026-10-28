@@ -78,6 +78,13 @@ final class StructureGridAdapter {
     private var searchText: String { session?.searchText ?? "" }
     private var sortDescriptor: StructureSortDescriptor? { session?.sortDescriptor }
 
+    var characterSetContext: ColumnCharacterSetMenus.Context {
+        ColumnCharacterSetMenus.Context(
+            catalog: session?.tableOptionsCatalog ?? .idle,
+            tableCharacterSet: structureChangeManager.tableOptions.current?.characterSet
+        )
+    }
+
     var editGate: StructureEditGate {
         StructureEditGate(
             databaseType: connection.type, objectKind: objectKind, schema: schemaName, isSessionBound: isSessionBound
@@ -129,7 +136,10 @@ final class StructureGridAdapter {
     }
 
     var showsGrid: Bool {
-        selectedTab != .ddl && selectedTab != .triggers && selectedTab != .parts
+        switch selectedTab {
+        case .columns, .indexes, .foreignKeys, .checkConstraints: true
+        case .triggers, .options, .ddl, .parts: false
+        }
     }
 
     // MARK: - Refresh
@@ -151,7 +161,8 @@ final class StructureGridAdapter {
             additionalFields: [.primaryKey],
             serverSupport: serverSupport,
             filterText: searchText.isEmpty ? nil : searchText,
-            sortDescriptor: sortDescriptor
+            sortDescriptor: sortDescriptor,
+            picksCharacterSets: ColumnCharacterSetMenus.offersMenus(characterSetContext.catalog)
         )
         self.provider = provider
         let rows = provider.asTableRows()
@@ -248,9 +259,45 @@ final class StructureGridAdapter {
                 foreignKey: structureChangeManager.workingForeignKeys[sourceIndex],
                 tableColumns: structureChangeManager.workingColumns.map(\.name)
             )
-        case .columns, .checkConstraints, .ddl, .parts, .triggers:
+        case .columns:
+            guard structureChangeManager.workingColumns.indices.contains(sourceIndex),
+                  provider.orderedColumnFields.indices.contains(field) else { return nil }
+            return ColumnCharacterSetMenus.options(
+                for: provider.orderedColumnFields[field],
+                column: structureChangeManager.workingColumns[sourceIndex],
+                context: characterSetContext
+            )
+        case .checkConstraints, .options, .ddl, .parts, .triggers:
             return nil
         }
+    }
+
+    // Read-only per row, which the column-wide lock cannot say: a type with no character set, or a catalog not read.
+    func characterSetLockedFields(sourceIndex: Int) -> Set<Int> {
+        guard selectedTab == .columns, structureChangeManager.workingColumns.indices.contains(sourceIndex) else { return [] }
+        return ColumnCharacterSetMenus.lockedFieldIndices(
+            orderedFields: provider.orderedColumnFields,
+            column: structureChangeManager.workingColumns[sourceIndex],
+            catalog: characterSetContext.catalog
+        )
+    }
+
+    // Opening the menu is the retry, as it is for the reference menus. The inspector reads the options on every
+    // rebuild, so it never starts a read.
+    private func readCharacterSetCatalogIfNeeded(field: Int) {
+        guard selectedTab == .columns, provider.orderedColumnFields.indices.contains(field),
+              ColumnCharacterSetMenus.isCharacterSetField(provider.orderedColumnFields[field]) else { return }
+        switch characterSetContext.catalog {
+        case .idle, .failed:
+            Task { await session?.readTableOptionsCatalog() }
+        case .loading, .loaded:
+            break
+        }
+    }
+
+    func characterSetCatalogDidChange() {
+        refresh()
+        coordinator?.inspectorRowSourceRevision += 1
     }
 
     // MARK: - Commands
@@ -265,9 +312,19 @@ final class StructureGridAdapter {
 
     private func write(_ text: String, field: Int, sourceIndex: Int) -> Bool {
         let tab = selectedTab
+        let characterSets = characterSetContext
         guard field >= 0,
               !editGate.locksField(at: field, on: tab, orderedFields: provider.orderedColumnFields),
-              !structureChangeManager.deleteInsertState(for: sourceIndex, tab: tab).isDeleted else { return false }
+              !structureChangeManager.deleteInsertState(for: sourceIndex, tab: tab).isDeleted,
+              !StructureGridEdits.refuses(
+                  text,
+                  field: field,
+                  sourceIndex: sourceIndex,
+                  tab: tab,
+                  manager: structureChangeManager,
+                  orderedFields: provider.orderedColumnFields,
+                  characterSets: characterSets
+              ) else { return false }
         let changedReference = StructureGridEdits.apply(
             text,
             field: field,
@@ -275,7 +332,8 @@ final class StructureGridAdapter {
             tab: tab,
             manager: structureChangeManager,
             orderedFields: provider.orderedColumnFields,
-            connection: connection
+            connection: connection,
+            characterSets: characterSets
         )
         if let changedReference {
             referenceMenus.origin = coordinator?.selectedTabScope
@@ -297,7 +355,7 @@ final class StructureGridAdapter {
         case .indexes: allowed = editGate.allows(.dropIndex)
         case .foreignKeys: allowed = canEditForeignKeys
         case .checkConstraints: allowed = editGate.allows(.dropCheckConstraint)
-        case .ddl, .parts, .triggers: allowed = false
+        case .options, .ddl, .parts, .triggers: allowed = false
         }
         guard allowed else { return }
         let displayRows = IndexSet(rowIDs.compactMap { model.displayIndex(of: $0) })
@@ -344,8 +402,12 @@ final class StructureGridAdapter {
         refresh()
     }
 
+    // Options stages its edits through the same manager, so its undo is the structure's.
     private var undoesStructureEdits: Bool {
-        selectedTab != .ddl && selectedTab != .triggers
+        switch selectedTab {
+        case .columns, .indexes, .foreignKeys, .checkConstraints, .options, .parts: true
+        case .ddl, .triggers: false
+        }
     }
 
     // The comment bar shows on every sub-tab, so its step undoes even where no grid is on screen.
@@ -394,7 +456,9 @@ extension StructureGridAdapter: DataGridDataSource {
 
     func gridMenuOptions(for rowID: RowID, column: DataGridColumn) -> [GridMenuOption]? {
         guard let sourceIndex = StructureRowProvider.sourceIndex(of: rowID) else { return nil }
-        return menuOptions(sourceIndex: sourceIndex, field: column.dataIndex)
+        let options = menuOptions(sourceIndex: sourceIndex, field: column.dataIndex)
+        readCharacterSetCatalogIfNeeded(field: column.dataIndex)
+        return options
     }
 }
 

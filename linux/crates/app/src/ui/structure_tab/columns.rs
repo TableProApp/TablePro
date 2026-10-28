@@ -9,6 +9,9 @@ use libadwaita::prelude::*;
 use tablepro_core::ddl::{ColumnCapabilities, DraftColumn, DraftType, Permission};
 use tablepro_core::dialect::SqlDialect;
 
+use super::character_set_choices::{
+    ChoiceRow, character_set_choices, collation_choices, default_collation, follow_catalog, takes_character_set,
+};
 use super::context::StructureContext;
 use super::draft_column_object::DraftColumnObject;
 use super::{ColumnField, ColumnsInput, StructureTabSender};
@@ -60,7 +63,7 @@ fn hold_not_null(row: &adw::SwitchRow, key: bool) {
 }
 
 /// Mark a field whose text the engine's parser refused, or clear it.
-fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
+pub(super) fn mark_invalid(row: &adw::EntryRow, error: Option<&str>) {
     match error {
         Some(message) => {
             row.add_css_class("error");
@@ -127,7 +130,15 @@ pub(super) fn build_column_row(
     // On the header, so it shows whether or not the row is expanded.
     row.add_suffix(&remove_button(column, sender, &permissions.drop));
     row.add_row(&name_row(&draft, &permissions.rename, edits.clone()));
-    row.add_row(&type_row(&draft, context, &permissions.alter_type, edits.clone()));
+    let type_row = type_row(&draft, context, &permissions.alter_type, edits.clone());
+    row.add_row(&type_row);
+    if context.capabilities().column_collations {
+        let (character_set_row, collation_row) =
+            character_set_rows(&draft, context, &permissions.alter_collation, &edits);
+        show_while_text(&type_row, &draft, context, &edits, [&character_set_row, &collation_row]);
+        row.add_row(&character_set_row);
+        row.add_row(&collation_row);
+    }
     let nullable_row = nullable_row(&draft, &permissions.alter_nullability, edits.clone());
     row.add_row(&nullable_row);
     row.add_row(&default_row(
@@ -203,6 +214,91 @@ fn type_row(
         type_row.add_suffix(&build_type_suggestions_button(context.type_suggestions(), &type_row));
     }
     type_row
+}
+
+/// The Character Set and Collation of a column that holds text, from
+/// the server's lists. A character set picked takes its default
+/// collation, and the Collation row then lists only that set's.
+fn character_set_rows(
+    draft: &DraftColumn,
+    context: &StructureContext,
+    permission: &Permission,
+    edits: &ColumnEdits,
+) -> (adw::ComboRow, adw::ComboRow) {
+    let catalog = context.character_set_catalog();
+    let character_set_row = adw::ComboRow::builder()
+        .title(crate::i18n::gettext("Character Set"))
+        .build();
+    character_set_row.set_widget_name("col-charset");
+    let collation_row = adw::ComboRow::builder()
+        .title(crate::i18n::gettext("Collation"))
+        .build();
+    collation_row.set_widget_name("col-collation");
+
+    let edits_for_collation = edits.clone();
+    let collation = ChoiceRow::new(&collation_row, move |picked| {
+        edits_for_collation.send(ColumnField::Collation(picked));
+    });
+    collation.show(
+        &collation_choices(&catalog, draft.character_set.as_deref(), draft.collation.as_deref()),
+        draft.collation.as_deref(),
+    );
+    // A column the server gave a character set has one of its own; only
+    // one that has none yet can keep following the table's.
+    let table_default = draft
+        .original
+        .as_ref()
+        .is_none_or(|original| original.attributes.character_set.is_none());
+    let (edits_for_set, catalog_for_set) = (edits.clone(), catalog.clone());
+    let character_set = ChoiceRow::new(&character_set_row, move |picked| {
+        let default = picked
+            .as_deref()
+            .and_then(|name| default_collation(&catalog_for_set, name));
+        collation.show(
+            &collation_choices(&catalog_for_set, picked.as_deref(), default.as_deref()),
+            default.as_deref(),
+        );
+        edits_for_set.send(ColumnField::CharacterSet {
+            character_set: picked,
+            collation: default,
+        });
+    });
+    character_set.show(
+        &character_set_choices(&catalog, draft.character_set.as_deref(), table_default),
+        draft.character_set.as_deref(),
+    );
+    for row in [&character_set_row, &collation_row] {
+        follow_catalog(row, &context.character_sets);
+        gate(row, permission);
+    }
+    (character_set_row, collation_row)
+}
+
+/// `rows` show while the column's type holds text, and follow the Type
+/// field as it is typed. The Type field's own handler has written the
+/// type into the column by the time this one reads it.
+fn show_while_text(
+    type_row: &adw::EntryRow,
+    draft: &DraftColumn,
+    context: &StructureContext,
+    edits: &ColumnEdits,
+    rows: [&adw::ComboRow; 2],
+) {
+    let holds_text = takes_character_set(context.dialect.as_deref(), draft);
+    for row in rows {
+        row.set_visible(holds_text);
+    }
+    let (dialect, column) = (context.dialect.clone(), edits.column.clone());
+    let rows = rows.map(|row| row.downgrade());
+    type_row.connect_changed(move |_| {
+        let Some(column) = column.upgrade() else {
+            return;
+        };
+        let holds_text = takes_character_set(dialect.as_deref(), &column.column());
+        for row in rows.iter().filter_map(glib::WeakRef::upgrade) {
+            row.set_visible(holds_text);
+        }
+    });
 }
 
 fn nullable_row(draft: &DraftColumn, permission: &Permission, edits: ColumnEdits) -> adw::SwitchRow {

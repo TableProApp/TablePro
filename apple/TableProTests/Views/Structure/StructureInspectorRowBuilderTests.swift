@@ -158,7 +158,7 @@ struct StructureInspectorRowBuilderTests {
         #expect(!row.isEditable)
     }
 
-    @Test("Tabs without a row grid supply nothing", arguments: [StructureTab.ddl, .parts, .triggers])
+    @Test("Tabs without a row grid supply nothing", arguments: [StructureTab.options, .ddl, .parts, .triggers])
     func nonGridTabsSupplyNothing(tab: StructureTab) {
         let manager = loadedManager()
         #expect(StructureInspectorRowBuilder.row(

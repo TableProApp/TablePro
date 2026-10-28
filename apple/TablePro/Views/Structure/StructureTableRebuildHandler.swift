@@ -180,7 +180,8 @@ enum StructureTableRebuildHandler {
                     partition.rebuilt.append(change)
                 }
             case .addIndex, .modifyIndex, .deleteIndex,
-                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment:
+                 .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment,
+                 .modifyTableCharacterSet, .modifyAutoIncrement:
                 partition.trailing.append(change)
             case .modifyPrimaryKey:
                 partition.unsupported.append(change)

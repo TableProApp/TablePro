@@ -45,6 +45,9 @@ pub enum UnsupportedFeature {
     Tables,
     /// Keys, on an engine that has tables instead.
     Keys,
+    /// A list of character sets and collations to pick a column's or a
+    /// table's from.
+    CharacterSets,
     /// A command the editor cannot run, because it stops the one reply
     /// per command the editor reads, such as `SUBSCRIBE`.
     EditorCommand {
@@ -75,6 +78,7 @@ impl fmt::Display for UnsupportedFeature {
             Self::ServerPaging => f.write_str("server-side paging"),
             Self::Tables => f.write_str("tables"),
             Self::Keys => f.write_str("keys"),
+            Self::CharacterSets => f.write_str("character sets"),
             Self::EditorCommand { command } => write!(f, "{command} in the editor"),
         }
     }

@@ -27,6 +27,11 @@ enum SchemaChange: Hashable, Equatable {
     /// Nil on either side means no comment.
     case modifyTableComment(old: String?, new: String?)
 
+    /// The default character set and collation, or with `convertsColumns` every text column too.
+    case modifyTableCharacterSet(old: TableOptions, new: TableOptions)
+    /// Old is nil when the table had no AUTO_INCREMENT column when it was read.
+    case modifyAutoIncrement(old: UInt64?, new: UInt64)
+
     var isDelete: Bool {
         switch self {
         case .deleteColumn, .deleteIndex, .deleteForeignKey, .deleteCheckConstraint:
@@ -45,8 +50,23 @@ enum SchemaChange: Hashable, Equatable {
             // Renaming is one statement that touches no rows. Only a changed expression drops and
             // re-adds the constraint, which re-checks the whole table.
             return old.expression != new.expression
+        case .modifyTableCharacterSet(_, let new):
+            // A convert rewrites every text column, can widen TEXT and loses what the new set cannot hold.
+            return new.convertsColumns
         default:
             return false
+        }
+    }
+
+    // A new character set converts the stored text, and what it cannot hold is lost. A table default is nil.
+    private static func changesCharacterSet(from old: String?, to new: String?) -> Bool {
+        switch (old, new) {
+        case (nil, nil):
+            return false
+        case let (old?, new?):
+            return old.caseInsensitiveCompare(new) != .orderedSame
+        default:
+            return true
         }
     }
 
@@ -54,12 +74,15 @@ enum SchemaChange: Hashable, Equatable {
         switch self {
         case .modifyColumn(let old, let new):
             return old.dataType != new.dataType || (old.isNullable && !new.isNullable)
+                || Self.changesCharacterSet(from: old.charset, to: new.charset)
         case .deleteColumn, .modifyPrimaryKey:
             return true
         case .addCheckConstraint:
             return true
         case .modifyCheckConstraint(let old, let new):
             return old.expression != new.expression
+        case .modifyTableCharacterSet(_, let new):
+            return new.convertsColumns
         default:
             return false
         }
@@ -95,6 +118,13 @@ enum SchemaChange: Hashable, Equatable {
             return "Change primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]"
         case .modifyTableComment:
             return "Change comment on table"
+        case .modifyTableCharacterSet(_, let new):
+            let target = [new.characterSet, new.collation].compactMap { $0 }.joined(separator: " ")
+            return new.convertsColumns
+                ? "Convert table to \(target)"
+                : "Change default character set of table to \(target)"
+        case .modifyAutoIncrement(_, let new):
+            return "Set AUTO_INCREMENT of table to \(new)"
         }
     }
 }
@@ -106,4 +136,6 @@ enum SchemaChangeIdentifier: Hashable {
     case checkConstraint(UUID)
     case primaryKey
     case tableComment
+    case tableCharacterSet
+    case autoIncrement
 }

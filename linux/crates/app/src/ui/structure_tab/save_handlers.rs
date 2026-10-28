@@ -142,6 +142,7 @@ impl StructureModel {
             self.widgets.columns_box.upcast_ref(),
             self.widgets.indexes_box.upcast_ref(),
             self.widgets.fks_box.upcast_ref(),
+            self.widgets.options.controls.upcast_ref(),
         ] {
             widget.set_sensitive(editable);
         }
@@ -152,6 +153,7 @@ impl StructureModel {
     /// off yet: the controls go back to what the draft holds.
     pub(super) fn refuse_edit(&self, msg: &StructureTabInput, fx: &mut StructureEffects) {
         self.show_table_name();
+        self.show_table_options();
         if let StructureTabInput::Columns(ColumnsInput::ColumnEdited { column, .. }) = msg
             && let Some(position) = self.columns.find(column)
         {

@@ -13,13 +13,18 @@ import Foundation
 /// and MariaDB before 10.2.1 answer `Query OK` to a `CHECK` clause and throw it away. Offering the
 /// tab there is offering an edit that reports success and changes nothing.
 enum StructureTabAvailability {
-    static func tabs(for type: DatabaseType, serverSupport: StructureServerSupport) -> [StructureTab] {
+    // Table options are the driver's answer for this object (`offersTableOptionsTab`), never the engine's type.
+    static func tabs(
+        for type: DatabaseType,
+        serverSupport: StructureServerSupport,
+        offersTableOptions: Bool = false
+    ) -> [StructureTab] {
         StructureTab.allCases.filter { tab in
-            engineOffers(tab, on: type) && serverSupport.offers(tab)
+            engineOffers(tab, on: type, offersTableOptions: offersTableOptions) && serverSupport.offers(tab)
         }
     }
 
-    private static func engineOffers(_ tab: StructureTab, on type: DatabaseType) -> Bool {
+    private static func engineOffers(_ tab: StructureTab, on type: DatabaseType, offersTableOptions: Bool) -> Bool {
         switch tab {
         case .foreignKeys:
             return type.supportsForeignKeys
@@ -29,6 +34,8 @@ enum StructureTabAvailability {
             return type.supportsTriggers
         case .checkConstraints:
             return type.supportsCheckConstraints
+        case .options:
+            return offersTableOptions
         case .columns, .indexes, .ddl:
             return true
         }

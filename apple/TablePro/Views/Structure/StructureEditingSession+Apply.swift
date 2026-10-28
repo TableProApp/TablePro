@@ -145,6 +145,7 @@ internal extension StructureEditingSession {
             return .refused
         }
         adoptWrittenTableComment(from: hold.changes)
+        adoptWrittenTableOptions(from: hold.changes)
         markEveryTabStale()
         hasLoaded = false
         lastAppliedAt = Date()

@@ -425,6 +425,7 @@ impl Connection for MongoConnection {
                     foreign_keys: Vec::new(),
                     inbound_foreign_keys: Vec::new(),
                     source: None,
+                    options: None,
                 })
             })
         })

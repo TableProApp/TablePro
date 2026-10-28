@@ -329,4 +329,105 @@ struct CreateTableDraftBuilderTests {
     func blankCommentIsNil(comment: String) {
         #expect(plan(comment: comment).tableComment == nil)
     }
+
+    // MARK: - Table options against the target database's defaults
+
+    private static let shopDefaults = CreateTableOptionDefaults(
+        characterSet: "utf8mb4", collation: "utf8mb4_0900_ai_ci", engine: "InnoDB"
+    )
+
+    private func plan(
+        options: CreateTableOptions,
+        defaults: CreateTableOptionDefaults = CreateTableDraftBuilderTests.shopDefaults,
+        includesEngineOptions: Bool = true
+    ) throws -> PluginCreateTableDefinition {
+        try #require(CreateTableDraftBuilder.plan(
+            tableName: "child",
+            options: options,
+            columns: [column("id")],
+            indexes: [],
+            foreignKeys: [],
+            dialect: ForeignKeyDialect.forType(.mysql),
+            includesEngineOptions: includesEngineOptions,
+            defaults: defaults
+        ).definition)
+    }
+
+    // A fresh draft used to write `DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`, which broke FKs and joins
+    // against every table that took the database's own default.
+    @Test("A fresh draft names no character set, collation or engine")
+    func freshDraftWritesNoOptions() throws {
+        let definition = try plan(options: CreateTableOptions())
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Options equal to the database's defaults write no clause")
+    func defaultsWriteNothing() throws {
+        let seeded = CreateTableOptions().seeded(with: Self.shopDefaults)
+        #expect(seeded.charset == "utf8mb4")
+        let definition = try plan(options: seeded)
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Another character set writes the pair")
+    func otherCharacterSetWritesThePair() throws {
+        let options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_swedish_ci")
+        let definition = try plan(options: options)
+        #expect(definition.charset == "latin1")
+        #expect(definition.collation == "latin1_swedish_ci")
+    }
+
+    @Test("Another collation of the default set still writes both clauses")
+    func otherCollationWritesThePair() throws {
+        let options = CreateTableOptions().selectingCharacterSet("utf8mb4", collation: "utf8mb4_bin")
+        let definition = try plan(options: options)
+        #expect(definition.charset == "utf8mb4")
+        #expect(definition.collation == "utf8mb4_bin")
+    }
+
+    @Test("The comparison ignores case, as the server does")
+    func comparisonIgnoresCase() throws {
+        let options = CreateTableOptions().selectingCharacterSet("UTF8MB4", collation: "UTF8MB4_0900_AI_CI")
+        #expect(try plan(options: options).charset == nil)
+    }
+
+    @Test("Only an engine other than the server's default is written")
+    func engineOnlyWhenItDiffers() throws {
+        var options = CreateTableOptions().seeded(with: Self.shopDefaults)
+        #expect(try plan(options: options).engine == nil)
+        options.engine = "MyISAM"
+        #expect(try plan(options: options).engine == "MyISAM")
+    }
+
+    @Test("Without the database's defaults every pick is written")
+    func unknownDefaultsWriteThePick() throws {
+        let options = CreateTableOptions().selectingCharacterSet("utf8mb4", collation: "utf8mb4_0900_ai_ci")
+        let definition = try plan(options: options, defaults: CreateTableOptionDefaults())
+        #expect(definition.charset == "utf8mb4")
+        #expect(definition.collation == "utf8mb4_0900_ai_ci")
+    }
+
+    @Test("A driver without a catalog gets no table options, whatever the draft holds")
+    func noCatalogWritesNothing() throws {
+        var options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_bin")
+        options.engine = "MyISAM"
+        let definition = try plan(options: options, includesEngineOptions: false)
+        #expect(definition.charset == nil)
+        #expect(definition.collation == nil)
+        #expect(definition.engine == nil)
+    }
+
+    @Test("Seeding keeps what the user already picked")
+    func seedingKeepsPicks() {
+        var options = CreateTableOptions().selectingCharacterSet("latin1", collation: "latin1_bin")
+        options.engine = "MyISAM"
+        let seeded = options.seeded(with: Self.shopDefaults)
+        #expect(seeded.charset == "latin1")
+        #expect(seeded.collation == "latin1_bin")
+        #expect(seeded.engine == "MyISAM")
+    }
 }

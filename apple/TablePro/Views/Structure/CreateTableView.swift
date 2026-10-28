@@ -94,6 +94,8 @@ struct CreateTableView: View {
         .onChange(of: structureChangeManager.reloadVersion) { _ in gridAdapter.refresh() }
         .onChange(of: structureChangeManager.hasChanges) { _ in gridAdapter.refresh() }
         .onChange(of: isReadyToCreate) { _ in updateCreateTablePendingState() }
+        .onChange(of: draft.optionsCatalog) { _ in gridAdapter.characterSetCatalogDidChange() }
+        .task(id: scope) { await loadTableOptions() }
         .task(id: compositionKey) { await recomposeAfterPause() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
@@ -163,45 +165,73 @@ struct CreateTableView: View {
                     .accessibilityIdentifier("create-table-comment")
             }
 
-            if showMySQLOptions {
+            if let catalog = draft.catalog, draft.hasResolvedForm, draft.form == nil {
                 Divider()
                     .frame(height: 20)
 
-                Picker("Engine:", selection: $draft.tableOptions.engine) {
-                    ForEach(CreateTableOptions.engines, id: \.self) { engine in
-                        Text(engine).tag(engine)
-                    }
-                }
-                .fixedSize()
-
-                Picker("Charset:", selection: $draft.tableOptions.charset) {
-                    ForEach(CreateTableOptions.charsets, id: \.self) { cs in
-                        Text(cs).tag(cs)
-                    }
-                }
-                .fixedSize()
-
-                Picker("Collation:", selection: $draft.tableOptions.collation) {
-                    ForEach(CreateTableOptions.collations[draft.tableOptions.charset] ?? [], id: \.self) { col in
-                        Text(col).tag(col)
-                    }
-                }
-                .fixedSize()
+                engineOptions(catalog)
             }
 
             Spacer()
         }
         .padding()
         .paneBarBackground()
-        .onChange(of: draft.tableOptions.charset) { newCharset in
-            if let first = CreateTableOptions.collations[newCharset]?.first {
-                draft.tableOptions.collation = first
-            }
-        }
     }
 
-    private var showMySQLOptions: Bool {
-        CreateTableDraft.offersEngineOptions(for: connection.type)
+    // Lists from the server's catalog, started from the target database's defaults. Nil writes no clause.
+    @ViewBuilder
+    private func engineOptions(_ catalog: TableOptionsCatalog) -> some View {
+        let options = draft.tableOptions
+        if !catalog.engines.isEmpty || options.engine != nil {
+            Picker("Engine:", selection: $draft.tableOptions.engine) {
+                if options.engine == nil {
+                    Text("Default").tag(String?.none)
+                }
+                ForEach(TableOptionsForm.engines(in: catalog, keeping: options.engine)) { choice in
+                    Text(choice.title).tag(Optional(choice.name))
+                }
+            }
+            .fixedSize()
+            .accessibilityIdentifier("create-table-engine")
+        }
+
+        Picker("Charset:", selection: characterSetBinding) {
+            if options.charset == nil {
+                Text("Default").tag(String?.none)
+            }
+            ForEach(TableOptionsForm.characterSets(in: catalog, keeping: options.charset), id: \.self) { name in
+                Text(name).tag(Optional(name))
+            }
+        }
+        .fixedSize()
+        .accessibilityIdentifier("create-table-charset")
+
+        Picker("Collation:", selection: $draft.tableOptions.collation) {
+            if options.collation == nil {
+                Text("Default").tag(String?.none)
+            }
+            ForEach(
+                TableOptionsForm.collations(in: catalog, characterSet: options.charset, keeping: options.collation)
+            ) { choice in
+                Text(choice.title).tag(Optional(choice.name))
+            }
+        }
+        .fixedSize()
+        .disabled(options.charset == nil)
+        .accessibilityIdentifier("create-table-collation")
+    }
+
+    // One whole-value write: the collation follows the charset, so a second write would resolve against a stale draft.
+    private var characterSetBinding: Binding<String?> {
+        Binding(
+            get: { draft.tableOptions.charset },
+            set: { draft.selectCharacterSet($0) }
+        )
+    }
+
+    private func loadTableOptions() async {
+        guard let scope else { return }
+        await draft.loadTableOptions(scope: scope)
     }
 
     private var offersTableComment: Bool {

@@ -126,6 +126,27 @@ Whether a write can be undone depends on the table's storage engine, not on the 
 - MySQL cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
 - There is nothing to ask the server about a lost `COMMIT` (`CommitResolutionSupport::Unavailable`). `CommitOutcomeUnknown` carries no token, and the user reloads to see what landed.
 
+## Table options
+
+The structure tab edits a table's default character set and collation, converts every column to them, sets the next AUTO_INCREMENT value, and picks a column's own character set and collation (`column_collations`, `table_options`).
+
+| Read | Source |
+|---|---|
+| Default character set and collation | `information_schema.TABLES.TABLE_COLLATION`, which is live on both servers. The character set is the collation's first word. |
+| Next AUTO_INCREMENT, MySQL | The options line of SHOW CREATE TABLE. `TABLES.AUTO_INCREMENT` is cached for up to a day (`information_schema_stats_expiry`). |
+| Next AUTO_INCREMENT, MariaDB | `TABLES.AUTO_INCREMENT`, which is live. `NO_TABLE_OPTIONS`, part of `sql_mode = ORACLE`, prints SHOW CREATE TABLE without its options line. |
+| Character sets | `information_schema.CHARACTER_SETS`, with collations from `COLLATIONS`, or on MariaDB 10.10 and later from `COLLATION_CHARACTER_SET_APPLICABILITY.FULL_COLLATION_NAME`, told apart by that column. MariaDB lists a UCA 14 collation such as `utf8mb4_uca1400_ai_ci` in `COLLATIONS` once, with no character set. |
+
+- Neither server prints AUTO_INCREMENT= while the counter is 1, so a table with an AUTO_INCREMENT column and no clause reads as 1, and one without such a column has no counter.
+- A view and an NDB table carry no options, so `table_capabilities` turns them off.
+- A new default is `DEFAULT CHARACTER SET = cs COLLATE = coll` in the combined ALTER. Both clauses always go: a character set alone resets the collation to its default. Existing columns keep theirs, and a column added in the same ALTER takes the new one.
+- A convert, `CONVERT TO CHARACTER SET cs COLLATE coll`, is a statement of its own after the `DROP FOREIGN KEY` and before the combined ALTER. A foreign key on a converted column refuses it (MySQL 3780, MariaDB 1832), and so can an index the wider characters make too long (1071), so a save that drops indexes or columns runs those drops in an ALTER ahead of the convert.
+- A convert can widen a type, as a latin1 `TEXT` becomes `MEDIUMTEXT` in utf8mb4, and a MODIFY after it restates the old one. It also converts a primary key before a change in the same save moves it, which can push the key past the 3072-byte index limit. So a convert refuses a change to an existing column or to the primary key in the same save, and the tab says so before Save. Columns added in the same save come after it and take its pair unless the user picked one.
+- The review lists a convert, and a column given another character set, as destructive.
+- The counter is `AUTO_INCREMENT = n` in the combined ALTER. A counter set before a MODIFY that turns AUTO_INCREMENT on is lost, in the same ALTER it is kept. The server raises a value at or below the largest key to that key plus one, without a warning, so the tab reads the table again after a save.
+- A column takes CHARACTER SET and COLLATE only when its type holds text: `CHAR`, `VARCHAR`, the `TEXT` types, `ENUM` and `SET`, in any spelling the type parser takes, such as `character varying(64)` or `VARCHAR (64)`. A national spelling (`NCHAR`, `NVARCHAR`) refuses CHARACTER SET, so none is written for it.
+- A restated `ON UPDATE CURRENT_TIMESTAMP`, and a `CURRENT_TIMESTAMP` default as the catalogue read it, take the precision of the column's type, since MySQL refuses any other (1294, 1067). A default the user typed goes as written.
+
 ## Editor sessions
 
 - The editor sends one statement per run. Text with several statements is split where the mysql client splits it, at each `;` or at the delimiter a `DELIMITER` line sets, and goes one statement per round trip. Sent whole, the server starts each next statement as soon as the last one's result is written, read or not, so a stop could not keep it from running. A `/*!` or `/*M!` comment is code to the split, as it is to the mysql client, so each `/*!40101 ... */;` line of a dump is a statement of its own and a `/*!50100 PARTITION BY ... */` stays with its table.

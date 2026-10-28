@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::{
-    ChangedAttributes, ColumnAlteration, ColumnRename, PrimaryKeyChange, PrimaryKeyConstraint, TableChanges,
-    TableDefinition, TableDraft,
+    ChangedAttributes, CharacterSetChoice, ColumnAlteration, ColumnRename, DraftTableOptions, PrimaryKeyChange,
+    PrimaryKeyConstraint, TableChanges, TableDefinition, TableDraft, TableOptions, TableOptionsChange,
 };
 
 /// What the draft changed about the table it started from.
@@ -75,7 +75,36 @@ pub fn diff_table(original: &TableDefinition, draft: &TableDraft) -> TableChange
         added_columns,
         added_indexes: secondary(&draft.indexes, &original.indexes),
         added_foreign_keys: missing(&draft.foreign_keys, &original.foreign_keys),
+        options: draft
+            .options
+            .as_ref()
+            .and_then(|options| options_change(original.options.as_ref(), options)),
     }
+}
+
+/// A convert is a change even to the pair the table has, and it always
+/// names both. A pair the draft names only half of cannot be written,
+/// so it is not a change.
+fn options_change(original: Option<&TableOptions>, draft: &DraftTableOptions) -> Option<TableOptionsChange> {
+    let unread = TableOptions::default();
+    let before = original.unwrap_or(&unread);
+    let renamed = draft.character_set != before.character_set || draft.collation != before.collation;
+    let character_set = match (&draft.character_set, &draft.collation) {
+        (Some(character_set), Some(collation)) if renamed || draft.converts_columns => Some(CharacterSetChoice {
+            character_set: character_set.clone(),
+            collation: collation.clone(),
+        }),
+        _ => None,
+    };
+    let next_auto_increment = draft
+        .next_auto_increment
+        .filter(|next| Some(*next) != before.next_auto_increment);
+    let change = TableOptionsChange {
+        converts_columns: draft.converts_columns && character_set.is_some(),
+        character_set,
+        next_auto_increment,
+    };
+    (change != TableOptionsChange::default()).then_some(change)
 }
 
 /// The key compared as a set of columns under their new names: listing

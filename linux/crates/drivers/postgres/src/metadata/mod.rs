@@ -114,5 +114,6 @@ pub(crate) async fn fetch_table_definition(
         inbound_foreign_keys,
         // PostgreSQL has no statement that prints a table's own DDL.
         source: None,
+        options: None,
     })
 }

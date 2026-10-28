@@ -100,7 +100,7 @@ extension StructureGridAdapter {
         case .checkConstraints:
             guard editGate.allows(.addCheckConstraint) else { return nil }
             label = String(localized: "Add Check Constraint")
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return nil
         }
         let menu = NSMenu()
@@ -161,7 +161,7 @@ extension StructureGridAdapter {
                 guard structureChangeManager.workingCheckConstraints.indices.contains(index) else { continue }
                 let constraint = structureChangeManager.workingCheckConstraints[index]
                 definitions.append("CONSTRAINT \(driver.quoteIdentifier(constraint.name)) CHECK (\(constraint.expression))")
-            case .ddl, .parts, .triggers:
+            case .options, .ddl, .parts, .triggers:
                 break
             }
         }
@@ -227,7 +227,7 @@ extension StructureGridAdapter {
             encoded = try? encoder.encode(indices.sorted().compactMap {
                 manager.workingCheckConstraints.indices.contains($0) ? manager.workingCheckConstraints[$0] : nil
             })
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             encoded = nil
         }
 
@@ -278,7 +278,7 @@ extension StructureGridAdapter {
             for constraint in constraints {
                 manager.addCheckConstraint(constraint.withNewIdentity())
             }
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return
         }
         refresh()

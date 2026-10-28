@@ -125,7 +125,7 @@ struct StructureEditingSessionTests {
             session.selectedTab = tab
             #expect(session.activeGridModel === session.gridModel, "\(tab.rawValue)")
         }
-        for tab in [StructureTab.ddl, .parts, .triggers] {
+        for tab in [StructureTab.options, .ddl, .parts, .triggers] {
             session.selectedTab = tab
             #expect(session.activeGridModel == nil, "\(tab.rawValue)")
         }

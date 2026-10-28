@@ -1216,5 +1216,6 @@ fn users_table() -> tablepro_core::ddl::TableDefinition {
         foreign_keys: Vec::new(),
         inbound_foreign_keys: Vec::new(),
         source: None,
+        options: None,
     }
 }

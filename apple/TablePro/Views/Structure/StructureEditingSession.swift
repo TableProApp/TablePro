@@ -51,6 +51,16 @@ internal final class StructureEditingSession: ObservableObject {
 
     internal var loadedTableComment: String? { tableComment.value ?? nil }
 
+    @Published internal private(set) var tableOptions: MetadataLoadState<TableOptions?> = .idle
+
+    internal var loadedTableOptions: TableOptions? { tableOptions.value ?? nil }
+
+    /// Leaves `.confirmed` when a save writes the counter and returns only on a read that lands, since the server may raise it.
+    @Published internal private(set) var autoIncrementRead: AutoIncrementReadState = .confirmed
+
+    @Published internal private(set) var tableOptionsCatalog: MetadataLoadState<TableOptionsCatalog?> = .idle
+    internal var tableOptionsCatalogRead: Task<Void, Never>?
+
     @Published internal var selectedTab: StructureTab = .columns
     @Published internal var searchText = ""
     @Published internal var sortState = SortState()
@@ -65,7 +75,11 @@ internal final class StructureEditingSession: ObservableObject {
     }
 
     internal var availableTabs: [StructureTab] {
-        StructureTabAvailability.tabs(for: connection.type, serverSupport: serverSupport)
+        StructureTabAvailability.tabs(
+            for: connection.type,
+            serverSupport: serverSupport,
+            offersTableOptions: offersTableOptionsTab
+        )
     }
 
     internal var tabsFetchedOnMount: [StructureTab] {
@@ -163,6 +177,44 @@ internal final class StructureEditingSession: ObservableObject {
         tableComment = tableComment.settled(by: outcome, discardingValue: false)
     }
 
+    internal func beginTableOptionsLoad() {
+        tableOptions = tableOptions.enteringLoad
+        if autoIncrementRead == .unconfirmed {
+            autoIncrementRead = .rereading
+        }
+    }
+
+    internal func adoptWrittenTableOptions(from changes: [SchemaChange]) {
+        for change in changes {
+            switch change {
+            case .modifyTableCharacterSet(_, let written):
+                guard let loaded = loadedTableOptions else { continue }
+                tableOptions = .loaded(loaded.adoptingCharacterSet(of: written))
+            case .modifyAutoIncrement:
+                autoIncrementRead = .rereading
+            default:
+                continue
+            }
+        }
+    }
+
+    internal func settleTableOptions(_ outcome: MetadataFetchOutcome<TableOptions?>) {
+        tableOptions = tableOptions.settled(by: outcome, discardingValue: false)
+        if outcome.didFetch {
+            autoIncrementRead = .confirmed
+        } else if autoIncrementRead == .rereading {
+            autoIncrementRead = .unconfirmed
+        }
+    }
+
+    internal func beginTableOptionsCatalogLoad() {
+        tableOptionsCatalog = tableOptionsCatalog.enteringLoad
+    }
+
+    internal func settleTableOptionsCatalog(_ outcome: MetadataFetchOutcome<TableOptionsCatalog?>) {
+        tableOptionsCatalog = tableOptionsCatalog.settled(by: outcome, discardingValue: false)
+    }
+
     internal func reloadConcurrentRefreshAvailability(
         provider: any ScopedMetadataProviding = DatabaseManager.shared
     ) async {
@@ -193,13 +245,20 @@ internal final class StructureEditingSession: ObservableObject {
     }
 }
 
+internal enum AutoIncrementReadState: Equatable {
+    case confirmed
+    case rereading
+    /// The re-read failed or was cancelled, so the loaded counter may be one the server has moved past.
+    case unconfirmed
+}
+
 extension StructureEditingSession: ActiveGridModelProviding {
-    // The schema grid while a sub-tab shows one; Parts and Triggers draw lists of their own.
+    // The schema grid while a sub-tab shows one; Parts, Triggers and Options draw views of their own.
     var activeGridModel: DataGridModel? {
         switch selectedTab {
         case .columns, .indexes, .foreignKeys, .checkConstraints:
             return gridModel
-        case .ddl, .parts, .triggers:
+        case .ddl, .parts, .triggers, .options:
             return nil
         }
     }

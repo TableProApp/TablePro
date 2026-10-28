@@ -482,6 +482,8 @@ crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
+crates/app/src/ui/structure_tab/character_set_choices.rs
+crates/app/src/ui/structure_tab/character_set_fetch.rs
 crates/app/src/ui/structure_tab/column_handlers.rs
 crates/app/src/ui/structure_tab/columns.rs
 crates/app/src/ui/structure_tab/columns_input.rs
@@ -520,6 +522,7 @@ crates/app/src/ui/structure_tab/structure_tab_widgets.rs
 crates/app/src/ui/structure_tab/table_choice_object.rs
 crates/app/src/ui/structure_tab/table_handlers.rs
 crates/app/src/ui/structure_tab/table_input.rs
+crates/app/src/ui/structure_tab/table_options.rs
 crates/app/src/ui/structure_tab/tests.rs
 crates/app/src/ui/style_scheme_grid.rs
 crates/app/src/ui/style_scheme_resolver.rs

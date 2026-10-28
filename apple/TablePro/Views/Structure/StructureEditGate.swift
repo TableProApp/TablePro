@@ -125,7 +125,7 @@ struct StructureEditGate {
         case .indexes, .foreignKeys, .checkConstraints:
             guard let adding = StructureFooterPolicy.operation(forAdding: tab) else { return false }
             return !allows(adding)
-        case .ddl, .parts, .triggers:
+        case .options, .ddl, .parts, .triggers:
             return false
         }
     }

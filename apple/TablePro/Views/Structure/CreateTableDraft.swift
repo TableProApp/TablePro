@@ -5,12 +5,15 @@
 
 import Combine
 import Foundation
+import os
 import TableProPluginKit
 
 internal struct CreateTableCompositionKey: Hashable {
     let scope: DatabaseScope
     let tableName: String
     let options: CreateTableOptions
+    let offersEngineOptions: Bool
+    let optionDefaults: CreateTableOptionDefaults
     let columns: [EditableColumnDefinition]
     let indexes: [EditableIndexDefinition]
     let foreignKeys: [EditableForeignKeyDefinition]
@@ -18,6 +21,8 @@ internal struct CreateTableCompositionKey: Hashable {
 
 @MainActor
 internal final class CreateTableDraft: ObservableObject {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "CreateTableDraft")
+
     internal let changeManager = StructureChangeManager()
 
     @Published internal var tableName = "" {
@@ -28,6 +33,14 @@ internal final class CreateTableDraft: ObservableObject {
     }
     @Published internal var tableOptions = CreateTableOptions()
     @Published internal var form: CreateTableFormState?
+
+    // Server-wide: the character sets, collations and engines the pickers and the column cells offer.
+    @Published internal private(set) var optionsCatalog: MetadataLoadState<TableOptionsCatalog?> = .idle
+    // Per target database, so a draft compares a pick with the defaults of the database it creates the table in.
+    @Published internal private(set) var optionDefaults = CreateTableOptionDefaults()
+    private var optionDefaultsScope: DatabaseScope?
+    private var optionsScope: DatabaseScope?
+    private var optionsCatalogRead: Task<Void, Never>?
     @Published internal private(set) var hasResolvedForm = false
 
     internal func resolveForm(from spec: @autoclosure () -> PluginCreateTableFormSpec?) {
@@ -65,12 +78,82 @@ internal final class CreateTableDraft: ObservableObject {
     internal func gridAdapter(for connection: DatabaseConnection) -> CreateTableGridAdapter {
         if let gridAdapter { return gridAdapter }
         let adapter = CreateTableGridAdapter(structureChangeManager: changeManager, connection: connection)
+        adapter.draft = self
         gridAdapter = adapter
         return adapter
     }
 
-    internal static func offersEngineOptions(for databaseType: DatabaseType) -> Bool {
-        databaseType == .mysql || databaseType == .mariadb
+    // The driver's catalog decides, never the engine's type: a driver without one has no table options.
+    internal var catalog: TableOptionsCatalog? {
+        guard case .loaded(let catalog) = optionsCatalog else { return nil }
+        return catalog
+    }
+
+    internal var offersEngineOptions: Bool { catalog != nil }
+
+    internal func selectCharacterSet(_ charset: String?) {
+        guard charset != tableOptions.charset else { return }
+        tableOptions = tableOptions.selectingCharacterSet(
+            charset,
+            collation: TableOptionsForm.defaultCollation(of: charset, in: catalog)
+        )
+    }
+
+    // Idempotent: a remount skips what is loaded, and a read a switch cancelled runs again on return.
+    internal func loadTableOptions(scope: DatabaseScope, provider: any ScopedMetadataProviding = DatabaseManager.shared) async {
+        let loader = TableStructureLoader(scope: scope, tableName: "", provider: provider)
+        await loadOptionsCatalog(using: loader)
+        guard catalog != nil, optionDefaultsScope != scope else { return }
+        do {
+            let defaults = try await loader.defaultTableOptions()
+            optionDefaults = CreateTableOptionDefaults(
+                characterSet: defaults?.characterSet,
+                collation: defaults?.collation,
+                engine: catalog?.defaultEngine
+            )
+            optionDefaultsScope = scope
+            tableOptions = tableOptions.seeded(with: optionDefaults)
+        } catch {
+            guard StructureFetchFailure(error, taskIsCancelled: Task.isCancelled) != .cancelled else { return }
+            // Without the database's defaults every pick is written out, so the table still gets what the user chose.
+            Self.logger.error("Failed to read the default table options: \(error.publicLogShape, privacy: .public)")
+        }
+    }
+
+    // Opening a column's Charset or Collation menu is the retry.
+    internal func retryOptionsCatalog() {
+        guard case .failed = optionsCatalog, let optionsScope else { return }
+        Task { await loadTableOptions(scope: optionsScope) }
+    }
+
+    private func loadOptionsCatalog(using loader: TableStructureLoader) async {
+        optionsScope = loader.scope
+        if case .loaded = optionsCatalog { return }
+        // The draft owns the read, so a view task cancelled by a tab switch leaves it running for the view that returns.
+        if let optionsCatalogRead {
+            await optionsCatalogRead.value
+            return
+        }
+        optionsCatalog = optionsCatalog.enteringLoad
+        let read = Task { [weak self] in
+            let outcome: MetadataFetchOutcome<TableOptionsCatalog?>
+            do {
+                outcome = .fetched(try await loader.tableOptionsCatalog())
+            } catch {
+                switch StructureFetchFailure(error, taskIsCancelled: Task.isCancelled) {
+                case .cancelled:
+                    outcome = .cancelled
+                case .failed(let message):
+                    Self.logger.error("Failed to read the table options catalog: \(error.publicLogShape, privacy: .public)")
+                    outcome = .failed(message)
+                }
+            }
+            guard let self else { return }
+            optionsCatalog = optionsCatalog.settled(by: outcome, discardingValue: false)
+            optionsCatalogRead = nil
+        }
+        optionsCatalogRead = read
+        await read.value
     }
 
     internal func plan(for databaseType: DatabaseType) -> CreateTablePlan {
@@ -81,7 +164,8 @@ internal final class CreateTableDraft: ObservableObject {
             indexes: changeManager.workingIndexes,
             foreignKeys: changeManager.workingForeignKeys,
             dialect: ForeignKeyDialect.forType(databaseType),
-            includesEngineOptions: Self.offersEngineOptions(for: databaseType),
+            includesEngineOptions: offersEngineOptions,
+            defaults: optionDefaults,
             suppliesItsOwnKey: PluginManager.shared.defaultPrimaryKeyColumn(for: databaseType) != nil
         )
     }
@@ -91,6 +175,8 @@ internal final class CreateTableDraft: ObservableObject {
             scope: scope,
             tableName: tableName,
             options: tableOptions,
+            offersEngineOptions: offersEngineOptions,
+            optionDefaults: optionDefaults,
             columns: changeManager.workingColumns,
             indexes: changeManager.workingIndexes,
             foreignKeys: changeManager.workingForeignKeys

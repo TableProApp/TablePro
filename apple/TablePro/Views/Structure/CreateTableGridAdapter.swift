@@ -17,6 +17,8 @@ final class CreateTableGridAdapter {
     let referenceMenus: ForeignKeyReferenceMenus
 
     weak var coordinator: MainContentCoordinator?
+    // Holds the catalog the Charset and Collation cells pick from, and the table's own character set.
+    weak var draft: CreateTableDraft?
     var serverSupport = StructureServerSupport.unrestricted
     private(set) var structureTab: StructureTab = .columns
 
@@ -64,6 +66,18 @@ final class CreateTableGridAdapter {
         refresh()
     }
 
+    var characterSetContext: ColumnCharacterSetMenus.Context {
+        ColumnCharacterSetMenus.Context(
+            catalog: draft?.optionsCatalog ?? .idle,
+            tableCharacterSet: draft?.tableOptions.charset
+        )
+    }
+
+    func characterSetCatalogDidChange() {
+        refresh()
+        coordinator?.inspectorRowSourceRevision += 1
+    }
+
     func refresh() {
         changeTracking.tab = structureTab
         changeTracking.rowCount = StructureGridEdits.rowCount(on: structureTab, manager: structureChangeManager)
@@ -73,7 +87,8 @@ final class CreateTableGridAdapter {
             databaseType: connection.type,
             additionalFields: [.primaryKey],
             serverSupport: serverSupport,
-            sortDescriptor: sortDescriptor
+            sortDescriptor: sortDescriptor,
+            picksCharacterSets: ColumnCharacterSetMenus.offersMenus(characterSetContext.catalog)
         )
         self.provider = provider
         let rows = provider.asTableRows()
@@ -132,21 +147,48 @@ final class CreateTableGridAdapter {
                 foreignKey: structureChangeManager.workingForeignKeys[sourceIndex],
                 tableColumns: structureChangeManager.workingColumns.map(\.name)
             )
-        case .columns, .checkConstraints, .ddl, .parts, .triggers:
+        case .columns:
+            guard structureChangeManager.workingColumns.indices.contains(sourceIndex),
+                  provider.orderedColumnFields.indices.contains(field) else { return nil }
+            return ColumnCharacterSetMenus.options(
+                for: provider.orderedColumnFields[field],
+                column: structureChangeManager.workingColumns[sourceIndex],
+                context: characterSetContext
+            )
+        case .checkConstraints, .options, .ddl, .parts, .triggers:
             return nil
         }
+    }
+
+    func characterSetLockedFields(sourceIndex: Int) -> Set<Int> {
+        guard structureTab == .columns, structureChangeManager.workingColumns.indices.contains(sourceIndex) else { return [] }
+        return ColumnCharacterSetMenus.lockedFieldIndices(
+            orderedFields: provider.orderedColumnFields,
+            column: structureChangeManager.workingColumns[sourceIndex],
+            catalog: characterSetContext.catalog
+        )
     }
 
     @discardableResult
     func applyEdit(rowID: RowID, field: Int, text: String) -> Bool {
         guard let sourceIndex = StructureRowProvider.sourceIndex(of: rowID) else { return false }
-        write(text, field: field, sourceIndex: sourceIndex)
+        let applied = write(text, field: field, sourceIndex: sourceIndex)
         refresh()
-        return true
+        return applied
     }
 
-    private func write(_ text: String, field: Int, sourceIndex: Int) {
-        guard field >= 0 else { return }
+    private func write(_ text: String, field: Int, sourceIndex: Int) -> Bool {
+        let characterSets = characterSetContext
+        guard field >= 0,
+              !StructureGridEdits.refuses(
+                  text,
+                  field: field,
+                  sourceIndex: sourceIndex,
+                  tab: structureTab,
+                  manager: structureChangeManager,
+                  orderedFields: provider.orderedColumnFields,
+                  characterSets: characterSets
+              ) else { return false }
         let changedReference = StructureGridEdits.apply(
             text,
             field: field,
@@ -154,13 +196,15 @@ final class CreateTableGridAdapter {
             tab: structureTab,
             manager: structureChangeManager,
             orderedFields: provider.orderedColumnFields,
-            connection: connection
+            connection: connection,
+            characterSets: characterSets
         )
         if let changedReference {
             referenceMenus.prefetchReferencedColumns(
                 of: changedReference.referencedTable, schema: changedReference.referencedSchema
             )
         }
+        return true
     }
 
     func addRow() {
@@ -210,7 +254,12 @@ extension CreateTableGridAdapter: DataGridDataSource {
 
     func gridMenuOptions(for rowID: RowID, column: DataGridColumn) -> [GridMenuOption]? {
         guard let sourceIndex = StructureRowProvider.sourceIndex(of: rowID) else { return nil }
-        return menuOptions(sourceIndex: sourceIndex, field: column.dataIndex)
+        let options = menuOptions(sourceIndex: sourceIndex, field: column.dataIndex)
+        if structureTab == .columns, provider.orderedColumnFields.indices.contains(column.dataIndex),
+           ColumnCharacterSetMenus.isCharacterSetField(provider.orderedColumnFields[column.dataIndex]) {
+            draft?.retryOptionsCatalog()
+        }
+        return options
     }
 }
 
@@ -220,9 +269,11 @@ extension CreateTableGridAdapter: DataGridActions {
             StructureRowProvider.sourceIndex(of: edit.rowID).map { ($0, edit.dataIndex, edit.newValue.asText ?? "") }
         }
         guard !writes.isEmpty else { return false }
+        var applied = false
         let writeAll = {
             for (sourceIndex, field, text) in writes {
-                self.write(text, field: field, sourceIndex: sourceIndex)
+                let wrote = self.write(text, field: field, sourceIndex: sourceIndex)
+                applied = applied || wrote
             }
         }
         if writes.count > 1 {
@@ -231,7 +282,7 @@ extension CreateTableGridAdapter: DataGridActions {
             writeAll()
         }
         refresh()
-        return true
+        return applied
     }
 
     func gridDeleteRows(_ rowIDs: [RowID]) {
@@ -264,6 +315,7 @@ extension CreateTableGridAdapter: InspectorRowSource {
             tab: structureTab,
             provider: provider,
             canEditSchema: true,
+            lockedFieldIndices: characterSetLockedFields(sourceIndex: sourceIndex),
             rowOptions: { menuOptions(sourceIndex: sourceIndex, field: $0) }
         )
     }

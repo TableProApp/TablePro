@@ -49,6 +49,20 @@ pub struct StructureTab {
     #[template_child]
     pub add_fk_row: TemplateChild<adw::ButtonRow>,
     #[template_child]
+    pub options_page: TemplateChild<adw::ViewStackPage>,
+    #[template_child]
+    pub options_box: TemplateChild<gtk::Box>,
+    #[template_child]
+    pub character_set_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub collation_row: TemplateChild<adw::ComboRow>,
+    #[template_child]
+    pub convert_row: TemplateChild<adw::SwitchRow>,
+    #[template_child]
+    pub auto_increment_group: TemplateChild<adw::PreferencesGroup>,
+    #[template_child]
+    pub auto_increment_row: TemplateChild<adw::EntryRow>,
+    #[template_child]
     pub copy_sql_button: TemplateChild<gtk::Button>,
     #[template_child]
     pub sql_view: TemplateChild<sourceview5::View>,

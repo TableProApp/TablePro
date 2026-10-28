@@ -407,6 +407,18 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    // MARK: - Table Options
+
+    /// Nil where the engine has no table options.
+    func fetchTableOptions(tableName: String) async throws -> TableOptions?
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog?
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions?
+
+    /// Nil where the engine cannot make `change`. Takes the table's own schema, like `objectCommentStatement`.
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String?
+
     // MARK: - Sequences
 
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
@@ -891,6 +903,16 @@ extension DatabaseDriver {
         materializedView: String,
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability? {
+        nil
+    }
+
+    func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
+
+    func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? { nil }
+
+    func fetchDefaultTableOptions(schema: String?) async throws -> TableOptions? { nil }
+
+    func tableOptionsStatement(tableName: String, schema: String?, change: PluginTableOptionsChange) -> String? {
         nil
     }
 

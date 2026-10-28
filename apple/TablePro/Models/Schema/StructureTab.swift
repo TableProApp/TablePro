@@ -2,18 +2,16 @@
 //  StructureTab.swift
 //  TablePro
 //
-//  Tab selection for structure view
-//
 
 import Foundation
 
-/// Tab selection for structure view
 enum StructureTab: String, CaseIterable, Hashable {
     case columns
     case indexes
     case foreignKeys
     case checkConstraints
     case triggers
+    case options
     case ddl
     case parts
 
@@ -24,6 +22,7 @@ enum StructureTab: String, CaseIterable, Hashable {
         case .foreignKeys: String(localized: "Foreign Keys")
         case .checkConstraints: String(localized: "Constraints")
         case .triggers: String(localized: "Triggers")
+        case .options: String(localized: "Options")
         case .ddl: "DDL"
         case .parts: "Parts"
         }

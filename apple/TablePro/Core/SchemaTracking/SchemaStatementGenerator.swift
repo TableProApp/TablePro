@@ -86,14 +86,16 @@ struct SchemaStatementGenerator {
     private func sortByDependency(_ staged: [SchemaChange]) -> [SchemaChange] {
         // Execution order for safety:
         // 1. Drop foreign keys first (includes modify FK, which requires drop+recreate)
-        // 2. Drop indexes (a modified index drops here and is added at 6, unless the driver
+        // 2. Drop indexes (a modified index drops here and is added at 8, unless the driver
         //    replaces it in one statement and no column changes in the same save)
-        // 3. Drop/modify columns
-        // 4. Add columns
-        // 5. Modify primary key
-        // 6. Add indexes
-        // 7. Add foreign keys
-        // 8. Comments, last, so every structural statement has run on an engine without transactional DDL
+        // 3. Drop columns
+        // 4. Table character set: after the drops a convert trips on, before the columns added under a new default
+        // 5. Modify columns, then add columns
+        // 6. Modify primary key
+        // 7. AUTO_INCREMENT counter, after a MODIFY that turns AUTO_INCREMENT on, which resets it
+        // 8. Add indexes
+        // 9. Add foreign keys
+        // 10. Comments, last, so every structural statement has run on an engine without transactional DDL
         // Every drop of an index or a check constraint runs before any add or rename of one, and a
         // rename or add runs after the rename that frees its name. The structure editor counts a
         // deleted or renamed row's name as free on that basis.
@@ -111,6 +113,8 @@ struct SchemaStatementGenerator {
         var fkAdds: [SchemaChange] = []
         var constraintAdds: [SchemaChange] = []
         var commentChanges: [SchemaChange] = []
+        var characterSetChanges: [SchemaChange] = []
+        var autoIncrementChanges: [SchemaChange] = []
         let keepsIndexModifiesWhole = !changes.contains(where: Self.changesColumns)
 
         for change in changes {
@@ -162,6 +166,10 @@ struct SchemaStatementGenerator {
                 fkAdds.append(change)
             case .modifyTableComment:
                 commentChanges.append(change)
+            case .modifyTableCharacterSet:
+                characterSetChanges.append(change)
+            case .modifyAutoIncrement:
+                autoIncrementChanges.append(change)
             }
         }
 
@@ -169,8 +177,8 @@ struct SchemaStatementGenerator {
         let indexHandoffs = Self.inNameOrder(indexAdds)
 
         return constraintDeletes + constraintHandoffs.drops + constraintHandoffs.ordered + fkDeletes
-            + indexDeletes + indexHandoffs.drops + columnDeletes + columnModifies + columnAdds + pkChanges
-            + indexHandoffs.ordered + fkAdds + constraintAdds + commentChanges
+            + indexDeletes + indexHandoffs.drops + columnDeletes + characterSetChanges + columnModifies + columnAdds
+            + pkChanges + autoIncrementChanges + indexHandoffs.ordered + fkAdds + constraintAdds + commentChanges
     }
 
     /// Orders changes that each give up one name and take another in a single step, a rename or a
@@ -226,7 +234,8 @@ struct SchemaStatementGenerator {
         case .addCheckConstraint(let constraint):
             return (nil, constraint.name)
         case .addColumn, .modifyColumn, .deleteColumn, .deleteIndex, .addForeignKey, .modifyForeignKey,
-             .deleteForeignKey, .modifyPrimaryKey, .deleteCheckConstraint, .modifyTableComment:
+             .deleteForeignKey, .modifyPrimaryKey, .deleteCheckConstraint, .modifyTableComment,
+             .modifyTableCharacterSet, .modifyAutoIncrement:
             return (nil, nil)
         }
     }
@@ -239,7 +248,7 @@ struct SchemaStatementGenerator {
             return (.deleteCheckConstraint(old), .addCheckConstraint(new))
         case .addColumn, .modifyColumn, .deleteColumn, .addIndex, .deleteIndex, .addForeignKey,
              .modifyForeignKey, .deleteForeignKey, .modifyPrimaryKey, .addCheckConstraint,
-             .deleteCheckConstraint, .modifyTableComment:
+             .deleteCheckConstraint, .modifyTableComment, .modifyTableCharacterSet, .modifyAutoIncrement:
             return nil
         }
     }
@@ -248,8 +257,11 @@ struct SchemaStatementGenerator {
         switch change {
         case .addColumn, .modifyColumn, .deleteColumn, .modifyPrimaryKey:
             return true
+        case .modifyTableCharacterSet(_, let new):
+            return new.convertsColumns
         case .addIndex, .modifyIndex, .deleteIndex, .addForeignKey, .modifyForeignKey, .deleteForeignKey,
-             .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment:
+             .addCheckConstraint, .modifyCheckConstraint, .deleteCheckConstraint, .modifyTableComment,
+             .modifyAutoIncrement:
             return false
         }
     }
@@ -318,6 +330,10 @@ struct SchemaStatementGenerator {
             return generateDeleteCheckConstraint(constraint).map { [$0] } ?? []
         case .modifyTableComment(_, let new):
             return generateTableComment(new).map { [$0] } ?? []
+        case .modifyTableCharacterSet(_, let new):
+            return generateTableCharacterSet(new).map { [$0] } ?? []
+        case .modifyAutoIncrement(_, let new):
+            return generateAutoIncrement(new).map { [$0] } ?? []
         }
     }
 
@@ -475,6 +491,31 @@ struct SchemaStatementGenerator {
         return SchemaStatement(
             sql: sql, description: "Set comment on '\(tableName)'", isDestructive: false, setsComment: true
         )
+    }
+
+    // MARK: - Table Options
+
+    private func generateTableCharacterSet(_ options: TableOptions) -> SchemaStatement? {
+        let change = PluginTableOptionsChange(
+            characterSet: options.characterSet,
+            collation: options.collation,
+            convertsColumns: options.convertsColumns
+        )
+        guard let sql = pluginDriver.tableOptionsStatement(table: tableName, schema: schema, change: change) else {
+            return nil
+        }
+        let description = options.convertsColumns
+            ? "Convert '\(tableName)' to character set \(options.characterSet ?? "")"
+            : "Set default character set of '\(tableName)' to \(options.characterSet ?? "")"
+        return SchemaStatement(sql: sql, description: description, isDestructive: options.convertsColumns)
+    }
+
+    private func generateAutoIncrement(_ value: UInt64) -> SchemaStatement? {
+        let change = PluginTableOptionsChange(autoIncrement: value)
+        guard let sql = pluginDriver.tableOptionsStatement(table: tableName, schema: schema, change: change) else {
+            return nil
+        }
+        return SchemaStatement(sql: sql, description: "Set AUTO_INCREMENT of '\(tableName)' to \(value)", isDestructive: false)
     }
 
     // MARK: - Primary Key Operations

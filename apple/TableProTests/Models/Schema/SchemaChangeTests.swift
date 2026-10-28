@@ -165,6 +165,22 @@ struct SchemaChangeTests {
         #expect(change.requiresDataMigration == true)
     }
 
+    @Test("A new character set converts the stored text, so the save asks first; a collation alone does not")
+    func requiresDataMigrationCharacterSetChange() {
+        var old = makeColumn(name: "note", dataType: "VARCHAR(100)")
+        old.setCharacterSet("utf8mb4", collation: "utf8mb4_bin")
+        var latin = old
+        latin.setCharacterSet("latin1", collation: "latin1_swedish_ci")
+        var tableDefault = old
+        tableDefault.setCharacterSet(nil, collation: nil)
+        var recased = old
+        recased.setCharacterSet("UTF8MB4", collation: "utf8mb4_general_ci")
+
+        #expect(SchemaChange.modifyColumn(old: old, new: latin).requiresDataMigration)
+        #expect(SchemaChange.modifyColumn(old: old, new: tableDefault).requiresDataMigration)
+        #expect(!SchemaChange.modifyColumn(old: old, new: recased).requiresDataMigration)
+    }
+
     @Test("requiresDataMigration returns true for deleteColumn")
     func requiresDataMigrationDeleteColumn() {
         let change = SchemaChange.deleteColumn(makeColumn(name: "test", dataType: "INT"))

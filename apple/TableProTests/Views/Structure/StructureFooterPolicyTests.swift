@@ -124,7 +124,7 @@ struct StructureFooterPolicyTests {
 
     @Test("The tabs with nothing to add have no operation and no pair")
     func nonEditableTabsHaveNoPair() {
-        for tab in [StructureTab.ddl, .parts, .triggers] {
+        for tab in [StructureTab.options, .ddl, .parts, .triggers] {
             #expect(StructureFooterPolicy.operation(forAdding: tab) == nil, "\(tab.rawValue)")
             #expect(StructureFooterPolicy.operation(forRemoving: tab) == nil, "\(tab.rawValue)")
             #expect(!resolve(tab: tab, kind: .table).isActive, "\(tab.rawValue)")

@@ -16,7 +16,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     @Published private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
     private var changeOrder: [SchemaChangeIdentifier] = []
     @Published private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
-    var hasChanges: Bool { !pendingChanges.isEmpty }
+    var hasChanges: Bool { !pendingChanges.isEmpty || holdsInvalidAutoIncrementEntry }
     @Published var reloadVersion: Int = 0
 
     // Current state (loaded from database)
@@ -59,6 +59,12 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
     var hasTableCommentRun: Bool { tableCommentRunStart != nil }
 
     private static var tableCommentActionName: String { String(localized: "Edit Comment") }
+
+    @Published private(set) var tableOptions = TableOptionsDraft(original: nil)
+    // Text in Next Auto Increment that is not a counter. It holds Save and counts as unsaved, so it is never dropped quietly.
+    @Published private(set) var invalidAutoIncrementEntry: String?
+
+    private static var tableOptionsActionName: String { String(localized: "Edit Table Options") }
 
     // MARK: - Undo/Redo Support
 
@@ -126,12 +132,16 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         foreignKeys: [ForeignKeyInfo],
         checkConstraints: [CheckConstraintInfo] = [],
         primaryKey: [String],
-        tableComment: String? = nil
+        tableComment: String? = nil,
+        tableOptions: TableOptions? = nil,
+        autoIncrementConfirmed: Bool = true
     ) {
         guard !isHeldForSave else { return }
         self.tableName = tableName
         self.tableComment = ObjectCommentDraft(original: tableComment)
         tableCommentRunStart = nil
+        self.tableOptions = TableOptionsDraft(original: tableOptions, isAutoIncrementConfirmed: autoIncrementConfirmed)
+        invalidAutoIncrementEntry = nil
 
         self.currentColumns = columns.map { EditableColumnDefinition.from($0) }
 
@@ -432,7 +442,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         case .checkConstraints:
             guard row < workingCheckConstraints.count else { return }
             key = .checkConstraint(workingCheckConstraints[row].id)
-        case .ddl, .parts, .triggers:
+        case .ddl, .parts, .triggers, .options:
             return
         }
         guard pendingChanges[key]?.isDelete == true else { return }
@@ -555,11 +565,61 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
                 format: String(localized: "Primary key references a column that does not exist: %@"), columnName
             )
         }
+
+        validateAutoIncrement()
+        validateConvert()
+    }
+
+    /// A MODIFY restates the loaded type, narrowing a TEXT the convert widened, and a replaced key is converted before it drops.
+    private func validateConvert() {
+        guard case .modifyTableCharacterSet(_, let new)? = pendingChanges[.tableCharacterSet], new.convertsColumns else {
+            return
+        }
+        let restatesColumns = pendingChanges.values.contains { change in
+            switch change {
+            case .modifyColumn, .modifyPrimaryKey: true
+            default: false
+            }
+        }
+        guard restatesColumns else { return }
+        validationErrors[.tableCharacterSet] = String(
+            localized: "Save column and primary key changes before converting existing columns."
+        )
+    }
+
+    /// Against the column as the save leaves it: a widening in the same save keeps a larger counter (MySQL 8.4, MariaDB 11.4).
+    private func validateAutoIncrement() {
+        if holdsInvalidAutoIncrementEntry, let invalidAutoIncrementEntry {
+            validationErrors[.autoIncrement] = invalidAutoIncrementEntry
+            return
+        }
+        guard case .modifyAutoIncrement(_, let value)? = pendingChanges[.autoIncrement] else { return }
+        guard let range = autoIncrementRange else {
+            validationErrors[.autoIncrement] = String(
+                localized: "Next Auto Increment needs a column with AUTO_INCREMENT"
+            )
+            return
+        }
+        guard !range.contains(value) else { return }
+        validationErrors[.autoIncrement] = String(
+            format: String(localized: "Next Auto Increment must be between 1 and %@"), String(range.upperBound)
+        )
     }
 
     /// Every column the table keeps after this save, whatever state its name and type are in.
     private var columnsAfterSave: [EditableColumnDefinition] {
         workingColumns.filter { !isPendingDeletion(.column($0.id)) }
+    }
+
+    var autoIncrementColumn: EditableColumnDefinition? {
+        columnsAfterSave.first { $0.autoIncrement }
+    }
+
+    /// Nil without an AUTO_INCREMENT column; a type the range does not know is held to the counter's width.
+    var autoIncrementRange: ClosedRange<UInt64>? {
+        guard let column = autoIncrementColumn else { return nil }
+        let maximum = AutoIncrementRange.maximum(forColumnType: column.dataType, unsigned: column.unsigned)
+        return 1...(maximum ?? UInt64.max)
     }
 
     /// Only a column this save adds or changes is held to being complete.
@@ -694,6 +754,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         guard !isHeldForSave else { return }
         tableComment = ObjectCommentDraft(original: tableComment.original)
         tableCommentRunStart = nil
+        tableOptions = TableOptionsDraft(
+            original: tableOptions.original, isAutoIncrementConfirmed: tableOptions.isAutoIncrementConfirmed
+        )
+        invalidAutoIncrementEntry = nil
         pendingChanges.removeAll()
         changeOrder.removeAll()
         validationErrors.removeAll()
@@ -731,6 +795,20 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         for case .modifyTableComment(_, let savedComment) in snapshot.changes {
             tableComment = ObjectCommentDraft(original: savedComment)
         }
+        var writtenOptions = tableOptions.original
+        var isAutoIncrementConfirmed = tableOptions.isAutoIncrementConfirmed
+        for change in snapshot.changes {
+            switch change {
+            case .modifyTableCharacterSet(_, let saved):
+                writtenOptions = writtenOptions?.adoptingCharacterSet(of: saved)
+            case .modifyAutoIncrement:
+                // Left to the re-read: the server silently raises a value below the next free one.
+                isAutoIncrementConfirmed = false
+            default:
+                continue
+            }
+        }
+        tableOptions = TableOptionsDraft(original: writtenOptions, isAutoIncrementConfirmed: isAutoIncrementConfirmed)
         discardChanges()
         return true
     }
@@ -791,6 +869,55 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         restageTableComment()
     }
 
+    // MARK: - Table Options
+
+    /// One whole-value write, so a collation never resolves against a stale character set.
+    func stageTableOptions(_ options: TableOptions) {
+        guard !isHeldForSave, let previous = tableOptions.current, options != previous else { return }
+        // An unconfirmed baseline may be a counter the server already moved past.
+        guard tableOptions.isAutoIncrementConfirmed || options.autoIncrement == previous.autoIncrement else { return }
+        registerUndo(Self.tableOptionsActionName) { target in
+            target.applySchemaUndo(.tableOptionsEdit(old: previous, new: options))
+        }
+        tableOptions.current = options
+        restageTableOptions()
+        workingCopyDidChange()
+    }
+
+    // The field goes with the last AUTO_INCREMENT column, and so does what was typed in it.
+    private var holdsInvalidAutoIncrementEntry: Bool {
+        invalidAutoIncrementEntry != nil && autoIncrementRange != nil
+    }
+
+    func noteAutoIncrementEntry(invalid message: String?) {
+        guard !isHeldForSave, invalidAutoIncrementEntry != message else { return }
+        invalidAutoIncrementEntry = message
+        workingCopyDidChange()
+    }
+
+    private func restageTableOptions() {
+        restage(.tableCharacterSet, as: tableOptions.characterSetChange)
+        restage(.autoIncrement, as: tableOptions.autoIncrementChange)
+    }
+
+    private func restage(_ key: SchemaChangeIdentifier, as change: SchemaChange?) {
+        if let change {
+            pendingChanges[key] = change
+            trackChangeKey(key)
+        } else {
+            pendingChanges.removeValue(forKey: key)
+            untrackChangeKey(key)
+        }
+    }
+
+    private func applyTableOptionsUndo(old: TableOptions, new: TableOptions) {
+        registerUndo(Self.tableOptionsActionName) { target in
+            target.applySchemaUndo(.tableOptionsEdit(old: new, new: old))
+        }
+        tableOptions.current = old
+        restageTableOptions()
+    }
+
     private func applySchemaUndo(_ action: SchemaUndoAction) {
         switch action {
         case .columnEdit(let id, let old, let new):
@@ -821,6 +948,8 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             applyPrimaryKeyChangeUndo(old: old)
         case .tableCommentEdit(let old, let new):
             applyTableCommentUndo(old: old, new: new)
+        case .tableOptionsEdit(let old, let new):
+            applyTableOptionsUndo(old: old, new: new)
         }
 
         workingCopyDidChange()
@@ -926,7 +1055,7 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
             return rowState(at: row, using: Self.foreignKeyOperations)
         case .checkConstraints:
             return rowState(at: row, using: Self.checkConstraintOperations)
-        case .ddl, .parts, .triggers:
+        case .ddl, .parts, .triggers, .options:
             return (false, false)
         }
     }
@@ -982,6 +1111,7 @@ enum SchemaUndoAction {
     case primaryKeyChange(old: [String], new: [String])
     /// The field's raw text, so undo restores exactly what was typed.
     case tableCommentEdit(old: String, new: String)
+    case tableOptionsEdit(old: TableOptions, new: TableOptions)
 }
 
 /// The staged edits a save read when it was pressed, and so the only edits it may clear.

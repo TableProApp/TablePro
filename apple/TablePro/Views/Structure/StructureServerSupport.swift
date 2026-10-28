@@ -53,7 +53,7 @@ struct StructureServerSupport: Equatable, Sendable {
         switch tab {
         case .checkConstraints:
             return checkConstraintRefusal == nil
-        case .columns, .indexes, .foreignKeys, .triggers, .ddl, .parts:
+        case .columns, .indexes, .foreignKeys, .triggers, .options, .ddl, .parts:
             return true
         }
     }
