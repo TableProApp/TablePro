@@ -498,12 +498,16 @@ impl DataGrid {
             .borrow_mut()
             .handlers
             .push((sorter.upcast_ref::<glib::Object>().downgrade(), handler));
+        // New columns bring new sorters, and the rows must not keep one
+        // of a column that is gone.
+        self.sort_shown_rows(&sorter);
     }
 
     /// A header click or the menu changed the sort: a server grid asks the
     /// host for its rows in that order.
     fn sort_changed(&self, sorter: &gtk::ColumnViewSorter) {
         self.refresh_actions();
+        self.sort_shown_rows(sorter);
         if self.imp().quiet_sort.get() {
             return;
         }
@@ -512,6 +516,22 @@ impl DataGrid {
         if matches!(self.imp().columns.borrow().sorting(), GridSorting::Server { .. }) {
             self.request(super::GridRequest::Sort(sort));
         }
+    }
+
+    /// A grid that sorts its own rows sorts them with the header column's
+    /// own sorter, which collates each row once, and shows them last first
+    /// for a descending sort.
+    fn sort_shown_rows(&self, sorter: &gtk::ColumnViewSorter) {
+        let imp = self.imp();
+        let (Some(sorted), Some(shown)) = (imp.sort_model.get(), imp.shown.get()) else {
+            return;
+        };
+        let column = sorter.primary_sort_column();
+        let by = column.as_ref().and_then(gtk::ColumnViewColumn::sorter);
+        if sorted.sorter() != by {
+            sorted.set_sorter(by.as_ref());
+        }
+        shown.set_reversed(column.is_some() && sorter.primary_sort_order() == gtk::SortType::Descending);
     }
 
     pub(super) fn apply_sort_quietly(&self, sort: Option<(usize, bool)>) {
@@ -581,9 +601,9 @@ impl DataGrid {
     }
 
     pub(crate) fn view_position(&self, row: &GridRow) -> Option<u32> {
-        match self.imp().sort_model.get() {
-            Some(sorted) => {
-                (0..sorted.n_items()).find(|position| sorted.item(*position).as_ref() == Some(row.upcast_ref()))
+        match self.imp().shown.get() {
+            Some(shown) => {
+                (0..shown.n_items()).find(|position| shown.item(*position).as_ref() == Some(row.upcast_ref()))
             }
             None => self.store().position_of(row),
         }

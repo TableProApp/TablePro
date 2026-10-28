@@ -13,6 +13,7 @@ use super::edit::EditController;
 use super::find_bar::FindState;
 use super::grid_menu::GridMenus;
 use super::references::Armed;
+use super::reversed_list::ReversedList;
 use super::row_detail::RowDetailPane;
 use super::selection::Target;
 use super::{GridConfig, GridStore};
@@ -57,6 +58,9 @@ pub struct DataGrid {
     pub selection: Selection,
     /// Set for a grid that sorts the rows it holds.
     pub sort_model: OnceCell<gtk4::SortListModel>,
+    /// The sorted rows as the grid shows them, last first for a
+    /// descending sort.
+    pub shown: OnceCell<ReversedList>,
     pub columns: RefCell<ColumnSet>,
     pub actions: gio::SimpleActionGroup,
     pub menus: OnceCell<GridMenus>,
