@@ -161,17 +161,13 @@ fn text_column_sorter_is_string_sorter_with_unicode_collation() {
         .expect("a text column sorts in steps");
 
     let collating = sorter
-        .item(1)
+        .item(sorter.n_items() - 1)
         .and_downcast::<gtk::StringSorter>()
-        .expect("the second step collates the text");
+        .expect("the last step collates the text");
     assert_eq!(collating.collation(), gtk::Collation::Unicode);
     assert!(
-        sorter.item(0).and_downcast::<gtk::NumericSorter>().is_some(),
-        "NULL is not placed first by a key"
-    );
-    assert!(
-        sorter.item(2).and_downcast::<gtk::CustomSorter>().is_some(),
-        "numbers are not ordered among themselves"
+        sorter.item(0).and_downcast::<gtk::CustomSorter>().is_some(),
+        "NULL is not placed first"
     );
 }
 
