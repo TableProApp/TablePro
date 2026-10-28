@@ -85,7 +85,6 @@ impl SidebarList {
         }
         let imp = self.imp();
         imp.objects.borrow_mut().clear();
-        imp.made.set(0);
         if !Arc::ptr_eq(&imp.index.borrow(), index) {
             imp.index.replace(index.clone());
         }
@@ -98,24 +97,6 @@ impl SidebarList {
         if added > 0 {
             self.items_changed(0, 0, added);
         }
-    }
-
-    /// Make up to `count` more rows, ahead of a tree that asks for every
-    /// row of a schema it opens. True once every row is made.
-    pub(crate) fn make_rows(&self, count: u32) -> bool {
-        let imp = self.imp();
-        let n_items = imp.entries.borrow().len();
-        let mut at = imp.made.get();
-        let mut made = 0;
-        while at < n_items && made < count {
-            if imp.objects.borrow().get(at as usize).is_none_or(Option::is_none) {
-                let _ = imp.item(at);
-                made += 1;
-            }
-            at += 1;
-        }
-        imp.made.set(at);
-        at >= n_items
     }
 }
 
@@ -199,20 +180,6 @@ mod tests {
         assert_eq!(list.item(0), first, "the same rows made the row anew");
         list.show(&index(&[("public", "users"), ("public", "orders")]), Entries::Run(0, 2));
         assert_ne!(list.item(0), first, "a new index kept an old row");
-    }
-
-    #[gtk4::test]
-    fn rows_are_made_a_batch_at_a_time_and_kept() {
-        let index = index(&[("public", "a"), ("public", "b"), ("public", "c")]);
-        let list = SidebarList::new();
-        list.show(&index, Entries::Run(0, 3));
-        let asked = list.item(1);
-
-        assert!(!list.make_rows(1));
-        assert!(list.make_rows(1), "a row the tree asked for was made again");
-        assert_eq!(list.item(1), asked);
-        list.show(&index, Entries::Run(0, 2));
-        assert!(!list.make_rows(1), "a new list kept the old one's progress");
     }
 
     #[gtk4::test]

@@ -723,7 +723,7 @@ impl TreeInner {
             && connection.is_expanded()
             && let Some(row) = child_row(&connection, &schema)
         {
-            open_when_made(&row, &schema);
+            expand(&row);
         }
     }
 
@@ -1473,30 +1473,6 @@ fn expand(row: &gtk::TreeListRow) {
     if !row.is_expanded() {
         row.set_expanded(true);
     }
-}
-
-/// The rows of a schema made in one turn of the main loop before it opens.
-const ROWS_PER_TURN: u32 = 2_000;
-
-/// Open the `schema`'s `row` once its tables' rows are made, a batch per
-/// turn of the main loop: GtkTreeListModel asks for every row of a schema
-/// it opens, and 50,000 made in one turn stall the window.
-fn open_when_made(row: &gtk::TreeListRow, schema: &TreeNode) {
-    let Some(rows) = schema.rows().filter(|rows| !rows.make_rows(ROWS_PER_TURN)) else {
-        expand(row);
-        return;
-    };
-    let row = row.downgrade();
-    glib::idle_add_local(move || {
-        let Some(row) = row.upgrade() else {
-            return glib::ControlFlow::Break;
-        };
-        if !rows.make_rows(ROWS_PER_TURN) {
-            return glib::ControlFlow::Continue;
-        }
-        expand(&row);
-        glib::ControlFlow::Break
-    });
 }
 
 /// Where `object` is in `model`: the roots, a group's connections or a
