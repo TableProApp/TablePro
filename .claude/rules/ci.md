@@ -28,7 +28,7 @@ paths:
 
 ## What runs where
 
-- `ci.yml` runs on every PR, on pushes to main and `release/**`, and by dispatch. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `macos-tests.yml` (`macos`), `ios-tests.yml` (`ios`), `swiftlint.yml` (`swiftlint`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`; never on `release/**`, since Linux ships from main or `linux-X.Y`) and `repo-hygiene.yml` (always). `plugins`, `oracle` and `hana` go in as inputs.
+- `ci.yml` runs on every PR, on pushes to main and `release/**`, and by dispatch. `Plan` runs the detector per suite, then calls each workflow when its suite is true: `macos-tests.yml` (`macos`), `ios-tests.yml` (`ios`), `swiftlint.yml` (`swiftlint`), `build-linux.yml` (`linux-docs`, docs job only unless `linux`; never on `release/**`, since Linux ships from main or `linux-X.Y`), `build-windows.yml` (`windows`) and `repo-hygiene.yml` (always). `plugins`, `oracle` and `hana` go in as inputs.
 - The base is a PR's base SHA, or on a main push the head SHA of the last green CI push run on main. No such run, or a dispatch, runs everything. A dispatch never counts as main's last green run or for a tag.
 - Concurrency is only in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each `release/**` commit and each dispatch has its own group.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
@@ -37,7 +37,7 @@ paths:
 ## Change detector
 
 - `scripts/ci/detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <ref>] <suite>` prints `true` or `false`. No base prints true; an all-zero base diffs from the merge base with `origin/main`; `--ref refs/heads/release/*` prints true.
-- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `release` (what Release Build reads) and `shipped` (`release` without `.github/`; `version.py check` reads it).
+- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `windows` (no Markdown under `windows/`), `release` (what Release Build reads) and `shipped` (`release` without `.github/`; `version.py check` reads it).
 - Every suite but `shipped` watches `ci.yml` and its own workflow. A path a suite newly reads joins its pattern in the same change.
 
 ## Runners
@@ -58,6 +58,7 @@ paths:
 
 - `~/.spm-cache`, keyed on the app's `Package.resolved`. macOS Tests saves it on a push miss; Release and Release Build only restore it.
 - Linux caches Cargo through `Swatinem/rust-cache`. No libs or DerivedData cache.
+- Windows restores NuGet packages on each run, with no cache.
 
 ## Writing workflow and lint code
 

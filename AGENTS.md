@@ -1,10 +1,10 @@
 # TablePro
 
-Native database clients that share no code: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4). Read `apple/AGENTS.md` or `linux/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`, Codex only when started there.
+Native database clients that share no code: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4), `windows/` the Windows app (C#, WinUI 3). Read `apple/AGENTS.md`, `linux/AGENTS.md` or `windows/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`, Codex only when started there.
 
 ## Repository map
 
-- `apple/`, `linux/`: each app with its scripts and changelog.
+- `apple/`, `linux/`, `windows/`: each app with its scripts and docs.
 - `.github/`: workflows, actions, the PR template and `plugin-registry.json`.
 - `.claude/`: the path-scoped rules and the `fix-issue` and `release` skills, which Codex sees through `.agents/skills/`.
 - `scripts/`: `banned-words.txt` with `check-banned-words.sh`, the PR title and changed-path checks in `scripts/ci`, and the towncrier pin in `scripts/release`.
