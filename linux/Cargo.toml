@@ -85,6 +85,7 @@ mongodb = { version = "3.9.1", default-features = false, features = [
 ] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 csv = "1.4"
+unicode-width = "0.2"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.

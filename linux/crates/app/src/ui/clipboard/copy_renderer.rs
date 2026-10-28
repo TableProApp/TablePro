@@ -4,8 +4,8 @@ use tablepro_core::column::{ColumnInfo, ColumnType, ResultColumn};
 use tablepro_core::dialect::{LiteralError, SqlDialect};
 use tablepro_core::edit::CellInput;
 use tablepro_core::export::{
-    self, CellsEncoder, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, MarkdownEncoder, RenderInsertError,
-    RowEncoder, TsvEncoder,
+    self, CellsEncoder, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, JsonLinesEncoder, MarkdownEncoder,
+    OneRowEncoder, PrettyTableEncoder, RenderInsertError, RowEncoder, TsvEncoder,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::value::Value;
@@ -51,7 +51,10 @@ pub enum CopyKind {
     Csv,
     CsvWithHeaders,
     Json,
+    JsonLines,
     Markdown,
+    PrettyTable,
+    OneRow,
 }
 
 /// Rows as INSERT statements for the server the tab reads.
@@ -126,7 +129,10 @@ fn render_rows(
             ClipboardFormat::Csv,
         ),
         CopyKind::Json => encode(JsonArrayEncoder::new(columns), rows, ClipboardFormat::Json),
+        CopyKind::JsonLines => encode(JsonLinesEncoder::new(columns), rows, ClipboardFormat::PlainText),
         CopyKind::Markdown => encode(MarkdownEncoder::new(columns), rows, ClipboardFormat::Markdown),
+        CopyKind::PrettyTable => encode(PrettyTableEncoder::new(columns), rows, ClipboardFormat::PlainText),
+        CopyKind::OneRow => encode(OneRowEncoder::new(columns), rows, ClipboardFormat::PlainText),
     }?;
     Ok(ClipboardPayload {
         cells: Some(cells),
@@ -138,8 +144,13 @@ fn render_rows(
 /// A copy that names its columns lets the paste place values by name.
 fn copied_cells(columns: &Arc<[ResultColumn]>, rows: &[RowSnapshot], kind: CopyKind) -> Result<String, CopyError> {
     let with_headers = match kind {
-        CopyKind::Value(_) | CopyKind::Rows | CopyKind::Csv => false,
-        CopyKind::RowsWithHeaders | CopyKind::CsvWithHeaders | CopyKind::Json | CopyKind::Markdown => true,
+        CopyKind::Value(_) | CopyKind::Rows | CopyKind::Csv | CopyKind::OneRow => false,
+        CopyKind::RowsWithHeaders
+        | CopyKind::CsvWithHeaders
+        | CopyKind::Json
+        | CopyKind::JsonLines
+        | CopyKind::Markdown
+        | CopyKind::PrettyTable => true,
     };
     let CopyKind::Value(column) = kind else {
         return encoded(CellsEncoder::new(columns.clone(), with_headers), rows);

@@ -107,16 +107,28 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
     let copy_as = section([
         item(&gettext("Rows"), "grid.copy-rows"),
         item(&gettext("With Headers"), "grid.copy-rows-headers"),
-        item(&gettext("JSON"), "grid.copy-json"),
         item(&gettext("CSV"), "grid.copy-csv"),
         item(&gettext("CSV With Headers"), "grid.copy-csv-headers"),
-        item(&gettext("Markdown"), "grid.copy-markdown"),
+        item(&gettext("One Row"), "grid.copy-one-row"),
     ]);
+    copy_as.append_section(
+        None,
+        &section([
+            item(&gettext("JSON"), "grid.copy-json"),
+            item(&gettext("JSON Lines"), "grid.copy-json-lines"),
+            item(&gettext("Markdown"), "grid.copy-markdown"),
+            item(&gettext("Text Table"), "grid.copy-pretty-table"),
+        ]),
+    );
     copy_as.append_section(
         None,
         &section([
             hidden_while_disabled(&gettext("IN Clause"), "grid.copy-in-clause"),
             hidden_while_disabled(&gettext("INSERT Statement"), "grid.copy-insert"),
+            hidden_while_disabled(
+                &gettext("INSERT Without Generated Keys"),
+                "grid.copy-insert-without-generated-keys",
+            ),
         ]),
     );
     copy_as.append_section(None, &section([item(&gettext("Column Name"), "grid.copy-column-name")]));

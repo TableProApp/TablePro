@@ -21,8 +21,8 @@ use crate::value::Value;
 pub use csv::{FORMULA_LEADS, csv_writer_builder, neutralise_formula, render_csv, render_text_csv};
 pub use csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 pub use encoder::{
-    CellsEncoder, CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, MarkdownEncoder, RowEncoder,
-    SqlInsertEncoder, TsvEncoder, XmlEncoder,
+    CellsEncoder, CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, JsonLinesEncoder, MarkdownEncoder,
+    OneRowEncoder, PrettyTableEncoder, RowEncoder, SqlInsertEncoder, TsvEncoder, XmlEncoder,
 };
 pub use html::render_html;
 pub use in_clause::{InClause, render_in_clause};

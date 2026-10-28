@@ -372,3 +372,37 @@ fn large_copy_renders_on_blocking_pool() {
         serde_json::from_str(&local_text(&clipboard).expect("the copy")).expect("JSON");
     assert_eq!(parsed.len(), 200_000);
 }
+
+#[gtk4::test]
+fn copy_as_text_table_one_row_and_json_lines_go_as_plain_text() {
+    // Each copy replaces the one before on the display's one clipboard,
+    // so each is read before the next.
+    let copy = |kind| {
+        let (clipboard, toasts) = copied(rows_request(&people(), kind));
+        let formats = clipboard.formats();
+        assert!(!formats.contain_mime_type("application/json"), "{}", formats.to_str());
+        (local_text(&clipboard).expect("the copy"), toasts)
+    };
+
+    let (table, toasts) = copy(CopyKind::PrettyTable);
+    let (one_row, _) = copy(CopyKind::OneRow);
+    let (json_lines, _) = copy(CopyKind::JsonLines);
+
+    assert_eq!(
+        table,
+        "+----+------------------+\n\
+         | id | name             |\n\
+         +----+------------------+\n\
+         | -5 | =cmd             |\n\
+         | 7  | Ada, \"the first\" |\n\
+         +----+------------------+"
+    );
+    assert_eq!(toasts, ["Copied 2 rows"]);
+    assert_eq!(one_row, "-5, =cmd, 7, \"Ada, \"\"the first\"\"\"");
+    let lines: Vec<serde_json::Value> = json_lines
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is JSON"))
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[1]["name"], serde_json::json!("Ada, \"the first\""));
+}

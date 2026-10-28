@@ -643,3 +643,64 @@ fn in_clause_is_offered_only_for_a_dialect_that_speaks_sql() {
 
     assert_eq!((in_mongo, in_results, in_sql), (false, false, true));
 }
+
+fn numbered_people() -> Vec<ColumnInfo> {
+    let mut columns = people();
+    columns[0].is_auto_increment = true;
+    columns
+}
+
+#[gtk4::test]
+fn copy_as_insert_without_generated_keys_leaves_the_numbered_key_to_the_server() {
+    let grid = sql_grid(numbered_people(), people_rows(), Arc::new(FakeDialect));
+    grid.grid.set_column_visible(2, false);
+    select_all(&grid);
+
+    let text = copied(&grid, || activate(&grid.grid, "copy-insert-without-generated-keys"));
+
+    assert_eq!(
+        text,
+        "INSERT INTO \"users\" (\"name\") VALUES ('Ada');\n\
+         INSERT INTO \"users\" (\"name\") VALUES ('Grace');"
+    );
+}
+
+#[gtk4::test]
+fn insert_without_generated_keys_is_offered_only_for_a_table_whose_key_the_server_numbers() {
+    let numbered = sql_grid(numbered_people(), people_rows(), Arc::new(FakeDialect));
+    let chosen = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
+
+    for grid in [&numbered, &chosen] {
+        select_all(grid);
+    }
+
+    assert!(numbered.is_enabled("copy-insert-without-generated-keys"));
+    assert!(chosen.is_enabled("copy-insert"));
+    assert!(
+        !chosen.is_enabled("copy-insert-without-generated-keys"),
+        "a key the user writes has no INSERT without it"
+    );
+}
+
+#[gtk4::test]
+fn the_new_copy_as_formats_take_the_columns_on_screen() {
+    let grid = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
+    grid.grid.set_column_visible(2, false);
+    select_all(&grid);
+
+    let one_row = copied(&grid, || activate(&grid.grid, "copy-one-row"));
+    let table = copied(&grid, || activate(&grid.grid, "copy-pretty-table"));
+    let lines = copied(&grid, || activate(&grid.grid, "copy-json-lines"));
+
+    assert_eq!(one_row, "1, Ada, 2, Grace");
+    assert_eq!(
+        table,
+        "+----+-------+\n\
+         | id | name  |\n\
+         +----+-------+\n\
+         |  1 | Ada   |\n\
+         |  2 | Grace |\n\
+         +----+-------+"
+    );
+    assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}");
+}

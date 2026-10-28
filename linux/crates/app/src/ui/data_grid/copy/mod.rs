@@ -20,13 +20,16 @@ use crate::ui::filter_strip::FilterVocabulary;
 mod tests;
 
 /// Copy As, one action per format.
-const ROW_COPIES: [(&str, CopyKind); 6] = [
+const ROW_COPIES: [(&str, CopyKind); 9] = [
     ("copy-rows", CopyKind::Rows),
     ("copy-rows-headers", CopyKind::RowsWithHeaders),
     ("copy-json", CopyKind::Json),
+    ("copy-json-lines", CopyKind::JsonLines),
     ("copy-csv", CopyKind::Csv),
     ("copy-csv-headers", CopyKind::CsvWithHeaders),
     ("copy-markdown", CopyKind::Markdown),
+    ("copy-pretty-table", CopyKind::PrettyTable),
+    ("copy-one-row", CopyKind::OneRow),
 ];
 
 pub fn install_actions(grid: &DataGrid) {
@@ -39,7 +42,10 @@ pub fn install_actions(grid: &DataGrid) {
         });
     }
     add(grid, "copy-in-clause", copy_in_clause);
-    add(grid, "copy-insert", copy_insert);
+    add(grid, "copy-insert", |grid| copy_insert(grid, Keys::All));
+    add(grid, "copy-insert-without-generated-keys", |grid| {
+        copy_insert(grid, Keys::NotGenerated)
+    });
     add(grid, "copy-column-name", |grid| {
         if let Some(index) = grid.target_column() {
             copy_column_name(grid, index);
@@ -62,7 +68,17 @@ pub fn refresh_actions(grid: &DataGrid, target: Option<&Resolved>) {
         enable(grid, name, rows);
     }
     enable(grid, "copy-in-clause", cell.is_some() && sql_dialect(grid).is_some());
-    enable(grid, "copy-insert", rows && copies_inserts(grid));
+    let inserts = rows && copies_inserts(grid);
+    enable(grid, "copy-insert", inserts);
+    enable(
+        grid,
+        "copy-insert-without-generated-keys",
+        inserts
+            && grid
+                .grid_columns()
+                .iter()
+                .any(|column| column.catalog.as_ref().is_some_and(is_generated_key)),
+    );
     enable(grid, "copy-column-name", cell.is_some());
     enable(grid, "show-row-json", target.and_then(json_row).is_some());
     enable(grid, "export", grid.row_count() > 0);
@@ -113,6 +129,24 @@ impl ShownColumns {
         Self {
             indices,
             columns,
+            in_place,
+        }
+    }
+
+    /// The same columns less those `left_out` names, by their index in
+    /// the result.
+    fn without(self, left_out: impl Fn(usize) -> bool) -> Self {
+        let (indices, columns): (Vec<usize>, Vec<ResultColumn>) = self
+            .indices
+            .iter()
+            .zip(self.columns.iter())
+            .filter(|(index, _)| !left_out(**index))
+            .map(|(index, column)| (*index, column.clone()))
+            .unzip();
+        let in_place = self.in_place && indices.len() == self.indices.len();
+        Self {
+            indices,
+            columns: columns.into(),
             in_place,
         }
     }
@@ -200,10 +234,24 @@ fn copy_in_clause(grid: &DataGrid) {
     );
 }
 
+/// Which key columns an INSERT copy writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Keys {
+    All,
+    /// The statement makes a new row with a key of its own, so a copy
+    /// can run against the table the rows came from.
+    NotGenerated,
+}
+
+/// A primary key column the server numbers.
+fn is_generated_key(column: &ColumnInfo) -> bool {
+    column.primary_key && column.is_auto_increment
+}
+
 /// Each row as the INSERT its save would run on the server the rows come
 /// from, under the columns on screen. A draft's leaves out what the
 /// server fills.
-fn copy_insert(grid: &DataGrid) {
+fn copy_insert(grid: &DataGrid, keys: Keys) {
     let (Some(target), Some(config)) = (grid.target(), grid.config()) else {
         return;
     };
@@ -221,7 +269,10 @@ fn copy_insert(grid: &DataGrid) {
         grid.toast(gettext("Connect to a database first."));
         return;
     };
-    let shown = ShownColumns::of(grid);
+    let shown = match keys {
+        Keys::All => ShownColumns::of(grid),
+        Keys::NotGenerated => ShownColumns::of(grid).without(|index| catalog.get(index).is_some_and(is_generated_key)),
+    };
     let tracked = grid.tracked();
     let rows = target
         .rows

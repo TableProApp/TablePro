@@ -5633,6 +5633,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "unicode-width",
  "uuid",
  "zip 8.6.0",
 ]
