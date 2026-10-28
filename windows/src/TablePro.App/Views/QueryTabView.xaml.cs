@@ -13,6 +13,9 @@ public sealed partial class QueryTabView : UserControl
 {
     private bool _syncingText;
 
+    // Whether the results area shows the plan rather than the selected result's rows or message.
+    private bool _planSelected;
+
     public QueryTabView(QueryTabViewModel viewModel)
     {
         ViewModel = viewModel;
@@ -22,7 +25,8 @@ public sealed partial class QueryTabView : UserControl
 
         // A command language has no formatter, and an engine without a plan statement has no Explain.
         FormatButton.Visibility = viewModel.Dialect.SupportsFormatting ? Visibility.Visible : Visibility.Collapsed;
-        ExplainItem.IsEnabled = viewModel.Dialect.Explain("x").Count > 0;
+        ExplainItem.IsEnabled = viewModel.CanExplain;
+        ExplainAnalyzeItem.Visibility = viewModel.CanExplainAnalyze ? Visibility.Visible : Visibility.Collapsed;
         Editor.Text = viewModel.Text;
         Editor.Catalog = viewModel.Context.CompletionCatalog;
         Editor.CompletionEnabled = viewModel.Context.Preferences.AutocompleteEnabled;
@@ -113,12 +117,29 @@ public sealed partial class QueryTabView : UserControl
             case nameof(QueryTabViewModel.SelectedResult):
                 UpdateResultView();
                 break;
+            case nameof(QueryTabViewModel.Plan):
+                // A new plan opens on its own tab; its raw result rows stay one tab over.
+                _planSelected = ViewModel.Plan is not null;
+                if (ViewModel.Plan is { } plan)
+                {
+                    PlanView.Show(plan, ViewModel.PlanBaseline);
+                }
+
+                RebuildResultTabs();
+                break;
         }
     }
 
-    private void OnResultsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnResultsChanged(object? sender, NotifyCollectionChangedEventArgs e) => RebuildResultTabs();
+
+    private void RebuildResultTabs()
     {
         ResultTabs.Items.Clear();
+        if (ViewModel.Plan is { } plan)
+        {
+            ResultTabs.Items.Add(new SelectorBarItem { Text = plan.Analyze ? "Analyzed Plan" : "Plan", Tag = plan, Icon = new FontIcon { Glyph = "" } });
+        }
+
         foreach (var result in ViewModel.Results)
         {
             ResultTabs.Items.Add(new SelectorBarItem
@@ -134,14 +155,46 @@ public sealed partial class QueryTabView : UserControl
 
     private void OnResultTabChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (sender.SelectedItem?.Tag is ResultItemViewModel result && !ReferenceEquals(result, ViewModel.SelectedResult))
+        switch (sender.SelectedItem?.Tag)
         {
-            ViewModel.SelectedResult = result;
+            case Core.Plans.QueryPlanCapture when !_planSelected:
+                _planSelected = true;
+                UpdateResultView();
+                break;
+            case ResultItemViewModel result:
+                var wasPlan = _planSelected;
+                _planSelected = false;
+                if (!ReferenceEquals(result, ViewModel.SelectedResult))
+                {
+                    ViewModel.SelectedResult = result;
+                }
+                else if (wasPlan)
+                {
+                    UpdateResultView();
+                }
+
+                break;
         }
     }
 
     private void UpdateResultView()
     {
+        var showPlan = _planSelected && ViewModel.Plan is not null;
+        PlanView.Visibility = showPlan ? Visibility.Visible : Visibility.Collapsed;
+        if (showPlan)
+        {
+            EmptyState.Visibility = ExportButton.Visibility = ChartToggle.Visibility = Visibility.Collapsed;
+            ResultGrid.Visibility = Chart.Visibility = MessagePanel.Visibility = Visibility.Collapsed;
+            ResultSummary.Text = string.Empty;
+            var planTab = ResultTabs.Items.FirstOrDefault(i => i.Tag is Core.Plans.QueryPlanCapture);
+            if (planTab is not null && !ReferenceEquals(ResultTabs.SelectedItem, planTab))
+            {
+                ResultTabs.SelectedItem = planTab;
+            }
+
+            return;
+        }
+
         var result = ViewModel.SelectedResult;
         EmptyState.Visibility = ViewModel.Results.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         ExportButton.Visibility = result?.HasRows == true ? Visibility.Visible : Visibility.Collapsed;
@@ -184,6 +237,9 @@ public sealed partial class QueryTabView : UserControl
     private async void OnRunAll(object sender, RoutedEventArgs e) => await RunAsync(RunScope.All);
 
     private async void OnExplain(object sender, RoutedEventArgs e) => await RunAsync(RunScope.Explain);
+
+    private async void OnExplainAnalyze(object sender, RoutedEventArgs e) =>
+        await ViewModel.ExplainAsync(Editor.RawText, Editor.SelectionStart, Editor.SelectionLength, analyze: true);
 
     private void OnFormat(object sender, RoutedEventArgs e) => Format();
 

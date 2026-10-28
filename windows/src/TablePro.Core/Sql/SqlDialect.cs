@@ -164,6 +164,9 @@ public abstract class SqlDialect
     /// <summary>The statements that make the server report a plan, run in order on one connection.</summary>
     public virtual IReadOnlyList<string> Explain(string statement) => ["EXPLAIN " + statement];
 
+    /// <summary>The statements for a plan the app can draw, with ANALYZE when asked; null when the engine has no such form.</summary>
+    public virtual Plans.PlanRequest? PlanStatements(string statement, bool analyze) => null;
+
     /// <summary>A case-insensitive LIKE, which only PostgreSQL and DuckDB spell differently.</summary>
     public virtual string CaseInsensitiveLike => "LIKE";
 

@@ -6,6 +6,7 @@ using TablePro.App.Controls.Editor;
 using TablePro.App.Services;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Core.Plans;
 using TablePro.Core.Results;
 using TablePro.Core.Sql;
 
@@ -59,6 +60,24 @@ public sealed partial class QueryTabViewModel : TabViewModel
     [ObservableProperty]
     public partial string? ErrorText { get; set; }
 
+    /// <summary>The plan the last run produced, drawn instead of its raw rows; null after a run that was not a plan.</summary>
+    [ObservableProperty]
+    public partial QueryPlanCapture? Plan { get; set; }
+
+    /// <summary>The tab's plan before <see cref="Plan"/>, which Compare measures it against.</summary>
+    [ObservableProperty]
+    public partial QueryPlanCapture? PlanBaseline { get; set; }
+
+    // The latest plan survives ordinary runs in between, so explaining, running, then explaining again still compares.
+    private QueryPlanCapture? _latestPlan;
+
+    public bool CanExplain => Dialect.PlanStatements(PlanProbe, false) is not null || Dialect.Explain(PlanProbe).Count > 0;
+
+    /// <summary>Whether the engine can measure a plan by running the statement, which Safe Mode then treats as running it.</summary>
+    public bool CanExplainAnalyze => Dialect.PlanStatements(PlanProbe, true) is not null;
+
+    private const string PlanProbe = "SELECT 1";
+
     public override string Glyph => "";
 
     public override string? UnsavedWork => FilePath is not null && !string.Equals(Text, _savedText, StringComparison.Ordinal)
@@ -68,15 +87,49 @@ public sealed partial class QueryTabViewModel : TabViewModel
     /// <summary>Runs from the editor. Offsets are in the editor's raw text, where line ends are '\r'.</summary>
     public async Task RunAsync(string rawText, int selectionStart, int selectionLength, RunScope scope)
     {
-        if (IsRunning)
+        if (await PrepareAsync(rawText, selectionStart, selectionLength, scope) is not { } statements)
         {
             return;
+        }
+
+        if (scope == RunScope.Explain)
+        {
+            await ExplainStatementAsync(statements[0], analyze: false);
+            return;
+        }
+
+        if (!await PassesSafeModeAsync(statements))
+        {
+            return;
+        }
+
+        await ExecuteAsync(statements);
+    }
+
+    /// <summary>
+    /// Explains the selection or the statement at the caret as a plan the view can draw. With <paramref name="analyze"/>
+    /// the server runs the statement to measure it, so Safe Mode classifies the statement as it would a plain run.
+    /// </summary>
+    public async Task ExplainAsync(string rawText, int selectionStart, int selectionLength, bool analyze)
+    {
+        if (await PrepareAsync(rawText, selectionStart, selectionLength, RunScope.Explain) is { } statements)
+        {
+            await ExplainStatementAsync(statements[0], analyze);
+        }
+    }
+
+    /// <summary>The statements to run, with placeholders filled in; null when there is nothing to run or the prompt was cancelled.</summary>
+    private async Task<List<string>?> PrepareAsync(string rawText, int selectionStart, int selectionLength, RunScope scope)
+    {
+        if (IsRunning)
+        {
+            return null;
         }
 
         var statements = PickStatements(rawText, selectionStart, selectionLength, scope);
         if (statements.Count == 0)
         {
-            return;
+            return null;
         }
 
         var parameters = SqlParameters.DistinctNames(statements, Dialect);
@@ -89,7 +142,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
                 _parameterValues);
             if (values is null)
             {
-                return;
+                return null;
             }
 
             foreach (var (name, value) in values)
@@ -100,22 +153,74 @@ public sealed partial class QueryTabViewModel : TabViewModel
             statements = statements.Select(s => SqlParameters.Substitute(s, Dialect, values)).ToList();
         }
 
-        if (scope == RunScope.Explain)
+        return statements;
+    }
+
+    private async Task ExplainStatementAsync(string subject, bool analyze)
+    {
+        if (Dialect.PlanStatements(subject, analyze) is not { } request)
         {
-            statements = Dialect.Explain(statements[0]).ToList();
+            // An engine with no drawable plan still has its text EXPLAIN, shown as rows as before.
+            var text = analyze ? [] : Dialect.Explain(subject);
+            if (text.Count > 0 && await PassesSafeModeAsync(text))
+            {
+                await ExecuteAsync(text);
+            }
+
+            return;
         }
 
-        if (!await PassesSafeModeAsync(statements))
+        if (!await PassesSafeModeAsync(request.Statements))
         {
             return;
         }
 
-        await ExecuteAsync(statements);
+        var results = await RunCoreAsync(request.Statements, stopOnError: !request.RunsEveryStatement);
+        var sets = results.Where(r => r.Succeeded).SelectMany(r => r.ResultSets).ToList();
+        var raw = PlanText.FromResults(request.Format, sets);
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            CapturePlan(QueryPlanCapture.Create(subject, raw, request.Format, analyze, DateTimeOffset.Now));
+            return;
+        }
+
+        // A server that refuses the machine-readable form (an older version, or a compatible engine sharing the dialect
+        // without FORMAT JSON) still answers the text EXPLAIN. It explains the same statement Safe Mode just passed.
+        if (!analyze && results.Any(r => !r.Succeeded) && Dialect.Explain(subject) is { Count: > 0 } fallback)
+        {
+            await ExecuteAsync(fallback);
+        }
+    }
+
+    private void CapturePlan(QueryPlanCapture capture)
+    {
+        PlanBaseline = _latestPlan;
+        _latestPlan = capture;
+        Plan = capture;
     }
 
     public async Task ExecuteAsync(IReadOnlyList<string> statements)
     {
+        var results = await RunCoreAsync(statements);
+
+        // A hand-typed plan statement in the dialect's own spelling is drawn like the Explain action's.
+        if (statements.Count == 1 && results is [{ Succeeded: true, ResultSets.Count: > 0 } only]
+            && PlanStatements.Recognize(Dialect, statements[0]) is { } typed)
+        {
+            var capture = QueryPlanCapture.Create(statements[0], PlanText.FromResults(typed.Format, only.ResultSets), typed.Format, typed.Analyze, DateTimeOffset.Now);
+            if (capture.Plan is not null)
+            {
+                CapturePlan(capture);
+            }
+        }
+    }
+
+    /// <summary>Runs statements on the tab's channel, streaming each result into <see cref="Results"/>, and returns them all.</summary>
+    private async Task<List<StatementResult>> RunCoreAsync(IReadOnlyList<string> statements, bool? stopOnError = null)
+    {
+        var collected = new List<StatementResult>(statements.Count);
         Results.Clear();
+        Plan = null;
         ErrorText = null;
         IsRunning = true;
         IsBusy = true;
@@ -129,10 +234,11 @@ public sealed partial class QueryTabViewModel : TabViewModel
             _channel ??= await _context.Session.Database.OpenChannelAsync(_run.Token);
             var options = new ExecuteOptions(
                 RowLimit: _context.Preferences.EditorRowLimit,
-                StopOnError: Dialect.BatchSeparator is null);
+                StopOnError: stopOnError ?? Dialect.BatchSeparator is null);
 
             await foreach (var result in _channel.ExecuteAsync(statements, options, _run.Token))
             {
+                collected.Add(result);
                 var kind = StatementClassifier.Classify(result.Sql, Dialect);
                 _context.History.Record(_context.Session.Profile, _context.Session.Database.CurrentDatabase, result, kind, "editor");
                 if (!result.Succeeded)
@@ -184,6 +290,7 @@ public sealed partial class QueryTabViewModel : TabViewModel
         SelectedResult = Results.FirstOrDefault(r => r.HasRows) ?? Results.LastOrDefault();
         var elapsed = ResultItemViewModel.FormatElapsed(stopwatch.Elapsed);
         StatusText = failed ? $"Stopped with an error · {elapsed}" : SelectedResult?.Summary ?? $"Done · {elapsed}";
+        return collected;
     }
 
     [RelayCommand(CanExecute = nameof(IsRunning))]

@@ -38,6 +38,9 @@
                             <MenuFlyoutItem x:Name="ExplainItem" Text="Explain" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem x:Name="ExplainAnalyzeItem" Text="Explain Analyze" Click="OnExplainAnalyze" ToolTipService.ToolTip="Runs the statement to measure its plan">
+                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                         </MenuFlyout>
                     </SplitButton.Flyout>
                 </SplitButton>
@@ -93,6 +96,7 @@
 
             <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" />
             <controls:ResultChart x:Name="Chart" Grid.Row="1" Visibility="Collapsed" />
+            <controls:QueryPlanView x:Name="PlanView" Grid.Row="1" Visibility="Collapsed" />
 
             <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">
                 <StackPanel Spacing="12">

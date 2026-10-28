@@ -24,6 +24,8 @@ public sealed class PostgreSqlDialect : SqlDialect
     public override string CastToText(string quotedColumn) => quotedColumn + "::text";
 
     public override IReadOnlyList<string> Explain(string statement) => ["EXPLAIN (FORMAT TEXT) " + statement];
+
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.PostgreSql(statement, analyze);
 }
 
 public sealed class MySqlDialect : SqlDialect
@@ -50,6 +52,8 @@ public sealed class MySqlDialect : SqlDialect
         string.Concat("'", value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("'", "''", StringComparison.Ordinal), "'");
 
     public override string CastToText(string quotedColumn) => $"CAST({quotedColumn} AS CHAR)";
+
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.MySql(statement, analyze);
 }
 
 public sealed class SqlServerDialect : SqlDialect
@@ -90,6 +94,8 @@ public sealed class SqlServerDialect : SqlDialect
     // SHOWPLAN must be the only statement in its batch, so it is switched on and off around the statement.
     public override IReadOnlyList<string> Explain(string statement) => ["SET SHOWPLAN_TEXT ON", statement, "SET SHOWPLAN_TEXT OFF"];
 
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.SqlServer(statement, analyze);
+
     public override string CastToText(string quotedColumn) => $"CAST({quotedColumn} AS NVARCHAR(4000))";
 
     // SQL Server's LIKE reads [abc] as a character class.
@@ -114,6 +120,8 @@ public sealed class SqliteDialect : SqlDialect
 
     public override IReadOnlyList<string> Explain(string statement) => ["EXPLAIN QUERY PLAN " + statement];
 
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.Sqlite(statement, analyze);
+
     public override string CastToText(string quotedColumn) => $"CAST({quotedColumn} AS TEXT)";
 }
 
@@ -134,6 +142,8 @@ public sealed class DuckDbDialect : SqlDialect
     public override string CaseInsensitiveLike => "ILIKE";
 
     public override string CastToText(string quotedColumn) => quotedColumn + "::VARCHAR";
+
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.DuckDb(statement, analyze);
 }
 
 public sealed class ClickHouseDialect : SqlDialect
@@ -162,6 +172,8 @@ public sealed class ClickHouseDialect : SqlDialect
     public override string CastToText(string quotedColumn) => $"toString({quotedColumn})";
 
     public override string CaseInsensitiveLike => "ILIKE";
+
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.ClickHouse(statement, analyze);
 }
 
 public sealed class OracleDialect : SqlDialect
@@ -190,6 +202,8 @@ public sealed class OracleDialect : SqlDialect
 
     public override IReadOnlyList<string> Explain(string statement) =>
         ["EXPLAIN PLAN FOR " + statement, "SELECT PLAN_TABLE_OUTPUT FROM TABLE(DBMS_XPLAN.DISPLAY())"];
+
+    public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.Oracle(statement, analyze);
 
     public override string CastToText(string quotedColumn) => $"TO_CHAR({quotedColumn})";
 }
