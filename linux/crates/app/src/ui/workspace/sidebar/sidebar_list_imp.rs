@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use gtk4::prelude::*;
@@ -19,6 +19,8 @@ pub struct SidebarList {
     /// asks for every row of a schema it opens, so a lookup by hash
     /// would cost as much again as making the rows.
     pub(super) objects: RefCell<Vec<Option<SidebarObject>>>,
+    /// Every row before this position is made.
+    pub(super) made: Cell<u32>,
 }
 
 #[glib::object_subclass]
