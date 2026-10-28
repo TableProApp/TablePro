@@ -56,6 +56,7 @@ public sealed partial class SqlEditor : UserControl
     private readonly List<(string Text, int Start, int End)> _redo = [];
 
     private SqlDialect _dialect = PostgreSqlDialect.Instance;
+    private CompletionCatalog _catalog = CompletionCatalog.Empty;
     private string _text = string.Empty;
     private string _highlightedText = "\u0001";
     private int _lineCount = -1;
@@ -131,6 +132,7 @@ public sealed partial class SqlEditor : UserControl
         root.Children.Add(_box);
         _carets = new MultiCursorModel(new CaretBuffer(this));
         InitializeCarets();
+        InitializeLanguage();
 
         _completionList = new ListView
         {
@@ -258,11 +260,26 @@ public sealed partial class SqlEditor : UserControl
             _dialect = value;
             _highlightedText = "\u0001";
             _highlightTimer.Restart();
+            ScheduleAnalysis();
         }
     }
 
-    /// <summary>What completion offers beyond keywords; the workspace replaces it as the schema loads.</summary>
-    public CompletionCatalog Catalog { get; set; } = CompletionCatalog.Empty;
+    /// <summary>
+    /// What completion offers beyond keywords, and what the diagnostics check names against; the workspace replaces
+    /// it as the schema loads.
+    /// </summary>
+    public CompletionCatalog Catalog
+    {
+        get => _catalog;
+        set
+        {
+            if (!ReferenceEquals(_catalog, value))
+            {
+                _catalog = value ?? CompletionCatalog.Empty;
+                ScheduleAnalysis();
+            }
+        }
+    }
 
     public bool CompletionEnabled { get; set; } = true;
 
@@ -425,6 +442,9 @@ public sealed partial class SqlEditor : UserControl
     private MenuFlyout BuildContextMenu()
     {
         var menu = new MenuFlyout();
+        menu.Items.Add(Item("Go to Definition", "\xE8A7", GoToDefinition, VirtualKey.F12, VirtualKeyModifiers.None));
+        menu.Items.Add(Item("Rename Symbol", "\xE8AC", SelectReferences, VirtualKey.F2, VirtualKeyModifiers.None));
+        menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Run Current", "", () => RunRequested?.Invoke(this, RunScope.Current), VirtualKey.Enter, VirtualKeyModifiers.Control));
         menu.Items.Add(Item("Run All", "", () => RunRequested?.Invoke(this, RunScope.All), VirtualKey.F5, VirtualKeyModifiers.None));
         menu.Items.Add(Item("Explain", "", () => RunRequested?.Invoke(this, RunScope.Explain), VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
@@ -809,6 +829,21 @@ public sealed partial class SqlEditor : UserControl
             case ShortcutIds.FindPrevious:
                 Find(_findBar.Query, _findBar.MatchCase, forward: false);
                 return true;
+            case ShortcutIds.GoToDefinition:
+                GoToDefinition();
+                return true;
+            case ShortcutIds.RenameSymbol:
+                SelectReferences();
+                return true;
+            case ShortcutIds.NextQueryIssue:
+                GoToDiagnostic(forward: true);
+                return true;
+            case ShortcutIds.PreviousQueryIssue:
+                GoToDiagnostic(forward: false);
+                return true;
+            case ShortcutIds.ShowQuickInfo:
+                ShowQuickInfo();
+                return true;
             default:
                 return false;
         }
@@ -818,6 +853,16 @@ public sealed partial class SqlEditor : UserControl
     {
         var ctrl = IsDown(VirtualKey.Control);
         var shift = IsDown(VirtualKey.Shift);
+
+        // Any key but a modifier closes the hover card; Ctrl alone turns the name under the pointer into a link.
+        if (e.Key == VirtualKey.Control)
+        {
+            OnLanguageControlKeyDown();
+        }
+        else if (e.Key is not (VirtualKey.Shift or VirtualKey.Menu or VirtualKey.LeftWindows or VirtualKey.RightWindows))
+        {
+            HideHover();
+        }
 
         if (_suggestion is { } suggestion)
         {
@@ -902,6 +947,20 @@ public sealed partial class SqlEditor : UserControl
                 break;
             case (VirtualKey)191 when fixedKeys && ctrl:
                 ToggleComment();
+                break;
+            // The language keys are built in, as completion's Ctrl+Space is: the catalogue ships these commands unbound,
+            // and a chord the user gives one is resolved by the shortcut map above before these.
+            case VirtualKey.F12 when !ctrl && !shift:
+                GoToDefinition();
+                break;
+            case VirtualKey.F2 when !ctrl && !shift:
+                SelectReferences();
+                break;
+            case VirtualKey.F8 when !ctrl:
+                GoToDiagnostic(forward: !shift);
+                break;
+            case VirtualKey.Space when ctrl && shift:
+                ShowQuickInfo();
                 break;
             case VirtualKey.Space when ctrl:
                 ShowCompletion(force: true);

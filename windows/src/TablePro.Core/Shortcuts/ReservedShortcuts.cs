@@ -44,6 +44,13 @@ public static class ReservedShortcuts
         new(KeyChord.Ctrl(ShortcutKey.Z), "Undo"),
         new(KeyChord.Ctrl(ShortcutKey.Y), "Redo"),
         new(KeyChord.CtrlShift(ShortcutKey.Z), "Redo"),
+
+        // The language commands answer to these keys themselves until the user binds the command elsewhere.
+        new(new KeyChord(ShortcutKey.F12, ShortcutModifiers.None), "Go to Definition"),
+        new(new KeyChord(ShortcutKey.F2, ShortcutModifiers.None), "Rename Symbol"),
+        new(new KeyChord(ShortcutKey.F8, ShortcutModifiers.None), "Next Problem"),
+        new(KeyChord.Shift(ShortcutKey.F8), "Previous Problem"),
+        new(KeyChord.CtrlShift(ShortcutKey.Space), "Quick Info"),
     ];
 
     /// <summary>The editing keys every Windows text box shares, so the editor and the sidebar filter both rely on them.</summary>

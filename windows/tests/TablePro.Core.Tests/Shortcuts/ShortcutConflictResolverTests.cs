@@ -46,8 +46,8 @@ public sealed class ShortcutConflictResolverTests
     [Fact]
     public void FunctionKeysNeedNoModifier()
     {
-        Assert.Equal(ShortcutConflict.None, Resolve(new KeyChord(ShortcutKey.F8), NewTab));
-        Assert.Equal(ShortcutConflict.None, Resolve(KeyChord.Shift(ShortcutKey.F8), NewTab));
+        Assert.Equal(ShortcutConflict.None, Resolve(new KeyChord(ShortcutKey.F7), NewTab));
+        Assert.Equal(ShortcutConflict.None, Resolve(KeyChord.Shift(ShortcutKey.F7), NewTab));
     }
 
     [Fact]
