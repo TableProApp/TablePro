@@ -303,7 +303,7 @@ internal sealed class EtcdSession : IDatabaseSession, IKeySearchProvider
     /// <summary>Reads the range in key order, keeping rows the filter accepts, until enough match or the scan cap is hit.</summary>
     private async Task<(List<EtcdKeyValue> Matches, bool Truncated)> ScanAsync(byte[] key, byte[]? end, BrowseFilter filter, int wanted, CancellationToken cancellationToken)
     {
-        var accept = RowFilter.Compile(filter, EtcdRows.Columns.Select(c => c.Name).ToArray());
+        var accept = RowFilter.Compile(filter, EtcdRows.Columns.Select(c => c.Name).ToArray(), "etcd");
         var matches = new List<EtcdKeyValue>();
         var start = key;
         var scanned = 0;

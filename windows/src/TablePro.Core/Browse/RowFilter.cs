@@ -1,21 +1,21 @@
 using System.Globalization;
 using System.Text;
-using TablePro.Core.Browse;
 using TablePro.Core.Results;
 
-namespace TablePro.Drivers.Kafka;
+namespace TablePro.Core.Browse;
 
 /// <summary>
-/// The filter strip's rules evaluated over messages already read, since a broker cannot filter. Text comparisons
-/// ignore case, as the SQL engines' LIKE filters do; ordering compares numbers when both sides are numbers.
+/// The filter strip's rules evaluated over rows already read, for engines that cannot filter on the server, such as a
+/// message broker or a key-value gateway. Text comparisons ignore case, as the SQL engines' LIKE filters do; ordering
+/// compares numbers when both sides are numbers.
 /// </summary>
-internal static class RowFilter
+public static class RowFilter
 {
-    public static Func<object?[], bool> Compile(BrowseFilter filter, IReadOnlyList<string> columns)
+    public static Func<object?[], bool> Compile(BrowseFilter filter, IReadOnlyList<string> columns, string engine)
     {
         if (!string.IsNullOrWhiteSpace(filter.RawWhere))
         {
-            throw new NotSupportedException("Kafka cannot run a raw WHERE clause; use the filter rules instead.");
+            throw new NotSupportedException($"{engine} cannot run a raw WHERE clause; use the filter rules instead.");
         }
 
         var rules = filter.Rules.Where(r => r.Enabled).ToArray();

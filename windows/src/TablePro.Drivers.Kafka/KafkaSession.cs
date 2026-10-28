@@ -149,7 +149,7 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider
         {
             // A broker cannot filter, so a window of the topic is read and filtered here; matches beyond it are not seen.
             var (window, done) = await ReadWindowAsync(topic, start, cancellationToken);
-            var accept = RowFilter.Compile(request.Filter, KafkaRows.ColumnNames);
+            var accept = RowFilter.Compile(request.Filter, KafkaRows.ColumnNames, "Kafka");
             var rows = KafkaRows.ToResultSet(window);
             var matches = window.Where((_, i) => accept(rows.Rows[i])).ToList();
             page = KafkaRows.Page(matches, request.Offset, request.Limit, newestFirst);
@@ -176,7 +176,7 @@ internal sealed class KafkaSession : IDatabaseSession, IServerActivityProvider
         }
 
         var (window, _) = await ReadWindowAsync(table.Name, KafkaStart.Oldest, cancellationToken);
-        var accept = RowFilter.Compile(filter, KafkaRows.ColumnNames);
+        var accept = RowFilter.Compile(filter, KafkaRows.ColumnNames, "Kafka");
         var rows = KafkaRows.ToResultSet(window);
         return rows.Rows.Count(row => accept(row));
     }

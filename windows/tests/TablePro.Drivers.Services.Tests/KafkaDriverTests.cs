@@ -147,12 +147,12 @@ public sealed class KafkaRowsTests
     public void RowFilterMatchesValuesAndNumbersOverMessages()
     {
         var set = KafkaRows.ToResultSet([Record(0, 1, 1, value: "Hello"), Record(1, 2, 2, value: "bye")]);
-        var contains = Kafka.RowFilter.Compile(new BrowseFilter([new FilterRule("value", FilterOperator.Contains, "HELL")]), KafkaRows.ColumnNames);
-        var partition = Kafka.RowFilter.Compile(new BrowseFilter([new FilterRule("partition", FilterOperator.GreaterThan, "0")]), KafkaRows.ColumnNames);
+        var contains = RowFilter.Compile(new BrowseFilter([new FilterRule("value", FilterOperator.Contains, "HELL")]), KafkaRows.ColumnNames, "Kafka");
+        var partition = RowFilter.Compile(new BrowseFilter([new FilterRule("partition", FilterOperator.GreaterThan, "0")]), KafkaRows.ColumnNames, "Kafka");
 
         Assert.Equal([true, false], set.Rows.Select(contains));
         Assert.Equal([false, true], set.Rows.Select(partition));
-        Assert.Throws<NotSupportedException>(() => Kafka.RowFilter.Compile(new BrowseFilter([], "offset > 3"), KafkaRows.ColumnNames));
+        Assert.Throws<NotSupportedException>(() => RowFilter.Compile(new BrowseFilter([], "offset > 3"), KafkaRows.ColumnNames, "Kafka"));
     }
 }
 
