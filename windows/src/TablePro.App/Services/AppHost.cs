@@ -110,9 +110,10 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     /// <summary>Opens a workspace window for a connected session, or brings the open one forward.</summary>
     public async Task<WorkspaceWindow> OpenWorkspaceAsync(ConnectionSession session, ConnectionRequest request)
     {
-        var state = Settings.Current.RestoreSessionOnLaunch ? await WorkspaceStates.LoadAsync(session.Profile.Id) : null;
+        var state = await WorkspaceStates.LoadAsync(session.Profile.Id);
         var window = OpenWorkspace(session, request);
-        window.ViewModel.RestoreState = state;
+        window.ViewModel.Opened.Load(state?.Opened);
+        window.ViewModel.RestoreState = Settings.Current.RestoreSessionOnLaunch ? state : null;
         return window;
     }
 
@@ -147,9 +148,15 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     {
         var workspace = (WorkspaceWindow)window;
         _workspaces.Remove(workspace);
-        if (Settings.Current.RestoreSessionOnLaunch && workspace.ViewModel.Tabs.Count > 0)
+        // Quick switcher recency is kept even when tabs are not, so it is saved whenever there is any.
+        var state = workspace.ViewModel.CaptureState();
+        if (!Settings.Current.RestoreSessionOnLaunch)
         {
-            var state = workspace.ViewModel.CaptureState();
+            state = state with { Tabs = [] };
+        }
+
+        if (state.Tabs.Count > 0 || state.Opened.Count > 0)
+        {
             _ = WorkspaceStates.SaveAsync(state);
         }
 

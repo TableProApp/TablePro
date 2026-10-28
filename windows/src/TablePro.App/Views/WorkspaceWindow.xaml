@@ -120,6 +120,9 @@
                                 <MenuFlyoutItem Text="Server Dashboard" Click="OnServerDashboard">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
+                                <MenuFlyoutItem Text="Open Quickly" Click="OnOpenQuickly" KeyboardAcceleratorTextOverride="Ctrl+Shift+O">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A7;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
                                 <MenuFlyoutItem Text="Search Database" Click="OnSearchDatabase" KeyboardAcceleratorTextOverride="Ctrl+Alt+F">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>

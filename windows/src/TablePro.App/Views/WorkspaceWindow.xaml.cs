@@ -59,6 +59,7 @@ public sealed partial class WorkspaceWindow : Window
         AddAccelerator(VirtualKey.A, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, ShowAssistant);
         AddAccelerator(VirtualKey.F9, VirtualKeyModifiers.None, ToggleSidebar);
         AddAccelerator(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, OpenSearch);
+        AddAccelerator(VirtualKey.O, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenQuickly);
         AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleTabs(1));
         AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleTabs(-1));
 
@@ -498,6 +499,10 @@ public sealed partial class WorkspaceWindow : Window
     }
 
     private void OnSearchDatabase(object sender, RoutedEventArgs e) => OpenSearch();
+
+    private void OnOpenQuickly(object sender, RoutedEventArgs e) => OpenQuickly();
+
+    private async void OpenQuickly() => await QuickSwitcherDialog.ShowAsync(ViewModel.Context.Dialogs, ViewModel);
 
     private void OpenSearch()
     {

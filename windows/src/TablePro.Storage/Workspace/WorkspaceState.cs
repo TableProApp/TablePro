@@ -36,5 +36,9 @@ public sealed record WorkspaceState
     public int SelectedIndex { get; init; }
     public string? Database { get; init; }
     public string? Schema { get; init; }
+
+    /// <summary>When each quick switcher item was opened, keyed by item id, so recent picks rank first next time.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<DateTimeOffset>> Opened { get; init; } = new Dictionary<string, IReadOnlyList<DateTimeOffset>>();
+
     public DateTimeOffset SavedAt { get; init; } = DateTimeOffset.UtcNow;
 }

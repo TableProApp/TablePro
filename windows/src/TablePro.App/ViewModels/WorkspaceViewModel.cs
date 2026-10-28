@@ -6,6 +6,7 @@ using TablePro.App.Services;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
+using TablePro.Core.Search;
 using TablePro.Storage.Workspace;
 
 namespace TablePro.App.ViewModels;
@@ -89,6 +90,9 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     public ObservableCollection<string> Databases { get; } = [];
 
     public ObservableCollection<string> Schemas { get; } = [];
+
+    /// <summary>What the quick switcher opened and when, saved with the workspace so recent picks rank first.</summary>
+    public Frecency Opened { get; } = new();
 
     public string Title => Profile.Name;
 
@@ -185,6 +189,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         ConnectionId = Profile.Id,
         Database = Session.Database.CurrentDatabase,
         Schema = Session.CurrentSchema,
+        Opened = Opened.Snapshot(),
         SelectedIndex = SelectedTab is null ? 0 : Math.Max(0, Tabs.IndexOf(SelectedTab)),
         Tabs = Tabs.Select(tab => tab switch
         {
@@ -557,7 +562,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
     }
 
-    private static string SectionName(ObjectKind kind) => kind switch
+    internal static string SectionName(ObjectKind kind) => kind switch
     {
         ObjectKind.Table => "Tables",
         ObjectKind.View => "Views",

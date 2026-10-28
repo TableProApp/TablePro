@@ -42,7 +42,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Copy name, copy qualified name, generate SELECT, INSERT, UPDATE, DELETE | Built | |
 | Rename, truncate, drop, create table | Built | Each shows its DDL for review first |
 | Export a table's data | Built | |
-| Quick switcher across databases, recent tab switcher | Not built | |
+| Open Quickly: fuzzy switcher across objects, databases, schemas and open tabs | Built | Ctrl+Shift+O. Ranked by match, kind and how often and lately each was opened, saved per connection |
 | Database-wide search for a value | Built | Ctrl+Alt+F. Text columns of up to 500 tables, four at a time; a hit opens the table filtered to the value |
 
 ## SQL editor
