@@ -46,10 +46,10 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Passwords in the system keychain | Built | Windows Credential Manager |
 | Startup commands, extra connection options, connect timeout | Built | |
 | Open a SQLite or DuckDB file, from the picker or the command line | Built | The file header picks the engine |
-| Import and export connections | Partial | Reads and writes the macOS format 1 bundle; format 2 is refused |
+| Import and export connections | Built | macOS format 1 and 2, with the macOS passphrase encryption carrying saved passwords; imported tunnel commands start turned off |
 | Database switcher, schema switcher | Built | |
-| SOCKS proxy, Cloud SQL proxy, Cloudflare tunnel, tunnel command | Not built | |
-| Kerberos, Microsoft Entra ID, IAM sign-in | Not built | SQL Server Windows authentication works |
+| SOCKS and HTTP proxy, Cloud SQL proxy, Cloudflare tunnel, tunnel command | Built | Managed loopback forwarders and child processes; commands run without a shell. Not run against live services yet |
+| Kerberos, Microsoft Entra ID, IAM sign-in | Partial | Entra ID for SQL Server and Azure PostgreSQL/MySQL, AWS RDS IAM, Kerberos with the Windows logon ticket. No Google Cloud IAM or Redshift IAM |
 | iCloud sync | Not planned | Apple-only service |
 
 ## Sidebar
@@ -77,9 +77,9 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Format SQL | Built | |
 | Open and save `.sql` files | Built | |
 | Line numbers | Built | |
-| Multiple cursors | Not built | |
+| Multiple cursors | Built | Ctrl+D next occurrence, Ctrl+Shift+L all, Ctrl+Alt+Up/Down, Alt+click, Alt+Shift+drag column selection; one undo step for all carets |
 | Vim mode | Built | Settings > Editor. Modes, counts, operators, motions, text objects, registers, marks, macros, search, dot repeat; `:w` saves, `:q` and `gt` act on tabs. Windows shortcuts (Ctrl+C, V, Z, F) keep their meaning. No visual block mode |
-| Emacs keys | Not built | |
+| Emacs keys | Built | Settings > Editor, exclusive with Vim. Kill ring, mark, word motions; those Ctrl keys lose their Windows meaning in the editor |
 | Graphical query plan, plan comparison | Built | Diagram, tree with cost bars, raw text and Compare with the previous plan. PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, Oracle; Explain Analyze where the engine measures. No saved plan history |
 | Parameter prompts for `?`, `$n` and `:name` | Built | Values are remembered per tab; numbers with a leading zero stay text |
 | Language server features (go to definition, diagnostics) | Not built | |
@@ -95,10 +95,10 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Value inspector with JSON formatting | Built | |
 | Column resize, auto-fit, multi-column server sort | Built | |
 | Result charts | Built | Bar, line and area, category and series picked from the result, up to 500 points |
-| Result maps | Not built | |
+| Result maps | Built | WKB, WKT, GeoJSON, GeoPackage and lat/long columns drawn on a Web Mercator grid with pan and zoom; no map tiles |
 | XLSX export | Built | Streamed workbook with a frozen header and typed cells |
-| Parquet export | Not built | |
-| Screen reader support inside the grid | Partial | The grid draws on a canvas, so cells are not announced one by one yet |
+| Parquet export | Built | Streamed row groups, Snappy, Zstd or Gzip, types from the result columns |
+| Screen reader support inside the grid | Built | Grid and Table patterns; Narrator reads column, row and value as the cell moves. Table-level column headers come back empty to UI Automation clients |
 
 ## Table tab
 
@@ -111,7 +111,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Save in one transaction, refused when a change would touch other than one row | Built | Safe Mode shows the statements first |
 | CSV import | Built | Header names map to columns |
 | JSON, NDJSON and JSON Lines import | Built | Arrays are streamed; keys map to columns |
-| SQL import, import mapping editor | Not built | Run a SQL file covers SQL import |
+| SQL import, import mapping editor | Partial | Streamed SQL import with a transaction and progress; a mapping editor for CSV and JSON into an existing or new table. Insert only, mappings are not remembered |
 | Structure: columns, indexes, foreign keys, triggers | Built | |
 | Structure editing: add, edit, rename, drop columns, add and drop indexes and foreign keys | Built | DDL is reviewed before it runs |
 | Check constraints, partitions, table options editors | Not built | |
@@ -144,7 +144,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Per-connection AI policy: ask, allow, never | Built | |
 | Suggest while typing | Built | Asks after a pause at the end of a line; Tab accepts |
 | MCP server with the nine tools, access levels and write approval | Built | 127.0.0.1 only, bearer token |
-| MCP pairing, audit log persistence | Not built | The audit log is in memory |
+| MCP pairing, audit log persistence | Built | Pairing over HTTP with PKCE and an in-app approval, per-client tokens in Credential Manager, a hash-chained audit log kept 90 days. No tablepro:// link |
 
 ## Platform
 
@@ -153,9 +153,9 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Fluent Design: acrylic, Mica, Mica Alt, light, dark, high contrast | Built | |
 | Settings | Built | |
 | Crash log on disk | Built | `%LOCALAPPDATA%\TablePro\logs\errors.log` |
-| Keyboard shortcut customization | Not built | |
+| Keyboard shortcut customization | Built | Settings > Keyboard records chords, warns about conflicts and applies at once; grid keys are fixed |
 | Translations | Not built | English only |
-| Installer, MSIX package, winget, updates | Not built | The build runs unpackaged and self-contained |
+| Installer, MSIX package, winget, updates | Built | MSIX, a per-user zip installer, a windows-v* release workflow, a winget template and update checks with a beta channel. Signing needs the release certificate secret |
 | Arm64 builds | Partial | The project builds for win-arm64; not tested on hardware |
 
 ## Before the first release
