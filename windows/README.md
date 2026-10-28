@@ -6,7 +6,7 @@ Native Windows database client, the Windows sibling of the macOS TablePro app. I
 
 In development. Nothing is released yet: no `windows-v*` tag exists. [ROADMAP.md](ROADMAP.md) compares it with the macOS app feature by feature and lists what is not built.
 
-It connects to six engines: PostgreSQL, MySQL, MariaDB, SQL Server, SQLite and DuckDB.
+It connects to 34 engines across the relational, analytical, cloud warehouse, document, key-value, wide-column, search, streaming and coordination families, from PostgreSQL, MySQL, SQL Server, SQLite and DuckDB to Redis, MongoDB, ClickHouse, Oracle, Cassandra, Snowflake, BigQuery, Elasticsearch and Kafka. ROADMAP.md lists each engine and its limits.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ The XAML compiler is a .NET Framework tool and fails on paths longer than 260 ch
 dotnet test TablePro.slnx
 ```
 
-The suites run without a database server: Core, Storage, SSH, AI and MCP are unit tests, and the SQLite and DuckDB driver suites run against real temporary database files. The PostgreSQL, MySQL and SQL Server drivers have unit tests for their connection strings and DDL.
+The suites run without a database server: Core, Storage, SSH, AI and MCP are unit tests, and the SQLite and DuckDB driver suites run against real temporary database files. The network drivers have unit tests for their connection settings, DDL, request building and result mapping, the HTTP ones against a fake handler. Each driver suite also holds integration tests that run only when an environment variable names a live server, such as `TABLEPRO_REDIS=host:port`; the test files list them.
 
 ## Where things are kept
 
