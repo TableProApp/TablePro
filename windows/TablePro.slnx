@@ -22,6 +22,14 @@
     <Project Path="src/TablePro.Drivers.MongoDb/TablePro.Drivers.MongoDb.csproj" />
     <Project Path="src/TablePro.Drivers.Cassandra/TablePro.Drivers.Cassandra.csproj" />
     <Project Path="src/TablePro.Drivers.DynamoDb/TablePro.Drivers.DynamoDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Snowflake/TablePro.Drivers.Snowflake.csproj" />
+    <Project Path="src/TablePro.Drivers.BigQuery/TablePro.Drivers.BigQuery.csproj" />
+    <Project Path="src/TablePro.Drivers.Spanner/TablePro.Drivers.Spanner.csproj" />
+    <Project Path="src/TablePro.Drivers.Trino/TablePro.Drivers.Trino.csproj" />
+    <Project Path="src/TablePro.Drivers.Elasticsearch/TablePro.Drivers.Elasticsearch.csproj" />
+    <Project Path="src/TablePro.Drivers.Typesense/TablePro.Drivers.Typesense.csproj" />
+    <Project Path="src/TablePro.Drivers.Weaviate/TablePro.Drivers.Weaviate.csproj" />
+    <Project Path="src/TablePro.Drivers.SurrealDb/TablePro.Drivers.SurrealDb.csproj" />
     <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
     <Project Path="src/TablePro.App/TablePro.App.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -43,5 +51,7 @@
     <Project Path="tests/TablePro.Drivers.Analytics.Tests/TablePro.Drivers.Analytics.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.MongoDb.Tests/TablePro.Drivers.MongoDb.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.WideColumn.Tests/TablePro.Drivers.WideColumn.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Warehouse.Tests/TablePro.Drivers.Warehouse.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Search.Tests/TablePro.Drivers.Search.Tests.csproj" />
   </Folder>
 </Solution>

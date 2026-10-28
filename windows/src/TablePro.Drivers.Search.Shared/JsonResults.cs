@@ -249,12 +249,14 @@ internal sealed class DocumentTable
             columns[i] = new ResultColumn(_names[i], dataType, clrType);
         }
 
-        foreach (var row in _rows.Where(r => r.Length != columns.Length).ToArray())
+        for (var r = 0; r < _rows.Count; r++)
         {
-            var index = _rows.IndexOf(row);
-            var resized = row;
-            Array.Resize(ref resized, columns.Length);
-            _rows[index] = resized;
+            if (_rows[r].Length != columns.Length)
+            {
+                var resized = _rows[r];
+                Array.Resize(ref resized, columns.Length);
+                _rows[r] = resized;
+            }
         }
 
         return new ResultSet(columns, _rows, isTruncated);
@@ -314,8 +316,13 @@ internal static class JsonTables
                         return;
                     }
 
-                    var cell = JsonCells.ToCell(value);
-                    rows.Add([path, cell is string or null ? cell : value.ValueKind is JsonValueKind.True or JsonValueKind.False ? (value.ValueKind == JsonValueKind.True ? "true" : "false") : value.GetRawText()]);
+                    // The value column holds mixed types, so every value is shown as text.
+                    rows.Add([path, value.ValueKind switch
+                    {
+                        JsonValueKind.String => value.GetString(),
+                        JsonValueKind.Null or JsonValueKind.Undefined => null,
+                        _ => value.GetRawText(),
+                    }]);
                     break;
             }
         }

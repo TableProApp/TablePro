@@ -61,5 +61,13 @@
     <ProjectReference Include="..\TablePro.Drivers.MongoDb\TablePro.Drivers.MongoDb.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Cassandra\TablePro.Drivers.Cassandra.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.DynamoDb\TablePro.Drivers.DynamoDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Snowflake\TablePro.Drivers.Snowflake.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.BigQuery\TablePro.Drivers.BigQuery.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Spanner\TablePro.Drivers.Spanner.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Trino\TablePro.Drivers.Trino.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Elasticsearch\TablePro.Drivers.Elasticsearch.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Typesense\TablePro.Drivers.Typesense.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Weaviate\TablePro.Drivers.Weaviate.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.SurrealDb\TablePro.Drivers.SurrealDb.csproj" />
   </ItemGroup>
 </Project>

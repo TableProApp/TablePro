@@ -15,15 +15,14 @@ internal static class HttpEndpoint
 {
     /// <summary>
     /// Builds the base address. A host typed as a URL keeps its own scheme and port, since a pasted
-    /// <c>https://host:9243</c> means exactly that.
+    /// <c>https://host:9243</c> means exactly that, and a pasted <c>https://host</c> means port 443.
     /// </summary>
     public static Uri BaseUri(string host, int port, bool tls)
     {
         var trimmed = host.Trim();
         if (trimmed.Contains("://", StringComparison.Ordinal) && Uri.TryCreate(trimmed, UriKind.Absolute, out var typed))
         {
-            var typedPort = typed.IsDefaultPort && !trimmed.AsSpan(trimmed.IndexOf("://", StringComparison.Ordinal) + 3).Contains(':') ? port : typed.Port;
-            return new UriBuilder(typed.Scheme, typed.Host, typedPort).Uri;
+            return new UriBuilder(typed.Scheme, typed.Host, typed.Port).Uri;
         }
 
         if (trimmed.Length == 0)
@@ -59,8 +58,11 @@ internal static class HttpEndpoint
             // Verify CA trusts the chain but not the name, as libpq's verify-ca does.
             SslMode.VerifyCa => static (_, _, _, errors) => (errors & ~SslPolicyErrors.RemoteCertificateNameMismatch) == SslPolicyErrors.None,
 
-            // Required and Preferred encrypt without checking who answers, matching libpq's require and prefer.
+            // Required and Preferred encrypt without checking who answers, matching libpq's require and prefer. The
+            // user picks Verify CA or Verify Identity for a checked certificate.
+#pragma warning disable CA5359
             _ => static (_, _, _, _) => true,
+#pragma warning restore CA5359
         };
 
         return handler;
@@ -169,6 +171,17 @@ internal sealed class HttpTransport : IDisposable
             path = "/" + path;
         }
 
+        // Uri unescapes %2E and collapses dot segments, so a document id of ".." would turn a DELETE of one document
+        // into a DELETE of its parent, the whole collection.
+        var question = path.IndexOf('?', StringComparison.Ordinal);
+        foreach (var segment in (question < 0 ? path : path[..question]).Split('/'))
+        {
+            if (Uri.UnescapeDataString(segment) is "." or "..")
+            {
+                throw new ServerRequestException($"The path {path} has a . or .. segment, which would address a different resource.");
+            }
+        }
+
         var uri = new Uri(BaseAddress, path);
         if (!string.Equals(uri.Authority, BaseAddress.Authority, StringComparison.OrdinalIgnoreCase) || uri.Scheme != BaseAddress.Scheme)
         {
@@ -188,6 +201,29 @@ internal sealed class HttpTransport : IDisposable
         using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
         return new HttpReply(response.StatusCode, bytes, response.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>
+    /// Runs the connect probe within the profile's timeout. Under Preferred a TLS failure retries once over plain HTTP
+    /// and keeps that scheme for the session.
+    /// </summary>
+    public async Task<T> ProbeAsync<T>(SslMode mode, string host, int connectTimeoutSeconds, Func<CancellationToken, Task<T>> probe, CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(connectTimeoutSeconds > 0 ? connectTimeoutSeconds : 15));
+        try
+        {
+            return await probe(deadline.Token);
+        }
+        catch (Exception ex) when (mode == SslMode.Preferred && BaseAddress.Scheme == Uri.UriSchemeHttps && !HttpEndpoint.HostSetsScheme(host) && HttpEndpoint.IsTlsFailure(ex))
+        {
+            BaseAddress = new UriBuilder(BaseAddress) { Scheme = Uri.UriSchemeHttp }.Uri;
+            return await probe(deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"{BaseAddress.Authority} did not answer within {connectTimeoutSeconds} s.");
+        }
     }
 
     public void Dispose() => _client.Dispose();

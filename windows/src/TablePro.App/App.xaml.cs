@@ -15,6 +15,14 @@ using TablePro.Drivers.Teradata;
 using TablePro.Drivers.MongoDb;
 using TablePro.Drivers.Cassandra;
 using TablePro.Drivers.DynamoDb;
+using TablePro.Drivers.Snowflake;
+using TablePro.Drivers.BigQuery;
+using TablePro.Drivers.Spanner;
+using TablePro.Drivers.Trino;
+using TablePro.Drivers.Elasticsearch;
+using TablePro.Drivers.Typesense;
+using TablePro.Drivers.Weaviate;
+using TablePro.Drivers.SurrealDb;
 using TablePro.Ssh;
 using TablePro.Storage;
 using TablePro.Storage.Connections;
@@ -72,7 +80,15 @@ public partial class App : Application
         .Register(new TeradataDriver())
         .Register(new MongoDbDriver())
         .Register(new CassandraDriver())
-        .Register(new DynamoDbDriver());
+        .Register(new DynamoDbDriver())
+        .Register(new SnowflakeDriver())
+        .Register(new BigQueryDriver())
+        .Register(new SpannerDriver())
+        .Register(new TrinoDriver())
+        .Register(new ElasticsearchDriver())
+        .Register(new TypesenseDriver())
+        .Register(new WeaviateDriver())
+        .Register(new SurrealDbDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
