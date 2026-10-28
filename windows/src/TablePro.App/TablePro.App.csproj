@@ -69,5 +69,9 @@
     <ProjectReference Include="..\TablePro.Drivers.Typesense\TablePro.Drivers.Typesense.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Weaviate\TablePro.Drivers.Weaviate.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.SurrealDb\TablePro.Drivers.SurrealDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Kafka\TablePro.Drivers.Kafka.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Etcd\TablePro.Drivers.Etcd.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Cloudflare\TablePro.Drivers.Cloudflare.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.LibSql\TablePro.Drivers.LibSql.csproj" />
   </ItemGroup>
 </Project>

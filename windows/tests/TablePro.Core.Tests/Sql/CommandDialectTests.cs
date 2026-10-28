@@ -138,6 +138,8 @@ public sealed class CommandDialectTests
     [Theory]
     [InlineData("SHOW TOPICS", StatementKind.Read)]
     [InlineData("CONSUME orders FROM OLDEST LIMIT 10", StatementKind.Read)]
+    [InlineData("SELECT * FROM orders LIMIT 5", StatementKind.Read)]
+    [InlineData("DESC GROUP billing", StatementKind.Read)]
     [InlineData("PRODUCE orders KEY 1 VALUE '{}'", StatementKind.Write)]
     [InlineData("DROP TOPIC orders", StatementKind.Ddl)]
     public void KafkaQlClassifiesByVerb(string command, StatementKind expected) =>

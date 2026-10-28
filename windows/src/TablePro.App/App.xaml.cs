@@ -3,26 +3,30 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using TablePro.App.Services;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.BigQuery;
+using TablePro.Drivers.Cassandra;
+using TablePro.Drivers.ClickHouse;
+using TablePro.Drivers.Cloudflare;
 using TablePro.Drivers.DuckDb;
+using TablePro.Drivers.DynamoDb;
+using TablePro.Drivers.Elasticsearch;
+using TablePro.Drivers.Etcd;
+using TablePro.Drivers.Kafka;
+using TablePro.Drivers.LibSql;
+using TablePro.Drivers.MongoDb;
 using TablePro.Drivers.MySql;
+using TablePro.Drivers.Oracle;
 using TablePro.Drivers.PostgreSql;
 using TablePro.Drivers.Redis;
+using TablePro.Drivers.Snowflake;
+using TablePro.Drivers.Spanner;
 using TablePro.Drivers.Sqlite;
 using TablePro.Drivers.SqlServer;
-using TablePro.Drivers.ClickHouse;
-using TablePro.Drivers.Oracle;
+using TablePro.Drivers.SurrealDb;
 using TablePro.Drivers.Teradata;
-using TablePro.Drivers.MongoDb;
-using TablePro.Drivers.Cassandra;
-using TablePro.Drivers.DynamoDb;
-using TablePro.Drivers.Snowflake;
-using TablePro.Drivers.BigQuery;
-using TablePro.Drivers.Spanner;
 using TablePro.Drivers.Trino;
-using TablePro.Drivers.Elasticsearch;
 using TablePro.Drivers.Typesense;
 using TablePro.Drivers.Weaviate;
-using TablePro.Drivers.SurrealDb;
 using TablePro.Ssh;
 using TablePro.Storage;
 using TablePro.Storage.Connections;
@@ -88,7 +92,11 @@ public partial class App : Application
         .Register(new ElasticsearchDriver())
         .Register(new TypesenseDriver())
         .Register(new WeaviateDriver())
-        .Register(new SurrealDbDriver());
+        .Register(new SurrealDbDriver())
+        .Register(new KafkaDriver())
+        .Register(new EtcdDriver())
+        .Register(new LibSqlDriver())
+        .Register(new CloudflareDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

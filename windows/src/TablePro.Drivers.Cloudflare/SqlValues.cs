@@ -13,7 +13,8 @@ internal static class SqlValues
     {
         JsonValueKind.Null or JsonValueKind.Undefined => null,
         JsonValueKind.String => value.GetString(),
-        JsonValueKind.Number => value.TryGetInt64(out var integer) ? integer : value.GetDouble(),
+        // Boxed on both sides: a conditional of long and double would widen every integer to double.
+        JsonValueKind.Number => value.TryGetInt64(out var integer) ? (object)integer : value.GetDouble(),
         JsonValueKind.True => true,
         JsonValueKind.False => false,
         _ => value.GetRawText(),

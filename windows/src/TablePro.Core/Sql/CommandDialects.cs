@@ -93,7 +93,7 @@ public sealed class KafkaDialect : CommandDialect
 
     public override string LineComment => "--";
 
-    protected override FrozenSet<string> ReadVerbs { get; } = Verbs("SHOW", "DESCRIBE", "CONSUME", "TAIL");
+    protected override FrozenSet<string> ReadVerbs { get; } = Verbs("SHOW", "DESCRIBE", "DESC", "SELECT", "CONSUME", "TAIL");
 
     protected override FrozenSet<string> WriteVerbs { get; } = Verbs("PRODUCE");
 

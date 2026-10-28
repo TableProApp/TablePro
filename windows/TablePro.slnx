@@ -30,6 +30,10 @@
     <Project Path="src/TablePro.Drivers.Typesense/TablePro.Drivers.Typesense.csproj" />
     <Project Path="src/TablePro.Drivers.Weaviate/TablePro.Drivers.Weaviate.csproj" />
     <Project Path="src/TablePro.Drivers.SurrealDb/TablePro.Drivers.SurrealDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Kafka/TablePro.Drivers.Kafka.csproj" />
+    <Project Path="src/TablePro.Drivers.Etcd/TablePro.Drivers.Etcd.csproj" />
+    <Project Path="src/TablePro.Drivers.Cloudflare/TablePro.Drivers.Cloudflare.csproj" />
+    <Project Path="src/TablePro.Drivers.LibSql/TablePro.Drivers.LibSql.csproj" />
     <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
     <Project Path="src/TablePro.App/TablePro.App.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -53,5 +57,6 @@
     <Project Path="tests/TablePro.Drivers.WideColumn.Tests/TablePro.Drivers.WideColumn.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Warehouse.Tests/TablePro.Drivers.Warehouse.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Search.Tests/TablePro.Drivers.Search.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Services.Tests/TablePro.Drivers.Services.Tests.csproj" />
   </Folder>
 </Solution>
