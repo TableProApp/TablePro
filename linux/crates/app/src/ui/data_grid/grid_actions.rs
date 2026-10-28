@@ -52,6 +52,7 @@ pub fn install(grid: &DataGrid) {
     add(grid, "clear-selection", |grid| {
         grid.selection().unselect_all();
     });
+    add(grid, "select-all", DataGrid::select_all_rows);
     let details = gio::SimpleAction::new_stateful("show-details", None, &false.to_variant());
     let weak = grid.downgrade();
     details.connect_change_state(move |action, state| {

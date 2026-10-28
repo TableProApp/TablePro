@@ -23,7 +23,6 @@ enum Hit {
 /// as the view's own `activate`.
 pub fn install(grid: &DataGrid) {
     grid.column_view().add_controller(focus_on_click(grid));
-    grid.column_view().add_controller(select_all_on_row_number_header(grid));
     let gesture = gtk::GestureClick::builder().button(gdk::BUTTON_SECONDARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = grid.downgrade();
@@ -58,52 +57,6 @@ fn focus_on_click(grid: &DataGrid) -> gtk::GestureClick {
         }
     });
     gesture
-}
-
-/// The row number column's header selects every row, as the corner of a
-/// spreadsheet does. GtkColumnView gives a header no click of its own,
-/// and a drag of the header still moves the column: a click that turns
-/// into a drag is never released as a click.
-fn select_all_on_row_number_header(grid: &DataGrid) -> gtk::GestureClick {
-    let gesture = gtk::GestureClick::builder().button(gdk::BUTTON_PRIMARY).build();
-    gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let weak = grid.downgrade();
-    gesture.connect_released(move |_, n_press, x, y| {
-        if let Some(grid) = weak.upgrade()
-            && n_press == 1
-        {
-            grid.select_all_from_header(x, y);
-        }
-    });
-    gesture
-}
-
-/// The column whose header title is at `x`, `y` in the view. The header
-/// holds one title per column, in the order of the view's columns.
-fn header_column_at(grid: &DataGrid, x: f64, y: f64) -> Option<gtk::ColumnViewColumn> {
-    let view = grid.column_view();
-    let mut title = view.pick(x, y, gtk::PickFlags::DEFAULT)?;
-    loop {
-        let parent = title.parent()?;
-        if parent == *view.upcast_ref::<gtk::Widget>() {
-            return None;
-        }
-        if parent.css_name() == "header" {
-            break;
-        }
-        title = parent;
-    }
-    let header = title.parent()?;
-    let mut index = 0;
-    let mut child = header.first_child();
-    while let Some(current) = child {
-        if current == title {
-            return view.columns().item(index).and_downcast();
-        }
-        index += 1;
-        child = current.next_sibling();
-    }
-    None
 }
 
 /// The longest tooltip; the detail pane shows the rest.
@@ -181,18 +134,6 @@ fn row_of(row_widget: &gtk::Widget) -> Option<(GridRow, u32)> {
 }
 
 impl DataGrid {
-    /// Select every row when `x`, `y` is on the row number column's
-    /// header, and take the focus so the keys act on them.
-    fn select_all_from_header(&self, x: f64, y: f64) -> bool {
-        let on_row_numbers =
-            header_column_at(self, x, y).is_some_and(|column| Some(column) == self.row_numbers_column());
-        if on_row_numbers {
-            self.selection().select_all();
-            self.column_view().grab_focus();
-        }
-        on_row_numbers
-    }
-
     fn menu_at_pointer(&self, hit: Hit, x: f64, y: f64) -> bool {
         let at = gdk::Rectangle::new(x as i32, y as i32, 1, 1);
         match hit {
@@ -209,8 +150,8 @@ mod tests {
     use gtk4::graphene;
     use gtk4::prelude::*;
 
-    use super::{Hit, header_column_at, hit_at};
-    use crate::test_support::{KeyInjector, descendants, wait_until};
+    use super::{Hit, hit_at};
+    use crate::test_support::{KeyInjector, wait_until};
     use crate::ui::data_grid::test_grid::{Grid, WAIT, two_text_columns, two_text_values};
 
     fn point_in(grid: &Grid, widget: &impl IsA<gtk4::Widget>) -> (f64, f64) {
@@ -258,46 +199,5 @@ mod tests {
         mouse.click(&clicked, (4.0, 4.0), 2).expect("the double click");
         wait_until(WAIT, || grid.grid.edit().editing_cell().as_ref() == Some(&clicked))
             .expect("the double click edited another cell");
-    }
-
-    /// The title under the row number column's header, as GTK lays it
-    /// out.
-    fn row_number_title(grid: &Grid) -> gtk4::Widget {
-        let view = grid.grid.column_view();
-        let header = descendants(&view)
-            .into_iter()
-            .find(|widget| widget.css_name() == "header")
-            .expect("the header");
-        header.first_child().expect("the first title")
-    }
-
-    #[gtk4::test]
-    fn row_number_header_click_selects_every_row() {
-        let grid = Grid::open(two_text_columns(), two_text_values());
-        let title = row_number_title(&grid);
-        let (x, y) = point_in(&grid, &title);
-
-        assert_eq!(header_column_at(&grid.grid, x, y), grid.grid.row_numbers_column());
-        assert!(grid.grid.select_all_from_header(x, y));
-
-        let selected = grid.grid.selection().selection();
-        assert_eq!(selected.size(), 2, "every row is selected");
-    }
-
-    #[gtk4::test]
-    fn row_number_header_click_ignores_other_headers_and_cells() {
-        let grid = Grid::open(two_text_columns(), two_text_values());
-        let name_title = row_number_title(&grid)
-            .next_sibling()
-            .and_then(|id| id.next_sibling())
-            .expect("the name column's title");
-        let (x, y) = point_in(&grid, &name_title);
-        let (cell_x, cell_y) = point_in(&grid, &grid.cell_of(1, 1));
-        let before = grid.grid.selection().selection().size();
-
-        assert!(header_column_at(&grid.grid, x, y).is_some(), "a title of a data column");
-        assert!(!grid.grid.select_all_from_header(x, y));
-        assert!(!grid.grid.select_all_from_header(cell_x, cell_y));
-        assert_eq!(grid.grid.selection().selection().size(), before);
     }
 }

@@ -6,7 +6,7 @@ use gtk4::prelude::*;
 use gtk4::{self as gtk, glib, pango};
 
 use super::tracked_values::RowPendingState;
-use super::{DataGrid, GridRow};
+use super::{DataGrid, GridRow, grid_menu};
 
 /// Icon, spacing and the cell's padding beside the digits.
 const CHROME_PX: i32 = 16 + 4 + 13;
@@ -56,6 +56,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
     let column = gtk::ColumnViewColumn::builder()
         .title(crate::i18n::pgettext("row number column", "#"))
         .factory(&factory)
+        .header_menu(&grid_menu::row_numbers_header_menu())
         .resizable(false)
         .build();
     column.set_id(Some("row-numbers"));

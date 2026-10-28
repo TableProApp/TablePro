@@ -214,6 +214,20 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
     menu
 }
 
+/// The row number column's header menu. GTK keeps a header's click for
+/// sorting, so the header selects the rows from here. The key is
+/// GtkListBase's `list.select-all`, out of a header menu's reach.
+pub fn row_numbers_header_menu() -> gio::Menu {
+    let select_all = item(&gettext("Select All Rows"), "grid.select-all");
+    if let Some(key) = crate::application::triggers_for("list.select-all").first() {
+        select_all.set_attribute_value("accel", Some(&key.to_variant()));
+    }
+    let menu = gio::Menu::new();
+    menu.append_section(None, &section([select_all]));
+    menu.append_section(None, &section([item(&gettext("Columns…"), "grid.columns")]));
+    menu
+}
+
 impl DataGrid {
     pub(crate) fn menus(&self) -> Option<&GridMenus> {
         self.imp().menus.get()

@@ -5,7 +5,8 @@ use tablepro_core::Value;
 use tablepro_core::edit::CellInput;
 
 use super::{
-    accel_of, action_names, cell_menu, close_menus, data_column, keyed, menu_actions, none, press, submenu, text,
+    accel_of, action_names, cell_menu, close_menus, data_column, keyed, menu_actions, none, press, selected_ids,
+    submenu, text,
 };
 use crate::test_support::{FocusThief, after_next_frame, drain_main_context, wait_until};
 use crate::ui::data_grid::test_grid::{
@@ -247,6 +248,52 @@ fn a_page_under_a_closed_menu_then_a_focus_in_keeps_the_focus_in_the_grid() {
     after_next_frame(&grid.window);
 
     assert!(focus_in_grid(&grid), "the focus left the grid");
+}
+
+/// The header gives the rows the keys that act on a selection, wherever
+/// the focus was.
+#[gtk4::test]
+fn the_row_number_headers_menu_selects_every_row() {
+    let grid = people();
+    let header = grid
+        .grid
+        .row_numbers_column()
+        .and_then(|column| column.header_menu())
+        .expect("the row number header's menu");
+    gtk::prelude::GtkWindowExt::set_focus(&grid.window, None::<&gtk::Widget>);
+
+    grid.activate("select-all");
+
+    assert_eq!(action_names(&header), ["grid.select-all", "grid.columns"]);
+    assert_eq!(
+        accel_of(&header, "grid.select-all"),
+        Some(Some("<Primary>a".to_owned()))
+    );
+    assert_eq!(selected_ids(&grid), [1, 2]);
+    wait_until(WAIT, || focus_in_grid(&grid)).expect("the focus stayed off the rows");
+}
+
+/// The editor ends its edit, keeping what was typed, and the keys go to
+/// the rows rather than to its text.
+#[gtk4::test]
+fn select_all_rows_takes_the_keyboard_from_an_open_editor() {
+    let grid = people();
+    let cell = grid.focus(0, 1);
+    assert!(grid.grid.edit().edit_cell(&cell), "the cell took no edit");
+    grid.grid.edit().open_text().expect("the editor").set_text("Ada L.");
+    wait_until(WAIT, || grid.grid.edit().editor_has_focus()).expect("the editor takes the keyboard");
+
+    grid.activate("select-all");
+
+    assert_eq!(selected_ids(&grid), [1, 2]);
+    wait_until(WAIT, || {
+        grid.grid.edit().editing_cell().is_none() && grid.focused_cell().is_some()
+    })
+    .expect("the editor kept the keyboard");
+    assert_eq!(
+        grid.tracker.cell_overlay(&key(1), 1).pending,
+        Some(CellInput::Value(Value::Text("Ada L.".to_owned())))
+    );
 }
 
 #[gtk4::test]

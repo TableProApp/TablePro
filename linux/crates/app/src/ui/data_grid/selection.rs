@@ -83,6 +83,26 @@ impl DataGrid {
         }
     }
 
+    /// Every row, with the keyboard on the rows so the keys that act on
+    /// the selection reach them: a header's menu leaves the focus where it
+    /// was.
+    pub(crate) fn select_all_rows(&self) {
+        self.selection().select_all();
+        match self.focused_cell() {
+            // An open editor gives the keyboard up as it does to a click
+            // on its cell, which ends the edit.
+            Some(cell) if self.edit().editor_has_focus() => {
+                if let Some(focusable) = cell.parent() {
+                    focusable.grab_focus();
+                }
+            }
+            Some(_) => {}
+            None => {
+                self.column_view().grab_focus();
+            }
+        }
+    }
+
     pub(crate) fn selected_rows(&self) -> Vec<GridRow> {
         let selection = self.selection();
         let bitset = selection.selection();
