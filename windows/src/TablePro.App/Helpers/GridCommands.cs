@@ -59,13 +59,34 @@ internal static class GridCommands
     {
         var formats = new (string Name, ExportFormat Format)[]
         {
-            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown), ("Excel workbook", ExportFormat.Xlsx),
+            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown), ("Excel workbook", ExportFormat.Xlsx), ("Parquet", ExportFormat.Parquet),
         };
         var picker = new ComboBox { Header = "Format", ItemsSource = formats.Select(f => f.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
         var header = new CheckBox { Content = "Include column names", IsChecked = true };
+
+        // The Parquet options are the macOS plugin's: the codec and the rows per group, with its defaults.
+        var compressions = new (string Name, ParquetCompression Value)[] { ("Snappy", ParquetCompression.Snappy), ("Zstd", ParquetCompression.Zstd), ("Gzip", ParquetCompression.Gzip), ("None", ParquetCompression.None) };
+        var compression = new ComboBox { Header = "Compression", ItemsSource = compressions.Select(c => c.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
+        ToolTipService.SetToolTip(compression, "Snappy is what every Parquet reader supports. Zstd is smaller and needs a reader built with it.");
+        int[] groupSizes = [10_000, 50_000, ExportOptions.DefaultParquetRowGroupSize, 500_000, 1_000_000];
+        var groupSize = new ComboBox { Header = "Rows per group", ItemsSource = groupSizes.Select(s => s.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)).ToList(), SelectedIndex = 2, MinWidth = 240 };
+        ToolTipService.SetToolTip(groupSize, "Larger groups compress better and cost more memory to read");
+        var parquetOptions = new StackPanel { Spacing = 12, Visibility = Microsoft.UI.Xaml.Visibility.Collapsed };
+        parquetOptions.Children.Add(compression);
+        parquetOptions.Children.Add(groupSize);
+        picker.SelectionChanged += (_, _) =>
+        {
+            var isParquet = formats[Math.Max(0, picker.SelectedIndex)].Format == ExportFormat.Parquet;
+            parquetOptions.Visibility = isParquet ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+            // Parquet always carries its column names in the schema, so the choice does not apply.
+            header.IsEnabled = !isParquet;
+        };
+
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(picker);
         panel.Children.Add(header);
+        panel.Children.Add(parquetOptions);
         panel.Children.Add(new TextBlock { Text = $"{result.RowCount:N0} rows, {result.Columns.Count} columns", Style = (Microsoft.UI.Xaml.Style)Microsoft.UI.Xaml.Application.Current.Resources["CaptionTextBlockStyle"] });
         if (await dialogs.ShowAsync(dialogs.Create("Export", panel, "Export…", "Cancel")) != ContentDialogResult.Primary)
         {
@@ -73,6 +94,13 @@ internal static class GridCommands
         }
 
         var format = formats[Math.Max(0, picker.SelectedIndex)].Format;
+        var options = new ExportOptions(
+            format,
+            header.IsChecked == true,
+            TargetTable: table,
+            Dialect: dialect,
+            ParquetCompression: compressions[Math.Max(0, compression.SelectedIndex)].Value,
+            ParquetRowGroupSize: groupSizes[Math.Max(0, groupSize.SelectedIndex)]);
         var extension = ResultExporter.FileExtension(format);
         var file = await dialogs.PickSaveFileAsync(baseName, formats[Math.Max(0, picker.SelectedIndex)].Name, extension);
         if (file is null)
@@ -82,7 +110,7 @@ internal static class GridCommands
 
         await using var stream = await file.OpenStreamForWriteAsync();
         stream.SetLength(0);
-        await ResultExporter.WriteAsync(result, null, stream, new ExportOptions(format, header.IsChecked == true, TargetTable: table, Dialect: dialect), CancellationToken.None);
+        await ResultExporter.WriteAsync(result, null, stream, options, CancellationToken.None);
     }
 
     private static void CopyAs(DataGridView grid, ExportFormat format, SqlDialect dialect, ObjectName? table)

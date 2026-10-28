@@ -6,4 +6,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="TablePro.Core.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- A fully managed Parquet encoder: its Snappy, Zstd and LZ4 codecs are managed ports, so nothing native ships. -->
+    <PackageReference Include="Parquet.Net" />
+  </ItemGroup>
 </Project>

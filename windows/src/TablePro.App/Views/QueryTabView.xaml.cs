@@ -16,6 +16,10 @@ public sealed partial class QueryTabView : UserControl
     // Whether the results area shows the plan rather than the selected result's rows or message.
     private bool _planSelected;
 
+    // The last result checked for a map source and the answer, reused while that result stays selected.
+    private Core.Results.ResultSet? _mapCheckedResult;
+    private bool _mapAvailable;
+
     public QueryTabView(QueryTabViewModel viewModel)
     {
         ViewModel = viewModel;
@@ -39,6 +43,7 @@ public sealed partial class QueryTabView : UserControl
         Editor.SuggestionsEnabled = viewModel.Context.InlineSuggest is not null;
         Editor.PausedAtLineEnd += OnPausedAtLineEnd;
         Editor.VimEnabled = viewModel.Context.Preferences.VimMode;
+        Editor.EmacsEnabled = viewModel.Context.Preferences.EmacsKeys;
         Editor.VimStatusChanged += OnVimStatusChanged;
         Editor.VimQuitRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
         Editor.VimTabRequested += (_, position) => TabRequested?.Invoke(this, position);
@@ -50,12 +55,22 @@ public sealed partial class QueryTabView : UserControl
 
         ResultGrid.CellContextRequested += OnGridContext;
         ResultGrid.CellActivated += OnCellActivated;
+
+        // A shape clicked on the map selects its row in the grid, so switching back shows the row it came from.
+        Map.RowSelected += (_, row) => ResultGrid.SelectCell(row, 0);
         Loaded += (_, _) => Editor.FocusEditor();
         Unloaded += (_, _) => viewModel.Context.Session.CatalogChanged -= OnCatalogChanged;
         UpdateResultView();
     }
 
     public event EventHandler<string>? SaveFavoriteRequested;
+
+    /// <summary>The window's shortcut map lookup, so remapped editor commands follow Settings.</summary>
+    public Func<Windows.System.VirtualKey, Windows.System.VirtualKeyModifiers, string?>? CommandForKey
+    {
+        get => Editor.CommandForKey;
+        set => Editor.CommandForKey = value;
+    }
 
     /// <summary>Vim's :q, which closes this tab.</summary>
     public event EventHandler? CloseRequested;
@@ -210,8 +225,9 @@ public sealed partial class QueryTabView : UserControl
         PlanView.Visibility = showPlan ? Visibility.Visible : Visibility.Collapsed;
         if (showPlan)
         {
-            EmptyState.Visibility = ExportButton.Visibility = ChartToggle.Visibility = Visibility.Collapsed;
-            ResultGrid.Visibility = Chart.Visibility = MessagePanel.Visibility = Visibility.Collapsed;
+            EmptyState.Visibility = ExportButton.Visibility = ChartToggle.Visibility = MapToggle.Visibility = Visibility.Collapsed;
+            ResultGrid.Visibility = Chart.Visibility = Map.Visibility = MessagePanel.Visibility = Visibility.Collapsed;
+            Map.Result = null;
             ResultSummary.Text = string.Empty;
             var planTab = ResultTabs.Items.FirstOrDefault(i => i.Tag is Core.Plans.QueryPlanCapture);
             if (planTab is not null && !ReferenceEquals(ResultTabs.SelectedItem, planTab))
@@ -234,18 +250,31 @@ public sealed partial class QueryTabView : UserControl
         }
 
         ChartToggle.Visibility = result?.HasRows == true ? Visibility.Visible : Visibility.Collapsed;
+        var canMap = result?.Result is { } rows && HasMapSource(rows);
+        MapToggle.Visibility = canMap ? Visibility.Visible : Visibility.Collapsed;
         if (result is { HasRows: true })
         {
+            var showChart = ChartToggle.IsChecked == true;
+            var showMap = !showChart && canMap && MapToggle.IsChecked == true;
+            if (showMap && Map.Visibility != Visibility.Visible)
+            {
+                Map.SelectedRows = ResultGrid.SelectedRows;
+            }
+
             ResultGrid.Source = result.Source;
-            Chart.Result = ChartToggle.IsChecked == true ? result.Result : null;
-            ResultGrid.Visibility = ChartToggle.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
-            Chart.Visibility = ChartToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            Chart.Result = showChart ? result.Result : null;
+            Map.Result = showMap ? result.Result : null;
+            ResultGrid.Visibility = showChart || showMap ? Visibility.Collapsed : Visibility.Visible;
+            Chart.Visibility = showChart ? Visibility.Visible : Visibility.Collapsed;
+            Map.Visibility = showMap ? Visibility.Visible : Visibility.Collapsed;
             MessagePanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         ResultGrid.Visibility = Visibility.Collapsed;
         Chart.Visibility = Visibility.Collapsed;
+        Map.Visibility = Visibility.Collapsed;
+        Map.Result = null;
         ResultGrid.Source = null;
         MessagePanel.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
         if (result is not null)
@@ -270,7 +299,38 @@ public sealed partial class QueryTabView : UserControl
 
     private void OnFormat(object sender, RoutedEventArgs e) => Format();
 
-    private void OnChartToggled(object sender, RoutedEventArgs e) => UpdateResultView();
+    // Chart and map replace the grid in the same place, so turning one on turns the other off.
+    private void OnChartToggled(object sender, RoutedEventArgs e)
+    {
+        if (ChartToggle.IsChecked == true)
+        {
+            MapToggle.IsChecked = false;
+        }
+
+        UpdateResultView();
+    }
+
+    private void OnMapToggled(object sender, RoutedEventArgs e)
+    {
+        if (MapToggle.IsChecked == true)
+        {
+            ChartToggle.IsChecked = false;
+        }
+
+        UpdateResultView();
+    }
+
+    /// <summary>Whether the result has something to map, sampled once per result since the view refreshes often.</summary>
+    private bool HasMapSource(Core.Results.ResultSet rows)
+    {
+        if (!ReferenceEquals(rows, _mapCheckedResult))
+        {
+            _mapCheckedResult = rows;
+            _mapAvailable = Core.Geometry.MapSourceDetector.HasSource(rows);
+        }
+
+        return _mapAvailable;
+    }
 
     private void Format()
     {

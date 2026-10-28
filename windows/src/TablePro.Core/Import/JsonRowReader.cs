@@ -59,11 +59,16 @@ public static class JsonRowReader
             {
                 JsonValueKind.String => property.Value.GetString(),
                 JsonValueKind.Number when property.Value.TryGetInt64(out var integer) => integer,
-                JsonValueKind.Number => property.Value.GetDecimal(),
+                JsonValueKind.Number when property.Value.TryGetDecimal(out var exact) => exact,
+
+                // Past decimal's range (1e300) only a double holds the number.
+                JsonValueKind.Number => property.Value.GetDouble(),
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
                 JsonValueKind.Null or JsonValueKind.Undefined => null,
-                _ => property.Value.GetRawText(),
+
+                // Kept apart from a JSON string so type inference can propose a JSON column; it binds as its text.
+                _ => new JsonText(property.Value.GetRawText()),
             };
         }
 

@@ -211,98 +211,127 @@ public sealed partial class TableTabView : UserControl
     private async void OnImport(object sender, RoutedEventArgs e)
     {
         var dialogs = ViewModel.Context.Dialogs;
-        var file = await dialogs.PickOpenFileAsync(".csv", ".tsv", ".txt", ".json", ".ndjson", ".jsonl");
+        var file = await dialogs.PickOpenFileAsync(".csv", ".tsv", ".txt", ".json", ".ndjson", ".jsonl", ".sql", ".gz");
         if (file is null || ViewModel.Structure is not { } structure)
         {
             return;
         }
 
-        var columns = structure.Columns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var path = file.Path;
+        var format = ImportFile.DetectFormat(path);
+        if (format == ImportFileFormat.Sql)
+        {
+            // A dump names its own tables, so it runs as a script on the connection rather than into this table.
+            if (await SqlImportDialog.RunAsync(ViewModel.Context, path))
+            {
+                await ViewModel.LoadAsync();
+            }
+
+            return;
+        }
+
+        var csvOptions = CsvImportOptions.Default with { Delimiter = ImportFile.DelimiterFor(path) };
+        Task<ImportPreview> ReadPreview(CsvImportOptions options) => Task.Run(async () =>
+        {
+            await using var stream = ImportFile.Open(path);
+            return await ImportPreview.ReadAsync(stream, format, options);
+        });
+
+        ImportPreview preview;
+        try
+        {
+            preview = await ReadPreview(csvOptions);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            await dialogs.ShowErrorAsync("Cannot read this file", ex.Message);
+            return;
+        }
+
+        // The grid's baseline knows the provider's CLR type of each column, which values are parsed into.
         var clrTypes = ViewModel.Buffer?.Baseline.Columns.ToDictionary(c => c.Name, c => c.ClrType, StringComparer.OrdinalIgnoreCase) ?? [];
-        var isJson = Path.GetExtension(file.Path).ToLowerInvariant() is ".json" or ".ndjson" or ".jsonl";
+        var targets = structure.Columns.Select(c => new ImportTargetColumn(c.Name, c.DataType, clrTypes.GetValueOrDefault(c.Name) ?? typeof(string))).ToArray();
+        var session = ViewModel.Context.Session;
+        var ddl = session.Database as ISchemaDdlProvider;
+        var plan = await ImportMappingDialog.ShowAsync(
+            dialogs, file.Name, preview, format, csvOptions, ReadPreview, ViewModel.Table.Name, targets,
+            canCreateTable: ddl is not null && session.Dialect.IsSql && !session.Profile.IsReadOnly,
+            type => ImportTypeMapper.SqlType(type, session.Profile.Engine, session.Database.ServerVersion),
+            ddl?.CommonDataTypes ?? []);
+        if (plan is null)
+        {
+            return;
+        }
+
+        if (plan.Destination == ImportDestination.NewTable && !await CreateImportTableAsync(plan))
+        {
+            return;
+        }
+
         ViewModel.IsBusy = true;
         ViewModel.StatusText = "Importing…";
         try
         {
-            var imported = await Task.Run(async () =>
+            var progress = new Progress<long>(rows => ViewModel.StatusText = string.Create(CultureInfo.CurrentCulture, $"Importing… {rows:N0} rows"));
+            var result = await Task.Run(async () =>
             {
-                var total = 0;
-                var batch = new List<RowChange>(500);
-                await foreach (var record in isJson ? ReadJson(file.Path) : ReadCsv(file.Path))
-                {
-                    var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (name, raw) in record)
-                    {
-                        if (!columns.Contains(name))
-                        {
-                            continue;
-                        }
-
-                        // Text from a CSV, or a JSON string, is parsed for the column's type; JSON numbers and booleans pass through.
-                        values[name] = raw is string text && clrTypes.TryGetValue(name, out var type) && ValueParser.TryParse(text, type, out var parsed) ? parsed : raw;
-                    }
-
-                    if (values.Count == 0)
-                    {
-                        throw new InvalidOperationException("No field in the file matches a column of this table.");
-                    }
-
-                    batch.Add(new RowInsert(values));
-                    if (batch.Count == 500)
-                    {
-                        total += await ViewModel.Context.Session.Database.SaveChangesAsync(ViewModel.Table.Name, batch, CancellationToken.None);
-                        batch.Clear();
-                    }
-                }
-
-                if (batch.Count > 0)
-                {
-                    total += await ViewModel.Context.Session.Database.SaveChangesAsync(ViewModel.Table.Name, batch, CancellationToken.None);
-                }
-
-                return total;
+                await using var stream = ImportFile.Open(path);
+                var records = ImportFile.ReadRecordsAsync(stream, format, plan.CsvOptions, CancellationToken.None);
+                return await RowImporter.ImportAsync(session.Database, plan.Table, records, plan.Builder, progress, CancellationToken.None);
             });
-            ViewModel.Context.Notify(string.Create(CultureInfo.CurrentCulture, $"Imported {imported:N0} rows into {ViewModel.Title}."));
-            await ViewModel.LoadAsync();
+            var skipped = result.Skipped > 0 ? string.Create(CultureInfo.CurrentCulture, $" {result.Skipped:N0} records held no mapped field and were skipped.") : string.Empty;
+            ViewModel.Context.Notify(string.Create(CultureInfo.CurrentCulture, $"Imported {result.Imported:N0} rows into {plan.Table.Name}.{skipped}"));
+            if (plan.Destination == ImportDestination.ExistingTable)
+            {
+                await ViewModel.LoadAsync();
+            }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            await dialogs.ShowErrorAsync("Import stopped", ex.Message);
+            // Batches before the failure are already saved, each in its own transaction, so the message says so.
+            await dialogs.ShowErrorAsync("Import stopped", ex.Message + "\n\nRows saved before this point stay in the table.");
         }
         finally
         {
             ViewModel.IsBusy = false;
             ViewModel.StatusText = null;
         }
+    }
 
-        static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> ReadJson(string path)
+    /// <summary>Creates the table an import writes to, after the user reviews its DDL, as every structure change here is reviewed.</summary>
+    private async Task<bool> CreateImportTableAsync(ImportPlan plan)
+    {
+        var context = ViewModel.Context;
+        if (context.Session.Database is not ISchemaDdlProvider ddl)
         {
-            await using var stream = File.OpenRead(path);
-            await foreach (var row in JsonRowReader.ReadAsync(stream, CancellationToken.None))
+            return false;
+        }
+
+        var statements = ddl.BuildDdl(plan.Table, new CreateTable(plan.Table, plan.NewTableColumns));
+        if (statements.Count == 0)
+        {
+            await context.Dialogs.ShowErrorAsync("Not supported", "This engine cannot create that table from the app.");
+            return false;
+        }
+
+        if (!await context.Dialogs.ReviewSqlAsync("Create table for import", statements, "Create and Import"))
+        {
+            return false;
+        }
+
+        await using var channel = await context.Session.Database.OpenChannelAsync(CancellationToken.None);
+        await foreach (var result in channel.ExecuteAsync(statements, new ExecuteOptions(), CancellationToken.None))
+        {
+            context.History.Record(context.Session.Profile, context.Session.Database.CurrentDatabase, result, Core.Sql.StatementKind.Ddl, "import");
+            if (!result.Succeeded)
             {
-                yield return row;
+                await context.Dialogs.ShowErrorAsync("Could not create the table", result.Error!);
+                return false;
             }
         }
 
-        static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> ReadCsv(string path)
-        {
-            using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
-            var firstLine = await reader.ReadLineAsync() ?? string.Empty;
-            reader.BaseStream.Position = 0;
-            reader.DiscardBufferedData();
-            var csv = new CsvReader(reader, CsvReader.DetectDelimiter(firstLine));
-            var header = (csv.ReadRecord() ?? []).Select(h => h.Trim()).ToArray();
-            while (csv.ReadRecord() is { } record)
-            {
-                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                for (var i = 0; i < header.Length && i < record.Length; i++)
-                {
-                    row[header[i]] = record[i].Length == 0 ? null : record[i];
-                }
-
-                yield return row;
-            }
-        }
+        context.NotifySchemaChanged();
+        return true;
     }
     private void OnCopyDefinition(object sender, RoutedEventArgs e) => GridCommands.SetClipboard(ViewModel.Definition);
 

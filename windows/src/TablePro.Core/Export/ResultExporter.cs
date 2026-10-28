@@ -17,15 +17,22 @@ public enum ExportFormat
     SqlInsert,
     Markdown,
     Xlsx,
+    Parquet,
 }
 
+// The Parquet row group default is DuckDB's 122,880, which the macOS export uses and most readers are tuned for.
 public sealed record ExportOptions(
     ExportFormat Format,
     bool IncludeHeader = true,
     string NullText = "",
     ObjectName? TargetTable = null,
     SqlDialect? Dialect = null,
-    int InsertBatchSize = 100);
+    int InsertBatchSize = 100,
+    ParquetCompression ParquetCompression = ParquetCompression.Snappy,
+    int ParquetRowGroupSize = ExportOptions.DefaultParquetRowGroupSize)
+{
+    public const int DefaultParquetRowGroupSize = 122_880;
+}
 
 /// <summary>Writes a result to a stream without building the whole document in memory.</summary>
 public static class ResultExporter
@@ -38,11 +45,21 @@ public static class ResultExporter
         ExportFormat.SqlInsert => ".sql",
         ExportFormat.Markdown => ".md",
         ExportFormat.Xlsx => ".xlsx",
+        ExportFormat.Parquet => ".parquet",
         _ => ".txt",
     };
 
+    /// <summary>Whether the format is a binary file, which has no clipboard text form.</summary>
+    public static bool IsBinary(ExportFormat format) => format is ExportFormat.Xlsx or ExportFormat.Parquet;
+
     public static async Task WriteAsync(ResultSet result, IReadOnlyList<int>? rows, Stream stream, ExportOptions options, CancellationToken cancellationToken)
     {
+        if (options.Format == ExportFormat.Parquet)
+        {
+            await ParquetExporter.WriteAsync(result, rows, stream, options, cancellationToken);
+            return;
+        }
+
         if (options.Format == ExportFormat.Xlsx)
         {
             await XlsxWriter.WriteAsync(result, rows, stream, options, cancellationToken);

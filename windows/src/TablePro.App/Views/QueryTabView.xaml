@@ -89,6 +89,9 @@
                     <ToggleButton x:Name="ChartToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnChartToggled" AutomationProperties.Name="Chart" ToolTipService.ToolTip="Show as chart">
                         <FontIcon FontSize="14" Glyph="&#xE9D2;" />
                     </ToggleButton>
+                    <ToggleButton x:Name="MapToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnMapToggled" Visibility="Collapsed" AutomationProperties.Name="Map" ToolTipService.ToolTip="Show on a map">
+                        <FontIcon FontSize="14" Glyph="&#xE707;" />
+                    </ToggleButton>
                     <Button x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult" AutomationProperties.Name="Export this result" ToolTipService.ToolTip="Export this result">
                         <FontIcon FontSize="14" Glyph="&#xEDE1;" />
                     </Button>
@@ -97,6 +100,7 @@
 
             <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" />
             <controls:ResultChart x:Name="Chart" Grid.Row="1" Visibility="Collapsed" />
+            <controls:ResultMap x:Name="Map" Grid.Row="1" Visibility="Collapsed" />
             <controls:QueryPlanView x:Name="PlanView" Grid.Row="1" Visibility="Collapsed" />
 
             <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">

@@ -27,7 +27,7 @@ public sealed class JsonRowReaderTests
         Assert.Equal(9.5m, rows[0]["price"]);
         Assert.Equal("Ana", rows[0]["name"]);
         Assert.Equal(true, rows[0]["ok"]);
-        Assert.Equal("[\"a\"]", rows[0]["tags"]);
+        Assert.Equal(new JsonText("[\"a\"]"), rows[0]["tags"]);
         Assert.Null(rows[0]["gone"]);
         Assert.Single(rows[1]);
     }
