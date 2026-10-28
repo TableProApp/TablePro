@@ -113,6 +113,9 @@ impl MongoFixture {
                 .with_cmd([format!("{CONFIG_DIR}/start.sh")])
                 .with_env_var("TABLEPRO_PASSWORD", &password)
                 .with_env_var("TABLEPRO_TLS", if listening == Listening::Tls { "1" } else { "0" })
+                // The image hands rseq to TCMalloc for its per-CPU caches, and with
+                // those on MongoDB 8.0 exits on kernels 6.19 to 7.0.13 (SERVER-121912).
+                .with_env_var("GLIBC_TUNABLES", "glibc.pthread.rseq=1")
                 .with_startup_timeout(READY_TIMEOUT);
             if let (Some(network), Some(alias)) = (network, &network_alias) {
                 request = request.with_network(network.name()).with_container_name(alias);
