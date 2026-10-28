@@ -78,8 +78,9 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Open and save `.sql` files | Built | |
 | Line numbers | Built | |
 | Multiple cursors | Not built | |
-| Vim mode, Emacs keys | Not built | The setting is stored for when it is |
-| Graphical query plan, plan comparison | Not built | |
+| Vim mode | Built | Settings > Editor. Modes, counts, operators, motions, text objects, registers, marks, macros, search, dot repeat; `:w` saves, `:q` and `gt` act on tabs. Windows shortcuts (Ctrl+C, V, Z, F) keep their meaning. No visual block mode |
+| Emacs keys | Not built | |
+| Graphical query plan, plan comparison | Built | Diagram, tree with cost bars, raw text and Compare with the previous plan. PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, Oracle; Explain Analyze where the engine measures. No saved plan history |
 | Parameter prompts for `?`, `$n` and `:name` | Built | Values are remembered per tab; numbers with a leading zero stay text |
 | Language server features (go to definition, diagnostics) | Not built | |
 
@@ -129,7 +130,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | ER diagram | Built | Up to 150 tables, draggable |
 | Export a whole schema to a SQL file | Built | Structure and data |
 | Run a SQL file | Built | |
-| Users and roles editing | Not built | Listing only |
+| Users and roles editing | Partial | PostgreSQL, MySQL and MariaDB, SQL Server: principals, attributes, memberships and grants at every scope, staged with undo and reviewed before apply. Other engines list users only; one principal selected at a time |
 | Routine debugger | Not built | |
 | Join builder, row generator, object copy between connections | Not built | |
 | Git and version history for SQL files, linked folders, team library | Not built | |
@@ -162,4 +163,4 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 1. CI that builds the solution and runs every suite on Windows, plus driver suites against PostgreSQL, MySQL and SQL Server containers.
 2. An installer or MSIX package with signing, and a `windows-v*` tag that publishes it.
 3. A pass with Narrator and keyboard only, including the data grid.
-4. Multiple cursors and Vim mode, which macOS users reach for daily.
+4. Multiple cursors, which macOS users reach for daily.
