@@ -36,6 +36,7 @@ internal sealed record EngineForm(
         DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql => new("Account ID", "0123456789abcdef", ShowPort: false, ShowUser: false, DatabaseLabel: "Database ID or name", PasswordLabel: "API token"),
         DatabaseEngine.LibSql or DatabaseEngine.Turso => new("URL", "libsql://my-db-me.turso.io", ShowPort: engine == DatabaseEngine.LibSql, ShowUser: false, PasswordLabel: "Auth token"),
         DatabaseEngine.Teradata => new(DatabaseLabel: "Default database", OptionsHint: "logmech=LDAP\nSession Mode=ANSI"),
+        DatabaseEngine.Beancount => new(OptionsHint: "backend=python\npython=py\nrledger=C:\\Tools\\rledger.exe\nbeancountRunLedgerPlugins=true"),
         DatabaseEngine.ClickHouse => new(OptionsHint: "set_max_execution_time=60"),
         _ => new(),
     };

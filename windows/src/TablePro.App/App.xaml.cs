@@ -3,14 +3,17 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using TablePro.App.Services;
 using TablePro.Core.Drivers;
+using TablePro.Drivers.Beancount;
 using TablePro.Drivers.BigQuery;
 using TablePro.Drivers.Cassandra;
 using TablePro.Drivers.ClickHouse;
 using TablePro.Drivers.Cloudflare;
+using TablePro.Drivers.Dameng;
 using TablePro.Drivers.DuckDb;
 using TablePro.Drivers.DynamoDb;
 using TablePro.Drivers.Elasticsearch;
 using TablePro.Drivers.Etcd;
+using TablePro.Drivers.Hana;
 using TablePro.Drivers.Kafka;
 using TablePro.Drivers.LibSql;
 using TablePro.Drivers.MongoDb;
@@ -96,7 +99,10 @@ public partial class App : Application
         .Register(new KafkaDriver())
         .Register(new EtcdDriver())
         .Register(new LibSqlDriver())
-        .Register(new CloudflareDriver());
+        .Register(new CloudflareDriver())
+        .Register(new BeancountDriver())
+        .Register(new DamengDriver())
+        .Register(new HanaDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

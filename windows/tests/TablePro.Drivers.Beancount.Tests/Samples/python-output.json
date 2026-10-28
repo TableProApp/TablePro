@@ -1,0 +1,61 @@
+{
+  "transactions": [
+    {"id": 1, "date": "2026-01-01", "flag": "P", "payee": null, "narration": "(Padding inserted for Balance of 500.00 USD for difference 500.00 USD)", "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 1, "location": "C:/ledger/transactions/2026-01.beancount:1", "tags": [], "links": [], "_entry_meta": null},
+    {"id": 2, "date": "2026-01-05", "flag": "*", "payee": "Employer", "narration": "January salary", "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 5, "location": "C:/ledger/transactions/2026-01.beancount:5", "tags": ["payroll"], "links": ["jan-2026"], "_entry_meta": {"invoice": "INV-1"}},
+    {"id": 3, "date": "2026-01-10", "flag": "*", "payee": "Grocer", "narration": "Weekly shop", "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 10, "location": "C:/ledger/transactions/2026-01.beancount:10", "tags": [], "links": [], "_entry_meta": null}
+  ],
+  "postings": [
+    {"transaction_id": 1, "date": "2026-01-01", "account": "Assets:Checking", "number": "500.00", "currency": "USD", "posting_flag": null, "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": null, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 1, "location": "C:/ledger/transactions/2026-01.beancount:1", "_posting_meta": null},
+    {"transaction_id": 1, "date": "2026-01-01", "account": "Equity:Opening", "number": "-500.00", "currency": "USD", "posting_flag": null, "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": null, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 1, "location": "C:/ledger/transactions/2026-01.beancount:1", "_posting_meta": null},
+    {"transaction_id": 2, "date": "2026-01-05", "account": "Income:Salary", "number": "-2000.00", "currency": "USD", "posting_flag": null, "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": null, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 7, "location": "C:/ledger/transactions/2026-01.beancount:7", "_posting_meta": null},
+    {"transaction_id": 2, "date": "2026-01-05", "account": "Assets:Checking", "number": "2000.00", "currency": "USD", "posting_flag": null, "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": null, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 8, "location": "C:/ledger/transactions/2026-01.beancount:8", "_posting_meta": null},
+    {"transaction_id": 3, "date": "2026-01-10", "account": "Expenses:Food", "number": "50.00", "currency": "USD", "posting_flag": null, "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": {"number": "1.08", "currency": "EUR"}, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 11, "location": "C:/ledger/transactions/2026-01.beancount:11", "_posting_meta": {"receipt": "R-17", "audited": true}},
+    {"transaction_id": 3, "date": "2026-01-10", "account": "Assets:Checking", "number": "-50.00", "currency": "USD", "posting_flag": "!", "cost_number": null, "cost_currency": null, "cost_date": null, "cost_label": null, "price": null, "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 13, "location": "C:/ledger/transactions/2026-01.beancount:13", "_posting_meta": null}
+  ],
+  "accounts": [
+    {"account": "Assets:Checking", "open": "2026-01-01", "currencies": ["USD"], "booking": null},
+    {"account": "Expenses:Food", "open": "2026-01-01", "currencies": ["USD"], "booking": null},
+    {"account": "Income:Salary", "open": "2026-01-01", "currencies": ["USD"], "booking": null},
+    {"account": "Equity:Opening", "open": "2026-01-01", "currencies": ["USD"], "booking": null},
+    {"account": "Expenses:Old", "open": "2026-01-01", "currencies": ["USD"], "booking": "STRICT"}
+  ],
+  "prices": [
+    {"date": "2026-03-01", "currency": "EUR", "amount": {"number": "1.08", "currency": "USD"}}
+  ],
+  "balances": [
+    {"account": "Assets:Checking", "balance": {"positions": [{"number": "2450.00", "currency": "USD"}]}},
+    {"account": "Equity:Opening", "balance": {"positions": [{"number": "-500.00", "currency": "USD"}]}},
+    {"account": "Expenses:Food", "balance": {"positions": [{"number": "50.00", "currency": "USD"}]}},
+    {"account": "Income:Salary", "balance": {"positions": [{"number": "-2000.00", "currency": "USD"}]}}
+  ],
+  "balance_assertions": [
+    {"date": "2026-01-02", "account": "Assets:Checking", "amount": {"number": "500.00", "currency": "USD"}},
+    {"date": "2026-02-01", "account": "Assets:Checking", "amount": {"number": "2450.00", "currency": "USD"}}
+  ],
+  "commodities": [
+    {"date": "2026-01-01", "name": "USD"}
+  ],
+  "documents": [
+    {"date": "2026-01-20", "account": "Assets:Checking", "filename": "C:/ledger/docs/statement.pdf", "tags": [], "links": []}
+  ],
+  "notes": [
+    {"date": "2026-01-15", "account": "Assets:Checking", "comment": "Opened online", "tags": [], "links": []}
+  ],
+  "events": [
+    {"date": "2026-01-01", "type": "location", "description": "Bucharest"}
+  ],
+  "pads": [
+    {"date": "2026-01-01", "account": "Assets:Checking", "source_account": "Equity:Opening", "filename": "C:/ledger/transactions/2026-01.beancount", "lineno": 1, "location": "C:/ledger/transactions/2026-01.beancount:1"}
+  ],
+  "closes": [
+    {"account": "Expenses:Old", "close": "2026-06-30"}
+  ],
+  "directives": [
+    {"id": 1, "type": "open", "date": "2026-01-01", "filename": "C:/ledger/accounts.beancount", "lineno": 1, "location": "C:/ledger/accounts.beancount:1", "_entry_meta": null},
+    {"id": 2, "type": "custom", "date": "2026-01-01", "filename": "C:/ledger/main.beancount", "lineno": 12, "location": "C:/ledger/main.beancount:12", "_entry_meta": {"owner": "radu", "weight": 2}},
+    {"id": 3, "type": "close", "date": "2026-06-30", "filename": "C:/ledger/accounts.beancount", "lineno": 6, "location": "C:/ledger/accounts.beancount:6", "_entry_meta": null}
+  ],
+  "diagnostics": [
+    {"severity": "warning", "phase": "security", "message": "Ledger-declared Python plugin not run: myplugins.tax"}
+  ]
+}

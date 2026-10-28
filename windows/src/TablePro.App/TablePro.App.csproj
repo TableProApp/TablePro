@@ -73,5 +73,8 @@
     <ProjectReference Include="..\TablePro.Drivers.Etcd\TablePro.Drivers.Etcd.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Cloudflare\TablePro.Drivers.Cloudflare.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.LibSql\TablePro.Drivers.LibSql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Beancount\TablePro.Drivers.Beancount.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Dameng\TablePro.Drivers.Dameng.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Hana\TablePro.Drivers.Hana.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>TablePro.Drivers.Odbc.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="System.Data.Odbc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TablePro.Core/TablePro.Core.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Dameng/TablePro.Drivers.Dameng.csproj" />
+    <!-- Both drivers compile the shared ODBC sources as internal types; the alias keeps the HANA copy from colliding
+         with the Dameng one the tests see unqualified. -->
+    <ProjectReference Include="../../src/TablePro.Drivers.Hana/TablePro.Drivers.Hana.csproj" Aliases="hana" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

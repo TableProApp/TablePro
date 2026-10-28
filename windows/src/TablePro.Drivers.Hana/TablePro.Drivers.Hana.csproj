@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.Hana</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Data.Odbc" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The ODBC session and connection-string plumbing the ODBC drivers share, compiled into each one since drivers reference only Core. -->
+    <Compile Include="../TablePro.Drivers.Odbc.Shared/*.cs" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.Odbc.Tests" />
+  </ItemGroup>
+</Project>

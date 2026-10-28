@@ -1,0 +1,13 @@
+2026-01-01 pad Assets:Checking Equity:Opening
+
+2026-01-02 balance Assets:Checking 500.00 USD
+
+2026-01-05 * "Employer" "January salary" #payroll ^jan-2026
+  invoice: "INV-1"
+  Income:Salary      -2000.00 USD
+  Assets:Checking     2000.00 USD
+
+2026-01-10 * "Grocer" "Weekly shop"
+  Expenses:Food        50.00 USD
+    receipt: "R-17"
+  Assets:Checking
