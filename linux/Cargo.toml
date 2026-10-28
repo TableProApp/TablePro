@@ -161,9 +161,15 @@ self_named_module_files = "deny"
 
 # Unoptimised with debug info, DuckDB's archive is 2.6 GB, which every
 # test binary of the app links, and the engine runs the suites at debug
-# speed.
+# speed. The SDK's CXXFLAGS carry -g, so the Flatpak manifest adds -g0.
 [profile.dev.package.libduckdb-sys]
 opt-level = 2
+debug = false
+
+# Left unset, a build script's dependency takes the profile of a normal
+# one it matches, and the tests add such a match (xattr, through
+# testcontainers), so cargo test built DuckDB a second time.
+[profile.dev.build-override]
 debug = false
 
 [profile.release]
