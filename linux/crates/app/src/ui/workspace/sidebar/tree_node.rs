@@ -19,8 +19,7 @@ pub(crate) enum NodeKind {
     Connection,
     /// One schema, or database, of an open connection.
     Schema,
-    /// Says an open connection lists nothing, or the search found nothing
-    /// in it.
+    /// Says an open connection lists nothing.
     Placeholder,
 }
 
@@ -37,7 +36,7 @@ mod imp {
         pub(super) schema: RefCell<Option<String>>,
         /// What the tree lists under the row.
         pub(super) children: RefCell<Option<gio::ListModel>>,
-        /// What the search's results list under the row.
+        /// A schema's tables the search finds.
         pub(super) found: RefCell<Option<gio::ListModel>>,
         #[property(get, set)]
         pub(super) title: RefCell<String>,
@@ -133,12 +132,9 @@ impl TreeNode {
         self.imp().found.borrow().clone()
     }
 
-    /// What an open connection lists in the tree, and in the search's
-    /// results; none once it closes.
-    pub(crate) fn set_branches(&self, children: Option<gio::ListModel>, found: Option<gio::ListModel>) {
-        let imp = self.imp();
-        imp.children.replace(children);
-        imp.found.replace(found);
+    /// What an open connection lists in the tree; none once it closes.
+    pub(crate) fn set_children(&self, children: Option<gio::ListModel>) {
+        self.imp().children.replace(children);
     }
 
     /// The store of a group's connections.

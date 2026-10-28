@@ -28,20 +28,15 @@ pub(crate) enum Search {
 /// node per section of the index, each over its tables and over the
 /// ones the search finds. A new index or search is worked out into rows
 /// apart from the lists, and each list takes its rows in one change, so
-/// nothing builds a widget or an object per table.
+/// a list of what the search found makes objects only for the rows on
+/// screen.
 pub(crate) struct SidebarModel {
     /// Every section's schema, in list order.
     schemas: gio::ListStore,
-    /// The schemas the search finds tables in.
-    found: gio::ListStore,
     /// Holds `nothing` once a list landed with no table in it.
     empty: gio::ListStore,
-    /// Holds `unmatched` once a search found nothing.
-    missed: gio::ListStore,
     rows: gtk::FlattenListModel,
-    found_rows: gtk::FlattenListModel,
     nothing: TreeNode,
-    unmatched: TreeNode,
     /// The index last given, which the lists show once its rows land.
     index: RefCell<Arc<SidebarIndex>>,
     /// The index the lists show now.
@@ -94,19 +89,13 @@ pub(crate) struct RowsWorkedOut {
 impl SidebarModel {
     pub(crate) fn new() -> Self {
         let schemas = gio::ListStore::new::<TreeNode>();
-        let found = gio::ListStore::new::<TreeNode>();
         let empty = gio::ListStore::new::<TreeNode>();
-        let missed = gio::ListStore::new::<TreeNode>();
         let index: Arc<SidebarIndex> = Arc::default();
         Self {
             rows: flatten(&schemas, &empty),
-            found_rows: flatten(&found, &missed),
             schemas,
-            found,
             empty,
-            missed,
             nothing: TreeNode::placeholder(&crate::i18n::gettext("No Tables")),
-            unmatched: TreeNode::placeholder(&crate::i18n::gettext("No Matching Tables")),
             index: RefCell::new(index.clone()),
             shown: RefCell::new(index),
             search: RefCell::new(Search::None),
@@ -115,10 +104,9 @@ impl SidebarModel {
         }
     }
 
-    /// Say what the placeholders say: no tables, keys or collections.
-    pub(crate) fn name_placeholders(&self, nothing: &str, unmatched: &str) {
+    /// Say what the placeholder says: no tables, keys or collections.
+    pub(crate) fn name_placeholder(&self, nothing: &str) {
         self.nothing.set_title(nothing);
-        self.unmatched.set_title(unmatched);
     }
 
     pub(crate) fn replace(&self, index: SidebarIndex) -> RowsAsked {
@@ -176,7 +164,6 @@ impl SidebarModel {
             .map(|node| (node.title(), node))
             .collect();
         let mut schemas = Vec::new();
-        let mut matched = Vec::new();
         // A schema named as an engine names the objects of none is a
         // section of its own under the same title.
         let mut titled: HashSet<&str> = HashSet::new();
@@ -200,17 +187,11 @@ impl SidebarModel {
             };
             if let Some(found_rows) = node.found_rows() {
                 found_rows.show(&index, results);
-                if found_rows.n_items() > 0 {
-                    matched.push(node.clone());
-                }
             }
             schemas.push(node);
         }
         store_sync::sync(&self.schemas, &schemas);
-        store_sync::sync(&self.found, &matched);
-        let searched = !matches!(found, Found::Nothing);
         show_alone(&self.empty, &self.nothing, schemas.is_empty());
-        show_alone(&self.missed, &self.unmatched, searched && matched.is_empty());
         Ok(self.shown.replace(index))
     }
 
@@ -220,18 +201,8 @@ impl SidebarModel {
         self.rows.clone().upcast()
     }
 
-    /// The schemas the search finds tables in, then the placeholder once
-    /// it found none.
-    pub(crate) fn found_rows(&self) -> gio::ListModel {
-        self.found_rows.clone().upcast()
-    }
-
     pub(crate) fn schemas(&self) -> gio::ListModel {
         self.schemas.clone().upcast()
-    }
-
-    pub(crate) fn found_schemas(&self) -> gio::ListModel {
-        self.found.clone().upcast()
     }
 
     /// The index the lists show now.
@@ -253,21 +224,21 @@ impl SidebarModel {
 
     /// The schema whose tables hold `table`, and where among them.
     pub(crate) fn locate(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(&self.schemas, table, TreeNode::rows)
+        self.locate_in(table, TreeNode::rows)
     }
 
     /// The schema whose found tables hold `table`, and where among them.
     pub(crate) fn locate_found(&self, table: &TableRef) -> Option<(TreeNode, u32)> {
-        self.locate_in(&self.found, table, TreeNode::found_rows)
+        self.locate_in(table, TreeNode::found_rows)
     }
 
     fn locate_in(
         &self,
-        store: &gio::ListStore,
         table: &TableRef,
         list: fn(&TreeNode) -> Option<super::sidebar_list::SidebarList>,
     ) -> Option<(TreeNode, u32)> {
         let entry = self.shown.borrow().find(table)?;
+        let store = &self.schemas;
         (0..store.n_items())
             .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
             .find_map(|node| {
@@ -341,15 +312,25 @@ mod tests {
             .collect()
     }
 
-    /// Each schema's title and its tables' names, from `rows` or from
-    /// the ones the search found.
-    fn listed(store: &gio::ListModel, found: bool) -> Vec<(String, Vec<String>)> {
+    /// Each schema's title and its tables' names.
+    fn listed(store: &gio::ListModel) -> Vec<(String, Vec<String>)> {
         nodes(store)
             .into_iter()
             .map(|node| {
-                let list = if found { node.found() } else { node.children() };
-                (node.title(), list.map(|list| names(&list)).unwrap_or_default())
+                (
+                    node.title(),
+                    node.children().map(|list| names(&list)).unwrap_or_default(),
+                )
             })
+            .collect()
+    }
+
+    /// Each schema the search found tables in, and their names.
+    fn found(model: &SidebarModel) -> Vec<(String, Vec<String>)> {
+        nodes(&model.schemas())
+            .into_iter()
+            .map(|node| (node.title(), node.found().map(|list| names(&list)).unwrap_or_default()))
+            .filter(|(_, names)| !names.is_empty())
             .collect()
     }
 
@@ -377,7 +358,7 @@ mod tests {
 
         let pair = |title: &str, names: &[&str]| (title.to_owned(), names.iter().map(|&n| n.to_owned()).collect());
         assert_eq!(
-            listed(&model.schemas(), false),
+            listed(&model.schemas()),
             [
                 pair("public", &["Accounts", "users"]),
                 pair("audit", &["log"]),
@@ -385,7 +366,7 @@ mod tests {
                 pair("information_schema", &["tables"]),
             ]
         );
-        assert_eq!(model.found_schemas().n_items(), 0, "results without a search");
+        assert!(found(&model).is_empty(), "results without a search");
         assert_eq!(model.rows().n_items(), 4, "a placeholder beside the schemas");
     }
 
@@ -411,18 +392,15 @@ mod tests {
 
         search(&model, "ORD");
 
-        assert_eq!(
-            listed(&model.found_schemas(), true),
-            [("public".to_owned(), vec!["orders".to_owned()])]
-        );
+        assert_eq!(found(&model), [("public".to_owned(), vec!["orders".to_owned()])]);
         assert_eq!(nodes(&model.schemas()), before, "a search made the schemas anew");
         assert_eq!(changed.get(), 0, "a search changed a schema's tables");
         search(&model, "  ");
-        assert_eq!(model.found_rows().n_items(), 0, "no search, yet results");
+        assert!(found(&model).is_empty(), "no search, yet results");
     }
 
     #[gtk4::test]
-    fn the_placeholders_say_when_there_is_nothing_to_list() {
+    fn the_placeholder_says_when_there_is_nothing_to_list() {
         let model = SidebarModel::new();
         assert_eq!(model.rows().n_items(), 0, "a placeholder before anything was listed");
         replace(&model, &[], &[]);
@@ -432,10 +410,8 @@ mod tests {
         replace(&model, &[object("public", "orders")], &[]);
         search(&model, "zzz");
 
-        assert_eq!(titles(model.found_rows()), ["No Matching Tables"]);
         assert_eq!(titles(model.rows()), ["public"]);
-        search(&model, "ord");
-        assert_eq!(titles(model.found_rows()), ["public"]);
+        assert!(found(&model).is_empty());
     }
 
     #[gtk4::test]
@@ -465,7 +441,7 @@ mod tests {
         );
         assert!(model.settled());
         assert_eq!(
-            listed(&model.found_schemas(), true),
+            found(&model),
             [("public".to_owned(), vec!["users".to_owned()])],
             "the search did not filter the new list"
         );
@@ -489,7 +465,7 @@ mod tests {
 
         replace(&model, &[object("public", "users"), routine, view], &[]);
 
-        assert_eq!(listed(&model.schemas(), false)[0].1.len(), 2);
+        assert_eq!(listed(&model.schemas())[0].1.len(), 2);
         assert_eq!(
             model.kind_of(&TableRef::new(Some("public".to_owned()), "refresh")),
             None
@@ -534,7 +510,7 @@ mod tests {
         replace(&model, &[object("public", "user:1"), object("public", "user:2")], &[]);
 
         assert_eq!(
-            listed(&model.found_schemas(), true),
+            found(&model),
             [("public".to_owned(), vec!["user:1".to_owned(), "user:2".to_owned()])]
         );
     }

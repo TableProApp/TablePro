@@ -1,8 +1,11 @@
 //! The window's sidebar: the saved connections in their groups, and
 //! under each connection open in the window its schemas and their
-//! tables. A search shows what it finds in a second list of the same
-//! shape, so the tree's own rows stay open or folded as the user left
-//! them, and clearing the search shows them as they were.
+//! tables. A search shows what it finds in a flat list beside the tree,
+//! a section for the connections it names and one for each schema it
+//! finds tables in, so the tree's own rows stay open or folded as the
+//! user left them, and clearing the search shows them as they were. The
+//! flat list makes objects only for the rows on screen, which a tree
+//! cannot: GtkTreeListModel reads every child of a row it opens.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -10,7 +13,7 @@ use std::rc::{Rc, Weak};
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{gdk, gio, glib, graphene};
+use gtk4::{gdk, gio, glib, graphene, pango};
 use libadwaita as adw;
 use tablepro_core::meta::TableRef;
 use tablepro_session::SessionKey;
@@ -53,11 +56,10 @@ pub(crate) struct ConnectionTree {
     pub(super) inner: Rc<TreeInner>,
 }
 
-/// One list over the tree, or over what the search finds.
+/// The tree's list, or the list of what the search finds.
 pub(super) struct Pane {
     pub(super) list_view: gtk::ListView,
     pub(super) selection: gtk::SingleSelection,
-    pub(super) model: gtk::TreeListModel,
 }
 
 /// Which of the two lists.
@@ -71,10 +73,19 @@ pub(super) struct TreeInner {
     pub(super) root: gtk::Stack,
     pub(super) tree: Pane,
     pub(super) found: Pane,
-    /// The roots the search finds, over `roots` only while there is a
-    /// search.
-    found_roots: gtk::FilterListModel,
-    /// Which connections the search finds, and the groups holding them.
+    pub(super) rows: gtk::TreeListModel,
+    /// What the search finds: a section per model of `sections`.
+    pub(super) results: gtk::FlattenListModel,
+    /// The connections the search names, then each open session's
+    /// schemas' found tables, in the tree's order.
+    sections: gio::ListStore,
+    /// What each of `sections` is, in its order.
+    headings: RefCell<Vec<Heading>>,
+    /// Every connection, in the tree's order.
+    connections: gio::ListStore,
+    /// The connections the search names, over `connections` only while
+    /// there is a search.
+    named: gtk::FilterListModel,
     matches: gtk::CustomFilter,
     pub(super) popover: gtk::PopoverMenu,
     /// The connections in no group, then the groups, then the
@@ -115,6 +126,14 @@ struct Branch {
     lone: Option<TreeNode>,
 }
 
+/// A section of what the search finds: the session whose tables it
+/// holds, none for the connections, and its heading.
+struct Heading {
+    model: glib::Object,
+    key: Option<SessionKey>,
+    title: String,
+}
+
 /// What the selection follows, and whether its row is still to be
 /// opened and scrolled to: its list was not read yet, or the row's
 /// parents were never opened.
@@ -131,12 +150,13 @@ impl ConnectionTree {
             let finding = tree.clone();
             let matches = gtk::CustomFilter::new(move |item| finding.upgrade().is_some_and(|tree| tree.finds(item)));
             let roots = gio::ListStore::new::<TreeNode>();
-            let found_roots = gtk::FilterListModel::new(None::<gio::ListModel>, Some(matches.clone()));
-            let tree_pane = Pane::new(tree_model(&roots), &crate::i18n::gettext("Connections"));
-            let found_pane = Pane::new(
-                found_model(&found_roots, &matches),
-                &crate::i18n::gettext("Search Results"),
-            );
+            let rows = tree_model(&roots);
+            let connections = gio::ListStore::new::<TreeNode>();
+            let named = gtk::FilterListModel::new(None::<gio::ListModel>, Some(matches.clone()));
+            let sections = gio::ListStore::new::<gio::ListModel>();
+            let results = gtk::FlattenListModel::new(Some(sections.clone()));
+            let tree_pane = Pane::new(&rows, &crate::i18n::gettext("Connections"));
+            let found_pane = Pane::new(&results, &crate::i18n::gettext("Search Results"));
             let root = pages(&tree_pane, &found_pane);
             let popover = gtk::PopoverMenu::from_model(None::<&gio::MenuModel>);
             popover.set_has_arrow(true);
@@ -145,7 +165,12 @@ impl ConnectionTree {
                 root,
                 tree: tree_pane,
                 found: found_pane,
-                found_roots,
+                rows,
+                results,
+                headings: RefCell::new(Vec::new()),
+                sections,
+                connections,
+                named,
                 matches,
                 popover,
                 roots,
@@ -211,7 +236,7 @@ impl ConnectionTree {
         if inner.saved_name(key).is_none() && node.title() != title {
             node.set_title(title);
         }
-        node.set_branches(Some(sidebar.rows()), Some(sidebar.found_rows()));
+        node.set_children(Some(sidebar.rows()));
         let tree = Rc::downgrade(inner);
         let shown = key.clone();
         let observer = sidebar.connect_rows_shown(move || {
@@ -248,7 +273,7 @@ impl ConnectionTree {
         branch.view.disconnect_rows_shown(branch.observer);
         let node = inner.nodes.borrow().get(key).cloned();
         if let Some(node) = &node {
-            node.set_branches(None, None);
+            node.set_children(None);
         }
         inner.refresh_state(key);
         if let Some(node) = &node {
@@ -354,12 +379,12 @@ impl ConnectionTree {
             branch.view.disconnect_rows_shown(branch.observer);
         }
         inner.followed.replace(None);
-        inner.found_roots.set_model(None::<&gio::ListModel>);
+        inner.named.set_model(None::<&gio::ListModel>);
     }
 }
 
 impl Pane {
-    fn new(model: gtk::TreeListModel, label: &str) -> Self {
+    fn new(model: &impl IsA<gio::ListModel>, label: &str) -> Self {
         let selection = gtk::SingleSelection::new(Some(model.clone()));
         selection.set_autoselect(false);
         selection.set_can_unselect(true);
@@ -369,11 +394,7 @@ impl Pane {
         // do; Enter and a double click reach the same activate.
         list_view.set_single_click_activate(true);
         list_view.update_property(&[gtk::accessible::Property::Label(label)]);
-        Self {
-            list_view,
-            selection,
-            model,
-        }
+        Self { list_view, selection }
     }
 }
 
@@ -507,16 +528,87 @@ impl TreeInner {
                 store_sync::sync(&store, members);
             }
         }
+        let in_order: Vec<TreeNode> = ungrouped
+            .iter()
+            .chain(grouped.iter().flat_map(|(_, members)| members))
+            .chain(&others)
+            .cloned()
+            .collect();
         let desired: Vec<TreeNode> = ungrouped.into_iter().chain(group_nodes).chain(others).collect();
         store_sync::sync(&self.roots, &desired);
+        store_sync::sync(&self.connections, &in_order);
         self.reopen(&open);
         if self.searching() {
-            // A group shows by its connections, which this may have moved.
+            // An edit can change what the search names.
             self.matches.changed(gtk::FilterChange::Different);
-            self.expand_found();
         }
+        self.sync_sections();
         self.refresh_page();
         self.reselect();
+    }
+
+    /// The sections of what the search finds: the connections it names,
+    /// then each open session's schemas, in the tree's order. A schema's
+    /// section is its list of found tables, empty while there is no
+    /// search, so typing changes the lists and never the sections.
+    fn sync_sections(&self) {
+        let mut headings = vec![Heading {
+            model: self.named.clone().upcast(),
+            key: None,
+            title: crate::i18n::gettext("Connections"),
+        }];
+        let connections: Vec<TreeNode> = (0..self.connections.n_items())
+            .filter_map(|at| self.connections.item(at).and_downcast::<TreeNode>())
+            .collect();
+        for connection in connections {
+            let Some(key) = connection.key() else {
+                continue;
+            };
+            let Some(view) = self.view_of(&key) else {
+                continue;
+            };
+            let schemas = view.schemas();
+            for schema in (0..schemas.n_items()).filter_map(|at| schemas.item(at).and_downcast::<TreeNode>()) {
+                let Some(found) = schema.found() else {
+                    continue;
+                };
+                headings.push(Heading {
+                    model: found.upcast(),
+                    key: Some(key.clone()),
+                    // Translators: a schema the search found tables in, and its connection.
+                    title: crate::i18n::gettext_f(
+                        "{schema} ({connection})",
+                        &[("schema", &schema.title()), ("connection", &connection.title())],
+                    ),
+                });
+            }
+        }
+        let models: Vec<glib::Object> = headings.iter().map(|heading| heading.model.clone()).collect();
+        self.headings.replace(headings);
+        store_sync::sync(&self.sections, &models);
+    }
+
+    /// The section of what the search finds that holds `position`.
+    fn heading_at<T>(&self, position: u32, read: impl FnOnce(&Heading) -> T) -> Option<T> {
+        let model = self.results.model_for_item(position)?;
+        let headings = self.headings.borrow();
+        headings
+            .iter()
+            .find(|heading| heading.model == *model.upcast_ref::<glib::Object>())
+            .map(read)
+    }
+
+    /// Where `model`'s rows start in what the search finds.
+    fn section_start(&self, model: &glib::Object) -> Option<u32> {
+        let mut start = 0;
+        for at in 0..self.sections.n_items() {
+            let section = self.sections.item(at).and_downcast::<gio::ListModel>()?;
+            if section.upcast_ref::<glib::Object>() == model {
+                return Some(start);
+            }
+            start += section.n_items();
+        }
+        None
     }
 
     /// Take `node` out and put it back where it is: whether a
@@ -549,7 +641,7 @@ impl TreeInner {
 
     /// Open the row of a connection that joined, and its group's.
     fn reveal(&self, node: &TreeNode) {
-        if let Some(row) = self.connection_row(Which::Tree, node, true) {
+        if let Some(row) = self.connection_row(node, true) {
             expand(&row);
         }
     }
@@ -557,7 +649,7 @@ impl TreeInner {
     /// The nodes whose rows are open in the tree, above the tables.
     fn open_rows(&self) -> HashSet<TreeNode> {
         let mut open = HashSet::new();
-        let mut rows = top_rows(&self.tree.model);
+        let mut rows = top_rows(&self.rows);
         while let Some(row) = rows.pop() {
             if !row.is_expanded() {
                 continue;
@@ -578,7 +670,7 @@ impl TreeInner {
         if open.is_empty() {
             return;
         }
-        let mut rows = top_rows(&self.tree.model);
+        let mut rows = top_rows(&self.rows);
         while let Some(row) = rows.pop() {
             let Some(node) = row.item().and_downcast::<TreeNode>() else {
                 continue;
@@ -596,10 +688,7 @@ impl TreeInner {
     /// A list or a search's rows landed for the session `key`.
     fn on_rows_shown(&self, key: &SessionKey) {
         self.open_lone_schema(key);
-        if self.searching() {
-            self.matches.changed(gtk::FilterChange::Different);
-            self.expand_found();
-        }
+        self.sync_sections();
         self.refresh_page();
         self.reselect();
     }
@@ -627,7 +716,7 @@ impl TreeInner {
         let (Some(schema), Some(node)) = (lone, self.nodes.borrow().get(key).cloned()) else {
             return;
         };
-        if let Some(connection) = self.connection_row(Which::Tree, &node, false)
+        if let Some(connection) = self.connection_row(&node, false)
             && connection.is_expanded()
             && let Some(row) = child_row(&connection, &schema)
         {
@@ -647,17 +736,14 @@ impl TreeInner {
         self.query.replace(text.to_owned());
         self.search.replace(ConnectionSearch::new(text));
         match (was, self.searching()) {
-            (false, true) => self.found_roots.set_model(Some(&self.roots)),
-            (true, false) => self.found_roots.set_model(None::<&gio::ListModel>),
+            (false, true) => self.named.set_model(Some(&self.connections)),
+            (true, false) => self.named.set_model(None::<&gio::ListModel>),
             (true, true) => self.matches.changed(gtk::FilterChange::Different),
             (false, false) => {}
         }
         let keys: Vec<SessionKey> = self.branches.borrow().keys().cloned().collect();
         for key in &keys {
             self.tell_search(key);
-        }
-        if self.searching() {
-            self.expand_found();
         }
         self.refresh_page();
         self.reselect();
@@ -680,63 +766,25 @@ impl TreeInner {
         let Some(node) = self.nodes.borrow().get(key).cloned() else {
             return false;
         };
-        self.connection_row(Which::Tree, &node, false)
-            .is_some_and(|row| row.is_expanded())
+        self.connection_row(&node, false).is_some_and(|row| row.is_expanded())
     }
 
-    /// Whether the search finds `item`: a connection it names, or whose
-    /// session lists tables it finds, and a group holding such a one.
+    /// Whether the search names the connection `item`: its name, where
+    /// it connects, its group or tags, as the picker's search reads them.
     fn finds(&self, item: &glib::Object) -> bool {
         let Some(node) = item.downcast_ref::<TreeNode>() else {
-            return true;
+            return false;
         };
-        match node.kind() {
-            NodeKind::Group => node.child_store().is_some_and(|store| {
-                (0..store.n_items())
-                    .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
-                    .any(|connection| self.finds_connection(&connection))
-            }),
-            NodeKind::Connection => self.finds_connection(node),
-            NodeKind::Schema | NodeKind::Placeholder => true,
-        }
-    }
-
-    fn finds_connection(&self, node: &TreeNode) -> bool {
         let Some(key) = node.key() else {
             return false;
         };
-        let named = {
-            let search = self.search.borrow();
-            match &key {
-                SessionKey::Saved(id) => match self.saved.get(*id) {
-                    Some(saved) => search.matches(&saved, &self.saved.tags()),
-                    None => search.matches_name(&node.title()),
-                },
-                SessionKey::File(_) => search.matches_name(&node.title()),
-            }
-        };
-        named
-            || self
-                .view_of(&key)
-                .is_some_and(|view| view.found_schemas().n_items() > 0)
-    }
-
-    /// Open every row the search shows down to the schemas, so what it
-    /// found is in view.
-    fn expand_found(&self) {
-        let mut rows = top_rows(&self.found.model);
-        while let Some(row) = rows.pop() {
-            let Some(node) = row.item().and_downcast::<TreeNode>() else {
-                continue;
-            };
-            match node.kind() {
-                NodeKind::Group | NodeKind::Connection if row.is_expandable() => {
-                    expand(&row);
-                    rows.extend(child_rows(&row));
-                }
-                NodeKind::Schema => expand(&row),
-                _ => {}
-            }
+        let search = self.search.borrow();
+        match &key {
+            SessionKey::Saved(id) => match self.saved.get(*id) {
+                Some(saved) => search.matches(&saved, &self.saved.tags()),
+                None => search.matches_name(&node.title()),
+            },
+            SessionKey::File(_) => search.matches_name(&node.title()),
         }
     }
 
@@ -749,7 +797,7 @@ impl TreeInner {
     fn refresh_page(&self) {
         let page = if !self.searching() {
             TREE_PAGE
-        } else if self.found_roots.n_items() == 0 && self.settled() {
+        } else if self.results.n_items() == 0 && self.settled() {
             NOTHING_PAGE
         } else {
             FOUND_PAGE
@@ -759,10 +807,10 @@ impl TreeInner {
         }
     }
 
-    /// The row of the connection `node` in `which` list, among the roots
-    /// or in its group; `open` opens the group to show it.
-    fn connection_row(&self, which: Which, node: &TreeNode, open: bool) -> Option<gtk::TreeListRow> {
-        let model = &self.pane(which).model;
+    /// The tree's row of the connection `node`, among the roots or in its
+    /// group; `open` opens the group to show it.
+    fn connection_row(&self, node: &TreeNode, open: bool) -> Option<gtk::TreeListRow> {
+        let model = &self.rows;
         if let Some(at) = index_in(&model.model(), node) {
             return model.child_row(at);
         }
@@ -778,17 +826,12 @@ impl TreeInner {
     /// opening the rows above it when `open`.
     fn table_row(
         &self,
-        which: Which,
         key: &SessionKey,
         connection: &gtk::TreeListRow,
         table: &TableRef,
         open: bool,
     ) -> Option<gtk::TreeListRow> {
-        let view = self.view_of(key)?;
-        let (schema, offset) = match which {
-            Which::Tree => view.locate(table),
-            Which::Found => view.locate_found(table),
-        }?;
+        let (schema, offset) = self.view_of(key)?.locate(table)?;
         if open {
             expand(connection);
         }
@@ -805,15 +848,13 @@ impl TreeInner {
     fn show_selection(&self, key: &SessionKey, table: Option<&TableRef>, reveal: bool) -> bool {
         let which = self.shown();
         let pane = self.pane(which);
-        let node = self.nodes.borrow().get(key).cloned();
-        let Some(connection) = node.and_then(|node| self.connection_row(which, &node, reveal)) else {
+        let found = match which {
+            Which::Tree => self.tree_position(key, table, reveal),
+            Which::Found => self.found_position(key, table),
+        };
+        let Some((position, shown)) = found else {
             self.unselect(pane);
             return false;
-        };
-        let found = table.and_then(|table| self.table_row(which, key, &connection, table, reveal));
-        let (position, shown) = match &found {
-            Some(row) => (row.position(), true),
-            None => (connection.position(), table.is_none()),
         };
         if reveal {
             // Without FOCUS: the keyboard stays in the editor or the grid.
@@ -822,6 +863,51 @@ impl TreeInner {
             pane.selection.set_selected(position);
         }
         shown
+    }
+
+    /// Where the tree shows `table`, or the session's connection when it
+    /// does not, and whether that is the row asked for.
+    fn tree_position(&self, key: &SessionKey, table: Option<&TableRef>, reveal: bool) -> Option<(u32, bool)> {
+        let node = self.nodes.borrow().get(key).cloned()?;
+        let connection = self.connection_row(&node, reveal)?;
+        let found = table.and_then(|table| self.table_row(key, &connection, table, reveal));
+        Some(match &found {
+            Some(row) => (row.position(), true),
+            None => (connection.position(), table.is_none()),
+        })
+    }
+
+    /// Where the search's list shows `table`, or the session's connection
+    /// when it names it and the table is not found.
+    fn found_position(&self, key: &SessionKey, table: Option<&TableRef>) -> Option<(u32, bool)> {
+        let view = self.view_of(key);
+        let located = table.zip(view).and_then(|(table, view)| view.locate_found(table));
+        if let Some((schema, offset)) = located {
+            let found = schema.found()?.upcast::<glib::Object>();
+            return Some((self.section_start(&found)? + offset, true));
+        }
+        let node = self.nodes.borrow().get(key).cloned()?;
+        let at = index_in(&self.named, &node)?;
+        Some((self.section_start(self.named.upcast_ref())? + at, table.is_none()))
+    }
+
+    /// What the list `which` shows at `position`, and the session whose
+    /// table or schema it is.
+    fn item_at(&self, which: Which, position: u32) -> Option<(glib::Object, Option<SessionKey>)> {
+        match which {
+            Which::Tree => {
+                let row = self.rows.row(position)?;
+                Some((row.item()?, owning_key(&row)))
+            }
+            Which::Found => {
+                let item = self.results.item(position)?;
+                let key = match item.downcast_ref::<TreeNode>() {
+                    Some(node) => node.key(),
+                    None => self.heading_at(position, |heading| heading.key.clone()).flatten(),
+                };
+                Some((item, key))
+            }
+        }
     }
 
     /// Select again the row the selection follows, once rows moved or
@@ -851,15 +937,11 @@ impl TreeInner {
     /// an open one comes to the front, and a group or schema opens or
     /// folds. Bringing a connection forward leaves its row as it is.
     fn activate(&self, which: Which, position: u32) {
-        let pane = self.pane(which);
-        let Some(row) = pane.model.row(position) else {
-            return;
-        };
-        let Some(item) = row.item() else {
+        let Some((item, key)) = self.item_at(which, position) else {
             return;
         };
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
-            if let Some(view) = owning_key(&row).and_then(|key| self.view_of(&key)) {
+            if let Some(view) = key.and_then(|key| self.view_of(&key)) {
                 view.open(object.table_ref());
             }
             return;
@@ -868,8 +950,12 @@ impl TreeInner {
             return;
         };
         match node.kind() {
-            NodeKind::Connection => activate_connection(&pane.list_view, node),
-            NodeKind::Group | NodeKind::Schema => row.set_expanded(!row.is_expanded()),
+            NodeKind::Connection => activate_connection(&self.pane(which).list_view, node),
+            NodeKind::Group | NodeKind::Schema => {
+                if let Some(row) = self.rows.row(position).filter(|_| which == Which::Tree) {
+                    row.set_expanded(!row.is_expanded());
+                }
+            }
             NodeKind::Placeholder => {}
         }
     }
@@ -885,29 +971,25 @@ impl TreeInner {
         modifiers: gdk::ModifierType,
         pointing: Option<gdk::Rectangle>,
     ) -> bool {
-        let pane = self.pane(which);
-        let Some(row) = pane.model.row(position) else {
+        let Some((item, key)) = self.item_at(which, position) else {
             return false;
         };
-        let table = row
-            .item()
-            .and_downcast::<SidebarObject>()
-            .map(|object| object.table_ref());
+        let table = item.downcast_ref::<SidebarObject>().map(SidebarObject::table_ref);
         match button {
             gdk::BUTTON_SECONDARY => {
-                pane.selection.set_selected(position);
-                self.popup_menu(&row, pointing);
+                self.pane(which).selection.set_selected(position);
+                self.popup_menu(which, position, pointing);
                 true
             }
             gdk::BUTTON_PRIMARY if modifiers.contains(gdk::ModifierType::CONTROL_MASK) => {
-                let (Some(table), Some(view)) = (table, owning_key(&row).and_then(|key| self.view_of(&key))) else {
+                let (Some(table), Some(view)) = (table, key.and_then(|key| self.view_of(&key))) else {
                     return false;
                 };
                 view.open_in_new_tab(table);
                 true
             }
             gdk::BUTTON_MIDDLE => {
-                self.middle.replace(owning_key(&row).zip(table));
+                self.middle.replace(key.zip(table));
                 false
             }
             _ => false,
@@ -931,8 +1013,12 @@ impl TreeInner {
         true
     }
 
-    pub(super) fn popup_menu(&self, row: &gtk::TreeListRow, pointing: Option<gdk::Rectangle>) {
-        let Some(menu) = self.menu_for(row) else {
+    /// Open the menu of the row at `position` in the list `which`.
+    pub(super) fn popup_menu(&self, which: Which, position: u32, pointing: Option<gdk::Rectangle>) {
+        let Some((item, key)) = self.item_at(which, position) else {
+            return;
+        };
+        let Some(menu) = self.menu_for(&item, key) else {
             return;
         };
         self.popover.set_menu_model(Some(&menu));
@@ -944,27 +1030,26 @@ impl TreeInner {
     /// on, over that row. The selection follows the tab in front, not
     /// the keyboard, so it stands in only when no row has focus.
     fn popup_keyboard_menu(&self) {
-        let pane = self.pane(self.shown());
-        let (row, expander) = match focused_row(&pane.list_view) {
-            Some((row, expander)) => (Some(row), Some(expander)),
-            None => {
-                let position = pane.selection.selected();
-                (pane.model.row(position), bound_expander(&pane.list_view, position))
-            }
-        };
-        let Some(row) = row else {
+        let which = self.shown();
+        let pane = self.pane(which);
+        let row = focused_row(&pane.list_view).or_else(|| bound_row(&pane.list_view, pane.selection.selected()));
+        let position = row
+            .as_ref()
+            .and_then(TreeRow::position)
+            .unwrap_or_else(|| pane.selection.selected());
+        if position == gtk::INVALID_LIST_POSITION {
             return;
-        };
-        let pointing = expander.and_then(|expander| bounds_in(&expander, &self.root));
-        self.popup_menu(&row, pointing);
+        }
+        let pointing = row.and_then(|row| bounds_in(&row, &self.root));
+        self.popup_menu(which, position, pointing);
     }
 
     /// The menu of a row. The popover reaches the session's table
     /// actions, and a connection's choices, through groups of its own.
-    fn menu_for(&self, row: &gtk::TreeListRow) -> Option<gio::Menu> {
-        let item = row.item()?;
+    fn menu_for(&self, item: &glib::Object, key: Option<SessionKey>) -> Option<gio::Menu> {
+        let view = key.and_then(|key| self.view_of(&key));
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
-            let view = owning_key(row).and_then(|key| self.view_of(&key))?;
+            let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
             return Some(object_menu(
                 &ObjectKey(object.table_ref()),
@@ -972,14 +1057,14 @@ impl TreeInner {
                 view.affordances(),
             ));
         }
-        let node = item.downcast::<TreeNode>().ok()?;
+        let node = item.downcast_ref::<TreeNode>()?;
         match node.kind() {
             NodeKind::Schema => {
-                let view = owning_key(row).and_then(|key| self.view_of(&key))?;
+                let view = view?;
                 self.popover.insert_action_group(GROUP, Some(view.actions()));
                 schema_menu(node.schema_name().as_deref(), view.affordances(), view.holds())
             }
-            NodeKind::Connection => self.connection_menu(&node),
+            NodeKind::Connection => self.connection_menu(node),
             NodeKind::Group | NodeKind::Placeholder => None,
         }
     }
@@ -1063,24 +1148,6 @@ fn tree_model(roots: &gio::ListStore) -> gtk::TreeListModel {
     })
 }
 
-/// What the search finds, in the tree's shape: each group's connections
-/// through the same filter as the roots, and each open session's schemas
-/// and tables as its search found them.
-fn found_model(roots: &gtk::FilterListModel, matches: &gtk::CustomFilter) -> gtk::TreeListModel {
-    let matches = matches.clone();
-    gtk::TreeListModel::new(roots.clone(), false, false, move |item| {
-        let node = item.downcast_ref::<TreeNode>()?;
-        match node.kind() {
-            NodeKind::Group => {
-                Some(gtk::FilterListModel::new(node.children(), Some(matches.clone())).upcast::<gio::ListModel>())
-            }
-            NodeKind::Connection if node.open() => node.found(),
-            NodeKind::Schema => node.found(),
-            _ => None,
-        }
-    })
-}
-
 /// The tree, what the search finds, and a page that says it found
 /// nothing.
 fn pages(tree: &Pane, found: &Pane) -> gtk::Stack {
@@ -1107,8 +1174,14 @@ fn pages(tree: &Pane, found: &Pane) -> gtk::Stack {
 
 fn connect_pane(inner: &Rc<TreeInner>, which: Which) {
     let pane = inner.pane(which);
-    pane.list_view
-        .set_factory(Some(&row_factory(Rc::downgrade(inner), which)));
+    let tree = Rc::downgrade(inner);
+    match which {
+        Which::Tree => pane.list_view.set_factory(Some(&tree_factory(tree))),
+        Which::Found => {
+            pane.list_view.set_factory(Some(&found_factory(tree.clone())));
+            pane.list_view.set_header_factory(Some(&heading_factory(tree)));
+        }
+    }
     let tree = Rc::downgrade(inner);
     pane.list_view.connect_activate(move |_, position| {
         if let Some(tree) = tree.upgrade() {
@@ -1146,7 +1219,7 @@ fn install_actions(inner: &Rc<TreeInner>) {
 /// The ListItem is not focusable, so the keyboard focus is on the
 /// expander, whose keys open and fold the row and which says to a screen
 /// reader whether it is open.
-fn row_factory(tree: Weak<TreeInner>, which: Which) -> gtk::SignalListItemFactory {
+fn tree_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(move |_, object| {
         let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
@@ -1156,7 +1229,7 @@ fn row_factory(tree: Weak<TreeInner>, which: Which) -> gtk::SignalListItemFactor
         let expander = gtk::TreeExpander::new();
         expander.set_indent_for_icon(true);
         expander.set_child(Some(&TreeRow::new(item)));
-        expander.add_controller(click_gesture(tree.clone(), which, item));
+        expander.add_controller(click_gesture(tree.clone(), Which::Tree, item));
         item.set_child(Some(&expander));
     });
     factory.connect_bind(|_, object| {
@@ -1186,6 +1259,70 @@ fn row_factory(tree: Weak<TreeInner>, which: Which) -> gtk::SignalListItemFactor
             shown.unbind();
         }
         expander.set_list_row(None);
+    });
+    factory
+}
+
+/// The search's rows, which open nothing beneath them.
+fn found_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(move |_, object| {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let row = TreeRow::new(item);
+        row.add_controller(click_gesture(tree.clone(), Which::Found, item));
+        item.set_child(Some(&row));
+    });
+    factory.connect_bind(|_, object| {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        if let (Some(row), Some(shown)) = (item.child().and_downcast::<TreeRow>(), item.item()) {
+            row.bind(&shown);
+        }
+    });
+    factory.connect_unbind(|_, object| {
+        if let Some(row) = object
+            .downcast_ref::<gtk::ListItem>()
+            .and_then(|item| item.child())
+            .and_downcast::<TreeRow>()
+        {
+            row.unbind();
+        }
+    });
+    factory
+}
+
+/// Each section of what the search finds is headed by what it is, as
+/// GtkPlacesSidebar heads its sections: small, bold and dim.
+fn heading_factory(tree: Weak<TreeInner>) -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, object| {
+        let Some(header) = object.downcast_ref::<gtk::ListHeader>() else {
+            return;
+        };
+        let title = gtk::Label::builder()
+            .xalign(0.0)
+            .ellipsize(pango::EllipsizeMode::End)
+            .margin_top(12)
+            .margin_bottom(6)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        title.add_css_class("caption-heading");
+        title.add_css_class("dimmed");
+        header.set_child(Some(&title));
+    });
+    factory.connect_bind(move |_, object| {
+        let Some(header) = object.downcast_ref::<gtk::ListHeader>() else {
+            return;
+        };
+        let (Some(tree), Some(title)) = (tree.upgrade(), header.child().and_downcast::<gtk::Label>()) else {
+            return;
+        };
+        let heading = tree.heading_at(header.start(), |heading| heading.title.clone());
+        title.set_label(heading.as_deref().unwrap_or_default());
     });
     factory
 }
@@ -1246,12 +1383,13 @@ fn owning_key(row: &gtk::TreeListRow) -> Option<SessionKey> {
     None
 }
 
-/// The row whose expander has the keyboard focus, and the expander.
-fn focused_row(list_view: &gtk::ListView) -> Option<(gtk::TreeListRow, gtk::TreeExpander)> {
+/// The row the keyboard focus is in or on: its expander or its eject
+/// button in the tree, the row itself in the search's list.
+fn focused_row(list_view: &gtk::ListView) -> Option<TreeRow> {
     let mut widget = list_view.root()?.focus();
     while let Some(current) = widget {
-        if let Some(expander) = current.downcast_ref::<gtk::TreeExpander>() {
-            return Some((expander.list_row()?, expander.clone()));
+        if let Some(row) = row_in(&current) {
+            return Some(row);
         }
         if &current == list_view.upcast_ref::<gtk::Widget>() {
             return None;
@@ -1261,14 +1399,28 @@ fn focused_row(list_view: &gtk::ListView) -> Option<(gtk::TreeListRow, gtk::Tree
     None
 }
 
-/// The expander of the row at `position`, when it is bound.
-fn bound_expander(list_view: &gtk::ListView, position: u32) -> Option<gtk::TreeExpander> {
+/// The row `widget` is, or holds: an expander's child, or a list item's
+/// in either list.
+fn row_in(widget: &gtk::Widget) -> Option<TreeRow> {
+    if let Some(row) = widget.downcast_ref::<TreeRow>() {
+        return Some(row.clone());
+    }
+    if let Some(expander) = widget.downcast_ref::<gtk::TreeExpander>() {
+        return expander.child().and_downcast();
+    }
+    let child = widget.first_child()?;
+    match child.downcast::<TreeRow>() {
+        Ok(row) => Some(row),
+        Err(child) => child.downcast::<gtk::TreeExpander>().ok()?.child().and_downcast(),
+    }
+}
+
+/// The row at `position`, when it is bound.
+fn bound_row(list_view: &gtk::ListView, position: u32) -> Option<TreeRow> {
     let mut child = list_view.first_child();
     while let Some(widget) = child {
-        if let Some(expander) = widget.first_child().and_downcast::<gtk::TreeExpander>()
-            && expander.list_row().is_some_and(|row| row.position() == position)
-        {
-            return Some(expander);
+        if let Some(row) = row_in(&widget).filter(|row| row.position() == Some(position)) {
+            return Some(row);
         }
         child = widget.next_sibling();
     }

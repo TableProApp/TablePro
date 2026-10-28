@@ -146,17 +146,22 @@ impl WorkspaceShell {
             .transform_to(|_, front: Option<Workspace>| Some(front.is_some()))
             .sync_create()
             .build();
-        let shell = self.downgrade();
-        overview.connect_closure(
-            "create-tab",
-            false,
-            glib::closure_local!(move |_: adw::TabOverview| -> Option<adw::TabPage> {
-                shell
-                    .upgrade()
-                    .and_then(|shell| shell.front())
-                    .and_then(|front| front.create_editor_page())
-            }),
-        );
+    }
+
+    /// The overview's new tab opens an editor in the session in front.
+    /// The typed handler hands the page back as libadwaita expects;
+    /// returning it through a generic closure keeps an extra reference
+    /// and the closed tab is never freed.
+    fn follow_front_for_new_tabs(&self) {
+        let imp = self.imp();
+        let overview = imp.tab_overview.get();
+        if let Some(handler) = imp.create_tab.take() {
+            overview.disconnect(handler);
+        }
+        if let Some(factory) = self.front().and_then(|front| front.tab_factory()) {
+            imp.create_tab
+                .replace(Some(overview.connect_create_tab(move |_| factory.create_editor())));
+        }
     }
 
     /// The tab menu closes pages of every session in the bar, each one
@@ -482,6 +487,7 @@ impl WorkspaceShell {
         }
         self.describe_front();
         self.sync_assistant_column();
+        self.follow_front_for_new_tabs();
         // A front with a tab selected says which row it shows itself.
         if imp.tab_view.selected_page().is_none()
             && let Some(tree) = imp.tree.get()
@@ -608,6 +614,9 @@ impl WorkspaceShell {
         let imp = self.imp();
         for watch in imp.watches.take() {
             watch.unwatch();
+        }
+        if let Some(handler) = imp.create_tab.take() {
+            imp.tab_overview.disconnect(handler);
         }
         if let Some(gate) = imp.history_gate.take() {
             gate.abort();

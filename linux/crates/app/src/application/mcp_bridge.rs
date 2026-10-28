@@ -149,8 +149,10 @@ fn answer(app: &TableProApplication, request: McpRequest) {
 }
 
 /// Open the connection the way the picker does: in the window that has
-/// it, beside the sessions of the active window, or in a new window.
-/// Every prompt the connect needs shows there.
+/// it, in the active window while it only shows the picker, or in a new
+/// window. Every prompt the connect needs shows there. An agent's connect
+/// never joins the sessions the user works in, where it would take the
+/// front and the window's actions.
 fn open(
     app: &TableProApplication,
     services: &AppServices,
@@ -163,15 +165,21 @@ fn open(
         return;
     }
     match services.sessions.window_for(&key) {
-        None => match app.active_window().and_downcast::<SessionWindow>() {
-            Some(window) => {
-                window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
-                window.present();
+        None => {
+            let idle = app
+                .active_window()
+                .and_downcast::<SessionWindow>()
+                .filter(SessionWindow::is_idle);
+            match idle {
+                Some(window) => {
+                    window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
+                    window.present();
+                }
+                None => {
+                    app.open_window(WindowLaunch::Connect(Box::new(connection)));
+                }
             }
-            None => {
-                app.open_window(WindowLaunch::Connect(Box::new(connection)));
-            }
-        },
+        }
         // A failed connect keeps its claim, and its window says why.
         Some(window_id) if !app.imp().windows.keeps_session(window_id, &key) => {
             app.present_window(window_id);

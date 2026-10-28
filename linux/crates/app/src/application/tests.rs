@@ -382,14 +382,8 @@ fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
         .expect("the restored window");
     let shell = window.shell().expect("the shell");
     let front_key = || shell.front().and_then(|front| front.key());
-    let behind = window
-        .workspaces()
-        .into_iter()
-        .find(|workspace| workspace.key().as_ref() == Some(&second))
-        .expect("the second session");
-    let page = behind.create_editor_page().expect("a tab of the second session");
-    shell.tab_view().set_selected_page(&page);
-    wait_until(WAIT, || front_key().as_ref() == Some(&second)).expect("the second session in front");
+    window.send(crate::ui::SessionWindowInput::NewQueryIn(second.clone()));
+    wait_until(WAIT, || front_key().as_ref() == Some(&second)).expect("the second session in front with a tab");
     let SessionKey::File(uri) = &first else {
         unreachable!("a database file opens as a file key");
     };
@@ -1013,8 +1007,8 @@ mod mcp {
     }
 
     #[gtk4::test]
-    fn a_client_opens_a_second_connection_beside_the_first() {
-        let test = TestApp::started("McpBeside");
+    fn a_client_opens_a_second_connection_in_a_window_of_its_own() {
+        let test = TestApp::started("McpApart");
         let host = test.app.answer_mcp(&test.services());
         let (first, second) = (
             saved_file(&test, "shop.db", ExternalAccess::ReadOnly),
@@ -1028,11 +1022,11 @@ mod mcp {
         assert!(matches!(opened_second, OpenOutcome::Open(_)), "{opened_second:?}");
         assert_eq!(
             test.app.windows().len(),
-            1,
-            "the second connection opened a window of its own"
+            2,
+            "the agent's connection joined the sessions the user works in"
         );
         let services = test.services();
-        assert_eq!(
+        assert_ne!(
             services.sessions.window_for(&SessionKey::Saved(first.id)),
             services.sessions.window_for(&SessionKey::Saved(second.id))
         );

@@ -892,10 +892,9 @@ impl Workspace {
             .or_else(|| index.first_in(&view))
     }
 
-    /// A new editor tab, for the overview's new tab, which selects it.
-    pub(crate) fn create_editor_page(&self) -> Option<adw::TabPage> {
-        let factory = self.read(|model| model.factory.clone())?;
-        Some(factory.create_editor())
+    /// What builds the session's tabs.
+    fn tab_factory(&self) -> Option<Rc<tab_factory::TabFactory>> {
+        self.read(|model| model.factory.clone())
     }
 
     /// The session's list of tables, which the connection tree shows

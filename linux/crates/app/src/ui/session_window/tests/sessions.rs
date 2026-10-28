@@ -144,7 +144,7 @@ fn both_sessions_tabs_share_the_one_tab_view() {
     let shell = test.window.shell().expect("the shell");
 
     for workspace in test.window.workspaces() {
-        workspace.create_editor_page().expect("an editor tab");
+        crate::ui::workspace::tests::new_editor_page(&workspace).expect("an editor tab");
     }
 
     assert_eq!(shell.tab_view().n_pages(), 2);
@@ -195,7 +195,7 @@ fn disconnecting_a_session_closes_its_tabs() {
     let (test, other) = open_both("DisconnectTabs");
     let shell = test.window.shell().expect("the shell");
     for workspace in test.window.workspaces() {
-        workspace.create_editor_page().expect("an editor tab");
+        crate::ui::workspace::tests::new_editor_page(&workspace).expect("an editor tab");
     }
 
     test.window
@@ -282,7 +282,7 @@ fn the_windows_actions_go_to_the_session_in_front() {
         .window
         .session_workspace(&other_key)
         .expect("the session that joined");
-    let page = joined.create_editor_page().expect("a tab of its own");
+    let page = crate::ui::workspace::tests::new_editor_page(&joined).expect("a tab of its own");
     shell.tab_view().set_selected_page(&page);
     wait_until(WAIT, || {
         shell.front().and_then(|front| front.key()) == Some(other_key.clone())
@@ -309,10 +309,7 @@ fn a_safe_mode_level_goes_to_the_session_it_was_picked_for() {
     let shell = test.window.shell().expect("the shell");
     let (first_key, other_key) = (test.key(), SessionKey::Saved(other.id));
     let tab_of = |key: &SessionKey| {
-        test.window
-            .session_workspace(key)
-            .expect("the session")
-            .create_editor_page()
+        crate::ui::workspace::tests::new_editor_page(&test.window.session_workspace(key).expect("the session"))
             .expect("a tab")
     };
     let (first_tab, other_tab) = (tab_of(&first_key), tab_of(&other_key));
@@ -580,7 +577,7 @@ fn a_tab_dropped_on_another_window_goes_back_to_its_own() {
         .and_then(|window| window.downcast::<SessionWindow>().ok())
         .expect("a second window");
     wait_until(WAIT, || second.page_name() == "workspace").expect("the second window's session");
-    let page = test.workspace().create_editor_page().expect("a tab");
+    let page = crate::ui::workspace::tests::new_editor_page(&test.workspace()).expect("a tab");
     let home = test.window.shell().expect("the shell").tab_view();
     let away = second.shell().expect("the second shell").tab_view();
 

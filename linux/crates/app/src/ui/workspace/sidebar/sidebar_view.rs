@@ -91,18 +91,10 @@ impl SidebarView {
         self.inner.model.rows()
     }
 
-    /// The schemas the search finds tables in, then a placeholder once
-    /// it found none.
-    pub(crate) fn found_rows(&self) -> gio::ListModel {
-        self.inner.model.found_rows()
-    }
-
+    /// Every schema, in list order, each over its tables and the ones the
+    /// search finds.
     pub(crate) fn schemas(&self) -> gio::ListModel {
         self.inner.model.schemas()
-    }
-
-    pub(crate) fn found_schemas(&self) -> gio::ListModel {
-        self.inner.model.found_schemas()
     }
 
     /// The table actions its menus name, for the tree's menus to reach.
@@ -127,10 +119,9 @@ impl SidebarView {
     /// Name what the list holds as a document engine's collections.
     pub(crate) fn hold_collections(&self) {
         self.inner.holds.set(Holds::Collections);
-        self.inner.model.name_placeholders(
-            &crate::i18n::gettext("No Collections"),
-            &crate::i18n::gettext("No Matching Collections"),
-        );
+        self.inner
+            .model
+            .name_placeholder(&crate::i18n::gettext("No Collections"));
     }
 
     /// List a key-value engine's keys from now on. Its server matches the
@@ -138,10 +129,7 @@ impl SidebarView {
     pub(crate) fn hold_keys(&self, relist: impl Fn() + 'static) {
         self.inner.holds.set(Holds::Keys);
         self.inner.relist.replace(Some(Box::new(relist)));
-        self.inner.model.name_placeholders(
-            &crate::i18n::gettext("No Keys"),
-            &crate::i18n::gettext("No Matching Keys"),
-        );
+        self.inner.model.name_placeholder(&crate::i18n::gettext("No Keys"));
     }
 
     /// Show a new object list under the search, once its rows are worked

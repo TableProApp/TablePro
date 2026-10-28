@@ -20,7 +20,6 @@ use uuid::Uuid;
 use super::connection_tree::{Pane, TreeInner, Which};
 use super::object_key::ObjectKey;
 use super::sidebar_event::SidebarEvent;
-use super::sidebar_list::SidebarList;
 use super::sidebar_object::SidebarObject;
 use super::tree_node::TreeNode;
 use super::tree_row::TreeRow;
@@ -38,7 +37,7 @@ pub(crate) fn listed(view: &SidebarView) -> u32 {
 
 /// How many tables the search found in `view`.
 pub(crate) fn found(view: &SidebarView) -> u32 {
-    count_rows(&view.found_schemas(), TreeNode::found)
+    count_rows(&view.schemas(), TreeNode::found)
 }
 
 fn count_rows(schemas: &gio::ListModel, rows: fn(&TreeNode) -> Option<gio::ListModel>) -> u32 {
@@ -49,18 +48,23 @@ fn count_rows(schemas: &gio::ListModel, rows: fn(&TreeNode) -> Option<gio::ListM
         .sum()
 }
 
-/// How many rows the session's lists made since their index was last
-/// replaced.
-fn made(view: &SidebarView) -> usize {
-    let lists = |schemas: gio::ListModel, rows: fn(&TreeNode) -> Option<gio::ListModel>| {
-        (0..schemas.n_items())
-            .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
-            .filter_map(|node| rows(&node))
-            .filter_map(|list| list.downcast::<SidebarList>().ok())
-            .map(|list| list.imp().objects.borrow().len())
-            .sum::<usize>()
-    };
-    lists(view.schemas(), TreeNode::children) + lists(view.schemas(), TreeNode::found)
+/// How many rows the lists of what the search found made since their
+/// index was last replaced.
+fn made_found(view: &SidebarView) -> usize {
+    let schemas = view.schemas();
+    (0..schemas.n_items())
+        .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
+        .filter_map(|node| node.found_rows())
+        .map(|list| list.imp().objects.borrow().len())
+        .sum()
+}
+
+/// How many row widgets the list `list_view` built.
+fn built(list_view: &gtk::ListView) -> usize {
+    descendants(list_view)
+        .into_iter()
+        .filter(|widget| widget.is::<TreeRow>())
+        .count()
 }
 
 type Events = Rc<RefCell<Vec<SidebarEvent>>>;
@@ -212,40 +216,66 @@ impl Shown {
     /// The list on screen.
     fn pane(&self) -> &Pane {
         let inner = self.inner();
-        if inner.root.visible_child_name().as_deref() == Some("found") {
-            &inner.found
+        match self.which() {
+            Which::Found => &inner.found,
+            Which::Tree => &inner.tree,
+        }
+    }
+
+    /// Which list shows.
+    fn which(&self) -> Which {
+        if self.inner().root.visible_child_name().as_deref() == Some("found") {
+            Which::Found
         } else {
-            &inner.tree
+            Which::Tree
         }
     }
 
     /// Each row's name, in order, of the list on screen.
     fn rows(&self) -> Vec<String> {
-        let model = &self.pane().model;
-        (0..model.n_items())
-            .filter_map(|position| model.row(position))
-            .filter_map(|row| row_title(&row))
+        let selection = &self.pane().selection;
+        (0..selection.n_items())
+            .filter_map(|position| selection.item(position))
+            .filter_map(|item| item_title(&item))
             .collect()
     }
 
+    /// The tree's row named `name`.
     fn row(&self, name: &str) -> gtk::TreeListRow {
-        let model = &self.pane().model;
-        (0..model.n_items())
-            .filter_map(|position| model.row(position))
-            .find(|row| row_title(row).as_deref() == Some(name))
+        let rows = &self.inner().rows;
+        (0..rows.n_items())
+            .filter_map(|position| rows.row(position))
+            .find(|row| item_title(row.upcast_ref()).as_deref() == Some(name))
             .unwrap_or_else(|| panic!("no row named {name}: {:?}", self.rows()))
     }
 
+    /// Where the list on screen shows `name`.
     fn position(&self, name: &str) -> u32 {
-        self.row(name).position()
+        let rows = self.rows();
+        let at = rows
+            .iter()
+            .position(|row| row == name)
+            .unwrap_or_else(|| panic!("no row named {name}: {rows:?}"));
+        u32::try_from(at).unwrap_or(u32::MAX)
     }
 
     fn selected(&self) -> Option<String> {
-        let selection = &self.pane().selection;
-        selection
-            .selected_item()
-            .and_downcast::<gtk::TreeListRow>()
-            .and_then(|row| row_title(&row))
+        self.pane().selection.selected_item().and_then(|item| item_title(&item))
+    }
+
+    /// Open the menu of the row named `name` in the list on screen.
+    fn menu(&self, name: &str) {
+        self.inner().popup_menu(self.which(), self.position(name), None);
+    }
+
+    /// The headings over the sections of what the search finds.
+    fn headings(&self) -> Vec<String> {
+        descendants(&self.inner().found.list_view)
+            .into_iter()
+            .filter(|widget| widget.css_name() == "header" && widget.is_mapped())
+            .filter_map(|header| header.first_child().and_downcast::<gtk::Label>())
+            .map(|title| title.label().to_string())
+            .collect()
     }
 
     fn says_nothing_found(&self) -> bool {
@@ -310,8 +340,13 @@ fn recording(name: &'static str, fired: &Fired, group: &'static str) -> gio::Sim
     action
 }
 
-fn row_title(row: &gtk::TreeListRow) -> Option<String> {
-    let item = row.item()?;
+/// The name of a row's table or node, under the tree's row or as the
+/// search's list holds it.
+fn item_title(item: &glib::Object) -> Option<String> {
+    let item = match item.downcast_ref::<gtk::TreeListRow>() {
+        Some(row) => row.item()?,
+        None => item.clone(),
+    };
     if let Some(object) = item.downcast_ref::<SidebarObject>() {
         return Some(object.name());
     }
@@ -466,13 +501,14 @@ fn a_search_finds_connections_by_tag_host_and_group() {
     shown.search("acme");
     assert_eq!(shown.rows(), ["Beta"]);
     shown.search("clients");
-    assert_eq!(shown.rows(), ["Clients", "Gamma"]);
+    assert_eq!(shown.rows(), ["Gamma"]);
+    assert_eq!(shown.headings(), ["Connections"]);
     shown.search("nothing like it");
     assert!(shown.says_nothing_found());
 }
 
 #[gtk4::test]
-fn a_search_keeps_a_connection_whose_tables_it_finds() {
+fn a_search_lists_the_tables_it_finds_under_their_schema_and_connection() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(&[alpha.clone(), connection("Beta", None)]);
     let (view, _) = session(
@@ -484,7 +520,10 @@ fn a_search_keeps_a_connection_whose_tables_it_finds() {
 
     shown.search("ord");
 
-    wait_until(WAIT, || shown.rows() == ["Alpha", "public", "orders"]).expect("Alpha by its table, and Beta hidden");
+    wait_until(WAIT, || shown.rows() == ["orders"]).expect("only the table it finds");
+    wait_until(WAIT, || shown.headings() == ["public (Alpha)"]).expect("the table's schema and connection");
+    shown.search("alpha");
+    assert_eq!(shown.rows(), ["Alpha"], "a table counted as a connection");
 }
 
 #[gtk4::test]
@@ -500,8 +539,57 @@ fn a_session_joining_under_a_search_lists_only_what_it_finds() {
     );
     shown.open(&alpha, &view);
 
-    assert_eq!(shown.rows(), ["Alpha", "public", "orders"]);
+    assert_eq!(shown.rows(), ["orders"]);
     assert!(!shown.says_nothing_found());
+}
+
+#[gtk4::test]
+fn the_search_list_opens_and_offers_the_menus_of_what_it_finds() {
+    let (alpha, beta) = (connection("Alpha", None), connection("Orders Archive", None));
+    let shown = Shown::new(&[alpha.clone(), beta.clone()]);
+    let (view, events) = session(
+        &[object("public", "orders"), object("public", "users")],
+        every_affordance(),
+    );
+    let key = shown.open(&alpha, &view);
+    shown.tree.select(Some(&key), Some(&table("orders")));
+
+    shown.search("ord");
+    assert_eq!(shown.rows(), ["Orders Archive", "orders"]);
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("orders"),
+        "the table in front lost its row"
+    );
+    gtk::prelude::GtkWindowExt::set_focus(&shown.window, None::<&gtk::Widget>);
+    WidgetExt::activate_action(&shown.tree.widget(), "tree.context-menu", None).expect("the action");
+    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey(table("orders"))));
+    shown.popover().popdown();
+    shown.menu("Orders Archive");
+    assert!(menu_actions(&shown.popover()).contains(&"picker.connect".to_owned()));
+    shown.popover().popdown();
+    let inner = shown.inner();
+    assert!(inner.pressed(
+        Which::Found,
+        shown.position("orders"),
+        gdk::BUTTON_PRIMARY,
+        gdk::ModifierType::CONTROL_MASK,
+        None
+    ));
+    shown.activate("orders");
+    shown.activate("Orders Archive");
+
+    assert_eq!(
+        events.take(),
+        [
+            SidebarEvent::OpenInNewTab(table("orders")),
+            SidebarEvent::Open(table("orders"))
+        ]
+    );
+    assert_eq!(
+        shown.fired(),
+        [("picker.connect".to_owned(), Some(beta.id.to_string()))]
+    );
 }
 
 #[gtk4::test]
@@ -522,7 +610,7 @@ fn clearing_a_search_shows_the_rows_as_they_were() {
     let before = shown.rows();
 
     shown.search("ord");
-    assert_eq!(shown.rows(), ["Work", "Alpha", "public", "orders"]);
+    assert_eq!(shown.rows(), ["orders"]);
     shown.search("");
 
     assert_eq!(shown.rows(), before, "the search folded a row it had hidden");
@@ -552,14 +640,14 @@ fn an_open_connection_with_nothing_to_list_says_so() {
 }
 
 #[gtk4::test]
-fn a_search_over_an_emptied_list_says_nothing_matches_then_no_tables() {
+fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
     let (view, _) = session(&[object("public", "orders")], every_affordance());
     shown.open(&alpha, &view);
 
     shown.search("alp");
-    assert_eq!(shown.rows(), ["Alpha", "No Matching Tables"]);
+    assert_eq!(shown.rows(), ["Alpha"]);
     tables(&view, &[]);
     shown.search("");
 
@@ -656,10 +744,7 @@ fn rows_are_recycled_for_large_catalogs() {
     wait_until(WAIT, || shown.pane().list_view.height() > 0).expect("the list laid out");
     drain_main_context();
 
-    let rows = descendants(&shown.pane().list_view)
-        .into_iter()
-        .filter(|widget| widget.is::<TreeRow>())
-        .count();
+    let rows = built(&shown.pane().list_view);
 
     assert!(rows > 0, "no row was built at all");
     // GtkListView keeps about 200 rows around its viewport, whatever the
@@ -667,26 +752,47 @@ fn rows_are_recycled_for_large_catalogs() {
     assert!(rows <= 210, "{rows} rows for 10,000 tables");
 }
 
+/// The tree opens a schema through GtkTreeListModel, which reads every
+/// table of it; what the search finds is a flat list, which reads only
+/// the rows on screen.
 #[gtk4::test]
-fn a_search_over_an_open_schema_makes_only_the_rows_it_shows() {
+fn a_search_over_an_open_schema_of_50000_tables_makes_only_the_rows_on_screen() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
-    let owned = names(10_000);
+    let owned = names(50_000);
     let borrowed: Vec<&str> = owned.iter().map(String::as_str).collect();
     let (view, _) = session(&[], every_affordance());
     tables(&view, &borrowed);
     let key = shown.open(&alpha, &view);
-    wait_until(WAIT, || shown.pane().list_view.height() > 0).expect("the list laid out");
-    shown.tree.select(Some(&key), Some(&table("t09999")));
+    wait_until(WAIT, || shown.pane().list_view.height() > 0).expect("the tree laid out");
+    assert!(
+        built(&shown.inner().tree.list_view) <= 210,
+        "the tree built a row per table"
+    );
+    shown.tree.select(Some(&key), Some(&table("t49999")));
 
-    for query in ["t0", "9", "t09", ""] {
+    for (query, matching) in [("t", 50_000), ("t0", 10_000), ("t4", 10_000), ("t49", 1_000)] {
+        let before = made_found(&view);
         shown.search(query);
+        let list_view = shown.inner().found.list_view.clone();
+        wait_until(WAIT, || list_view.is_mapped() && built(&list_view) > 0).expect("the results on screen");
+        drain_main_context();
+
+        assert_eq!(found(&view), matching, "{query}");
+        assert!(built(&list_view) <= 210, "{} rows built for {query}", built(&list_view));
+        // GtkListView keeps about 200 rows around its viewport; a list
+        // that made one per table found would make thousands.
+        let made = made_found(&view) - before;
+        assert!(made <= 250, "{made} rows made for {query}");
     }
 
-    assert_eq!(shown.selected().as_deref(), Some("t09999"));
-    // GtkListView keeps about 200 rows around its viewport; a list that
-    // made one per table would reach 10,000.
-    assert!(made(&view) <= 1_000, "{} rows made for 10,000 tables", made(&view));
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("t49999"),
+        "the selection left the table in front"
+    );
+    shown.search("");
+    assert_eq!(shown.selected().as_deref(), Some("t49999"));
 }
 
 #[gtk4::test]
@@ -774,7 +880,7 @@ fn a_connect_shows_a_spinner_and_offers_to_stop() {
 
     assert_eq!(shown.rows(), ["Alpha", "From the Dialog"]);
     assert!(shown.row_widget("From the Dialog").imp().spinner.is_visible());
-    shown.inner().popup_menu(&shown.row("From the Dialog"), None);
+    shown.menu("From the Dialog");
     let popover = shown.popover();
     assert!(popover.is_visible());
     let items = popover.menu_model().map(|menu| menu_items(&menu)).unwrap_or_default();
@@ -811,7 +917,7 @@ fn a_failed_connect_leaves_nothing_open_and_says_why() {
         widget.imp().problem.tooltip_text().as_deref(),
         Some("Connection refused")
     );
-    shown.inner().popup_menu(&row, None);
+    shown.menu("Alpha");
     let actions = menu_actions(&shown.popover());
     assert_eq!(
         actions[..2],
@@ -1049,10 +1155,10 @@ fn the_connection_menu_holds_the_pickers_items() {
     shown.row("Work").set_expanded(true);
     let popover = shown.popover();
 
-    shown.inner().popup_menu(&shown.row("Beta"), None);
+    shown.menu("Beta");
     let closed = popover.menu_model().map(|menu| menu_items(&menu)).unwrap_or_default();
     popover.popdown();
-    shown.inner().popup_menu(&shown.row("Alpha"), None);
+    shown.menu("Alpha");
     let open = menu_actions(&popover);
     let group = popover
         .menu_model()
@@ -1106,7 +1212,7 @@ fn the_schema_menu_follows_the_dialect() {
     shown.open(&alpha, &view);
     let popover = shown.popover();
 
-    shown.inner().popup_menu(&shown.row("sales"), None);
+    shown.menu("sales");
     assert_eq!(
         menu_actions(&popover),
         ["sidebar.new-table", "sidebar.show-schema-diagram"]
@@ -1127,7 +1233,7 @@ fn the_schema_menu_follows_the_dialect() {
         can_create_table: false,
         ..every_affordance()
     });
-    shown.inner().popup_menu(&shown.row("sales"), None);
+    shown.menu("sales");
     assert_eq!(menu_actions(&popover), ["sidebar.show-schema-diagram"]);
     popover.popdown();
 }
@@ -1163,9 +1269,9 @@ fn collections_and_keys_offer_no_er_diagram() {
     shown.open(&cache, &keys);
     let popover = shown.popover();
 
-    shown.inner().popup_menu(&shown.row("shop"), None);
+    shown.menu("shop");
     assert!(!popover.is_visible(), "documents have no keys to draw");
-    shown.inner().popup_menu(&shown.row("db0"), None);
+    shown.menu("db0");
     assert!(!popover.is_visible(), "keys have no diagram");
     keys.actions()
         .activate_action("show-schema-diagram", Some(&None::<String>.to_variant()));
@@ -1239,7 +1345,7 @@ fn focus_row(shown: &Shown, name: &str) {
             widget
                 .downcast_ref::<gtk::TreeExpander>()
                 .and_then(|expander| expander.list_row())
-                .and_then(|row| row_title(&row))
+                .and_then(|row| item_title(row.upcast_ref()))
                 .as_deref()
                 == Some(name)
         })
@@ -1352,12 +1458,7 @@ mod real_keys {
 fn front_table(test: &TestWindow) -> Option<String> {
     let tree = crate::ui::workspace::tests::shell_of(&test.workspace()).tree()?;
     let inner = &tree.inner;
-    inner
-        .tree
-        .selection
-        .selected_item()
-        .and_downcast::<gtk::TreeListRow>()
-        .and_then(|row| row_title(&row))
+    inner.tree.selection.selected_item().and_then(|item| item_title(&item))
 }
 
 fn shown_tables(workspace: &crate::ui::workspace::Workspace) -> Option<u32> {

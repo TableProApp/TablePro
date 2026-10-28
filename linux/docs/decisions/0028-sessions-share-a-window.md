@@ -22,7 +22,7 @@ The shell is what a window has once: the header bars, the sidebar, the one `AdwT
 - The session of the tab in front speaks for the window. The shell's `front` property follows the tab view's selection, and the header bars, the banners, the assistant's pane and the window's actions read it through bindings, so a change of tab never enters a workspace that is handling input.
 - A failure while other sessions are open is an event in this window, so it is a toast with a Details button rather than a page or a new window. The GNOME HIG: "Never pop up a dialog window unexpectedly."
 - A closed connection is a leaf in the tree, and activating it connects, as a GNOME Files sidebar row mounts a volume. A connection gets its schemas once its session joins, so neither a drag hovering over a row nor an expander starts a network connect.
-- Each schema's tables are a lazy list of their own, filled from one search worked out off the GTK thread, so a catalog of 50,000 tables makes objects only for the rows on screen.
+- A search is worked out off the GTK thread and shows what it finds as a flat list, one section per schema in a `GtkFlattenListModel`, so typing over 50,000 tables makes objects only for the rows on screen. Opening a schema in the tree makes one light object per table, since `GtkTreeListModel` reads every child of a row it opens.
 
 ## Consequences
 

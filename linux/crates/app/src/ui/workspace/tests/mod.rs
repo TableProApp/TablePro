@@ -28,6 +28,11 @@ pub(crate) fn shell_of(workspace: &Workspace) -> WorkspaceShell {
         .expect("a workspace the window holds is in its shell")
 }
 
+/// A new editor tab in `workspace`, which the tab view selects.
+pub(crate) fn new_editor_page(workspace: &Workspace) -> Option<adw::TabPage> {
+    Some(workspace.tab_factory()?.create_editor())
+}
+
 /// The change tracker of `workspace`'s tab `tab`, while the tab is open.
 pub(crate) fn row_tracker(
     workspace: &Workspace,

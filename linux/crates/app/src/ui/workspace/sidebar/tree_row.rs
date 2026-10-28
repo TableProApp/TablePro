@@ -129,14 +129,20 @@ impl TreeRow {
         row
     }
 
-    /// What the row shows: a table, a key, or a node of the tree.
+    /// What the row shows: a table, a key, or a node of the tree, under
+    /// the tree's row or, in the search's list, as it is.
     fn shown(&self) -> Option<glib::Object> {
-        self.imp()
-            .item
-            .upgrade()?
-            .item()
-            .and_downcast::<gtk::TreeListRow>()?
-            .item()
+        let item = self.imp().item.upgrade()?.item()?;
+        match item.downcast::<gtk::TreeListRow>() {
+            Ok(row) => row.item(),
+            Err(item) => Some(item),
+        }
+    }
+
+    /// Where the row is in its list, while it shows one.
+    pub(crate) fn position(&self) -> Option<u32> {
+        let item = self.imp().item.upgrade()?;
+        item.item().is_some().then(|| item.position())
     }
 
     /// Show `object`, the item of the row's list row.
@@ -170,8 +176,8 @@ impl TreeRow {
         // A recycled row usually shows a table again, and setting the
         // same icon or description still redraws or re-announces it.
         let icon = object.icon_name();
-        if imp.icon.icon_name().as_deref() != Some(icon.as_str()) {
-            imp.icon.set_icon_name(Some(&icon));
+        if imp.icon.icon_name().as_deref() != Some(icon) {
+            imp.icon.set_icon_name(Some(icon));
         }
         set_classes(&imp.icon, &[]);
         imp.icon.set_visible(true);

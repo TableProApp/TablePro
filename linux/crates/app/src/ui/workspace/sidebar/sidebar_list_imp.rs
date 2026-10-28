@@ -44,9 +44,8 @@ impl ListModelImpl for SidebarList {
             return Some(object.clone().upcast());
         }
         let index = self.index.borrow();
-        let row = index.entry(entry)?;
-        let section = index.section(row.section)?;
-        let object = SidebarObject::new(&row.table, row.kind, &section.title);
+        index.entry(entry)?;
+        let object = SidebarObject::new(&index, entry);
         self.objects.borrow_mut().insert(entry, object.clone());
         Some(object.upcast())
     }

@@ -82,17 +82,19 @@ impl FileCheck {
     }
 }
 
-/// The question for a file at `kind`, or `None` when it opens without
-/// one.
-pub(crate) fn for_location(kind: &FileLocationKind) -> Option<adw::AlertDialog> {
-    kind.requires_read_only_prompt().then(location_dialog)
+/// The question for the file `name` at `kind`, or `None` when it opens
+/// without one. It names the file, since several connects of one window
+/// can ask at once.
+pub(crate) fn for_location(kind: &FileLocationKind, name: &str) -> Option<adw::AlertDialog> {
+    kind.requires_read_only_prompt().then(|| location_dialog(name))
 }
 
-fn location_dialog() -> adw::AlertDialog {
+fn location_dialog(name: &str) -> adw::AlertDialog {
     let dialog = adw::AlertDialog::new(
         Some(&crate::i18n::gettext("Database on a Network Filesystem")),
-        Some(&crate::i18n::gettext(
-            "A database on a network or FUSE filesystem can be corrupted when more than one program writes to it.",
+        Some(&crate::i18n::gettext_f(
+            "“{name}” is on a network or FUSE filesystem. A database there can be corrupted when more than one program writes to it.",
+            &[("name", name)],
         )),
     );
     dialog.add_responses(&[
@@ -159,7 +161,15 @@ impl SessionWindow {
     /// over this window, whatever else it shows. The connect stays among
     /// the window's until the answer.
     pub(super) fn ask_about_location(&self, id: u64, kind: &FileLocationKind) {
-        let Some(dialog) = for_location(kind) else {
+        let name = self
+            .imp()
+            .connects
+            .borrow()
+            .iter()
+            .find(|pending| pending.id == id)
+            .map(|pending| super::source_name(&pending.source))
+            .unwrap_or_default();
+        let Some(dialog) = for_location(kind, &name) else {
             self.send(SessionWindowInput::LocationChosen {
                 id,
                 choice: LocationChoice::ReadWrite,
@@ -239,7 +249,7 @@ mod tests {
     fn default_response_is_read_only() {
         adw::init().expect("libadwaita initialises under the test backend");
 
-        let dialog = for_location(&on_a_share(Path::new("/mnt/share/app.db"))).expect("a question");
+        let dialog = for_location(&on_a_share(Path::new("/mnt/share/app.db")), "app.db").expect("a question");
 
         assert_eq!(dialog.default_response().as_deref(), Some(READ_ONLY));
         assert_eq!(dialog.close_response(), CANCEL);
@@ -251,7 +261,11 @@ mod tests {
             dialog.response_appearance(READ_WRITE),
             adw::ResponseAppearance::Destructive
         );
-        assert!(for_location(&FileLocationKind::Local).is_none());
+        assert!(
+            dialog.body().contains("“app.db”"),
+            "the question does not name its file"
+        );
+        assert!(for_location(&FileLocationKind::Local, "app.db").is_none());
     }
 
     #[gtk4::test]
@@ -259,7 +273,7 @@ mod tests {
         adw::init().expect("libadwaita initialises under the test backend");
         let portal = FileLocationKind::portal(None, |_| true, |_| FileLocationKind::Local);
 
-        let dialog = for_location(&portal).expect("a question for a portal file");
+        let dialog = for_location(&portal, "app.db").expect("a question for a portal file");
 
         assert_eq!(dialog.default_response().as_deref(), Some(READ_ONLY));
     }
