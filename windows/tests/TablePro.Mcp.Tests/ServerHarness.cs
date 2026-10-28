@@ -30,10 +30,11 @@ internal sealed class ServerHarness : IAsyncDisposable
 
     public HttpClient Http { get; }
 
-    public static async Task<ServerHarness> StartAsync(FakeHost? host = null)
+    public static async Task<ServerHarness> StartAsync(FakeHost? host = null, Func<McpServerOptions, McpServerOptions>? configure = null)
     {
         host ??= new FakeHost();
-        var server = new McpServer(host, McpAccessToken.Generate(), new McpServerOptions { Port = 0, ServerVersion = "9.9.9", TimeoutGrace = TimeSpan.Zero });
+        var options = new McpServerOptions { Port = 0, ServerVersion = "9.9.9", TimeoutGrace = TimeSpan.Zero };
+        var server = new McpServer(host, McpAccessToken.Generate(), configure?.Invoke(options) ?? options);
         await server.StartAsync(TestContext.Current.CancellationToken);
         var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{server.Port}") };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", server.Token.Value);

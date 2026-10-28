@@ -1,5 +1,7 @@
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -71,11 +73,22 @@ internal sealed partial class HeaderCell : Grid
         _sortGlyph.Foreground = secondary;
     }
 
+    internal string ColumnName => _name.Text;
+
+    /// <summary>Null when the column is not sorted on, else whether it sorts descending.</summary>
+    internal bool? Sort { get; private set; }
+
+    /// <summary>What a click does, for the header's Invoke pattern.</summary>
+    internal void RequestSort() => Clicked?.Invoke(this, new SortRequestedEventArgs(_column, false));
+
     public void SetSort(bool? descending)
     {
+        Sort = descending;
         _sortGlyph.Visibility = descending is null ? Visibility.Collapsed : Visibility.Visible;
         _sortGlyph.Glyph = descending == true ? "" : "";
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new HeaderCellAutomationPeer(this);
 
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
@@ -116,6 +129,33 @@ internal sealed partial class HeaderCell : Grid
 
         // The tap that ends a drag must not also sort, so the flag clears after the tap is dispatched.
         DispatcherQueue.TryEnqueue(() => _resizing = false);
+    }
+
+    /// <summary>
+    /// A column header as a screen reader sees it: a header item named for the column, saying how it sorts, that sorts
+    /// when invoked. Its text block and glyph are left out, since the name already says what they show.
+    /// </summary>
+    private sealed partial class HeaderCellAutomationPeer(HeaderCell owner) : FrameworkElementAutomationPeer(owner), IInvokeProvider
+    {
+        public void Invoke() => owner.RequestSort();
+
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.HeaderItem;
+
+        protected override string GetClassNameCore() => "DataGridColumnHeader";
+
+        protected override string GetNameCore() => owner.ColumnName;
+
+        protected override string GetItemStatusCore() => owner.Sort switch
+        {
+            true => "sorted descending",
+            false => "sorted ascending",
+            null => string.Empty,
+        };
+
+        protected override object? GetPatternCore(PatternInterface patternInterface) =>
+            patternInterface == PatternInterface.Invoke ? this : base.GetPatternCore(patternInterface);
+
+        protected override IList<AutomationPeer>? GetChildrenCore() => null;
     }
 
     /// <summary>The resize cursor is only settable from a subclass through ProtectedCursor.</summary>

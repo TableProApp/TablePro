@@ -6,11 +6,108 @@ using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Mcp.Audit;
+using TablePro.Mcp.Auth;
 
 namespace TablePro.Mcp.Tests;
 
+/// <summary>A clock tests move by hand, in UTC so local and universal times agree.</summary>
+internal sealed class ManualTime(DateTimeOffset start) : TimeProvider
+{
+    private DateTimeOffset _now = start;
+
+    public ManualTime()
+        : this(new DateTimeOffset(2026, 10, 28, 12, 0, 0, TimeSpan.Zero))
+    {
+    }
+
+    public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public void Advance(TimeSpan by) => _now += by;
+}
+
 internal sealed class FakeHost : IMcpHost
 {
+    public Func<McpPairingRequest, CancellationToken, Task<McpPairingApproval?>> ApprovePairing { get; set; } =
+        (_, _) => Task.FromResult<McpPairingApproval?>(null);
+
+    public List<McpPairingRequest> PairingRequests { get; } = [];
+
+    /// <summary>The saved grants, as a credential vault and file would hold them.</summary>
+    public Dictionary<Guid, McpClientGrant> SavedClients { get; } = [];
+
+    public int ClientSaves { get; private set; }
+
+    public List<McpAuditEntry> Audit { get; } = [];
+
+    public Task<McpPairingApproval?> RequestPairingApprovalAsync(McpPairingRequest request, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            PairingRequests.Add(request);
+        }
+
+        return ApprovePairing(request, cancellationToken);
+    }
+
+    public Exception? AuditFailure { get; init; }
+
+    public Exception? ClientsFailure { get; init; }
+
+    public int AuditAttempts { get; private set; }
+
+    public ValueTask<IReadOnlyList<McpClientGrant>> LoadClientsAsync(CancellationToken cancellationToken)
+    {
+        if (ClientsFailure is { } failure)
+        {
+            throw failure;
+        }
+
+        lock (_lock)
+        {
+            return ValueTask.FromResult<IReadOnlyList<McpClientGrant>>([.. SavedClients.Values]);
+        }
+    }
+
+    public ValueTask SaveClientAsync(McpClientGrant client, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            SavedClients[client.Id] = client;
+            ClientSaves++;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DeleteClientAsync(Guid clientId, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            SavedClients.Remove(clientId);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask RecordAuditAsync(McpAuditEntry entry, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            AuditAttempts++;
+            if (AuditFailure is { } failure)
+            {
+                throw failure;
+            }
+
+            Audit.Add(entry);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     private readonly Lock _lock = new();
 
     public List<ConnectionProfile> Profiles { get; } = [];

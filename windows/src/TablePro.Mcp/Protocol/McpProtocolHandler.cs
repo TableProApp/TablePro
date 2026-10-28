@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
 using TablePro.Mcp.Audit;
+using TablePro.Mcp.Auth;
 using TablePro.Mcp.Tools;
 
 namespace TablePro.Mcp.Protocol;
@@ -32,7 +33,7 @@ public static class McpProtocolVersions
 internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpServerOptions options)
 {
     /// <summary>The bytes of the response, or null for a notification or a client's response, which get none.</summary>
-    public async Task<byte[]?> HandleAsync(ReadOnlyMemory<byte> body, CancellationToken cancellationToken)
+    public async Task<byte[]?> HandleAsync(ReadOnlyMemory<byte> body, McpPrincipal principal, CancellationToken cancellationToken)
     {
         JsonDocument document;
         try
@@ -90,7 +91,7 @@ internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpS
                     w.WriteEndObject();
                 }),
                 "tools/list" => Result(id, ListTools),
-                "tools/call" => await CallToolAsync(id, parameters, cancellationToken),
+                "tools/call" => await CallToolAsync(id, parameters, principal, cancellationToken),
                 _ => Error(id, JsonRpcErrorCodes.MethodNotFound, $"Method not found: {method}"),
             };
         }
@@ -137,7 +138,7 @@ internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpS
         w.WriteEndObject();
     }
 
-    private async Task<byte[]> CallToolAsync(JsonElement id, JsonElement parameters, CancellationToken cancellationToken)
+    private async Task<byte[]> CallToolAsync(JsonElement id, JsonElement parameters, McpPrincipal principal, CancellationToken cancellationToken)
     {
         if (parameters.ValueKind != JsonValueKind.Object
             || !parameters.TryGetProperty("name", out var nameElement) || nameElement.ValueKind != JsonValueKind.String)
@@ -152,7 +153,7 @@ internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpS
         }
 
         parameters.TryGetProperty("arguments", out var arguments);
-        var record = new McpCallRecord();
+        var record = new McpCallRecord { Principal = principal };
         var started = Stopwatch.GetTimestamp();
         string? text = null;
         McpToolException? failure = null;
@@ -193,7 +194,9 @@ internal sealed class McpProtocolHandler(McpTools tools, McpAuditLog audit, McpS
             failure?.WireCode,
             failure?.Message,
             record.Sql,
-            Stopwatch.GetElapsedTime(started)));
+            Stopwatch.GetElapsedTime(started),
+            principal.ClientId,
+            principal.Name));
 
         return Result(id, w =>
         {

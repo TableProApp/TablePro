@@ -22,6 +22,9 @@ public sealed record McpServerOptions
 
     public int AuditCapacity { get; init; } = 500;
 
+    /// <summary>How long a pairing request waits for the user before it counts as declined.</summary>
+    public TimeSpan PairingApprovalTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
     /// <summary>The longest statement <c>execute_query</c> takes, in UTF-8 bytes.</summary>
     public int MaxQueryBytes { get; init; } = 100 * 1024;
 
@@ -46,4 +49,7 @@ public sealed record McpServerOptions
     /// fire first; this backstop covers a driver that ignores it. Tests shorten it.
     /// </summary>
     internal TimeSpan TimeoutGrace { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The clock pairing codes, lockouts and token expiry read. Tests move it forward.</summary>
+    internal TimeProvider Time { get; init; } = TimeProvider.System;
 }

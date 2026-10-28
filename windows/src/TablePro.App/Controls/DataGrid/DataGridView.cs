@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -85,6 +86,10 @@ public sealed partial class DataGridView : UserControl
     private IReadOnlyList<(int Column, bool Descending)> _sort = [];
     private Brushes _brushes;
 
+    // Created by the framework only once an automation client (Narrator, Inspect) looks at the grid; until then every
+    // notification below is a null check.
+    private DataGridAutomationPeer? _automation;
+
     public DataGridView()
     {
         IsTabStop = true;
@@ -161,6 +166,13 @@ public sealed partial class DataGridView : UserControl
         _rowNumberHost.SizeChanged += (_, e) => _rowNumberHost.Clip = new RectangleGeometry { Rect = new Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
 
         Content = _root;
+        GotFocus += (_, e) =>
+        {
+            if (ReferenceEquals(e.OriginalSource, this))
+            {
+                _automation?.FocusEntered();
+            }
+        };
         KeyDown += OnKeyDown;
         CharacterReceived += OnCharacterReceived;
         ActualThemeChanged += (_, _) => ApplyTheme();
@@ -220,6 +232,7 @@ public sealed partial class DataGridView : UserControl
 
             UpdateExtent();
             UpdateViewport(force: true);
+            _automation?.Invalidate();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -288,6 +301,7 @@ public sealed partial class DataGridView : UserControl
         _activeColumn = column;
         UpdateSelectionVisuals();
         ScrollIntoView(row, column);
+        _automation?.ActiveCellMoved(extend);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -304,6 +318,7 @@ public sealed partial class DataGridView : UserControl
         _activeColumn = _source.Columns.Count - 1;
         _wholeRows = true;
         UpdateSelectionVisuals();
+        _automation?.ActiveCellMoved(extended: true);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -429,6 +444,152 @@ public sealed partial class DataGridView : UserControl
 
     public void Refresh() => UpdateViewport(force: true);
 
+    internal IReadOnlyList<HeaderCell> HeaderElements => _headers;
+
+    internal ScrollViewer Scroller => _scroller;
+
+    internal TextBox EditorElement => _editor;
+
+    /// <summary>The cells inside the viewport, without the overscan rows realized around it.</summary>
+    internal (int FirstRow, int LastRow, int FirstColumn, int LastColumn) VisibleCellRange()
+    {
+        if (_source is null || _source.RowCount == 0 || _widths.Length == 0)
+        {
+            return (0, -1, 0, -1);
+        }
+
+        var top = _scroller.VerticalOffset;
+        var height = _scroller.ViewportHeight > 0 ? _scroller.ViewportHeight : ActualHeight;
+        var firstRow = Math.Clamp((int)(top / _rowHeight), 0, _source.RowCount - 1);
+        var lastRow = Math.Clamp((int)Math.Ceiling((top + height) / _rowHeight) - 1, firstRow, _source.RowCount - 1);
+
+        var left = _scroller.HorizontalOffset;
+        var width = _scroller.ViewportWidth > 0 ? _scroller.ViewportWidth : ActualWidth;
+        var found = Array.BinarySearch(_offsets, left);
+        var firstColumn = Math.Clamp(found >= 0 ? found : ~found - 1, 0, _widths.Length - 1);
+        var lastColumn = firstColumn;
+        while (lastColumn < _widths.Length - 1 && _offsets[lastColumn + 1] < left + width)
+        {
+            lastColumn++;
+        }
+
+        return (firstRow, lastRow, firstColumn, lastColumn);
+    }
+
+    internal bool IsCellVisible(int row, int column)
+    {
+        var (firstRow, lastRow, firstColumn, lastColumn) = VisibleCellRange();
+        return row >= firstRow && row <= lastRow && column >= firstColumn && column <= lastColumn;
+    }
+
+    internal string ColumnName(int column) => _source is { } source && column < source.Columns.Count ? source.Columns[column].Name : string.Empty;
+
+    internal string ColumnType(int column) => _source is { } source && column < source.Columns.Count ? source.Columns[column].DataType : string.Empty;
+
+    /// <summary>The cell's text as a screen reader should say it: the whole value, not the shortened one drawn.</summary>
+    internal string CellText(int row, int column)
+    {
+        if (_source is not { } source || row >= source.RowCount || column >= source.Columns.Count)
+        {
+            return string.Empty;
+        }
+
+        var value = source.GetValue(row, column);
+        return value is null ? CellFormatter.NullText : CellFormatter.Format(value) is { Length: > 0 } text ? text : "empty";
+    }
+
+    /// <summary>What the cell's color and decoration say to a sighted user: changed, a new or deleted row, NULL.</summary>
+    internal string CellStatus(int row, int column)
+    {
+        if (_source is not { } source || row >= source.RowCount || column >= source.Columns.Count)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>(3);
+        switch (source.GetRowState(row))
+        {
+            case RowEditState.Inserted:
+                parts.Add("new row");
+                break;
+            case RowEditState.Deleted:
+                parts.Add("deleted row");
+                break;
+        }
+
+        if (source.IsCellModified(row, column))
+        {
+            parts.Add("modified");
+        }
+
+        if (source.GetValue(row, column) is null)
+        {
+            parts.Add("null");
+        }
+
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// The cell's rectangle as UI Automation wants it from a peer with no element of its own: relative to the window's
+    /// client area in physical pixels, cut to the viewport, empty when scrolled away. The framework adds the window's
+    /// screen position but does not scale, so the layout rectangle is scaled here.
+    /// </summary>
+    internal Rect CellBoundsForAutomation(int row, int column)
+    {
+        if (_source is null || column < 0 || column >= _widths.Length || row < 0 || row >= _source.RowCount || XamlRoot is null)
+        {
+            return Rect.Empty;
+        }
+
+        try
+        {
+            var cell = _canvas.TransformToVisual(null).TransformBounds(new Rect(_offsets[column], row * _rowHeight, _widths[column], _rowHeight));
+            var viewport = _scroller.TransformToVisual(null).TransformBounds(new Rect(0, 0, _scroller.ViewportWidth, _scroller.ViewportHeight));
+            var left = Math.Max(cell.Left, viewport.Left);
+            var top = Math.Max(cell.Top, viewport.Top);
+            var right = Math.Min(cell.Right, viewport.Right);
+            var bottom = Math.Min(cell.Bottom, viewport.Bottom);
+            var scale = XamlRoot.RasterizationScale;
+            return right > left && bottom > top ? new Rect(left * scale, top * scale, (right - left) * scale, (bottom - top) * scale) : Rect.Empty;
+        }
+        catch (ArgumentException)
+        {
+            // The grid left the visual tree between the client's question and this answer.
+            return Rect.Empty;
+        }
+    }
+
+    /// <summary>The cell under a point given as <see cref="CellBoundsForAutomation"/> gives rectangles, or null outside the cells.</summary>
+    internal GridCell? CellAt(Point automationPoint)
+    {
+        if (_source is null || XamlRoot is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var scale = XamlRoot.RasterizationScale;
+            var windowPoint = new Point(automationPoint.X / scale, automationPoint.Y / scale);
+            var point = TransformToVisual(null).Inverse.TransformPoint(windowPoint);
+            var viewport = _scroller.TransformToVisual(this).TransformBounds(new Rect(0, 0, _scroller.ViewportWidth, _scroller.ViewportHeight));
+            if (!viewport.Contains(point))
+            {
+                return null;
+            }
+
+            var (row, column) = HitTest(_canvas.TransformToVisual(null).Inverse.TransformPoint(windowPoint));
+            return row < 0 ? null : new GridCell(row, column);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => _automation = new DataGridAutomationPeer(this);
+
     private static bool SameColumns(IReadOnlyList<ResultColumn> a, IReadOnlyList<ResultColumn> b)
     {
         if (a.Count != b.Count)
@@ -455,6 +616,7 @@ public sealed partial class DataGridView : UserControl
             UpdateExtent();
             UpdateViewport(force: true);
             UpdateSelectionVisuals();
+            _automation?.Invalidate();
         });
     }
 
@@ -763,6 +925,7 @@ public sealed partial class DataGridView : UserControl
         }
 
         UpdateRowNumbers(firstRow, lastRow);
+        _automation?.Prune();
     }
 
     private GridRowPresenter CreatePresenter()
@@ -988,6 +1151,7 @@ public sealed partial class DataGridView : UserControl
         _wholeRows = true;
         UpdateSelectionVisuals();
         ScrollIntoView(row, -1);
+        _automation?.ActiveCellMoved(extended: true);
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -1150,9 +1314,16 @@ public sealed partial class DataGridView : UserControl
         _editRow = _editColumn = -1;
         _editor.Visibility = Visibility.Collapsed;
 
-        if (!string.Equals(text, currentText, StringComparison.Ordinal) && !_source.TrySetValue(row, column, text, out var error))
+        if (!string.Equals(text, currentText, StringComparison.Ordinal))
         {
-            EditRejected?.Invoke(this, error ?? "The value was not accepted.");
+            if (_source.TrySetValue(row, column, text, out var error))
+            {
+                _automation?.ActiveValueChanged(currentText, text);
+            }
+            else
+            {
+                EditRejected?.Invoke(this, error ?? "The value was not accepted.");
+            }
         }
 
         if (move is { } m)

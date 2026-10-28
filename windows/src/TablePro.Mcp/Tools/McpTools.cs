@@ -6,12 +6,16 @@ using TablePro.Core.Drivers;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 using TablePro.Core.Sql;
+using TablePro.Mcp.Auth;
 
 namespace TablePro.Mcp.Tools;
 
 /// <summary>What a call touched, for the audit log, filled in as the tool learns it.</summary>
 internal sealed class McpCallRecord
 {
+    /// <summary>Who called, which decides the connections the call can see and the most it may do on them.</summary>
+    public McpPrincipal Principal { get; init; } = McpPrincipal.Owner;
+
     public Guid? ConnectionId { get; set; }
 
     public string? ConnectionName { get; set; }
@@ -28,7 +32,7 @@ internal sealed class McpTools(IMcpHost host, McpServerOptions options)
 
     public Task<string> CallAsync(string name, JsonElement arguments, McpCallRecord record, CancellationToken cancellationToken) => name switch
     {
-        "list_connections" => ListConnectionsAsync(arguments, cancellationToken),
+        "list_connections" => ListConnectionsAsync(arguments, record, cancellationToken),
         "connect" => ConnectAsync(arguments, record, cancellationToken),
         "list_schemas" => ListSchemasAsync(arguments, record, cancellationToken),
         "list_tables" => ListTablesAsync(arguments, record, cancellationToken),
@@ -40,10 +44,10 @@ internal sealed class McpTools(IMcpHost host, McpServerOptions options)
         _ => throw new McpToolException(McpToolErrorCode.NotFound, $"there is no tool named {name}"),
     };
 
-    private async Task<string> ListConnectionsAsync(JsonElement arguments, CancellationToken cancellationToken)
+    private async Task<string> ListConnectionsAsync(JsonElement arguments, McpCallRecord record, CancellationToken cancellationToken)
     {
         _ = new McpArguments(arguments);
-        var profiles = await host.GetProfilesAsync(cancellationToken);
+        var profiles = await ProfilesAsync(record, cancellationToken);
         var visible = profiles
             .Where(p => p.ExternalAccess != ExternalAccessLevel.Blocked)
             .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -326,7 +330,7 @@ internal sealed class McpTools(IMcpHost host, McpServerOptions options)
 
         if (!statement.IsRead)
         {
-            var approved = await host.RequestWriteApprovalAsync(new McpWriteApprovalRequest(profile, statement.Sql, statement.Kind, statement.IsDestructive), cancellationToken);
+            var approved = await host.RequestWriteApprovalAsync(new McpWriteApprovalRequest(profile, statement.Sql, statement.Kind, statement.IsDestructive, record.Principal.Name), cancellationToken);
             if (!approved)
             {
                 throw new McpToolException(McpToolErrorCode.UserCancelled, "the user declined the statement in TablePro");
@@ -520,10 +524,11 @@ internal sealed class McpTools(IMcpHost host, McpServerOptions options)
             throw new McpToolException(McpToolErrorCode.NotFound, $"no connection has the id {id}");
         }
 
-        var profiles = await host.GetProfilesAsync(cancellationToken);
+        var profiles = await ProfilesAsync(record, cancellationToken);
         var profile = profiles.FirstOrDefault(p => p.Id == guid);
 
-        // A blocked connection answers exactly like a missing one, so a client cannot learn it exists.
+        // A blocked connection, or one outside the client's grant, answers exactly like a missing one, so a client
+        // cannot learn it exists.
         if (profile is null || profile.ExternalAccess == ExternalAccessLevel.Blocked)
         {
             throw new McpToolException(McpToolErrorCode.NotFound, $"no connection has the id {id}");
@@ -532,6 +537,13 @@ internal sealed class McpTools(IMcpHost host, McpServerOptions options)
         record.ConnectionId = profile.Id;
         record.ConnectionName = profile.Name;
         return profile;
+    }
+
+    /// <summary>The saved connections as the caller may see them: outside its grant left out, levels capped by it.</summary>
+    private async Task<IReadOnlyList<ConnectionProfile>> ProfilesAsync(McpCallRecord record, CancellationToken cancellationToken)
+    {
+        var profiles = await host.GetProfilesAsync(cancellationToken);
+        return [.. profiles.Select(record.Principal.Apply).OfType<ConnectionProfile>()];
     }
 
     private async Task<(ConnectionProfile Profile, IDatabaseSession Session)> OpenAsync(McpArguments args, McpCallRecord record, CancellationToken cancellationToken)
