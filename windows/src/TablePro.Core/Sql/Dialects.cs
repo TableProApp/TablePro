@@ -102,11 +102,11 @@ public sealed class SqlServerDialect : SqlDialect
     public override string LikeWildcards => "%_[";
 }
 
-public sealed class SqliteDialect : SqlDialect
+public class SqliteDialect : SqlDialect
 {
     public static readonly SqliteDialect Instance = new();
 
-    private SqliteDialect()
+    private protected SqliteDialect()
     {
     }
 
@@ -123,6 +123,26 @@ public sealed class SqliteDialect : SqlDialect
     public override Plans.PlanRequest? PlanStatements(string statement, bool analyze) => Plans.PlanStatements.Sqlite(statement, analyze);
 
     public override string CastToText(string quotedColumn) => $"CAST({quotedColumn} AS TEXT)";
+}
+
+/// <summary>A Beancount ledger projected into SQLite. Statements prefixed <c>BQL:</c> or <c>BQL </c>, in any case, go to rledger's query language, which only reads.</summary>
+public sealed class BeancountDialect : SqliteDialect
+{
+    public static new readonly BeancountDialect Instance = new();
+
+    private BeancountDialect()
+    {
+    }
+
+    public override string Name => "Beancount";
+
+    public static bool IsBql(ReadOnlySpan<char> statement)
+    {
+        var text = statement.TrimStart();
+        return text.Length >= 4 && text.StartsWith("bql", StringComparison.OrdinalIgnoreCase) && text[3] is ':' or ' ';
+    }
+
+    public override StatementKind Classify(string statement) => IsBql(statement) ? StatementKind.Read : base.Classify(statement);
 }
 
 public sealed class DuckDbDialect : SqlDialect
@@ -490,7 +510,8 @@ public static class SqlDialects
         DatabaseEngine.PostgreSql or DatabaseEngine.CockroachDb or DatabaseEngine.Redshift or DatabaseEngine.PGlite => PostgreSqlDialect.Instance,
         DatabaseEngine.MySql or DatabaseEngine.MariaDb or DatabaseEngine.TiDb or DatabaseEngine.OceanBase or DatabaseEngine.Databend => MySqlDialect.Instance,
         DatabaseEngine.SqlServer => SqlServerDialect.Instance,
-        DatabaseEngine.Sqlite or DatabaseEngine.LibSql or DatabaseEngine.Turso or DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql or DatabaseEngine.Beancount => SqliteDialect.Instance,
+        DatabaseEngine.Sqlite or DatabaseEngine.LibSql or DatabaseEngine.Turso or DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql => SqliteDialect.Instance,
+        DatabaseEngine.Beancount => BeancountDialect.Instance,
         DatabaseEngine.DuckDb => DuckDbDialect.Instance,
         DatabaseEngine.Redis => RedisDialect.Instance,
         DatabaseEngine.MongoDb => MongoDialect.Instance,

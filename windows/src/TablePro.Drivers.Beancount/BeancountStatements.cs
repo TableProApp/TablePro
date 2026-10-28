@@ -9,14 +9,7 @@ internal static class BeancountStatements
     public static string? ExtractBql(string statement)
     {
         var trimmed = statement.Trim();
-        if (trimmed.Length < 4
-            || !trimmed.StartsWith("bql", StringComparison.OrdinalIgnoreCase)
-            || trimmed[3] is not (':' or ' '))
-        {
-            return null;
-        }
-
-        return trimmed[4..].Trim();
+        return BeancountDialect.IsBql(trimmed) ? trimmed[4..].Trim() : null;
     }
 
     /// <summary>
@@ -26,7 +19,7 @@ internal static class BeancountStatements
     /// </summary>
     public static bool IsReadOnly(string sql)
     {
-        foreach (var statement in SqlScript.Split(sql, SqliteDialect.Instance))
+        foreach (var statement in SqlScript.Split(sql, BeancountDialect.Instance))
         {
             var text = SkipLeadingTrivia(statement.Text);
             if (text.IsEmpty)

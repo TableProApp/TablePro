@@ -47,7 +47,7 @@ internal sealed class BeancountSession : IDatabaseSession
 
     public ConnectionProfile Profile => _request.Profile;
 
-    public SqlDialect Dialect => SqliteDialect.Instance;
+    public SqlDialect Dialect => BeancountDialect.Instance;
 
     public string ServerVersion => Volatile.Read(ref _current).Projection.BackendVersion;
 

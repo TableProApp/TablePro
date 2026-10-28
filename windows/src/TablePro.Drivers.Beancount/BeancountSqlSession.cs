@@ -11,7 +11,7 @@ namespace TablePro.Drivers.Beancount;
 /// Browsing, counting and the catalog over one projection, through the shared ADO.NET session. Every connection is
 /// opened <c>query_only</c>, so nothing written through it can reach the projection.
 /// </summary>
-internal sealed class BeancountSqlSession(ConnectionRequest request, string connectionString) : AdoNetSession(request, SqliteDialect.Instance)
+internal sealed class BeancountSqlSession(ConnectionRequest request, string connectionString) : AdoNetSession(request, BeancountDialect.Instance)
 {
     private const string Objects = """
         SELECT name, type FROM sqlite_master
