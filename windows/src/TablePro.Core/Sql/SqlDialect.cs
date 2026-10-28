@@ -55,10 +55,16 @@ public abstract class SqlDialect
 
     public virtual string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"@p{index}");
 
+    /// <summary>GoogleSQL and SurrealQL escape the closing quote inside a name with a backslash instead of doubling it.</summary>
+    protected virtual bool BackslashEscapesIdentifiers => false;
+
     public string QuoteIdentifier(string identifier)
     {
         var close = IdentifierClose.ToString();
-        return string.Concat(IdentifierOpen.ToString(), identifier.Replace(close, close + close, StringComparison.Ordinal), close);
+        var escaped = BackslashEscapesIdentifiers
+            ? identifier.Replace("\\", "\\\\", StringComparison.Ordinal).Replace(close, "\\" + close, StringComparison.Ordinal)
+            : identifier.Replace(close, close + close, StringComparison.Ordinal);
+        return string.Concat(IdentifierOpen.ToString(), escaped, close);
     }
 
     public string Qualify(ObjectName name) =>

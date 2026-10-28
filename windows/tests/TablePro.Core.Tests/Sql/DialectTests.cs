@@ -40,6 +40,14 @@ public sealed class DialectTests
     public void QuoteIdentifierDoublesTheClosingQuote(string dialect, string identifier, string expected) =>
         Assert.Equal(expected, D(dialect).QuoteIdentifier(identifier));
 
+    [Fact]
+    public void GoogleSqlAndSurrealQlEscapeBackticksWithABackslash()
+    {
+        Assert.Equal("`a\\`b\\\\c`", BigQueryDialect.Instance.QuoteIdentifier("a`b\\c"));
+        Assert.Equal("`a\\`b`", SpannerDialect.Instance.QuoteIdentifier("a`b"));
+        Assert.Equal("`a\\`b`", SurrealQlDialect.Instance.QuoteIdentifier("a`b"));
+    }
+
     [Theory]
     [InlineData("PostgreSQL", "public", "t", "\"public\".\"t\"")]
     [InlineData("PostgreSQL", null, "t", "\"t\"")]

@@ -303,6 +303,8 @@ public sealed class BigQueryDialect : SqlDialect
 
     public override char IdentifierClose => '`';
 
+    protected override bool BackslashEscapesIdentifiers => true;
+
     public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"@p{index}");
 
     public override string BinaryLiteral(ReadOnlySpan<byte> value) => string.Concat("FROM_HEX('", Convert.ToHexString(value), "')");
@@ -346,6 +348,8 @@ public sealed class SpannerDialect : SqlDialect
     public override char IdentifierOpen => '`';
 
     public override char IdentifierClose => '`';
+
+    protected override bool BackslashEscapesIdentifiers => true;
 
     public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"@p{index}");
 
@@ -436,6 +440,8 @@ public sealed class SurrealQlDialect : SqlDialect
     public override char IdentifierOpen => '`';
 
     public override char IdentifierClose => '`';
+
+    protected override bool BackslashEscapesIdentifiers => true;
 
     public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"$p{index}");
 
