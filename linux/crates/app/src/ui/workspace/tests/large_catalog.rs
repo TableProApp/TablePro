@@ -740,7 +740,10 @@ impl Screen {
         after_next_frame(&self.window);
     }
 
-    /// The rows of the session's schemas in the tree.
+    /// The rows of the session's schemas in the tree, reached through
+    /// their connections' rows: a row asked for by position is made, and
+    /// making one for each of an open schema's 50,000 tables would stall
+    /// the main loop inside the step it measures.
     fn schema_rows(&self) -> Vec<gtk4::TreeListRow> {
         let Some(rows) = descendants(&self.tree.widget())
             .into_iter()
@@ -752,9 +755,12 @@ impl Screen {
         else {
             panic!("the tree's rows");
         };
-        (0..rows.n_items())
-            .filter_map(|at| rows.row(at))
-            .filter(|row| row.depth() == 1)
+        (0..rows.model().n_items())
+            .filter_map(|at| rows.child_row(at))
+            .flat_map(|connection| {
+                let count = connection.children().map_or(0, |children| children.n_items());
+                (0..count).filter_map(move |at| connection.child_row(at))
+            })
             .collect()
     }
 
