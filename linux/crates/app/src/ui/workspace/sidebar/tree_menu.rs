@@ -8,16 +8,19 @@ const NEW_QUERY_IN: &str = "win.new-query-in";
 const REFRESH_IN: &str = "win.refresh-in";
 pub(super) const DISCONNECT_SESSION: &str = "win.disconnect-session";
 const STOP_CONNECTING: &str = "win.stop-connecting";
-const SHOW_CONNECT_FAILURE: &str = "win.show-connect-failure";
+pub(super) const SHOW_CONNECT_FAILURE: &str = "win.show-connect-failure";
+const FORGET_CONNECT_FAILURE: &str = "win.forget-connect-failure";
 
 /// What a connection is doing in the window, which its menu leads with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InWindow {
     Open,
     Connecting,
-    /// Closed, `failed` when its last connect failed.
+    /// Closed, `failed` when its last connect failed, `stored` while a
+    /// saved connection names it.
     Closed {
         failed: bool,
+        stored: bool,
     },
 }
 
@@ -40,12 +43,16 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow) -> gio::Menu {
         }
         // A connect can wait for a host that never answers.
         InWindow::Connecting => add(crate::i18n::gettext("Stop Connecting"), STOP_CONNECTING),
-        InWindow::Closed { failed } => {
-            if let SessionKey::Saved(id) = key {
+        InWindow::Closed { failed, stored } => {
+            if stored && let SessionKey::Saved(id) = key {
                 menu.append_item(&crate::ui::picker::connect_item(*id));
             }
             if failed {
                 add(crate::i18n::gettext("Show Error"), SHOW_CONNECT_FAILURE);
+            }
+            // Its row is only the failure's; nothing else removes it.
+            if failed && !stored {
+                add(crate::i18n::gettext("Remove"), FORGET_CONNECT_FAILURE);
             }
         }
     }

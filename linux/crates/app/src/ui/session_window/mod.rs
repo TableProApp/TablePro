@@ -402,8 +402,8 @@ impl SessionWindow {
         self.imp().shell.replace(Some(shell.clone()));
         self.sync_tree();
         if let Some(tree) = shell.tree() {
-            for (key, (_, failure)) in self.imp().failures.borrow().iter() {
-                tree.set_failure(key, Some(failure.message.as_str()));
+            for (key, (source, failure)) in self.imp().failures.borrow().iter() {
+                tree.set_failure(key, Some((&source_name(source), failure.message.as_str())));
             }
         }
         shell
@@ -459,6 +459,7 @@ impl SessionWindow {
             }
             SessionWindowInput::Remedy { key, remedy } => self.on_remedy(key, remedy),
             SessionWindowInput::ShowConnectFailure(key) => self.on_show_connect_failure(key),
+            SessionWindowInput::ForgetConnectFailure(key) => self.forget_failure(&key),
             SessionWindowInput::EditSavedConnection(id) => self.on_edit_saved_connection(id),
             SessionWindowInput::ConnectionSaved(id) => self.on_connection_saved(id),
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
@@ -699,9 +700,12 @@ impl SessionWindow {
         drop(claim);
         let name = source_name(&source);
         if let Some(tree) = self.shell().and_then(|shell| shell.tree()) {
-            tree.set_failure(&key, Some(failure.message.as_str()));
+            tree.set_failure(&key, Some((&name, failure.message.as_str())));
         }
         imp.failures.borrow_mut().insert(key.clone(), (source, failure));
+        // The toast goes to the page that shows from here on, which may
+        // be another connect's progress.
+        self.connects_changed();
         self.toast_failure(&key, &name);
     }
 
@@ -1171,6 +1175,16 @@ impl SessionWindow {
         Some((None, source, failure))
     }
 
+    /// Drop the last failure for `key` beside the window's sessions, and
+    /// the tree's row for it when no saved connection names it.
+    fn forget_failure(&self, key: &SessionKey) {
+        if self.imp().failures.borrow_mut().remove(key).is_some()
+            && let Some(tree) = self.shell().and_then(|shell| shell.tree())
+        {
+            tree.set_failure(key, None);
+        }
+    }
+
     /// Connect again from where the failed connect came from, reading
     /// the keyring again.
     fn on_retry_connect(&self, key: &SessionKey) {
@@ -1223,7 +1237,12 @@ impl SessionWindow {
                 Some(current) => self.present_connect_dialog(ConnectDialogMode::Edit(Box::new(current)), None, focus),
                 None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
             },
-            (None, Some(prefill)) => self.present_connect_dialog(ConnectDialogMode::Create, Some(prefill), focus),
+            (None, Some(prefill)) => {
+                // What was typed becomes a new connection, under another
+                // id, so this failure is left with nothing to try again.
+                self.forget_failure(key);
+                self.present_connect_dialog(ConnectDialogMode::Create, Some(prefill), focus);
+            }
             (None, None) => {}
         }
     }

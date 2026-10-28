@@ -186,6 +186,7 @@ impl Shown {
             "new-query-in",
             "refresh-in",
             "show-connect-failure",
+            "forget-connect-failure",
         ] {
             window.add_action(&recording(name, &fired, "win"));
         }
@@ -907,7 +908,7 @@ fn a_failed_connect_leaves_nothing_open_and_says_why() {
     shown.tree.set_connects(&[(key.clone(), "Alpha".to_owned())]);
 
     shown.tree.set_connects(&[]);
-    shown.tree.set_failure(&key, Some("Connection refused"));
+    shown.tree.set_failure(&key, Some(("Alpha", "Connection refused")));
 
     let row = shown.row("Alpha");
     assert!(!row.is_expandable() && !row.is_expanded());
@@ -928,6 +929,40 @@ fn a_failed_connect_leaves_nothing_open_and_says_why() {
 
     shown.tree.set_failure(&key, None);
     assert!(!widget.imp().problem.is_visible());
+}
+
+/// A failed connect no saved connection names, a file or one typed in
+/// the connect dialog, keeps a row of its own, which says why and goes
+/// once the window lets the failure go.
+#[gtk4::test]
+fn a_failed_connect_with_no_saved_connection_keeps_a_row_until_let_go() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let key = SessionKey::File("file:///srv/shop.db".to_owned());
+
+    shown.tree.set_failure(&key, Some(("shop.db", "No such file")));
+
+    assert_eq!(shown.rows(), ["Alpha", "shop.db"], "the failure has no row");
+    shown.menu("shop.db");
+    let actions = menu_actions(&shown.popover());
+    assert_eq!(
+        actions,
+        ["win.show-connect-failure", "win.forget-connect-failure"],
+        "{actions:?}"
+    );
+    shown.popover().popdown();
+    shown.activate("shop.db");
+    assert_eq!(
+        shown.fired(),
+        [(
+            "win.show-connect-failure".to_owned(),
+            Some("file:file:///srv/shop.db".to_owned())
+        )],
+        "activating the row did not say why"
+    );
+
+    shown.tree.set_failure(&key, None);
+    assert_eq!(shown.rows(), ["Alpha"], "a failure let go left its row");
 }
 
 #[gtk4::test]

@@ -59,6 +59,8 @@ pub(crate) enum SessionWindowInput {
     },
     /// Say why the last connect for the key failed, and offer its way on.
     ShowConnectFailure(SessionKey),
+    /// Let go of a failed connect the tree keeps a row for.
+    ForgetConnectFailure(SessionKey),
     /// Open the connect dialog on a saved connection to change it.
     EditSavedConnection(Uuid),
     /// The connect dialog saved its changes to a saved connection.

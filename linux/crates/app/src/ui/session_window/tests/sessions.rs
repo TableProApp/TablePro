@@ -415,6 +415,39 @@ fn failed_beside(name: &str, failure: FakeEstablish) -> (TestWindow, SessionKey,
     (test, key, shown.expect("the toast"))
 }
 
+/// The first of two connects fails before either opens: its toast goes
+/// to the page that shows the other connect from then on.
+#[gtk4::test]
+fn a_failure_while_another_connect_runs_toasts_on_the_page_left_on_screen() {
+    let test = TestWindow::with_script(
+        "FailedWhileConnecting",
+        Script {
+            establish: vec![refused(), FakeEstablish::UntilCancelled],
+            ..Script::default()
+        },
+    );
+    let other = second_connection(&test);
+    test.window
+        .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    test.window.send(SessionWindowInput::OpenSaved(Box::new(other)));
+
+    let title = format!("Could not connect to “{}”", test.saved.name);
+    let on_screen = || {
+        test.window.content().is_some_and(|page| {
+            crate::test_support::descendants(&page)
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk4::Label>())
+                .any(|label| label.label() == title)
+        })
+    };
+    wait_until(WAIT, on_screen).expect("the failure's toast on the page on screen");
+    assert_eq!(
+        test.window.page_name(),
+        "connecting",
+        "the other connect left the screen"
+    );
+}
+
 #[gtk4::test]
 fn a_failed_connect_beside_the_sessions_opens_no_window_and_toasts() {
     let (test, key, toast) = failed_beside("FailedBeside", refused());

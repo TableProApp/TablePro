@@ -17,13 +17,14 @@ use gtk4::{gdk, gio, glib, graphene, pango};
 use libadwaita as adw;
 use tablepro_core::meta::TableRef;
 use tablepro_session::SessionKey;
+use uuid::Uuid;
 
 use super::object_key::ObjectKey;
 use super::sidebar_menu::{GROUP, object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::{Holds, RowsObserverId, SidebarView};
 use super::store_sync;
-use super::tree_menu::{InWindow, SHOW_SESSION, session_section};
+use super::tree_menu::{InWindow, SHOW_CONNECT_FAILURE, SHOW_SESSION, session_section};
 use super::tree_node::{NodeKind, TreeNode};
 use super::tree_row::TreeRow;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
@@ -305,12 +306,14 @@ impl ConnectionTree {
         inner.rebuild();
     }
 
-    /// Why the last connect of `key` failed, or `None` once another
-    /// starts.
-    pub(crate) fn set_failure(&self, key: &SessionKey, reason: Option<&str>) {
+    /// The name and the reason of the last failed connect of `key`, or
+    /// `None` once another starts or the window lets it go. A key no
+    /// saved connection names keeps a row of its own while it failed.
+    pub(crate) fn set_failure(&self, key: &SessionKey, failure: Option<(&str, &str)>) {
         let inner = &self.inner;
-        match reason {
-            Some(reason) => {
+        match failure {
+            Some((name, reason)) => {
+                inner.node_for(key, name);
                 inner.failures.borrow_mut().insert(key.clone(), reason.to_owned());
             }
             None => {
@@ -950,7 +953,7 @@ impl TreeInner {
             return;
         };
         match node.kind() {
-            NodeKind::Connection => activate_connection(&self.pane(which).list_view, node),
+            NodeKind::Connection => activate_connection(&self.pane(which).list_view, node, self.stored(node)),
             NodeKind::Group | NodeKind::Schema => {
                 if let Some(row) = self.rows.row(position).filter(|_| which == Which::Tree) {
                     row.set_expanded(!row.is_expanded());
@@ -1069,6 +1072,14 @@ impl TreeInner {
         }
     }
 
+    /// The id of the saved connection `node` shows, while the list has it.
+    fn stored(&self, node: &TreeNode) -> Option<Uuid> {
+        match node.key()? {
+            SessionKey::Saved(id) => self.saved.get(id).map(|_| id),
+            SessionKey::File(_) => None,
+        }
+    }
+
     /// The picker's menu for a saved connection, led by what the
     /// connection does in the window.
     fn connection_menu(&self, node: &TreeNode) -> Option<gio::Menu> {
@@ -1080,6 +1091,7 @@ impl TreeInner {
         } else {
             InWindow::Closed {
                 failed: self.failures.borrow().contains_key(&key),
+                stored: self.stored(node).is_some(),
             }
         };
         let lead = session_section(&key, state);
@@ -1115,20 +1127,21 @@ impl Drop for TreeInner {
 }
 
 /// A closed saved connection connects, as its picker row does; an open
-/// one comes to the front. One connecting waits.
-fn activate_connection(list_view: &gtk::ListView, node: &TreeNode) {
+/// one comes to the front. One connecting waits. A row only a failed
+/// connect keeps, of a file or of a connection not saved, says why.
+fn activate_connection(list_view: &gtk::ListView, node: &TreeNode, stored: Option<Uuid>) {
     let Some(key) = node.key() else {
         return;
     };
     let fired = if node.open() {
         list_view.activate_action(SHOW_SESSION, Some(&crate::ui::session_target::to_variant(&key)))
-    } else if let SessionKey::Saved(id) = key
-        && !node.busy()
-    {
+    } else if node.busy() {
+        return;
+    } else if let Some(id) = stored {
         let (action, target) = crate::ui::picker::connect_action(id);
         list_view.activate_action(&action, Some(&target))
     } else {
-        return;
+        list_view.activate_action(SHOW_CONNECT_FAILURE, Some(&crate::ui::session_target::to_variant(&key)))
     };
     if let Err(error) = fired {
         tracing::warn!(%error, "a connection's row reached no window");
