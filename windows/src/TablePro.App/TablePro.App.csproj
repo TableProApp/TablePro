@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(TableProWindowsTargetFramework)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>TablePro.App</RootNamespace>
+    <AssemblyName>TablePro</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\TablePro.ico</ApplicationIcon>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(PROCESSOR_ARCHITECTURE)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged and self-contained: the app runs from its folder with no MSIX install or runtime installer. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <!-- XAML x:Bind and CsWinRT generate code these analyzers flag; the app's own code still follows them. -->
+    <NoWarn>$(NoWarn);CA1001;CA1822;CA1859;CA2213;CsWinRT1028;CsWinRT1030;IDE0005</NoWarn>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Release'">true</PublishReadyToRun>
+    <TieredPGO>true</TieredPGO>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Program.Main answers ssh's askpass prompt before WinUI starts, so XAML's generated Main is replaced. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TablePro.Core\TablePro.Core.csproj" />
+    <ProjectReference Include="..\TablePro.Storage\TablePro.Storage.csproj" />
+    <ProjectReference Include="..\TablePro.Ssh\TablePro.Ssh.csproj" />
+    <ProjectReference Include="..\TablePro.Ai\TablePro.Ai.csproj" />
+    <ProjectReference Include="..\TablePro.Mcp\TablePro.Mcp.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.PostgreSql\TablePro.Drivers.PostgreSql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.MySql\TablePro.Drivers.MySql.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.SqlServer\TablePro.Drivers.SqlServer.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Sqlite\TablePro.Drivers.Sqlite.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.DuckDb\TablePro.Drivers.DuckDb.csproj" />
+  </ItemGroup>
+</Project>

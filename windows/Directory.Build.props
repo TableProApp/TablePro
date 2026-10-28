@@ -1,0 +1,26 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Roslyn only reports unused usings (IDE0005) on build when documentation is generated. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Company>TablePro</Company>
+    <Product>TablePro</Product>
+    <Copyright>TablePro contributors. AGPL-3.0-or-later.</Copyright>
+    <Version>0.1.0</Version>
+    <!-- Libraries share one framework so the WinUI app and the tests reference them unchanged. -->
+    <TableProTargetFramework>net10.0</TableProTargetFramework>
+    <TableProWindowsTargetFramework>net10.0-windows10.0.26100.0</TableProWindowsTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName.EndsWith(`.Tests`))' != 'true'">
+    <IsAotCompatible Condition="'$(UseWinUI)' != 'true'">true</IsAotCompatible>
+  </PropertyGroup>
+</Project>

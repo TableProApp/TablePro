@@ -1,0 +1,240 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using TablePro.App.Services;
+using TablePro.Core.Connections;
+using TablePro.Ssh;
+using TablePro.Storage.Connections;
+
+namespace TablePro.App.ViewModels;
+
+/// <summary>A row of the connection picker: a group header or a saved connection.</summary>
+public sealed class ConnectionListItem
+{
+    private ConnectionListItem(string title, string? subtitle, ConnectionProfile? profile, string? detail)
+    {
+        Title = title;
+        Subtitle = subtitle;
+        Profile = profile;
+        Detail = detail;
+    }
+
+    public string Title { get; }
+
+    public string? Subtitle { get; }
+
+    public string? Detail { get; }
+
+    public ConnectionProfile? Profile { get; }
+
+    public bool IsHeader => Profile is null;
+
+    // ListView announces an item by its ToString, so screen readers read the connection's name.
+    public override string ToString() => Subtitle is null ? Title : $"{Title}, {Subtitle}";
+
+    public string Initials => Profile is null ? string.Empty : EngineBadge(Profile.Engine);
+
+    public static ConnectionListItem Header(string name) => new(name.ToUpperInvariant(), null, null, null);
+
+    public static ConnectionListItem For(ConnectionProfile profile) => new(
+        profile.Name,
+        $"{profile.Descriptor.DisplayName} · {profile.Subtitle}",
+        profile,
+        profile.LastConnectedAt is { } at ? Relative(at) : null);
+
+    public static string EngineBadge(DatabaseEngine engine) => engine switch
+    {
+        DatabaseEngine.PostgreSql => "Pg",
+        DatabaseEngine.MySql => "My",
+        DatabaseEngine.MariaDb => "Ma",
+        DatabaseEngine.SqlServer => "Ms",
+        DatabaseEngine.Sqlite => "Sl",
+        DatabaseEngine.DuckDb => "Dk",
+        _ => "?",
+    };
+
+    private static string Relative(DateTimeOffset at)
+    {
+        var span = DateTimeOffset.Now - at;
+        return span.TotalMinutes switch
+        {
+            < 1 => "just now",
+            < 60 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalMinutes} min ago"),
+            < 1440 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalHours} h ago"),
+            < 43200 => string.Create(CultureInfo.CurrentCulture, $"{(int)span.TotalDays} d ago"),
+            _ => at.ToLocalTime().ToString("d", CultureInfo.CurrentCulture),
+        };
+    }
+}
+
+/// <summary>The connection picker shown at launch and whenever no workspace is open.</summary>
+public sealed partial class WelcomeViewModel : ObservableObject
+{
+    private CancellationTokenSource? _connect;
+
+    public WelcomeViewModel(AppHost host)
+    {
+        Host = host;
+        host.Connections.Changed += (_, _) => Dispatcher?.TryEnqueue(Rebuild);
+        Rebuild();
+    }
+
+    public AppHost Host { get; }
+
+    public DialogService? Dialogs { get; set; }
+
+    public Microsoft.UI.Dispatching.DispatcherQueue? Dispatcher { get; set; }
+
+    public ObservableCollection<ConnectionListItem> Items { get; } = [];
+
+    public string Version { get; } = "Version " + (typeof(WelcomeViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0");
+
+    public bool IsEmpty => Items.Count == 0;
+
+    [ObservableProperty]
+    public partial string SearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsConnecting { get; set; }
+
+    [ObservableProperty]
+    public partial string? ConnectingText { get; set; }
+
+    [ObservableProperty]
+    public partial ConnectionSortOrder SortOrder { get; set; } = ConnectionSortOrder.Manual;
+
+    public void Rebuild()
+    {
+        var query = SearchText.Trim();
+        var profiles = Host.Connections.GetOrdered(SortOrder)
+            .Where(p => query.Length == 0 || p.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || p.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Items.Clear();
+        var grouped = profiles.GroupBy(p => Host.Connections.GroupOf(p)?.Name).OrderBy(g => g.Key is null ? 0 : 1).ThenBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
+        foreach (var group in grouped)
+        {
+            if (group.Key is not null)
+            {
+                Items.Add(ConnectionListItem.Header(group.Key));
+            }
+
+            foreach (var profile in group)
+            {
+                Items.Add(ConnectionListItem.For(profile));
+            }
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    public async Task ConnectAsync(ConnectionProfile profile)
+    {
+        if (Host.FindWorkspace(profile.Id) is { } open)
+        {
+            open.Activate();
+            return;
+        }
+
+        string? password = null;
+        if (Host.Connector.NeedsPasswordPrompt(profile) && Dialogs is not null)
+        {
+            password = await PromptPasswordAsync(profile);
+            if (password is null)
+            {
+                return;
+            }
+        }
+
+        _connect = new CancellationTokenSource();
+        IsConnecting = true;
+        ConnectingText = profile.Ssh is { Enabled: true } ? $"Opening SSH tunnel to {profile.Ssh.Host}…" : $"Connecting to {profile.Name}…";
+        try
+        {
+            var (session, request) = await Host.Connector.ConnectAsync(profile, password, _connect.Token);
+            Host.OpenWorkspace(session, request);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            CrashLog.Write($"Connect to {profile.Name}", ex);
+            var message = ex is SshTunnelException ssh && !string.IsNullOrWhiteSpace(ssh.StandardError) ? $"{ex.Message}\n\n{ssh.StandardError}" : ex.Message;
+            if (Dialogs is not null)
+            {
+                await Dialogs.ShowErrorAsync($"Could not connect to {profile.Name}", message);
+            }
+        }
+        finally
+        {
+            IsConnecting = false;
+            _connect.Dispose();
+            _connect = null;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelConnect() => _connect?.Cancel();
+
+    /// <summary>Opens a SQLite or DuckDB file as an unsaved connection; the file's header decides the engine.</summary>
+    public async Task OpenFileAsync(string path)
+    {
+        var engine = DetectFileEngine(path);
+        var existing = Host.Connections.Connections.FirstOrDefault(c => c.Descriptor.IsFileBased && string.Equals(c.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        var profile = existing ?? new ConnectionProfile { Name = Path.GetFileName(path), Engine = engine, FilePath = path };
+        await ConnectAsync(profile);
+    }
+
+    public async Task DeleteAsync(ConnectionProfile profile)
+    {
+        if (Dialogs is not null && await Dialogs.ConfirmAsync($"Delete {profile.Name}?", "The saved connection and its stored passwords are removed. The database itself is not touched.", "Delete", destructive: true))
+        {
+            Host.Connector.ForgetSecrets(profile);
+            await Host.Connections.DeleteAsync(profile.Id);
+        }
+    }
+
+    public async Task DuplicateAsync(ConnectionProfile profile)
+    {
+        var copy = await Host.Connections.DuplicateAsync(profile.Id);
+        if (copy is not null && Host.Connector.SavedPassword(profile) is { } password)
+        {
+            Host.Connector.SavePassword(copy, password);
+        }
+    }
+
+    partial void OnSearchTextChanged(string value) => Rebuild();
+
+    partial void OnSortOrderChanged(ConnectionSortOrder value) => Rebuild();
+
+    private static DatabaseEngine DetectFileEngine(string path)
+    {
+        try
+        {
+            Span<byte> header = stackalloc byte[16];
+            using var stream = File.OpenRead(path);
+            var read = stream.Read(header);
+
+            // DuckDB writes "DUCK" at offset 8; SQLite starts with "SQLite format 3".
+            if (read >= 12 && header[8] == 'D' && header[9] == 'U' && header[10] == 'C' && header[11] == 'K')
+            {
+                return DatabaseEngine.DuckDb;
+            }
+        }
+        catch (IOException)
+        {
+        }
+
+        return path.EndsWith(".duckdb", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".ddb", StringComparison.OrdinalIgnoreCase)
+            ? DatabaseEngine.DuckDb
+            : DatabaseEngine.Sqlite;
+    }
+
+    private async Task<string?> PromptPasswordAsync(ConnectionProfile profile)
+    {
+        var box = new Microsoft.UI.Xaml.Controls.PasswordBox { Header = $"Password for {profile.Username}@{profile.Host}", MinWidth = 360 };
+        var dialog = Dialogs!.Create($"Connect to {profile.Name}", box, "Connect", "Cancel");
+        return await Dialogs.ShowAsync(dialog) == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary ? box.Password : null;
+    }
+}

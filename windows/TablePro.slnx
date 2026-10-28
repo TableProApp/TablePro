@@ -1,0 +1,36 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="ARM64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/TablePro.Core/TablePro.Core.csproj" />
+    <Project Path="src/TablePro.Storage/TablePro.Storage.csproj" />
+    <Project Path="src/TablePro.Ssh/TablePro.Ssh.csproj" />
+    <Project Path="src/TablePro.Ai/TablePro.Ai.csproj" />
+    <Project Path="src/TablePro.Mcp/TablePro.Mcp.csproj" />
+    <Project Path="src/TablePro.Drivers.PostgreSql/TablePro.Drivers.PostgreSql.csproj" />
+    <Project Path="src/TablePro.Drivers.MySql/TablePro.Drivers.MySql.csproj" />
+    <Project Path="src/TablePro.Drivers.SqlServer/TablePro.Drivers.SqlServer.csproj" />
+    <Project Path="src/TablePro.Drivers.Sqlite/TablePro.Drivers.Sqlite.csproj" />
+    <Project Path="src/TablePro.Drivers.DuckDb/TablePro.Drivers.DuckDb.csproj" />
+    <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
+    <Project Path="src/TablePro.App/TablePro.App.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+      <Platform Solution="*|ARM64" Project="ARM64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TablePro.Core.Tests/TablePro.Core.Tests.csproj" />
+    <Project Path="tests/TablePro.Storage.Tests/TablePro.Storage.Tests.csproj" />
+    <Project Path="tests/TablePro.Ssh.Tests/TablePro.Ssh.Tests.csproj" />
+    <Project Path="tests/TablePro.Ssh.FakeSsh/TablePro.Ssh.FakeSsh.csproj" />
+    <Project Path="tests/TablePro.Ai.Tests/TablePro.Ai.Tests.csproj" />
+    <Project Path="tests/TablePro.Mcp.Tests/TablePro.Mcp.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Tests/TablePro.Drivers.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Sqlite.Tests/TablePro.Drivers.Sqlite.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.DuckDb.Tests/TablePro.Drivers.DuckDb.Tests.csproj" />
+  </Folder>
+</Solution>
