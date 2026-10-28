@@ -13,6 +13,8 @@ using TablePro.Core.Browse;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
+using TablePro.Core.Shortcuts;
+using TablePro.Storage.Settings;
 using Windows.System;
 using ColumnDefinition = TablePro.Core.Schema.ColumnDefinition;
 
@@ -24,6 +26,10 @@ public sealed partial class WorkspaceWindow : Window
     private readonly IWorkspaceHost _host;
     private readonly Dictionary<TabViewModel, TabViewItem> _items = [];
     private readonly Helpers.DispatcherQueueTimerHolder _toastTimer;
+    private readonly SettingsStore? _settings;
+    private readonly List<KeyboardAccelerator> _commandAccelerators = [];
+    private ShortcutMap _shortcuts = ShortcutMap.Default;
+    private IReadOnlyDictionary<string, string>? _shortcutSource;
     private bool _closing;
     private bool _closeConfirmed;
 
@@ -31,6 +37,9 @@ public sealed partial class WorkspaceWindow : Window
     {
         ViewModel = viewModel;
         _host = host;
+
+        // The settings store reaches the window through the app host; IWorkspaceHost does not carry it yet.
+        _settings = (host as AppHost)?.Settings;
         InitializeComponent();
         Title = $"{viewModel.Title} - TablePro";
         WindowChrome.Apply(this, AppTitleBar, host.Backdrop, host.Theme, 1440, 900);
@@ -46,22 +55,7 @@ public sealed partial class WorkspaceWindow : Window
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _toastTimer = new Helpers.DispatcherQueueTimerHolder(Root, TimeSpan.FromSeconds(4), () => Toast.IsOpen = false);
 
-        AddAccelerator(VirtualKey.T, VirtualKeyModifiers.Control, () => ViewModel.NewQuery());
-        AddAccelerator(VirtualKey.W, VirtualKeyModifiers.Control, async () =>
-        {
-            if (ViewModel.SelectedTab is { } tab)
-            {
-                await ViewModel.CloseTabAsync(tab);
-            }
-        });
-        AddAccelerator(VirtualKey.P, VirtualKeyModifiers.Control, () => SearchBox.Focus(FocusState.Keyboard));
-        AddAccelerator(VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ShowHistory);
-        AddAccelerator(VirtualKey.A, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, ShowAssistant);
-        AddAccelerator(VirtualKey.F9, VirtualKeyModifiers.None, ToggleSidebar);
-        AddAccelerator(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, OpenSearch);
-        AddAccelerator(VirtualKey.O, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenQuickly);
-        AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleTabs(1));
-        AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleTabs(-1));
+        InitializeShortcuts();
 
         AppWindow.Closing += OnAppWindowClosing;
         Closed += async (_, _) =>
@@ -73,6 +67,9 @@ public sealed partial class WorkspaceWindow : Window
     }
 
     public WorkspaceViewModel ViewModel { get; }
+
+    /// <summary>Raised on the UI thread after the shortcuts change, so views that show chord text can refresh it.</summary>
+    public event EventHandler? ShortcutsChanged;
 
     public void ApplyAppearance(BackdropKind backdrop, ElementTheme theme)
     {
@@ -88,15 +85,164 @@ public sealed partial class WorkspaceWindow : Window
         SidePaneColumn.Width = new GridLength(width);
     }
 
-    private void AddAccelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
+    /// <summary>The chords this window and its editors answer to, after the user's overrides.</summary>
+    public ShortcutMap Shortcuts => _shortcuts;
+
+    /// <summary>
+    /// The editor command a key press runs, by <see cref="ShortcutIds"/> id, or null to let the editor handle the key
+    /// as typing. Editors ask on each key press, so a change in Settings reaches them without being told.
+    /// </summary>
+    public string? EditorCommandForKey(VirtualKey key, VirtualKeyModifiers modifiers) =>
+        _shortcuts.CommandFor(ShortcutKeys.ToChord(key, modifiers), ShortcutContext.Editor)?.Id;
+
+    private void InitializeShortcuts()
     {
-        var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        // The tab-selection keys are fixed, which is why the recorder reserves them.
+        foreach (var reserved in ReservedShortcuts.App)
+        {
+            var position = reserved.Chord.Key - ShortcutKey.D0;
+            AddAccelerator(reserved.Chord, () => SelectTab(position));
+        }
+
+        ApplyShortcuts(_settings?.Current.Shortcuts);
+        if (_settings is not null)
+        {
+            _settings.Changed += OnSettingsChanged;
+            Closed += (_, _) => _settings.Changed -= OnSettingsChanged;
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, AppSettings value)
+    {
+        if (!ReferenceEquals(value.Shortcuts, _shortcutSource))
+        {
+            DispatcherQueue.TryEnqueue(() => ApplyShortcuts(value.Shortcuts));
+        }
+    }
+
+    /// <summary>Replaces every customizable accelerator and the shortcut text in menus and tooltips with the chords in <paramref name="overrides"/>.</summary>
+    private void ApplyShortcuts(IReadOnlyDictionary<string, string>? overrides)
+    {
+        _shortcutSource = overrides;
+
+        // Sanitized: a bare letter left in a hand-edited file would otherwise become an accelerator that eats typing.
+        _shortcuts = new ShortcutMap(overrides).Sanitized();
+        foreach (var accelerator in _commandAccelerators)
+        {
+            Root.KeyboardAccelerators.Remove(accelerator);
+        }
+
+        _commandAccelerators.Clear();
+        foreach (var (command, chord) in _shortcuts.Bindings(ShortcutContext.Global))
+        {
+            if (WindowCommand(command.Id) is { } action && ReservedShortcuts.ConflictFor(chord, ShortcutContext.Global) is null)
+            {
+                _commandAccelerators.Add(AddAccelerator(chord, action));
+            }
+        }
+
+        OpenQuicklyItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.QuickSwitcher);
+        SearchDatabaseItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.SearchDatabase);
+        ServerDashboardItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.ServerDashboard);
+        DiagramItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.ErDiagram);
+        ExportDatabaseItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.ExportDatabase);
+        RunSqlFileItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.RunSqlFile);
+        SettingsItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.OpenSettings);
+        DisconnectItem.KeyboardAcceleratorTextOverride = _shortcuts.TextFor(ShortcutIds.Disconnect);
+        ToolTipService.SetToolTip(NewQueryButton, _shortcuts.Hint("New query", ShortcutIds.NewTab));
+        ToolTipService.SetToolTip(HistoryButton, _shortcuts.Hint("Query history", ShortcutIds.ToggleHistory));
+        ToolTipService.SetToolTip(FavoritesButton, _shortcuts.Hint("Favorites", ShortcutIds.ShowFavoritesList));
+        ToolTipService.SetToolTip(AssistantButton, _shortcuts.Hint("AI assistant", ShortcutIds.ToggleAssistant));
+        SearchBox.PlaceholderText = _shortcuts.Hint("Search tables", ShortcutIds.FocusSidebarSearch);
+        ShortcutsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>What a window command does, or null for a command the editor dispatches itself.</summary>
+    private Action? WindowCommand(string id) => id switch
+    {
+        ShortcutIds.NewTab => () => ViewModel.NewQuery(),
+        ShortcutIds.CloseTab => async () =>
+        {
+            if (ViewModel.SelectedTab is { } tab)
+            {
+                await ViewModel.CloseTabAsync(tab);
+            }
+        },
+        ShortcutIds.CloseOtherTabs => async () => await CloseTabsAsync(keep: ViewModel.SelectedTab),
+        ShortcutIds.CloseAllTabs => async () => await CloseTabsAsync(keep: null),
+        ShortcutIds.ShowNextTab => () => CycleTabs(1),
+        ShortcutIds.ShowPreviousTab => () => CycleTabs(-1),
+        ShortcutIds.QuickSwitcher => OpenQuickly,
+        ShortcutIds.SearchDatabase => OpenSearch,
+        ShortcutIds.FocusSidebarSearch => () => FocusInSidebar(SearchBox),
+        ShortcutIds.FocusObjectList => () => FocusInSidebar(ObjectList),
+        ShortcutIds.ToggleTableBrowser => ToggleSidebar,
+        ShortcutIds.ToggleHistory => () => ToggleSidePane<HistoryPane>(ShowHistory),
+        ShortcutIds.ShowFavoritesList => () => OnShowFavorites(Root, new RoutedEventArgs()),
+        ShortcutIds.ToggleAssistant => () => ToggleSidePane<AssistantPane>(ShowAssistant),
+        ShortcutIds.ServerDashboard => () => OnServerDashboard(Root, new RoutedEventArgs()),
+        ShortcutIds.ErDiagram => () => OnDiagram(Root, new RoutedEventArgs()),
+        ShortcutIds.ExportDatabase => () => OnDumpDatabase(Root, new RoutedEventArgs()),
+        ShortcutIds.RunSqlFile => () => OnRunSqlFile(Root, new RoutedEventArgs()),
+        ShortcutIds.ManageConnections => _host.ShowWelcome,
+        ShortcutIds.Disconnect => Close,
+        ShortcutIds.OpenSettings => _host.OpenSettings,
+        _ => null,
+    };
+
+    private KeyboardAccelerator AddAccelerator(KeyChord chord, Action action)
+    {
+        var accelerator = ShortcutKeys.Accelerator(chord);
         accelerator.Invoked += (_, e) =>
         {
             action();
             e.Handled = true;
         };
         Root.KeyboardAccelerators.Add(accelerator);
+        return accelerator;
+    }
+
+    private void SelectTab(int position)
+    {
+        if (ViewModel.Tabs.Count > 0)
+        {
+            // Past the last tab selects the last, so Ctrl+9 always reaches the end as in browsers.
+            ViewModel.SelectedTab = ViewModel.Tabs[Math.Min(position, ViewModel.Tabs.Count) - 1];
+        }
+    }
+
+    private async Task CloseTabsAsync(TabViewModel? keep)
+    {
+        foreach (var tab in ViewModel.Tabs.Where(t => !ReferenceEquals(t, keep)).ToArray())
+        {
+            // A tab whose unsaved work the user chose to keep stops the sweep, as closing the window would.
+            if (!await ViewModel.CloseTabAsync(tab))
+            {
+                return;
+            }
+        }
+    }
+
+    private void FocusInSidebar(Control target)
+    {
+        if (Sidebar.Visibility == Visibility.Collapsed)
+        {
+            ToggleSidebar();
+        }
+
+        target.Focus(FocusState.Keyboard);
+    }
+
+    private void ToggleSidePane<TPane>(Action show)
+    {
+        if (SidePane.Visibility == Visibility.Visible && SidePaneContent.Content is TPane)
+        {
+            OnCloseSidePane(Root, new RoutedEventArgs());
+        }
+        else
+        {
+            show();
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -180,6 +326,7 @@ public sealed partial class WorkspaceWindow : Window
                 view.TabRequested += (_, position) => ViewModel.SelectedTab = ViewModel.Tabs[Math.Clamp(position, 1, ViewModel.Tabs.Count) - 1];
                 view.AdjacentTabRequested += (_, offset) => CycleTabs(offset);
                 view.TabCount = () => ViewModel.Tabs.Count;
+                view.CommandForKey = EditorCommandForKey;
                 return view;
             }
 
@@ -567,17 +714,16 @@ public sealed partial class WorkspaceWindow : Window
 
     private async void OnRunSqlFile(object sender, RoutedEventArgs e)
     {
-        var file = await ViewModel.Context.Dialogs.PickOpenFileAsync(".sql");
+        var file = await ViewModel.Context.Dialogs.PickOpenFileAsync(".sql", ".gz");
         if (file is null)
         {
             return;
         }
 
-        var text = await File.ReadAllTextAsync(file.Path);
-        var tab = ViewModel.NewQuery(text, file.Path);
-        if (await ViewModel.Context.Dialogs.ConfirmAsync("Run SQL file?", $"Run every statement in {file.Name} on {ViewModel.Profile.Name}?", "Run"))
+        // The import streams the file in chunks with a transaction and progress, so a dump far larger than an editor tab still runs.
+        if (await SqlImportDialog.RunAsync(ViewModel.Context, file.Path))
         {
-            await tab.ExecuteAsync(Core.Sql.SqlScript.Split(text, ViewModel.Session.Dialect).Select(s => s.Text).ToArray());
+            await ViewModel.RefreshAsync();
         }
     }
 
@@ -636,7 +782,46 @@ public sealed partial class WorkspaceWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e) => _host.OpenSettings();
 
+    // The menu text follows the checker, so a found update reads "Update Available…" the next time the menu opens.
+    private void OnUpdatesItemLoaded(object sender, RoutedEventArgs e)
+    {
+        var updates = (_host as AppHost)?.Updates;
+        UpdatesItem.Visibility = updates?.CanCheck == true ? Visibility.Visible : Visibility.Collapsed;
+        if (updates is not null)
+        {
+            UpdatesItem.Text = updates.CheckForUpdatesTitle;
+        }
+    }
+
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+    {
+        if ((_host as AppHost)?.Updates is { } updates)
+        {
+            if (updates.Available is { } offer)
+            {
+                await UpdateDialogs.OfferAsync(updates, ViewModel.Context.Dialogs, offer);
+            }
+            else
+            {
+                await UpdateDialogs.CheckAsync(updates, ViewModel.Context.Dialogs);
+            }
+        }
+    }
+
     private void OnDisconnect(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Asks about unsaved tabs before the app quits, as for an update; true when the window may close without asking again.</summary>
+    public async Task<bool> ConfirmQuitAsync()
+    {
+        var unsaved = ViewModel.Tabs.Select(t => t.UnsavedWork).OfType<string>().ToArray();
+        if (unsaved.Length > 0 && !await ViewModel.Context.Dialogs.ConfirmAsync("Quit TablePro?", string.Join("\n", unsaved), "Quit Without Saving", destructive: true))
+        {
+            return false;
+        }
+
+        _closeConfirmed = true;
+        return true;
+    }
 
     private async void OnAppWindowClosing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
     {

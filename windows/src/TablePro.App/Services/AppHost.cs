@@ -30,6 +30,8 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     private WelcomeWindow? _welcome;
     private SettingsWindow? _settingsWindow;
     private McpServer? _mcp;
+    private Storage.Mcp.McpClientStore? _mcpClientStore;
+    private Storage.Mcp.McpAuditStore? _mcpAuditStore;
 
     public AppHost(
         ConnectionStore connections,
@@ -139,6 +141,27 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         _workspaces.Add(window);
         window.Activate();
         return window;
+    }
+
+    /// <summary>Dialogs for the frontmost window, for prompts that do not belong to one, such as a critical update.</summary>
+    public DialogService? ActiveDialogs =>
+        _workspaces.LastOrDefault()?.ViewModel.Context.Dialogs ?? (_welcome is { } welcome ? new DialogService(welcome) : null);
+
+    /// <summary>The update checker, or null until launch creates it.</summary>
+    public UpdateService? Updates { get; set; }
+
+    /// <summary>Asks every window about unsaved tabs before the app quits; false when the user keeps one open.</summary>
+    public async Task<bool> ConfirmQuitAsync()
+    {
+        foreach (var workspace in _workspaces.ToArray())
+        {
+            if (!await workspace.ConfirmQuitAsync())
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public WorkspaceWindow? FindWorkspace(Guid connectionId) =>
@@ -323,7 +346,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
             window.Activate();
             var approved = await window.ViewModel.Context.Dialogs.ConfirmAsync(
                 "An MCP client wants to run a statement",
-                $"A client connected to TablePro's MCP server asks to run this on {request.Profile.Name}.",
+                $"{(request.ClientName is { Length: > 0 } client ? $"\"{client}\"" : "A client")}, connected to TablePro's MCP server, asks to run this on {request.Profile.Name}.",
                 "Run",
                 destructive: request.IsDestructive,
                 detail: request.Sql);
@@ -341,6 +364,98 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
         return ValueTask.CompletedTask;
     }
+
+    Task<McpPairingApproval?> IMcpHost.RequestPairingApprovalAsync(McpPairingRequest request, CancellationToken cancellationToken)
+    {
+        var source = new TaskCompletionSource<McpPairingApproval?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _dispatcher.TryEnqueue(async () =>
+        {
+            // The window the user is most likely looking at: Settings while they set a client up, else a workspace.
+            Window? window = (Window?)_settingsWindow ?? (Window?)_workspaces.LastOrDefault() ?? _welcome;
+            if (window is null)
+            {
+                source.TrySetResult(null);
+                return;
+            }
+
+            var dialogs = window is WorkspaceWindow workspace ? workspace.ViewModel.Context.Dialogs : new DialogService(window);
+            var form = new McpPairingForm(request, Connections.Connections.Where(c => c.ExternalAccess != ExternalAccessLevel.Blocked).ToList());
+            var dialog = dialogs.Create("Allow an MCP client?", form.Content, "Allow", "Deny");
+            using var hide = cancellationToken.Register(() => _dispatcher.TryEnqueue(dialog.Hide));
+            window.Activate();
+            try
+            {
+                var result = await dialogs.ShowAsync(dialog);
+                source.TrySetResult(result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary && !cancellationToken.IsCancellationRequested ? form.Approval() : null);
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // Another dialog already holds this window; a question nobody can answer is a no.
+                source.TrySetResult(null);
+            }
+        });
+        return source.Task.WaitAsync(cancellationToken);
+    }
+
+    async ValueTask<IReadOnlyList<Mcp.Auth.McpClientGrant>> IMcpHost.LoadClientsAsync(CancellationToken cancellationToken)
+    {
+        var stored = await McpClientStore.LoadAsync(cancellationToken);
+        return [.. stored.Select(c => new Mcp.Auth.McpClientGrant
+        {
+            Id = c.Id,
+            Name = c.Name,
+            TokenHash = c.TokenHash,
+            TokenPrefix = c.TokenPrefix,
+            Permission = Enum.TryParse<Mcp.Auth.McpClientPermission>(c.Permission, out var permission) ? permission : Mcp.Auth.McpClientPermission.ReadOnly,
+            ConnectionIds = c.ConnectionIds,
+            CreatedAt = c.CreatedAt,
+            LastUsedAt = c.LastUsedAt,
+            ExpiresAt = c.ExpiresAt,
+            RevokedAt = c.RevokedAt,
+        })];
+    }
+
+    async ValueTask IMcpHost.SaveClientAsync(Mcp.Auth.McpClientGrant client, CancellationToken cancellationToken) =>
+        await McpClientStore.SaveAsync(new Storage.Mcp.StoredMcpClient
+        {
+            Id = client.Id,
+            Name = client.Name,
+            TokenHash = client.TokenHash,
+            TokenPrefix = client.TokenPrefix,
+            Permission = client.Permission.ToString(),
+            ConnectionIds = client.ConnectionIds,
+            CreatedAt = client.CreatedAt,
+            LastUsedAt = client.LastUsedAt,
+            ExpiresAt = client.ExpiresAt,
+            RevokedAt = client.RevokedAt,
+        }, cancellationToken);
+
+    async ValueTask IMcpHost.DeleteClientAsync(Guid clientId, CancellationToken cancellationToken) =>
+        await McpClientStore.DeleteAsync(clientId, cancellationToken);
+
+    // Opened on first use, so an app that never turns MCP on never creates the audit database. Both stores keep no
+    // state between calls, so the settings page opening its own instances on the same files is safe.
+    private Storage.Mcp.McpClientStore McpClientStore =>
+        LazyInitializer.EnsureInitialized(ref _mcpClientStore, () => new Storage.Mcp.McpClientStore(Storage.AppPaths.Default, Secrets));
+
+    private Storage.Mcp.McpAuditStore McpAuditStore =>
+        LazyInitializer.EnsureInitialized(ref _mcpAuditStore, () => new Storage.Mcp.McpAuditStore(Storage.AppPaths.Default));
+
+    async ValueTask IMcpHost.RecordAuditAsync(Mcp.Audit.McpAuditEntry entry, CancellationToken cancellationToken) =>
+        await McpAuditStore.AppendAsync(new Storage.Mcp.McpAuditRecord(
+            Guid.NewGuid(),
+            entry.Timestamp,
+            entry.Category.ToString().ToLowerInvariant(),
+            entry.Tool,
+            entry.Outcome.ToString().ToLowerInvariant(),
+            entry.ClientId,
+            entry.ClientName,
+            entry.ConnectionId,
+            entry.ConnectionName,
+            entry.ErrorCode,
+            entry.Message,
+            entry.SqlDigest,
+            entry.Elapsed.TotalMilliseconds), cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

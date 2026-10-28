@@ -138,6 +138,9 @@ public partial class App : Application
 
         var host = _services.GetRequiredService<AppHost>();
         host.ShowWelcome();
+        host.Updates = new UpdateService(AppPaths.Default.Root, host.ConfirmQuitAsync, Exit);
+        host.Updates.Changed += (_, _) => OnUpdatesChanged(host);
+        host.Updates.Start();
 
         try
         {
@@ -151,6 +154,21 @@ public partial class App : Application
 
         await OpenFilesFromCommandLineAsync(host);
     }
+
+    // A critical release found in the background is offered at once; any other waits for Check for Updates.
+    private static async void OnUpdatesChanged(AppHost host)
+    {
+        if (host.Updates is { State: UpdateState.Available, Available: { IsCritical: true } offer } updates && !_criticalOffered)
+        {
+            _criticalOffered = true;
+            if (host.ActiveDialogs is { } dialogs)
+            {
+                await Views.UpdateDialogs.OfferAsync(updates, dialogs, offer);
+            }
+        }
+    }
+
+    private static bool _criticalOffered;
 
     /// <summary>Database files passed on the command line, as Open With from Explorer does, open straight away.</summary>
     private static async Task OpenFilesFromCommandLineAsync(AppHost host)

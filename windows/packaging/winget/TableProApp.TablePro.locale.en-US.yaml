@@ -1,0 +1,28 @@
+# Template, filled per stable release by windows/packaging/winget-manifest.ps1. See README.md here.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: TableProApp.TablePro
+PackageVersion: "{{Version}}"
+PackageLocale: en-US
+Publisher: TablePro
+PublisherUrl: https://tablepro.app
+PublisherSupportUrl: https://github.com/TableProApp/TablePro/issues
+PackageName: TablePro
+PackageUrl: https://tablepro.app
+License: AGPL-3.0-or-later
+LicenseUrl: https://github.com/TableProApp/TablePro/blob/main/LICENSE
+ShortDescription: A native database client for PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, Redis, MongoDB and more.
+Description: |-
+  TablePro is a native Windows database client. It connects to PostgreSQL, MySQL, SQL Server, SQLite, DuckDB,
+  Redis, MongoDB, ClickHouse, Oracle, Snowflake, BigQuery and many other engines, with a SQL editor, a data grid,
+  SSH tunnels and an AI assistant.
+Moniker: tablepro
+Tags:
+  - database
+  - sql
+  - postgresql
+  - mysql
+  - sqlite
+  - sql-server
+ReleaseNotesUrl: "{{ReleaseNotesUrl}}"
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

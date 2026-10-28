@@ -36,6 +36,7 @@ public sealed partial class SettingsWindow : Window
             navigation.MenuItems.Add(new NavigationViewItem { Content = name, Tag = name, Icon = new FontIcon { Glyph = glyph } });
         }
 
+        navigation.MenuItems.Insert(2, new NavigationViewItem { Content = KeyboardPage, Tag = KeyboardPage, Icon = new FontIcon { Glyph = "" } });
         navigation.SelectionChanged += (_, args) => ShowPage((args.SelectedItem as NavigationViewItem)?.Tag as string ?? "General");
         _titleBar.Children.Add(new TextBlock { Text = "Settings", VerticalAlignment = VerticalAlignment.Center, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
         var root = new Grid();
@@ -71,6 +72,7 @@ public sealed partial class SettingsWindow : Window
                     ["Mica", "Acrylic", "None", "Mica Alt"], (int)Prefs.Backdrop, i => Update(s => s with { Backdrop = (WindowBackdrop)i }))));
                 page.Children.Add(Card("Reopen tabs on launch", "Restore each connection's open tabs the next time it connects.", Toggle(Prefs.RestoreSessionOnLaunch, v => Update(s => s with { RestoreSessionOnLaunch = v }))));
                 page.Children.Add(Card("Ask before closing unsaved tabs", null, Toggle(Prefs.ConfirmCloseDirtyTabs, v => Update(s => s with { ConfirmCloseDirtyTabs = v }))));
+                AddUpdateCards(page);
                 page.Children.Add(Card("Data folder", Storage.AppPaths.Default.Root, OpenFolderButton(Storage.AppPaths.Default.Root)));
                 break;
             case "Editor":
@@ -79,7 +81,7 @@ public sealed partial class SettingsWindow : Window
                 page.Children.Add(Card("Tab size", null, Number(Prefs.Editor.TabSize, 1, 8, v => Update(s => s with { Editor = s.Editor with { TabSize = (int)v } }))));
                 page.Children.Add(Card("Word wrap", null, Toggle(Prefs.Editor.WordWrap, v => Update(s => s with { Editor = s.Editor with { WordWrap = v } }))));
                 page.Children.Add(Card("Autocomplete", "Suggest keywords, tables and columns while typing.", Toggle(Prefs.Editor.Autocomplete, v => Update(s => s with { Editor = s.Editor with { Autocomplete = v } }))));
-                page.Children.Add(Card("Vim keybindings", "Edit with Vim's modes, motions, operators, registers and macros. Ctrl+C, Ctrl+V, Ctrl+Z and the other Windows shortcuts keep working.", Toggle(Prefs.Editor.VimMode, v => Update(s => s with { Editor = s.Editor with { VimMode = v } }))));
+                AddKeyBindingCards(page);
                 break;
             case "Data":
                 page.Children.Add(Card("Query result limit", "Rows an editor query reads before it stops. The status bar says when a result was cut.", Number(Prefs.Data.EditorRowLimit, 100, 1_000_000, v => Update(s => s with { Data = s.Data with { EditorRowLimit = (int)v } }))));
@@ -87,6 +89,9 @@ public sealed partial class SettingsWindow : Window
                 page.Children.Add(Card("NULL display", "What empty cells show.", Text(Prefs.Data.NullDisplayText, v => Update(s => s with { Data = s.Data with { NullDisplayText = v } }))));
                 page.Children.Add(Card("Date format", ".NET format string for dates in exports.", Text(Prefs.Data.DateFormat, v => Update(s => s with { Data = s.Data with { DateFormat = v } }))));
                 page.Children.Add(Card("Query history", "Kept in a local SQLite database.", ClearHistoryButton()));
+                break;
+            case KeyboardPage:
+                BuildKeyboardPage(page);
                 break;
             case "AI":
                 BuildAiPage(page);
@@ -97,6 +102,34 @@ public sealed partial class SettingsWindow : Window
         }
 
         _page.Content = page;
+    }
+
+    /// <summary>
+    /// Vim and Emacs bindings, one at most, as macOS offers them in one picker: turning one on turns the other off in
+    /// the same save, so the two never race to write the file.
+    /// </summary>
+    private void AddKeyBindingCards(StackPanel page)
+    {
+        var editor = Prefs.Editor;
+        var syncing = false;
+        var vim = Toggle(editor.VimMode, v => syncing ? Task.CompletedTask : Update(s => s with { Editor = s.Editor with { VimMode = v, EmacsKeys = !v && s.Editor.EmacsKeys } }));
+        var emacs = Toggle(editor.EmacsKeys && !editor.VimMode, v => syncing ? Task.CompletedTask : Update(s => s with { Editor = s.Editor with { EmacsKeys = v, VimMode = !v && s.Editor.VimMode } }));
+        vim.Toggled += (_, _) => TurnOff(vim, emacs);
+        emacs.Toggled += (_, _) => TurnOff(emacs, vim);
+        page.Children.Add(Card("Vim keybindings", "Edit with Vim's modes, motions, operators, registers and macros. Ctrl+C, Ctrl+V, Ctrl+Z and the other Windows shortcuts keep working.", vim));
+        page.Children.Add(Card("Emacs keybindings", "Ctrl+F, B, N, P, A, E move, Alt+F and Alt+B move by word, Ctrl+K, Alt+D and Ctrl+W kill, Ctrl+Y and Alt+Y yank, Ctrl+Space sets the mark. Those keys lose their Windows meaning in the editor: redo with Ctrl+Shift+Z, find with Ctrl+H or the context menu.", emacs));
+
+        void TurnOff(ToggleSwitch changed, ToggleSwitch other)
+        {
+            if (!changed.IsOn || !other.IsOn)
+            {
+                return;
+            }
+
+            syncing = true;
+            other.IsOn = false;
+            syncing = false;
+        }
     }
 
     private void BuildAiPage(StackPanel page)
@@ -215,6 +248,7 @@ public sealed partial class SettingsWindow : Window
         page.Children.Add(Card("Status", null, buttons));
         page.Children.Add(new Border { Style = (Style)Application.Current.Resources["CardBorderStyle"], Child = status, Margin = new Thickness(0, 4, 0, 0) });
         Refresh();
+        page.Children.Add(new McpClientsPane(_host));
     }
 
     private static Border Card(string title, string? description, FrameworkElement control)

@@ -77,4 +77,48 @@
     <ProjectReference Include="..\TablePro.Drivers.Dameng\TablePro.Drivers.Dameng.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Hana\TablePro.Drivers.Hana.csproj" />
   </ItemGroup>
+
+  <!--
+    MSIX packaging, opt-in: dotnet publish -c Release -r win-x64 -p:TableProPackage=msix. Every other build stays
+    unpackaged. The package is unsigned; the release workflow signs it with signtool afterwards.
+    windows/packaging/build-release.ps1 passes TableProPackageVersion and TableProPublisher for a release.
+  -->
+  <PropertyGroup Condition="'$(TableProPackage)' == 'msix'">
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
+    <AppxBundle>Never</AppxBundle>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <!-- No symbol package is made, but without a tool path the SDK still looks for mspdbcmf.exe, a Visual Studio
+         tool, and warns when it is missing. A path that does not exist skips the search and the symbol step. -->
+    <MsPdbCmfExeFullpath>none</MsPdbCmfExeFullpath>
+    <GenerateTestArtifacts>false</GenerateTestArtifacts>
+    <AppxPackageDir Condition="'$(AppxPackageDir)' == ''">$(MSBuildProjectDirectory)\bin\msix\</AppxPackageDir>
+    <!-- A local package is X.Y.Z.0, below every release of the same version (betas are .1 to .98, a stable .99). -->
+    <TableProPackageVersion Condition="'$(TableProPackageVersion)' == ''">$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^\d+\.\d+\.\d+').Value).0</TableProPackageVersion>
+  </PropertyGroup>
+
+  <!-- The tile and Start menu logos only mean something inside a package. -->
+  <ItemGroup Condition="'$(TableProPackage)' != 'msix'">
+    <Content Remove="Assets\Package\**" />
+  </ItemGroup>
+
+  <!--
+    Stamps the release version and the signing certificate's subject into a copy of Package.appxmanifest, so the
+    checked-in file never changes per release. MSIX refuses a package whose Publisher differs from its signer.
+  -->
+  <Target Name="TableProStampPackageManifest" BeforeTargets="_ValidatePresenceOfAppxManifestItems" Condition="'$(TableProPackage)' == 'msix'">
+    <PropertyGroup>
+      <_TableProStampedManifest>$(IntermediateOutputPath)stamped\Package.appxmanifest</_TableProStampedManifest>
+      <_TableProManifestNamespace>&lt;Namespace Prefix='m' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;</_TableProManifestNamespace>
+    </PropertyGroup>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Package.appxmanifest" DestinationFiles="$(_TableProStampedManifest)" />
+    <XmlPoke XmlInputPath="$(_TableProStampedManifest)" Query="/m:Package/m:Identity/@Version" Value="$(TableProPackageVersion)" Namespaces="$(_TableProManifestNamespace)" />
+    <XmlPoke Condition="'$(TableProPublisher)' != ''" XmlInputPath="$(_TableProStampedManifest)" Query="/m:Package/m:Identity/@Publisher" Value="$(TableProPublisher)" Namespaces="$(_TableProManifestNamespace)" />
+    <ItemGroup>
+      <AppxManifest Remove="@(AppxManifest)" />
+      <AppxManifest Include="$(_TableProStampedManifest)" />
+    </ItemGroup>
+  </Target>
 </Project>
