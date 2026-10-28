@@ -31,7 +31,8 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | etcd | Built | v3 JSON gateway. Prefix browsing, etcdctl editor, saves as compare-and-swap transactions |
 | Cloudflare D1, R2 SQL | Built | REST. D1 saves are one checked batch; R2 SQL is read-only and stops at 10,000 rows |
 | libSQL, Turso | Partial | Hrana over HTTP with a stream per tab. No local file mode or structure editor |
-| Dameng, SAP HANA, Beancount | Not built | In progress: Dameng and HANA over the vendor ODBC drivers, Beancount through beancount or rledger |
+| Dameng, SAP HANA | Partial | Through the vendor's 64-bit ODBC driver, installed with its client. Catalog, DDL, saves in a transaction, activity with kill; written from vendor documentation and not yet run against a server |
+| Beancount | Built | Read-only. The ledger and its includes are projected into SQLite by beancount or rledger, rebuilt when a file changes; BQL needs rledger |
 | Plugin system | Not planned | Drivers are compiled in, as on Linux (`linux/docs/decisions/0001-no-plugin-system.md`) |
 
 ## Connections

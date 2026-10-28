@@ -6,7 +6,7 @@ Native Windows database client, the Windows sibling of the macOS TablePro app. I
 
 In development. Nothing is released yet: no `windows-v*` tag exists. [ROADMAP.md](ROADMAP.md) compares it with the macOS app feature by feature and lists what is not built.
 
-It connects to 34 engines across the relational, analytical, cloud warehouse, document, key-value, wide-column, search, streaming and coordination families, from PostgreSQL, MySQL, SQL Server, SQLite and DuckDB to Redis, MongoDB, ClickHouse, Oracle, Cassandra, Snowflake, BigQuery, Elasticsearch and Kafka. ROADMAP.md lists each engine and its limits.
+It connects to all 37 engines of the macOS app, across the relational, analytical, cloud warehouse, document, key-value, wide-column, search, streaming, coordination and file families, from PostgreSQL, MySQL, SQL Server, SQLite and DuckDB to Redis, MongoDB, ClickHouse, Oracle, Cassandra, Snowflake, BigQuery, Elasticsearch and Kafka. ROADMAP.md lists each engine and its limits.
 
 ## Requirements
 
