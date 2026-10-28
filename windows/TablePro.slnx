@@ -15,6 +15,7 @@
     <Project Path="src/TablePro.Drivers.SqlServer/TablePro.Drivers.SqlServer.csproj" />
     <Project Path="src/TablePro.Drivers.Sqlite/TablePro.Drivers.Sqlite.csproj" />
     <Project Path="src/TablePro.Drivers.DuckDb/TablePro.Drivers.DuckDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Redis/TablePro.Drivers.Redis.csproj" />
     <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
     <Project Path="src/TablePro.App/TablePro.App.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -32,5 +33,6 @@
     <Project Path="tests/TablePro.Drivers.Tests/TablePro.Drivers.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Sqlite.Tests/TablePro.Drivers.Sqlite.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.DuckDb.Tests/TablePro.Drivers.DuckDb.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.Redis.Tests/TablePro.Drivers.Redis.Tests.csproj" />
   </Folder>
 </Solution>

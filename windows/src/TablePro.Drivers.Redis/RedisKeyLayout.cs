@@ -251,19 +251,29 @@ internal static class RedisKeyLayout
             _ when text is null => false,
             FilterOperator.Equals => Compare(text, value) == 0,
             FilterOperator.NotEquals => Compare(text, value) != 0,
-            FilterOperator.GreaterThan => Compare(text, value) > 0,
-            FilterOperator.GreaterOrEqual => Compare(text, value) >= 0,
-            FilterOperator.LessThan => Compare(text, value) < 0,
-            FilterOperator.LessOrEqual => Compare(text, value) <= 0,
+            FilterOperator.GreaterThan => Order(text, value) > 0,
+            FilterOperator.GreaterOrEqual => Order(text, value) >= 0,
+            FilterOperator.LessThan => Order(text, value) < 0,
+            FilterOperator.LessOrEqual => Order(text, value) <= 0,
             FilterOperator.Contains => text.Contains(value, StringComparison.OrdinalIgnoreCase),
             FilterOperator.NotContains => !text.Contains(value, StringComparison.OrdinalIgnoreCase),
             FilterOperator.StartsWith => text.StartsWith(value, StringComparison.OrdinalIgnoreCase),
             FilterOperator.EndsWith => text.EndsWith(value, StringComparison.OrdinalIgnoreCase),
             FilterOperator.In => SplitList(value).Any(v => Compare(text, v) == 0),
             FilterOperator.NotIn => !SplitList(value).Any(v => Compare(text, v) == 0),
-            FilterOperator.Between => Compare(text, value) >= 0 && Compare(text, rule.SecondValue ?? string.Empty) <= 0,
+            FilterOperator.Between => Order(text, value) >= 0 && Order(text, rule.SecondValue ?? string.Empty) <= 0,
             _ => true,
         };
+    }
+
+    // A range against a number only matches values that are numbers; "Ada" is not greater than 9.
+    private static int? Order(string left, string right)
+    {
+        var leftNumber = double.TryParse(left, NumberStyles.Float, CultureInfo.InvariantCulture, out var l);
+        var rightNumber = double.TryParse(right, NumberStyles.Float, CultureInfo.InvariantCulture, out var r);
+        return leftNumber && rightNumber ? l.CompareTo(r)
+            : leftNumber || rightNumber ? null
+            : string.Compare(left, right, StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> SplitList(string value) =>

@@ -6,6 +6,7 @@ using TablePro.Core.Drivers;
 using TablePro.Drivers.DuckDb;
 using TablePro.Drivers.MySql;
 using TablePro.Drivers.PostgreSql;
+using TablePro.Drivers.Redis;
 using TablePro.Drivers.Sqlite;
 using TablePro.Drivers.SqlServer;
 using TablePro.Ssh;
@@ -58,7 +59,8 @@ public partial class App : Application
         .Register(new MySqlDriver())
         .Register(new SqlServerDriver())
         .Register(new SqliteDriver())
-        .Register(new DuckDbDriver());
+        .Register(new DuckDbDriver())
+        .Register(new RedisDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

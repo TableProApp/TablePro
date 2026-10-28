@@ -54,5 +54,6 @@
     <ProjectReference Include="..\TablePro.Drivers.SqlServer\TablePro.Drivers.SqlServer.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Sqlite\TablePro.Drivers.Sqlite.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.DuckDb\TablePro.Drivers.DuckDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Redis\TablePro.Drivers.Redis.csproj" />
   </ItemGroup>
 </Project>
