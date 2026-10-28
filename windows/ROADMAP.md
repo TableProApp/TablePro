@@ -11,8 +11,27 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | SQL Server | Built | Microsoft.Data.SqlClient; Windows authentication when no user name is given |
 | SQLite | Built | Microsoft.Data.Sqlite; structure changes SQLite cannot express run as a table rebuild |
 | DuckDB | Built | DuckDB.NET with DuckDB 1.5 |
-| ClickHouse, Cassandra and ScyllaDB, Redis, MongoDB, Oracle | Not built | The macOS app ships these as plugins. Each is one driver project here |
-| Snowflake, BigQuery, Spanner, Trino, DynamoDB, Elasticsearch, Cloudflare D1, libSQL and the other registry plugins | Not built | |
+| CockroachDB, Redshift, PGlite | Built | Through the PostgreSQL driver |
+| TiDB, OceanBase, Databend | Built | Through the MySQL driver |
+| Redis | Partial | StackExchange.Redis. Keys by type, MULTI/EXEC saves, INFO and CLIENT LIST. No Cluster or Sentinel; filters and sorts apply to the loaded page |
+| MongoDB | Built | Official driver. A mongosh parser for the editor, inferred columns, saves in a transaction on replica sets; the review shows mongosh commands |
+| ClickHouse | Built | ClickHouse.Client over HTTP. Saves are synchronous mutations probed to touch one row; no ON CLUSTER |
+| Oracle | Built | ODP.NET managed. PL/SQL blocks end at a lone /. DBMS_OUTPUT and SQL*Plus commands are not handled |
+| Teradata | Partial | Teradata .NET provider. No activity view; paging orders by a constant until the browse passes its sort to paging |
+| Cassandra, ScyllaDB | Built | DataStax driver. Values go through romJson, saves are one logged batch, paging by paging state; Amazon Keyspaces SigV4 |
+| DynamoDB | Built | AWS SDK. Scan paging, filter expressions, conditional TransactWriteItems saves, PartiQL editor; no GSI query path |
+| Snowflake | Partial | Snowflake.Data. Key-pair and browser sign-in; structure is read-only |
+| BigQuery | Built | Google client. Dry-run byte limit, saves as one script in a transaction; nested fields are read-only |
+| Spanner | Built | Google client. DDL through the admin API, saves retried on abort; GoogleSQL databases only |
+| Trino | Partial | REST protocol. Values are typed literals since the protocol cannot bind; saves are probed but not atomic |
+| Elasticsearch | Built | REST. Deep paging with a point in time, bulk saves, tasks with cancel |
+| Typesense, Weaviate | Built | REST and GraphQL. Weaviate writes one request at a time |
+| SurrealDB | Partial | HTTP /sql. Saves in one transaction; datetimes and decimals arrive as text |
+| Kafka | Partial | Confluent.Kafka. Topics browse merged by timestamp, KafkaQL editor, consumer groups with lag; inserts only. librdkafka has no win-arm64 build, so Kafka does not load on Arm64 |
+| etcd | Built | v3 JSON gateway. Prefix browsing, etcdctl editor, saves as compare-and-swap transactions |
+| Cloudflare D1, R2 SQL | Built | REST. D1 saves are one checked batch; R2 SQL is read-only and stops at 10,000 rows |
+| libSQL, Turso | Partial | Hrana over HTTP with a stream per tab. No local file mode or structure editor |
+| Dameng, SAP HANA, Beancount | Not built | In progress: Dameng and HANA over the vendor ODBC drivers, Beancount through beancount or rledger |
 | Plugin system | Not planned | Drivers are compiled in, as on Linux (`linux/docs/decisions/0001-no-plugin-system.md`) |
 
 ## Connections
