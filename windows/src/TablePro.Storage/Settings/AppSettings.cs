@@ -41,6 +41,14 @@ public sealed record AppSettings
     public AiSettings Ai { get; init; } = new();
     public McpSettings Mcp { get; init; } = new();
 
+    /// <summary>
+    /// Keyboard shortcut overrides by command id (<c>TablePro.Core.Shortcuts.ShortcutIds</c>): a chord written as
+    /// <c>Ctrl+Shift+O</c>, or an empty string for a command the user cleared. Only changes are stored; a missing id
+    /// keeps its default. An empty map is always the shared empty instance, because a record compares a dictionary by
+    /// reference and settings loaded twice must still compare equal.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Shortcuts { get; init; } = System.Collections.Frozen.FrozenDictionary<string, string>.Empty;
+
     /// <summary>Pulls every number back into the range the UI accepts, so a hand-edited file cannot break the editor.</summary>
     public AppSettings Normalize() => this with
     {
@@ -48,6 +56,7 @@ public sealed record AppSettings
         Data = (Data ?? new()).Normalize(),
         Ai = Ai ?? new(),
         Mcp = (Mcp ?? new()).Normalize(),
+        Shortcuts = Shortcuts is { Count: > 0 } ? Shortcuts : System.Collections.Frozen.FrozenDictionary<string, string>.Empty,
     };
 }
 
@@ -61,6 +70,9 @@ public sealed record EditorSettings
     public int TabSize { get; init; } = 4;
     public bool WordWrap { get; init; }
     public bool VimMode { get; init; }
+
+    /// <summary>Emacs key bindings in the SQL editor. Vim mode wins when a hand-edited file turns both on.</summary>
+    public bool EmacsKeys { get; init; }
     public bool Autocomplete { get; init; } = true;
 
     public EditorSettings Normalize() => this with
