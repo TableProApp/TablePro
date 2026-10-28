@@ -43,7 +43,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Rename, truncate, drop, create table | Built | Each shows its DDL for review first |
 | Export a table's data | Built | |
 | Quick switcher across databases, recent tab switcher | Not built | |
-| Database-wide search for a value | Not built | |
+| Database-wide search for a value | Built | Ctrl+Alt+F. Text columns of up to 500 tables, four at a time; a hit opens the table filtered to the value |
 
 ## SQL editor
 
@@ -60,7 +60,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Multiple cursors | Not built | |
 | Vim mode, Emacs keys | Not built | The setting is stored for when it is |
 | Graphical query plan, plan comparison | Not built | |
-| Parameter prompts for `?` and `:name` | Not built | |
+| Parameter prompts for `?`, `$n` and `:name` | Built | Values are remembered per tab; numbers with a leading zero stay text |
 | Language server features (go to definition, diagnostics) | Not built | |
 
 ## Results and data grid
@@ -73,8 +73,10 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Export to CSV, TSV, JSON, SQL INSERT, Markdown | Built | Streams to the file |
 | Value inspector with JSON formatting | Built | |
 | Column resize, auto-fit, multi-column server sort | Built | |
-| Result charts and maps | Not built | |
-| XLSX and Parquet export | Not built | |
+| Result charts | Built | Bar, line and area, category and series picked from the result, up to 500 points |
+| Result maps | Not built | |
+| XLSX export | Built | Streamed workbook with a frozen header and typed cells |
+| Parquet export | Not built | |
 | Screen reader support inside the grid | Partial | The grid draws on a canvas, so cells are not announced one by one yet |
 
 ## Table tab
@@ -87,7 +89,8 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Inline edit, add, duplicate, delete rows, undo and redo | Built | |
 | Save in one transaction, refused when a change would touch other than one row | Built | Safe Mode shows the statements first |
 | CSV import | Built | Header names map to columns |
-| JSON and SQL import, import mapping editor | Not built | |
+| JSON, NDJSON and JSON Lines import | Built | Arrays are streamed; keys map to columns |
+| SQL import, import mapping editor | Not built | Run a SQL file covers SQL import |
 | Structure: columns, indexes, foreign keys, triggers | Built | |
 | Structure editing: add, edit, rename, drop columns, add and drop indexes and foreign keys | Built | DDL is reviewed before it runs |
 | Check constraints, partitions, table options editors | Not built | |
@@ -118,7 +121,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Assistant chat with schema context | Built | Anthropic, OpenAI, Ollama, OpenAI-compatible servers, Gemini |
 | Explain, Optimize, Review, Fix with AI | Built | |
 | Per-connection AI policy: ask, allow, never | Built | |
-| Suggest while typing | Not built | The setting and the prompt exist; the editor does not ask yet |
+| Suggest while typing | Built | Asks after a pause at the end of a line; Tab accepts |
 | MCP server with the nine tools, access levels and write approval | Built | 127.0.0.1 only, bearer token |
 | MCP pairing, audit log persistence | Not built | The audit log is in memory |
 
@@ -139,4 +142,4 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 1. CI that builds the solution and runs every suite on Windows, plus driver suites against PostgreSQL, MySQL and SQL Server containers.
 2. An installer or MSIX package with signing, and a `windows-v*` tag that publishes it.
 3. A pass with Narrator and keyboard only, including the data grid.
-4. Suggest while typing, parameter prompts and multiple cursors, which macOS users reach for daily.
+4. Multiple cursors and Vim mode, which macOS users reach for daily.
