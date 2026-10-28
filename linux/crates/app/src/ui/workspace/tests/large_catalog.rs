@@ -732,6 +732,16 @@ impl Screen {
     /// Open the schema `name` under the session's connection, as a user
     /// opens the one they work in. MySQL's lone database opens itself.
     fn open_schema(&self, name: &str) {
+        let schema = self
+            .schema_rows()
+            .into_iter()
+            .find(|row| row.item().is_some_and(|item| item.property::<String>("title") == name));
+        schema.expect("the default schema's row").set_expanded(true);
+        after_next_frame(&self.window);
+    }
+
+    /// The rows of the session's schemas in the tree.
+    fn schema_rows(&self) -> Vec<gtk4::TreeListRow> {
         let Some(rows) = descendants(&self.tree.widget())
             .into_iter()
             .find_map(|widget| widget.downcast::<gtk4::ListView>().ok())
@@ -742,11 +752,18 @@ impl Screen {
         else {
             panic!("the tree's rows");
         };
-        let schema = (0..rows.n_items())
+        (0..rows.n_items())
             .filter_map(|at| rows.row(at))
-            .find(|row| row.depth() == 1 && row.item().is_some_and(|item| item.property::<String>("title") == name));
-        schema.expect("the default schema's row").set_expanded(true);
-        after_next_frame(&self.window);
+            .filter(|row| row.depth() == 1)
+            .collect()
+    }
+
+    /// Whether a lone schema, which opens as it comes, is open.
+    fn lone_schema_open(&self) -> bool {
+        match self.schema_rows().as_slice() {
+            [lone] => lone.is_expanded(),
+            _ => true,
+        }
     }
 
     /// A new editor in place of the last, on screen with the focus,
@@ -827,7 +844,7 @@ impl Screen {
                     }
                 });
             },
-            || listed(&self.sidebar) == expected,
+            || listed(&self.sidebar) == expected && self.lone_schema_open(),
         )
     }
 

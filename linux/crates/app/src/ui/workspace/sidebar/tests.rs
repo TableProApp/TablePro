@@ -640,6 +640,20 @@ fn an_open_connection_with_nothing_to_list_says_so() {
 }
 
 #[gtk4::test]
+fn a_lone_schema_of_more_tables_than_a_turn_makes_opens_once_they_are_made() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let (view, _) = session(&[], every_affordance());
+    shown.open(&alpha, &view);
+    let names = names(5_000);
+
+    tables(&view, &names.iter().map(String::as_str).collect::<Vec<_>>());
+
+    wait_until(WAIT, || shown.row("public").is_expanded()).expect("the lone schema to open");
+    assert_eq!(shown.rows().len(), 5_002, "the connection, its schema and every table");
+}
+
+#[gtk4::test]
 fn clearing_a_search_over_an_emptied_list_says_there_are_no_tables() {
     let alpha = connection("Alpha", None);
     let shown = Shown::new(std::slice::from_ref(&alpha));
