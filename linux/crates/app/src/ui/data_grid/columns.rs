@@ -13,7 +13,7 @@ use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, merge_order, number_width_chars,
-    typical_width_chars, widest_text,
+    typical_texts, typical_width_chars, widest_text,
 };
 
 /// Rows sampled for a column's opening width.
@@ -37,6 +37,19 @@ pub struct ColumnPaint {
     pub numbers: Cell<bool>,
 }
 
+/// What the pages read under a column set have held so far.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Pages {
+    /// No rows yet means they are on their way.
+    #[default]
+    Awaited,
+    /// The table holds no rows, so the columns' types size them.
+    Empty,
+    /// The rows sized the columns. An empty page after them, as a filter
+    /// that matches nothing gives, has no value to measure.
+    Held,
+}
+
 /// The grid's columns: what each one is and the view column that shows it.
 #[derive(Debug, Default)]
 pub struct ColumnSet {
@@ -50,9 +63,7 @@ pub struct ColumnSet {
     /// The widths the grid gave columns itself, which the layout does not
     /// keep: a better guess from other rows should still reach them.
     auto_widths: std::collections::HashMap<usize, i32>,
-    /// A page reached these columns. Until one does, no rows means the
-    /// rows are on their way, not that there are none.
-    rows_arrived: bool,
+    pages: Pages,
     handlers: Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>,
 }
 
@@ -228,8 +239,9 @@ impl DataGrid {
     fn opening_widths(&self) -> Vec<(usize, gtk::ColumnViewColumn, i32)> {
         let set = self.imp().columns.borrow();
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
-        let empty = set.rows_arrived && sample.is_empty();
-        let metrics = self.column_view().pango_context().metrics(None, None);
+        let by_type = set.pages == Pages::Empty;
+        let view = self.column_view();
+        let metrics = view.pango_context().metrics(None, None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
         let mut widths = Vec::new();
         for (paint, view_column) in set.paints.iter().zip(&set.view_columns) {
@@ -242,20 +254,33 @@ impl DataGrid {
                 .iter()
                 .filter_map(|cells| cells.as_deref().and_then(|cells| cells.get(index)))
                 .collect();
-            let chars = match (empty, paint.numbers.get()) {
-                (true, _) => typical_width_chars(&paint.column),
-                (false, true) => number_width_chars(&paint.column, values.iter().copied()),
-                (false, false) => default_width_chars(&paint.column, values.iter().copied()),
+            let column = &paint.column;
+            let chars = match (by_type, paint.numbers.get()) {
+                (true, _) => typical_width_chars(column),
+                (false, true) => number_width_chars(column, values.iter().copied()),
+                (false, false) => default_width_chars(column, values.iter().copied()),
             };
             let estimate = (f64::from(chars) * char_px).ceil() as i32;
             // A number is never cut, and its digits in tabular figures run
-            // wider than an average character.
-            let text = match paint.numbers.get() {
-                true => estimate.max(tabular_width(&self.column_view(), chars)),
-                false => widest_text(&paint.column, values.iter().copied()).map_or(estimate, |widest| {
-                    estimate.max(drawn_width(&self.column_view(), &widest))
-                }),
+            // wider than an average character. Nor is a date, held or not,
+            // nor with no rows a value its type spells out, as a UUID or an
+            // enum's label, so those are measured in tabular figures too.
+            let sampled = match (by_type, paint.numbers.get()) {
+                (_, true) => tabular_width(&view, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
+                (true, false) => 0,
+                (false, false) => {
+                    widest_text(column, values.iter().copied()).map_or(0, |widest| drawn_width(&view, &widest))
+                }
             };
+            let spelled = match by_type || column.display() == CellDisplay::Temporal {
+                true => typical_texts(column)
+                    .iter()
+                    .map(|typical| tabular_width(&view, typical))
+                    .max()
+                    .unwrap_or(0),
+                false => 0,
+            };
+            let text = estimate.max(sampled).max(spelled);
             let width = text + CELL_CHROME_PX;
             if auto.is_none_or(|auto| width > auto) {
                 widths.push((index, view_column.clone(), width));
@@ -267,7 +292,16 @@ impl DataGrid {
     /// Rows came in: an untyped column may have turned out not to hold
     /// only numbers, and the row numbers may have grown a digit.
     pub(super) fn columns_took_rows(&self) {
-        self.imp().columns.borrow_mut().rows_arrived = true;
+        // A draft is the user's, not the table's: a table whose only rows
+        // are drafts still holds none.
+        let held = self.store().rows().any(|row| row.draft_id().is_none());
+        {
+            let mut set = self.imp().columns.borrow_mut();
+            set.pages = match (set.pages, held) {
+                (_, true) | (Pages::Held, false) => Pages::Held,
+                (Pages::Awaited | Pages::Empty, false) => Pages::Empty,
+            };
+        }
         self.detect_untyped_numbers();
         self.size_unsized_columns();
         row_number_column::fit(self);
@@ -608,10 +642,10 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
     names.len() == columns.len() && names.iter().zip(columns).all(|(name, column)| *name == column.name)
 }
 
-/// How wide `chars` digits are in the tabular figures libadwaita's
-/// `numeric` class draws.
-fn tabular_width(widget: &impl IsA<gtk::Widget>, chars: u32) -> i32 {
-    let layout = widget.create_pango_layout(Some(&"0".repeat(usize::try_from(chars).unwrap_or_default())));
+/// How wide `text` is in the tabular figures libadwaita's `numeric`
+/// class draws.
+fn tabular_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
+    let layout = widget.create_pango_layout(Some(text));
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
     layout.set_attributes(Some(&tabular));

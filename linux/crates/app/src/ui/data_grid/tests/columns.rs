@@ -4,6 +4,8 @@ use gtk4 as gtk;
 use gtk4::pango;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::ObjectSubclassIsExt;
+use tablepro_core::column::ColumnKind;
+use tablepro_core::value::Temporal;
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, close_menus, data_column, keyed, laid_out, settled_width, shown_width, step, text, untyped};
@@ -437,19 +439,106 @@ fn a_column_left_behind_by_its_view_lets_go_of_the_grid() {
 /// it holds: the grid sizes its columns before the first page arrives.
 #[gtk4::test]
 fn an_empty_table_opens_its_columns_at_their_types_width() {
-    let columns = || vec![named("realm", "text", true), named("created", "date", false)];
+    let columns = || vec![named("realm", "text", true), named("note", "varchar(255)", false)];
 
     let empty = Grid::open(columns(), Vec::new());
-    let short = Grid::open(columns(), vec![vec![text("a"), Value::Null]]);
+    let short = Grid::open(columns(), vec![vec![text("a"), text("b")]]);
 
-    let realm = data_column(&empty, 0).fixed_width();
+    for index in 0..2 {
+        let typed = data_column(&empty, index).fixed_width();
+        assert!(
+            typed > data_column(&short, index).fixed_width(),
+            "column {index} of the empty table is no wider than one holding a single letter: {typed}"
+        );
+    }
+}
+
+/// Digits and capitals run wider than an average character, so a count
+/// of them would cut a date, a UUID or a label typed into an empty
+/// table. The label with the most characters is not the widest.
+#[gtk4::test]
+fn an_empty_tables_column_holds_a_whole_value_of_its_type() {
+    let state = || {
+        let mut column = named("state", "text", false);
+        column.column_type.kind = ColumnKind::Enum {
+            labels: vec!["illiterate".to_owned(), "WWWWWWWWW".to_owned()],
+            multiple: false,
+        };
+        column
+    };
+    let columns = || vec![named("id", "uuid", true), named("on", "date", false), state()];
+    let id = uuid::Uuid::parse_str("8a6e0804-2bd0-4672-b79d-d97027f9071a").expect("a UUID");
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 28).expect("a date");
+
+    let held = Grid::open(
+        columns(),
+        vec![vec![
+            Value::Uuid(id),
+            Value::Date(Temporal::Finite(day)),
+            text("WWWWWWWWW"),
+        ]],
+    );
+    let empty = Grid::open(columns(), Vec::new());
+
+    for index in 0..3 {
+        let typed = data_column(&empty, index).fixed_width();
+        let measured = data_column(&held, index).fixed_width();
+        assert!(
+            typed >= measured,
+            "column {index} of the empty table is narrower than a value of its type: {typed} < {measured}"
+        );
+    }
+}
+
+/// A date is never cut, so a date column whose first rows hold none
+/// still opens wide enough for one.
+#[gtk4::test]
+fn a_date_column_holding_no_date_yet_is_as_wide_as_a_date() {
+    let columns = || vec![named("id", "integer", true), named("on", "date", false)];
+    let day = chrono::NaiveDate::from_ymd_opt(2026, 10, 28).expect("a date");
+
+    let none = Grid::open(columns(), vec![vec![Value::Int(1), Value::Null]]);
+    let held = Grid::open(columns(), vec![vec![Value::Int(1), Value::Date(Temporal::Finite(day))]]);
+
+    let blank = data_column(&none, 1).fixed_width();
+    let dated = data_column(&held, 1).fixed_width();
     assert!(
-        realm > data_column(&short, 0).fixed_width(),
-        "the empty table's text column is no wider than one holding a single letter: {realm}"
+        blank >= dated,
+        "a column of NULLs is narrower than a date: {blank} < {dated}"
     );
-    assert_eq!(
-        data_column(&empty, 1).fixed_width(),
-        data_column(&short, 1).fixed_width(),
-        "a date is as wide as a date either way"
+}
+
+/// A filter that matches nothing has no value to measure, so the columns
+/// keep the widths their rows gave them.
+#[gtk4::test]
+fn a_page_that_comes_back_empty_keeps_the_widths_the_rows_gave() {
+    let grid = Grid::open(
+        vec![named("id", "integer", true), named("name", "text", false)],
+        vec![vec![Value::Int(1), text("Ada")]],
     );
+    let opened: Vec<i32> = (0..2).map(|index| data_column(&grid, index).fixed_width()).collect();
+
+    grid.grid.replace_rows(Vec::new(), 0);
+
+    let after: Vec<i32> = (0..2).map(|index| data_column(&grid, index).fixed_width()).collect();
+    assert_eq!(after, opened, "an empty page widened the columns its rows had sized");
+}
+
+/// A double click on a header's edge hands the width back to the grid,
+/// which in an empty table is the type's again. A draft is the user's,
+/// not the table's, so a page that comes back empty beside one still
+/// leaves the table empty.
+#[gtk4::test]
+fn a_cleared_width_in_an_empty_table_returns_to_its_types_width() {
+    let grid = Grid::open(vec![named("name", "text", true)], Vec::new());
+    let column = data_column(&grid, 0);
+    let typed = column.fixed_width();
+    grid.insert_draft();
+    grid.grid.replace_rows(Vec::new(), 0);
+
+    column.set_fixed_width(200);
+    column.set_fixed_width(-1);
+
+    wait_until(WAIT, || column.fixed_width() > 0).expect("the grid gives the column a width again");
+    assert_eq!(column.fixed_width(), typed);
 }
