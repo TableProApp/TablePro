@@ -61,6 +61,11 @@ pub struct Workspace {
     /// model, so the shell can tell whose a page is while the model is
     /// busy with its input.
     pub(super) index: OnceCell<Rc<TabIndex>>,
+    /// What builds the session's tabs, shared with the model for the
+    /// same reason: the shell's new tab follows the front while the
+    /// session that came forward may be busy with its input. Let go of
+    /// at shutdown.
+    pub(super) factory: RefCell<Option<Rc<super::tab_factory::TabFactory>>>,
     /// The session's own conversation with the assistant.
     pub(super) assistant_pane: OnceCell<AssistantPane>,
     /// What the window was last told closing would lose.

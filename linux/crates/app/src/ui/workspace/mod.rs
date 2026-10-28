@@ -772,6 +772,7 @@ impl Workspace {
             &input,
         );
         let _ = imp.index.set(tabs.index.clone());
+        imp.factory.replace(Some(tabs.factory.clone()));
         let assistant = assistant::install(&tabs, &input);
         let _ = imp.assistant_pane.set(assistant.pane());
         let watches = SessionWatches::new(&session, &services.saved_connections, &input);
@@ -892,9 +893,9 @@ impl Workspace {
             .or_else(|| index.first_in(&view))
     }
 
-    /// What builds the session's tabs.
+    /// What builds the session's tabs, while the session is open.
     fn tab_factory(&self) -> Option<Rc<tab_factory::TabFactory>> {
-        self.read(|model| model.factory.clone())
+        self.imp().factory.borrow().clone()
     }
 
     /// The session's list of tables, which the connection tree shows
@@ -978,6 +979,7 @@ impl Workspace {
     /// come forward as it goes.
     pub(crate) fn shutdown(&self, close_pages: bool) {
         let imp = self.imp();
+        imp.factory.take();
         if let Some(pump) = imp.pump.take() {
             pump.abort();
         }

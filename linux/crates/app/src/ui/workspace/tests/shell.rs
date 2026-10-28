@@ -369,3 +369,25 @@ fn f9_toggles_sidebar() {
 
     assert_eq!(test.app.accels_for_action("win.show-sidebar"), ["F9"]);
 }
+
+/// A session that comes forward with a tab it opened while handling
+/// its own input still gives the overview its new tab.
+#[gtk4::test]
+fn the_overview_opens_a_tab_in_a_session_that_came_forward_from_its_own_input() {
+    let sessions = super::two_sessions("OverviewFollowsFront", "Other");
+    let (shell, first, second) = (&sessions.shell, &sessions.first, &sessions.second);
+    super::open_editor(first);
+    super::open_editor(second);
+    assert_eq!(shell.front().as_ref(), Some(second));
+    let before = shell.tab_view().n_pages();
+
+    overview_new_tab_button(&shell.imp().tab_overview.get()).emit_clicked();
+
+    assert_eq!(shell.tab_view().n_pages(), before + 1, "the overview made no tab");
+    let page = shell.tab_view().selected_page().expect("the new tab in front");
+    assert_eq!(
+        shell.owner_of(&page).map(|(owner, _)| owner).as_ref(),
+        Some(second),
+        "the new tab went to a session behind"
+    );
+}
