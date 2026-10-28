@@ -344,7 +344,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     }
 
     /// <summary>The structure editor and Create Table need DDL the engine can express in SQL.</summary>
-    public bool CanEditStructure => Session.Database is ISchemaDdlProvider && Session.Dialect.IsSql;
+    public bool CanEditStructure => Session.Database is ISchemaDdlProvider && Session.Dialect.IsSql && !Profile.IsReadOnly;
 
     public bool IsSql => Session.Dialect.IsSql;
 
@@ -356,7 +356,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(obj.Name, new DropObject(obj));
-        if (statements.Count == 0 || Profile.SafeMode.BlocksAllWrites() || !await Context.Dialogs.ReviewSqlAsync($"Drop {obj.Name.Name}?", statements, "Drop"))
+        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync($"Drop {obj.Name.Name}?", statements, "Drop"))
         {
             return false;
         }
@@ -372,7 +372,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(obj.Name, new TruncateTable());
-        if (statements.Count == 0 || Profile.SafeMode.BlocksAllWrites() || !await Context.Dialogs.ReviewSqlAsync($"Empty {obj.Name.Name}?", statements, "Truncate"))
+        if (statements.Count == 0 || Profile.IsReadOnly || !await Context.Dialogs.ReviewSqlAsync($"Empty {obj.Name.Name}?", statements, "Truncate"))
         {
             return false;
         }
@@ -394,7 +394,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(obj.Name, new RenameTable(name.Trim()));
-        return statements.Count > 0 && !Profile.SafeMode.BlocksAllWrites() && await Context.Dialogs.ReviewSqlAsync("Rename", statements, "Rename") && await RunDdlAsync(statements);
+        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync("Rename", statements, "Rename") && await RunDdlAsync(statements);
     }
 
     public async Task<bool> CreateTableAsync(ObjectName name, IReadOnlyList<ColumnDefinition> columns)
@@ -405,7 +405,7 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         }
 
         var statements = ddl.BuildDdl(name, new CreateTable(name, columns));
-        return statements.Count > 0 && !Profile.SafeMode.BlocksAllWrites() && await Context.Dialogs.ReviewSqlAsync("Create table", statements, "Create") && await RunDdlAsync(statements);
+        return statements.Count > 0 && !Profile.IsReadOnly && await Context.Dialogs.ReviewSqlAsync("Create table", statements, "Create") && await RunDdlAsync(statements);
     }
 
     public async ValueTask DisposeAsync()

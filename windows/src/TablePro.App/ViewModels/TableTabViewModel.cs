@@ -401,7 +401,7 @@ public sealed partial class TableTabViewModel : TabViewModel
 
         var changes = _buffer.BuildChanges();
         var profile = _context.Session.Profile;
-        if (profile.SafeMode.BlocksAllWrites())
+        if (profile.IsReadOnly)
         {
             await _context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection, so edits cannot be saved.");
             return;
@@ -466,7 +466,7 @@ public sealed partial class TableTabViewModel : TabViewModel
             return false;
         }
 
-        if (_context.Session.Profile.SafeMode.BlocksAllWrites())
+        if (_context.Session.Profile.IsReadOnly)
         {
             await _context.Dialogs.ShowErrorAsync("Read-only connection", "Safe Mode is Read-Only on this connection.");
             return false;
@@ -589,7 +589,11 @@ public sealed partial class TableTabViewModel : TabViewModel
         var profile = _context.Session.Profile;
         (IsEditable, ReadOnlyReason) = (Table.Kind, profile.SafeMode, Structure?.PrimaryKey.Count ?? 0) switch
         {
-            (not ObjectKind.Table, _, _) => (false, "Views are read-only."),
+            _ when profile.Descriptor.IsReadOnly => (false, $"{profile.Descriptor.DisplayName} connections are read-only."),
+            (ObjectKind.View or ObjectKind.MaterializedView, _, _) => (false, "Views are read-only."),
+
+            // Documents, keys and messages are rows too; their drivers refuse the edits their engine cannot make.
+            (not (ObjectKind.Table or ObjectKind.Collection or ObjectKind.Key or ObjectKind.Topic), _, _) => (false, "This object is read-only."),
             (_, SafeModeLevel.ReadOnly, _) => (false, "Safe Mode is Read-Only on this connection."),
             (_, _, 0) => (true, "No primary key: rows are matched on every column, and a save that hits duplicates is refused."),
             _ => (true, null),

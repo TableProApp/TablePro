@@ -21,10 +21,16 @@ public static class ChangeSqlBuilder
     /// <summary>A command with its parameters written as literals, for engines that build their own save statements.</summary>
     public static string Inline(SqlDialect dialect, SqlCommandSpec spec)
     {
-        var literals = spec.Parameters.ToDictionary(p => p.Key, p => dialect.Literal(p.Value), StringComparer.Ordinal);
-        var lookup = literals.GetAlternateLookup<ReadOnlySpan<char>>();
         var text = spec.Text.AsSpan();
-        var sb = new StringBuilder(text.Length + (literals.Count * 8));
+        var sb = new StringBuilder(text.Length + (spec.Parameters.Count * 8));
+
+        // Dialects that bind by position name every parameter "?", so the names repeat and only the order tells them apart.
+        var positional = spec.Parameters.Count > 0 && spec.Parameters.All(p => p.Key == "?");
+        var literals = positional
+            ? null
+            : spec.Parameters.ToDictionary(p => p.Key, p => dialect.Literal(p.Value), StringComparer.Ordinal);
+        var lookup = literals?.GetAlternateLookup<ReadOnlySpan<char>>();
+        var next = 0;
 
         // One pass over whole parameter tokens: @p10 is never read as @p1, and a value or quoted name that
         // happens to contain a parameter name is never rewritten.
@@ -32,7 +38,11 @@ public static class ChangeSqlBuilder
         while (lexer.TryRead(out var token))
         {
             var slice = token.Slice(text);
-            if (token.Kind == SqlTokenKind.Parameter && lookup.TryGetValue(slice, out var literal))
+            if (token.Kind == SqlTokenKind.Parameter && positional && next < spec.Parameters.Count && slice is "?")
+            {
+                sb.Append(dialect.Literal(spec.Parameters[next++].Value));
+            }
+            else if (token.Kind == SqlTokenKind.Parameter && lookup is { } named && named.TryGetValue(slice, out var literal))
             {
                 sb.Append(literal);
             }

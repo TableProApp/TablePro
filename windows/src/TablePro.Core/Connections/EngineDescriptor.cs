@@ -47,10 +47,10 @@ public sealed record EngineDescriptor(
         new(DatabaseEngine.Etcd, "etcd", 2379, false, false, "", "") { Family = EngineFamily.Coordination, DataModel = DataModel.KeyValue, QueryLanguage = "etcdctl", UsernameRequired = false },
         new(DatabaseEngine.SurrealDb, "SurrealDB", 8000, false, true, "root", "") { Family = EngineFamily.Document, DataModel = DataModel.Document, QueryLanguage = "SurrealQL" },
         new(DatabaseEngine.CloudflareD1, "Cloudflare D1", 443, false, false, "", "") { Family = EngineFamily.Cloud, UsernameRequired = false },
-        new(DatabaseEngine.CloudflareR2Sql, "Cloudflare R2 SQL", 443, false, true, "", "") { Family = EngineFamily.Cloud, UsernameRequired = false },
+        new(DatabaseEngine.CloudflareR2Sql, "Cloudflare R2 SQL", 443, false, true, "", "") { Family = EngineFamily.Cloud, UsernameRequired = false, IsReadOnly = true },
         new(DatabaseEngine.Dameng, "Dameng DM8", 5236, false, true, "SYSDBA", ""),
         new(DatabaseEngine.SapHana, "SAP HANA", 30015, false, true, "SYSTEM", ""),
-        new(DatabaseEngine.Beancount, "Beancount", 0, true, false, "", ".beancount;.bean") { Family = EngineFamily.Files, UsernameRequired = false },
+        new(DatabaseEngine.Beancount, "Beancount", 0, true, false, "", ".beancount;.bean") { Family = EngineFamily.Files, UsernameRequired = false, IsReadOnly = true },
     }.ToFrozenDictionary(d => d.Engine);
 
     public EngineFamily Family { get; init; } = EngineFamily.Relational;
@@ -61,6 +61,9 @@ public sealed record EngineDescriptor(
 
     /// <summary>The port a server listens on for TLS when it differs from <see cref="DefaultPort"/>, as ClickHouse's HTTPS on 8443.</summary>
     public int? TlsDefaultPort { get; init; }
+
+    /// <summary>Engines TablePro only reads, such as a ledger file or R2 SQL over Iceberg, whatever the Safe Mode level.</summary>
+    public bool IsReadOnly { get; init; }
 
     /// <summary>Engines that accept a connection without a login leave the user field optional in the form.</summary>
     public bool UsernameRequired { get; init; } = true;

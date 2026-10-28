@@ -113,6 +113,16 @@ public sealed class ChangeSqlBuilderTests
     }
 
     [Fact]
+    public void PreviewFillsPositionalParametersInOrder()
+    {
+        var change = new RowUpdate(Row(("id", 5)), Row(("name", "a"), ("qty", 2)));
+
+        var preview = ChangeSqlBuilder.Preview(HanaDialect.Instance, new ObjectName("S", "T"), change);
+
+        Assert.Equal("UPDATE \"S\".\"T\" SET \"name\" = 'a', \"qty\" = 2 WHERE \"id\" = 5", preview);
+    }
+
+    [Fact]
     public void PreviewReplacesDollarParameters() =>
         Assert.Equal(
             "INSERT INTO \"t\" (\"a\", \"b\") VALUES ('v', 2)",

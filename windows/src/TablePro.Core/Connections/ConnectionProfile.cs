@@ -37,7 +37,7 @@ public sealed record ConnectionProfile
     public IReadOnlyDictionary<string, string> AdditionalOptions { get; init; } = new Dictionary<string, string>();
 
     /// <summary>Opens the database read-only at the driver, beyond what Safe Mode refuses in the app.</summary>
-    public bool IsReadOnly => SafeMode.BlocksAllWrites();
+    public bool IsReadOnly => SafeMode.BlocksAllWrites() || Descriptor.IsReadOnly;
 
     public EngineDescriptor Descriptor => EngineDescriptor.For(Engine);
 
