@@ -5,130 +5,78 @@
 
 import SwiftUI
 
-/// The License pane: what you hold, whether it is working, and the seats it covers.
-///
-/// The layout is keyed on holding a license, and entitlement decides only whether a renewal field
-/// appears alongside it. A lapsed license still has seats to release and billing to open.
+// What the account services back today; Settings > Account replaces it in M16.6.
 struct LicenseSettingsView: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
-    private var notice: LicenseNotice? {
-        LicensePresentation.notice(
-            status: licenseManager.status,
-            daysUntilExpiry: licenseManager.daysUntilExpiry,
-            isExpired: licenseManager.license?.isExpired ?? false,
-            hasLicense: licenseManager.license != nil
-        )
-    }
+    @State private var isWorking = false
+    @State private var failure: String?
+
+    private var state: AccountState { featureAccess.state }
 
     var body: some View {
         Form {
-            if let notice {
+            if let notice = LicenseNotice.make(state: state, current: featureAccess.currentEntitlement) {
                 LicenseNoticeSection(notice: notice)
             }
 
-            // Keyed on holding a licence: a lapsed one still has seats to release and a renewal to enter.
-            if let license = licenseManager.license {
-                identitySection(license)
-
-                if LicensePresentation.showsRenewalField(status: licenseManager.status) {
-                    renewalSection
-                }
-
-                detailsSection(license)
-                LicenseDevicesSection()
-                if licenseManager.showsTeamRoster {
-                    LicenseTeamSection()
-                }
-                LicenseFeaturesSections(groups: featureGroups, offersPurchase: false)
-                actionsSection
+            if state.isSignedIn || state.entitlement != nil {
+                identitySection
             } else {
                 landingSection
-                LicenseFeaturesSections(groups: featureGroups, offersPurchase: true)
             }
+
+            LicenseFeaturesSections(featureAccess: featureAccess)
         }
         .formStyle(.grouped)
     }
 
-    // MARK: - Licensed
-
-    private func identitySection(_ license: License) -> some View {
+    private var identitySection: some View {
         Section {
             HStack(spacing: 12) {
-                Image(systemName: sealSymbol)
+                Image(systemName: featureAccess.currentEntitlement == nil ? "seal" : "checkmark.seal.fill")
                     .font(.largeTitle)
-                    .foregroundStyle(sealTint)
+                    .foregroundStyle(featureAccess.currentEntitlement == nil ? Color.secondary : Color.green)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(license.email)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    if let email = state.entitlement?.email, !email.isEmpty {
+                        Text(email)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
 
-                    Text(planDescription(license))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    ForEach(state.entitlement?.licenses ?? [], id: \.id) { license in
+                        Text(Self.planLine(license))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
 
-                Button(String(localized: "Refresh")) {
-                    Task { await licenseManager.refreshLicenseAndDevices() }
+                if isWorking {
+                    ProgressView().controlSize(.small)
                 }
-                /// `revalidate` releases `isValidating` before the seat list is even requested, so
-                /// gating on it alone re-enabled the button while the longer half was still running
-                /// and let a second Refresh start on top of the first.
-                .disabled(licenseManager.isValidating || licenseManager.isRefreshingDevices)
+
+                Button(String(localized: "Refresh")) {
+                    run { await AccountServices.shared.refreshEntitlement() }
+                }
+                .disabled(isWorking || !state.isSignedIn)
                 .accessibilityIdentifier("license-refresh")
             }
             .padding(.vertical, 4)
-        }
-    }
 
-    /// Deliberately short. The header already carries who the license is for and what it is, so
-    /// repeating the email and the plan here is the clutter this pane was rebuilt to remove: every
-    /// fact appears once, and only facts somebody acts on appear at all.
-    private func detailsSection(_ license: License) -> some View {
-        Section {
-            LicenseKeyRow(key: license.key)
-        }
-    }
+            Link(String(localized: "Manage Account"), destination: AccountServices.shared.configuration.accountURL)
 
-    private var actionsSection: some View {
-        Section {
-            Link(String(localized: "Manage Account"), destination: SupportLinks.account)
-
-            Button(String(localized: "Deactivate on This Mac…"), role: .destructive) {
-                Task { @MainActor in
-                    let confirmed = await AlertHelper.confirmDestructive(
-                        title: String(localized: "Deactivate this license?"),
-                        message: String(
-                            localized: "Paid features stop on this Mac right away. You can activate this license again later."
-                        ),
-                        confirmButton: String(localized: "Deactivate"),
-                        cancelButton: String(localized: "Cancel")
-                    )
-                    guard confirmed else { return }
-                    let reachedServer = await licenseManager.deactivate()
-                    if !reachedServer {
-                        licenseManager.releaseErrorMessage = LicenseManager.unreachableServerSeatMessage
-                    }
+            if state.isSignedIn {
+                Button(String(localized: "Sign Out"), role: .destructive) {
+                    run { await AccountServices.shared.signOut() }
                 }
+                .disabled(isWorking)
+                .accessibilityIdentifier("account-sign-out")
             }
-            .disabled(licenseManager.isValidating)
-            .accessibilityIdentifier("license-deactivate")
-        }
-    }
-
-    // MARK: - Not entitled
-
-    /// The way back in for somebody who already holds a lapsed licence: just the field and the
-    /// purchase link, without the pitch, which they have plainly already read.
-    private var renewalSection: some View {
-        Section {
-            LicenseActivationForm()
-                .padding(.vertical, 4)
         }
     }
 
@@ -144,88 +92,104 @@ struct LicenseSettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let releaseError = licenseManager.releaseErrorMessage {
-                    Label(releaseError, systemImage: "exclamationmark.triangle.fill")
+                if let failure {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                LicenseActivationForm()
+                HStack(spacing: 10) {
+                    Button(String(localized: "Sign In")) { signIn() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isWorking)
+                        .accessibilityIdentifier("account-sign-in-button")
+
+                    if isWorking {
+                        ProgressView().controlSize(.small)
+                    }
+                }
             }
             .padding(.vertical, 4)
         }
     }
 
-    // MARK: - Helpers
-
-    private var featureGroups: [LicenseFeatureGroup] {
-        LicensePresentation.featureGroups(status: licenseManager.status, tier: licenseManager.currentTier)
-    }
-
-    /// A seal that stays green for a license that is not working would be the pane telling a
-    /// comfortable lie, so it follows entitlement.
-    private var sealSymbol: String {
-        LicensePresentation.showsLicensedLayout(status: licenseManager.status)
-            ? "checkmark.seal.fill"
-            : "seal"
-    }
-
-    private var sealTint: Color {
-        LicensePresentation.showsLicensedLayout(status: licenseManager.status) ? .green : .secondary
-    }
-
-    /// One line under the email carrying what was bought and how long it runs, so neither needs a
-    /// row of its own further down.
-    private func planDescription(_ license: License) -> String {
-        LicensePresentation.planDescription(
-            tier: license.tier,
-            billingCycle: license.billingCycle,
-            expiry: license.expiresAt.map { $0.formatted(date: .abbreviated, time: .omitted) }
-        )
-    }
-}
-
-/// The license key, masked, with Copy for the real one.
-struct LicenseKeyRow: View {
-    let key: String
-
-    var body: some View {
-        LabeledContent(String(localized: "License key")) {
-            HStack(spacing: 8) {
-                /// Enough of the key to tell which licence this is, and no more. A full-length
-                /// mask is the same secret-shaped run of dots for everyone, so it earned its
-                /// width by being unreadable and then lost the end of itself to truncation.
-                Text(LicensePresentation.maskedKey(key))
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(1)
-                    /// Not `.accessibilityLabel`. On a line-limited `Text` in a `LabeledContent`
-                    /// shown after the first render, SwiftUI reads that label back through the
-                    /// platform element it set it on, which calls the label again until the stack
-                    /// overflows. A replacement element carries no platform element.
-                    .accessibilityRepresentation {
-                        Text(String(localized: "License key, hidden"))
-                    }
-
-                Button(String(localized: "Copy Key")) {
-                    ClipboardService.shared.writeSecretText(key)
-                }
-                .controlSize(.small)
-                .accessibilityIdentifier("license-copy-key")
+    private func signIn() {
+        failure = nil
+        Task {
+            isWorking = true
+            defer { isWorking = false }
+            do throws(AccountError) {
+                try await AccountServices.shared.signIn(using: WebAuthenticationSessionAuthenticator())
+            } catch {
+                failure = error.friendlyDescription
             }
         }
     }
+
+    private func run(_ work: @escaping @MainActor () async -> Void) {
+        Task {
+            isWorking = true
+            defer { isWorking = false }
+            await work()
+        }
+    }
+
+    // The plan and cycle are the server's words, shown as they come.
+    private static func planLine(_ license: EntitlementLicense) -> String {
+        var parts = [license.plan.capitalized, license.cycle.capitalized]
+        if let team = license.team {
+            parts.append(team.name)
+        }
+        return parts.joined(separator: ", ")
+    }
 }
 
-/// A degraded state, stated where it applies rather than floated over the pane.
+private struct LicenseNotice: Equatable {
+    enum Action: Equatable {
+        case refresh
+        case manageAccount
+    }
+
+    let title: String
+    let message: String
+    let action: Action
+
+    static func make(state: AccountState, current: Entitlement?) -> LicenseNotice? {
+        guard current == nil else { return nil }
+        if case .deviceLimitReached = state.refresh {
+            return LicenseNotice(
+                title: String(localized: "Device Limit Reached"),
+                message: String(localized: "Your license is in use on 3 other devices. Remove one from your account to use it here."),
+                action: .manageAccount
+            )
+        }
+        if state.entitlement != nil {
+            return LicenseNotice(
+                title: String(localized: "Your license has expired"),
+                message: String(localized: "Connect to the internet to verify your license."),
+                action: .refresh
+            )
+        }
+        if state.isSignedIn, case .failed = state.refresh {
+            return LicenseNotice(
+                title: String(localized: "License validation failed"),
+                message: String(localized: "Connect to the internet to verify your license."),
+                action: .refresh
+            )
+        }
+        return nil
+    }
+}
+
 private struct LicenseNoticeSection: View {
     let notice: LicenseNotice
 
     var body: some View {
         Section {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: symbol)
-                    .foregroundStyle(tint)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -236,8 +200,14 @@ private struct LicenseNoticeSection: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if let action = notice.action {
-                        actionControl(action)
+                    switch notice.action {
+                    case .refresh:
+                        Button(String(localized: "Try Again")) {
+                            Task { await AccountServices.shared.refreshEntitlement() }
+                        }
+                        .padding(.top, 2)
+                    case .manageAccount:
+                        Link(String(localized: "Manage Account"), destination: AccountServices.shared.configuration.accountURL)
                             .padding(.top, 2)
                     }
                 }
@@ -245,36 +215,6 @@ private struct LicenseNoticeSection: View {
                 Spacer()
             }
             .padding(.vertical, 4)
-        }
-    }
-
-    @ViewBuilder
-    private func actionControl(_ action: LicenseNoticeAction) -> some View {
-        switch action {
-        case .renew:
-            Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.licenseSettings))
-        case .purchase:
-            Link(String(localized: "Buy a License"), destination: SupportLinks.pricing(.licenseSettings))
-        case .retryValidation:
-            Button(String(localized: "Try Again")) {
-                Task { await LicenseManager.shared.revalidate() }
-            }
-        }
-    }
-
-    private var symbol: String {
-        switch notice.tone {
-        case .informational: "info.circle.fill"
-        case .warning: "exclamationmark.triangle.fill"
-        case .critical: "exclamationmark.octagon.fill"
-        }
-    }
-
-    private var tint: Color {
-        switch notice.tone {
-        case .informational: .accentColor
-        case .warning: .orange
-        case .critical: .red
         }
     }
 }

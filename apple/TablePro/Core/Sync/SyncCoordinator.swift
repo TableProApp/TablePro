@@ -77,10 +77,9 @@ final class SyncCoordinator: ObservableObject {
         self.recordCache = recordCache
         self.columnLayouts = columnLayouts
         self.themeCatalog = themeCatalog
-        let licenseManager = services.licenseManager
+        let featureAccess = services.featureAccess
         self.licenseGate = licenseGate ?? {
-            guard !licenseManager.isFeatureAvailable(.iCloudSync) else { return nil }
-            return SyncCoordinator.licenseDisableReason(for: licenseManager.status)
+            SyncCoordinator.licenseDisableReason(for: featureAccess.check(.iCloudSync))
         }
         lastSyncDate = metadataStorage.lastSyncDate
     }
@@ -525,19 +524,16 @@ final class SyncCoordinator: ObservableObject {
         debounceTask = nil
     }
 
-    /// Why sync is off, for a license that does not currently unlock it.
-    ///
-    /// Exhaustive on purpose. The arm that used to be `default:` swallowed `.validationFailed`,
-    /// which is a paying customer the app has not reached the server about, and told them a license
-    /// was required. A new `LicenseStatus` case has to be answered here rather than inheriting the
-    /// wrong answer.
-    nonisolated static func licenseDisableReason(for status: LicenseStatus) -> DisableReason {
-        switch status {
+    // Exhaustive, so a paying customer the app could not reach the server about is never told to buy.
+    nonisolated static func licenseDisableReason(for access: ProFeatureAccess) -> DisableReason? {
+        switch access {
+        case .available:
+            return nil
         case .expired:
             return .licenseExpired
-        case .validationFailed:
+        case .refreshFailed:
             return .licenseUnverified
-        case .active, .unlicensed, .suspended, .deactivated:
+        case .signedOut, .notIncluded:
             return .licenseRequired
         }
     }

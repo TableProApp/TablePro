@@ -54,12 +54,16 @@ final class KeychainHelper: KeychainStoring {
         return candidate
     }
 
+    // Off for a credential bound to this Mac, which another Mac must never receive through iCloud.
+    private let followsPasswordSync: Bool
+
     private var isPasswordSyncEnabled: Bool {
-        AppStorageEnvironment.shared.defaults.bool(forKey: Self.passwordSyncEnabledKey)
+        followsPasswordSync && AppStorageEnvironment.shared.defaults.bool(forKey: Self.passwordSyncEnabledKey)
     }
 
-    init(service: String = "com.TablePro") {
+    init(service: String = "com.TablePro", followsPasswordSync: Bool = true) {
         self.service = service
+        self.followsPasswordSync = followsPasswordSync
     }
 
     // MARK: - Data API

@@ -222,12 +222,12 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     var presentableLinkedConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
+        guard services.featureAccess.isAvailable(.linkedFolders) else { return [] }
         return linkedConnections
     }
 
     var presentableTeamLibraryConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        guard services.featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibraryConnections
     }
 
@@ -590,7 +590,7 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     private static func buildTeamLibraryConnections() -> [LinkedConnection] {
-        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
+        guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
         let placeholderURL = URL(fileURLWithPath: "/")
         var seen: Set<UUID> = []
         return TeamLibrarySyncCoordinator.shared.library.connections.compactMap { connection in

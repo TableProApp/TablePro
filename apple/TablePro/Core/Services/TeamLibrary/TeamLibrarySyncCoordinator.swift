@@ -29,10 +29,17 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     init(
         apiClient: TeamLibraryAPIClient = LiveTeamLibraryAPIClient.shared,
         store: TeamLibraryStore = .shared,
-        isFeatureAvailable: @escaping @MainActor () -> Bool = { LicenseManager.shared.isFeatureAvailable(.teamLibrary) },
+        isFeatureAvailable: @escaping @MainActor () -> Bool = { FeatureAccess.shared.isAvailable(.teamLibrary) },
+        // The /v1 library takes the license key, so it works only until the key exchange retires it (M16.8).
         credentialsProvider: @escaping @MainActor () -> (key: String, machineId: String)? = {
-            guard let key = LicenseManager.shared.license?.key else { return nil }
-            return (key, LicenseStorage.shared.machineId)
+            let machineID = MachineIdentity.shared.machineID
+            let legacy = LegacyLicenseStore(
+                keychain: AppStorageEnvironment.shared.keychain,
+                defaults: AppStorageEnvironment.shared.defaults,
+                machineID: machineID,
+                verify: { try LicenseSignatureVerifier.shared.verify(payload: $0) }
+            )
+            return legacy.licenseKey().map { ($0, machineID) }
         },
         licenseStatusChanges: AnyPublisher<Void, Never> = AppEvents.shared.licenseStatusDidChange
             .receive(on: RunLoop.main)

@@ -11,11 +11,11 @@ import SwiftUI
 /// nothing to dismiss: it is a line of text that opens a window when clicked. It disappears on
 /// its own the moment a license is active.
 struct SupportPromptLink: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
     @ViewBuilder
     var body: some View {
-        if licenseManager.supportAudience == .prospect {
+        if featureAccess.supportAudience == .prospect {
             Button {
                 SupportWindowController.present()
             } label: {

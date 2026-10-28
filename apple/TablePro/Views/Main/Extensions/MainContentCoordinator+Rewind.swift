@@ -26,7 +26,7 @@ extension MainContentCoordinator {
     }
 
     private var isDataRewindLicensed: Bool {
-        services.licenseManager.isFeatureAvailable(.dataRewind)
+        services.featureAccess.isAvailable(.dataRewind)
     }
 
     func rewindLastSave() {

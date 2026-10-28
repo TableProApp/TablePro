@@ -5,7 +5,7 @@ import TableProUtilities
 
 internal struct FavoritesTabView: View {
     @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
     @ObservedObject private var gitActions = LinkedFolderGitActions.shared
@@ -252,7 +252,7 @@ internal struct FavoritesTabView: View {
     /// it. The empty state asks whether the user owns anything, and the filtered list cannot answer
     /// that question.
     private var allTeamLibraryQueries: [TeamLibraryPullResponse.Query] {
-        guard licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        guard featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibrarySync.library.queries
     }
 
@@ -341,7 +341,7 @@ internal struct FavoritesTabView: View {
                 },
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary),
+                teamLibraryAvailable: featureAccess.isAvailable(.teamLibrary),
                 linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items)),
                 linkedFolderGitStates: linkedFolderGitStates
             ),

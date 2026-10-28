@@ -21,7 +21,7 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
     }
 
     var machineId: String {
-        LicenseStorage.shared.machineId
+        MachineIdentity.shared.machineID
     }
 
     var appVersion: String? {
@@ -52,7 +52,7 @@ final class MacAnalyticsProvider: AnalyticsEnvironmentProvider {
     }
 
     var hasLicense: Bool {
-        LicenseStorage.shared.loadLicenseKey() != nil
+        FeatureAccess.shared.supportAudience == .supporter
     }
 
     var activeDatabaseTypes: [String] {

@@ -119,7 +119,7 @@ final class SyncTestEnvironment {
                 connectionStorage: self.connections,
                 integrity: ConnectionStoreIntegrity(keySource: StoredIntegrityKeySource(store: keychain))
             ),
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: metadata,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,

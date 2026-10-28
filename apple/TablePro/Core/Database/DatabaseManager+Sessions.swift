@@ -39,7 +39,7 @@ extension DatabaseManager {
         userRequestedDisconnects.remove(connection.id)
 
         let resolvedConnection: DatabaseConnection
-        if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
+        if FeatureAccess.shared.isAvailable(.envVarReferences) {
             resolvedConnection = EnvVarResolver.resolveConnection(connection)
         } else {
             resolvedConnection = connection

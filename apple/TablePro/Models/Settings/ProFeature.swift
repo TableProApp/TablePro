@@ -2,23 +2,21 @@
 //  ProFeature.swift
 //  TablePro
 //
-//  Pro feature definitions and access control types
-//
 
 import Foundation
 
-/// Features that require a Pro (active) license
+// Raw values are the feature codes the entitlement carries (product.md, Feature codes).
 internal enum ProFeature: String, CaseIterable {
-    case iCloudSync
-    case encryptedExport
-    case envVarReferences
-    case linkedFolders
-    case queryInsights
-    case resultCharts
-    case teamCatalog
-    case teamLibrary
-    case compareSync
-    case dataRewind
+    case iCloudSync = "icloud_sync"
+    case encryptedExport = "encrypted_export"
+    case envVarReferences = "env_var_references"
+    case linkedFolders = "linked_folders"
+    case queryInsights = "query_insights"
+    case resultCharts = "result_charts"
+    case teamCatalog = "team_catalog"
+    case teamLibrary = "team_library"
+    case compareSync = "compare_sync"
+    case dataRewind = "data_rewind"
 
     var displayName: String {
         switch self {
@@ -95,28 +93,16 @@ internal enum ProFeature: String, CaseIterable {
         }
     }
 
-    /// The lowest license tier that unlocks this feature.
-    var requiredTier: LicenseTier {
-        switch self {
-        case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryInsights, .resultCharts,
-             .compareSync, .dataRewind:
-            return .starter
-        case .teamCatalog, .teamLibrary:
-            return .team
-        }
-    }
-
-    /// Names the plan, because the pricing page a gate links to sells Starter and Team by name.
-    var planRequirement: String {
-        String(format: String(localized: "%@ requires the %@ plan"), displayName, requiredTier.displayName)
+    // Which plan includes a feature is the server's to say (GET /v2/pricing), so this names none.
+    var paidPlanRequirement: String {
+        String(format: String(localized: "%@ needs a paid plan"), displayName)
     }
 }
 
-/// Result of checking Pro feature availability
 internal enum ProFeatureAccess: Equatable {
     case available
-    case unlicensed
+    case signedOut
+    case notIncluded
     case expired
-    case validationFailed
-    case requiresUpgrade(LicenseTier)
+    case refreshFailed
 }

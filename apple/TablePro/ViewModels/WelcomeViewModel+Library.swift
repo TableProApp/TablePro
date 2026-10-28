@@ -403,8 +403,8 @@ extension WelcomeViewModel {
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
             isSyncEnabled: services.appSettings.sync.enabled,
-            canPublishToTeamCatalog: services.licenseManager.isFeatureAvailable(.teamCatalog),
-            canPublishToTeamLibrary: services.licenseManager.isFeatureAvailable(.teamLibrary)
+            canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
+            canPublishToTeamLibrary: services.featureAccess.isAvailable(.teamLibrary)
         )
     }
 

@@ -2,7 +2,7 @@ import Combine
 import SwiftUI
 
 struct WelcomeActionsPanel: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updater = SoftwareUpdater.shared
     let onActivateLicense: () -> Void
     let onNewConnection: () -> Void
@@ -81,7 +81,7 @@ struct WelcomeActionsPanel: View {
 
             VStack(spacing: 4) {
                 licenseNotice
-                if licenseManager.supportAudience == .prospect {
+                if featureAccess.supportAudience == .prospect {
                     SupportPromptLink()
                 }
             }
@@ -118,21 +118,20 @@ struct WelcomeActionsPanel: View {
         showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
-    // Only states that need the person: an active license says nothing. A license the server has not
-    // confirmed in 30 days still pauses paid features, so it keeps its warning.
+    // Only states that need the person: a working entitlement says nothing, and neither does a free account.
     @ViewBuilder
     private var licenseNotice: some View {
-        switch licenseManager.status {
-        case .active:
+        let state = featureAccess.state
+        if featureAccess.currentEntitlement != nil {
             EmptyView()
-        case .validationFailed:
-            Label(licenseManager.currentTier.displayName, systemImage: "exclamationmark.seal.fill")
+        } else if case .failed = state.refresh, state.isSignedIn {
+            Label(String(localized: "License validation failed"), systemImage: "exclamationmark.seal.fill")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.orange)
-                .help(String(localized: "License not verified in 30 days. Connect to the internet to check it."))
-        case .unlicensed, .expired, .suspended, .deactivated:
+                .help(String(localized: "Connect to the internet to verify your license."))
+        } else if !state.isSignedIn, state.legacy == nil {
             Button(action: onActivateLicense) {
-                Text(String(localized: "Activate License"))
+                Text(String(localized: "Sign In"))
             }
             .buttonStyle(.link)
         }

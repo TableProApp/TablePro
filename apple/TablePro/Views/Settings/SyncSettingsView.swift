@@ -33,9 +33,6 @@ struct SyncSettingsView: View {
 private struct SyncNoticeSection: View {
     let notice: SyncNotice
 
-    /// Observed for `isValidating`, which disables Check Again while a check runs. Read off the
-    /// singleton directly, the button never learned that a check had started or finished.
-    @ObservedObject private var licenseManager = LicenseManager.shared
     @ObservedObject private var updater = SoftwareUpdater.shared
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncSettingsView")
@@ -101,9 +98,8 @@ private struct SyncNoticeSection: View {
             Link(action.title, destination: SupportLinks.pricing(.licenseSettings))
         case .checkLicenseAgain:
             Button(action.title) {
-                Task { await licenseManager.revalidate() }
+                Task { await AccountServices.shared.refreshEntitlement() }
             }
-            .disabled(licenseManager.isValidating)
         }
     }
 

@@ -16,7 +16,7 @@ internal enum TeamLibraryConnectionPublishOutcome {
 
 extension WelcomeViewModel {
     func publishConnectionsToTeamLibrary(_ connectionsToPublish: [DatabaseConnection]) {
-        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary), !connectionsToPublish.isEmpty else { return }
+        guard FeatureAccess.shared.isAvailable(.teamLibrary), !connectionsToPublish.isEmpty else { return }
 
         Task { @MainActor in
             let outcome = await Self.publishConnections(

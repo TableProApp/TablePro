@@ -437,7 +437,7 @@ private extension AppServices {
             tagStorage: tagStorage,
             sshProfileStorage: sshProfileStorage,
             credentialProfileStorage: credentialProfileStorage,
-            licenseManager: licenseManager,
+            featureAccess: featureAccess,
             syncMetadataStorage: syncMetadataStorage,
             favoritesExpansionState: favoritesExpansionState,
             linkedFolderWatcher: linkedFolderWatcher,

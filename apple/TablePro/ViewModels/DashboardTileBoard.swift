@@ -62,7 +62,7 @@ final class DashboardTileBoard: ObservableObject {
                         policy: ManagedPolicyReader.shared
                     )
                 },
-                chartsAvailable: { services.licenseManager.isFeatureAvailable(.resultCharts) },
+                chartsAvailable: { services.featureAccess.isAvailable(.resultCharts) },
                 nullDisplay: { services.appSettings.dataGrid.nullDisplay },
                 storage: ServerDashboardTileStorage()
             )

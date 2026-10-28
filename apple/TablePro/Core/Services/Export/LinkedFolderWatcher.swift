@@ -30,7 +30,7 @@ final class LinkedFolderWatcher: ObservableObject {
 
     func start() {
         guard !hasStarted else { return }
-        guard LicenseManager.shared.isFeatureAvailable(.linkedFolders) else { return }
+        guard FeatureAccess.shared.isAvailable(.linkedFolders) else { return }
         hasStarted = true
         let folders = LinkedFolderStorage.shared.loadFolders()
         scheduleScan(folders)

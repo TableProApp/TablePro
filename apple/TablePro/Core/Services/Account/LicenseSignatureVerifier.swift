@@ -2,14 +2,12 @@
 //  LicenseSignatureVerifier.swift
 //  TablePro
 //
-//  RSA-SHA256 signature verification using Security framework + embedded public key
-//
 
 import Foundation
 import os
 import Security
 
-/// Verifies RSA-SHA256 signatures on license payloads using the embedded public key
+// Checks the RSA signature of a payload an older build stored, until the key exchange retires it.
 final class LicenseSignatureVerifier: @unchecked Sendable {
     static let shared = LicenseSignatureVerifier()
 
@@ -23,18 +21,12 @@ final class LicenseSignatureVerifier: @unchecked Sendable {
         }
     }
 
-    // MARK: - Public API
-
-    /// Verify a signed license payload and return the decoded data if valid.
-    /// Throws `LicenseError.signatureInvalid` if the signature doesn't match.
     func verify(payload: SignedLicensePayload) throws -> LicensePayloadData {
         guard let publicKey = publicKey else {
             throw LicenseError.signatureInvalid
         }
 
-        // Encode the data portion as canonical JSON (same as server). The server signs
-        // json_encode($data, JSON_UNESCAPED_SLASHES) over a ksort'ed array, so the slash must
-        // stay raw here or a signed field containing one never verifies.
+        // The server signs json_encode($data, JSON_UNESCAPED_SLASHES) over a ksort'ed array.
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let dataJSON = try encoder.encode(payload.data)
@@ -58,9 +50,6 @@ final class LicenseSignatureVerifier: @unchecked Sendable {
         return payload.data
     }
 
-    // MARK: - Key Loading
-
-    /// Load the RSA public key from the app bundle's PEM file
     private static func loadPublicKey() -> SecKey? {
         guard let url = Bundle.main.url(forResource: "license_public", withExtension: "pem"),
               let pemString = try? String(contentsOf: url, encoding: .utf8)
@@ -71,7 +60,6 @@ final class LicenseSignatureVerifier: @unchecked Sendable {
         return createSecKey(fromPEM: pemString)
     }
 
-    /// Parse a PEM-encoded public key into a SecKey
     private static func createSecKey(fromPEM pem: String) -> SecKey? {
         let stripped = pem
             .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "")

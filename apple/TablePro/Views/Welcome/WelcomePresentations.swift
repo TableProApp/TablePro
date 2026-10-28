@@ -89,7 +89,7 @@ internal struct WelcomePresentations: ViewModifier {
                 try vm.saveGroup(id: group.id, from: ConnectionGroupFields(group), to: draft)
             }
         case .activation:
-            LicenseActivationSheet()
+            AccountSignInSheet()
         case .importFile(let url):
             ConnectionImportSheet(fileURL: url) { vm.finishImport($0) }
         case .exportConnections(let conns):

@@ -2,15 +2,10 @@
 //  SupportLinks.swift
 //  TablePro
 //
-//  Outbound links to the pricing page and to GitHub Sponsors, tagged with where they were clicked.
-//
 
 import Foundation
 
-/// Where in the app an outbound support link was clicked.
-///
-/// Values stay inside alphanumerics, dashes and underscores, which is the character set GitHub
-/// Sponsors accepts for its metadata parameters.
+// Values stay inside alphanumerics, dashes and underscores, the characters GitHub Sponsors accepts.
 internal enum SupportReferrer: Equatable {
     case supportWindow
     case aboutPanel
@@ -33,10 +28,9 @@ internal enum SupportReferrer: Equatable {
         }
     }
 
-    /// Derived from the case name rather than kept as a second hand-written list, so a new
-    /// `ProFeature` cannot ship with a missing or stale slug.
+    // From the case name, not the feature code, so the referrers the site already records stay the same.
     internal static func slug(for feature: ProFeature) -> String {
-        feature.rawValue.reduce(into: "") { slug, character in
+        String(describing: feature).reduce(into: "") { slug, character in
             if character.isUppercase, !slug.isEmpty {
                 slug.append("-")
             }
@@ -46,20 +40,10 @@ internal enum SupportReferrer: Equatable {
 }
 
 internal enum SupportLinks {
-    /// `appending(queryItems:)` writes the query ahead of the fragment, which is the only order
-    /// that works: spelled `#pricing?ref=…` the whole tail is the fragment, so the parameter never
-    /// reaches the server or `location.search` and nothing can read it.
+    // `appending(queryItems:)` puts the query before the fragment; inside `#pricing?ref=` nothing reads it.
     private static let pricingPage = URL(string: "https://tablepro.app/#pricing")!
 
     private static let sponsorsPage = URL(string: "https://github.com/sponsors/datlechin")!
-
-    /// Where a licence is actually administered: invoices, seats, team members. A different place
-    /// from the pricing page, and the one the docs already send people to.
-    internal static let account = URL(string: "https://tablepro.app/account")!
-
-    /// The account's Macs page, the only place a seat can be freed from a Mac that holds none.
-    /// A signed-out visit signs in and comes back here, not to the overview.
-    internal static let accountMachines = URL(string: "https://tablepro.app/account/machines")!
 
     internal static let licensingGuide = URL(string: "https://docs.tablepro.app/features/licensing")!
 
@@ -67,8 +51,7 @@ internal enum SupportLinks {
         pricingPage.appending(queryItems: [URLQueryItem(name: "ref", value: referrer.parameterValue)])
     }
 
-    /// GitHub Sponsors ignores `ref` and reads `metadata_<key>`, which it reports in the
-    /// sponsorship transaction export.
+    // GitHub Sponsors ignores `ref` and reports `metadata_<key>` in its transaction export.
     internal static func sponsors(_ referrer: SupportReferrer) -> URL {
         sponsorsPage.appending(
             queryItems: [URLQueryItem(name: "metadata_campaign", value: referrer.parameterValue)]

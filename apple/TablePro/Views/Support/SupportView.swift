@@ -10,7 +10,7 @@ import SwiftUI
 /// counter, no progress bar, no appeal. It is only ever reached because someone went looking for
 /// it in the Help menu.
 struct SupportView: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
     var body: some View {
         VStack(spacing: 20) {
@@ -42,7 +42,7 @@ struct SupportView: View {
     }
 
     private var paragraphs: [String] {
-        switch licenseManager.supportAudience {
+        switch featureAccess.supportAudience {
         case .supporter:
             return [
                 String(localized: "Thanks. Your license is what pays for the next release."),
@@ -74,7 +74,7 @@ struct SupportView: View {
     @ViewBuilder
     private var actions: some View {
         HStack(spacing: 12) {
-            if licenseManager.supportAudience == .prospect {
+            if featureAccess.supportAudience == .prospect {
                 Link("Buy a License", destination: SupportLinks.pricing(.supportWindow))
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("support-buy-license")

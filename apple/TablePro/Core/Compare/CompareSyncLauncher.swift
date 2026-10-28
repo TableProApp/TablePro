@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 internal enum CompareSyncLauncher {
     internal static func open(prefillSource connectionId: UUID? = nil) {
-        guard LicenseManager.shared.isFeatureAvailable(.compareSync) else {
+        guard FeatureAccess.shared.isAvailable(.compareSync) else {
             presentUpgradeAlert()
             return
         }
@@ -30,7 +30,7 @@ internal enum CompareSyncLauncher {
     private static func presentUpgradeAlert() {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = ProFeature.compareSync.planRequirement
+        alert.messageText = ProFeature.compareSync.paidPlanRequirement
         alert.informativeText = ProFeature.compareSync.featureDescription
         alert.addButton(withTitle: String(localized: "View License"))
         alert.addButton(withTitle: String(localized: "Cancel"))

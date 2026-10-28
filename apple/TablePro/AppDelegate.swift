@@ -142,13 +142,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
         AnalyticsService.shared.startPeriodicHeartbeat()
+        AccountServices.shared.start()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
         TeamLibrarySyncCoordinator.shared.start()
-
-        Task {
-            LicenseManager.shared.startPeriodicValidation()
-        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

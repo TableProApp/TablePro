@@ -2,14 +2,33 @@
 //  LiveTeamLibraryAPIClient.swift
 //  TablePro
 //
-//  URLSession client for the team library endpoints. Mirrors LicenseAPIClient's request pattern and
-//  reuses LicenseError. The encoder uses no key strategy so CodingKeys drive the snake_case wire
-//  format while the embedded ExportableConnection payload keeps its own encoding.
-//
 
 import Foundation
 import os
 
+// The /v1 library, authorized by a license key, until M16.8 moves it to /v2.
+enum TeamLibraryAPIError: LocalizedError {
+    case network(Error)
+    case server(Int, String)
+    case decoding(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .network(let error):
+            return String(format: String(localized: "Network error: %@"), error.localizedDescription)
+        case .server(let code, let message):
+            return String(format: String(localized: "Server error (%d): %@"), code, message)
+        case .decoding(let error):
+            return String(format: String(localized: "Failed to parse server response: %@"), error.localizedDescription)
+        }
+    }
+}
+
+private struct TeamLibraryAPIErrorResponse: Decodable {
+    let message: String
+}
+
+// No key strategy: CodingKeys write snake_case while the embedded ExportableConnection keeps its own encoding.
 final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
     static let shared = LiveTeamLibraryAPIClient()
 
@@ -57,7 +76,7 @@ final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
         do {
             return try decoder.decode(R.self, from: data)
         } catch {
-            throw LicenseError.decodingError(error)
+            throw TeamLibraryAPIError.decoding(error)
         }
     }
 
@@ -77,22 +96,22 @@ final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw LicenseError.networkError(error)
+            throw TeamLibraryAPIError.network(error)
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw LicenseError.networkError(URLError(.badServerResponse))
+            throw TeamLibraryAPIError.network(URLError(.badServerResponse))
         }
 
         guard (200...299).contains(http.statusCode) else {
             let message: String
-            if let errorResponse = try? decoder.decode(LicenseAPIErrorResponse.self, from: data) {
+            if let errorResponse = try? decoder.decode(TeamLibraryAPIErrorResponse.self, from: data) {
                 message = errorResponse.message
             } else {
                 message = HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
             }
             Self.logger.error("Team library request failed \(http.statusCode): \(message)")
-            throw LicenseError.serverError(http.statusCode, message)
+            throw TeamLibraryAPIError.server(http.statusCode, message)
         }
 
         return data

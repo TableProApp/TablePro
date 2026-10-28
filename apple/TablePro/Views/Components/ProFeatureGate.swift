@@ -2,37 +2,32 @@
 //  ProFeatureGate.swift
 //  TablePro
 //
-//  View modifier that gates content behind a Pro license
-//
 
 import SwiftUI
 
 struct ProFeatureGateModifier: ViewModifier {
     let feature: ProFeature
 
-    private let licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
-    @State private var showActivationSheet = false
+    @State private var showSignInSheet = false
 
     func body(content: Content) -> some View {
-        let available = licenseManager.isFeatureAvailable(feature)
+        let access = featureAccess.check(feature)
 
         content
-            .disabled(!available)
+            .disabled(access != .available)
             .overlay {
-                if !available {
-                    proRequiredOverlay
+                if access != .available {
+                    lockedOverlay(access)
                 }
             }
-            .sheet(isPresented: $showActivationSheet) {
-                LicenseActivationSheet()
+            .sheet(isPresented: $showSignInSheet) {
+                AccountSignInSheet()
             }
     }
 
-    @ViewBuilder
-    private var proRequiredOverlay: some View {
-        let access = licenseManager.checkFeature(feature)
-
+    private func lockedOverlay(_ access: ProFeatureAccess) -> some View {
         ZStack {
             AccessibleMaterialScrim(material: .ultraThinMaterial)
 
@@ -46,49 +41,50 @@ struct ProFeatureGateModifier: ViewModifier {
                 switch access {
                 case .available:
                     EmptyView()
+                case .signedOut:
+                    Text(feature.paidPlanRequirement)
+                        .font(.headline)
+                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
+                    Text(feature.featureDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Sign In")) {
+                        showSignInSheet = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
+                        .font(.subheadline)
+                case .notIncluded:
+                    Text(feature.paidPlanRequirement)
+                        .font(.headline)
+                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
+                    Text(feature.featureDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Link(String(localized: "Upgrade Plan"), destination: SupportLinks.pricing(.featureGate(feature)))
+                        .buttonStyle(.borderedProminent)
                 case .expired:
                     Text("Your license has expired")
                         .font(.headline)
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License…")) {
-                        showActivationSheet = true
+                    Button(String(localized: "Try Again")) {
+                        Task { await AccountServices.shared.refreshEntitlement() }
                     }
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
-                case .validationFailed:
+                case .refreshFailed:
                     Text("License validation failed")
                         .font(.headline)
                     Text("Connect to the internet to verify your license.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button(String(localized: "Retry Validation")) {
-                        Task { await LicenseManager.shared.revalidate() }
+                        Task { await AccountServices.shared.refreshEntitlement() }
                     }
                     .buttonStyle(.borderedProminent)
-                case .unlicensed:
-                    Text(feature.planRequirement)
-                        .font(.headline)
-                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
-                    Text(feature.featureDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button(String(localized: "Activate License…")) {
-                        showActivationSheet = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
-                        .font(.subheadline)
-                case .requiresUpgrade:
-                    Text(feature.planRequirement)
-                        .font(.headline)
-                    Text(feature.featureDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Link(String(localized: "Upgrade Plan"), destination: SupportLinks.pricing(.featureGate(feature)))
-                        .buttonStyle(.borderedProminent)
                 }
             }
             .padding()
@@ -97,7 +93,6 @@ struct ProFeatureGateModifier: ViewModifier {
 }
 
 extension View {
-    /// Gate this view behind a Pro license requirement
     func requiresPro(_ feature: ProFeature) -> some View {
         modifier(ProFeatureGateModifier(feature: feature))
     }

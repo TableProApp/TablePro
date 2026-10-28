@@ -24,7 +24,7 @@ internal enum ContainerChangeRerunPolicy {
 
 struct MainEditorContentView: View {
     @ObservedObject private var schemaService = SchemaService.shared
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     // Must clear the nested editor/results split's required minimums, or dragging the drawer asks AppKit for an unreachable height.
     static let tabContentMinimumHeight = CollapsibleSplitController.combinedMinimumThickness
@@ -661,7 +661,7 @@ struct MainEditorContentView: View {
                     tabId: tab.id,
                     resultSetId: resultSet.id,
                     dataRevision: coordinator.tabSessionRegistry.session(for: tab.id)?.dataRevision ?? 0,
-                    isUnlocked: licenseManager.isFeatureAvailable(.resultCharts)
+                    isUnlocked: featureAccess.isAvailable(.resultCharts)
                 )
             }
         case .map:

@@ -565,7 +565,7 @@ extension RowEditingCoordinator {
         serverOwned: (generated: [String], identity: [String]),
         columnTypeNames: [String: String]
     ) {
-        guard parent.services.licenseManager.isFeatureAvailable(.dataRewind) else { return }
+        guard parent.services.featureAccess.isAvailable(.dataRewind) else { return }
         guard AppSettingsManager.shared.history.keepRewindHistory else { return }
         let operations = plan.rowOperations
         guard !operations.isEmpty, let target = operations.first?.target else { return }

@@ -5,18 +5,13 @@
 
 import SwiftUI
 
-/// Marks a control a license unlocks, and is the route out of that control.
-///
-/// The badge carries the feature it stands for so it can say what the feature does and open the
-/// pricing page tagged with which gate was met. Without that, a disabled toggle beside a bare
-/// capsule is a dead end: it names no feature, explains nothing, and leads nowhere.
+// Names no plan: which plan includes a feature comes from the server's pricing, not from the app.
 struct ProBadge: View {
     let feature: ProFeature
 
     var body: some View {
         Link(destination: SupportLinks.pricing(.featureGate(feature))) {
-            Text(feature.requiredTier.displayName)
-                .textCase(.uppercase)
+            Image(systemName: "lock.fill")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(Color.legibleForeground(on: .orange))
                 .padding(.horizontal, 6)
@@ -24,7 +19,7 @@ struct ProBadge: View {
                 .background(.orange, in: Capsule())
         }
         .help(feature.featureDescription)
-        .accessibilityLabel(Text(feature.planRequirement))
+        .accessibilityLabel(Text(feature.paidPlanRequirement))
         .accessibilityHint(Text("Opens the TablePro pricing page"))
     }
 }

@@ -10,7 +10,7 @@ import TableProPluginKit
 import TableProUtilities
 
 struct SidebarView: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var databaseManager = DatabaseManager.shared
     @StateObject private var viewModel: SidebarViewModel
     @ObservedObject private var settingsManager = AppSettingsManager.shared
@@ -254,7 +254,7 @@ struct SidebarView: View {
                 databaseType: viewModel.databaseType,
                 offersBrowsedFolders: rootShape == .flat
             )
-            if offersCreation || supportsSchemaFooter || licenseManager.supportAudience == .prospect {
+            if offersCreation || supportsSchemaFooter || featureAccess.supportAudience == .prospect {
                 SidebarFooterBar {
                     if offersCreation {
                         SidebarAddButton(sections: { creationSections() }, isEnabled: isConnected)
