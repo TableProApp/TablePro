@@ -38,6 +38,19 @@ impl ColumnInfo {
         !self.is_generated
     }
 
+    /// Whether the server gives a new row its own value here: a numbered
+    /// column, or a table's only key column whose default is an
+    /// expression, such as a UUID. A row copied as a new one leaves the
+    /// column out. A literal default would give every copy the same key,
+    /// and a key of several columns keeps what the row held in each.
+    /// `columns` is every column of the table.
+    pub fn is_assigned_on_insert(&self, columns: &[ColumnInfo]) -> bool {
+        self.is_auto_increment
+            || (self.primary_key
+                && self.default.needs_server_evaluation()
+                && columns.iter().filter(|column| column.primary_key).count() == 1)
+    }
+
     /// Whether an insert may leave the column out and still get a row:
     /// the server has something to put there.
     pub fn is_optional_on_insert(&self) -> bool {
@@ -49,6 +62,7 @@ impl ColumnInfo {
 mod tests {
     use super::super::{CatalogType, ColumnKind, IntegerKind, IntegerWidth, ReadForm, SqlExpression, SqlTypeExpr};
     use super::*;
+    use crate::value::Value;
 
     fn column(name: &str) -> ColumnInfo {
         ColumnInfo {
@@ -111,5 +125,43 @@ mod tests {
         let mut defaulted = column("created_at");
         defaulted.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("now()"));
         assert!(defaulted.is_optional_on_insert());
+    }
+
+    #[test]
+    fn a_new_row_takes_a_numbered_column_or_a_defaulted_key_from_the_server() {
+        let mut row_number = column("row_number");
+        row_number.is_auto_increment = true;
+        let mut uuid_key = column("id");
+        uuid_key.primary_key = true;
+        uuid_key.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("gen_random_uuid()"));
+        let mut written_key = column("code");
+        written_key.primary_key = true;
+        let mut defaulted = column("created_at");
+        defaulted.default = ColumnDefault::Expression(SqlExpression::from_catalog_text("now()"));
+        let mut zero_key = column("id");
+        zero_key.primary_key = true;
+        zero_key.default = ColumnDefault::Literal(Value::Int(0));
+        let mut stamped_key = defaulted.clone();
+        stamped_key.primary_key = true;
+        let mut tenant = column("tenant");
+        tenant.primary_key = true;
+        let one_key = [uuid_key.clone(), defaulted.clone()];
+        let two_keys = [tenant, stamped_key.clone()];
+
+        assert!(row_number.is_assigned_on_insert(&[row_number.clone()]));
+        assert!(uuid_key.is_assigned_on_insert(&one_key));
+        assert!(!written_key.is_assigned_on_insert(&[written_key.clone()]));
+        assert!(
+            !defaulted.is_assigned_on_insert(&one_key),
+            "a value the row had stays its own"
+        );
+        assert!(
+            !zero_key.is_assigned_on_insert(&[zero_key.clone()]),
+            "every copy would get 0"
+        );
+        assert!(
+            !stamped_key.is_assigned_on_insert(&two_keys),
+            "part of a key keeps its value"
+        );
     }
 }

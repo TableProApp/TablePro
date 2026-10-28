@@ -235,6 +235,21 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         Some(format!("INSERT INTO {table_sql} DEFAULT VALUES"))
     }
 
+    /// The clause between an INSERT's columns and VALUES that lets it set
+    /// a column the engine numbers, where the engine refuses one without.
+    fn insert_overriding_clause(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// The lines, `;` and all, that let the INSERTs after them set the
+    /// table's identity column, or end that (`on` false), where the engine
+    /// refuses a value there otherwise. An engine that runs a script batch
+    /// by batch ends it in a batch of its own, so a run that fails partway
+    /// still turns it off.
+    fn identity_insert(&self, _table_sql: &str, _on: bool) -> Option<String> {
+        None
+    }
+
     /// Count the rows a predicate matches, stopping at two: the caller
     /// only needs to know whether it is exactly one.
     fn key_probe(&self, table_sql: &str, predicate_sql: &str) -> String {

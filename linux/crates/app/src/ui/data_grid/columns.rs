@@ -6,7 +6,6 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib, pango};
 use tablepro_core::Value;
-use tablepro_core::column::ColumnKind;
 
 use super::grid_cell::{GridCell, TextAttributes};
 use super::server_sorter::ServerSorter;
@@ -273,7 +272,7 @@ impl DataGrid {
         let set = self.imp().columns.borrow();
         let mut changed = false;
         for paint in &set.paints {
-            if !matches!(paint.column.column_type.kind, ColumnKind::Other | ColumnKind::Variant) {
+            if !paint.column.column_type.kind.is_untyped() {
                 continue;
             }
             let index = paint.column.index;
@@ -285,7 +284,7 @@ impl DataGrid {
                         Some(Value::Null) | None => true,
                         Some(value) => {
                             held = true;
-                            is_number(&value)
+                            value.is_number()
                         }
                     });
             let numbers = held && all_numbers;
@@ -614,18 +613,4 @@ fn tabular_width(widget: &impl IsA<gtk::Widget>, chars: u32) -> i32 {
 
 fn drawn_width(widget: &impl IsA<gtk::Widget>, text: &str) -> i32 {
     widget.create_pango_layout(Some(text)).pixel_size().0
-}
-
-fn is_number(value: &Value) -> bool {
-    match value {
-        Value::Int(_)
-        | Value::UInt(_)
-        | Value::WideInt(_)
-        | Value::Float32(_)
-        | Value::Float64(_)
-        | Value::Decimal(_) => true,
-        Value::Text(text) => text.parse::<f64>().is_ok(),
-        Value::Other(other) => other.text.parse::<f64>().is_ok(),
-        _ => false,
-    }
 }

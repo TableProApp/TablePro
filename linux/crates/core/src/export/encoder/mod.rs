@@ -6,8 +6,6 @@ mod json_array_encoder;
 mod json_lines_encoder;
 mod json_object;
 mod markdown_encoder;
-mod one_row_encoder;
-mod pretty_table_encoder;
 mod row_encoder;
 mod sql_insert_encoder;
 mod tsv_encoder;
@@ -26,8 +24,6 @@ pub use html_encoder::HtmlEncoder;
 pub use json_array_encoder::JsonArrayEncoder;
 pub use json_lines_encoder::JsonLinesEncoder;
 pub use markdown_encoder::MarkdownEncoder;
-pub use one_row_encoder::OneRowEncoder;
-pub use pretty_table_encoder::PrettyTableEncoder;
 pub use row_encoder::RowEncoder;
 pub use sql_insert_encoder::SqlInsertEncoder;
 pub use tsv_encoder::TsvEncoder;
@@ -49,7 +45,7 @@ pub(super) fn encode_rows(mut encoder: impl RowEncoder, rows: &[Vec<Value>]) -> 
 /// The row's cells, refused when one of them could not be read: a value
 /// the driver could not decode has no text, and writing it as a NULL
 /// would put a value in the file that the table does not hold.
-fn readable_cells<'a>(
+pub(super) fn readable_cells<'a>(
     columns: &[ResultColumn],
     cells: &mut dyn Iterator<Item = &'a Value>,
 ) -> Result<Vec<&'a Value>, EncodeError> {

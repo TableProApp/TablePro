@@ -288,10 +288,10 @@ fn document_encoders_match_their_renderers() {
     );
     assert_eq!(
         streamed(
-            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[]),
+            SqlInsertEncoder::new(dialect.clone(), &TableRef::unqualified("t"), columns.clone(), &[], &[]),
             &rows
         ),
-        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &rows)
+        render_sql_insert(&*dialect, &TableRef::unqualified("t"), &columns, &[], &[], &rows)
     );
 }
 
@@ -310,12 +310,12 @@ fn document_encoders_write_whole_documents_for_no_rows() {
     );
     let table = TableRef::unqualified("t");
     assert_eq!(
-        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[]), &[]),
+        streamed(SqlInsertEncoder::new(dialect.clone(), &table, columns, &[], &[]), &[]),
         ""
     );
     assert_eq!(
         streamed(
-            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[]),
+            SqlInsertEncoder::new(dialect, &table, Vec::new().into(), &[], &[]),
             &[Vec::new()]
         ),
         "",
@@ -336,14 +336,13 @@ fn encoder_reports_undecodable_cell() {
         Box::new(JsonArrayEncoder::new(columns.clone())),
         Box::new(JsonLinesEncoder::new(columns.clone())),
         Box::new(MarkdownEncoder::new(columns.clone())),
-        Box::new(OneRowEncoder::new(columns.clone())),
-        Box::new(PrettyTableEncoder::new(columns.clone())),
         Box::new(HtmlEncoder::new(columns.clone(), "t")),
         Box::new(XmlEncoder::new(columns.clone())),
         Box::new(SqlInsertEncoder::new(
             Arc::new(TestDialect::default()),
             &TableRef::unqualified("t"),
             columns.clone(),
+            &[],
             &[],
         )),
     ];
@@ -387,107 +386,33 @@ fn csv_neutralises_text_not_negative_numbers_through_encoder() {
 }
 
 #[test]
-fn json_lines_write_one_object_per_line_with_no_array() {
+fn json_lines_end_every_object_with_a_line_break_and_hold_the_arrays_objects() {
     let (columns, rows) = fixture();
 
     let out = streamed(JsonLinesEncoder::new(columns.clone()), &rows);
 
-    let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines.len(), rows.len(), "one line per row: {out}");
-    assert!(!out.ends_with('\n'));
-    let parsed: Vec<serde_json::Value> = lines
-        .iter()
+    assert!(out.ends_with('\n'), "{out}");
+    let parsed: Vec<serde_json::Value> = out
+        .lines()
         .map(|line| serde_json::from_str(line).expect("each line is JSON"))
         .collect();
     let array: Vec<serde_json::Value> =
         serde_json::from_str(&streamed(JsonArrayEncoder::new(columns), &rows)).expect("the array");
-    assert_eq!(parsed, array, "the lines hold the array's objects");
+    assert_eq!(parsed, array, "one line per row: {out}");
+}
+
+#[test]
+fn json_lines_keep_a_json_value_written_over_several_lines_on_its_row() {
+    let columns: Arc<[ResultColumn]> = cols(&["id", "payload"]).into();
+    let payload = JsonText::parse("{\r\n  \"a\": \"x\\ny\"\n}".to_owned()).expect("JSON");
+    let rows = vec![vec![Value::Int(1), Value::Json(payload)]];
+
+    let out = streamed(JsonLinesEncoder::new(columns), &rows);
+
+    assert_eq!(out, "{\"id\":1,\"payload\":{    \"a\": \"x\\ny\" }}\n");
 }
 
 #[test]
 fn json_lines_of_no_rows_is_empty() {
     assert_eq!(streamed(JsonLinesEncoder::new(cols(&["a"]).into()), &[]), "");
-}
-
-#[test]
-fn one_row_puts_every_value_on_one_line() {
-    let columns: Arc<[ResultColumn]> = cols(&["id", "name"]).into();
-    let rows = vec![
-        vec![Value::Int(1), Value::Text("Ada".into())],
-        vec![Value::Int(2), Value::Null],
-    ];
-
-    assert_eq!(streamed(OneRowEncoder::new(columns), &rows), "1, Ada, 2, NULL");
-}
-
-#[test]
-fn one_row_quotes_a_value_that_would_split_the_list_or_the_line() {
-    let columns: Arc<[ResultColumn]> = cols(&["a", "b", "c"]).into();
-    let rows = vec![vec![
-        Value::Text("Lovelace, Ada".into()),
-        Value::Text("the \"first\"".into()),
-        Value::Text("two\nlines".into()),
-    ]];
-
-    assert_eq!(
-        streamed(OneRowEncoder::new(columns), &rows),
-        "\"Lovelace, Ada\", \"the \"\"first\"\"\", \"two\\nlines\""
-    );
-}
-
-#[test]
-fn pretty_table_draws_borders_and_pads_to_the_widest_cell() {
-    let columns: Arc<[ResultColumn]> = vec![
-        typed(
-            "id",
-            "bigint",
-            ColumnKind::Integer(IntegerKind {
-                width: IntegerWidth::W64,
-                signed: true,
-            }),
-        ),
-        cols(&["name"]).remove(0),
-    ]
-    .into();
-    let rows = vec![
-        vec![Value::Int(1), Value::Text("Ada Lovelace".into())],
-        vec![Value::Int(200), Value::Null],
-    ];
-
-    let out = streamed(PrettyTableEncoder::new(columns), &rows);
-
-    assert_eq!(
-        out,
-        "+-----+--------------+\n\
-         | id  | name         |\n\
-         +-----+--------------+\n\
-         |   1 | Ada Lovelace |\n\
-         | 200 | NULL         |\n\
-         +-----+--------------+"
-    );
-}
-
-#[test]
-fn pretty_table_keeps_each_row_on_one_line_and_measures_wide_characters() {
-    let columns: Arc<[ResultColumn]> = cols(&["a"]).into();
-    let rows = vec![vec![Value::Text("x\ny".into())], vec![Value::Text("日本".into())]];
-
-    let out = streamed(PrettyTableEncoder::new(columns), &rows);
-
-    assert_eq!(
-        out,
-        "+------+\n\
-         | a    |\n\
-         +------+\n\
-         | x\\ny |\n\
-         | 日本 |\n\
-         +------+"
-    );
-}
-
-#[test]
-fn pretty_table_of_no_rows_is_the_header() {
-    let out = streamed(PrettyTableEncoder::new(cols(&["id"]).into()), &[]);
-
-    assert_eq!(out, "+----+\n| id |\n+----+");
 }

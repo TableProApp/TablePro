@@ -8,7 +8,9 @@ mod json_field_names;
 mod markdown;
 mod render_insert_error;
 mod sql;
+mod text_table;
 mod tsv;
+mod value_list;
 mod value_text;
 mod xlsx;
 mod xml;
@@ -22,7 +24,7 @@ pub use csv::{FORMULA_LEADS, csv_writer_builder, neutralise_formula, render_csv,
 pub use csv_options::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
 pub use encoder::{
     CellsEncoder, CsvEncoder, EncodeError, HtmlEncoder, JsonArrayEncoder, JsonLinesEncoder, MarkdownEncoder,
-    OneRowEncoder, PrettyTableEncoder, RowEncoder, SqlInsertEncoder, TsvEncoder, XmlEncoder,
+    RowEncoder, SqlInsertEncoder, TsvEncoder, XmlEncoder,
 };
 pub use html::render_html;
 pub use in_clause::{InClause, render_in_clause};
@@ -30,8 +32,10 @@ pub use json::{render_json, row_to_json};
 pub use json_field_names::json_field_names;
 pub use markdown::render_markdown;
 pub use render_insert_error::RenderInsertError;
-pub use sql::{literal, render_insert, render_sql_insert};
+pub use sql::{literal, render_inserts, render_sql_insert};
+pub use text_table::{TextTableError, render_text_table};
 pub use tsv::{TSV_NULL, render_tsv, tsv_writer_builder};
+pub use value_list::render_value_list;
 pub use value_text::{value_text, value_to_text};
 pub use xlsx::{XLSX_MAX_DATA_ROWS, XlsxSheetWriter, render_xlsx};
 pub use xml::render_xml;

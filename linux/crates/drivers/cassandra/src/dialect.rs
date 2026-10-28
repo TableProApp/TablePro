@@ -767,7 +767,7 @@ mod tests {
             ],
         ];
 
-        let sql = tablepro_core::export::render_sql_insert(&cql, &table, &columns, &[], &rows);
+        let sql = tablepro_core::export::render_sql_insert(&cql, &table, &columns, &[], &[], &rows);
 
         assert_eq!(
             sql,

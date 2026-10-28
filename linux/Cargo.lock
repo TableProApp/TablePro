@@ -5620,6 +5620,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "comfy-table",
  "csv",
  "futures",
  "num-bigint",

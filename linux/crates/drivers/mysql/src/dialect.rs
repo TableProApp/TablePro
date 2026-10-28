@@ -461,6 +461,7 @@ mod tests {
             &tablepro_core::meta::TableRef::unqualified("t"),
             &columns,
             &[],
+            &[],
             &[vec![Value::Int(1)]],
         );
 

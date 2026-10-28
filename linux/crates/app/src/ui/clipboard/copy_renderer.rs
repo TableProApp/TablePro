@@ -5,7 +5,7 @@ use tablepro_core::dialect::{LiteralError, SqlDialect};
 use tablepro_core::edit::CellInput;
 use tablepro_core::export::{
     self, CellsEncoder, CsvEncoder, CsvOptions, EncodeError, JsonArrayEncoder, JsonLinesEncoder, MarkdownEncoder,
-    OneRowEncoder, PrettyTableEncoder, RenderInsertError, RowEncoder, TsvEncoder,
+    RenderInsertError, RowEncoder, TextTableError, TsvEncoder,
 };
 use tablepro_core::meta::TableRef;
 use tablepro_core::value::Value;
@@ -32,6 +32,12 @@ pub enum CopyRequest {
         dialect: Arc<dyn SqlDialect>,
         values: InClauseRows,
     },
+    /// Every value of the rows as one list of the engine's literals.
+    Values {
+        dialect: Arc<dyn SqlDialect>,
+        columns: Arc<[ResultColumn]>,
+        rows: Vec<RowSnapshot>,
+    },
 }
 
 /// One column of the rows a user picked, for an IN list.
@@ -53,8 +59,7 @@ pub enum CopyKind {
     Json,
     JsonLines,
     Markdown,
-    PrettyTable,
-    OneRow,
+    TextTable,
 }
 
 /// Rows as INSERT statements for the server the tab reads.
@@ -86,6 +91,8 @@ pub(crate) enum CopyError {
     /// Every value was NULL or binary, and `()` is not SQL anywhere.
     #[error("no value can go in an IN list")]
     EmptyInClause,
+    #[error("the text table would be too large")]
+    TextTableTooLarge,
     #[error("the text holds a NUL character")]
     ContainsNul,
 }
@@ -101,6 +108,7 @@ pub(crate) fn render(request: CopyRequest) -> Result<ClipboardPayload, CopyError
         CopyRequest::Rows { columns, rows, kind } => render_rows(columns, &rows, kind),
         CopyRequest::Insert(insert) => render_insert(insert),
         CopyRequest::InClause { dialect, values } => render_in_clause(&*dialect, &values),
+        CopyRequest::Values { dialect, columns, rows } => render_values(&*dialect, &columns, &rows),
     }?;
     if holds_nul(&payload.text) {
         return Err(CopyError::ContainsNul);
@@ -129,10 +137,11 @@ fn render_rows(
             ClipboardFormat::Csv,
         ),
         CopyKind::Json => encode(JsonArrayEncoder::new(columns), rows, ClipboardFormat::Json),
+        // No desktop type names JSON Lines, and several values are not
+        // one `application/json` document.
         CopyKind::JsonLines => encode(JsonLinesEncoder::new(columns), rows, ClipboardFormat::PlainText),
         CopyKind::Markdown => encode(MarkdownEncoder::new(columns), rows, ClipboardFormat::Markdown),
-        CopyKind::PrettyTable => encode(PrettyTableEncoder::new(columns), rows, ClipboardFormat::PlainText),
-        CopyKind::OneRow => encode(OneRowEncoder::new(columns), rows, ClipboardFormat::PlainText),
+        CopyKind::TextTable => text_table(&columns, rows),
     }?;
     Ok(ClipboardPayload {
         cells: Some(cells),
@@ -144,13 +153,13 @@ fn render_rows(
 /// A copy that names its columns lets the paste place values by name.
 fn copied_cells(columns: &Arc<[ResultColumn]>, rows: &[RowSnapshot], kind: CopyKind) -> Result<String, CopyError> {
     let with_headers = match kind {
-        CopyKind::Value(_) | CopyKind::Rows | CopyKind::Csv | CopyKind::OneRow => false,
+        CopyKind::Value(_) | CopyKind::Rows | CopyKind::Csv => false,
         CopyKind::RowsWithHeaders
         | CopyKind::CsvWithHeaders
         | CopyKind::Json
         | CopyKind::JsonLines
         | CopyKind::Markdown
-        | CopyKind::PrettyTable => true,
+        | CopyKind::TextTable => true,
     };
     let CopyKind::Value(column) = kind else {
         return encoded(CellsEncoder::new(columns.clone(), with_headers), rows);
@@ -190,6 +199,35 @@ fn render_in_clause(dialect: &dyn SqlDialect, values: &InClauseRows) -> Result<C
         format: ClipboardFormat::Sql,
         rows: rows.len() - clause.skipped,
         skipped: clause.skipped,
+        cells: None,
+    })
+}
+
+fn render_values(
+    dialect: &dyn SqlDialect,
+    columns: &[ResultColumn],
+    rows: &[RowSnapshot],
+) -> Result<ClipboardPayload, CopyError> {
+    Ok(ClipboardPayload {
+        text: export::render_value_list(dialect, columns, rows.iter().map(RowSnapshot::values))?,
+        format: ClipboardFormat::Sql,
+        rows: rows.len(),
+        skipped: 0,
+        cells: None,
+    })
+}
+
+fn text_table(columns: &[ResultColumn], rows: &[RowSnapshot]) -> Result<ClipboardPayload, CopyError> {
+    let text =
+        export::render_text_table(columns, rows.iter().map(RowSnapshot::values)).map_err(|error| match error {
+            TextTableError::Encode(error) => CopyError::Encode(error),
+            TextTableError::TooLarge => CopyError::TextTableTooLarge,
+        })?;
+    Ok(ClipboardPayload {
+        text,
+        format: ClipboardFormat::PlainText,
+        rows: rows.len(),
+        skipped: 0,
         cells: None,
     })
 }
@@ -247,27 +285,25 @@ fn render_insert(insert: InsertCopy) -> Result<ClipboardPayload, CopyError> {
         columns,
         rows,
     } = insert;
-    let statements = rows
-        .iter()
+    let count = rows.len();
+    let cells: Vec<Vec<CellInput>> = rows
+        .into_iter()
         .map(|row| match row {
-            InsertRow::Saved(snapshot) => {
-                // A row id read after the columns has no place in the
-                // statement, so it is not copied.
-                let cells: Vec<CellInput> = snapshot
-                    .values()
-                    .take(columns.len())
-                    .cloned()
-                    .map(CellInput::Value)
-                    .collect();
-                export::render_insert(&*dialect, &table, &columns, &cells)
-            }
-            InsertRow::Draft(cells) => export::render_insert(&*dialect, &table, &columns, cells),
+            // A row id read after the columns has no place in the
+            // statement, so it is not copied.
+            InsertRow::Saved(snapshot) => snapshot
+                .values()
+                .take(columns.len())
+                .cloned()
+                .map(CellInput::Value)
+                .collect(),
+            InsertRow::Draft(cells) => cells,
         })
-        .collect::<Result<Vec<String>, _>>()?;
+        .collect();
     Ok(ClipboardPayload {
-        text: statements.join("\n"),
+        text: export::render_inserts(&*dialect, &table, &columns, &cells)?,
         format: ClipboardFormat::Sql,
-        rows: rows.len(),
+        rows: count,
         skipped: 0,
         cells: None,
     })

@@ -94,6 +94,12 @@ impl BrowseModel {
                 .filter(|column| column.is_generated)
                 .map(|column| column.name.clone())
                 .collect(),
+            numbered: self
+                .current_columns
+                .iter()
+                .filter(|column| column.is_auto_increment)
+                .map(|column| column.name.clone())
+                .collect(),
         }
     }
 

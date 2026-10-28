@@ -296,8 +296,8 @@ impl PastedTable {
     /// NULL is NULL. A column left out holds what a new row holds. A
     /// column the server fills, and one whose values the grid cannot
     /// edit, keep that too, and a value meant for one counts as skipped.
-    /// A key the server cannot fill takes the value: the row cannot be
-    /// saved without it.
+    /// A key the server does not give a new row takes the value: the row
+    /// cannot be saved without it.
     pub fn rows(&self, columns: &[ColumnInfo], in_order: &[usize]) -> Result<PastedRows, CsvRowError> {
         let (placement, records) = match &self.header {
             Header::Named(names) => (Placement::Named(named_columns(columns, names)), self.records.as_slice()),
@@ -323,7 +323,7 @@ impl PastedTable {
                     pasted.skipped += usize::from(carries_value(text));
                     continue;
                 };
-                if left_to_the_row(column) {
+                if left_to_the_row(column, columns) {
                     pasted.skipped += usize::from(carries_value(text));
                     continue;
                 }
@@ -395,11 +395,8 @@ fn column_named(columns: &[ColumnInfo], field: &str) -> Option<usize> {
 
 /// A column a pasted row leaves as a new row has it: the server fills
 /// it, or the grid has no text form to edit its values in.
-fn left_to_the_row(column: &ColumnInfo) -> bool {
-    column.is_generated
-        || column.is_auto_increment
-        || (column.primary_key && !column.default.is_none())
-        || read_only_reason(&column.column_type.kind).is_some()
+fn left_to_the_row(column: &ColumnInfo, columns: &[ColumnInfo]) -> bool {
+    column.is_generated || column.is_assigned_on_insert(columns) || read_only_reason(&column.column_type.kind).is_some()
 }
 
 /// A column of no type the app knows whose values are read as the
@@ -641,9 +638,18 @@ mod tests {
             0,
         );
 
+        let mut zero_key = key("id");
+        zero_key.default = ColumnDefault::Literal(Value::Int(0));
+        let literal = pasted("7\tFrance\n", &[zero_key, text("name")], 0);
+
         assert_eq!(natural.rows, vec![vec![number(33), value("France")]]);
         assert_eq!(filled.rows[0][0], CellInput::Default);
         assert_eq!(filled.skipped, 1);
+        assert_eq!(
+            literal.rows,
+            vec![vec![number(7), value("France")]],
+            "every new row would get 0"
+        );
     }
 
     #[test]

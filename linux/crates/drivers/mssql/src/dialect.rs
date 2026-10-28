@@ -287,6 +287,16 @@ impl SqlDialect for MssqlDialect {
             "SELECT COUNT_BIG(*) FROM (SELECT TOP (2) 1 AS one FROM {table_sql} WITH (UPDLOCK, HOLDLOCK) WHERE {predicate_sql}) AS probe"
         )
     }
+
+    // OFF opens a batch of its own: an error that ends a batch, as any
+    // does under XACT_ABORT ON, skips the rest of that batch, and sqlcmd,
+    // SSMS and the editor go on with the next one.
+    fn identity_insert(&self, table_sql: &str, on: bool) -> Option<String> {
+        Some(match on {
+            true => format!("SET IDENTITY_INSERT {table_sql} ON;"),
+            false => format!("GO\nSET IDENTITY_INSERT {table_sql} OFF;"),
+        })
+    }
 }
 
 /// The decimal a money column is read as: MONEY's own range and scale,
@@ -691,6 +701,21 @@ mod tests {
             dialect().key_probe("[dbo].[t]", "[id] = @P1"),
             "SELECT COUNT_BIG(*) FROM (SELECT TOP (2) 1 AS one FROM [dbo].[t] WITH (UPDLOCK, HOLDLOCK) WHERE [id] = @P1) AS probe"
         );
+    }
+
+    #[test]
+    fn an_identity_column_is_written_with_identity_insert_switched_on() {
+        let dialect = dialect();
+
+        assert_eq!(
+            dialect.identity_insert("[dbo].[t]", true).as_deref(),
+            Some("SET IDENTITY_INSERT [dbo].[t] ON;")
+        );
+        assert_eq!(
+            dialect.identity_insert("[dbo].[t]", false).as_deref(),
+            Some("GO\nSET IDENTITY_INSERT [dbo].[t] OFF;")
+        );
+        assert_eq!(dialect.insert_overriding_clause(), None);
     }
 
     #[test]

@@ -69,6 +69,12 @@ impl ColumnKind {
         matches!(self, Self::Text { .. } | Self::Enum { .. } | Self::Xml | Self::Other)
     }
 
+    /// The kind says nothing of what the column holds, as a PostgreSQL
+    /// result's columns do (ADR 0016), so it lines up by its values.
+    pub fn is_untyped(&self) -> bool {
+        matches!(self, Self::Other | Self::Variant)
+    }
+
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,

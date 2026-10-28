@@ -6,6 +6,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio};
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_core::column::{ColumnDefault, SqlExpression};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::edit::CellInput;
 use tablepro_core::meta::TableRef;
@@ -616,7 +617,7 @@ fn copy_as_in_clause_writes_the_servers_literals() {
 }
 
 #[gtk4::test]
-fn in_clause_is_offered_only_for_a_dialect_that_speaks_sql() {
+fn in_clause_and_one_row_are_offered_only_for_a_dialect_that_speaks_sql() {
     let mongo = sql_grid(
         two_text_columns(),
         two_text_values(),
@@ -626,10 +627,11 @@ fn in_clause_is_offered_only_for_a_dialect_that_speaks_sql() {
     let sql = sql_grid(two_text_columns(), two_text_values(), Arc::new(FakeDialect));
     let offered = |grid: &DataGrid, cell: &GridCell| {
         grid.open_cell_menu(cell, None);
-        let enabled = grid
-            .actions()
-            .lookup_action("copy-in-clause")
-            .is_some_and(|action| action.is_enabled());
+        let enabled = ["copy-in-clause", "copy-one-row"].map(|name| {
+            grid.actions()
+                .lookup_action(name)
+                .is_some_and(|action| action.is_enabled())
+        });
         if let Some(menus) = grid.menus() {
             menus.cell.popdown();
         }
@@ -641,7 +643,10 @@ fn in_clause_is_offered_only_for_a_dialect_that_speaks_sql() {
     let in_results = offered(&none.grid, &none.cell_at(0, 1));
     let in_sql = offered(&sql.grid, &sql.cell_at(0, 1));
 
-    assert_eq!((in_mongo, in_results, in_sql), (false, false, true));
+    assert_eq!(
+        (in_mongo, in_results, in_sql),
+        ([false, false], [false, false], [true, true])
+    );
 }
 
 fn numbered_people() -> Vec<ColumnInfo> {
@@ -666,33 +671,51 @@ fn copy_as_insert_without_generated_keys_leaves_the_numbered_key_to_the_server()
 }
 
 #[gtk4::test]
-fn insert_without_generated_keys_is_offered_only_for_a_table_whose_key_the_server_numbers() {
-    let numbered = sql_grid(numbered_people(), people_rows(), Arc::new(FakeDialect));
-    let chosen = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
-
-    for grid in [&numbered, &chosen] {
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a test fixture stands in for the catalogue, which is where this text comes from in production"
+)]
+fn insert_without_generated_keys_is_offered_for_a_column_on_screen_the_server_fills() {
+    let mut row_number = people();
+    row_number[2].is_auto_increment = true;
+    let mut uuid_key = people();
+    uuid_key[0].default = ColumnDefault::Expression(SqlExpression::from_catalog_text("gen_random_uuid()"));
+    let numbered_hidden = sql_grid(numbered_people(), people_rows(), Arc::new(FakeDialect));
+    numbered_hidden.grid.set_column_visible(0, false);
+    let grids = [
+        sql_grid(numbered_people(), people_rows(), Arc::new(FakeDialect)),
+        sql_grid(row_number, people_rows(), Arc::new(FakeDialect)),
+        sql_grid(uuid_key, people_rows(), Arc::new(FakeDialect)),
+        sql_grid(people(), people_rows(), Arc::new(FakeDialect)),
+        numbered_hidden,
+    ];
+    for grid in &grids {
         select_all(grid);
     }
 
-    assert!(numbered.is_enabled("copy-insert-without-generated-keys"));
-    assert!(chosen.is_enabled("copy-insert"));
-    assert!(
-        !chosen.is_enabled("copy-insert-without-generated-keys"),
-        "a key the user writes has no INSERT without it"
+    let offered: Vec<bool> = grids
+        .iter()
+        .map(|grid| grid.is_enabled("copy-insert-without-generated-keys"))
+        .collect();
+
+    assert!(grids[3].is_enabled("copy-insert"));
+    assert_eq!(
+        offered,
+        [true, true, true, false, false],
+        "a numbered key, a numbered column, a defaulted key; not a key the user writes, nor one hidden"
     );
 }
 
 #[gtk4::test]
-fn the_new_copy_as_formats_take_the_columns_on_screen() {
+fn the_text_copies_take_the_columns_on_screen() {
     let grid = sql_grid(people(), people_rows(), Arc::new(FakeDialect));
     grid.grid.set_column_visible(2, false);
     select_all(&grid);
 
-    let one_row = copied(&grid, || activate(&grid.grid, "copy-one-row"));
-    let table = copied(&grid, || activate(&grid.grid, "copy-pretty-table"));
+    let table = copied(&grid, || activate(&grid.grid, "copy-text-table"));
     let lines = copied(&grid, || activate(&grid.grid, "copy-json-lines"));
+    let one_row = copied(&grid, || activate(&grid.grid, "copy-one-row"));
 
-    assert_eq!(one_row, "1, Ada, 2, Grace");
     assert_eq!(
         table,
         "+----+-------+\n\
@@ -702,5 +725,6 @@ fn the_new_copy_as_formats_take_the_columns_on_screen() {
          |  2 | Grace |\n\
          +----+-------+"
     );
-    assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}");
+    assert_eq!(lines, "{\"id\":1,\"name\":\"Ada\"}\n{\"id\":2,\"name\":\"Grace\"}\n");
+    assert_eq!(one_row, "1, 'Ada', 2, 'Grace'");
 }
