@@ -5,6 +5,7 @@ using TablePro.Core.Drivers;
 namespace TablePro.Ssh.Tests;
 
 /// <summary>Drives the factory against a fake ssh that opens the forward, to check readiness, rewriting and teardown.</summary>
+[Collection(FakeSshCollection.Name)]
 public sealed class SshTunnelLifecycleTests : IAsyncLifetime
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "tp-fakessh-" + Guid.NewGuid().ToString("N")[..8]);

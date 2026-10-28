@@ -148,7 +148,15 @@ public sealed partial class WelcomeViewModel : ObservableObject
 
         _connect = new CancellationTokenSource();
         IsConnecting = true;
-        ConnectingText = profile.Ssh is { Enabled: true } ? $"Opening SSH tunnel to {profile.Ssh.Host}…" : $"Connecting to {profile.Name}…";
+        ConnectingText = profile.ActiveTransport() switch
+        {
+            ConnectionTransport.Ssh => $"Opening SSH tunnel to {profile.Ssh!.Host}…",
+            ConnectionTransport.Proxy => "Connecting through the proxy…",
+            ConnectionTransport.CloudSqlProxy => "Starting Cloud SQL Auth Proxy…",
+            ConnectionTransport.CloudflareTunnel => "Opening Cloudflare tunnel…",
+            ConnectionTransport.TunnelCommand => "Running the tunnel command…",
+            _ => $"Connecting to {profile.Name}…",
+        };
         try
         {
             var (session, request) = await Host.Connector.ConnectAsync(profile, password, _connect.Token);
@@ -160,7 +168,13 @@ public sealed partial class WelcomeViewModel : ObservableObject
         catch (Exception ex)
         {
             CrashLog.Write($"Connect to {profile.Name}", ex);
-            var message = ex is SshTunnelException ssh && !string.IsNullOrWhiteSpace(ssh.StandardError) ? $"{ex.Message}\n\n{ssh.StandardError}" : ex.Message;
+            var message = ex switch
+            {
+                SshTunnelException ssh when !string.IsNullOrWhiteSpace(ssh.StandardError) => $"{ex.Message}\n\n{ssh.StandardError}",
+                TunnelException { SignInUri: { } signIn } => $"{ex.Message}\n\nSign in at {signIn} and connect again.",
+                TunnelException tunnel when !string.IsNullOrWhiteSpace(tunnel.Diagnostics) => $"{ex.Message}\n\n{tunnel.Diagnostics}",
+                _ => ex.Message,
+            };
             if (Dialogs is not null)
             {
                 await Dialogs.ShowErrorAsync($"Could not connect to {profile.Name}", message);

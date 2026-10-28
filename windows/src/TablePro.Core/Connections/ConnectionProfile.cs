@@ -26,6 +26,20 @@ public sealed record ConnectionProfile
 
     public SshTunnelSettings? Ssh { get; init; }
 
+    // The transports below are null in a profile that never used them, so connections.json written before they
+    // existed loads unchanged. At most one transport, SSH included, is enabled; see ConnectionTransports.
+
+    public ProxySettings? Proxy { get; init; }
+
+    public CloudSqlProxySettings? CloudSqlProxy { get; init; }
+
+    public CloudflareTunnelSettings? CloudflareTunnel { get; init; }
+
+    public TunnelCommandSettings? TunnelCommand { get; init; }
+
+    /// <summary>A sign-in other than the saved password, such as Kerberos, IAM or Entra ID. Null signs in with the password.</summary>
+    public ConnectionAuthSettings? Auth { get; init; }
+
     public ExternalAccessLevel ExternalAccess { get; init; } = ExternalAccessLevel.ReadOnly;
 
     public AiPolicy AiPolicy { get; init; } = AiPolicy.AskEachTime;

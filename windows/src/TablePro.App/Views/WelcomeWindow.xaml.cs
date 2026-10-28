@@ -7,6 +7,7 @@ using TablePro.App.Services;
 using TablePro.App.ViewModels;
 using TablePro.Core.Connections;
 using TablePro.Storage.Connections;
+using TablePro.Storage.Favorites;
 using Windows.System;
 
 namespace TablePro.App.Views;
@@ -129,10 +130,43 @@ public sealed partial class WelcomeWindow : Window
             return;
         }
 
+        string? passphrase = null;
+        if (ConnectionStore.IsEncryptedExport(file.Path))
+        {
+            passphrase = await _dialogs.PromptPassphraseAsync("Encrypted connections", "This file is encrypted. Enter the passphrase it was exported with.", confirm: false, primary: "Import");
+            if (passphrase is null)
+            {
+                return;
+            }
+        }
+
         try
         {
-            var result = await _host.Connections.ImportAsync(file.Path);
-            await _dialogs.ShowErrorAsync("Import finished", $"Imported {result.Imported.Count} connections." + (result.Skipped.Count > 0 ? $" Skipped {result.Skipped.Count} that this build cannot open." : string.Empty));
+            var result = await _host.Connections.ImportAsync(file.Path, passphrase);
+            _host.Connector.SaveImportedSecrets(result);
+            var queries = await ImportSavedQueriesAsync(result.SavedQueries);
+            var summary = new List<string> { $"Imported {result.Imported.Count} connections." };
+            if (result.Skipped.Count > 0)
+            {
+                summary.Add($"Skipped {result.Skipped.Count} that this build cannot open.");
+            }
+
+            if (queries > 0)
+            {
+                summary.Add($"Added {queries} saved queries to Favorites.");
+            }
+
+            if (result.TunnelCommandsToReview.Count > 0)
+            {
+                // Imported commands start turned off: a file from elsewhere must not run programs before the user reads them.
+                summary.Add("Tunnel commands were turned off until you review them: " + string.Join(", ", result.TunnelCommandsToReview) + ".");
+            }
+
+            await _dialogs.ShowErrorAsync("Import finished", string.Join(' ', summary));
+        }
+        catch (ConnectionExportPassphraseException)
+        {
+            await _dialogs.ShowErrorAsync("Import failed", "The passphrase is wrong, or the file is damaged.");
         }
         catch (Exception ex)
         {
@@ -140,13 +174,56 @@ public sealed partial class WelcomeWindow : Window
         }
     }
 
+    private async Task<int> ImportSavedQueriesAsync(IReadOnlyList<ImportedSavedQuery> queries)
+    {
+        var folders = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        foreach (var query in queries)
+        {
+            Guid? parent = null;
+            var path = string.Empty;
+            foreach (var name in query.FolderPath)
+            {
+                path += "/" + name;
+                if (!folders.TryGetValue(path, out var id))
+                {
+                    id = (await _host.Favorites.UpsertFolderAsync(new SqlFavoriteFolder { Name = name, ParentId = parent, ConnectionId = query.ConnectionId })).Id;
+                    folders[path] = id;
+                }
+
+                parent = id;
+            }
+
+            await _host.Favorites.UpsertFavoriteAsync(new SqlFavorite { Name = query.Name, Query = query.Sql, Keyword = query.Keyword, FolderId = parent, ConnectionId = query.ConnectionId });
+        }
+
+        return queries.Count;
+    }
+
     private async Task ExportAsync(IEnumerable<Guid>? ids)
     {
-        var file = await _dialogs.PickSaveFileAsync("connections", "TablePro connections", ".json");
-        if (file is not null)
+        var passphrase = await _dialogs.PromptPassphraseAsync(
+            "Export connections",
+            "Enter a passphrase to encrypt the file and include saved passwords. Leave it empty to export without passwords.",
+            confirm: true,
+            primary: "Export");
+        if (passphrase is null)
         {
-            await _host.Connections.ExportAsync(file.Path, ids);
+            return;
         }
+
+        var file = await _dialogs.PickSaveFileAsync("connections", "TablePro connections", ".json");
+        if (file is null)
+        {
+            return;
+        }
+
+        var encrypt = passphrase.Length > 0;
+        await _host.Connections.ExportAsync(file.Path, new ConnectionExportOptions
+        {
+            ConnectionIds = ids,
+            Passphrase = encrypt ? passphrase : null,
+            Secrets = encrypt ? _host.Connector.ExportableSecrets : null,
+        });
     }
 
     private async void OnNewGroup(object sender, RoutedEventArgs e)

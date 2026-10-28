@@ -43,7 +43,9 @@ public sealed class MySqlTests
     [InlineData(SslMode.VerifyIdentity, MySqlSslMode.VerifyFull)]
     public void MapsEverySslMode(SslMode mode, MySqlSslMode expected)
     {
-        var builder = new MySqlConnectionStringBuilder(MySqlConnectionStringFactory.Build(Profiles.Request(DatabaseEngine.MySql, ssl: mode)));
+        // Direct, since behind a tunnel Verify identity checks the chain only.
+        var request = TablePro.Core.Drivers.ConnectionRequest.Direct(Profiles.Request(DatabaseEngine.MySql, ssl: mode).Profile, null);
+        var builder = new MySqlConnectionStringBuilder(MySqlConnectionStringFactory.Build(request));
 
         Assert.Equal(expected, builder.SslMode);
     }

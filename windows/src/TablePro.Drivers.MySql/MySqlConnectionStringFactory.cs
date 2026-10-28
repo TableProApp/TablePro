@@ -1,4 +1,5 @@
 using MySqlConnector;
+using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using CoreSslMode = TablePro.Core.Connections.SslMode;
 
@@ -15,7 +16,7 @@ internal static class MySqlConnectionStringFactory
             Port = (uint)(request.Port > 0 ? request.Port : profile.EffectivePort),
             UserID = string.IsNullOrWhiteSpace(profile.Username) ? profile.Descriptor.DefaultUser : profile.Username,
             Password = request.Password ?? string.Empty,
-            SslMode = MapSslMode(profile.SslMode),
+            SslMode = MapSslMode(ConnectionTls.SslModeFor(request)),
             ConnectionTimeout = (uint)Math.Max(profile.ConnectTimeoutSeconds, 1),
             Pooling = true,
             ApplicationName = "TablePro",
@@ -29,6 +30,22 @@ internal static class MySqlConnectionStringFactory
         if (!string.IsNullOrWhiteSpace(request.Database))
         {
             builder.Database = request.Database;
+        }
+
+        if (profile.EffectiveSignIn() == SignInMethod.Kerberos)
+        {
+            // MariaDB's auth_gssapi_client, answered with the Windows logon's ticket; no password is sent.
+            builder.Password = string.Empty;
+            if (!string.IsNullOrWhiteSpace(profile.Auth!.KerberosServiceName))
+            {
+                builder.ServerSPN = profile.Auth.KerberosServiceName.Trim();
+            }
+        }
+        else if (profile.UsesSignInToken())
+        {
+            // The session's password provider supplies a token per physical connection. MySqlConnector sends it with
+            // mysql_clear_password, which it allows only over TLS, and the TLS mode above is at least Required.
+            builder.Password = string.Empty;
         }
 
         foreach (var (key, value) in profile.AdditionalOptions)

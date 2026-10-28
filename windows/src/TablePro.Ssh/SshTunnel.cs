@@ -13,7 +13,7 @@ public sealed class SshTunnelClosedEventArgs(SshTunnelException error) : EventAr
 /// A running <c>ssh -N -L</c> forward. Hand <see cref="Request"/> to the driver; it dials the local end.
 /// Disposing kills ssh and anything it started.
 /// </summary>
-public sealed class SshTunnel : IAsyncDisposable
+public sealed class SshTunnel : IConnectionTunnel
 {
     private readonly Process _process;
     private readonly StderrLog _stderr;
@@ -73,6 +73,8 @@ public sealed class SshTunnel : IAsyncDisposable
 
     /// <summary>What ssh has printed so far, such as a channel that failed to open on the far side.</summary>
     public string StandardError => _stderr.ToString();
+
+    string IConnectionTunnel.Diagnostics => StandardError;
 
     public async ValueTask DisposeAsync()
     {

@@ -43,7 +43,9 @@ public sealed class PostgreSqlTests
     [InlineData(Core.Connections.SslMode.VerifyIdentity, NpgsqlSslMode.VerifyFull)]
     public void MapsEverySslMode(Core.Connections.SslMode mode, NpgsqlSslMode expected)
     {
-        var builder = new NpgsqlConnectionStringBuilder(PostgreSqlConnectionStringFactory.Build(Profiles.Request(DatabaseEngine.PostgreSql, ssl: mode)));
+        // Direct, since behind a tunnel Verify identity checks the chain only.
+        var request = Core.Drivers.ConnectionRequest.Direct(Profiles.Request(DatabaseEngine.PostgreSql, ssl: mode).Profile, null);
+        var builder = new NpgsqlConnectionStringBuilder(PostgreSqlConnectionStringFactory.Build(request));
 
         Assert.Equal(expected, builder.SslMode);
     }

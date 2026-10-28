@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Text;
 using Npgsql;
+using TablePro.Core.Connections;
 using TablePro.Core.Data;
 using TablePro.Core.Drivers;
 using TablePro.Core.Results;
@@ -29,6 +30,18 @@ public sealed partial class PostgreSqlSession
         if (_startupCommands.Length > 0)
         {
             builder.UsePhysicalConnectionInitializer(RunStartupCommands, RunStartupCommandsAsync);
+        }
+
+        // An IAM or Entra token lives for minutes and the pool opens connections long after the first, so the token
+        // is refreshed ahead of expiry and every new physical connection signs in with a current one.
+        if (request.Profile.UsesSignInToken())
+        {
+            var profile = request.Profile;
+            var secret = request.Password;
+            builder.UsePeriodicPasswordProvider(
+                async (_, cancellationToken) => await SignInTokens.GetAsync(profile, secret, cancellationToken),
+                SignInTokenRefresh.Interval,
+                SignInTokenRefresh.RetryInterval);
         }
 
         _dataSource = builder.Build();

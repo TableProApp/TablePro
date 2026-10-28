@@ -17,7 +17,40 @@ internal sealed record EngineForm(
     string? FileLabel = null,
     string? OptionsHint = null)
 {
-    public static EngineForm For(DatabaseEngine engine) => engine switch
+    /// <summary>The sign-in methods the Authentication picker offers; one entry means the picker stays hidden.</summary>
+    public IReadOnlyList<SignInMethod> SignInMethods { get; init; } = [SignInMethod.Password];
+
+    /// <summary>The connection methods the Network page offers; file databases get Direct only.</summary>
+    public IReadOnlyList<ConnectionTransport> Transports { get; init; } = [ConnectionTransport.Direct];
+
+    /// <summary>What the Kerberos service field means for the engine, or null when it has none.</summary>
+    public string? KerberosServiceHeader { get; init; }
+
+    public string? KerberosServicePlaceholder { get; init; }
+
+    /// <summary>PostgreSQL alone can encrypt with GSSAPI instead of TLS.</summary>
+    public bool ShowGssEncryption { get; init; }
+
+    public static EngineForm For(DatabaseEngine engine) => Labels(engine) with
+    {
+        SignInMethods = Core.Connections.SignInMethods.Available(engine),
+        Transports = ConnectionTransports.Available(engine),
+        KerberosServiceHeader = engine switch
+        {
+            DatabaseEngine.PostgreSql => "Kerberos service name",
+            DatabaseEngine.MariaDb => "Server principal (SPN)",
+            _ => null,
+        },
+        KerberosServicePlaceholder = engine switch
+        {
+            DatabaseEngine.PostgreSql => "postgres",
+            DatabaseEngine.MariaDb => "Optional, the server's gssapi_principal_name",
+            _ => null,
+        },
+        ShowGssEncryption = engine == DatabaseEngine.PostgreSql,
+    };
+
+    private static EngineForm Labels(DatabaseEngine engine) => engine switch
     {
         DatabaseEngine.Redis => new(DatabaseLabel: "Database index", UserLabel: "ACL user (optional)", OptionsHint: "syncTimeout=10000\nname=tablepro"),
         DatabaseEngine.MongoDb => new(DatabaseLabel: "Database", UserLabel: "User (optional)", OptionsHint: "authSource=admin\nsrv=true\nreplicaSet=rs0"),

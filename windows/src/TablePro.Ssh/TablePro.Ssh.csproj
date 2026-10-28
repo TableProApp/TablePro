@@ -9,6 +9,13 @@
     <ProjectReference Include="..\TablePro.Core\TablePro.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Sign-in tokens: Entra ID for Azure Database, and the AWS profile chain (static keys, roles, SSO) for RDS IAM. -->
+    <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="AWSSDK.SecurityToken" />
+    <PackageReference Include="AWSSDK.SSO" />
+    <PackageReference Include="AWSSDK.SSOOIDC" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="TablePro.Ssh.Tests" />
   </ItemGroup>
 </Project>

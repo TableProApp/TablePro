@@ -282,7 +282,7 @@ public sealed class ConnectionStoreTests : IDisposable
                     "jumpHosts" : [ { "host" : "edge", "port" : 22, "username" : "me", "authMethod" : "SSH Agent", "privateKeyPath" : "" } ]
                   }
                 },
-                { "name" : "Cache", "host" : "redis", "port" : 6379, "database" : "", "username" : "", "type" : "Redis" }
+                { "name" : "Cache", "host" : "firestore", "port" : 443, "database" : "", "username" : "", "type" : "Firestore" }
               ],
               "exportedAt" : "2026-10-01T10:00:00Z",
               "formatVersion" : 1,
@@ -315,10 +315,11 @@ public sealed class ConnectionStoreTests : IDisposable
     public async Task ImportRejectsANewerFormat()
     {
         var path = _temp.File("future.json");
-        await File.WriteAllTextAsync(path, """{ "formatVersion": 2, "appVersion": "9", "exportedAt": "2026-10-01T10:00:00Z", "connections": [] }""", Token);
+        await File.WriteAllTextAsync(path, """{ "formatVersion": 3, "appVersion": "9", "exportedAt": "2026-10-01T10:00:00Z", "connections": [] }""", Token);
         using var store = new ConnectionStore(_temp.Paths);
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => store.ImportAsync(path, Token));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => store.ImportAsync(path, Token));
+        Assert.Contains("format version 3", error.Message, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -8,6 +8,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
+    <!-- The Authentication keyword's Entra ID modes. -->
+    <PackageReference Include="Microsoft.Data.SqlClient.Extensions.Azure" />
     <!-- Lifts the transitive 9.0.18 that SqlClient brings to the patched release. -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
   </ItemGroup>

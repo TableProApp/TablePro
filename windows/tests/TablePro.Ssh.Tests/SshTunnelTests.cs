@@ -91,7 +91,12 @@ public sealed class SshTunnelTests
         var error = await Assert.ThrowsAsync<SshTunnelException>(() => factory.OpenAsync(Request(closedPort), null, Token));
 
         Assert.True(error.Kind == SshFailureKind.ConnectionFailed, $"{error.Kind}: {error.Message}");
-        Assert.Contains("connect to host 127.0.0.1", error.StandardError, StringComparison.OrdinalIgnoreCase);
+        // OpenSSH words a refused connect as "connect to host ..." or, when the socket comes from a proxy or sandbox layer,
+        // "banner exchange: ... Connection refused"; either way its own stderr must reach the error.
+        Assert.True(
+            error.StandardError.Contains("connect to host 127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                || error.StandardError.Contains("Connection refused", StringComparison.OrdinalIgnoreCase),
+            error.StandardError);
         Assert.NotNull(error.ExitCode);
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10), $"Took {stopwatch.Elapsed}.");
     }

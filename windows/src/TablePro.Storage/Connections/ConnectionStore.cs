@@ -1,9 +1,24 @@
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization.Metadata;
 using TablePro.Core.Connections;
 
 namespace TablePro.Storage.Connections;
+
+/// <summary>What <see cref="ConnectionStore.ExportAsync(string, ConnectionExportOptions, CancellationToken)"/> writes.</summary>
+public sealed record ConnectionExportOptions
+{
+    /// <summary>The connections to write; null writes all of them.</summary>
+    public IEnumerable<Guid>? ConnectionIds { get; init; }
+
+    /// <summary>Encrypts the file when set. Empty or null writes plain JSON, which must carry no secrets.</summary>
+    public string? Passphrase { get; init; }
+
+    /// <summary>Reads a connection's saved secrets for an encrypted file. Null leaves them out.</summary>
+    public Func<ConnectionProfile, ConnectionSecrets?>? Secrets { get; init; }
+}
 
 /// <summary>
 /// The saved connections and their groups, kept in <c>connections.json</c>. Reads come from an in-memory snapshot;
@@ -234,50 +249,85 @@ public sealed class ConnectionStore : IDisposable
     }
 
     /// <summary>Writes the chosen connections, or all of them, to a portable file with no passwords in it.</summary>
-    public async Task ExportAsync(string filePath, IEnumerable<Guid>? connectionIds = null, CancellationToken cancellationToken = default)
+    public Task ExportAsync(string filePath, IEnumerable<Guid>? connectionIds = null, CancellationToken cancellationToken = default) =>
+        ExportAsync(filePath, new ConnectionExportOptions { ConnectionIds = connectionIds }, cancellationToken);
+
+    /// <summary>
+    /// Writes a portable file the macOS app reads: format 1 when it holds everything, format 2 when groups nest.
+    /// With a passphrase the file is encrypted the way the macOS app encrypts, and may carry saved passwords.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Secrets were asked for without a passphrase.</exception>
+    public async Task ExportAsync(string filePath, ConnectionExportOptions options, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        var encrypt = !string.IsNullOrEmpty(options.Passphrase);
+        if (options.Secrets is not null && !encrypt)
+        {
+            throw new InvalidOperationException("Saved passwords can only be exported to an encrypted file.");
+        }
+
         var document = Volatile.Read(ref _document);
         IEnumerable<ConnectionProfile> profiles = document.Connections;
-        if (connectionIds is not null)
+        if (options.ConnectionIds is not null)
         {
-            var wanted = connectionIds.ToHashSet();
+            var wanted = options.ConnectionIds.ToHashSet();
             profiles = profiles.Where(p => wanted.Contains(p.Id));
         }
 
-        var file = ConnectionPortability.Export(profiles, document.Groups, AppVersion, DateTimeOffset.UtcNow);
-        await AtomicFile.WriteJsonAsync(filePath, file, StorageJson.Portable, cancellationToken);
+        var file = ConnectionPortability.Export(profiles, document.Groups, AppVersion, DateTimeOffset.UtcNow, options.Secrets);
+        if (!encrypt)
+        {
+            await AtomicFile.WriteJsonAsync(filePath, file, StorageJson.Portable, cancellationToken);
+            return;
+        }
+
+        var sealedBytes = ConnectionExportCrypto.Encrypt(JsonSerializer.SerializeToUtf8Bytes(file, StorageJson.Portable), options.Passphrase!);
+        await AtomicFile.WriteAsync(filePath, (stream, token) => stream.WriteAsync(sealedBytes, token).AsTask(), cancellationToken);
+    }
+
+    /// <summary>Whether a file is an encrypted export, so the UI can ask for its passphrase before importing.</summary>
+    public static bool IsEncryptedExport(string filePath)
+    {
+        Span<byte> header = stackalloc byte[64];
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var read = stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
+        return ConnectionExportCrypto.IsEncrypted(header[..read]);
     }
 
     /// <summary>
-    /// Reads a portable file from this app or the macOS app and adds its connections under new ids, creating the
-    /// groups they name. Passwords are never in the file, so imported connections ask for one on first connect.
+    /// Reads a portable file from this app or the macOS app, format 1 or 2, and adds its connections under new ids,
+    /// creating the groups they name. A plain file carries no passwords, so imported connections ask for one.
     /// </summary>
-    public async Task<ConnectionImportResult> ImportAsync(string filePath, CancellationToken cancellationToken = default)
+    /// <exception cref="ConnectionExportPassphraseException">The file is encrypted.</exception>
+    public Task<ConnectionImportResult> ImportAsync(string filePath, CancellationToken cancellationToken = default) =>
+        ImportAsync(filePath, passphrase: null, cancellationToken);
+
+    /// <summary>
+    /// Reads a portable file, decrypting it with <paramref name="passphrase"/> when it is encrypted. An encrypted file's
+    /// saved passwords come back in <see cref="ConnectionImportResult.Secrets"/> for the caller to store.
+    /// </summary>
+    /// <exception cref="ConnectionExportPassphraseException">The file is encrypted and the passphrase is missing or wrong.</exception>
+    /// <exception cref="InvalidDataException">The file is not an export, or needs a newer TablePro.</exception>
+    public async Task<ConnectionImportResult> ImportAsync(string filePath, string? passphrase, CancellationToken cancellationToken = default)
     {
-        PortableConnectionFile? file;
-        var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 16 * 1024, FileOptions.Asynchronous);
-        await using (stream)
+        var bytes = await File.ReadAllBytesAsync(filePath, cancellationToken);
+        var encrypted = ConnectionExportCrypto.IsEncrypted(bytes);
+        if (encrypted)
         {
-            try
+            if (string.IsNullOrEmpty(passphrase))
             {
-                file = await JsonSerializer.DeserializeAsync(stream, StorageJson.Portable, cancellationToken);
+                throw new ConnectionExportPassphraseException { PassphraseMissing = true };
             }
-            catch (JsonException ex)
-            {
-                throw new InvalidDataException("The file is not a TablePro connection export.", ex);
-            }
+
+            // PBKDF2 at 600,000 rounds takes a noticeable moment; keep it off the caller's thread.
+            bytes = await Task.Run(() => ConnectionExportCrypto.Decrypt(bytes, passphrase), cancellationToken);
         }
 
-        if (file is null)
-        {
-            throw new InvalidDataException("The file is not a TablePro connection export.");
-        }
-
-        file.Connections ??= [];
+        var file = ParsePortable(bytes);
         ConnectionImportResult? result = null;
         await MutateAsync(document =>
         {
-            result = ConnectionPortability.Import(file, document.Groups);
+            result = ConnectionPortability.Import(file, document.Groups, includeCredentials: encrypted);
             if (result.Imported.Count == 0 && result.CreatedGroups.Count == 0)
             {
                 return null;
@@ -293,6 +343,52 @@ public sealed class ConnectionStore : IDisposable
     }
 
     public void Dispose() => _gate.Dispose();
+
+    private static PortableConnectionFile ParsePortable(byte[] json)
+    {
+        const string NotAnExport = "This file is not a valid TablePro export.";
+
+        // The version decides how the rest reads, and a newer one is reported as such rather than as a parse error.
+        int version;
+        try
+        {
+            using var probe = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            if (probe.RootElement.ValueKind != JsonValueKind.Object
+                || !probe.RootElement.TryGetProperty("formatVersion", out var element)
+                || !element.TryGetInt32(out version)
+                || version < 1)
+            {
+                throw new InvalidDataException(NotAnExport);
+            }
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException(NotAnExport, ex);
+        }
+
+        if (version > ConnectionPortability.SupportedFormatVersion)
+        {
+            throw new InvalidDataException(string.Create(CultureInfo.InvariantCulture, $"This file requires a newer version of TablePro (format version {version})."));
+        }
+
+        PortableConnectionFile? file;
+        try
+        {
+            file = JsonSerializer.Deserialize(json, StorageJson.Portable);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException("Failed to parse connection file: " + ex.Message, ex);
+        }
+
+        if (file is null)
+        {
+            throw new InvalidDataException(NotAnExport);
+        }
+
+        file.Connections ??= [];
+        return file;
+    }
 
     private static string AppVersion =>
         typeof(ConnectionStore).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
@@ -335,10 +431,27 @@ public sealed class ConnectionStore : IDisposable
                 {
                     connection["ssh"] = JsonDefaults.Overlay(ssh.DeepClone().AsObject(), new SshTunnelSettings(), StorageJson.Ssh);
                 }
+
+                OverlayNested<ProxySettings>(connection, "proxy");
+                OverlayNested<CloudSqlProxySettings>(connection, "cloudSqlProxy");
+                OverlayNested<CloudflareTunnelSettings>(connection, "cloudflareTunnel");
+                OverlayNested<TunnelCommandSettings>(connection, "tunnelCommand");
+                OverlayNested<ConnectionAuthSettings>(connection, "auth");
             }
         }
 
         return root;
+    }
+
+    /// <summary>Puts a nested settings object's declared defaults under what the file holds, as for <c>ssh</c>.</summary>
+    private static void OverlayNested<T>(JsonObject connection, string property)
+        where T : new()
+    {
+        if (connection[property] is JsonObject stored)
+        {
+            var typeInfo = (JsonTypeInfo<T>)StorageJson.Profile.Options.GetTypeInfo(typeof(T));
+            connection[property] = JsonDefaults.Overlay(stored.DeepClone().AsObject(), new T(), typeInfo);
+        }
     }
 
     private static bool IsInGroup(ConnectionProfile profile, ConnectionGroup group) =>

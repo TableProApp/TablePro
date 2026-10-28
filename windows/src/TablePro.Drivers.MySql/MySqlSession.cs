@@ -14,7 +14,7 @@ namespace TablePro.Drivers.MySql;
 public sealed partial class MySqlSession
     : AdoNetSession, ISchemaDdlProvider, IServerActivityProvider, IUserListProvider, IDatabaseAdministration, IServerVariablesProvider
 {
-    private readonly string _connectionString;
+    private readonly MySqlDataSource _dataSource;
 
     // One batch, so a pooled connection costs one round trip to set up rather than one per statement.
     private readonly string? _initializeSql;
@@ -22,7 +22,21 @@ public sealed partial class MySqlSession
     public MySqlSession(ConnectionRequest request)
         : base(request, MySqlDialect.Instance)
     {
-        _connectionString = MySqlConnectionStringFactory.Build(request);
+        var builder = new MySqlDataSourceBuilder(MySqlConnectionStringFactory.Build(request));
+
+        // An IAM or Entra token lives for minutes and the pool opens connections long after the first, so the token
+        // is refreshed ahead of expiry and every new physical connection signs in with a current one.
+        if (request.Profile.UsesSignInToken())
+        {
+            var profile = request.Profile;
+            var secret = request.Password;
+            builder.UsePeriodicPasswordProvider(
+                async (_, cancellationToken) => await SignInTokens.GetAsync(profile, secret, cancellationToken),
+                SignInTokenRefresh.Interval,
+                SignInTokenRefresh.RetryInterval);
+        }
+
+        _dataSource = builder.Build();
         _initializeSql = BuildInitializeSql(request.Profile.IsReadOnly, StartupCommands.Split(request.Profile.StartupCommands, Dialect));
     }
 
@@ -32,7 +46,13 @@ public sealed partial class MySqlSession
 
     private bool IsMariaDb => Profile.Engine == DatabaseEngine.MariaDb;
 
-    protected override DbConnection CreateConnection() => new MySqlConnection(_connectionString);
+    public override async ValueTask DisposeAsync()
+    {
+        await _dataSource.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
+    protected override DbConnection CreateConnection() => _dataSource.CreateConnection();
 
     /// <summary>
     /// The pool resets session state when a connection comes back, so read-only and the startup commands are

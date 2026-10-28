@@ -52,6 +52,32 @@ public sealed class DialogService(Func<Window> window)
         return await ShowAsync(dialog) == ContentDialogResult.Primary ? box.Text : null;
     }
 
+    /// <summary>
+    /// A passphrase in a password box, null when cancelled. With <paramref name="confirm"/> it is typed twice and an
+    /// empty value is allowed, which callers read as "no encryption".
+    /// </summary>
+    public async Task<string?> PromptPassphraseAsync(string title, string message, bool confirm, string primary = "OK")
+    {
+        var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
+        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var first = new PasswordBox { Header = "Passphrase" };
+        var second = new PasswordBox { Header = "Confirm passphrase", Visibility = confirm ? Visibility.Visible : Visibility.Collapsed };
+        var mismatch = new InfoBar { Severity = InfoBarSeverity.Error, Message = "The passphrases do not match.", IsClosable = false };
+        panel.Children.Add(first);
+        panel.Children.Add(second);
+        panel.Children.Add(mismatch);
+        first.Loaded += (_, _) => first.Focus(FocusState.Programmatic);
+
+        var dialog = Create(title, panel, primary, "Cancel");
+        dialog.PrimaryButtonClick += (_, args) =>
+        {
+            var mismatched = confirm && first.Password != second.Password;
+            mismatch.IsOpen = mismatched;
+            args.Cancel = mismatched || (!confirm && first.Password.Length == 0);
+        };
+        return await ShowAsync(dialog) == ContentDialogResult.Primary ? first.Password : null;
+    }
+
     /// <summary>One field per name, prefilled from <paramref name="defaults"/>; null when cancelled.</summary>
     public async Task<Dictionary<string, string?>?> PromptValuesAsync(string title, string message, IReadOnlyList<string> names, IReadOnlyDictionary<string, string?> defaults)
     {
