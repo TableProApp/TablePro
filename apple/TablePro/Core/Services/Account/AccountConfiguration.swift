@@ -12,9 +12,9 @@ internal struct AccountConfiguration: Sendable {
     static let redirectURI = "app.tablepro:/oauth/callback"
     static let scope = "openid email offline_access app"
 
-    // Public keys the production server signs entitlements with, as base64url Ed25519 x values.
+    // The production server's entitlement keys, kid to base64url Ed25519 x.
     // A new key ships here a release before the server signs with it (api.md, Entitlement token).
-    static let productionEntitlementKeys: [String] = []
+    static let productionEntitlementKeys: [String: String] = [:]
 
     let accountURL: URL
     let apiURL: URL
@@ -23,7 +23,7 @@ internal struct AccountConfiguration: Sendable {
     static let production = AccountConfiguration(
         accountURL: URL(string: "https://account.tablepro.app")!,
         apiURL: URL(string: "https://api.tablepro.app")!,
-        entitlementKeys: publicKeys(productionEntitlementKeys)
+        entitlementKeys: publicKeys(Array(productionEntitlementKeys.values))
     )
 
     var apiServerURL: URL {
