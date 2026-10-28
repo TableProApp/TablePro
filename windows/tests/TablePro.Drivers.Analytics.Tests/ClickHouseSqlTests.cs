@@ -110,6 +110,16 @@ public sealed class ClickHouseSqlTests
     }
 
     [Fact]
+    public void ReviewShowsTheMutationWithItsValues()
+    {
+        var change = new RowDelete(new Dictionary<string, object?> { ["id"] = 5, ["tag"] = null });
+
+        var preview = TablePro.Core.Editing.ChangeSqlBuilder.Inline(TablePro.Core.Sql.ClickHouseDialect.Instance, ClickHouseMutations.Build(Events, change));
+
+        Assert.Equal("ALTER TABLE `db`.`events` DELETE WHERE `id` = 5 AND `tag` IS NULL", preview);
+    }
+
+    [Fact]
     public void InsertCastsThroughSelect()
     {
         var change = new RowInsert(new Dictionary<string, object?> { ["id"] = 1, ["name"] = "a" });

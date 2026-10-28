@@ -16,9 +16,11 @@ public static class ChangeSqlBuilder
     };
 
     /// <summary>The statement as text with the values written as literals, for the preview and the history.</summary>
-    public static string Preview(SqlDialect dialect, ObjectName table, RowChange change)
+    public static string Preview(SqlDialect dialect, ObjectName table, RowChange change) => Inline(dialect, Build(dialect, table, change));
+
+    /// <summary>A command with its parameters written as literals, for engines that build their own save statements.</summary>
+    public static string Inline(SqlDialect dialect, SqlCommandSpec spec)
     {
-        var spec = Build(dialect, table, change);
         var literals = spec.Parameters.ToDictionary(p => p.Key, p => dialect.Literal(p.Value), StringComparer.Ordinal);
         var lookup = literals.GetAlternateLookup<ReadOnlySpan<char>>();
         var text = spec.Text.AsSpan();

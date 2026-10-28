@@ -22,7 +22,7 @@ namespace TablePro.Drivers.ClickHouse;
 /// rather than the bare names Core writes, and it has no transaction for the base save to open.
 /// </remarks>
 public sealed class ClickHouseSession
-    : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IServerActivityProvider, IServerVariablesProvider, IUserListProvider, IDatabaseAdministration
+    : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IServerActivityProvider, IServerVariablesProvider, IUserListProvider, IDatabaseAdministration, IChangePreviewProvider
 {
     private readonly string _connectionString;
     private readonly HttpClient _httpClient;
@@ -39,6 +39,10 @@ public sealed class ClickHouseSession
             Timeout = Timeout.InfiniteTimeSpan,
         };
     }
+
+    /// <summary>The review shows the mutations the save sends, not the plain UPDATE ClickHouse would refuse.</summary>
+    public IReadOnlyList<string> PreviewChanges(ObjectName table, IReadOnlyList<RowChange> changes) =>
+        changes.Select(change => ChangeSqlBuilder.Inline(Dialect, ClickHouseMutations.Build(table, change))).ToArray();
 
     public override string? DefaultSchema => CurrentDatabase ?? ClickHouseConnectionStringFactory.DefaultDatabase;
 
