@@ -72,6 +72,12 @@ public sealed partial class SettingsWindow : Window
                     ["Mica", "Acrylic", "None", "Mica Alt"], (int)Prefs.Backdrop, i => Update(s => s with { Backdrop = (WindowBackdrop)i }))));
                 page.Children.Add(Card("Reopen tabs on launch", "Restore each connection's open tabs the next time it connects.", Toggle(Prefs.RestoreSessionOnLaunch, v => Update(s => s with { RestoreSessionOnLaunch = v }))));
                 page.Children.Add(Card("Ask before closing unsaved tabs", null, Toggle(Prefs.ConfirmCloseDirtyTabs, v => Update(s => s with { ConfirmCloseDirtyTabs = v }))));
+                page.Children.Add(Card("Keep saved changes for Data Rewind", "Each grid save is journaled on this PC, encrypted, for 7 days, so it can be undone.", Toggle(Prefs.KeepRewindJournal, async v =>
+                {
+                    RewindJournalService.Enabled = v;
+                    await Update(s => s with { KeepRewindJournal = v });
+                })));
+                page.Children.Add(Card("Saved changes", "Removes every journaled save and its key.", ClearRewindButton()));
                 AddUpdateCards(page);
                 page.Children.Add(Card("Data folder", Storage.AppPaths.Default.Root, OpenFolderButton(Storage.AppPaths.Default.Root)));
                 break;
@@ -268,6 +274,19 @@ public sealed partial class SettingsWindow : Window
         Grid.SetColumn(control, 1);
         grid.Children.Add(control);
         return new Border { Style = (Style)Application.Current.Resources["CardBorderStyle"], Child = grid, Padding = new Thickness(16, 12, 16, 12) };
+    }
+
+    private Button ClearRewindButton()
+    {
+        var button = new Button { Content = "Clear" };
+        button.Click += async (_, _) =>
+        {
+            if (await new DialogService(this).ConfirmAsync("Clear saved changes?", "Data Rewind can no longer undo saves made before now.", "Clear", destructive: true))
+            {
+                await RewindJournalService.Journal.ClearAsync();
+            }
+        };
+        return button;
     }
 
     private static ComboBox Choice(string[] options, int selected, Func<int, Task> changed)

@@ -137,6 +137,7 @@ public partial class App : Application
             _services.GetRequiredService<FavoritesStore>().LoadAsync());
 
         var host = _services.GetRequiredService<AppHost>();
+        RewindJournalService.Enabled = host.Settings.Current.KeepRewindJournal;
         host.ShowWelcome();
         host.Updates = new UpdateService(AppPaths.Default.Root, host.ConfirmQuitAsync, Exit);
         host.Updates.Changed += (_, _) => OnUpdatesChanged(host);

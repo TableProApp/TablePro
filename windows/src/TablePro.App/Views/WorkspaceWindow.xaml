@@ -107,6 +107,9 @@
                     <Button x:Name="HistoryButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory" AutomationProperties.Name="Query history">
                         <FontIcon FontSize="16" Glyph="&#xE81C;" />
                     </Button>
+                    <Button x:Name="SqlFilesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowSqlFiles" AutomationProperties.Name="SQL files" ToolTipService.ToolTip="SQL files">
+                        <FontIcon FontSize="16" Glyph="&#xE8B7;" />
+                    </Button>
                     <Button x:Name="FavoritesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites" AutomationProperties.Name="Favorites">
                         <FontIcon FontSize="16" Glyph="&#xE734;" />
                     </Button>
@@ -125,6 +128,17 @@
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem x:Name="SearchDatabaseItem" Text="Search Database" Click="OnSearchDatabase">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE721;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Name="JoinBuilderItem" Text="Join Builder" Click="OnJoinBuilder" Visibility="{x:Bind ViewModel.IsSql}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE71B;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Name="CopyObjectsItem" Text="Copy Objects…" Click="OnCopyObjects" Visibility="{x:Bind ViewModel.IsSql}">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>                                <MenuFlyoutItem x:Name="CompareItem" Text="Compare and Sync" Click="OnCompare">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8F1;" /></MenuFlyoutItem.Icon>
+                                </MenuFlyoutItem>
+                                <MenuFlyoutItem x:Name="RewindItem" Text="Data Rewind" Click="OnDataRewind">
+                                    <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7A7;" /></MenuFlyoutItem.Icon>
                                 </MenuFlyoutItem>
                                 <MenuFlyoutItem x:Name="DiagramItem" Text="ER Diagram" Click="OnDiagram">
                                     <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8A1;" /></MenuFlyoutItem.Icon>

@@ -38,6 +38,9 @@ public sealed record AppSettings
     public DataSettings Data { get; init; } = new();
     public bool ConfirmCloseDirtyTabs { get; init; } = true;
     public bool RestoreSessionOnLaunch { get; init; } = true;
+
+    /// <summary>Journal each grid save so Data Rewind can undo it; the journal stays on this PC, encrypted.</summary>
+    public bool KeepRewindJournal { get; init; } = true;
     public AiSettings Ai { get; init; } = new();
     public McpSettings Mcp { get; init; } = new();
 

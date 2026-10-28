@@ -43,6 +43,7 @@ public sealed partial class QueryTabView : UserControl
         Editor.SuggestionsEnabled = viewModel.Context.InlineSuggest is not null;
         Editor.PausedAtLineEnd += OnPausedAtLineEnd;
         Editor.VimEnabled = viewModel.Context.Preferences.VimMode;
+        Editor.DefinitionRequested += (_, target) => DefinitionRequested?.Invoke(this, target);
         Editor.EmacsEnabled = viewModel.Context.Preferences.EmacsKeys;
         Editor.VimStatusChanged += OnVimStatusChanged;
         Editor.VimQuitRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
@@ -64,6 +65,9 @@ public sealed partial class QueryTabView : UserControl
     }
 
     public event EventHandler<string>? SaveFavoriteRequested;
+
+    /// <summary>Go to definition on a table or column; the window opens that table's structure.</summary>
+    public event EventHandler<Core.Sql.Analysis.SqlCatalogDefinition>? DefinitionRequested;
 
     /// <summary>The window's shortcut map lookup, so remapped editor commands follow Settings.</summary>
     public Func<Windows.System.VirtualKey, Windows.System.VirtualKeyModifiers, string?>? CommandForKey
@@ -382,6 +386,7 @@ public sealed partial class QueryTabView : UserControl
 
         await File.WriteAllTextAsync(path, Editor.Text.Replace("\n", Environment.NewLine, StringComparison.Ordinal));
         ViewModel.MarkSaved(path);
+        await SqlFiles.SqlLibraryHost.RecordSaveAsync(path);
         ViewModel.Context.Notify($"Saved {Path.GetFileName(path)}");
     }
 

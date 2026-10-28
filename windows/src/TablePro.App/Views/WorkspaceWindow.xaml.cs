@@ -178,6 +178,7 @@ public sealed partial class WorkspaceWindow : Window
         ShortcutIds.FocusObjectList => () => FocusInSidebar(ObjectList),
         ShortcutIds.ToggleTableBrowser => ToggleSidebar,
         ShortcutIds.ToggleHistory => () => ToggleSidePane<HistoryPane>(ShowHistory),
+        ShortcutIds.ToggleSqlFiles => () => OnShowSqlFiles(Root, new RoutedEventArgs()),
         ShortcutIds.ShowFavoritesList => () => OnShowFavorites(Root, new RoutedEventArgs()),
         ShortcutIds.ToggleAssistant => () => ToggleSidePane<AssistantPane>(ShowAssistant),
         ShortcutIds.ServerDashboard => () => OnServerDashboard(Root, new RoutedEventArgs()),
@@ -327,6 +328,10 @@ public sealed partial class WorkspaceWindow : Window
                 view.AdjacentTabRequested += (_, offset) => CycleTabs(offset);
                 view.TabCount = () => ViewModel.Tabs.Count;
                 view.CommandForKey = EditorCommandForKey;
+                view.DefinitionRequested += (_, target) => ViewModel.OpenTable(
+                    ViewModel.Session.Objects.FirstOrDefault(o => target.Matches(o.Name.Schema, o.Name.Name))
+                        ?? new DatabaseObject(new ObjectName(target.Schema, target.Table), target.IsView ? ObjectKind.View : ObjectKind.Table),
+                    TableTabSection.Structure);
                 return view;
             }
 
@@ -353,6 +358,23 @@ public sealed partial class WorkspaceWindow : Window
 
             case ServerTabViewModel server:
                 return new ServerTabView(server);
+
+            case JoinBuilderTabViewModel join:
+            {
+                var joinView = new JoinBuilderTabView(join);
+                joinView.OpenSqlRequested += (_, sql) => ViewModel.NewQuery(sql);
+                return joinView;
+            }
+
+            case DebuggerTabViewModel debug:
+            {
+                var debugView = new DebuggerTabView(debug);
+                debugView.CloseRequested += async (_, _) => await ViewModel.CloseTabAsync(debug);
+                return debugView;
+            }
+
+            case CompareTabViewModel compare:
+                return new CompareTabView(compare);
 
             case SearchTabViewModel search:
             {
@@ -507,6 +529,37 @@ public sealed partial class WorkspaceWindow : Window
         }
 
         menu.Items.Add(GridCommands.Item("Show Definition", "", () => ViewModel.OpenTable(obj, TableTabSection.Definition)));
+        if (ViewModel.Session.Database is IRoutineDebugger debugger && debugger.GetDebugTarget(obj) is { } target)
+        {
+            menu.Items.Add(GridCommands.Item("Debug", "\xEBE8", () =>
+            {
+                var tab = new DebuggerTabViewModel(ViewModel.Context, debugger, target);
+                ViewModel.Tabs.Add(tab);
+                ViewModel.SelectedTab = tab;
+            }));
+        }
+
+        if (obj.Kind == ObjectKind.Table && ViewModel.IsSql)
+        {
+            menu.Items.Add(GridCommands.Item("Build Join Query", "\xE71B", () => JoinBuilderTabViewModel.Open(ViewModel, [obj])));
+            if (!ViewModel.Profile.IsReadOnly)
+            {
+                menu.Items.Add(GridCommands.Item("Generate Rows…", "\xE8A5", async () =>
+                {
+                    if (await RowGeneratorDialog.ShowAsync(ViewModel.Context, obj, sql => ViewModel.NewQuery(sql))
+                        && ViewModel.Tabs.OfType<TableTabViewModel>().FirstOrDefault(t => t.Table.Name == obj.Name) is { } open)
+                    {
+                        await open.LoadAsync();
+                    }
+                }));
+            }
+        }
+
+        if (ViewModel.IsSql && _host is AppHost app)
+        {
+            menu.Items.Add(GridCommands.Item("Copy to Connection…", "\xE8C8", async () => await CopyObjectsDialog.ShowAsync(ViewModel.Context, [obj], CopyTargets.From(app, ViewModel.Context))));
+        }
+
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(GridCommands.Item("Copy Name", "", () => GridCommands.SetClipboard(obj.Name.Name)));
         menu.Items.Add(GridCommands.Item("Copy Qualified Name", "", () => GridCommands.SetClipboard(dialect.Qualify(obj.Name))));
@@ -604,6 +657,9 @@ public sealed partial class WorkspaceWindow : Window
 
     private void ShowHistory() => ShowSidePane("History", _host.CreateHistoryPane(ViewModel, InsertIntoEditor, RunInNewTab), 420);
 
+    private void OnShowSqlFiles(object sender, RoutedEventArgs e) =>
+        ToggleSidePane<Views.SqlFiles.SqlFilesPane>(() => ShowSidePane("SQL Files", new Views.SqlFiles.SqlFilesPane(ViewModel, _host, InsertIntoEditor), 380));
+
     private void OnShowFavorites(object sender, RoutedEventArgs e) => ShowSidePane("Favorites", _host.CreateFavoritesPane(ViewModel, InsertIntoEditor), 360);
 
     private void OnShowAssistant(object sender, RoutedEventArgs e) => ShowAssistant();
@@ -673,6 +729,44 @@ public sealed partial class WorkspaceWindow : Window
         var tab = new SearchTabViewModel(ViewModel.Context);
         ViewModel.Tabs.Add(tab);
         ViewModel.SelectedTab = tab;
+    }
+
+    private void OnJoinBuilder(object sender, RoutedEventArgs e) => JoinBuilderTabViewModel.Open(ViewModel);
+
+    private async void OnCopyObjects(object sender, RoutedEventArgs e)
+    {
+        if (_host is AppHost app)
+        {
+            await CopyObjectsDialog.ShowAsync(ViewModel.Context, [], CopyTargets.From(app, ViewModel.Context));
+        }
+    }
+
+    private void OnCompare(object sender, RoutedEventArgs e) => OpenCompare((ViewModel.SelectedTab as TableTabViewModel)?.Table);
+
+    private void OpenCompare(DatabaseObject? table)
+    {
+        if (_host is not AppHost app)
+        {
+            return;
+        }
+
+        var endpoints = new CompareEndpoints(app, ViewModel.Context.Dialogs);
+        var tab = new CompareTabViewModel(ViewModel.Context, endpoints.Profiles, (profile, token) => endpoints.OpenAsync(profile, ViewModel.Session, token), table);
+        ViewModel.Tabs.Add(tab);
+        ViewModel.SelectedTab = tab;
+    }
+
+    private void OnDataRewind(object sender, RoutedEventArgs e)
+    {
+        var pane = RewindPane.Create(ViewModel.Context, () => (ViewModel.SelectedTab as TableTabViewModel)?.Table.Name);
+        pane.ViewModel.Restored += async (_, table) =>
+        {
+            if (ViewModel.Tabs.OfType<TableTabViewModel>().FirstOrDefault(t => t.Table.Name == table) is { } tab)
+            {
+                await tab.LoadAsync();
+            }
+        };
+        ShowSidePane("Data Rewind", pane, 380);
     }
 
     private void OnDiagram(object sender, RoutedEventArgs e)
