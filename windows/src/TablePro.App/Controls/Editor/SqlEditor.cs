@@ -186,7 +186,8 @@ public sealed partial class SqlEditor : UserControl
     /// <summary>Shows text to insert at the caret, which Tab accepts, if the caret has not moved since the pause.</summary>
     public void ShowSuggestion(string text, int caret)
     {
-        if (string.IsNullOrWhiteSpace(text) || caret != SelectionStart || SelectionLength > 0 || _completionPopup.IsOpen)
+        // Tab accepts a suggestion, which outside Vim's insert mode would type into the text.
+        if (string.IsNullOrWhiteSpace(text) || caret != SelectionStart || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert)
         {
             return;
         }
@@ -227,7 +228,7 @@ public sealed partial class SqlEditor : UserControl
 
     private void OnTypingPaused()
     {
-        if (!SuggestionsEnabled || SelectionLength > 0 || _completionPopup.IsOpen)
+        if (!SuggestionsEnabled || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert)
         {
             return;
         }
@@ -363,6 +364,9 @@ public sealed partial class SqlEditor : UserControl
         _undo.RemoveAt(_undo.Count - 1);
         _redo.Add(current);
         SetTextCore(previous.Text, previous.Start, previous.End, recordUndo: false);
+
+        // Typing after an undo inside an open Vim insert group starts a new step instead of joining the undone one.
+        _undoGroupSnapshotTaken = false;
     }
 
     public void Redo()
@@ -377,6 +381,7 @@ public sealed partial class SqlEditor : UserControl
         _redo.RemoveAt(_redo.Count - 1);
         _undo.Add(current);
         SetTextCore(next.Text, next.Start, next.End, recordUndo: false);
+        _undoGroupSnapshotTaken = false;
     }
 
     public void ToggleComment()
@@ -601,6 +606,18 @@ public sealed partial class SqlEditor : UserControl
     {
         var now = DateTime.UtcNow;
 
+        // Inside a Vim undo group only the first edit takes a snapshot, so the whole command undoes as one step.
+        if (_undoGroupDepth > 0)
+        {
+            if (_undoGroupSnapshotTaken)
+            {
+                return;
+            }
+
+            _undoGroupSnapshotTaken = true;
+            force = true;
+        }
+
         // Typing within half a second joins one undo step, the way most editors group keystrokes.
         if (!force && now - _lastSnapshot < TimeSpan.FromMilliseconds(500) && _undo.Count > 0)
         {
@@ -739,7 +756,19 @@ public sealed partial class SqlEditor : UserControl
             }
         }
 
+        if (TryHandleVimEscape(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (_completionPopup.IsOpen && HandleCompletionKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (TryHandleVimKey(e))
         {
             e.Handled = true;
             return;
@@ -811,7 +840,8 @@ public sealed partial class SqlEditor : UserControl
 
     private void OnCharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs e)
     {
-        if (!CompletionEnabled)
+        // Outside Vim's insert mode keys are commands, so completion must not open on them.
+        if (!CompletionEnabled || IsVimOutsideInsert)
         {
             return;
         }

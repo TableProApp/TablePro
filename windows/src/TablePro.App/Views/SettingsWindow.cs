@@ -79,7 +79,7 @@ public sealed partial class SettingsWindow : Window
                 page.Children.Add(Card("Tab size", null, Number(Prefs.Editor.TabSize, 1, 8, v => Update(s => s with { Editor = s.Editor with { TabSize = (int)v } }))));
                 page.Children.Add(Card("Word wrap", null, Toggle(Prefs.Editor.WordWrap, v => Update(s => s with { Editor = s.Editor with { WordWrap = v } }))));
                 page.Children.Add(Card("Autocomplete", "Suggest keywords, tables and columns while typing.", Toggle(Prefs.Editor.Autocomplete, v => Update(s => s with { Editor = s.Editor with { Autocomplete = v } }))));
-                page.Children.Add(Card("Vim keybindings", "Not available in the Windows editor yet; the setting is kept for when it is.", Toggle(Prefs.Editor.VimMode, v => Update(s => s with { Editor = s.Editor with { VimMode = v } }))));
+                page.Children.Add(Card("Vim keybindings", "Edit with Vim's modes, motions, operators, registers and macros. Ctrl+C, Ctrl+V, Ctrl+Z and the other Windows shortcuts keep working.", Toggle(Prefs.Editor.VimMode, v => Update(s => s with { Editor = s.Editor with { VimMode = v } }))));
                 break;
             case "Data":
                 page.Children.Add(Card("Query result limit", "Rows an editor query reads before it stops. The status bar says when a result was cut.", Number(Prefs.Data.EditorRowLimit, 100, 1_000_000, v => Update(s => s with { Data = s.Data with { EditorRowLimit = (int)v } }))));
