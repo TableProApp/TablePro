@@ -383,6 +383,9 @@ jobs:
           persist-credentials: false
       # Every Meson suite runs inside the sandbox, from a source tree with
       # no .git. The action gives the tests a display and a session bus.
+      # On aarch64 the manifest links with lld: rustc links with GNU ld
+      # there, and its parallel links of the gtk suite ran the runner out
+      # of memory.
       - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
           manifest-path: linux/build-aux/flatpak/app.tablepro.TablePro.Devel.json

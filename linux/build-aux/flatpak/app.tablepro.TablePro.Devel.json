@@ -35,7 +35,14 @@
         "test-args": [
             "--socket=x11",
             "--share=network"
-        ]
+        ],
+        "arch": {
+            "aarch64": {
+                "env": {
+                    "CARGO_ENCODED_RUSTFLAGS": "-Clink-arg=-fuse-ld=lld"
+                }
+            }
+        }
     },
     "cleanup": [
         "/share/man"
