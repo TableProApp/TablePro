@@ -123,6 +123,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ShortcutsParameterRefresher.shared.start()
         }
 
+        // Before any intent routes: a launch with `open -g` reaches the gates and may never activate.
+        AccountServices.shared.loadStoredState()
+
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()
     }
