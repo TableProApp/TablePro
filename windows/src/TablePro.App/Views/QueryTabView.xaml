@@ -82,6 +82,9 @@
                 <SelectorBar x:Name="ResultTabs" SelectionChanged="OnResultTabChanged" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="ResultSummary" Style="{StaticResource StatusTextStyle}" Margin="0,0,8,0" />
+                    <ToggleButton x:Name="ChartToggle" Style="{StaticResource DefaultToggleButtonStyle}" Padding="8,5" Click="OnChartToggled" AutomationProperties.Name="Chart" ToolTipService.ToolTip="Show as chart">
+                        <FontIcon FontSize="14" Glyph="&#xE9D2;" />
+                    </ToggleButton>
                     <Button x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult" AutomationProperties.Name="Export this result" ToolTipService.ToolTip="Export this result">
                         <FontIcon FontSize="14" Glyph="&#xEDE1;" />
                     </Button>
@@ -89,6 +92,7 @@
             </Grid>
 
             <grid:DataGridView x:Name="ResultGrid" Grid.Row="1" />
+            <controls:ResultChart x:Name="Chart" Grid.Row="1" Visibility="Collapsed" />
 
             <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">
                 <StackPanel Spacing="12">

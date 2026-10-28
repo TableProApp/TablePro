@@ -153,15 +153,19 @@ public sealed partial class QueryTabView : UserControl
             ResultTabs.SelectedItem = selectedTab;
         }
 
+        ChartToggle.Visibility = result?.HasRows == true ? Visibility.Visible : Visibility.Collapsed;
         if (result is { HasRows: true })
         {
             ResultGrid.Source = result.Source;
-            ResultGrid.Visibility = Visibility.Visible;
+            Chart.Result = ChartToggle.IsChecked == true ? result.Result : null;
+            ResultGrid.Visibility = ChartToggle.IsChecked == true ? Visibility.Collapsed : Visibility.Visible;
+            Chart.Visibility = ChartToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             MessagePanel.Visibility = Visibility.Collapsed;
             return;
         }
 
         ResultGrid.Visibility = Visibility.Collapsed;
+        Chart.Visibility = Visibility.Collapsed;
         ResultGrid.Source = null;
         MessagePanel.Visibility = result is null ? Visibility.Collapsed : Visibility.Visible;
         if (result is not null)
@@ -182,6 +186,8 @@ public sealed partial class QueryTabView : UserControl
     private async void OnExplain(object sender, RoutedEventArgs e) => await RunAsync(RunScope.Explain);
 
     private void OnFormat(object sender, RoutedEventArgs e) => Format();
+
+    private void OnChartToggled(object sender, RoutedEventArgs e) => UpdateResultView();
 
     private void Format()
     {
