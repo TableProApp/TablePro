@@ -38,6 +38,11 @@ public sealed partial class QueryTabView : UserControl
         Editor.TextChanged += OnEditorTextChanged;
         Editor.SuggestionsEnabled = viewModel.Context.InlineSuggest is not null;
         Editor.PausedAtLineEnd += OnPausedAtLineEnd;
+        Editor.VimEnabled = viewModel.Context.Preferences.VimMode;
+        Editor.VimStatusChanged += OnVimStatusChanged;
+        Editor.VimQuitRequested += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        Editor.VimTabRequested += (_, position) => TabRequested?.Invoke(this, position);
+        Editor.VimAdjacentTabRequested += (_, offset) => AdjacentTabRequested?.Invoke(this, offset);
 
         viewModel.Context.Session.CatalogChanged += OnCatalogChanged;
         viewModel.Results.CollectionChanged += OnResultsChanged;
@@ -51,6 +56,22 @@ public sealed partial class QueryTabView : UserControl
     }
 
     public event EventHandler<string>? SaveFavoriteRequested;
+
+    /// <summary>Vim's :q, which closes this tab.</summary>
+    public event EventHandler? CloseRequested;
+
+    /// <summary>Vim's gt with a count: the 1-based position of the tab to show.</summary>
+    public event EventHandler<int>? TabRequested;
+
+    /// <summary>Vim's gt and gT: how many tabs to move, positive to the right.</summary>
+    public event EventHandler<int>? AdjacentTabRequested;
+
+    /// <summary>How many tabs the window has, so Vim tab counts clamp and wrap as in Vim.</summary>
+    public Func<int>? TabCount
+    {
+        get => Editor.VimTabCount;
+        set => Editor.VimTabCount = value;
+    }
 
     /// <summary>The failed statement and the server's error, for the assistant's Fix action.</summary>
     public event EventHandler<(string Sql, string Error)>? FixWithAiRequested;
@@ -95,6 +116,12 @@ public sealed partial class QueryTabView : UserControl
         {
             // A suggestion is optional: a slow, refused or failed request just shows nothing.
         }
+    }
+
+    private void OnVimStatusChanged(object? sender, EventArgs e)
+    {
+        VimStatusText.Text = Editor.VimStatus;
+        VimStatusText.Visibility = Editor.VimStatus.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnEditorTextChanged(object? sender, EventArgs e)

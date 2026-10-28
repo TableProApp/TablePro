@@ -58,4 +58,6 @@ public sealed class SettingsPreferences(SettingsStore settings) : IWorkspacePref
     public double EditorFontSize => settings.Current.Editor.FontSize;
 
     public bool WordWrap => settings.Current.Editor.WordWrap;
+
+    public bool VimMode => settings.Current.Editor.VimMode;
 }

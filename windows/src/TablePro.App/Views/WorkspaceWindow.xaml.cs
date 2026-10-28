@@ -176,6 +176,10 @@ public sealed partial class WorkspaceWindow : Window
                     }
                 };
                 view.ValueInspectRequested += (_, value) => InspectValue(value.Title, value.Value);
+                view.CloseRequested += async (_, _) => await ViewModel.CloseTabAsync(query);
+                view.TabRequested += (_, position) => ViewModel.SelectedTab = ViewModel.Tabs[Math.Clamp(position, 1, ViewModel.Tabs.Count) - 1];
+                view.AdjacentTabRequested += (_, offset) => CycleTabs(offset);
+                view.TabCount = () => ViewModel.Tabs.Count;
                 return view;
             }
 
@@ -280,7 +284,8 @@ public sealed partial class WorkspaceWindow : Window
         }
 
         var index = ViewModel.SelectedTab is null ? 0 : ViewModel.Tabs.IndexOf(ViewModel.SelectedTab);
-        ViewModel.SelectedTab = ViewModel.Tabs[(index + direction + ViewModel.Tabs.Count) % ViewModel.Tabs.Count];
+        var count = ViewModel.Tabs.Count;
+        ViewModel.SelectedTab = ViewModel.Tabs[(((index + direction) % count) + count) % count];
     }
 
     private void ToggleSidebar()

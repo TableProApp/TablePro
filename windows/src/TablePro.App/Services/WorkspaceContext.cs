@@ -24,6 +24,8 @@ public interface IWorkspacePreferences
     double EditorFontSize { get; }
 
     bool WordWrap { get; }
+
+    bool VimMode { get; }
 }
 
 /// <summary>Everything a tab needs from its window, handed down instead of reached for through statics.</summary>
