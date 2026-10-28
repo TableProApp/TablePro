@@ -21,7 +21,7 @@ namespace TablePro.Drivers.Oracle;
 /// It declares <see cref="IDatabaseSession"/> again only so its own <see cref="PingAsync"/> replaces the base class's
 /// <c>SELECT 1</c>, which Oracle before 23ai refuses without <c>FROM DUAL</c>.
 /// </remarks>
-public sealed class OracleSession
+public sealed partial class OracleSession
     : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IServerActivityProvider, IServerVariablesProvider, IUserListProvider
 {
     private const string PingSql = "SELECT 1 FROM DUAL";
