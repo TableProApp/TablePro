@@ -89,7 +89,7 @@
                                 <ComboBox Width="180" ItemsSource="{x:Bind Columns}" SelectedItem="{x:Bind ColumnItem, Mode=TwoWay}" />
                                 <ComboBox Width="160" ItemsSource="{x:Bind Operators}" SelectedItem="{x:Bind OperatorItem, Mode=TwoWay}" />
                                 <TextBox Width="220" PlaceholderText="Value" Text="{x:Bind Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" KeyDown="OnFilterKeyDown" />
-                                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnRemoveFilter" Tag="{x:Bind}" ToolTipService.ToolTip="Remove condition">
+                                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnRemoveFilter" Tag="{x:Bind}" AutomationProperties.Name="Remove condition" ToolTipService.ToolTip="Remove condition">
                                     <FontIcon FontSize="12" Glyph="&#xE711;" />
                                 </Button>
                             </StackPanel>
@@ -118,16 +118,16 @@
                 <TextBlock x:Name="SelectionText" Style="{StaticResource StatusTextStyle}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.PageText, Mode=OneWay}" Margin="0,0,8,0" />
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.FirstPageCommand}" ToolTipService.ToolTip="First page">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.FirstPageCommand}" AutomationProperties.Name="First page" ToolTipService.ToolTip="First page">
                         <FontIcon FontSize="12" Glyph="&#xE892;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.PreviousPageCommand}" ToolTipService.ToolTip="Previous page">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.PreviousPageCommand}" AutomationProperties.Name="Previous page" ToolTipService.ToolTip="Previous page">
                         <FontIcon FontSize="12" Glyph="&#xE76B;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NextPageCommand}" ToolTipService.ToolTip="Next page">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NextPageCommand}" AutomationProperties.Name="Next page" ToolTipService.ToolTip="Next page">
                         <FontIcon FontSize="12" Glyph="&#xE76C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.LastPageCommand}" ToolTipService.ToolTip="Last page">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.LastPageCommand}" AutomationProperties.Name="Last page" ToolTipService.ToolTip="Last page">
                         <FontIcon FontSize="12" Glyph="&#xE893;" />
                     </Button>
                     <ComboBox x:Name="PageSizeBox" SelectionChanged="OnPageSizeChanged" MinWidth="96" Margin="6,0,0,0" ToolTipService.ToolTip="Rows per page" />

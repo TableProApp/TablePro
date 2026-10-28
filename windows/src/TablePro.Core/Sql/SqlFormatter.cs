@@ -119,7 +119,7 @@ public static class SqlFormatter
 
             switch (token.Kind)
             {
-                case SqlTokenKind.Word when options.UppercaseKeywords && SqlKeywords.IsKeyword(raw):
+                case SqlTokenKind.Word when options.UppercaseKeywords && (SqlKeywords.IsKeyword(raw) || SqlKeywords.IsFunction(raw)):
                     sb.Append(raw.ToString().ToUpperInvariant());
                     break;
                 case SqlTokenKind.OpenParen:

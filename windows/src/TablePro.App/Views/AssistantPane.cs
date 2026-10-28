@@ -131,6 +131,19 @@ internal sealed partial class AssistantPane : UserControl
         await StreamAsync(token => _service.RunQueryActionAsync(_conversation, action, sql, null, context, token));
     }
 
+    /// <summary>Asks for a corrected statement, sending the server's error alongside the SQL it refused.</summary>
+    public async Task FixAsync(string sql, string error)
+    {
+        if (_service is null)
+        {
+            return;
+        }
+
+        _messages.Children.Add(Bubble($"Fix:\n{sql}\n\n{error}", isUser: true));
+        var context = await BuildContextAsync(sql);
+        await StreamAsync(token => _service.RunQueryActionAsync(_conversation, AiQueryAction.FixError, sql, error, context, token));
+    }
+
     private async Task StreamAsync(Func<CancellationToken, IAsyncEnumerable<string>> start)
     {
         _reply?.Cancel();

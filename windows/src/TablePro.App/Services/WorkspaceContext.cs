@@ -37,6 +37,20 @@ public sealed class WorkspaceContext(ConnectionSession session, DialogService di
 
     public IWorkspacePreferences Preferences { get; } = preferences;
 
+    /// <summary>Favorites with a keyword, offered in completion so typing the keyword inserts the saved query.</summary>
+    public Func<IReadOnlyList<CompletionItem>> Snippets { get; init; } = static () => [];
+
+    /// <summary>The catalog completion reads: the session's schema plus the favorites' keywords.</summary>
+    public CompletionCatalog CompletionCatalog
+    {
+        get
+        {
+            var catalog = Session.Catalog;
+            var snippets = Snippets();
+            return snippets.Count == 0 ? catalog : new CompletionCatalog(catalog.Schemas, catalog.Tables, catalog.Columns) { Snippets = [("Favorites", snippets)] };
+        }
+    }
+
     /// <summary>Raised by a tab that changed the schema, so the sidebar reloads.</summary>
     public event EventHandler? SchemaChanged;
 

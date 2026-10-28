@@ -95,25 +95,25 @@
                     Padding="0,0,4,0" />
                 <ProgressBar Grid.Row="4" VerticalAlignment="Top" IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
                 <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="2">
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NewQueryTabCommand}" ToolTipService.ToolTip="New query (Ctrl+T)">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NewQueryTabCommand}" AutomationProperties.Name="New query" ToolTipService.ToolTip="New query (Ctrl+T)">
                         <FontIcon FontSize="16" Glyph="&#xE710;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" ToolTipService.ToolTip="Refresh (F5 in the sidebar)">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh (F5 in the sidebar)">
                         <FontIcon FontSize="16" Glyph="&#xE72C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" ToolTipService.ToolTip="Create table">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" AutomationProperties.Name="Create table" ToolTipService.ToolTip="Create table">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory" ToolTipService.ToolTip="Query history (Ctrl+Y)">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory" AutomationProperties.Name="Query history" ToolTipService.ToolTip="Query history (Ctrl+Y)">
                         <FontIcon FontSize="16" Glyph="&#xE81C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites" ToolTipService.ToolTip="Favorites">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites" AutomationProperties.Name="Favorites" ToolTipService.ToolTip="Favorites">
                         <FontIcon FontSize="16" Glyph="&#xE734;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowAssistant" ToolTipService.ToolTip="AI assistant (Ctrl+Alt+A)">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowAssistant" AutomationProperties.Name="AI assistant" ToolTipService.ToolTip="AI assistant (Ctrl+Alt+A)">
                         <FontIcon FontSize="16" Glyph="&#xE8BD;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" ToolTipService.ToolTip="More">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="More" ToolTipService.ToolTip="More">
                         <FontIcon FontSize="16" Glyph="&#xE712;" />
                         <Button.Flyout>
                             <MenuFlyout Placement="TopEdgeAlignedLeft">
@@ -213,7 +213,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock x:Name="SidePaneTitle" Style="{StaticResource SubtitleTextBlockStyle}" FontSize="16" VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="OnCloseSidePane" ToolTipService.ToolTip="Close">
+                        <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" Click="OnCloseSidePane" AutomationProperties.Name="Close" ToolTipService.ToolTip="Close">
                             <FontIcon FontSize="12" Glyph="&#xE711;" />
                         </Button>
                     </Grid>

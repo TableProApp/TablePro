@@ -152,7 +152,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
         try
         {
             var (session, request) = await Host.Connector.ConnectAsync(profile, password, _connect.Token);
-            Host.OpenWorkspace(session, request);
+            await Host.OpenWorkspaceAsync(session, request);
         }
         catch (OperationCanceledException)
         {

@@ -20,7 +20,7 @@ public sealed partial class QueryTabView : UserControl
 
         Editor.Dialect = viewModel.Dialect;
         Editor.Text = viewModel.Text;
-        Editor.Catalog = viewModel.Context.Session.Catalog;
+        Editor.Catalog = viewModel.Context.CompletionCatalog;
         Editor.CompletionEnabled = viewModel.Context.Preferences.AutocompleteEnabled;
         Editor.WordWrap = viewModel.Context.Preferences.WordWrap;
         Editor.FontSize = viewModel.Context.Preferences.EditorFontSize;
@@ -41,6 +41,9 @@ public sealed partial class QueryTabView : UserControl
     }
 
     public event EventHandler<string>? SaveFavoriteRequested;
+
+    /// <summary>The failed statement and the server's error, for the assistant's Fix action.</summary>
+    public event EventHandler<(string Sql, string Error)>? FixWithAiRequested;
 
     public event EventHandler<(string Title, string Value)>? ValueInspectRequested;
 
@@ -67,7 +70,7 @@ public sealed partial class QueryTabView : UserControl
     }
 
     private void OnCatalogChanged(object? sender, EventArgs e) =>
-        DispatcherQueue.TryEnqueue(() => Editor.Catalog = ViewModel.Context.Session.Catalog);
+        DispatcherQueue.TryEnqueue(() => Editor.Catalog = ViewModel.Context.CompletionCatalog);
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -198,6 +201,14 @@ public sealed partial class QueryTabView : UserControl
     }
 
     private void OnSaveFavorite(object sender, RoutedEventArgs e) => SaveFavoriteRequested?.Invoke(this, SelectedOrCurrentSql);
+
+    private void OnFixWithAi(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedResult is { IsError: true } failed)
+        {
+            FixWithAiRequested?.Invoke(this, (failed.Statement.Sql, failed.Statement.Error ?? string.Empty));
+        }
+    }
 
     private async void OnExportResult(object sender, RoutedEventArgs e)
     {

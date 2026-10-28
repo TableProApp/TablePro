@@ -22,7 +22,7 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="4">
-                <SplitButton x:Name="RunButton" Click="OnRunClicked" ToolTipService.ToolTip="Run the selection or the statement at the caret (Ctrl+Enter)">
+                <SplitButton x:Name="RunButton" Click="OnRunClicked" AutomationProperties.Name="Run the selection or the statement at the caret" ToolTipService.ToolTip="Run the selection or the statement at the caret (Ctrl+Enter)">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="14" Glyph="&#xE768;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                         <TextBlock Text="Run" />
@@ -41,20 +41,20 @@
                         </MenuFlyout>
                     </SplitButton.Flyout>
                 </SplitButton>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}" ToolTipService.ToolTip="Stop the running query">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.StopCommand}" AutomationProperties.Name="Stop the running query" ToolTipService.ToolTip="Stop the running query">
                     <FontIcon FontSize="14" Glyph="&#xE71A;" />
                 </Button>
                 <AppBarSeparator />
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat" ToolTipService.ToolTip="Format SQL (Ctrl+Shift+F)">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat" AutomationProperties.Name="Format SQL" ToolTipService.ToolTip="Format SQL (Ctrl+Shift+F)">
                     <FontIcon FontSize="14" Glyph="&#xE8E4;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile" ToolTipService.ToolTip="Open SQL file">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile" AutomationProperties.Name="Open SQL file" ToolTipService.ToolTip="Open SQL file">
                     <FontIcon FontSize="14" Glyph="&#xE8E5;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFile" ToolTipService.ToolTip="Save SQL file (Ctrl+S)">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFile" AutomationProperties.Name="Save SQL file" ToolTipService.ToolTip="Save SQL file (Ctrl+S)">
                     <FontIcon FontSize="14" Glyph="&#xE74E;" />
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFavorite" ToolTipService.ToolTip="Save as favorite">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnSaveFavorite" AutomationProperties.Name="Save as favorite" ToolTipService.ToolTip="Save as favorite">
                     <FontIcon FontSize="14" Glyph="&#xE734;" />
                 </Button>
             </StackPanel>
@@ -82,7 +82,7 @@
                 <SelectorBar x:Name="ResultTabs" SelectionChanged="OnResultTabChanged" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="ResultSummary" Style="{StaticResource StatusTextStyle}" Margin="0,0,8,0" />
-                    <Button x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult" ToolTipService.ToolTip="Export this result">
+                    <Button x:Name="ExportButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnExportResult" AutomationProperties.Name="Export this result" ToolTipService.ToolTip="Export this result">
                         <FontIcon FontSize="14" Glyph="&#xEDE1;" />
                     </Button>
                 </StackPanel>
@@ -92,7 +92,11 @@
 
             <ScrollViewer x:Name="MessagePanel" Grid.Row="1" Visibility="Collapsed" Padding="16,12">
                 <StackPanel Spacing="12">
-                    <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" Title="The statement failed" />
+                    <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" Title="The statement failed">
+                        <InfoBar.ActionButton>
+                            <Button Content="Fix with AI" Click="OnFixWithAi" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
                     <TextBlock x:Name="MessageText" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontFamily="{StaticResource CodeFontFamily}" FontSize="12" />
                 </StackPanel>
             </ScrollViewer>

@@ -602,7 +602,8 @@ internal static class StructureTables
 
     public static ResultSet Columns(TableStructure s) => Build(
         ["#", "Name", "Type", "Nullable", "Default", "Key", "Identity", "Comment"],
-        s.Columns.Select(c => new object?[] { c.Ordinal, c.Name, c.DataType, c.IsNullable ? "YES" : "NO", c.DefaultValue, c.IsPrimaryKey ? "PRI" : null, c.IsIdentity ? "YES" : null, c.Comment }));
+        // Positions count from 1 here whatever the engine's catalog uses, and empty flags stay blank rather than NULL.
+        s.Columns.Select((c, i) => new object?[] { i + 1, c.Name, c.DataType, c.IsNullable ? "YES" : "NO", c.DefaultValue, c.IsPrimaryKey ? "PRI" : string.Empty, c.IsIdentity ? "YES" : string.Empty, c.Comment ?? string.Empty }));
 
     public static ResultSet Indexes(TableStructure s) => Build(
         ["Name", "Columns", "Unique", "Primary", "Method"],

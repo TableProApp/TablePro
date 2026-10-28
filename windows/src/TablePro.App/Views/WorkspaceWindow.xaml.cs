@@ -165,6 +165,14 @@ public sealed partial class WorkspaceWindow : Window
             {
                 var view = new QueryTabView(query);
                 view.SaveFavoriteRequested += async (_, sql) => await _host.SaveFavoriteAsync(ViewModel, sql, ViewModel.Context.Dialogs);
+                view.FixWithAiRequested += async (_, failed) =>
+                {
+                    ShowAssistant();
+                    if (SidePaneContent.Content is AssistantPane assistant)
+                    {
+                        await assistant.FixAsync(failed.Sql, failed.Error);
+                    }
+                };
                 view.ValueInspectRequested += (_, value) => InspectValue(value.Title, value.Value);
                 return view;
             }

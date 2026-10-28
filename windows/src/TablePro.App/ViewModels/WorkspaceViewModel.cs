@@ -6,6 +6,7 @@ using TablePro.App.Services;
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
 using TablePro.Core.Schema;
+using TablePro.Storage.Workspace;
 
 namespace TablePro.App.ViewModels;
 
@@ -143,9 +144,13 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     [NotifyPropertyChangedFor(nameof(HasSidebarError))]
     public partial string? SidebarError { get; set; }
 
+    /// <summary>The tabs to reopen, read from the last session when the Restore setting is on.</summary>
+    public WorkspaceState? RestoreState { get; set; }
+
     public async Task InitializeAsync()
     {
         await RefreshAsync();
+        Restore();
         if (CanSwitchDatabase)
         {
             try
@@ -171,6 +176,47 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         if (Tabs.Count == 0)
         {
             NewQuery();
+        }
+    }
+
+    /// <summary>What the window holds, so the next connect can reopen it.</summary>
+    public WorkspaceState CaptureState() => new()
+    {
+        ConnectionId = Profile.Id,
+        Database = Session.Database.CurrentDatabase,
+        Schema = Session.CurrentSchema,
+        SelectedIndex = SelectedTab is null ? 0 : Math.Max(0, Tabs.IndexOf(SelectedTab)),
+        Tabs = Tabs.Select(tab => tab switch
+        {
+            QueryTabViewModel query => new WorkspaceTab { Kind = WorkspaceTabKind.Query, Title = query.Title, QueryText = query.Text, FilePath = query.FilePath },
+            TableTabViewModel table => new WorkspaceTab { Kind = WorkspaceTabKind.Table, Title = table.Title, Schema = table.Table.Name.Schema, ObjectName = table.Table.Name.Name },
+            _ => null,
+        }).OfType<WorkspaceTab>().ToArray(),
+    };
+
+    private void Restore()
+    {
+        if (RestoreState is not { } state)
+        {
+            return;
+        }
+
+        RestoreState = null;
+        foreach (var tab in state.Tabs)
+        {
+            if (tab.Kind == WorkspaceTabKind.Query)
+            {
+                NewQuery(tab.QueryText, tab.FilePath);
+            }
+            else if (Session.Objects.FirstOrDefault(o => o.Name.Name == tab.ObjectName && (tab.Schema is null || o.Name.Schema == tab.Schema)) is { } obj)
+            {
+                OpenTable(obj);
+            }
+        }
+
+        if (Tabs.Count > 0)
+        {
+            SelectedTab = Tabs[Math.Clamp(state.SelectedIndex, 0, Tabs.Count - 1)];
         }
     }
 

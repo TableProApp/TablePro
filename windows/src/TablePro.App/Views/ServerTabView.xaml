@@ -28,7 +28,7 @@
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <TextBlock Style="{StaticResource StatusTextStyle}" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
                 <ToggleSwitch OnContent="Auto refresh" OffContent="Auto refresh" IsOn="{x:Bind ViewModel.AutoRefresh, Mode=TwoWay}" MinWidth="0" />
-                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" ToolTipService.ToolTip="Refresh">
+                <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh">
                     <FontIcon FontSize="14" Glyph="&#xE72C;" />
                 </Button>
             </StackPanel>

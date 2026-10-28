@@ -14,6 +14,7 @@ using TablePro.Storage.Favorites;
 using TablePro.Storage.History;
 using TablePro.Storage.Secrets;
 using TablePro.Storage.Settings;
+using TablePro.Storage.Workspace;
 
 namespace TablePro.App.Services;
 
@@ -37,6 +38,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         FavoritesStore favorites,
         ISecretStore secrets,
         ConnectionService connector,
+        WorkspaceStateStore workspaceStates,
         DispatcherQueue dispatcher)
     {
         Connections = connections;
@@ -45,6 +47,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         Favorites = favorites;
         Secrets = secrets;
         Connector = connector;
+        WorkspaceStates = workspaceStates;
         _dispatcher = dispatcher;
         HistoryRecorder = new HistoryRecorder(history);
         Preferences = new SettingsPreferences(settings);
@@ -62,6 +65,8 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     public ISecretStore Secrets { get; }
 
     public ConnectionService Connector { get; }
+
+    public WorkspaceStateStore WorkspaceStates { get; }
 
     public IHistoryRecorder HistoryRecorder { get; }
 
@@ -103,11 +108,25 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     }
 
     /// <summary>Opens a workspace window for a connected session, or brings the open one forward.</summary>
+    public async Task<WorkspaceWindow> OpenWorkspaceAsync(ConnectionSession session, ConnectionRequest request)
+    {
+        var state = Settings.Current.RestoreSessionOnLaunch ? await WorkspaceStates.LoadAsync(session.Profile.Id) : null;
+        var window = OpenWorkspace(session, request);
+        window.ViewModel.RestoreState = state;
+        return window;
+    }
+
     public WorkspaceWindow OpenWorkspace(ConnectionSession session, ConnectionRequest request)
     {
         WorkspaceWindow? created = null;
         var dialogs = new DialogService(() => created!);
-        var context = new WorkspaceContext(session, dialogs, HistoryRecorder, Preferences);
+        var context = new WorkspaceContext(session, dialogs, HistoryRecorder, Preferences)
+        {
+            Snippets = () => Favorites.GetVisible(session.Profile.Id).Favorites
+                .Where(f => !string.IsNullOrEmpty(f.Keyword))
+                .Select(f => new Core.Sql.CompletionItem(f.Keyword!, Core.Sql.CompletionKind.Snippet, f.Name, f.Query))
+                .ToArray(),
+        };
         var driver = Connector.Drivers.Resolve(session.Profile.Engine);
         var viewModel = new WorkspaceViewModel(context, driver, (_, database) => Task.FromResult(request with { Database = database }));
         var window = new WorkspaceWindow(viewModel, this);
@@ -122,7 +141,14 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
     public void WorkspaceClosed(object window)
     {
-        _workspaces.Remove((WorkspaceWindow)window);
+        var workspace = (WorkspaceWindow)window;
+        _workspaces.Remove(workspace);
+        if (Settings.Current.RestoreSessionOnLaunch && workspace.ViewModel.Tabs.Count > 0)
+        {
+            var state = workspace.ViewModel.CaptureState();
+            _ = WorkspaceStates.SaveAsync(state);
+        }
+
         if (_workspaces.Count == 0 && _welcome is null)
         {
             ShowWelcome();
@@ -254,7 +280,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
                 {
                     var password = Connector.SavedPassword(profile);
                     var (session, request) = await Connector.ConnectAsync(profile, password, CancellationToken.None);
-                    OpenWorkspace(session, request);
+                    await OpenWorkspaceAsync(session, request);
                     source.TrySetResult(McpOpenResult.Open(session.Database));
                 }
                 catch (Exception ex)

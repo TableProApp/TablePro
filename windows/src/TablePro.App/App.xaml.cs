@@ -15,6 +15,7 @@ using TablePro.Storage.Favorites;
 using TablePro.Storage.History;
 using TablePro.Storage.Secrets;
 using TablePro.Storage.Settings;
+using TablePro.Storage.Workspace;
 
 namespace TablePro.App;
 
@@ -68,6 +69,7 @@ public partial class App : Application
             .AddSingleton(sp => new SettingsStore(sp.GetRequiredService<AppPaths>()))
             .AddSingleton(sp => new QueryHistoryStore(sp.GetRequiredService<AppPaths>()))
             .AddSingleton(sp => new FavoritesStore(sp.GetRequiredService<AppPaths>()))
+            .AddSingleton(sp => new WorkspaceStateStore(sp.GetRequiredService<AppPaths>()))
             .AddSingleton<ISecretStore, CredentialManagerSecretStore>()
             .AddSingleton<ISshTunnelFactory>(_ => new SshTunnelFactory())
             .AddSingleton(_ => CreateDriverRegistry())
@@ -79,6 +81,7 @@ public partial class App : Application
                 sp.GetRequiredService<FavoritesStore>(),
                 sp.GetRequiredService<ISecretStore>(),
                 sp.GetRequiredService<ConnectionService>(),
+                sp.GetRequiredService<WorkspaceStateStore>(),
                 dispatcher));
         _services = services.BuildServiceProvider();
 
