@@ -82,7 +82,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Emacs keys | Built | Settings > Editor, exclusive with Vim. Kill ring, mark, word motions; those Ctrl keys lose their Windows meaning in the editor |
 | Graphical query plan, plan comparison | Built | Diagram, tree with cost bars, raw text and Compare with the previous plan. PostgreSQL, MySQL, SQL Server, SQLite, DuckDB, ClickHouse, Oracle; Explain Analyze where the engine measures. No saved plan history |
 | Parameter prompts for `?`, `$n` and `:name` | Built | Values are remembered per tab; numbers with a leading zero stay text |
-| Language server features (go to definition, diagnostics) | Not built | |
+| Language server features (go to definition, diagnostics) | Built | Squiggles for brackets, comments, strings, confusable characters and unknown tables, columns and aliases; hover cards; F12 or Ctrl+click; F2 renames every reference; F8 steps through problems. No signature help |
 
 ## Results and data grid
 
@@ -114,9 +114,9 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | SQL import, import mapping editor | Partial | Streamed SQL import with a transaction and progress; a mapping editor for CSV and JSON into an existing or new table. Insert only, mappings are not remembered |
 | Structure: columns, indexes, foreign keys, triggers | Built | |
 | Structure editing: add, edit, rename, drop columns, add and drop indexes and foreign keys | Built | DDL is reviewed before it runs |
-| Check constraints, partitions, table options editors | Not built | |
+| Check constraints, partitions, table options editors | Built | PostgreSQL, MySQL and MariaDB, SQL Server, SQLite, DuckDB, Oracle, ClickHouse as each allows. No SQL Server partitions; an unpartitioned table cannot be partitioned |
 | Definition view | Built | |
-| Data Rewind, Compare and Sync | Not built | Paid features on macOS |
+| Data Rewind, Compare and Sync | Partial | One table pair per compare with a reviewed sync plan, schema compare with migration DDL, and an encrypted local journal that undoes grid saves. No saved compare profiles or multi-table scopes |
 
 ## Workspace
 
@@ -131,9 +131,9 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Export a whole schema to a SQL file | Built | Structure and data |
 | Run a SQL file | Built | |
 | Users and roles editing | Partial | PostgreSQL, MySQL and MariaDB, SQL Server: principals, attributes, memberships and grants at every scope, staged with undo and reviewed before apply. Other engines list users only; one principal selected at a time |
-| Routine debugger | Not built | |
-| Join builder, row generator, object copy between connections | Not built | |
-| Git and version history for SQL files, linked folders, team library | Not built | |
+| Routine debugger | Built | PL/pgSQL through pldebugger and Oracle PL/SQL through DBMS_DEBUG, with breakpoints, stepping, call stack and variables. No DBMS_DEBUG_JDWP; not yet run against a server |
+| Join builder, row generator, object copy between connections | Built | Foreign-key join suggestions on a canvas, seeded test data with foreign keys and unique columns, and copies that add foreign keys after the rows. A copy is not one transaction |
+| Git and version history for SQL files, linked folders, team library | Partial | Watched folders, local versions on save, Git log, diff, restore, commit, pull and push through git.exe. The team library client is ported but hidden until licensing exists on Windows |
 
 ## AI and MCP
 

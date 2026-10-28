@@ -45,7 +45,7 @@ windows/
 
 An `IDatabaseSession` serves the sidebar, table tabs and saves from the provider's connection pool. Each editor tab asks it for an `IQueryChannel`, a dedicated connection, so a transaction, a `SET` or a temporary table stays with the tab that made it.
 
-`AdoNetSession` in `Core/Data` implements the session once over ADO.NET. An engine supplies how to open a connection and how to read its catalog: databases, schemas, objects, columns, indexes, foreign keys, triggers and definitions. Paging, filtering, counting, saving and running scripts are shared. Optional features are interfaces a session may also implement, found with a type test: `ISchemaDdlProvider`, `IServerActivityProvider`, `IServerVariablesProvider`, `IUserListProvider` and `IDatabaseAdministration`.
+`AdoNetSession` in `Core/Data` implements the session once over ADO.NET. An engine supplies how to open a connection and how to read its catalog: databases, schemas, objects, columns, indexes, foreign keys, triggers and definitions. Paging, filtering, counting, saving and running scripts are shared. Optional features are interfaces a session may also implement, found with a type test: `ISchemaDdlProvider`, `ITableDetailsProvider`, `IServerActivityProvider`, `IServerVariablesProvider`, `IUserListProvider`, `IUserAdministration`, `IDatabaseAdministration`, `IKeySearchProvider`, `IChangePreviewProvider` and `IRoutineDebugger`. `TablePro.Ssh` also holds the proxy forwarder, the helper-program tunnels (Cloud SQL, cloudflared, a tunnel command) and cloud sign-in tokens.
 
 Every public session method yields to the thread pool before it touches the provider, because SQLite and DuckDB complete their "async" methods synchronously and the UI thread must never wait on a database.
 
