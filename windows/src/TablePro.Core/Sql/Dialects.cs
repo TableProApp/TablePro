@@ -209,6 +209,55 @@ public sealed class CqlDialect : SqlDialect
 
     public override string LineComment => "--";
 
+    // A batch holds semicolons of its own and is one request, from BEGIN [UNLOGGED | COUNTER] BATCH to APPLY BATCH.
+    public override ImmutableArray<SqlStatement> Split(string text)
+    {
+        var parts = SqlScript.SplitSql(text, this);
+        var merged = ImmutableArray.CreateBuilder<SqlStatement>(parts.Length);
+        var batchStart = -1;
+        foreach (var part in parts)
+        {
+            if (batchStart < 0 && StartsBatch(part.Text))
+            {
+                batchStart = part.Start;
+            }
+
+            if (batchStart < 0)
+            {
+                merged.Add(part);
+            }
+            else if (part.Text.TrimEnd().EndsWith("APPLY BATCH", StringComparison.OrdinalIgnoreCase))
+            {
+                merged.Add(new SqlStatement(batchStart, part.End - batchStart, text[batchStart..part.End]));
+                batchStart = -1;
+            }
+        }
+
+        if (batchStart >= 0)
+        {
+            merged.Add(new SqlStatement(batchStart, text.Length - batchStart, text[batchStart..].TrimEnd()));
+        }
+
+        return merged.ToImmutable();
+    }
+
+    private static bool StartsBatch(string statement)
+    {
+        var words = statement.AsSpan().TrimStart();
+        if (!words.StartsWith("BEGIN", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var rest = words[5..].TrimStart();
+        if (rest.StartsWith("UNLOGGED", StringComparison.OrdinalIgnoreCase) || rest.StartsWith("COUNTER", StringComparison.OrdinalIgnoreCase))
+        {
+            rest = rest[(rest.IndexOf(' ') is var space and > 0 ? space : rest.Length)..].TrimStart();
+        }
+
+        return rest.StartsWith("BATCH", StringComparison.OrdinalIgnoreCase);
+    }
+
     public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"p{index}");
 
     public override void AppendPaging(StringBuilder sql, int offset, int limit, bool hasOrderBy) =>

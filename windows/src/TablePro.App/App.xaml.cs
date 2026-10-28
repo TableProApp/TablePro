@@ -13,6 +13,8 @@ using TablePro.Drivers.ClickHouse;
 using TablePro.Drivers.Oracle;
 using TablePro.Drivers.Teradata;
 using TablePro.Drivers.MongoDb;
+using TablePro.Drivers.Cassandra;
+using TablePro.Drivers.DynamoDb;
 using TablePro.Ssh;
 using TablePro.Storage;
 using TablePro.Storage.Connections;
@@ -68,7 +70,9 @@ public partial class App : Application
         .Register(new ClickHouseDriver())
         .Register(new OracleDriver())
         .Register(new TeradataDriver())
-        .Register(new MongoDbDriver());
+        .Register(new MongoDbDriver())
+        .Register(new CassandraDriver())
+        .Register(new DynamoDbDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

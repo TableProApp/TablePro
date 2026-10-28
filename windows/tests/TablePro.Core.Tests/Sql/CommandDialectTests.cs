@@ -154,6 +154,21 @@ public sealed class CommandDialectTests
     }
 
     [Fact]
+    public void CqlKeepsABatchTogether()
+    {
+        const string script = "SELECT * FROM t;\nBEGIN UNLOGGED BATCH\n  INSERT INTO t (id) VALUES (1);\n  DELETE FROM t WHERE id = 2;\nAPPLY BATCH;\nSELECT 1 FROM t";
+
+        var statements = SqlScript.Split(script, CqlDialect.Instance).Select(s => s.Text).ToArray();
+
+        Assert.Equal(3, statements.Length);
+        Assert.Equal("SELECT * FROM t", statements[0]);
+        Assert.StartsWith("BEGIN UNLOGGED BATCH", statements[1], StringComparison.Ordinal);
+        Assert.Contains("DELETE FROM t WHERE id = 2;", statements[1], StringComparison.Ordinal);
+        Assert.EndsWith("APPLY BATCH", statements[1], StringComparison.Ordinal);
+        Assert.Equal("SELECT 1 FROM t", statements[2]);
+    }
+
+    [Fact]
     public void CommandLanguagesAreNotSql()
     {
         Assert.False(RedisDialect.Instance.IsSql);

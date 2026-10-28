@@ -20,6 +20,8 @@
     <Project Path="src/TablePro.Drivers.Oracle/TablePro.Drivers.Oracle.csproj" />
     <Project Path="src/TablePro.Drivers.Teradata/TablePro.Drivers.Teradata.csproj" />
     <Project Path="src/TablePro.Drivers.MongoDb/TablePro.Drivers.MongoDb.csproj" />
+    <Project Path="src/TablePro.Drivers.Cassandra/TablePro.Drivers.Cassandra.csproj" />
+    <Project Path="src/TablePro.Drivers.DynamoDb/TablePro.Drivers.DynamoDb.csproj" />
     <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
     <Project Path="src/TablePro.App/TablePro.App.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -40,5 +42,6 @@
     <Project Path="tests/TablePro.Drivers.Redis.Tests/TablePro.Drivers.Redis.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Analytics.Tests/TablePro.Drivers.Analytics.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.MongoDb.Tests/TablePro.Drivers.MongoDb.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.WideColumn.Tests/TablePro.Drivers.WideColumn.Tests.csproj" />
   </Folder>
 </Solution>

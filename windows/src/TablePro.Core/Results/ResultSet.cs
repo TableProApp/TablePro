@@ -34,6 +34,9 @@ public sealed class ResultSet
     /// <summary>The reader stopped at the row limit and the server had more.</summary>
     public bool IsTruncated { get; }
 
+    /// <summary>What the driver could not do on the server for this page, such as a sort CQL cannot apply, shown under the grid.</summary>
+    public IReadOnlyList<string> Notices { get; init; } = [];
+
     public object? this[int row, int column] => _rows[row][column];
 
     public int ColumnIndex(string name)

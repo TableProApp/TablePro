@@ -218,7 +218,7 @@ public sealed partial class TableTabViewModel : TabViewModel
 
             AttachBuffer(result);
             LoadedRows = result.RowCount;
-            StatusText = null;
+            StatusText = result.Notices.Count > 0 ? string.Join(' ', result.Notices) : null;
             try
             {
                 TotalRows = await countTask;

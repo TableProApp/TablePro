@@ -59,5 +59,7 @@
     <ProjectReference Include="..\TablePro.Drivers.Oracle\TablePro.Drivers.Oracle.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Teradata\TablePro.Drivers.Teradata.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.MongoDb\TablePro.Drivers.MongoDb.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.Cassandra\TablePro.Drivers.Cassandra.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.DynamoDb\TablePro.Drivers.DynamoDb.csproj" />
   </ItemGroup>
 </Project>
