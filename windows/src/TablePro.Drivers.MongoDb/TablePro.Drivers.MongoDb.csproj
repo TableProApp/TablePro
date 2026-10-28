@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.MongoDb</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.MongoDb.Tests" />
+  </ItemGroup>
+</Project>

@@ -16,6 +16,7 @@ public enum ExportFormat
     Json,
     SqlInsert,
     Markdown,
+    Xlsx,
 }
 
 public sealed record ExportOptions(
@@ -36,11 +37,18 @@ public static class ResultExporter
         ExportFormat.Json => ".json",
         ExportFormat.SqlInsert => ".sql",
         ExportFormat.Markdown => ".md",
+        ExportFormat.Xlsx => ".xlsx",
         _ => ".txt",
     };
 
     public static async Task WriteAsync(ResultSet result, IReadOnlyList<int>? rows, Stream stream, ExportOptions options, CancellationToken cancellationToken)
     {
+        if (options.Format == ExportFormat.Xlsx)
+        {
+            await XlsxWriter.WriteAsync(result, rows, stream, options, cancellationToken);
+            return;
+        }
+
         if (options.Format == ExportFormat.Json)
         {
             await WriteJsonAsync(result, rows, stream, cancellationToken);

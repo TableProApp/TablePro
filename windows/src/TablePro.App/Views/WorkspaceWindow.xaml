@@ -101,7 +101,7 @@
                     <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh (F5 in the sidebar)">
                         <FontIcon FontSize="16" Glyph="&#xE72C;" />
                     </Button>
-                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" AutomationProperties.Name="Create table" ToolTipService.ToolTip="Create table">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}" AutomationProperties.Name="Create table" ToolTipService.ToolTip="Create table">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
                     </Button>
                     <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory" AutomationProperties.Name="Query history" ToolTipService.ToolTip="Query history (Ctrl+Y)">

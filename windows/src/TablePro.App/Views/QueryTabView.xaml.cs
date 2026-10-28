@@ -19,6 +19,10 @@ public sealed partial class QueryTabView : UserControl
         InitializeComponent();
 
         Editor.Dialect = viewModel.Dialect;
+
+        // A command language has no formatter, and an engine without a plan statement has no Explain.
+        FormatButton.Visibility = viewModel.Dialect.SupportsFormatting ? Visibility.Visible : Visibility.Collapsed;
+        ExplainItem.IsEnabled = viewModel.Dialect.Explain("x").Count > 0;
         Editor.Text = viewModel.Text;
         Editor.Catalog = viewModel.Context.CompletionCatalog;
         Editor.CompletionEnabled = viewModel.Context.Preferences.AutocompleteEnabled;
@@ -28,6 +32,8 @@ public sealed partial class QueryTabView : UserControl
         Editor.FormatRequested += (_, _) => Format();
         Editor.SaveRequested += async (_, _) => await SaveFileAsync(saveAs: false);
         Editor.TextChanged += OnEditorTextChanged;
+        Editor.SuggestionsEnabled = viewModel.Context.InlineSuggest is not null;
+        Editor.PausedAtLineEnd += OnPausedAtLineEnd;
 
         viewModel.Context.Session.CatalogChanged += OnCatalogChanged;
         viewModel.Results.CollectionChanged += OnResultsChanged;
@@ -61,6 +67,31 @@ public sealed partial class QueryTabView : UserControl
         ViewModel.RunAsync(Editor.RawText, Editor.SelectionStart, Editor.SelectionLength, scope);
 
     public string SelectedOrCurrentSql => Editor.SelectionLength > 0 ? Editor.SelectedText : Editor.Text;
+
+    private CancellationTokenSource? _suggestion;
+
+    private async void OnPausedAtLineEnd(object? sender, (string Before, string After, int Caret) pause)
+    {
+        if (ViewModel.Context.InlineSuggest is not { } suggest)
+        {
+            return;
+        }
+
+        _suggestion?.Cancel();
+        _suggestion = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        try
+        {
+            var text = await suggest(pause.Before, pause.After, _suggestion.Token);
+            if (!string.IsNullOrEmpty(text))
+            {
+                Editor.ShowSuggestion(text, pause.Caret);
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or HttpRequestException or InvalidOperationException or Ai.AiProviderException or Ai.Assistant.AiAccessDeniedException)
+        {
+            // A suggestion is optional: a slow, refused or failed request just shows nothing.
+        }
+    }
 
     private void OnEditorTextChanged(object? sender, EventArgs e)
     {
@@ -154,6 +185,11 @@ public sealed partial class QueryTabView : UserControl
 
     private void Format()
     {
+        if (!ViewModel.Dialect.SupportsFormatting)
+        {
+            return;
+        }
+
         var source = Editor.SelectionLength > 0 ? Editor.SelectedText : Editor.Text;
         var formatted = TablePro.Core.Sql.SqlFormatter.Format(source, ViewModel.Dialect);
         if (Editor.SelectionLength > 0)

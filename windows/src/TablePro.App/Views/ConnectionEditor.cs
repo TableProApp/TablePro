@@ -118,12 +118,16 @@ internal static class ConnectionEditor
         private readonly StackPanel _network = new() { Spacing = 12 };
         private readonly Grid _fileRow = new() { ColumnSpacing = 8 };
         private readonly StackPanel _sshFields = new() { Spacing = 12 };
+        private readonly EngineDescriptor[] _engines;
         private ConnectionColor _color;
 
         public Form(AppHost host, ConnectionProfile? existing, DialogService dialogs)
         {
             _host = host;
             _dialogs = dialogs;
+
+            // Only engines this build has a driver for, grouped by family as tablepro.app lists them.
+            _engines = EngineDescriptor.Engines.Where(d => host.Connector.Drivers.Supports(d.Engine)).ToArray();
             _existing = existing;
             Root = Build(out var sections);
             Fill(existing);
@@ -194,7 +198,9 @@ internal static class ConnectionEditor
                 Port = descriptor.IsFileBased || double.IsNaN(_port.Value) ? 0 : (int)_port.Value,
                 Username = string.IsNullOrWhiteSpace(_user.Text) ? null : _user.Text.Trim(),
                 Database = string.IsNullOrWhiteSpace(_database.Text) ? null : _database.Text.Trim(),
-                FilePath = descriptor.IsFileBased ? Environment.ExpandEnvironmentVariables(_file.Text.Trim()) : null,
+                FilePath = descriptor.IsFileBased || EngineForm.For(descriptor.Engine).FileLabel is not null
+                    ? NullIfEmpty(Environment.ExpandEnvironmentVariables(_file.Text.Trim()))
+                    : null,
                 SavePassword = _savePassword.IsChecked == true,
                 SslMode = (SslMode)Math.Max(0, _ssl.SelectedIndex),
                 SafeMode = (SafeModeLevel)Math.Max(0, _safeMode.SelectedIndex),
@@ -218,13 +224,13 @@ internal static class ConnectionEditor
             };
         }
 
-        private EngineDescriptor SelectedDescriptor => EngineDescriptor.Engines.ElementAt(Math.Max(0, _engine.SelectedIndex));
+        private EngineDescriptor SelectedDescriptor => _engines[Math.Max(0, _engine.SelectedIndex)];
 
         private FrameworkElement Build(out SelectorBar sections)
         {
-            foreach (var engine in EngineDescriptor.Engines)
+            foreach (var engine in _engines)
             {
-                _engine.Items.Add(engine.DisplayName);
+                _engine.Items.Add(engine.QueryLanguage is "SQL" ? engine.DisplayName : $"{engine.DisplayName}  ({engine.QueryLanguage})");
             }
 
             foreach (var mode in new[] { "Disabled", "Preferred", "Required (skip verify)", "Verify CA", "Verify identity" })
@@ -285,11 +291,13 @@ internal static class ConnectionEditor
             _sshAuth.SelectionChanged += (_, _) => _sshKey.Visibility = _sshAuth.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             _browse.Click += async (_, _) =>
             {
-                var file = await _dialogs.PickOpenFileAsync(".sqlite", ".sqlite3", ".db", ".db3", ".duckdb", ".ddb", "*");
+                var file = SelectedDescriptor.IsFileBased
+                    ? await _dialogs.PickOpenFileAsync(".sqlite", ".sqlite3", ".db", ".db3", ".duckdb", ".ddb", ".beancount", "*")
+                    : await _dialogs.PickOpenFileAsync(".json", ".p8", ".pem", "*");
                 if (file is not null)
                 {
                     _file.Text = file.Path;
-                    if (string.IsNullOrWhiteSpace(_name.Text))
+                    if (string.IsNullOrWhiteSpace(_name.Text) && SelectedDescriptor.IsFileBased)
                     {
                         _name.Text = Path.GetFileNameWithoutExtension(file.Path);
                     }
@@ -355,7 +363,7 @@ internal static class ConnectionEditor
         {
             var p = profile ?? new ConnectionProfile { Name = string.Empty, Engine = DatabaseEngine.PostgreSql };
             _name.Text = p.Name;
-            _engine.SelectedIndex = EngineDescriptor.Engines.ToList().FindIndex(d => d.Engine == p.Engine);
+            _engine.SelectedIndex = Math.Max(0, Array.FindIndex(_engines, d => d.Engine == p.Engine));
             _host_.Text = p.Host;
             _port.Value = p.Port > 0 ? p.Port : p.Descriptor.DefaultPort;
             _user.Text = p.Username ?? (profile is null ? p.Descriptor.DefaultUser : string.Empty);
@@ -394,8 +402,18 @@ internal static class ConnectionEditor
         private void OnEngineChanged()
         {
             var descriptor = SelectedDescriptor;
+            var form = EngineForm.For(descriptor.Engine);
             _network.Visibility = descriptor.IsFileBased ? Visibility.Collapsed : Visibility.Visible;
-            _fileRow.Visibility = descriptor.IsFileBased ? Visibility.Visible : Visibility.Collapsed;
+            _fileRow.Visibility = descriptor.IsFileBased || form.FileLabel is not null ? Visibility.Visible : Visibility.Collapsed;
+            _file.Header = form.FileLabel ?? "File";
+            _host_.Header = form.HostLabel;
+            _host_.PlaceholderText = form.HostPlaceholder;
+            _port.Visibility = form.ShowPort ? Visibility.Visible : Visibility.Collapsed;
+            _user.Visibility = form.ShowUser ? Visibility.Visible : Visibility.Collapsed;
+            _user.Header = form.UserLabel;
+            _password.Header = form.PasswordLabel;
+            _database.Header = form.DatabaseLabel;
+            _options.PlaceholderText = form.OptionsHint ?? "one key=value per line";
             if (_existing is null || _existing.Engine != descriptor.Engine)
             {
                 _port.Value = descriptor.DefaultPort;
@@ -405,6 +423,8 @@ internal static class ConnectionEditor
                 }
             }
         }
+
+        private static string? NullIfEmpty(string text) => string.IsNullOrWhiteSpace(text) ? null : text;
 
         private static StackPanel Section(params UIElement[] children)
         {

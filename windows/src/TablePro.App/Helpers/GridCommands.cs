@@ -59,7 +59,7 @@ internal static class GridCommands
     {
         var formats = new (string Name, ExportFormat Format)[]
         {
-            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown),
+            ("CSV", ExportFormat.Csv), ("TSV", ExportFormat.Tsv), ("JSON", ExportFormat.Json), ("SQL INSERT", ExportFormat.SqlInsert), ("Markdown", ExportFormat.Markdown), ("Excel workbook", ExportFormat.Xlsx),
         };
         var picker = new ComboBox { Header = "Format", ItemsSource = formats.Select(f => f.Name).ToList(), SelectedIndex = 0, MinWidth = 240 };
         var header = new CheckBox { Content = "Include column names", IsChecked = true };

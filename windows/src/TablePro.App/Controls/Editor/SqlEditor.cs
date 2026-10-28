@@ -45,6 +45,11 @@ public sealed partial class SqlEditor : UserControl
     private readonly Popup _completionPopup = new() { IsLightDismissEnabled = false };
     private readonly ListView _completionList;
     private readonly DispatcherQueueTimerHolder _highlightTimer;
+    private readonly DispatcherQueueTimerHolder _pauseTimer;
+    private readonly Popup _suggestionPopup = new() { IsLightDismissEnabled = false };
+    private readonly TextBlock _suggestionText = new() { FontSize = 12, Opacity = 0.75, TextWrapping = TextWrapping.NoWrap };
+    private string? _suggestion;
+    private int _suggestionCaret = -1;
     private readonly List<(string Text, int Start, int End)> _undo = [];
     private readonly List<(string Text, int Start, int End)> _redo = [];
 
@@ -143,6 +148,21 @@ public sealed partial class SqlEditor : UserControl
 
         Content = root;
         _highlightTimer = new DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(80), Highlight);
+        _pauseTimer = new DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(900), OnTypingPaused);
+        var hint = new TextBlock { Text = "Tab to accept", FontSize = 10, Opacity = 0.6, Margin = new Thickness(0, 4, 0, 0) };
+        var suggestionPanel = new StackPanel();
+        suggestionPanel.Children.Add(_suggestionText);
+        suggestionPanel.Children.Add(hint);
+        _suggestionPopup.Child = new Border
+        {
+            Child = suggestionPanel,
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            Shadow = new ThemeShadow(),
+            Translation = new System.Numerics.Vector3(0, 0, 16),
+        };
+        _box.LostFocus += (_, _) => HideSuggestion();
         ActualThemeChanged += (_, _) => ApplyTheme(gutterHost);
         Loaded += (_, _) => ApplyTheme(gutterHost);
     }
@@ -156,6 +176,74 @@ public sealed partial class SqlEditor : UserControl
     public event EventHandler? SaveRequested;
 
     public event EventHandler? FormatRequested;
+
+    /// <summary>Typing paused with the caret at the end of a non-empty line: the moment to ask for an AI suggestion.</summary>
+    public event EventHandler<(string Before, string After, int Caret)>? PausedAtLineEnd;
+
+    /// <summary>Whether <see cref="PausedAtLineEnd"/> fires; on only when the user turned suggestions on.</summary>
+    public bool SuggestionsEnabled { get; set; }
+
+    /// <summary>Shows text to insert at the caret, which Tab accepts, if the caret has not moved since the pause.</summary>
+    public void ShowSuggestion(string text, int caret)
+    {
+        if (string.IsNullOrWhiteSpace(text) || caret != SelectionStart || SelectionLength > 0 || _completionPopup.IsOpen)
+        {
+            return;
+        }
+
+        _suggestion = text.Replace("\r\n", "\r", StringComparison.Ordinal).Replace('\n', '\r');
+        _suggestionCaret = caret;
+        var firstLine = _suggestion.Split('\r')[0];
+        _suggestionText.Text = _suggestion.Contains('\r') ? firstLine + " …" : firstLine;
+        if (Application.Current.Resources.TryGetValue("CodeFontFamily", out var font) && font is FontFamily family)
+        {
+            _suggestionText.FontFamily = family;
+        }
+
+        if (_suggestionPopup.Child is Border border)
+        {
+            border.Background = ThemeResources.Brush(this, "AcrylicInAppFillColorDefaultBrush");
+            border.BorderBrush = ThemeResources.Brush(this, "SurfaceStrokeColorFlyoutBrush");
+        }
+
+        _box.Document.Selection.GetRect(PointOptions.ClientCoordinates, out var rect, out _);
+        var origin = _box.TransformToVisual(this).TransformPoint(new Windows.Foundation.Point(rect.Right, rect.Bottom));
+        _suggestionPopup.XamlRoot = XamlRoot;
+        if (_suggestionPopup.Parent is null && Content is Grid grid && !grid.Children.Contains(_suggestionPopup))
+        {
+            grid.Children.Add(_suggestionPopup);
+        }
+
+        _suggestionPopup.HorizontalOffset = origin.X + 4;
+        _suggestionPopup.VerticalOffset = origin.Y + 2;
+        _suggestionPopup.IsOpen = true;
+    }
+
+    private void HideSuggestion()
+    {
+        _suggestionPopup.IsOpen = false;
+        _suggestion = null;
+    }
+
+    private void OnTypingPaused()
+    {
+        if (!SuggestionsEnabled || SelectionLength > 0 || _completionPopup.IsOpen)
+        {
+            return;
+        }
+
+        SyncText();
+        var caret = SelectionStart;
+        var lineEnd = _text.IndexOf('\r', caret);
+        var restOfLine = lineEnd < 0 ? _text[caret..] : _text[caret..lineEnd];
+        var lineStart = caret == 0 ? 0 : _text.LastIndexOf('\r', caret - 1) + 1;
+        if (restOfLine.Trim().Length > 0 || _text[lineStart..caret].Trim().Length == 0)
+        {
+            return;
+        }
+
+        PausedAtLineEnd?.Invoke(this, (_text[..caret].Replace('\r', '\n'), _text[caret..].Replace('\r', '\n'), caret));
+    }
 
     public SqlDialect Dialect
     {
@@ -297,7 +385,8 @@ public sealed partial class SqlEditor : UserControl
         var (lineStart, lineEnd) = SelectedLineRange();
         var block = _text[lineStart..lineEnd];
         var lines = block.Split('\r');
-        var allCommented = lines.Where(l => l.Trim().Length > 0).All(l => l.TrimStart().StartsWith("--", StringComparison.Ordinal));
+        var marker = _dialect.LineComment;
+        var allCommented = lines.Where(l => l.Trim().Length > 0).All(l => l.TrimStart().StartsWith(marker, StringComparison.Ordinal));
         for (var i = 0; i < lines.Length; i++)
         {
             if (lines[i].Trim().Length == 0)
@@ -307,14 +396,14 @@ public sealed partial class SqlEditor : UserControl
 
             if (allCommented)
             {
-                var at = lines[i].IndexOf("--", StringComparison.Ordinal);
-                var remove = at + 2 < lines[i].Length && lines[i][at + 2] == ' ' ? 3 : 2;
+                var at = lines[i].IndexOf(marker, StringComparison.Ordinal);
+                var remove = at + marker.Length < lines[i].Length && lines[i][at + marker.Length] == ' ' ? marker.Length + 1 : marker.Length;
                 lines[i] = lines[i].Remove(at, remove);
             }
             else
             {
                 var indent = lines[i].Length - lines[i].TrimStart().Length;
-                lines[i] = lines[i].Insert(indent, "-- ");
+                lines[i] = lines[i].Insert(indent, marker + " ");
             }
         }
 
@@ -480,6 +569,12 @@ public sealed partial class SqlEditor : UserControl
         if (!_suppress && SyncText())
         {
             _highlightTimer.Restart();
+            HideSuggestion();
+            if (SuggestionsEnabled)
+            {
+                _pauseTimer.Restart();
+            }
+
             TextChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -594,8 +689,8 @@ public sealed partial class SqlEditor : UserControl
         SqlTokenKind.Number => _palette.Number,
         SqlTokenKind.QuotedIdentifier => _palette.Identifier,
         SqlTokenKind.Parameter => _palette.Parameter,
-        SqlTokenKind.Word when SqlKeywords.IsFunction(token.Slice(text)) && NextIsParen(text, token.End) => _palette.Function,
-        SqlTokenKind.Word when SqlKeywords.IsKeyword(token.Slice(text)) => _palette.Keyword,
+        SqlTokenKind.Word when _dialect.IsSql && SqlKeywords.IsFunction(token.Slice(text)) && NextIsParen(text, token.End) => _palette.Function,
+        SqlTokenKind.Word when _dialect.IsKeyword(token.Slice(text)) => _palette.Keyword,
         _ => null,
     };
 
@@ -631,6 +726,18 @@ public sealed partial class SqlEditor : UserControl
     {
         var ctrl = IsDown(VirtualKey.Control);
         var shift = IsDown(VirtualKey.Shift);
+
+        if (_suggestion is { } suggestion)
+        {
+            var accept = e.Key == VirtualKey.Tab && _suggestionCaret == SelectionStart;
+            HideSuggestion();
+            if (accept)
+            {
+                InsertText(suggestion);
+                e.Handled = true;
+                return;
+            }
+        }
 
         if (_completionPopup.IsOpen && HandleCompletionKey(e.Key))
         {

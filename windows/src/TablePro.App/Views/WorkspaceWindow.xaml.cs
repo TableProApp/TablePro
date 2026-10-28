@@ -332,14 +332,14 @@ public sealed partial class WorkspaceWindow : Window
         {
             menu.Items.Add(GridCommands.Item("Open", "", () => ViewModel.OpenTable(obj), "Enter"));
             menu.Items.Add(GridCommands.Item("Structure", "", () => ViewModel.OpenTable(obj, TableTabSection.Structure)));
-            menu.Items.Add(GridCommands.Item("Select Top 1000 in Query", "", () => ViewModel.QueryObject(obj)));
+            menu.Items.Add(GridCommands.Item("Query in New Tab", "", () => ViewModel.QueryObject(obj)));
         }
 
         menu.Items.Add(GridCommands.Item("Show Definition", "", () => ViewModel.OpenTable(obj, TableTabSection.Definition)));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(GridCommands.Item("Copy Name", "", () => GridCommands.SetClipboard(obj.Name.Name)));
         menu.Items.Add(GridCommands.Item("Copy Qualified Name", "", () => GridCommands.SetClipboard(dialect.Qualify(obj.Name))));
-        if (obj.Kind == ObjectKind.Table)
+        if (obj.Kind == ObjectKind.Table && ViewModel.IsSql)
         {
             var generate = new MenuFlyoutSubItem { Text = "Generate SQL", Icon = new FontIcon { Glyph = "" } };
             generate.Items.Add(GridCommands.Item("SELECT", null, async () => ViewModel.NewQuery(await SqlTemplates.SelectAsync(ViewModel.Session, obj))));
@@ -347,13 +347,25 @@ public sealed partial class WorkspaceWindow : Window
             generate.Items.Add(GridCommands.Item("UPDATE", null, async () => ViewModel.NewQuery(await SqlTemplates.UpdateAsync(ViewModel.Session, obj))));
             generate.Items.Add(GridCommands.Item("DELETE", null, async () => ViewModel.NewQuery(await SqlTemplates.DeleteAsync(ViewModel.Session, obj))));
             menu.Items.Add(generate);
+        }
+
+        if (obj.HasRows)
+        {
             menu.Items.Add(GridCommands.Item("Export Data", "", async () => await ExportTableAsync(obj)));
+        }
+
+        if (obj.Kind == ObjectKind.Table && ViewModel.CanEditStructure)
+        {
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(GridCommands.Item("Rename", "", async () => await ViewModel.RenameAsync(obj), "F2"));
             menu.Items.Add(GridCommands.Item("Truncate", "", async () => await ViewModel.TruncateAsync(obj)));
         }
 
-        menu.Items.Add(GridCommands.Item("Drop", "", async () => await ViewModel.DropObjectAsync(obj), "Delete"));
+        if (ViewModel.CanEditStructure)
+        {
+            menu.Items.Add(GridCommands.Item("Drop", "", async () => await ViewModel.DropObjectAsync(obj), "Delete"));
+        }
+
         menu.ShowAt(element, e.GetPosition(element));
         e.Handled = true;
     }

@@ -109,8 +109,12 @@ public static class SqlCompletion
             }
 
             all.AddRange(catalog.Tables.Select(t => new CompletionItem(t.Name, t.IsView ? CompletionKind.View : CompletionKind.Table)));
-            all.AddRange(SqlKeywords.Functions.Select(f => new CompletionItem(f, CompletionKind.Function, InsertText: f + "(")));
-            all.AddRange(SqlKeywords.All.Select(k => new CompletionItem(k, CompletionKind.Keyword)));
+            if (dialect.IsSql)
+            {
+                all.AddRange(SqlKeywords.Functions.Select(f => new CompletionItem(f, CompletionKind.Function, InsertText: f + "(")));
+            }
+
+            all.AddRange(dialect.CompletionKeywords.Select(k => new CompletionItem(k, CompletionKind.Keyword)));
             foreach (var (_, items) in catalog.Snippets)
             {
                 all.AddRange(items);

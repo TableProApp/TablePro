@@ -297,15 +297,46 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     }
 
     /// <summary>The statement a "Select rows" or a "Show definition" action writes into a new editor tab.</summary>
-    public void QueryObject(DatabaseObject obj, int limit = 1000)
+    public void QueryObject(DatabaseObject obj, int limit = 1000) => NewQuery(StarterQuery(obj, limit));
+
+    /// <summary>The first statement a "Query" action writes, in the engine's own language.</summary>
+    public string StarterQuery(DatabaseObject obj, int limit = 1000)
     {
         var dialect = Session.Dialect;
-        var qualified = dialect.Qualify(obj.Name);
-        var sql = Profile.Engine == DatabaseEngine.SqlServer
-            ? $"SELECT TOP {limit} * FROM {qualified};"
-            : $"SELECT * FROM {qualified} LIMIT {limit};";
-        NewQuery(sql);
+        var name = obj.Name.Name;
+        var page = Math.Min(limit, 100);
+        return Profile.Engine switch
+        {
+            DatabaseEngine.MongoDb => $"db.getCollection({dialect.StringLiteral(name)}).find({{}}).limit({page})",
+            DatabaseEngine.Redis => (obj.Comment ?? string.Empty).ToLowerInvariant() switch
+            {
+                "hash" => $"HGETALL {Quote(name)}",
+                "list" => $"LRANGE {Quote(name)} 0 {page - 1}",
+                "set" => $"SSCAN {Quote(name)} 0 COUNT {page}",
+                "zset" => $"ZRANGE {Quote(name)} 0 {page - 1} WITHSCORES",
+                "stream" => $"XRANGE {Quote(name)} - + COUNT {page}",
+                "rejson-rl" or "json" => $"JSON.GET {Quote(name)} $",
+                _ => $"GET {Quote(name)}",
+            },
+            DatabaseEngine.Elasticsearch => $"GET /{name}/_search\n{{\n  \"query\": {{ \"match_all\": {{}} }},\n  \"size\": {page}\n}}",
+            DatabaseEngine.Typesense => $"GET /collections/{name}/documents/export",
+            DatabaseEngine.Weaviate => $"{{\n  Get {{\n    {name}(limit: {page}) {{\n      _additional {{ id }}\n    }}\n  }}\n}}",
+            DatabaseEngine.Kafka => $"CONSUME {name} FROM OLDEST LIMIT {page}",
+            DatabaseEngine.Etcd => $"get {Quote(name)} --prefix --limit {page}",
+            DatabaseEngine.SurrealDb => $"SELECT * FROM {dialect.QuoteIdentifier(name)} LIMIT {page};",
+            DatabaseEngine.DynamoDb => $"SELECT * FROM \"{name}\"",
+            DatabaseEngine.SqlServer or DatabaseEngine.Teradata => $"SELECT TOP {limit} * FROM {dialect.Qualify(obj.Name)};",
+            DatabaseEngine.Oracle or DatabaseEngine.Dameng => $"SELECT * FROM {dialect.Qualify(obj.Name)} FETCH FIRST {limit} ROWS ONLY;",
+            _ => $"SELECT * FROM {dialect.Qualify(obj.Name)} LIMIT {limit};",
+        };
+
+        static string Quote(string key) => key.Any(c => char.IsWhiteSpace(c) || c is '"' or '\'') ? "\"" + key.Replace("\"", "\\\"", StringComparison.Ordinal) + "\"" : key;
     }
+
+    /// <summary>The structure editor and Create Table need DDL the engine can express in SQL.</summary>
+    public bool CanEditStructure => Session.Database is ISchemaDdlProvider && Session.Dialect.IsSql;
+
+    public bool IsSql => Session.Dialect.IsSql;
 
     public async Task<bool> DropObjectAsync(DatabaseObject obj)
     {
@@ -378,7 +409,48 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         await Session.DisposeAsync();
     }
 
-    partial void OnSearchTextChanged(string value) => RebuildSidebar();
+    async partial void OnSearchTextChanged(string value)
+    {
+        if (Session.Database is not IKeySearchProvider keys)
+        {
+            RebuildSidebar();
+            return;
+        }
+
+        // Keys are searched on the server, which can match a pattern over millions of them; the list only has a sample.
+        _keySearch?.Cancel();
+        _keySearch = new CancellationTokenSource();
+        var token = _keySearch.Token;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            _keyMatches = null;
+            RebuildSidebar();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(300, token);
+            var pattern = value.Contains('*', StringComparison.Ordinal) || value.Contains('?', StringComparison.Ordinal) ? value : $"*{value}*";
+            var result = await keys.SearchKeysAsync(Session.CurrentSchema, pattern, KeySearchLimit, token);
+            if (!token.IsCancellationRequested)
+            {
+                _keyMatches = result;
+                RebuildSidebar();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            SidebarError = ex.Message;
+        }
+    }
+
+    private const int KeySearchLimit = 2000;
+    private CancellationTokenSource? _keySearch;
+    private KeySearchResult? _keyMatches;
 
     async partial void OnSelectedSchemaChanged(string? value)
     {
@@ -465,8 +537,10 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     private void RebuildSidebar()
     {
         var query = SearchText.Trim();
-        var objects = Session.Objects
-            .Where(o => query.Length == 0 || o.Name.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+        var source = _keyMatches is { } matches && query.Length > 0 ? matches.Keys : Session.Objects;
+        var filterLocally = _keyMatches is null || query.Length == 0;
+        var objects = source
+            .Where(o => !filterLocally || query.Length == 0 || o.Name.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
             .OrderBy(o => o.Name.Name, StringComparer.OrdinalIgnoreCase)
             .GroupBy(o => o.Kind)
             .OrderBy(g => g.Key);
@@ -492,6 +566,9 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
         ObjectKind.Procedure => "Procedures",
         ObjectKind.Sequence => "Sequences",
         ObjectKind.Trigger => "Triggers",
+        ObjectKind.Collection => "Collections",
+        ObjectKind.Key => "Keys",
+        ObjectKind.Topic => "Topics",
         _ => kind.ToString(),
     };
 }

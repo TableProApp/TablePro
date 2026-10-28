@@ -52,6 +52,33 @@ public sealed class DialogService(Func<Window> window)
         return await ShowAsync(dialog) == ContentDialogResult.Primary ? box.Text : null;
     }
 
+    /// <summary>One field per name, prefilled from <paramref name="defaults"/>; null when cancelled.</summary>
+    public async Task<Dictionary<string, string?>?> PromptValuesAsync(string title, string message, IReadOnlyList<string> names, IReadOnlyDictionary<string, string?> defaults)
+    {
+        var panel = new StackPanel { Spacing = 12, MinWidth = 380 };
+        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var boxes = new List<(string Name, TextBox Box)>();
+        foreach (var name in names)
+        {
+            var box = new TextBox { Header = name, Text = defaults.TryGetValue(name, out var value) ? value ?? "NULL" : string.Empty, PlaceholderText = "Text, a number, or NULL" };
+            boxes.Add((name, box));
+            panel.Children.Add(box);
+        }
+
+        if (boxes.Count > 0)
+        {
+            boxes[0].Box.Loaded += (_, _) => boxes[0].Box.Focus(FocusState.Programmatic);
+        }
+
+        var dialog = Create(title, new ScrollViewer { Content = panel, MaxHeight = 420 }, "Run", "Cancel");
+        if (await ShowAsync(dialog) != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        return boxes.ToDictionary(b => b.Name, b => (string?)b.Box.Text, StringComparer.Ordinal);
+    }
+
     /// <summary>Shows the statements a change will run, the way the macOS app's review sheet does.</summary>
     public async Task<bool> ReviewSqlAsync(string title, IReadOnlyList<string> statements, string primary = "Run")
     {

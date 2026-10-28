@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <RootNamespace>TablePro.Drivers.Kafka</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TablePro.Core/TablePro.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- librdkafka.redist, which this pulls in, carries the native win-x64 and win-arm64 librdkafka. -->
+    <PackageReference Include="Confluent.Kafka" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Drivers.Services.Tests" />
+  </ItemGroup>
+</Project>

@@ -70,7 +70,7 @@
                 <AppBarButton Label="Export" Click="OnExport">
                     <AppBarButton.Icon><FontIcon Glyph="&#xEDE1;" /></AppBarButton.Icon>
                 </AppBarButton>
-                <AppBarButton Label="Import CSV" Click="OnImport" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
+                <AppBarButton Label="Import" Click="OnImport" IsEnabled="{x:Bind ViewModel.IsEditable, Mode=OneWay}">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE8B5;" /></AppBarButton.Icon>
                 </AppBarButton>
             </CommandBar>
@@ -153,9 +153,9 @@
                     <SelectorBarItem Text="Triggers" Tag="Triggers" />
                 </SelectorBar>
                 <CommandBar Grid.Column="1" DefaultLabelPosition="Right" HorizontalAlignment="Right" Background="Transparent">
-                    <AppBarButton Icon="Add" Label="Add" Click="OnStructureAdd" />
-                    <AppBarButton Icon="Edit" Label="Edit" Click="OnStructureEdit" />
-                    <AppBarButton Icon="Delete" Label="Drop" Click="OnStructureDrop" />
+                    <AppBarButton x:Name="StructureAdd" Icon="Add" Label="Add" Click="OnStructureAdd" />
+                    <AppBarButton x:Name="StructureEdit" Icon="Edit" Label="Edit" Click="OnStructureEdit" />
+                    <AppBarButton x:Name="StructureDrop" Icon="Delete" Label="Drop" Click="OnStructureDrop" />
                     <AppBarButton Icon="Refresh" Label="Refresh" Command="{x:Bind ViewModel.RefreshStructureCommand}" />
                 </CommandBar>
             </Grid>

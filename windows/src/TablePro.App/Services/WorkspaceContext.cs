@@ -51,6 +51,12 @@ public sealed class WorkspaceContext(ConnectionSession session, DialogService di
         }
     }
 
+    /// <summary>
+    /// Asks the AI provider for text to continue the editor at the caret, given the text before and after it; null
+    /// when Suggest While Typing is off or no provider is set up.
+    /// </summary>
+    public Func<string, string, CancellationToken, Task<string?>>? InlineSuggest { get; init; }
+
     /// <summary>Raised by a tab that changed the schema, so the sidebar reloads.</summary>
     public event EventHandler? SchemaChanged;
 

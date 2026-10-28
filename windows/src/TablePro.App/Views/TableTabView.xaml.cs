@@ -34,6 +34,10 @@ public sealed partial class TableTabView : UserControl
         PageSizeBox.SelectedIndex = Math.Max(0, Array.IndexOf(PageSizes, viewModel.PageSize));
         DefinitionEditor.Dialect = viewModel.Context.Session.Dialect;
 
+        // Structure edits need DDL; engines without SQL or without a DDL provider show their structure read-only.
+        var canEdit = viewModel.Context.Session.Database is ISchemaDdlProvider && viewModel.Context.Session.Dialect.IsSql;
+        StructureAdd.Visibility = StructureEdit.Visibility = StructureDrop.Visibility = canEdit ? Visibility.Visible : Visibility.Collapsed;
+
         RowsGrid.SortRequested += async (_, e) => await ViewModel.SortByAsync(e.Column, e.AddToExisting);
         RowsGrid.CellContextRequested += OnRowsContext;
         RowsGrid.DeleteRequested += (_, _) => ViewModel.ToggleDeleteRows(RowsGrid.SelectedRows);
@@ -207,7 +211,7 @@ public sealed partial class TableTabView : UserControl
     private async void OnImport(object sender, RoutedEventArgs e)
     {
         var dialogs = ViewModel.Context.Dialogs;
-        var file = await dialogs.PickOpenFileAsync(".csv", ".tsv", ".txt");
+        var file = await dialogs.PickOpenFileAsync(".csv", ".tsv", ".txt", ".json", ".ndjson", ".jsonl");
         if (file is null || ViewModel.Structure is not { } structure)
         {
             return;
@@ -215,36 +219,32 @@ public sealed partial class TableTabView : UserControl
 
         var columns = structure.Columns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var clrTypes = ViewModel.Buffer?.Baseline.Columns.ToDictionary(c => c.Name, c => c.ClrType, StringComparer.OrdinalIgnoreCase) ?? [];
+        var isJson = Path.GetExtension(file.Path).ToLowerInvariant() is ".json" or ".ndjson" or ".jsonl";
         ViewModel.IsBusy = true;
         ViewModel.StatusText = "Importing…";
         try
         {
             var imported = await Task.Run(async () =>
             {
-                using var reader = new StreamReader(file.Path, detectEncodingFromByteOrderMarks: true);
-                var firstLine = reader.ReadLine() ?? string.Empty;
-                reader.BaseStream.Position = 0;
-                reader.DiscardBufferedData();
-                var csv = new CsvReader(reader, CsvReader.DetectDelimiter(firstLine));
-                var header = csv.ReadRecord() ?? [];
-                var mapped = header.Select(h => columns.Contains(h.Trim()) ? h.Trim() : null).ToArray();
-                if (mapped.All(m => m is null))
-                {
-                    throw new InvalidOperationException("No column in the file's header matches a column of this table.");
-                }
-
                 var total = 0;
                 var batch = new List<RowChange>(500);
-                while (csv.ReadRecord() is { } record)
+                await foreach (var record in isJson ? ReadJson(file.Path) : ReadCsv(file.Path))
                 {
                     var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-                    for (var i = 0; i < mapped.Length && i < record.Length; i++)
+                    foreach (var (name, raw) in record)
                     {
-                        if (mapped[i] is { } column)
+                        if (!columns.Contains(name))
                         {
-                            var text = record[i].Length == 0 ? null : record[i];
-                            values[column] = clrTypes.TryGetValue(column, out var type) && ValueParser.TryParse(text, type, out var parsed) ? parsed : text;
+                            continue;
                         }
+
+                        // Text from a CSV, or a JSON string, is parsed for the column's type; JSON numbers and booleans pass through.
+                        values[name] = raw is string text && clrTypes.TryGetValue(name, out var type) && ValueParser.TryParse(text, type, out var parsed) ? parsed : raw;
+                    }
+
+                    if (values.Count == 0)
+                    {
+                        throw new InvalidOperationException("No field in the file matches a column of this table.");
                     }
 
                     batch.Add(new RowInsert(values));
@@ -274,8 +274,36 @@ public sealed partial class TableTabView : UserControl
             ViewModel.IsBusy = false;
             ViewModel.StatusText = null;
         }
-    }
 
+        static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> ReadJson(string path)
+        {
+            await using var stream = File.OpenRead(path);
+            await foreach (var row in JsonRowReader.ReadAsync(stream, CancellationToken.None))
+            {
+                yield return row;
+            }
+        }
+
+        static async IAsyncEnumerable<IReadOnlyDictionary<string, object?>> ReadCsv(string path)
+        {
+            using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
+            var firstLine = await reader.ReadLineAsync() ?? string.Empty;
+            reader.BaseStream.Position = 0;
+            reader.DiscardBufferedData();
+            var csv = new CsvReader(reader, CsvReader.DetectDelimiter(firstLine));
+            var header = (csv.ReadRecord() ?? []).Select(h => h.Trim()).ToArray();
+            while (csv.ReadRecord() is { } record)
+            {
+                var row = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < header.Length && i < record.Length; i++)
+                {
+                    row[header[i]] = record[i].Length == 0 ? null : record[i];
+                }
+
+                yield return row;
+            }
+        }
+    }
     private void OnCopyDefinition(object sender, RoutedEventArgs e) => GridCommands.SetClipboard(ViewModel.Definition);
 
     private void OnOpenDefinition(object sender, RoutedEventArgs e) => OpenSqlRequested?.Invoke(this, ViewModel.Definition);

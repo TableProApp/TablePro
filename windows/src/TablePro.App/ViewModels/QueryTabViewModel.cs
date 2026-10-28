@@ -22,6 +22,9 @@ public sealed partial class QueryTabViewModel : TabViewModel
     private CancellationTokenSource? _run;
     private string _savedText = string.Empty;
 
+    // The last value typed for each placeholder, so a rerun offers it again.
+    private readonly Dictionary<string, string?> _parameterValues = new(StringComparer.Ordinal);
+
     public QueryTabViewModel(WorkspaceContext context, int number, string? initialText = null, string? filePath = null)
     {
         _context = context;
@@ -74,6 +77,27 @@ public sealed partial class QueryTabViewModel : TabViewModel
         if (statements.Count == 0)
         {
             return;
+        }
+
+        var parameters = SqlParameters.DistinctNames(statements, Dialect);
+        if (parameters.Count > 0)
+        {
+            var values = await _context.Dialogs.PromptValuesAsync(
+                "Parameters",
+                parameters.Count == 1 ? "The statement has a placeholder. Enter its value." : $"The statements have {parameters.Count} placeholders. Enter their values.",
+                parameters,
+                _parameterValues);
+            if (values is null)
+            {
+                return;
+            }
+
+            foreach (var (name, value) in values)
+            {
+                _parameterValues[name] = value;
+            }
+
+            statements = statements.Select(s => SqlParameters.Substitute(s, Dialect, values)).ToList();
         }
 
         if (scope == RunScope.Explain)

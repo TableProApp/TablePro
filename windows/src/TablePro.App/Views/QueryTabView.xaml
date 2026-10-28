@@ -35,7 +35,7 @@
                             <MenuFlyoutItem Text="Run All" Click="OnRunAll" KeyboardAcceleratorTextOverride="F5">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C8;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
-                            <MenuFlyoutItem Text="Explain" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
+                            <MenuFlyoutItem x:Name="ExplainItem" Text="Explain" Click="OnExplain" KeyboardAcceleratorTextOverride="Ctrl+Shift+E">
                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE9D9;" /></MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                         </MenuFlyout>
@@ -45,7 +45,7 @@
                     <FontIcon FontSize="14" Glyph="&#xE71A;" />
                 </Button>
                 <AppBarSeparator />
-                <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat" AutomationProperties.Name="Format SQL" ToolTipService.ToolTip="Format SQL (Ctrl+Shift+F)">
+                <Button x:Name="FormatButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnFormat" AutomationProperties.Name="Format SQL" ToolTipService.ToolTip="Format SQL (Ctrl+Shift+F)">
                     <FontIcon FontSize="14" Glyph="&#xE8E4;" />
                 </Button>
                 <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnOpenFile" AutomationProperties.Name="Open SQL file" ToolTipService.ToolTip="Open SQL file">

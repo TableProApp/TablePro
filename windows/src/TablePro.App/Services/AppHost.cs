@@ -120,8 +120,12 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     {
         WorkspaceWindow? created = null;
         var dialogs = new DialogService(() => created!);
+        var inline = Settings.Current.Ai.InlineSuggestions ? CreateAssistant(dialogs).Service : null;
         var context = new WorkspaceContext(session, dialogs, HistoryRecorder, Preferences)
         {
+            // Suggestions never prompt: under Ask Each Time they run only once the user allowed the assistant here.
+            InlineSuggest = inline is null ? null : (before, after, token) =>
+                inline.SuggestInlineAsync(before, after, new Ai.Assistant.AiRequestContext { Profile = session.Profile }, token),
             Snippets = () => Favorites.GetVisible(session.Profile.Id).Favorites
                 .Where(f => !string.IsNullOrEmpty(f.Keyword))
                 .Select(f => new Core.Sql.CompletionItem(f.Keyword!, Core.Sql.CompletionKind.Snippet, f.Name, f.Query))
