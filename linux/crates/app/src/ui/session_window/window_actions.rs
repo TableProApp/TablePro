@@ -12,7 +12,7 @@ use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
 use tablepro_session::SessionKey;
 
-use super::SessionWindowInput;
+use super::{SessionWindow, SessionWindowInput};
 use super::session_page::SessionPage;
 use super::session_window_command::ConnectFailure;
 use crate::runtime::{DeliverInput, InputSender};
@@ -87,12 +87,20 @@ fn safe_mode(input: InputSender<SessionWindowInput>) -> gio::ActionEntry<adw::Ap
     gio::ActionEntry::builder(SAFE_MODE)
         .parameter_type(Some(glib::VariantTy::STRING))
         .state(crate::ui::safe_mode::action_target(SafeModeLevel::Off).to_variant())
-        .change_state(move |_, _, target| {
-            if let Some(level) = target
-                .and_then(|target| target.str())
-                .and_then(crate::ui::safe_mode::from_action_target)
-            {
-                input.deliver(SessionWindowInput::SetSafeMode(level));
+        .change_state(move |window, _, target| {
+            // The session is read now: a tab switched before the input is
+            // handled must not move another connection's level.
+            let key = window
+                .downcast_ref::<SessionWindow>()
+                .and_then(|window| window.front_session())
+                .map(|(key, _)| key);
+            if let (Some(key), Some(level)) = (
+                key,
+                target
+                    .and_then(|target| target.str())
+                    .and_then(crate::ui::safe_mode::from_action_target),
+            ) {
+                input.deliver(SessionWindowInput::SetSafeMode { key, level });
             }
         })
         .build()

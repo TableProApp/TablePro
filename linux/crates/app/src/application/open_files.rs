@@ -44,8 +44,9 @@ impl TableProApplication {
     }
 
     fn place_file(&self, file: gio::File, key: Option<SessionKey>) {
-        let owner = key.and_then(|key| self.services()?.sessions.window_for(&key));
-        if owner.is_some_and(|owner| self.present_window(owner)) {
+        // The owner may show another of its sessions in front.
+        let owner = key.and_then(|key| Some((self.services()?.sessions.window_for(&key)?, key)));
+        if owner.is_some_and(|(owner, key)| self.present_session(owner, &key)) {
             return;
         }
         let idle = self

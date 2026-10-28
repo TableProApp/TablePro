@@ -81,8 +81,9 @@ pub(crate) enum SessionWindowInput {
     /// tab bar. Weak and sendable, since the window's input also
     /// crosses to the runtime.
     ReturnForeignTab(glib::SendWeakRef<adw::TabPage>),
-    /// The main menu's Safe Mode level for the session in front.
-    SetSafeMode(SafeModeLevel),
+    /// The main menu's Safe Mode level for the session that was in front
+    /// when the user picked it.
+    SetSafeMode { key: SessionKey, level: SafeModeLevel },
     /// The prompts approved connecting the saved connection again at the
     /// level it was just given.
     ReopenApproved(Uuid),

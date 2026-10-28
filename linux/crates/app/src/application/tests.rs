@@ -365,6 +365,41 @@ fn activate_restores_a_recorded_window_with_all_its_sessions() {
     assert_eq!(test.recorded_windows(), [shared.to_vec()]);
 }
 
+/// Opening a file that a window holds behind another of its sessions
+/// brings that session forward, not only its window.
+#[gtk4::test]
+fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
+    let test = TestApp::started("OpenHeldBehind");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    let shared = [first.clone(), second.clone()];
+    test.record_windows([&shared[..]]);
+    test.app.activate();
+    test.wait_for_sessions(&shared);
+    let window = test
+        .app
+        .active_window()
+        .and_downcast::<SessionWindow>()
+        .expect("the restored window");
+    let shell = window.shell().expect("the shell");
+    let front_key = || shell.front().and_then(|front| front.key());
+    let behind = window
+        .workspaces()
+        .into_iter()
+        .find(|workspace| workspace.key().as_ref() == Some(&second))
+        .expect("the second session");
+    let page = behind.create_editor_page().expect("a tab of the second session");
+    shell.tab_view().set_selected_page(&page);
+    wait_until(WAIT, || front_key().as_ref() == Some(&second)).expect("the second session in front");
+    let SessionKey::File(uri) = &first else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.open(&[gio::File::for_uri(uri)], "");
+
+    wait_until(WAIT, || front_key().as_ref() == Some(&first)).expect("the file's session in front");
+    assert_eq!(test.app.windows().len(), 1, "the file opened another window");
+}
+
 #[gtk4::test]
 fn activate_restores_nothing_when_restore_session_false() {
     let test = TestApp::started("NoRestore");

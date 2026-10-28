@@ -476,15 +476,22 @@ impl SessionWindow {
         self.imp().manage_tags.replace(Some(manage));
     }
 
-    /// Move the session in front to `level`, and the saved connection
+    /// Move the session under `key` to `level`, and the saved connection
     /// with it. A level on the other side of Read-Only needs the
     /// connection opened again, so the window reconnects once the tabs
     /// may go; until then the saved level waits for the next connect.
-    pub(super) fn on_set_safe_mode(&self, level: SafeModeLevel) {
-        let Some((key, session)) = self.front_session() else {
+    pub(super) fn on_set_safe_mode(&self, key: &SessionKey, level: SafeModeLevel) {
+        let Some(session) = self
+            .imp()
+            .sessions
+            .borrow()
+            .iter()
+            .find(|open| open.claim.key() == key)
+            .map(|open| open.session.clone())
+        else {
             return;
         };
-        let saved = match &key {
+        let saved = match key {
             SessionKey::Saved(id) => self.stored_connection(*id),
             SessionKey::File(_) => None,
         };
@@ -510,7 +517,7 @@ impl SessionWindow {
                 )),
             }
             if applied {
-                self.deliver_to(&key, WorkspaceInput::SafeModeChanged);
+                self.deliver_to(key, WorkspaceInput::SafeModeChanged);
             }
         }
         self.show_safe_mode();

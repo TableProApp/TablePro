@@ -381,7 +381,7 @@ impl SessionWindow {
     }
 
     /// The key and session of the session in front.
-    fn front_session(&self) -> Option<(SessionKey, Arc<Session>)> {
+    pub(super) fn front_session(&self) -> Option<(SessionKey, Arc<Session>)> {
         let front = self.workspace()?;
         let sessions = self.imp().sessions.try_borrow().ok()?;
         sessions
@@ -473,7 +473,7 @@ impl SessionWindow {
                     self.on_return_foreign_tab(&page);
                 }
             }
-            SessionWindowInput::SetSafeMode(level) => self.on_set_safe_mode(level),
+            SessionWindowInput::SetSafeMode { key, level } => self.on_set_safe_mode(&key, level),
             SessionWindowInput::ReopenApproved(id) => self.on_reopen_approved(id),
             SessionWindowInput::CloseCurrent => self.on_close_current(),
             SessionWindowInput::Reconnect => {
@@ -542,6 +542,15 @@ impl SessionWindow {
     /// Show the page the window's state calls for, building it only when
     /// it changed. What a page shows lives in the window's state, so the
     /// page left behind drops with nothing of its own.
+    /// Show `failed` on the failed page, built again even when the page
+    /// already shows another failure, so its remedies act on this one.
+    fn show_failure(&self, failed: FailedConnect) {
+        let imp = self.imp();
+        imp.failed.replace(Some(failed));
+        imp.shown.replace(None);
+        self.render();
+    }
+
     fn render(&self) {
         let page = self.page();
         if self.imp().shown.replace(Some(page)) != Some(page) {
@@ -681,8 +690,7 @@ impl SessionWindow {
                 ConnectSource::Saved(saved) => failure.missing_file.clone().map(|missing| (saved.id, missing)),
                 _ => None,
             };
-            imp.failed.replace(Some(FailedConnect { claim, source, failure }));
-            self.render();
+            self.show_failure(FailedConnect { claim, source, failure });
             if let Some((id, missing)) = missing {
                 self.offer_locate(id, missing);
             }
@@ -944,12 +952,11 @@ impl SessionWindow {
                 let Some(claim) = self.claim_for(&arrived) else {
                     return;
                 };
-                self.imp().failed.replace(Some(FailedConnect {
+                self.show_failure(FailedConnect {
                     claim,
                     source: ConnectSource::File(FileIdentity::new(None, uri)),
                     failure: ConnectFailure::new(message),
-                }));
-                self.render();
+                });
             }
         }
     }

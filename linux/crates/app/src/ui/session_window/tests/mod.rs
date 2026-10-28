@@ -977,6 +977,30 @@ fn missing_file_goes_to_connect_failed() {
     assert!(test.connector.calls().is_empty(), "a missing file was connected to");
 }
 
+/// A second failure while the failed page shows the first builds the
+/// page again, so its remedies act on the failure it names.
+#[gtk4::test]
+fn a_second_missing_file_replaces_the_first_on_the_failed_page() {
+    let test = TestWindow::picker("MissingTwice");
+    let message = || {
+        test.window
+            .content()
+            .and_then(|child| child.downcast::<ConnectFailedPage>().ok())
+            .and_then(|page| page.message())
+            .unwrap_or_default()
+    };
+    test.window.send(SessionWindowInput::OpenFile(gio::File::for_path(
+        test._dir.path().join("first.db"),
+    )));
+    wait_until(WAIT, || message().contains("first.db")).expect("the first failure");
+
+    test.window.send(SessionWindowInput::OpenFile(gio::File::for_path(
+        test._dir.path().join("second.db"),
+    )));
+
+    wait_until(WAIT, || message().contains("second.db")).expect("the page to name the second file");
+}
+
 /// The page reads its description as markup, where the `&` would
 /// leave the reason empty.
 #[gtk4::test]

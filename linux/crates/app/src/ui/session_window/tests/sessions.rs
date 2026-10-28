@@ -301,6 +301,46 @@ fn the_windows_actions_go_to_the_session_in_front() {
     );
 }
 
+/// The level goes to the session in front when the user picked it,
+/// not the one in front once the window handles the choice.
+#[gtk4::test]
+fn a_safe_mode_level_goes_to_the_session_it_was_picked_for() {
+    let (test, other) = open_both("SafeModeTarget");
+    let shell = test.window.shell().expect("the shell");
+    let (first_key, other_key) = (test.key(), SessionKey::Saved(other.id));
+    let tab_of = |key: &SessionKey| {
+        test.window
+            .session_workspace(key)
+            .expect("the session")
+            .create_editor_page()
+            .expect("a tab")
+    };
+    let (first_tab, other_tab) = (tab_of(&first_key), tab_of(&other_key));
+    shell.tab_view().set_selected_page(&first_tab);
+    let level = |key: &SessionKey| {
+        test.window
+            .imp()
+            .sessions
+            .borrow()
+            .iter()
+            .find(|open| open.claim.key() == key)
+            .map(|open| open.session.safe_mode())
+    };
+
+    pick_level(&test, "confirm-writes");
+    shell.tab_view().set_selected_page(&other_tab);
+
+    wait_until(WAIT, || {
+        level(&first_key) == Some(tablepro_core::SafeModeLevel::ConfirmWrites)
+    })
+    .expect("the level on the session it was picked for");
+    assert_eq!(
+        level(&other_key),
+        Some(tablepro_core::SafeModeLevel::Off),
+        "the level moved another connection"
+    );
+}
+
 #[gtk4::test]
 fn new_query_in_opens_an_editor_in_the_session_it_names() {
     let (test, _) = open_both("NewQueryIn");
