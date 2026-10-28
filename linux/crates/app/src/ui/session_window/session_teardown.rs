@@ -1,5 +1,10 @@
-//! The ordered teardown of a window's session, for a disconnect and an
+//! The ordered teardown of a window's sessions, for a disconnect and an
 //! approved close.
+//!
+//! The order matters. What a workspace shows is written before it is
+//! freed; the workspace goes before the claim, so nothing of it reads
+//! for a key another window can now claim; and the claim goes before the
+//! close finishes, so the same connection can be picked again at once.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,96 +15,82 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita::prelude::AdwApplicationWindowExt;
 use tablepro_core::EditorSession;
-use tablepro_session::Session;
 use tablepro_session::runtime::{ProcessHold, Tasks};
-
-use tablepro_session::SessionKey;
+use tablepro_session::{Session, SessionKey};
 
 use super::SessionWindow;
-use super::session_page::{OpenSession, SessionPage};
+use super::session_page::OpenSession;
 use crate::ui::workspace::WorkspaceShell;
 
 impl SessionWindow {
-    /// Take every session's workspace down once the close prompts
-    /// approved, and close the sessions under one hold each. False when
-    /// the window shows no workspace.
-    ///
-    /// The order matters. What a workspace shows is written before it
-    /// is freed; the workspace goes before the claim, so nothing of it
-    /// reads for a key another window can now claim; and the claim goes
-    /// before the close finishes, so the same connection can be picked
-    /// again at once.
-    pub(super) fn tear_down(&self) -> bool {
+    /// Take every session down once the close prompts approved, each
+    /// closed under one hold. Their pages stay in the shell, which goes
+    /// last, so no session sees another's tab come forward as it goes.
+    pub(super) fn tear_down(&self) {
         let imp = self.imp();
-        if self.state().is_none() {
-            return false;
-        }
-        let Ok(mut page) = imp.page.try_borrow_mut() else {
-            tracing::warn!("the session was torn down while its page was in use");
-            return false;
+        let sessions = match imp.sessions.try_borrow_mut() {
+            Ok(mut sessions) => std::mem::take(&mut *sessions),
+            Err(_) => {
+                tracing::warn!("the sessions were torn down while they were read");
+                return;
+            }
         };
-        if !matches!(*page, SessionPage::Workspace { .. }) {
-            return false;
+        if sessions.is_empty() {
+            return;
         }
-        let SessionPage::Workspace { shell, sessions } = std::mem::take(&mut *page) else {
-            return false;
-        };
-        drop(page);
         for open in &sessions {
             open.workspace.flush();
         }
         self.set_content(gtk::Widget::NONE);
         imp.page_toasts.replace(None);
+        imp.shown.set(None);
         self.set_title(Some(&crate::i18n::gettext("TablePro")));
-        shell.release_front();
+        let shell = imp.shell.take();
         for open in sessions {
-            self.close_open_session(&shell, open, false);
+            self.close_open_session(None, open, false);
         }
-        shell.shutdown();
+        if let Some(shell) = shell {
+            shell.shutdown();
+        }
         self.withdraw_notifications();
-        imp.dirty.set(false);
-        imp.saving.set(false);
-        self.refresh_inhibitor();
-        super::window_actions::sync(self.upcast_ref(), &SessionPage::Picker, false);
-        true
+        self.refresh_dirty();
     }
 
-    /// Take down the one session under `key`, in the same order, while
-    /// the window keeps its others. The last one tears the whole page
-    /// down, and true then means the window shows no workspace. False
-    /// when the window does not hold `key`.
+    /// Take down the one session under `key` while the window keeps the
+    /// others and its connects. With the last one the shell goes too.
+    /// False when the window holds no such session.
     pub(super) fn tear_down_session(&self, key: &SessionKey) -> bool {
         let imp = self.imp();
-        let Ok(mut page) = imp.page.try_borrow_mut() else {
-            tracing::warn!("a session was torn down while its page was in use");
-            return false;
+        let open = {
+            let Ok(mut sessions) = imp.sessions.try_borrow_mut() else {
+                tracing::warn!("a session was torn down while the sessions were read");
+                return false;
+            };
+            let Some(position) = sessions.iter().position(|open| open.claim.key() == key) else {
+                return false;
+            };
+            sessions.remove(position)
         };
-        let SessionPage::Workspace { shell, sessions } = &mut *page else {
-            return false;
-        };
-        let Some(position) = sessions.iter().position(|open| open.claim.key() == key) else {
-            return false;
-        };
-        if sessions.len() == 1 {
-            drop(page);
-            return self.tear_down();
-        }
-        let open = sessions.remove(position);
-        let shell = shell.clone();
-        drop(page);
         open.workspace.flush();
-        self.close_open_session(&shell, open, true);
-        self.withdraw_closed_notifications();
+        let shell = self.shell();
+        self.close_open_session(shell.as_ref(), open, true);
+        if imp.sessions.borrow().is_empty() {
+            if let Some(shell) = imp.shell.take() {
+                shell.shutdown();
+            }
+            self.withdraw_notifications();
+        } else {
+            self.on_tabs_changed();
+        }
         self.refresh_dirty();
-        self.sync_front();
+        self.render();
         true
     }
 
-    /// Shut `open`'s workspace down, take it off the shell, drop its
-    /// claim and record, and close its session. Its pages leave the tab
-    /// view first when `close_pages`, so the shell picks the next front
-    /// from a page that stays.
-    fn close_open_session(&self, shell: &WorkspaceShell, open: OpenSession, close_pages: bool) {
+    /// Take `open`'s workspace off the shell when one is given, shut it
+    /// down, drop its claim and record, and close its session. Its pages
+    /// leave the tab view when `close_pages`.
+    fn close_open_session(&self, shell: Option<&WorkspaceShell>, open: OpenSession, close_pages: bool) {
         let Some(state) = self.state() else {
             return;
         };
@@ -110,8 +101,10 @@ impl SessionWindow {
         } = open;
         let editor_sessions = workspace.take_editor_sessions();
         let key = claim.key().clone();
+        if let Some(shell) = shell {
+            shell.remove_session(&workspace);
+        }
         workspace.shutdown(close_pages);
-        shell.remove_session(&workspace, &key);
         drop(workspace);
         drop(claim);
         // A quit freezes the record first, so only a disconnect or a
@@ -158,15 +151,13 @@ fn close_session(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::time::Duration;
 
     use tablepro_core::EditorSession;
-    use tablepro_test_support::{CallCounters, CloseBehaviour, FakeEditorSession, FakeReply, FakeRun, Replies};
-
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     use tablepro_session::RegistryEvent;
+    use tablepro_test_support::{CallCounters, CloseBehaviour, FakeEditorSession, FakeReply, FakeRun, Replies};
 
     use super::*;
     use crate::test_support::wait_until;
@@ -179,22 +170,14 @@ mod tests {
         let workspace = test.workspace().downgrade();
         let key = test.key();
         wait_until(WAIT, || test.hold.live() == 0).expect("the workspace's opening writes to land");
-        // Each step records what had happened before it. Only the flush
-        // holds the process before the claim goes, and the close's hold
-        // comes after it.
+        // When the claim goes, the workspace is already shut down, and
+        // the flush that came before it still holds the process.
         let steps = Rc::new(RefCell::new(Vec::new()));
-        let (detached, hold) = (steps.clone(), test.hold.clone());
-        test.workspace()
-            .connect_notify_local(Some("parent"), move |workspace, _| {
-                if workspace.parent().is_none() {
-                    detached.borrow_mut().push(("detached", hold.live() > 0));
-                }
-            });
-        let (released, gone) = (steps.clone(), workspace.clone());
+        let (released, gone, hold) = (steps.clone(), workspace.clone(), test.hold.clone());
         let _subscription = test.services.sessions.subscribe(move |event| {
             if matches!(event, RegistryEvent::Released { .. }) {
                 let shut_down = gone.upgrade().is_none_or(|workspace| workspace.handle().is_none());
-                released.borrow_mut().push(("released", shut_down));
+                released.borrow_mut().push((shut_down, hold.live() > 0));
             }
         });
 
@@ -203,10 +186,9 @@ mod tests {
 
         assert_eq!(
             *steps.borrow(),
-            [("detached", true), ("released", true)],
-            "a step ran before the one it depends on"
+            [(true, true)],
+            "the claim went before the workspace, or before its flush"
         );
-
         let child = test.window.content();
         assert!(
             child.is_some_and(|child| child.type_().name() == "TableProPickerPage"),

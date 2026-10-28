@@ -149,8 +149,8 @@ fn answer(app: &TableProApplication, request: McpRequest) {
 }
 
 /// Open the connection the way the picker does: in the window that has
-/// it, in the active window while it only shows the picker, or in a new
-/// window. Every prompt the connect needs shows there.
+/// it, beside the sessions of the active window, or in a new window.
+/// Every prompt the connect needs shows there.
 fn open(
     app: &TableProApplication,
     services: &AppServices,
@@ -163,23 +163,17 @@ fn open(
         return;
     }
     match services.sessions.window_for(&key) {
-        None => {
-            let idle = app
-                .active_window()
-                .and_downcast::<SessionWindow>()
-                .filter(SessionWindow::is_idle);
-            match idle {
-                Some(window) => {
-                    window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
-                    window.present();
-                }
-                None => {
-                    app.open_window(WindowLaunch::Connect(Box::new(connection)));
-                }
+        None => match app.active_window().and_downcast::<SessionWindow>() {
+            Some(window) => {
+                window.send(SessionWindowInput::OpenSaved(Box::new(connection)));
+                window.present();
             }
-        }
+            None => {
+                app.open_window(WindowLaunch::Connect(Box::new(connection)));
+            }
+        },
         // A failed connect keeps its claim, and its window says why.
-        Some(window_id) if !app.imp().windows.keeps_session(window_id) => {
+        Some(window_id) if !app.imp().windows.keeps_session(window_id, &key) => {
             app.present_window(window_id);
             let _ = reply.send(OpenOutcome::Closed);
             return;
@@ -201,7 +195,7 @@ fn open(
                 break OpenOutcome::Closed;
             };
             match sessions.window_for(&key) {
-                Some(window_id) if app.imp().windows.keeps_session(window_id) => claimed = true,
+                Some(window_id) if app.imp().windows.keeps_session(window_id, &key) => claimed = true,
                 Some(_) => break OpenOutcome::Closed,
                 None if claimed => break OpenOutcome::Closed,
                 None => {}

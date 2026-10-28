@@ -1,7 +1,6 @@
-use std::cell::RefCell;
-use std::sync::OnceLock;
+use std::cell::{OnceCell, RefCell};
+use std::collections::VecDeque;
 
-use glib::subclass::Signal;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -9,11 +8,28 @@ use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
-use super::Workspace;
-use crate::ui::assistant::AssistantPane;
+use super::{ClosedTabDescriptor, Workspace};
+use crate::runtime::InputSender;
+use crate::ui::SessionWindowInput;
 use crate::ui::export::ExportOperationsButton;
 
-#[derive(Default, gtk::CompositeTemplate)]
+/// A session the shell holds, with what it hears from it.
+pub(super) struct HeldSession {
+    pub(super) workspace: Workspace,
+    pub(super) handlers: Vec<glib::SignalHandlerId>,
+    /// Its exports, which leave the operations button with it.
+    pub(super) jobs: Option<gio::ListStore>,
+}
+
+/// A tab closed in one of the window's sessions, which Ctrl+Shift+T
+/// opens again in that session.
+pub(super) struct ClosedTab {
+    pub(super) session: glib::WeakRef<Workspace>,
+    pub(super) tab: ClosedTabDescriptor,
+}
+
+#[derive(Default, gtk::CompositeTemplate, glib::Properties)]
+#[properties(wrapper_type = super::WorkspaceShell)]
 #[template(resource = "/app/tablepro/TablePro/ui/workspace-shell.ui")]
 pub struct WorkspaceShell {
     #[template_child]
@@ -31,8 +47,6 @@ pub struct WorkspaceShell {
     #[template_child]
     pub sidebar_header: TemplateChild<adw::HeaderBar>,
     #[template_child]
-    pub sidebar_title: TemplateChild<adw::WindowTitle>,
-    #[template_child]
     pub table_search_toggle: TemplateChild<gtk::ToggleButton>,
     #[template_child]
     pub refresh_tables_button: TemplateChild<gtk::Button>,
@@ -41,11 +55,13 @@ pub struct WorkspaceShell {
     #[template_child]
     pub table_search: TemplateChild<gtk::SearchEntry>,
     #[template_child]
+    pub list_banners: TemplateChild<gtk::Stack>,
+    #[template_child]
     pub sidebar_slot: TemplateChild<adw::Bin>,
     #[template_child]
     pub assistant_split: TemplateChild<adw::OverlaySplitView>,
     #[template_child]
-    pub assistant_pane: TemplateChild<AssistantPane>,
+    pub assistant_stack: TemplateChild<gtk::Stack>,
     #[template_child]
     pub content_root: TemplateChild<adw::ToolbarView>,
     #[template_child]
@@ -79,25 +95,30 @@ pub struct WorkspaceShell {
     #[template_child]
     pub tab_view: TemplateChild<adw::TabView>,
 
-    /// The workspaces of the sessions the window holds, in the order
-    /// they opened.
-    pub(super) sessions: RefCell<Vec<Workspace>>,
-    /// The one whose tab is in front, which the header bars, the banners
-    /// and the window's actions speak for.
+    /// The session the header bars, the banners and the window's actions
+    /// speak for: the one whose tab is selected, or with no tab, the one
+    /// that joined or was shown last.
+    #[property(get)]
     pub(super) front: RefCell<Option<Workspace>>,
+    /// The sessions the window holds, in the order they joined.
+    pub(super) sessions: RefCell<Vec<HeldSession>>,
     /// Every session's running exports, which the one operations button
     /// lists together.
-    pub(super) export_jobs: RefCell<Option<gio::ListStore>>,
-    /// Each session's export list, as it was added, so the right one
-    /// leaves with its session whatever that session is busy with.
-    pub(super) export_lists: RefCell<Vec<(glib::WeakRef<Workspace>, gio::ListStore)>>,
+    pub(super) export_jobs: OnceCell<gio::ListStore>,
     /// The saved connections, and the schemas and tables of each one open
     /// in the window.
-    pub(super) tree: RefCell<Option<super::sidebar::ConnectionTree>>,
+    pub(super) tree: OnceCell<super::sidebar::ConnectionTree>,
     /// The window the shell added its actions to.
     pub(super) window: glib::WeakRef<adw::ApplicationWindow>,
+    pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,
     /// The tab page whose menu is open: the view names it only then.
     pub(super) menu_target: RefCell<Option<adw::TabPage>>,
+    /// The tabs closed last, the newest at the back.
+    pub(super) closed_tabs: RefCell<VecDeque<ClosedTab>>,
+    /// Flips the window's history actions as the query database opens.
+    pub(super) history_gate: RefCell<Option<glib::JoinHandle<()>>>,
+    /// What follows the session in front, let go of at shutdown.
+    pub(super) watches: RefCell<Vec<gtk::ExpressionWatch>>,
 }
 
 #[glib::object_subclass]
@@ -108,7 +129,6 @@ impl ObjectSubclass for WorkspaceShell {
 
     fn class_init(klass: &mut Self::Class) {
         ExportOperationsButton::ensure_type();
-        AssistantPane::ensure_type();
         klass.bind_template();
     }
 
@@ -117,15 +137,11 @@ impl ObjectSubclass for WorkspaceShell {
     }
 }
 
+#[glib::derived_properties]
 impl ObjectImpl for WorkspaceShell {
     fn constructed(&self) {
         self.parent_constructed();
         super::workspace_shell::describe_buttons(&self.obj());
-    }
-
-    fn signals() -> &'static [Signal] {
-        static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
-        SIGNALS.get_or_init(|| vec![Signal::builder("front-changed").build()])
     }
 }
 

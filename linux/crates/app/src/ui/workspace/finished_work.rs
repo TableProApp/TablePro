@@ -32,10 +32,10 @@ impl Workspace {
         )
     }
 
-    /// The tab in front. `None` with no tab, or while the workspace is
-    /// handling input.
+    /// The tab in front, when it is this session's.
     pub(crate) fn selected_tab(&self) -> Option<Uuid> {
-        self.read(WorkspaceModel::selected_workspace_tab_id).flatten()
+        let page = self.imp().shell.upgrade()?.tab_view().selected_page()?;
+        self.tab_id(&page)
     }
 
     /// Every open tab. `None` while the workspace is handling input.
@@ -46,12 +46,6 @@ impl Workspace {
     /// What a notification calls tab `id`, while it is open.
     pub(crate) fn notice_label(&self, id: Uuid) -> Option<String> {
         self.read(|model| model.notice_label(id)).flatten()
-    }
-
-    /// The connection's name, as the window's title gives it.
-    pub(crate) fn connection_name(&self) -> Option<String> {
-        self.read(|model| model.context.active.metadata().map(|metadata| metadata.name))
-            .flatten()
     }
 }
 

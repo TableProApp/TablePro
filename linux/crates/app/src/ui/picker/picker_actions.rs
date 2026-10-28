@@ -7,7 +7,8 @@ use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, Save
 use uuid::Uuid;
 
 use super::connection_menu::{
-    CONNECT, DELETE, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NEW_TAG, NONE, PICKER, SET_COLOR, SET_TAG,
+    CONNECT, DELETE, DUPLICATE, EDIT, MOVE_TO_GROUP, NEW_GROUP, NEW_TAG, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP,
+    SET_COLOR, SET_TAG, tag_action,
 };
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::saved_connection_list::SavedConnectionList;
@@ -84,6 +85,59 @@ pub(crate) fn install_picker_actions(
     }
     actions.add_action(&set_tag_action(list, sender));
     root.insert_action_group(PICKER, Some(&actions));
+}
+
+/// Put on `menu` the colour, group and tag choices `connection_menu`
+/// names for `saved`, ticked at what it has now. A pick goes to the
+/// `picker` action with the connection's id, from `source`, which sits
+/// where the `picker` actions reach: a menu closes before its action
+/// runs.
+pub(crate) fn insert_choice_actions(
+    menu: &impl IsA<gtk::Widget>,
+    source: &gtk::Widget,
+    saved: &SavedConnection,
+    tags: &[ConnectionTag],
+) {
+    let actions = gio::SimpleActionGroup::new();
+    let current_color = saved.color.map_or(NONE, |color| color.id());
+    let current_group = saved.group.as_ref().map_or(NONE, ConnectionGroupName::as_str);
+    for (name, state, forward) in [
+        (ROW_COLOR, current_color, SET_COLOR),
+        (ROW_GROUP, current_group, MOVE_TO_GROUP),
+    ] {
+        let radio = gio::SimpleAction::new_stateful(name, Some(&String::static_variant_type()), &state.to_variant());
+        let (source, id) = (source.downgrade(), saved.id.to_string());
+        radio.connect_activate(move |radio, picked| {
+            let (Some(source), Some(picked)) = (source.upgrade(), picked.and_then(|value| value.get::<String>()))
+            else {
+                return;
+            };
+            radio.set_state(&picked.to_variant());
+            let target = (id.clone(), picked).to_variant();
+            if let Err(error) = source.activate_action(&format!("{PICKER}.{forward}"), Some(&target)) {
+                tracing::warn!(%error, "a connection's pick reached no picker");
+            }
+        });
+        actions.add_action(&radio);
+    }
+    for tag in tags {
+        let check =
+            gio::SimpleAction::new_stateful(&tag_action(tag.id), None, &saved.tags.contains(&tag.id).to_variant());
+        let (source, target) = (source.downgrade(), (saved.id.to_string(), tag.id.to_string()));
+        check.connect_activate(move |check, _| {
+            let Some(source) = source.upgrade() else {
+                return;
+            };
+            let carried = !check.state().and_then(|state| state.get::<bool>()).unwrap_or(false);
+            check.set_state(&carried.to_variant());
+            let target = (target.0.clone(), target.1.clone(), carried).to_variant();
+            if let Err(error) = source.activate_action(&format!("{PICKER}.{SET_TAG}"), Some(&target)) {
+                tracing::warn!(%error, "a connection's tag reached no picker");
+            }
+        });
+        actions.add_action(&check);
+    }
+    menu.insert_action_group(ROW, Some(&actions));
 }
 
 /// Takes the connection's id, the tag's id and whether the connection

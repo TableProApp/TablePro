@@ -20,6 +20,13 @@ impl ConnectionSearch {
         self.terms.is_empty()
     }
 
+    /// Whether every word is in `name`, in any case: a connection the
+    /// window opened that no saved connection describes has only that.
+    pub(crate) fn matches_name(&self, name: &str) -> bool {
+        let name = name.to_lowercase();
+        self.terms.iter().all(|term| name.contains(term.as_str()))
+    }
+
     /// Whether every word is in the connection's name, where it
     /// connects, its driver, its group or one of its tags' names, in any
     /// case. `tags` is the list's, to read the names of `saved`'s from.
@@ -126,6 +133,8 @@ mod tests {
             assert_eq!(ConnectionSearch::new(text).matches(&acme, &tags), shown, "{text:?}");
         }
         assert!(ConnectionSearch::new(" \t ").is_empty());
+        assert!(ConnectionSearch::new("SALES db").matches_name("sales.db"));
+        assert!(!ConnectionSearch::new("sales crm").matches_name("sales.db"));
         assert_eq!(ConnectionSearch::new("a  B"), ConnectionSearch::new("A b"));
     }
 }

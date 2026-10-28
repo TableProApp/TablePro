@@ -2,29 +2,13 @@
 <interface>
   <requires lib="gtk" version="4.22"/>
   <requires lib="libadwaita" version="1.9"/>
-  <!-- One session's banners. The window's shell shows them above the tabs
-       while a tab of this session is in front. -->
+  <!-- One session's banners about the connection and its tabs. The
+       window's shell shows them above the tabs while the session is in
+       front. -->
   <template class="TableProWorkspace" parent="AdwBin">
     <property name="child">
       <object class="GtkBox">
         <property name="orientation">vertical</property>
-        <child>
-          <!-- The list stays as it was when a read fails, so
-               the banner says it may be out of date. -->
-          <object class="AdwBanner" id="catalog_banner">
-            <property name="use-markup">false</property>
-            <property name="button-label" translatable="yes">Retry</property>
-            <property name="action-name">win.refresh-tables</property>
-          </object>
-        </child>
-        <child>
-          <!-- A database of keys can hold millions, and a
-               listing stops at its limit. -->
-          <object class="AdwBanner" id="key_limit_banner">
-            <property name="use-markup">false</property>
-            <property name="title" translatable="yes">Not every key is listed. Search to narrow the list.</property>
-          </object>
-        </child>
         <child>
           <object class="AdwBanner" id="reconnect_banner">
             <property name="use-markup">false</property>
@@ -52,4 +36,26 @@
       </object>
     </property>
   </template>
+  <!-- The session's banners about its list, which the shell shows at the
+       top of the sidebar while the session is in front. -->
+  <object class="GtkBox" id="list_banners">
+    <property name="orientation">vertical</property>
+    <child>
+      <!-- The list stays as it was when a read fails, so
+           the banner says it may be out of date. -->
+      <object class="AdwBanner" id="catalog_banner">
+        <property name="use-markup">false</property>
+        <property name="button-label" translatable="yes">Retry</property>
+        <property name="action-name">win.refresh-tables</property>
+      </object>
+    </child>
+    <child>
+      <!-- A database of keys can hold millions, and a
+           listing stops at its limit. -->
+      <object class="AdwBanner" id="key_limit_banner">
+        <property name="use-markup">false</property>
+        <property name="title" translatable="yes">Not every key is listed. Search to narrow the list.</property>
+      </object>
+    </child>
+  </object>
 </interface>

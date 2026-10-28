@@ -8,7 +8,9 @@
            content, so it covers both header bars when it opens. -->
       <object class="AdwTabOverview" id="tab_overview">
         <property name="view">tab_view</property>
-        <property name="enable-new-tab">true</property>
+        <!-- Only while a session is in front, which the new tab opens
+             on. -->
+        <property name="enable-new-tab">false</property>
         <property name="enable-search">true</property>
         <property name="child">
           <object class="AdwBreakpointBin" id="breakpoint_bin">
@@ -51,10 +53,10 @@
                     <property name="sidebar">
                       <object class="AdwToolbarView" id="sidebar_root">
                         <child type="top">
+                          <!-- No title: the tree below holds every connection,
+                               and the content's header names the one in front. -->
                           <object class="AdwHeaderBar" id="sidebar_header">
-                            <property name="title-widget">
-                              <object class="AdwWindowTitle" id="sidebar_title"/>
-                            </property>
+                            <property name="show-title">false</property>
                             <child type="start">
                               <object class="GtkToggleButton" id="table_search_toggle">
                                 <property name="icon-name">system-search-symbolic</property>
@@ -74,13 +76,21 @@
                           <object class="GtkSearchBar" id="table_search_bar">
                             <property name="child">
                               <object class="GtkSearchEntry" id="table_search">
-                                <property name="placeholder-text" translatable="yes">Filter tables…</property>
+                                <property name="placeholder-text" translatable="yes">Search connections and tables…</property>
                                 <property name="hexpand">true</property>
                                 <accessibility>
-                                  <property name="label" translatable="yes">Filter tables</property>
+                                  <property name="label" translatable="yes">Search connections and tables</property>
                                 </accessibility>
                               </object>
                             </property>
+                          </object>
+                        </child>
+                        <child type="top">
+                          <!-- The banners about the list of the session in
+                               front. -->
+                          <object class="GtkStack" id="list_banners">
+                            <property name="hhomogeneous">false</property>
+                            <property name="vhomogeneous">false</property>
                           </object>
                         </child>
                         <property name="content">
@@ -104,7 +114,9 @@
                         <property name="max-sidebar-width">440</property>
                         <property name="sidebar-width-fraction">0.32</property>
                         <property name="sidebar">
-                          <object class="TableProAssistantPane" id="assistant_pane"/>
+                          <!-- Each session's own pane, so a reply keeps
+                               coming while another session is in front. -->
+                          <object class="GtkStack" id="assistant_stack"/>
                         </property>
                         <property name="content">
                           <object class="AdwToolbarView" id="content_root">

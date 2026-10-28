@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -24,9 +24,7 @@ use super::tab_factory::EditorPreview;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
 use super::workspace_persistence::reopen;
-use super::{
-    CLOSED_TABS_CAPACITY, ClosedTabDescriptor, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab,
-};
+use super::{ClosedTabDescriptor, OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab};
 use crate::runtime::DeliverInput;
 
 impl WorkspaceModel {
@@ -60,8 +58,18 @@ impl WorkspaceModel {
         match load {
             WorkspaceLoad::Restored(record) => {
                 self.retain_drafts(&key, saved_drafts(&record));
-                let view = self.tab_view.clone();
-                reopen(&view, record, |tab| self.reopen_tab(tab, &mut texts));
+                // Selecting moves the focus with it, which a session that
+                // joins behind the tab the user works in must not take.
+                let shows_none = self.tab_view.selected_page().is_none();
+                let active = reopen(record, |tab| self.reopen_tab(tab, &mut texts));
+                match active {
+                    Some(page) if shows_none => self.tab_view.set_selected_page(&page),
+                    Some(page) => {
+                        self.index.remember(&page);
+                        self.refresh_title();
+                    }
+                    None => {}
+                }
             }
             WorkspaceLoad::Empty => self.retain_drafts(&key, std::iter::empty()),
             // Which drafts the file names is unknown, so none is deleted.
@@ -211,8 +219,10 @@ impl WorkspaceModel {
         };
         // Before the teardown, while the tab still has its page, sort
         // and query.
-        if let Some(descriptor) = describe_closed_tab(&removed) {
-            push_closed_tab(&self.closed_tabs_stack, descriptor);
+        if let Some(descriptor) = describe_closed_tab(&removed)
+            && let (Some(shell), Some(this)) = (self.shell.upgrade(), self.this.upgrade())
+        {
+            shell.remember_closed_tab(&this, descriptor);
         }
         match &removed {
             WorkspaceTab::Editor(slot) => {
@@ -238,7 +248,7 @@ impl WorkspaceModel {
         tab_view.close_page_finish(&page, true);
         drop(removed);
         self.persist_workspace_state();
-        self.refresh_window_title();
+        self.refresh_title();
         self.refresh_unsaved();
         self.refresh_transaction_banner();
         self.report_tabs_changed();
@@ -268,64 +278,6 @@ impl WorkspaceModel {
                     glib::idle_add_local_once(move || window.close());
                 }
             }
-        }
-    }
-
-    /// Close every workspace tab except `keep_id`. Each close goes
-    /// through the per-tab close path so dirty browse tabs still
-    /// trigger the unsaved-changes alert; the user can cancel the
-    /// dialog and the tab stays open while the others continue
-    /// closing in the background.
-    pub(super) fn close_other_workspace_tabs(&mut self, keep_id: Uuid) {
-        let tab_view = self.tab_view.clone();
-        let pages = tab_view.pages();
-        let mut targets: Vec<adw::TabPage> = Vec::with_capacity(pages.n_items() as usize);
-        for i in 0..pages.n_items() {
-            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
-                continue;
-            };
-            // Another session's tab, which this close leaves alone.
-            if self.index.id_of(&page).is_none_or(|id| id == keep_id) {
-                continue;
-            }
-            targets.push(page);
-        }
-        for page in targets {
-            tab_view.close_page(&page);
-        }
-    }
-
-    /// Close every workspace tab whose display position is greater
-    /// than the targeted one. Useful for rapidly trimming a long
-    /// session of throwaway tabs the user accumulated.
-    pub(super) fn close_workspace_tabs_to_right(&mut self, anchor_id: Uuid) {
-        let tab_view = self.tab_view.clone();
-        let pages = tab_view.pages();
-        let mut anchor_idx: Option<u32> = None;
-        for i in 0..pages.n_items() {
-            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
-                continue;
-            };
-            if self.index.id_of(&page) == Some(anchor_id) {
-                anchor_idx = Some(i);
-                break;
-            }
-        }
-        let Some(anchor_idx) = anchor_idx else {
-            return;
-        };
-        let mut targets: Vec<adw::TabPage> = Vec::new();
-        for i in (anchor_idx + 1)..pages.n_items() {
-            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
-                continue;
-            };
-            if self.index.id_of(&page).is_none() {
-                continue;
-            }
-            targets.push(page);
-        }
-        for page in targets {
-            tab_view.close_page(&page);
         }
     }
 
@@ -459,14 +411,37 @@ impl WorkspaceModel {
 
 impl WorkspaceModel {
     /// Single handler for `WorkspaceTabsChanged`. Persists tab state,
-    /// refreshes the window title (so tab switches update the subtitle),
-    /// and syncs the sidebar selection to the active Browse tab's table.
+    /// titles the session after its tab in front, and has the tree select
+    /// the row that tab shows.
     pub(super) fn on_workspace_tabs_changed(&self) {
         self.persist_workspace_state();
-        self.refresh_window_title();
+        self.refresh_title();
         self.refresh_transaction_banner();
-        self.sync_sidebar_selection();
+        self.select_in_tree();
         self.report_tabs_changed();
+    }
+
+    /// While the session is in front, the tree selects the table or key
+    /// its tab shows, or its connection for any other tab. With no tab
+    /// open no row stays selected: one would say a tab shows it.
+    pub(super) fn select_in_tree(&self) {
+        if !self.is_front() {
+            return;
+        }
+        let Some(tree) = self.shell.upgrade().and_then(|shell| shell.tree()) else {
+            return;
+        };
+        match self.selected_workspace_tab_id() {
+            Some(id) => {
+                let shown = self
+                    .workspace_tabs
+                    .borrow()
+                    .get(&id)
+                    .and_then(WorkspaceTab::sidebar_object);
+                tree.select(Some(&self.key), shown.as_ref());
+            }
+            None => tree.select(None, None),
+        }
     }
 
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
@@ -608,31 +583,33 @@ pub(super) fn connect_tab_view(tab_view: &adw::TabView, index: &Rc<TabIndex>, in
     // or left the front, or whose tabs moved, has anything to do.
     let selected_input = input.clone();
     let selected_index = index.clone();
-    let was_selected = Cell::new(false);
     let selected = tab_view.connect_selected_page_notify(move |view| {
-        let page = view.selected_page();
-        let ours = page.as_ref().is_some_and(|page| selected_index.id_of(page).is_some());
-        selected_index.note_selected(page.as_ref());
-        let was = was_selected.replace(ours);
-        if ours || was {
+        if selected_index.note_selected(view.selected_page().as_ref()) {
             selected_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         }
     });
-    // A drag reorder changes only `pages`, and it has to persist too.
-    let pages_input = input.clone();
-    let pages_index = index.clone();
-    let order: RefCell<Vec<Uuid>> = RefCell::default();
-    let pages = tab_view.connect_pages_notify(move |view| {
-        let now = pages_index.order_in(view);
-        if *order.borrow() != now {
-            order.replace(now);
-            pages_input.deliver(WorkspaceInput::WorkspaceTabsChanged);
-        }
-    });
+    // AdwTabView never notifies `pages`, so a drag reorder is heard here.
+    // A tab dropped on the desktop, or sent back from another window,
+    // comes back attached, at another place.
+    let reordered = tab_view.connect_page_reordered(persist_moved(input, index));
+    let attached = tab_view.connect_page_attached(persist_moved(input, index));
     TabViewWatch {
         view: tab_view.downgrade(),
-        handlers: vec![close, selected, pages],
+        handlers: vec![close, selected, reordered, attached],
         leaving,
+    }
+}
+
+/// Save the tab order once one of the session's pages moved.
+fn persist_moved(
+    input: &WorkspaceSender,
+    index: &Rc<TabIndex>,
+) -> impl Fn(&adw::TabView, &adw::TabPage, i32) + 'static {
+    let (input, index) = (input.clone(), index.clone());
+    move |_, page, _| {
+        if index.id_of(page).is_some() {
+            input.deliver(WorkspaceInput::WorkspaceTabsChanged);
+        }
     }
 }
 
@@ -664,11 +641,14 @@ impl TabViewWatch {
             view.close_page(page);
         }
         // A page whose own close prompt is still open was closing
-        // already, and `close_page` passes it by.
-        for page in &pages {
-            if view.page_position(page) >= 0 {
-                view.close_page_finish(page, true);
-            }
+        // already, and `close_page` passes it by. The view logs a
+        // critical when asked where a page it let go of is.
+        let still_open: Vec<adw::TabPage> = (0..view.n_pages())
+            .map(|position| view.nth_page(position))
+            .filter(|page| pages.contains(page))
+            .collect();
+        for page in &still_open {
+            view.close_page_finish(page, true);
         }
         self.leaving.replace(Vec::new());
         if let Some(close) = close {
@@ -709,25 +689,9 @@ fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
     }
 }
 
-fn push_closed_tab(
-    stack: &std::rc::Rc<std::cell::RefCell<std::collections::VecDeque<ClosedTabDescriptor>>>,
-    descriptor: ClosedTabDescriptor,
-) {
-    let mut q = stack.borrow_mut();
-    if q.len() == CLOSED_TABS_CAPACITY {
-        q.pop_front();
-    }
-    q.push_back(descriptor);
-}
-
 impl WorkspaceModel {
-    pub(super) fn on_reopen_closed_tab(&mut self) {
-        let descriptor = self.closed_tabs_stack.borrow_mut().pop_back();
-        let Some(descriptor) = descriptor else {
-            // Without a toast the shortcut would read as broken.
-            self.show_toast(&crate::i18n::gettext("No recently closed tab"));
-            return;
-        };
+    /// Open again a tab this session closed, which the shell kept.
+    pub(super) fn on_reopen_closed_tab(&mut self, descriptor: ClosedTabDescriptor) {
         match descriptor {
             ClosedTabDescriptor::Editor { query, file } => {
                 let initial = if query.is_empty() { None } else { Some(query) };
@@ -799,6 +763,7 @@ fn saved_drafts(record: &WorkspaceRecord) -> impl Iterator<Item = DraftId> + '_ 
 mod tests {
     use gtk4::subclass::prelude::*;
 
+    use super::super::tests::{served_table, shell_of};
     use super::*;
     use crate::test_support::{descendants, drain_main_context, wait_until};
     use crate::ui::SessionWindowInput;
@@ -820,8 +785,8 @@ mod tests {
         let test = TestWindow::connected("OverviewTabFreed");
         let workspace = test.workspace();
         let (view, overview) = (
-            workspace.chrome().imp().tab_view.get(),
-            workspace.chrome().imp().tab_overview.get(),
+            shell_of(&workspace).imp().tab_view.get(),
+            shell_of(&workspace).imp().tab_overview.get(),
         );
 
         overview_new_tab_button(&overview).emit_clicked();
@@ -871,7 +836,7 @@ mod tests {
     #[gtk4::test]
     fn a_new_editor_tab_takes_the_focus_from_outside_the_tabs() {
         let test = TestWindow::connected("NewEditorFocus");
-        let button = test.workspace().chrome().imp().new_tab_button.get();
+        let button = shell_of(&test.workspace()).imp().new_tab_button.get();
         button.grab_focus();
         assert!(button.is_focus(), "the header button holds the focus");
 
@@ -890,7 +855,7 @@ mod tests {
         wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab");
         WidgetExt::activate_action(&test.window, "win.close-current", None).expect("win.close-current");
         wait_until(WAIT, || editors(&test.window).is_empty()).expect("the tab closes");
-        let button = test.workspace().chrome().imp().new_tab_button.get();
+        let button = shell_of(&test.workspace()).imp().new_tab_button.get();
         button.grab_focus();
 
         WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
@@ -909,8 +874,8 @@ mod tests {
         }
         wait_until(WAIT, || editors(&test.window).len() == 2).expect("two editor tabs");
         let workspace = test.workspace();
-        let view = workspace.chrome().imp().tab_view.downgrade();
-        let overview = workspace.chrome().imp().tab_overview.downgrade();
+        let view = shell_of(&workspace).imp().tab_view.downgrade();
+        let overview = shell_of(&workspace).imp().tab_overview.downgrade();
         let pages: Vec<_> = editors(&test.window).iter().map(|editor| editor.downgrade()).collect();
         drop(workspace);
 
@@ -934,7 +899,7 @@ mod tests {
         let test = TestWindow::with_script(
             "RestoreReadsWhenShown",
             crate::ui::session_window::tests::Script {
-                connection: super::super::shell::tests::served_table(),
+                connection: served_table(),
                 ..Default::default()
             },
         );
@@ -964,7 +929,7 @@ mod tests {
             .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
         test.wait_for_page("workspace");
         let workspace = test.workspace();
-        let view = workspace.chrome().imp().tab_view.get();
+        let view = shell_of(&workspace).imp().tab_view.get();
         wait_until(WAIT, || view.n_pages() == 3).expect("the saved tabs");
         let column_reads = || tablepro_test_support::CallCounters::get(&test.connection().counters().fetch_columns);
         let _ = wait_until(WAIT, || column_reads() > 0);

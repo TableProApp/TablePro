@@ -11,11 +11,11 @@ use tablepro_core::SafeModeLevel;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, SavedConnection,
+    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand,
+    SavedConnection,
 };
 use uuid::Uuid;
 
-use super::session_page::SessionPage;
 use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
@@ -342,8 +342,8 @@ impl SessionWindow {
     /// with, since an edit never moves a live session to another server.
     pub(super) fn on_connection_saved(&self, id: Uuid) {
         let key = SessionKey::Saved(id);
-        if self.page_is(|page| matches!(page, SessionPage::ConnectFailed { claim, .. } if *claim.key() == key)) {
-            self.on_retry_connect();
+        if self.with_failure(&key, |_, _| ()).is_some() {
+            self.on_retry_connect(&key);
             return;
         }
         let Some(state) = self.state() else {
@@ -476,25 +476,26 @@ impl SessionWindow {
         self.imp().manage_tags.replace(Some(manage));
     }
 
-    /// Move the session on screen to `level`, and the saved connection
+    /// Move the session in front to `level`, and the saved connection
     /// with it. A level on the other side of Read-Only needs the
     /// connection opened again, so the window reconnects once the tabs
     /// may go; until then the saved level waits for the next connect.
     pub(super) fn on_set_safe_mode(&self, level: SafeModeLevel) {
-        let (key, session) = match self.imp().page.borrow().front() {
-            Some(open) => (open.claim.key().clone(), open.session.clone()),
-            None => return,
+        let Some((key, session)) = self.front_session() else {
+            return;
         };
-        let saved = match key {
-            SessionKey::Saved(id) => self.stored_connection(id),
+        let saved = match &key {
+            SessionKey::Saved(id) => self.stored_connection(*id),
             SessionKey::File(_) => None,
         };
         // The saved level can differ from the session's after a reconnect
         // was declined, and a level still being written can land after
         // this choice unless this one is written after it.
-        let differs = session.safe_mode() != level
-            || self.imp().level_saving.get()
-            || saved.as_ref().is_some_and(|saved| saved.safe_mode != level);
+        let writing = saved
+            .as_ref()
+            .is_some_and(|saved| self.imp().level_saving.borrow().contains(&saved.id));
+        let differs =
+            session.safe_mode() != level || writing || saved.as_ref().is_some_and(|saved| saved.safe_mode != level);
         if differs {
             let applied = session.safe_mode() == level || session.set_safe_mode(level);
             match (saved.map(|saved| saved.id), applied) {
@@ -508,6 +509,9 @@ impl SessionWindow {
                     "Save this connection to change it to or from Read-Only while it is open.",
                 )),
             }
+            if applied {
+                self.deliver_to(&key, WorkspaceInput::SafeModeChanged);
+            }
         }
         self.show_safe_mode();
     }
@@ -520,14 +524,15 @@ impl SessionWindow {
         }
     }
 
-    /// Writes run one at a time, in the order chosen.
+    /// Each connection's writes run one at a time, in the order chosen;
+    /// another connection's do not wait for them.
     fn save_safe_mode(&self, save: LevelSave) {
         let Some(state) = self.state() else {
             return;
         };
         let imp = self.imp();
-        if imp.level_saving.replace(true) {
-            imp.level_next.set(Some(save));
+        if !imp.level_saving.borrow_mut().insert(save.id) {
+            imp.level_next.borrow_mut().insert(save.id, save);
             return;
         }
         let LevelSave { id, level, reopen } = save;
@@ -540,8 +545,9 @@ impl SessionWindow {
             let Some(window) = window.upgrade() else {
                 return;
             };
-            window.imp().level_saving.set(false);
-            if let Some(next) = window.imp().level_next.take() {
+            window.imp().level_saving.borrow_mut().remove(&id);
+            let next = window.imp().level_next.borrow_mut().remove(&id);
+            if let Some(next) = next {
                 window.save_safe_mode(next);
                 return;
             }
@@ -558,13 +564,7 @@ impl SessionWindow {
 
     /// Ask the tabs, as Disconnect does, then connect again.
     fn reopen_after_teardown(&self, id: Uuid) {
-        let workspace = self
-            .imp()
-            .page
-            .borrow()
-            .session(&SessionKey::Saved(id))
-            .map(|open| open.workspace.clone());
-        let Some(workspace) = workspace else {
+        let Some(workspace) = self.session_workspace(&SessionKey::Saved(id)) else {
             return;
         };
         let (Some(handle), Some(guards), Some(input)) = (workspace.prompt_handle(), self.close_guards(), self.input())
@@ -587,34 +587,24 @@ impl SessionWindow {
         });
     }
 
+    /// Tear the session down and connect it again through the window's
+    /// one connect path, at the level just saved. The window's other
+    /// sessions and connects go on.
     pub(super) fn on_reopen_approved(&self, id: Uuid) {
         let stored = self.stored_connection(id);
         if !self.tear_down_session(&SessionKey::Saved(id)) {
             return;
         }
-        // The connect goes ahead on this window's own page, which a
-        // connect still running beside the last session would take.
-        // Those start again beside it once it is back, as a restore's
-        // waiting sessions do.
-        if !self.page_is(|page| matches!(page, SessionPage::Workspace { .. })) {
-            let stopped = self.stop_background_connects();
-            self.imp().restore_waiting.borrow_mut().extend(stopped);
-            self.show_page(SessionPage::Picker);
-        }
         match stored {
-            Some(saved) => self.on_open_saved(saved),
+            Some(saved) => self.connect(ConnectSource::Saved(Box::new(saved)), CredentialDemand::default()),
             None => self.show_toast(&crate::i18n::gettext("The connection was deleted.")),
         }
     }
 
-    /// Tick the session's level in the main menu and name it in the
-    /// title.
+    /// Tick the level of the session in front in the main menu.
     pub(super) fn show_safe_mode(&self) {
-        let level = self.imp().page.borrow().front().map(|open| open.session.safe_mode());
+        let level = self.front_session().map(|(_, session)| session.safe_mode());
         super::window_actions::show_safe_mode(self.upcast_ref(), level);
-        if let Some(input) = self.workspace().and_then(|workspace| workspace.input()) {
-            input.deliver(WorkspaceInput::SafeModeChanged);
-        }
     }
 
     /// Run a change to a saved connection, holding the process until it

@@ -16,8 +16,6 @@ pub enum ShortcutOwner {
     SqlEditorTab,
     StructureTab,
     FilterStrip,
-    /// A row of the sidebar's table list.
-    SidebarList,
     /// A row of the window's connection tree.
     ConnectionTree,
     /// A row of the query history dialog.

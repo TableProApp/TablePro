@@ -177,12 +177,6 @@ impl OpenSessions {
         self.keys.borrow().iter().map(|(key, _)| key.clone()).collect()
     }
 
-    /// The keys grouped as the record writes them.
-    #[cfg(test)]
-    pub(crate) fn windows(&self) -> Vec<Vec<SessionKey>> {
-        self.record().windows()
-    }
-
     /// Windows in the order their first key came, keys in the order each
     /// came.
     fn record(&self) -> OpenSessionsRecord {
@@ -395,7 +389,7 @@ mod tests {
         fixture.sessions.add(third.clone(), 7);
 
         assert_eq!(
-            fixture.sessions.windows(),
+            fixture.sessions.record().windows(),
             [vec![first.clone(), third.clone()], vec![second.clone()]]
         );
         assert_eq!(fixture.windows_on_disk(), [vec![first, third], vec![second]]);

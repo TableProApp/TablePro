@@ -1,8 +1,10 @@
 use gtk4::gio;
+use gtk4::prelude::*;
 use tablepro_core::meta::ObjectKind;
 
 use super::object_key::ObjectKey;
 use super::sidebar_affordances::SidebarAffordances;
+use super::sidebar_view::Holds;
 
 pub(super) const OPEN_IN_NEW_TAB: &str = "open-in-new-tab";
 pub(super) const EDIT_STRUCTURE: &str = "edit-structure";
@@ -11,10 +13,8 @@ pub(super) const IMPORT_CSV: &str = "import-csv";
 pub(super) const DROP_TABLE: &str = "drop-table";
 pub(super) const NEW_TABLE: &str = "new-table";
 pub(super) const SHOW_DIAGRAM: &str = "show-diagram";
-/// The section header's button, whose target is the schema, as New
-/// Table's is.
+/// A schema's diagram, whose target is the schema, as New Table's is.
 pub(super) const SHOW_SCHEMA_DIAGRAM: &str = "show-schema-diagram";
-pub(super) const CONTEXT_MENU: &str = "context-menu";
 pub(super) const GROUP: &str = "sidebar";
 
 /// The menu of one table. Every item carries the table's key, so the one
@@ -62,6 +62,30 @@ pub(crate) fn object_menu(key: &ObjectKey, kind: ObjectKind, affordances: Sideba
     menu
 }
 
+/// A schema's menu: New Table where the connection creates tables, and
+/// the schema's diagram where it holds tables in SQL. ClickHouse creates
+/// none: a table there needs an engine and a sorting key the structure
+/// tab has no place for. Keys have neither. Each item carries the schema,
+/// or nothing for the objects an engine lists with none.
+pub(crate) fn schema_menu(schema: Option<&str>, affordances: SidebarAffordances, holds: Holds) -> Option<gio::Menu> {
+    if holds == Holds::Keys {
+        return None;
+    }
+    let menu = gio::Menu::new();
+    let target = schema.map(str::to_owned).to_variant();
+    if affordances.offers_new_table() {
+        let item = gio::MenuItem::new(Some(&crate::i18n::gettext("New Table…")), None);
+        item.set_action_and_target_value(Some(&format!("{GROUP}.{NEW_TABLE}")), Some(&target));
+        menu.append_item(&item);
+    }
+    if affordances.speaks_sql {
+        let item = gio::MenuItem::new(Some(&crate::i18n::gettext("Show ER Diagram")), None);
+        item.set_action_and_target_value(Some(&format!("{GROUP}.{SHOW_SCHEMA_DIAGRAM}")), Some(&target));
+        menu.append_item(&item);
+    }
+    (menu.n_items() > 0).then_some(menu)
+}
+
 /// Whether `action` is offered for a `kind` on a connection with
 /// `affordances`, as `object_menu` offers it.
 pub(super) fn offers(action: &str, kind: ObjectKind, affordances: SidebarAffordances) -> bool {
@@ -86,7 +110,6 @@ fn item(label: &str, action: &str, key: &ObjectKey) -> gio::MenuItem {
 #[cfg(test)]
 mod tests {
     use gtk4::glib;
-    use gtk4::prelude::*;
     use tablepro_core::meta::TableRef;
 
     use super::*;
@@ -195,6 +218,44 @@ mod tests {
         );
         assert!(!offers(DROP_TABLE, ObjectKind::Table, documents));
         assert!(!offers(SHOW_CREATE_TABLE, ObjectKind::Table, documents));
+    }
+
+    #[test]
+    fn a_schema_menu_offers_new_table_and_its_diagram_with_the_schema() {
+        let menu = schema_menu(Some("sales"), all(), Holds::Tables).expect("a menu");
+
+        let found = items(menu.upcast_ref());
+        let actions: Vec<&str> = found.iter().map(|(action, _)| action.as_str()).collect();
+        assert_eq!(actions, ["sidebar.new-table", "sidebar.show-schema-diagram"]);
+        for (action, target) in &found {
+            assert_eq!(
+                target.as_ref().and_then(|target| target.get::<Option<String>>()),
+                Some(Some("sales".to_owned())),
+                "{action}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_schema_menu_follows_the_dialect_and_what_the_session_holds() {
+        let read_only = SidebarAffordances {
+            read_only: true,
+            ..all()
+        };
+        let documents = SidebarAffordances {
+            can_create_table: false,
+            can_edit_structure: false,
+            speaks_sql: false,
+            ..all()
+        };
+
+        let actions = |menu: Option<gio::Menu>| menu.map(|menu| actions(&menu)).unwrap_or_default();
+        assert_eq!(
+            actions(schema_menu(None, read_only, Holds::Tables)),
+            ["sidebar.show-schema-diagram"]
+        );
+        assert!(schema_menu(Some("shop"), documents, Holds::Collections).is_none());
+        assert!(schema_menu(None, all(), Holds::Keys).is_none(), "keys have no diagram");
     }
 
     #[test]

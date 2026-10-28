@@ -2,6 +2,8 @@
 //! them once and each one goes to the session in front, so a change of
 //! front changes where they go without taking any off the window. Their
 //! keys are application accelerators; a tab's own keys belong to the tab.
+//! Reopen Closed Tab is the shell's own: the tab closed last may be any
+//! session's.
 
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -19,15 +21,16 @@ type ActionInput = fn() -> WorkspaceInput;
 /// they are not left greyed out with no reason.
 const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
-const ENTRIES: [(&str, ActionInput); 7] = [
+const ENTRIES: [(&str, ActionInput); 6] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
     ("refresh-tables", || WorkspaceInput::RefreshCatalog),
-    ("reopen-closed-tab", || WorkspaceInput::ReopenClosedTab),
     ("save-query", || WorkspaceInput::SaveActiveQuery),
     ("show-history", || WorkspaceInput::ShowHistory),
     ("show-saved-queries", || WorkspaceInput::ShowSavedQueries),
     (super::health_banner::REVIEW_HOST_KEY, || WorkspaceInput::ReviewHostKey),
 ];
+
+const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
 
 /// Add the actions to the window's own action map, which GTK exports as
 /// `win`. Each sends its input to the session in front when activated;
@@ -48,12 +51,18 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             .build()
     });
     window.add_action_entries(actions);
+    let reopening = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(REOPEN_CLOSED_TAB)
+        .activate(move |_, _, _| {
+            if let Some(shell) = reopening.upgrade() {
+                shell.reopen_closed_tab();
+            }
+        })
+        .build()]);
     // Insensitive until the query database has opened or failed to.
     for name in HISTORY_ACTIONS {
         set_enabled(window, name, false);
     }
-    // Only a session parked on a host key has one to review.
-    set_enabled(window, super::health_banner::REVIEW_HOST_KEY, false);
 }
 
 /// Take the actions off the window as its shell goes.
@@ -61,9 +70,10 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
     for (name, _) in ENTRIES {
         window.remove_action(name);
     }
+    window.remove_action(REOPEN_CLOSED_TAB);
 }
 
-pub(super) fn set_enabled(window: &adw::ApplicationWindow, name: &str, enabled: bool) {
+fn set_enabled(window: &adw::ApplicationWindow, name: &str, enabled: bool) {
     if let Some(action) = window.lookup_action(name).and_downcast::<gio::SimpleAction>() {
         action.set_enabled(enabled);
     }
@@ -102,7 +112,7 @@ mod tests {
     fn the_history_gate_follows_availability() {
         crate::register_test_resources();
         let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
-        install(&window, &WorkspaceShell::default());
+        install(&window, &glib::Object::new::<WorkspaceShell>());
         let (sender, receiver) = tokio::sync::watch::channel(HistoryAvailability::Starting);
         let gate = spawn_history_gate(&window, receiver);
         let enabled = || {
@@ -129,7 +139,7 @@ mod tests {
     fn workspace_actions_live_on_the_windows_own_map_and_go_with_the_shell() {
         crate::register_test_resources();
         let window = crate::test_support::OwnedWindow::new(adw::ApplicationWindow::builder().build());
-        let shell = WorkspaceShell::default();
+        let shell: WorkspaceShell = glib::Object::new();
 
         install(&window, &shell);
 
@@ -137,5 +147,6 @@ mod tests {
         WidgetExt::activate_action(&*window, "win.new-editor-tab", None).expect("win resolves to the window's own map");
         remove(&window);
         assert!(window.lookup_action("new-editor-tab").is_none());
+        assert!(window.lookup_action(REOPEN_CLOSED_TAB).is_none());
     }
 }

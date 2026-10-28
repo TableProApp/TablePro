@@ -30,6 +30,7 @@ pub const GO_PREVIOUS: &str = "go-previous-symbolic";
 pub const GO_UP: &str = "go-up-symbolic";
 pub const LIST_ADD: &str = "list-add-symbolic";
 pub const LIST_REMOVE: &str = "list-remove-symbolic";
+pub const MEDIA_EJECT: &str = "media-eject-symbolic";
 pub const MEDIA_PLAYBACK_STOP: &str = "media-playback-stop-symbolic";
 pub const NETWORK_ERROR: &str = "network-error-symbolic";
 pub const NETWORK_SERVER: &str = "network-server-symbolic";
@@ -107,6 +108,7 @@ pub const ALL: &[&str] = &[
     GO_UP,
     LIST_ADD,
     LIST_REMOVE,
+    MEDIA_EJECT,
     MEDIA_PLAYBACK_STOP,
     NETWORK_ERROR,
     NETWORK_SERVER,

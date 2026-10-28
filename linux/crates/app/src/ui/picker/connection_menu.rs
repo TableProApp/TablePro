@@ -36,16 +36,43 @@ pub(super) fn tag_action(tag: Uuid) -> String {
     format!("tag-{tag}")
 }
 
+/// The action that connects to the saved connection `id`, and its target.
+pub(crate) fn connect_action(id: Uuid) -> (String, glib::Variant) {
+    (format!("{PICKER}.{CONNECT}"), id.to_string().to_variant())
+}
+
+/// The Connect item of the connection `id`'s menu.
+pub(crate) fn connect_item(id: Uuid) -> gio::MenuItem {
+    item(
+        &crate::i18n::gettext("Connect"),
+        PICKER,
+        CONNECT,
+        &id.to_string().to_variant(),
+    )
+}
+
 /// One connection's menu. Every item names the connection by id, so the
 /// menu acts on the row it opened on whatever the list does meanwhile.
 /// Delete sits in its own section so a destructive action is never the
 /// neighbour of an ordinary one.
 pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[ConnectionTag]) -> gio::Menu {
+    let open = gio::Menu::new();
+    open.append_item(&connect_item(id));
+    connection_menu_with(&open, id, groups, tags)
+}
+
+/// `connection_menu` with `lead` in place of its Connect section, as the
+/// window's tree leads with what a connection open or connecting there
+/// offers.
+pub(crate) fn connection_menu_with(
+    lead: &gio::Menu,
+    id: Uuid,
+    groups: &[ConnectionGroupName],
+    tags: &[ConnectionTag],
+) -> gio::Menu {
     let target = id.to_string().to_variant();
     let menu = gio::Menu::new();
-    let open = gio::Menu::new();
-    open.append_item(&item(&crate::i18n::gettext("Connect"), PICKER, CONNECT, &target));
-    menu.append_section(None, &open);
+    menu.append_section(None, lead);
     let change = gio::Menu::new();
     change.append_item(&item(&crate::i18n::gettext("Edit…"), PICKER, EDIT, &target));
     change.append_item(&item(&crate::i18n::gettext("Duplicate"), PICKER, DUPLICATE, &target));
@@ -220,6 +247,22 @@ mod tests {
         ];
 
         assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{labels:?}");
+    }
+
+    #[test]
+    fn a_lead_section_takes_the_place_of_connect() {
+        let id = Uuid::new_v4();
+        let lead = gio::Menu::new();
+        lead.append(Some("Disconnect"), Some("win.disconnect-session"));
+
+        let labels = labels(&connection_menu_with(&lead, id, &[], &[]));
+
+        assert_eq!(labels.first().map(String::as_str), Some("Disconnect"));
+        assert!(!labels.contains(&"Connect".to_owned()), "{labels:?}");
+        assert_eq!(labels.last().map(String::as_str), Some("Delete…"));
+        let (action, target) = connect_action(id);
+        assert_eq!(action, "picker.connect");
+        assert_eq!(target.get::<String>(), Some(id.to_string()));
     }
 
     #[test]

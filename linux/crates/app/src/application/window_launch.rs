@@ -1,10 +1,8 @@
-use tablepro_session::{ConnectIntent, ConnectSource, SessionKey};
+use tablepro_session::SessionKey;
 use tablepro_storage::SavedConnection;
 
-use crate::ui::ConnectFailure;
-
 /// What a new window opens on.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WindowLaunch {
     Picker,
     Connect(Box<SavedConnection>),
@@ -13,13 +11,4 @@ pub enum WindowLaunch {
     /// The sessions one window held when the application last quit, in
     /// the order it adopted them.
     Restore(Vec<SessionKey>),
-    /// A connection from the connect dialog that another window could
-    /// not ask its question for, connected here from the start.
-    ConnectIntent(Box<ConnectIntent>),
-    /// A connect that failed beside another window's sessions, shown on
-    /// the failed page with its remedies, without connecting again.
-    ConnectFailed {
-        source: Box<ConnectSource>,
-        failure: Box<ConnectFailure>,
-    },
 }

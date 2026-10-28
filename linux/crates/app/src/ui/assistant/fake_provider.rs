@@ -15,6 +15,25 @@ pub(crate) struct Provider {
 }
 
 pub(crate) fn serve(runtime: &crate::runtime::AppRuntime, events: &'static str) -> Provider {
+    listen(runtime, events, None)
+}
+
+/// As `serve`, but each reply stops after `first` until the returned
+/// `Notify` lets it go on with `rest`.
+pub(crate) fn serve_held(
+    runtime: &crate::runtime::AppRuntime,
+    first: &'static str,
+    rest: &'static str,
+) -> (Provider, Arc<tokio::sync::Notify>) {
+    let release = Arc::new(tokio::sync::Notify::new());
+    (listen(runtime, first, Some((rest, release.clone()))), release)
+}
+
+fn listen(
+    runtime: &crate::runtime::AppRuntime,
+    events: &'static str,
+    held: Option<(&'static str, Arc<tokio::sync::Notify>)>,
+) -> Provider {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
     listener.set_nonblocking(true).expect("non-blocking");
     let port = listener.local_addr().expect("the address").port();
@@ -27,6 +46,11 @@ pub(crate) fn serve(runtime: &crate::runtime::AppRuntime, events: &'static str) 
             kept.lock().expect("the bodies").push(request);
             let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
             let _ = stream.write_all(format!("{head}{events}").as_bytes()).await;
+            if let Some((rest, release)) = &held {
+                let _ = stream.flush().await;
+                release.notified().await;
+                let _ = stream.write_all(rest.as_bytes()).await;
+            }
             let _ = stream.shutdown().await;
         }
     });

@@ -328,7 +328,7 @@ pub(crate) fn editors(window: &SessionWindow) -> Vec<crate::ui::editor::SqlEdito
         .collect()
 }
 
-fn saved_connection(database: &std::path::Path) -> SavedConnection {
+pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
     SavedConnection {
         id: uuid::Uuid::new_v4(),
         name: "Fake".to_owned(),
@@ -445,12 +445,10 @@ fn the_main_menu_moves_the_session_between_levels_that_write_and_saves_it() {
     })
     .expect("the level saved back");
 
-    let page = test.window.imp().page.borrow();
-    let Some(open) = page.front() else {
+    let Some((_, session)) = test.window.front_session() else {
         panic!("the window left its workspace");
     };
-    assert_eq!(open.session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
-    drop(page);
+    assert_eq!(session.safe_mode(), tablepro_core::SafeModeLevel::ConfirmWrites);
     assert_eq!(ticked_level(&test).as_deref(), Some("confirm-writes"));
     assert_eq!(test.connector.calls().len(), 1, "a level that writes reconnected");
 }
@@ -488,7 +486,7 @@ fn the_header_icon_buttons_are_labelled() {
 
     // The tab overview's own header is libadwaita's, outside the
     // workspace's breakpoint bin.
-    let panes = test.workspace().chrome().imp().breakpoint_bin.get();
+    let panes = test.window.shell().expect("the shell").imp().breakpoint_bin.get();
     for root in [picker.upcast::<gtk4::Widget>(), panes.upcast()] {
         let headers = descendants(&root)
             .into_iter()
@@ -538,15 +536,12 @@ fn toast_routes_to_current_page_overlay() {
     test.window.show_toast("on the workspace");
     drain_main_context();
 
-    let workspace = test.workspace();
-    assert!(shows_text(&workspace.toast_overlay(), "on the workspace"));
+    let toasts = test.window.shell().expect("the shell").toast_overlay();
+    assert!(shows_text(&toasts, "on the workspace"));
     assert!(!shows_text(&picker.toast_overlay(), "on the workspace"));
     assert!(
-        workspace
-            .toast_overlay()
-            .ancestor(adw::TabOverview::static_type())
-            .is_some(),
-        "the workspace's toasts sit above the tab overview"
+        toasts.ancestor(adw::TabOverview::static_type()).is_some(),
+        "the shell's toasts sit above the tab overview"
     );
 }
 
@@ -650,7 +645,7 @@ fn a_connect_still_queued_when_its_window_shuts_down_is_closed() {
     let request = FakeConnector::request().expect("a request");
     let (pending, connection) = FakeConnector::pending_session(request, ConnectionScript::default());
     let attempt = SessionWindowCommand::Attempt {
-        generation: tablepro_session::connect::AttemptGeneration::FIRST,
+        id: 1,
         result: Ok(Connected {
             pending,
             saved: None,
@@ -883,9 +878,9 @@ fn a_close_while_the_page_is_read_does_not_panic() {
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("connect-failed");
 
-    let page = test.window.imp().page.borrow();
+    let failed = test.window.imp().failed.borrow();
     test.window.release_session();
-    drop(page);
+    drop(failed);
 
     assert_eq!(test.window.page_name(), "connect-failed");
 }
@@ -1085,7 +1080,7 @@ fn f002_late_show_create_reply_after_disconnect_is_dropped() {
     });
     let counters = test.connection().counters();
     let workspace = test.workspace().downgrade();
-    let input = test.workspace().input().expect("the workspace's input");
+    let input = test.workspace().sender().expect("the workspace's input");
     input.deliver(WorkspaceInput::ShowCreateTableForExisting {
         schema: Some("public".to_owned()),
         table: "users".to_owned(),

@@ -62,12 +62,14 @@ impl SessionWindow {
             return;
         };
         let active = self.window_is_active() && workspace.selected_tab() == Some(work.tab);
-        let connection = workspace.connection_name().unwrap_or_default();
+        let connection = workspace.connection_name();
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
             notifier.work_completed(&work, active, &label, &connection);
         }
     }
 
+    /// Also called after a session goes, whose tabs no session holds
+    /// any more.
     pub(super) fn on_tabs_changed(&self) {
         let notifier = self.imp().notifier.borrow();
         let Some(notifier) = notifier.as_ref().filter(|notifier| notifier.has_sent()) else {
@@ -89,30 +91,15 @@ impl SessionWindow {
         }
     }
 
-    /// The notifications of tabs no session holds any more, after one of
-    /// the window's sessions closed.
-    pub(super) fn withdraw_closed_notifications(&self) {
-        let Some(open) = self
-            .workspaces()
-            .iter()
-            .map(Workspace::open_tabs)
-            .collect::<Option<Vec<_>>>()
-        else {
-            return;
-        };
-        if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
-            notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
-        }
-    }
-
     pub(super) fn on_focus_tab(&self, tab: Uuid) {
-        match self.workspace_with_tab(tab).and_then(|workspace| workspace.input()) {
+        match self.workspace_with_tab(tab).and_then(|workspace| workspace.sender()) {
             Some(input) => input.deliver(WorkspaceInput::FocusTab(tab)),
             None => tracing::debug!("a notification named a tab of a session the window no longer shows"),
         }
     }
 
-    /// Every notification names a tab of the session going away.
+    /// Every notification names a tab of a session the window no longer
+    /// holds, once the last one goes.
     pub(super) fn withdraw_notifications(&self) {
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
             notifier.withdraw_all();

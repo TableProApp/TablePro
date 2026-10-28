@@ -222,22 +222,18 @@ fn tab_record(tab: &WorkspaceTab) -> Option<TabRecord> {
     }
 }
 
-/// Open each saved tab through `open`, in order, then select the one
-/// that was selected. A tab `open` could not build leaves nothing to
-/// select.
+/// Open each saved tab through `open`, in order, and return the page of
+/// the one that was selected. A tab `open` could not build leaves
+/// nothing.
 pub(super) fn reopen(
-    view: &adw::TabView,
     record: WorkspaceRecord,
     mut open: impl FnMut(TabRecord) -> Option<adw::TabPage>,
-) {
+) -> Option<adw::TabPage> {
     let pages: Vec<Option<adw::TabPage>> = record.tabs.into_iter().map(&mut open).collect();
-    let selected = record
+    record
         .active_tab
         .and_then(|index| usize::try_from(index).ok())
-        .and_then(|index| pages.get(index).cloned().flatten());
-    if let Some(page) = selected {
-        view.set_selected_page(&page);
-    }
+        .and_then(|index| pages.get(index).cloned().flatten())
 }
 
 #[cfg(test)]
@@ -487,7 +483,7 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn restore_selects_active_tab_and_reopens_structure_tabs() {
+    fn restore_reopens_every_tab_and_names_the_active_one() {
         adw::init().expect("libadwaita initialises under the test backend");
         let view = adw::TabView::new();
         let record = WorkspaceRecord {
@@ -513,7 +509,7 @@ mod tests {
         };
         let mut opened = Vec::new();
 
-        reopen(&view, record, |tab| {
+        let active = reopen(record, |tab| {
             let name = match &tab {
                 TabRecord::Table { table, .. } => format!("table {table}"),
                 TabRecord::Structure { table, .. } => format!("structure {table}"),
@@ -527,11 +523,10 @@ mod tests {
         });
 
         assert_eq!(opened, ["table orders", "structure users", "editor"]);
-        let selected = view
-            .selected_page()
+        let active = active
             .and_then(|page| page.child().downcast::<gtk::Label>().ok())
             .map(|label| label.label().to_string());
-        assert_eq!(selected.as_deref(), Some("structure users"));
+        assert_eq!(active.as_deref(), Some("structure users"));
     }
 
     #[gtk4::test]

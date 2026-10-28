@@ -78,11 +78,6 @@ impl OpenSessionsRecord {
         }
         windows
     }
-
-    #[cfg(test)]
-    pub(crate) fn keys(self) -> Vec<SessionKey> {
-        self.windows().into_iter().flatten().collect()
-    }
 }
 
 /// A file that cannot be used is moved aside, bytes and all, and loads
@@ -250,8 +245,8 @@ mod tests {
         let first = SessionKey::Saved(Uuid::new_v4());
         let second = SessionKey::File("file:///srv/app.db".to_owned());
 
-        let keys = OpenSessionsRecord::from_windows([vec![&first, &second, &first]]).keys();
+        let windows = OpenSessionsRecord::from_windows([vec![&first, &second, &first]]).windows();
 
-        assert_eq!(keys, [first, second]);
+        assert_eq!(windows, [vec![first, second]]);
     }
 }

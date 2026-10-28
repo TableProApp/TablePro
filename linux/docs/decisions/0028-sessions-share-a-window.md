@@ -1,7 +1,7 @@
 # 0028: A window holds several sessions in one tab view
 
 - **Status**: Accepted
-- **Date**: 2026-10-27
+- **Date**: 2026-10-28
 
 ## Context
 
@@ -11,21 +11,25 @@ Under [0012](0012-window-per-session.md) a window holds at most one connection s
 
 ## Decision
 
-A `SessionWindow` holds any number of sessions, each under its own `SessionClaim`, in one `WorkspaceShell`. The shell owns what a window has once: the header bars, the sidebar, the one `AdwTabView` every session's tabs share, the assistant's column and the toasts. Each session keeps its own `Workspace`, which holds what it held before, and a tab never changes session. The sidebar is a tree of the saved connections in their groups, with the schemas and tables of each open session under its connection.
+A `SessionWindow` holds a list of open sessions, each under its own `SessionClaim`, and a list of connects in progress, each with its own cancel token. The page it shows follows from those two lists: the `WorkspaceShell` while any session is open, else the first connect's progress, else the last failure, else the picker. Every connect, from the picker, the sidebar, the connect dialog, a file, a restore or MCP, takes the same path.
+
+The shell is what a window has once: the header bars, the sidebar, the one `AdwTabView` every session's tabs share, the assistant's column and the toasts. Each session keeps its own `Workspace`, which holds what it held before, and a tab never changes session. The sidebar is a tree of the saved connections in their groups, with the schemas and tables of each open session under its connection.
 
 ## Rationale
 
 - What 0012 protects still holds one level down. A workspace never changes session, so it has nothing to reset, and its teardown order is the same. Tabs already took their session when they were built.
-- Sessions are not shared across windows. The registry still keeps a key in one window, and a connection open elsewhere brings that window forward.
-- The session whose tab is in front speaks for the window: its actions are on the window's map, its banners show, and its level is the Safe Mode the menu ticks. Coming to the front is deferred out of the tab view's signal, so it never enters a workspace that is handling input.
-- A schema's rows in the tree are a slice of the session's own sidebar list, so the index built off the GTK thread and the rows made on demand keep serving catalogs of 50,000 tables.
+- Sessions are not shared across windows. The registry still keeps a key in one window, and a connection open elsewhere brings that window and that session forward.
+- The session of the tab in front speaks for the window. The shell's `front` property follows the tab view's selection, and the header bars, the banners, the assistant's pane and the window's actions read it through bindings, so a change of tab never enters a workspace that is handling input.
+- A failure while other sessions are open is an event in this window, so it is a toast with a Details button rather than a page or a new window. The GNOME HIG: "Never pop up a dialog window unexpectedly."
+- A closed connection is a leaf in the tree, and activating it connects, as a GNOME Files sidebar row mounts a volume. A connection gets its schemas once its session joins, so neither a drag hovering over a row nor an expander starts a network connect.
+- Each schema's tables are a lazy list of their own, filled from one search worked out off the GTK thread, so a catalog of 50,000 tables makes objects only for the rows on screen.
 
 ## Consequences
 
 - This supersedes 0012 for what a window holds. The application, the subclasses and the input queues it decided stay.
-- A connection opened from the tree connects beside the window's sessions, each with its own attempt, so several connect at once and stopping one leaves the others. A failure the tree's row can try again says so in a toast. One that needs the failed page's remedies, or a connection the dialog has not saved, gets that page in a window of its own, without connecting again.
-- The window's close asks each session's prompts in turn. A disconnect asks only that session's tabs and closes them. When the last one goes, the newest connect still running beside it becomes the window's own on the connecting page; with none, the window returns to the picker.
-- Each tab names its connection after its own title while another connection's tabs share the bar.
+- A disconnect asks only that session's prompts and closes its tabs. When the last session goes, a connect still running shows on the connecting page and joins when it lands; with none, the window returns to the picker. The window's close asks one Save Changes? across every session, and Cancel keeps them all.
+- libadwaita 1.9 has no tab groups, so any `AdwTabBar` in the process accepts a dropped tab. The shell sends a tab dropped from another window back to its own, and a tab dropped outside every window stays in its window.
+- Each tab names its connection, as "orders (prod)", while another connection has a tab in the same bar.
 - The restore record groups the keys by window, so a restore opens each window with the sessions it held.
 
 ## Alternatives considered
@@ -33,3 +37,5 @@ A `SessionWindow` holds any number of sessions, each under its own `SessionClaim
 **A window per session with a strip to switch between them.** Keeps 0012 whole, but the tabs of two connections are never side by side.
 
 **A tab bar per session in one window.** Smaller, but switching connection hides the other connection's tabs.
+
+**A failed connect beside the sessions on a failed page in a window of its own.** Keeps the page's remedies, but a window opens seconds after the user moved on. The remedies are dialogs over this window already.

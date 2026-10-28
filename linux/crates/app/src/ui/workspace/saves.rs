@@ -1,5 +1,6 @@
 use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use uuid::Uuid;
 
@@ -65,12 +66,11 @@ impl WorkspaceModel {
         self.refresh_unsaved();
     }
 
+    /// The window's spinner and its logout inhibitor read whether any
+    /// session is saving, so it is set before they hear.
     pub(super) fn on_saves_in_flight_changed(&mut self, count: usize) {
-        // The spinner is the window's, and says what the front is doing.
-        if self.attached {
-            self.set_row_op_in_flight(count > 0);
-        }
         if let Some(workspace) = self.this.upgrade() {
+            workspace.imp().saving.set(count > 0);
             let count = u32::try_from(count).unwrap_or(u32::MAX);
             workspace.emit_by_name::<()>("saves-in-flight-changed", &[&count]);
         }
@@ -97,7 +97,7 @@ impl WorkspaceModel {
                     .use_markup(false)
                     .timeout(4)
                     .build();
-                self.toast_overlay.add_toast(toast);
+                self.add_toast(toast);
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins));
             }
             (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {

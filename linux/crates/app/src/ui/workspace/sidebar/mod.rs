@@ -1,16 +1,13 @@
-//! The sidebar of the session's tables: every schema's tables and views
-//! in one recycling list, a section per schema, with one shared menu. The
-//! window's connection tree shows that list's sections as the schemas
-//! under the session's connection.
+//! The window's connection tree, and each session's part of it: the
+//! session's schemas and their tables, indexed off the GTK thread, with
+//! the table actions their menus reach.
 
 mod catalog_watch;
 mod connection_tree;
 mod key_listing;
 mod object_key;
-mod schema_slice;
 mod sidebar_affordances;
 mod sidebar_event;
-mod sidebar_header_factory;
 mod sidebar_index;
 mod sidebar_list;
 mod sidebar_list_imp;
@@ -18,47 +15,40 @@ mod sidebar_menu;
 mod sidebar_model;
 mod sidebar_object;
 mod sidebar_object_imp;
-mod sidebar_row_factory;
 mod sidebar_view;
+mod store_sync;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
+mod tree_menu;
 mod tree_node;
+mod tree_row;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use gtk4::prelude::*;
-use gtk4::subclass::prelude::*;
 use tablepro_core::DataModel;
 use tablepro_core::meta::{ObjectInfo, ObjectScope, SchemaInfo, TableRef};
 use tablepro_session::runtime::{TaskFailure, Tasks};
 use tablepro_session::{ObjectListSnapshot, Session};
 
 pub(super) use catalog_watch::{catalog_watch, reconnect_watch, spawn_local};
-pub(crate) use connection_tree::{ConnectionTree, TreeRequest};
+pub(crate) use connection_tree::{ConnectionTree, SessionRowState};
 pub(crate) use key_listing::{KeySidebar, KeysListed};
 pub(super) use sidebar_affordances::SidebarAffordances;
 use sidebar_index::SidebarIndex;
-pub(crate) use sidebar_object::SidebarObject;
 pub(super) use sidebar_view::SidebarView;
 
 use super::table_naming::TableNaming;
-use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceShell};
+use super::{OpenMode, WorkspaceInput, WorkspaceModel, WorkspaceSender};
 use crate::runtime::DeliverInput;
-pub(super) use sidebar_event::SidebarEvent;
+use sidebar_event::SidebarEvent;
 
-/// Build the session's sidebar, sending what the user asks of it to
-/// `input`. It follows the shell's one search: a sidebar of keys searches
-/// on the server, so its search asks the workspace for a new listing; one
-/// of collections lists them as tables are listed, in its own words.
-pub(super) fn build(
-    shell: &WorkspaceShell,
-    input: &WorkspaceSender,
-    session: &Session,
-    tasks: &Tasks,
-    model: DataModel,
-) -> SidebarView {
-    let imp = shell.imp();
+/// Build the session's part of the sidebar, sending what the user asks
+/// of it to `input`. A sidebar of keys searches on the server, so a
+/// search the tree gives it asks the workspace for a new listing; one of
+/// collections lists them as tables are listed, in its own words.
+pub(super) fn build(input: &WorkspaceSender, session: &Session, tasks: &Tasks, model: DataModel) -> SidebarView {
     let events = input.clone();
     let view = SidebarView::new(
         move |event| events.deliver(workspace_input(event)),
@@ -67,88 +57,16 @@ pub(super) fn build(
     );
     match model {
         DataModel::KeyValue => {
-            view.hold_keys();
             let listing = input.clone();
-            view.follow_key_search(&imp.table_search, move || listing.deliver(WorkspaceInput::ListKeys));
+            view.hold_keys(move || listing.deliver(WorkspaceInput::ListKeys));
         }
-        DataModel::Document => {
-            view.hold_collections();
-            view.follow_search(&imp.table_search);
-        }
-        DataModel::Relational => view.follow_search(&imp.table_search),
+        DataModel::Document => view.hold_collections(),
+        DataModel::Relational => {}
     }
     view
 }
 
-/// Name the shell's search, its buttons and the page with no tab open
-/// after what the session in front holds.
-pub(super) fn describe(shell: &WorkspaceShell, model: DataModel) {
-    match model {
-        DataModel::KeyValue => {
-            describe_search(
-                shell,
-                &crate::i18n::gettext("Filter keys…"),
-                &crate::i18n::gettext("Filter keys"),
-                &crate::i18n::gettext("Search Keys"),
-                &crate::i18n::gettext("Refresh Keys"),
-            );
-            describe_empty_page(
-                shell,
-                &crate::i18n::gettext("Select a Key"),
-                &crate::i18n::gettext("Choose a key in the sidebar or open the editor."),
-                &crate::i18n::gettext("Open Editor"),
-            );
-        }
-        DataModel::Document => {
-            describe_search(
-                shell,
-                &crate::i18n::gettext("Filter collections…"),
-                &crate::i18n::gettext("Filter collections"),
-                &crate::i18n::gettext("Search Collections"),
-                &crate::i18n::gettext("Refresh Collections"),
-            );
-            describe_empty_page(
-                shell,
-                &crate::i18n::gettext("Select a Collection"),
-                &crate::i18n::gettext("Choose a collection in the sidebar or open the editor."),
-                &crate::i18n::gettext("Open Editor"),
-            );
-        }
-        DataModel::Relational => {
-            describe_search(
-                shell,
-                &crate::i18n::gettext("Filter tables…"),
-                &crate::i18n::gettext("Filter tables"),
-                &crate::i18n::gettext("Search Tables"),
-                &crate::i18n::gettext("Refresh Tables"),
-            );
-            describe_empty_page(
-                shell,
-                &crate::i18n::gettext("Select a Table"),
-                &crate::i18n::gettext("Choose a table in the sidebar or open the SQL editor."),
-                &crate::i18n::gettext("Open SQL Editor"),
-            );
-        }
-    }
-}
-
-fn describe_search(shell: &WorkspaceShell, placeholder: &str, filter: &str, search: &str, refresh: &str) {
-    let imp = shell.imp();
-    imp.table_search.set_placeholder_text(Some(placeholder));
-    imp.table_search
-        .update_property(&[gtk4::accessible::Property::Label(filter)]);
-    crate::ui::a11y::describe_icon_button(&imp.table_search_toggle.get(), search, None);
-    crate::ui::a11y::describe_icon_button(&imp.refresh_tables_button.get(), refresh, Some("win.refresh-tables"));
-}
-
-fn describe_empty_page(shell: &WorkspaceShell, title: &str, description: &str, editor: &str) {
-    let imp = shell.imp();
-    imp.empty_page.set_title(title);
-    imp.empty_page.set_description(Some(description));
-    imp.empty_editor_button.set_label(editor);
-}
-
-pub(super) fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
+fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
     let select = |table: TableRef, open_mode| WorkspaceInput::SelectTable {
         schema: table.schema,
         name: table.name,
@@ -394,23 +312,6 @@ impl WorkspaceModel {
     pub(super) fn on_link_changed(&self) {
         if let Some(session) = self.context.active.get() {
             self.sidebar.set_affordances(SidebarAffordances::for_session(&session));
-        }
-    }
-
-    /// With no table tab in front, no row stays selected: one would say
-    /// the editor shows that table.
-    /// The window's tree follows too, but only from the session whose
-    /// tab is in front: every session hears the shared tab view, and one
-    /// without the tab would take the row away from the one with it.
-    pub(super) fn sync_sidebar_selection(&self) {
-        let front = self.selected_workspace_tab_id();
-        let shown = front.and_then(|id| self.workspace_tabs.borrow().get(&id)?.sidebar_object());
-        self.sidebar.sync_selection(shown.as_ref());
-        if front.is_some()
-            && let Some(shell) = self.shell.upgrade()
-        {
-            let object = shown.as_ref().and_then(|table| self.sidebar.object_of(table));
-            shell.select_in_tree(&self.key, object.as_ref());
         }
     }
 }

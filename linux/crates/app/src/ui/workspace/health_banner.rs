@@ -1,10 +1,14 @@
-//! The banner over the tabs while the session needs attention.
+//! The banner over the tabs while the session needs attention, and the
+//! state its row in the connection tree shows whether or not it is in
+//! front.
 
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use tablepro_core::{DriverError, SshFailure, TransportError};
 use tablepro_session::{FailureCause, MonitorSignal, ReviewedHostKey, SessionHealth};
 use tablepro_ssh::ForgetHostKeyError;
 
+use super::sidebar::SessionRowState;
 use super::{WorkspaceInput, WorkspaceModel};
 use crate::runtime::{DeliverInput, spawn_and_deliver};
 use crate::ui::host_key_failure::{HostKeyFailure, HostKeyFailureKind};
@@ -25,14 +29,22 @@ impl WorkspaceModel {
     /// refused again.
     pub(super) fn refresh_health_banner(&self, health: &SessionHealth) {
         let review = self.host_key_to_review(health);
-        if self.attached
-            && let Some(window) = self.window()
+        if let Some(workspace) = self.this.upgrade()
+            && workspace.imp().can_review_host_key.replace(review.is_some()) != review.is_some()
         {
-            super::workspace_actions::set_enabled(&window, REVIEW_HOST_KEY, review.is_some());
+            workspace.notify_can_review_host_key();
         }
         let title = self
             .rejection_text(health, review.as_ref())
             .or_else(|| health_banner_text(health, review.as_ref()));
+        if let Some(tree) = self.shell.upgrade().and_then(|shell| shell.tree()) {
+            let state = match (health, &title) {
+                (SessionHealth::Reconnecting { .. }, _) => SessionRowState::Busy,
+                (_, Some(title)) => SessionRowState::Trouble(title.clone()),
+                (_, None) => SessionRowState::Ready,
+            };
+            tree.set_session_state(&self.key, state);
+        }
         let Some(title) = title else {
             self.reconnect_banner.set_revealed(false);
             return;
@@ -632,7 +644,7 @@ mod tests {
     }
 
     fn has_toast(test: &TestWindow, text: &str) -> bool {
-        descendants(&test.workspace().chrome())
+        descendants(&crate::ui::workspace::tests::shell_of(&test.workspace()))
             .into_iter()
             .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
             .any(|label| label.label().contains(text))

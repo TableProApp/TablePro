@@ -5,7 +5,8 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionIcon};
+
+use super::sidebar_list::SidebarList;
 
 /// What a row of the connection tree above the tables stands for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -13,10 +14,14 @@ pub(crate) enum NodeKind {
     /// A group the user filed connections under.
     #[default]
     Group,
-    /// A saved connection, or a file the window has open.
+    /// A saved connection, or one the window opens or connects to that
+    /// no saved connection names.
     Connection,
     /// One schema, or database, of an open connection.
     Schema,
+    /// Says an open connection lists nothing, or the search found nothing
+    /// in it.
+    Placeholder,
 }
 
 mod imp {
@@ -26,25 +31,32 @@ mod imp {
     #[properties(wrapper_type = super::TreeNode)]
     pub struct TreeNode {
         pub(super) kind: Cell<NodeKind>,
-        pub(super) title: RefCell<String>,
         pub(super) key: RefCell<Option<SessionKey>>,
         /// The schema a schema row lists. `None` for the objects an
         /// engine lists with no schema.
         pub(super) schema: RefCell<Option<String>>,
-        pub(super) color: Cell<Option<ConnectionColor>>,
-        pub(super) icon: Cell<Option<ConnectionIcon>>,
-        pub(super) file_based: Cell<bool>,
+        /// What the tree lists under the row.
         pub(super) children: RefCell<Option<gio::ListModel>>,
+        /// What the search's results list under the row.
+        pub(super) found: RefCell<Option<gio::ListModel>>,
+        #[property(get, set)]
+        pub(super) title: RefCell<String>,
+        #[property(get, set)]
+        pub(super) icon_name: RefCell<String>,
+        /// The connection's colour, as the class `connection_appearance`
+        /// names it, or empty for none.
+        #[property(get, set)]
+        pub(super) color_class: RefCell<String>,
         /// The connection has a session open in this window.
         #[property(get, set)]
         pub(super) open: Cell<bool>,
-        /// The connection is connecting in this window.
+        /// The connection is connecting, or its session is busy.
         #[property(get, set)]
-        pub(super) connecting: Cell<bool>,
-        /// Counts the changes to the row's name, colour and icon, so a
-        /// row on screen follows a connection edited while it shows.
-        #[property(get)]
-        pub(super) appearance: Cell<u32>,
+        pub(super) busy: Cell<bool>,
+        /// Why the connection could not connect, or what its session
+        /// lost, or empty.
+        #[property(get, set)]
+        pub(super) problem: RefCell<String>,
     }
 
     #[glib::object_subclass]
@@ -62,42 +74,43 @@ glib::wrapper! {
 }
 
 impl TreeNode {
+    fn of(kind: NodeKind, title: &str) -> Self {
+        let node: Self = glib::Object::builder().property("title", title).build();
+        node.imp().kind.set(kind);
+        node
+    }
+
     pub(crate) fn group(title: &str) -> Self {
-        let node: Self = glib::Object::new();
-        let imp = node.imp();
-        imp.kind.set(NodeKind::Group);
-        imp.title.replace(title.to_owned());
-        imp.children.replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
+        let node = Self::of(NodeKind::Group, title);
+        node.imp()
+            .children
+            .replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
         node
     }
 
-    /// A connection's row. Its children are its schemas while it is open,
-    /// and none until then; the row can still be expanded, which connects.
-    pub(crate) fn connection(key: SessionKey) -> Self {
-        let node: Self = glib::Object::new();
-        let imp = node.imp();
-        imp.kind.set(NodeKind::Connection);
-        imp.key.replace(Some(key));
-        imp.children.replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
+    /// A connection's row, which lists nothing until its session opens.
+    pub(crate) fn connection(key: SessionKey, title: &str) -> Self {
+        let node = Self::of(NodeKind::Connection, title);
+        node.imp().key.replace(Some(key));
         node
     }
 
-    pub(crate) fn schema(title: &str, schema: Option<String>, objects: gio::ListModel) -> Self {
-        let node: Self = glib::Object::new();
+    /// A schema's row, over its tables and the ones the search finds.
+    pub(crate) fn schema(title: &str, schema: Option<String>) -> Self {
+        let node = Self::of(NodeKind::Schema, title);
         let imp = node.imp();
-        imp.kind.set(NodeKind::Schema);
-        imp.title.replace(title.to_owned());
         imp.schema.replace(schema);
-        imp.children.replace(Some(objects));
+        imp.children.replace(Some(SidebarList::new().upcast()));
+        imp.found.replace(Some(SidebarList::new().upcast()));
         node
+    }
+
+    pub(crate) fn placeholder(title: &str) -> Self {
+        Self::of(NodeKind::Placeholder, title)
     }
 
     pub(crate) fn kind(&self) -> NodeKind {
         self.imp().kind.get()
-    }
-
-    pub(crate) fn title(&self) -> String {
-        self.imp().title.borrow().clone()
     }
 
     pub(crate) fn key(&self) -> Option<SessionKey> {
@@ -108,48 +121,64 @@ impl TreeNode {
         self.imp().schema.borrow().clone()
     }
 
-    pub(crate) fn color(&self) -> Option<ConnectionColor> {
-        self.imp().color.get()
-    }
-
-    pub(crate) fn connection_icon(&self) -> Option<ConnectionIcon> {
-        self.imp().icon.get()
-    }
-
-    pub(crate) fn file_based(&self) -> bool {
-        self.imp().file_based.get()
-    }
-
-    /// Name the connection's row after the saved connection as it is now.
-    pub(crate) fn describe(
-        &self,
-        title: &str,
-        color: Option<ConnectionColor>,
-        icon: Option<ConnectionIcon>,
-        file_based: bool,
-    ) {
-        let imp = self.imp();
-        let changed = *imp.title.borrow() != title
-            || imp.color.get() != color
-            || imp.icon.get() != icon
-            || imp.file_based.get() != file_based;
-        if !changed {
-            return;
-        }
-        imp.title.replace(title.to_owned());
-        imp.color.set(color);
-        imp.icon.set(icon);
-        imp.file_based.set(file_based);
-        imp.appearance.set(imp.appearance.get().wrapping_add(1));
-        self.notify_appearance();
+    pub(crate) fn set_schema_name(&self, schema: Option<String>) {
+        self.imp().schema.replace(schema);
     }
 
     pub(crate) fn children(&self) -> Option<gio::ListModel> {
         self.imp().children.borrow().clone()
     }
 
-    /// The store of a group's connections or a connection's schemas.
+    pub(crate) fn found(&self) -> Option<gio::ListModel> {
+        self.imp().found.borrow().clone()
+    }
+
+    /// What an open connection lists in the tree, and in the search's
+    /// results; none once it closes.
+    pub(crate) fn set_branches(&self, children: Option<gio::ListModel>, found: Option<gio::ListModel>) {
+        let imp = self.imp();
+        imp.children.replace(children);
+        imp.found.replace(found);
+    }
+
+    /// The store of a group's connections.
     pub(crate) fn child_store(&self) -> Option<gio::ListStore> {
         self.children().and_downcast::<gio::ListStore>()
+    }
+
+    /// A schema's tables.
+    pub(crate) fn rows(&self) -> Option<SidebarList> {
+        self.children().and_downcast::<SidebarList>()
+    }
+
+    /// The schema's tables the search finds.
+    pub(crate) fn found_rows(&self) -> Option<SidebarList> {
+        self.found().and_downcast::<SidebarList>()
+    }
+
+    /// Change the properties that differ, so a row on screen redraws and
+    /// says again only what changed.
+    pub(crate) fn update(&self, title: &str, icon_name: &str, color_class: &str) {
+        if self.title() != title {
+            self.set_title(title);
+        }
+        if self.icon_name() != icon_name {
+            self.set_icon_name(icon_name);
+        }
+        if self.color_class() != color_class {
+            self.set_color_class(color_class);
+        }
+    }
+
+    pub(crate) fn update_state(&self, open: bool, busy: bool, problem: &str) {
+        if self.open() != open {
+            self.set_open(open);
+        }
+        if self.busy() != busy {
+            self.set_busy(busy);
+        }
+        if self.problem() != problem {
+            self.set_problem(problem);
+        }
     }
 }

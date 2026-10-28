@@ -149,12 +149,18 @@ impl TestApp {
 
     /// The sessions recorded on disk, once every write has landed.
     fn recorded(&self) -> Vec<SessionKey> {
+        self.recorded_windows().into_iter().flatten().collect()
+    }
+
+    /// The sessions recorded on disk by window, once every write has
+    /// landed.
+    fn recorded_windows(&self) -> Vec<Vec<SessionKey>> {
         finish_on_main(WAIT, self.services().open_sessions().settled()).expect("the writes to land");
         let path = self.record_path();
         let bytes = std::fs::read(&path).expect("the record");
         decode_document::<OpenSessionsRecord>(&path, &bytes)
             .expect("a record")
-            .keys()
+            .windows()
     }
 
     /// The window that claims `key`.
@@ -356,7 +362,7 @@ fn activate_restores_a_recorded_window_with_all_its_sessions() {
     let ids = [&first, &second].map(|key| services.sessions.window_for(key).expect("a window"));
     assert_eq!(ids[0], ids[1], "the recorded window's sessions opened apart");
     assert_eq!(test.app.windows().len(), 1, "a window opened beside the restored one");
-    assert_eq!(services.open_sessions().windows(), [shared.to_vec()]);
+    assert_eq!(test.recorded_windows(), [shared.to_vec()]);
 }
 
 #[gtk4::test]
@@ -969,6 +975,32 @@ mod mcp {
         assert_eq!(test.app.windows().len(), 1, "a second open made another window");
         assert!(session.is_some());
         assert_eq!(open, [id]);
+    }
+
+    #[gtk4::test]
+    fn a_client_opens_a_second_connection_beside_the_first() {
+        let test = TestApp::started("McpBeside");
+        let host = test.app.answer_mcp(&test.services());
+        let (first, second) = (
+            saved_file(&test, "shop.db", ExternalAccess::ReadOnly),
+            saved_file(&test, "stock.db", ExternalAccess::ReadOnly),
+        );
+
+        let opened_first = opened(&test, &host, &first);
+        let opened_second = opened(&test, &host, &second);
+
+        assert!(matches!(opened_first, OpenOutcome::Open(_)), "{opened_first:?}");
+        assert!(matches!(opened_second, OpenOutcome::Open(_)), "{opened_second:?}");
+        assert_eq!(
+            test.app.windows().len(),
+            1,
+            "the second connection opened a window of its own"
+        );
+        let services = test.services();
+        assert_eq!(
+            services.sessions.window_for(&SessionKey::Saved(first.id)),
+            services.sessions.window_for(&SessionKey::Saved(second.id))
+        );
     }
 
     #[gtk4::test]

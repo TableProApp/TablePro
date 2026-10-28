@@ -1,9 +1,9 @@
-//! The assistant's column beside the tabs: the header's toggle, the
-//! `win.show-assistant` action, and the pane's view of the tabs.
+//! The session's assistant: its own pane, which the shell's column shows
+//! while the session is in front, so a reply keeps coming while another
+//! session's tab is on screen, and what that pane may send.
 
 use std::rc::Rc;
 
-use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -14,24 +14,16 @@ use tablepro_storage::settings::keys;
 
 use super::tab_index::TabIndex;
 use super::workspace_persistence::WorkspaceTabs;
-use super::workspace_shell::SHOW_ASSISTANT;
-use super::{WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceShell, WorkspaceTab, WorkspaceTabParts};
+use super::{WorkspaceInput, WorkspaceModel, WorkspaceSender, WorkspaceTab, WorkspaceTabParts};
 use crate::application::AppServices;
 use crate::runtime::DeliverInput;
 use crate::services::active_session::ActiveSession;
-use crate::ui::assistant::{AssistantAccess, AssistantRequest, Availability, PaneHooks};
+use crate::ui::assistant::{AssistantAccess, AssistantPane, AssistantRequest, Availability, PaneHooks};
 use crate::ui::handler_guard::HandlerGuard;
 
-pub(super) struct AssistantShell {
+pub(super) struct AssistantColumn {
     access: Rc<AssistantAccess>,
-    split: adw::OverlaySplitView,
-    pane: crate::ui::assistant::AssistantPane,
-    toggle: gtk::ToggleButton,
-    window: glib::WeakRef<adw::ApplicationWindow>,
-    /// What the pane asks this session for, bound while it is in front.
-    hooks: Rc<dyn Fn() -> PaneHooks>,
-    /// Whether the pane speaks for this session now.
-    attached: std::cell::Cell<bool>,
+    pane: AssistantPane,
     _watches: Vec<HandlerGuard>,
 }
 
@@ -52,36 +44,27 @@ pub(super) fn access(
     })
 }
 
-/// The shell's one pane serves the session in front, so the session
-/// only binds it in `attach`.
-pub(super) fn install(
-    shell: &WorkspaceShell,
-    window: &adw::ApplicationWindow,
-    parts: &WorkspaceTabParts,
-    input: &WorkspaceSender,
-) -> AssistantShell {
+/// The session's pane, bound once to its tabs and its access.
+pub(super) fn install(parts: &WorkspaceTabParts, input: &WorkspaceSender) -> AssistantColumn {
     let access = parts.assistant.clone();
-    let (tabs, index) = (parts.workspace_tabs.clone(), parts.index.clone());
-    let imp = shell.imp();
-    let view = imp.tab_view.downgrade();
-    let hooks: Rc<dyn Fn() -> PaneHooks> = {
-        let (access, input) = (access.clone(), input.clone());
-        Rc::new(move || {
-            let (tabs, index, view) = (tabs.clone(), index.clone(), view.clone());
-            PaneHooks {
-                access: access.clone(),
-                editor_text: Rc::new(move || active_editor_text(&tabs, &index, &view)),
-                insert: {
-                    let input = input.clone();
-                    Rc::new(move |code| input.deliver(WorkspaceInput::InsertFromAssistant(code)))
-                },
-                toast: {
-                    let input = input.clone();
-                    Rc::new(move |text| input.deliver(WorkspaceInput::ShowToast(text)))
-                },
-            }
-        })
-    };
+    let (tabs, index, view) = (
+        parts.workspace_tabs.clone(),
+        parts.index.clone(),
+        parts.tab_view.downgrade(),
+    );
+    let pane: AssistantPane = glib::Object::new();
+    pane.bind(PaneHooks {
+        access: access.clone(),
+        editor_text: Rc::new(move || active_editor_text(&tabs, &index, &view)),
+        insert: {
+            let input = input.clone();
+            Rc::new(move |code| input.deliver(WorkspaceInput::InsertFromAssistant(code)))
+        },
+        toast: {
+            let input = input.clone();
+            Rc::new(move |text| input.deliver(WorkspaceInput::ShowToast(text)))
+        },
+    });
     let settings = access.ai().settings().clone();
     let mut watches = Vec::new();
     for key in [keys::AI_PROVIDER, keys::AI_INLINE_SUGGESTIONS] {
@@ -91,18 +74,14 @@ pub(super) fn install(
             .connect_changed(Some(key), move |_, _| changed.deliver(WorkspaceInput::AssistantChanged));
         watches.push(HandlerGuard::new(settings.gio(), handler));
     }
-    AssistantShell {
+    AssistantColumn {
         access,
-        split: imp.assistant_split.get(),
-        pane: imp.assistant_pane.get(),
-        toggle: imp.assistant_toggle.get(),
-        window: window.downgrade(),
-        hooks,
-        attached: std::cell::Cell::new(false),
+        pane,
         _watches: watches,
     }
 }
 
+/// The text of this session's editor tab while it is the one on screen.
 fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakRef<adw::TabView>) -> Option<String> {
     let id = index.id_of(&view.upgrade()?.selected_page()?)?;
     match tabs.borrow().get(&id) {
@@ -115,54 +94,29 @@ fn active_editor_text(tabs: &WorkspaceTabs, index: &TabIndex, view: &glib::WeakR
     }
 }
 
-impl AssistantShell {
-    /// Bind the pane to this session, which is now in front.
-    pub(super) fn attach(&self) {
-        self.attached.set(true);
-        self.pane.bind((self.hooks)());
-        self.refresh_controls();
-    }
-
-    pub(super) fn detach(&self) {
-        self.attached.set(false);
-    }
-
-    /// With no provider the column and its toggle go, and the key does
-    /// nothing; under Never the pane says why it is off. Only the session
-    /// in front decides.
-    fn refresh_controls(&self) {
-        if !self.attached.get() {
-            return;
-        }
-        let available = self.access.availability() != Availability::Off;
-        self.toggle.set_visible(available);
-        if let Some(action) = self
-            .window
-            .upgrade()
-            .and_then(|window| window.lookup_action(SHOW_ASSISTANT))
-            .and_downcast::<gio::SimpleAction>()
-        {
-            action.set_enabled(available);
-        }
-        if !available {
-            self.split.set_show_sidebar(false);
-        }
-        self.pane.refresh();
+impl AssistantColumn {
+    pub(super) fn pane(&self) -> AssistantPane {
+        self.pane.clone()
     }
 
     pub(super) fn shutdown(&self) {
-        if self.attached.replace(false) {
-            self.pane.shutdown();
-        } else {
-            self.pane.forget(&self.access);
-        }
+        self.pane.shutdown();
     }
 }
 
 impl WorkspaceModel {
     /// The provider, a preference or the connection's policy changed.
+    /// With no provider the column and its toggle go while the session is
+    /// in front, and the key does nothing; under Never the pane says why
+    /// it is off.
     pub(super) fn refresh_assistant(&self) {
-        self.assistant.refresh_controls();
+        let available = self.assistant.access.availability() != Availability::Off;
+        if let Some(workspace) = self.this.upgrade()
+            && workspace.imp().assistant_available.replace(available) != available
+        {
+            workspace.notify_assistant_available();
+        }
+        self.assistant.pane.refresh();
         for tab in self.workspace_tabs.borrow().values() {
             if let WorkspaceTab::Editor(slot) = tab {
                 slot.editor.refresh_assistant();
@@ -170,11 +124,17 @@ impl WorkspaceModel {
         }
     }
 
+    /// An editor tab asked about a statement. It asks this session's own
+    /// pane, which comes into view while the session is in front.
     pub(super) fn on_ask_assistant(&self, request: AssistantRequest) {
         if self.assistant.access.availability() != Availability::Ready {
             return;
         }
-        self.assistant.split.set_show_sidebar(true);
+        if self.is_front()
+            && let Some(shell) = self.shell.upgrade()
+        {
+            shell.reveal_assistant();
+        }
         self.assistant.pane.run_action(request);
     }
 

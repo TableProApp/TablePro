@@ -10,6 +10,7 @@ use tablepro_test_support::{ConnectionScript, FakeReply};
 use uuid::Uuid;
 
 use super::super::{OpenMode, WorkspaceInput};
+use super::shell_of;
 use crate::runtime::DeliverInput;
 use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::browse_tab::BrowseTab;
@@ -57,7 +58,7 @@ fn open_table(test: &TestWindow, name: &str) -> (Uuid, BrowseTab) {
     let workspace = test.workspace();
     let before = workspace.selected_tab();
     workspace
-        .input()
+        .sender()
         .expect("the workspace's input")
         .deliver(WorkspaceInput::SelectTable {
             schema: None,
@@ -70,8 +71,7 @@ fn open_table(test: &TestWindow, name: &str) -> (Uuid, BrowseTab) {
         id.is_some()
     })
     .expect("the table's tab");
-    let tab = workspace
-        .chrome()
+    let tab = shell_of(&workspace)
         .imp()
         .tab_view
         .selected_page()
@@ -120,14 +120,14 @@ fn closing_a_tab_while_a_cell_is_edited_asks_about_the_edit() {
     glib::log_set_always_fatal(previous);
 
     wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the close asks about the edit");
-    let tracker = test.workspace().row_tracker(id).expect("the tab's changes");
-    assert_eq!(tracker.pending_count(), 1, "what was typed is not an unsaved change");
+    let changes = super::row_tracker(&test.workspace(), id).expect("the tab's changes");
+    assert_eq!(changes.pending_count(), 1, "what was typed is not an unsaved change");
     assert!(!cell.is_editing());
 
     let closed = tab.downgrade();
     drop((tab, cell));
     assert!(answer(&test.window, "discard"));
-    wait_until(WAIT, || test.workspace().row_tracker(id).is_none()).expect("the tab closes");
+    wait_until(WAIT, || super::row_tracker(&test.workspace(), id).is_none()).expect("the tab closes");
     after_next_frame(&test.window);
     wait_until(WAIT, || closed.upgrade().is_none()).expect("the closed tab is freed");
 }
@@ -138,7 +138,7 @@ fn closing_the_window_while_a_cell_is_edited_asks_about_the_edit() {
     let (id, tab) = open_table(&test, "users");
     let cell = type_a_name(&tab);
     assert_eq!(
-        test.workspace().row_tracker(id).map(|tracker| tracker.pending_count()),
+        super::row_tracker(&test.workspace(), id).map(|tracker| tracker.pending_count()),
         Some(0),
         "the edit counted before the close committed it"
     );
@@ -146,8 +146,8 @@ fn closing_the_window_while_a_cell_is_edited_asks_about_the_edit() {
     test.window.close();
 
     wait_until(WAIT, || visible_alert(&test.window).is_some()).expect("the close asks about the edit");
-    let tracker = test.workspace().row_tracker(id).expect("the tab's changes");
-    assert_eq!(tracker.pending_count(), 1, "what was typed is not an unsaved change");
+    let changes = super::row_tracker(&test.workspace(), id).expect("the tab's changes");
+    assert_eq!(changes.pending_count(), 1, "what was typed is not an unsaved change");
     assert!(answer(&test.window, "cancel"));
     drain_main_context();
     assert_eq!(test.app.windows().len(), 1, "Cancel closed the window");
@@ -192,8 +192,7 @@ fn editor_on_file(test: &TestWindow, path: &std::path::Path) -> (Uuid, crate::ui
         })
     });
     let id = workspace.selected_tab().expect("the editor in front");
-    let editor = workspace
-        .chrome()
+    let editor = shell_of(&workspace)
         .imp()
         .tab_view
         .selected_page()
@@ -290,8 +289,7 @@ fn an_editor_asking_to_close_closes_its_own_tab_not_the_one_in_front() {
                 file: None,
             })
         });
-        let page = workspace
-            .chrome()
+        let page = shell_of(&workspace)
             .imp()
             .tab_view
             .selected_page()
