@@ -67,21 +67,25 @@ impl SidebarList {
         self.imp().entries.borrow().position_of(entry)
     }
 
+    /// Whether the list shows `entries` of `index` already.
+    pub(crate) fn shows(&self, index: &Arc<SidebarIndex>, entries: &Entries) -> bool {
+        let imp = self.imp();
+        Arc::ptr_eq(&imp.index.borrow(), index) && *imp.entries.borrow() == *entries
+    }
+
     /// Show `entries` of `index`, taking every row out, then putting the
     /// new ones in. GtkListView looks for the rows it tracks, its scroll
     /// anchor among them, through every row a change adds in place of
     /// them, which would make an object for each; a change that only
     /// removes or only adds has nothing to look through. The same rows
-    /// of the same index change nothing, so a search that leaves a
-    /// schema's rows as they were leaves its rows on screen alone.
+    /// of the same index change nothing.
     pub(crate) fn show(&self, index: &Arc<SidebarIndex>, entries: Entries) {
-        let imp = self.imp();
-        let replaced = !Arc::ptr_eq(&imp.index.borrow(), index);
-        if !replaced && *imp.entries.borrow() == entries {
+        if self.shows(index, &entries) {
             return;
         }
-        if replaced {
-            imp.objects.borrow_mut().clear();
+        let imp = self.imp();
+        imp.objects.borrow_mut().clear();
+        if !Arc::ptr_eq(&imp.index.borrow(), index) {
             imp.index.replace(index.clone());
         }
         let removed = imp.entries.take().len();
@@ -165,16 +169,15 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn a_row_keeps_its_object_until_the_index_is_replaced() {
+    fn a_row_keeps_its_object_while_the_list_shows_it() {
         let first_index = index(&[("public", "users"), ("public", "orders")]);
         let list = SidebarList::new();
         list.show(&first_index, Entries::Run(0, 2));
         let first = list.item(0);
 
-        list.show(&first_index, Entries::Picked(first_index.matching(&search_key("o"))));
         list.show(&first_index, Entries::Run(0, 2));
 
-        assert_eq!(list.item(0), first, "a search made the row anew");
+        assert_eq!(list.item(0), first, "the same rows made the row anew");
         list.show(&index(&[("public", "users"), ("public", "orders")]), Entries::Run(0, 2));
         assert_ne!(list.item(0), first, "a new index kept an old row");
     }

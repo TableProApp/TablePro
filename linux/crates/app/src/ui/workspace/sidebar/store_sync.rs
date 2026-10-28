@@ -43,6 +43,37 @@ pub(super) fn sync<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) 
     }
 }
 
+/// Make `store` hold `desired` in two changes at most: every object from
+/// the first that differs to the last goes out in one, and the new ones
+/// go in with the other. GtkListView rebuilds the rows around its scroll
+/// position on each change, so a search that changes a hundred schemas'
+/// results costs two rebuilds rather than a hundred.
+pub(super) fn replace<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) {
+    let held: Vec<glib::Object> = (0..store.n_items()).filter_map(|at| store.item(at)).collect();
+    let desired: Vec<glib::Object> = desired.iter().map(|object| object.upcast_ref().clone()).collect();
+    let same = |(held, desired): (&glib::Object, &glib::Object)| held == desired;
+    let first = held.iter().zip(&desired).take_while(|pair| same(*pair)).count();
+    let last = held[first..]
+        .iter()
+        .rev()
+        .zip(desired[first..].iter().rev())
+        .take_while(|pair| same(*pair))
+        .count();
+    let position = u32::try_from(first).unwrap_or(u32::MAX);
+    let removed = held.len() - first - last;
+    if removed > 0 {
+        store.splice(
+            position,
+            u32::try_from(removed).unwrap_or(u32::MAX),
+            &[] as &[glib::Object],
+        );
+    }
+    let added = &desired[first..desired.len() - last];
+    if !added.is_empty() {
+        store.splice(position, 0, added);
+    }
+}
+
 /// Take out every object at a position `gone` names, a run at a time
 /// from the end, so each run is one change.
 fn remove_runs(store: &gio::ListStore, gone: impl Fn(u32) -> bool) {
@@ -120,6 +151,25 @@ mod tests {
             log.borrow_mut().push((position, removed, added));
         });
         seen
+    }
+
+    #[gtk4::test]
+    fn a_replace_takes_out_and_puts_in_one_run() {
+        let all = objects(6);
+        let store = store_of(&all[..4]);
+        let seen = changes(&store);
+
+        replace(
+            &store,
+            &[all[0].clone(), all[4].clone(), all[2].clone(), all[5].clone()],
+        );
+        replace(
+            &store,
+            &[all[0].clone(), all[4].clone(), all[2].clone(), all[5].clone()],
+        );
+
+        assert_eq!(held(&store), ["0", "4", "2", "5"]);
+        assert_eq!(*seen.borrow(), [(1, 3, 0), (1, 0, 3)]);
     }
 
     #[gtk4::test]

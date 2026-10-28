@@ -278,17 +278,13 @@ impl SidebarInner {
     }
 
     fn show_rows(&self, worked_out: RowsWorkedOut) {
-        match self.model.show(worked_out) {
-            Ok(previous) => {
-                if !Arc::ptr_eq(&previous, &self.model.shown_index()) {
-                    self.release(previous);
-                }
-            }
+        let previous = match self.model.show(worked_out) {
+            Ok(previous) => previous,
             Err(overtaken) => {
                 self.release(overtaken);
                 return;
             }
-        }
+        };
         let observers: Vec<RowsObserver> = self
             .observers
             .borrow()
@@ -297,6 +293,11 @@ impl SidebarInner {
             .collect();
         for observer in observers {
             observer();
+        }
+        // After the observers: the tree lets go of the lists of what an
+        // older search found, which hold the index too.
+        if !Arc::ptr_eq(&previous, &self.model.shown_index()) {
+            self.release(previous);
         }
     }
 

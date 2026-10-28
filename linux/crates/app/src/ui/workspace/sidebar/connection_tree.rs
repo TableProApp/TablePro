@@ -553,7 +553,7 @@ impl TreeInner {
     /// The sections of what the search finds: the connections it names,
     /// then each open session's schemas, in the tree's order. A schema's
     /// section is its list of found tables, empty while there is no
-    /// search, so typing changes the lists and never the sections.
+    /// search, and a new list once a search changes them.
     fn sync_sections(&self) {
         let mut headings = vec![Heading {
             model: self.named.clone().upcast(),
@@ -588,7 +588,7 @@ impl TreeInner {
         }
         let models: Vec<glib::Object> = headings.iter().map(|heading| heading.model.clone()).collect();
         self.headings.replace(headings);
-        store_sync::sync(&self.sections, &models);
+        store_sync::replace(&self.sections, &models);
     }
 
     /// The section of what the search finds that holds `position`.

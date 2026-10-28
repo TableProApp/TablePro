@@ -48,14 +48,13 @@ fn count_rows(schemas: &gio::ListModel, rows: fn(&TreeNode) -> Option<gio::ListM
         .sum()
 }
 
-/// How many rows the lists of what the search found made since their
-/// index was last replaced.
+/// How many rows the lists of what the search found made.
 fn made_found(view: &SidebarView) -> usize {
     let schemas = view.schemas();
     (0..schemas.n_items())
         .filter_map(|at| schemas.item(at).and_downcast::<TreeNode>())
         .filter_map(|node| node.found_rows())
-        .map(|list| list.imp().objects.borrow().len())
+        .map(|list| list.imp().objects.borrow().iter().flatten().count())
         .sum()
 }
 
@@ -773,7 +772,6 @@ fn a_search_over_an_open_schema_of_50000_tables_makes_only_the_rows_on_screen() 
     shown.tree.select(Some(&key), Some(&table("t49999")));
 
     for (query, matching) in [("t", 50_000), ("t0", 10_000), ("t4", 10_000), ("t49", 1_000)] {
-        let before = made_found(&view);
         shown.search(query);
         let list_view = shown.inner().found.list_view.clone();
         wait_until(WAIT, || list_view.is_mapped() && built(&list_view) > 0).expect("the results on screen");
@@ -783,7 +781,7 @@ fn a_search_over_an_open_schema_of_50000_tables_makes_only_the_rows_on_screen() 
         assert!(built(&list_view) <= 210, "{} rows built for {query}", built(&list_view));
         // GtkListView keeps about 200 rows around its viewport; a list
         // that made one per table found would make thousands.
-        let made = made_found(&view) - before;
+        let made = made_found(&view);
         assert!(made <= 250, "{made} rows made for {query}");
     }
 
@@ -794,6 +792,39 @@ fn a_search_over_an_open_schema_of_50000_tables_makes_only_the_rows_on_screen() 
     );
     shown.search("");
     assert_eq!(shown.selected().as_deref(), Some("t49999"));
+}
+
+/// GtkListView rebuilds the rows around its scroll position on every
+/// change, so a search over many schemas takes rows out of what it
+/// finds once and puts rows in once, not once per schema.
+#[gtk4::test]
+fn a_search_over_a_hundred_schemas_changes_what_it_finds_twice() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let schemas: Vec<SchemaInfo> = (0..100).map(|at| schema(&format!("tenant_{at:03}"), at == 0)).collect();
+    let objects: Vec<ObjectInfo> = schemas
+        .iter()
+        .flat_map(|schema| ["kiwi", "kumquat", "yuzu"].map(|name| object(&schema.name, name)))
+        .collect();
+    let view = SidebarView::new(|_| {}, every_affordance(), None);
+    view.show(SidebarIndex::build(&objects, &schemas));
+    shown.open(&alpha, &view);
+    shown.search("k");
+    let list_view = shown.inner().found.list_view.clone();
+    wait_until(WAIT, || list_view.is_mapped() && built(&list_view) > 0).expect("the results on screen");
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let log = seen.clone();
+    shown
+        .inner()
+        .results
+        .connect_items_changed(move |_, position, removed, added| {
+            log.borrow_mut().push((position, removed, added));
+        });
+
+    shown.search("ki");
+
+    assert_eq!(found(&view), 100);
+    assert_eq!(*seen.borrow(), [(0, 200, 0), (0, 0, 100)]);
 }
 
 #[gtk4::test]

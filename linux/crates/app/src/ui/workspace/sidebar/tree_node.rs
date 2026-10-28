@@ -132,6 +132,10 @@ impl TreeNode {
         self.imp().found.borrow().clone()
     }
 
+    pub(crate) fn set_found(&self, found: SidebarList) {
+        self.imp().found.replace(Some(found.upcast()));
+    }
+
     /// What an open connection lists in the tree; none once it closes.
     pub(crate) fn set_children(&self, children: Option<gio::ListModel>) {
         self.imp().children.replace(children);

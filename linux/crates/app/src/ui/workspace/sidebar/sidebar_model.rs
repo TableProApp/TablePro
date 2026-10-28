@@ -8,7 +8,7 @@ use gtk4::prelude::*;
 use tablepro_core::meta::{ObjectKind, TableRef};
 
 use super::sidebar_index::{SidebarIndex, search_key};
-use super::sidebar_list::Entries;
+use super::sidebar_list::{Entries, SidebarList};
 use super::store_sync;
 use super::tree_node::TreeNode;
 
@@ -27,9 +27,10 @@ pub(crate) enum Search {
 /// The session's tables as the connection tree lists them: a schema
 /// node per section of the index, each over its tables and over the
 /// ones the search finds. A new index or search is worked out into rows
-/// apart from the lists, and each list takes its rows in one change, so
-/// a list of what the search found makes objects only for the rows on
-/// screen.
+/// apart from the lists. A schema's tables take their rows in place; a
+/// schema whose results change gets a new list of them, which the tree
+/// swaps in with every other schema's in one change. A list of what the
+/// search found makes objects only for the rows on screen.
 pub(crate) struct SidebarModel {
     /// Every section's schema, in list order.
     schemas: gio::ListStore,
@@ -185,8 +186,10 @@ impl SidebarModel {
                 Found::Everything => Entries::Run(run.start, run.end),
                 Found::Picked(picked) => Entries::Picked(picked.get_mut(at).map(std::mem::take).unwrap_or_default()),
             };
-            if let Some(found_rows) = node.found_rows() {
-                found_rows.show(&index, results);
+            if node.found_rows().is_none_or(|list| !list.shows(&index, &results)) {
+                let list = SidebarList::new();
+                list.show(&index, results);
+                node.set_found(list);
             }
             schemas.push(node);
         }
