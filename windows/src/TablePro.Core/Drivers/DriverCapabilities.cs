@@ -1,3 +1,4 @@
+using TablePro.Core.Editing;
 using TablePro.Core.Results;
 using TablePro.Core.Schema;
 
@@ -45,6 +46,15 @@ public interface IDatabaseAdministration
 public interface IServerVariablesProvider
 {
     Task<ResultSet> GetVariablesAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// An engine whose saves are not SQL statements shows the save review in its own language, so a document store lists
+/// the shell commands it will run instead of an UPDATE it never sends.
+/// </summary>
+public interface IChangePreviewProvider
+{
+    IReadOnlyList<string> PreviewChanges(ObjectName table, IReadOnlyList<RowChange> changes);
 }
 
 /// <summary>

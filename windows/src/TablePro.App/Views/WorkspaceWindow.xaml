@@ -77,7 +77,7 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <ComboBox x:Name="DatabaseBox" HorizontalAlignment="Stretch" PlaceholderText="Database" ItemsSource="{x:Bind ViewModel.Databases}" SelectedItem="{x:Bind ViewModel.SelectedDatabaseItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.CanSwitchDatabase}" ToolTipService.ToolTip="Database" />
+                <ComboBox x:Name="DatabaseBox" HorizontalAlignment="Stretch" PlaceholderText="Database" ItemsSource="{x:Bind ViewModel.Databases}" SelectedItem="{x:Bind ViewModel.SelectedDatabaseItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.ShowDatabaseSwitcher, Mode=OneWay}" ToolTipService.ToolTip="Database" />
                 <ComboBox x:Name="SchemaBox" Grid.Row="1" HorizontalAlignment="Stretch" PlaceholderText="Schema" ItemsSource="{x:Bind ViewModel.Schemas}" SelectedItem="{x:Bind ViewModel.SelectedSchemaItem, Mode=TwoWay}" Visibility="{x:Bind ViewModel.HasSchemas}" ToolTipService.ToolTip="Schema" />
                 <AutoSuggestBox Grid.Row="2" PlaceholderText="Search tables (Ctrl+P)" QueryIcon="Find" Text="{x:Bind ViewModel.SearchText, Mode=TwoWay}" x:Name="SearchBox" />
                 <InfoBar Grid.Row="3" Severity="Error" IsClosable="False" IsOpen="{x:Bind ViewModel.HasSidebarError, Mode=OneWay}" Message="{x:Bind ViewModel.SidebarError, Mode=OneWay}" />

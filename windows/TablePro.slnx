@@ -19,6 +19,7 @@
     <Project Path="src/TablePro.Drivers.ClickHouse/TablePro.Drivers.ClickHouse.csproj" />
     <Project Path="src/TablePro.Drivers.Oracle/TablePro.Drivers.Oracle.csproj" />
     <Project Path="src/TablePro.Drivers.Teradata/TablePro.Drivers.Teradata.csproj" />
+    <Project Path="src/TablePro.Drivers.MongoDb/TablePro.Drivers.MongoDb.csproj" />
     <!-- The WinUI app has no Any CPU build; the solution's Any CPU builds it for x64. -->
     <Project Path="src/TablePro.App/TablePro.App.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -38,5 +39,6 @@
     <Project Path="tests/TablePro.Drivers.DuckDb.Tests/TablePro.Drivers.DuckDb.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Redis.Tests/TablePro.Drivers.Redis.Tests.csproj" />
     <Project Path="tests/TablePro.Drivers.Analytics.Tests/TablePro.Drivers.Analytics.Tests.csproj" />
+    <Project Path="tests/TablePro.Drivers.MongoDb.Tests/TablePro.Drivers.MongoDb.Tests.csproj" />
   </Folder>
 </Solution>

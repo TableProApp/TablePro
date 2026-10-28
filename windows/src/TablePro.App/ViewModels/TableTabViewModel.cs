@@ -407,7 +407,9 @@ public sealed partial class TableTabViewModel : TabViewModel
             return;
         }
 
-        var preview = changes.Select(c => ChangeSqlBuilder.Preview(_context.Session.Dialect, Table.Name, c)).ToArray();
+        var preview = _context.Session.Database is IChangePreviewProvider custom
+            ? custom.PreviewChanges(Table.Name, changes)
+            : changes.Select(c => ChangeSqlBuilder.Preview(_context.Session.Dialect, Table.Name, c)).ToArray();
         if (profile.SafeMode.RequiresConfirmation() && !await _context.Dialogs.ReviewSqlAsync("Save changes", preview, "Save"))
         {
             return;

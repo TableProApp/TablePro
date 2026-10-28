@@ -58,5 +58,6 @@
     <ProjectReference Include="..\TablePro.Drivers.ClickHouse\TablePro.Drivers.ClickHouse.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Oracle\TablePro.Drivers.Oracle.csproj" />
     <ProjectReference Include="..\TablePro.Drivers.Teradata\TablePro.Drivers.Teradata.csproj" />
+    <ProjectReference Include="..\TablePro.Drivers.MongoDb\TablePro.Drivers.MongoDb.csproj" />
   </ItemGroup>
 </Project>

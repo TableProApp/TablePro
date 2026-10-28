@@ -102,6 +102,9 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
 
     public bool CanSwitchDatabase => !Profile.Descriptor.IsFileBased;
 
+    // Engines whose databases are listed as schemas (Redis's numbered ones) return none, so the empty box is hidden.
+    public bool ShowDatabaseSwitcher => CanSwitchDatabase && Databases.Count > 0;
+
     public string SafeModeText => Profile.SafeMode switch
     {
         SafeModeLevel.Silent => string.Empty,
@@ -175,6 +178,8 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
                 // A login without rights to list databases still works in the one it connected to.
                 Databases.Clear();
             }
+
+            OnPropertyChanged(nameof(ShowDatabaseSwitcher));
         }
 
         if (Tabs.Count == 0)

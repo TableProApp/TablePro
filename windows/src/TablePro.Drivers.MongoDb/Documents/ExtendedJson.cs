@@ -21,6 +21,8 @@ internal enum JsonFlavor
 internal static class ExtendedJson
 {
     private const long MaxIsoMillis = 253_402_300_799_999;
+    private const char LineSeparator = '\u2028';
+    private const char ParagraphSeparator = '\u2029';
 
     public static string Write(BsonValue value, JsonFlavor flavor = JsonFlavor.Relaxed, bool indented = false)
     {
@@ -168,7 +170,7 @@ internal static class ExtendedJson
                     break;
 
                 // U+2028 and U+2029 end a line in JavaScript, which would split a statement the editor runs.
-                case < ' ' or ' ' or ' ':
+                case < ' ' or LineSeparator or ParagraphSeparator:
                     sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
                     break;
                 default:
@@ -201,7 +203,11 @@ internal static class ExtendedJson
                 }
             }
 
-            NewLine(sb, indent + 1);
+            if (indent >= 0)
+            {
+                NewLine(sb, indent + 1);
+            }
+
             AppendString(sb, element.Name);
             sb.Append(": ");
             Append(sb, element.Value, flavor, indent < 0 ? -1 : indent + 1);
@@ -232,7 +238,11 @@ internal static class ExtendedJson
                 }
             }
 
-            NewLine(sb, indent + 1);
+            if (indent >= 0)
+            {
+                NewLine(sb, indent + 1);
+            }
+
             Append(sb, array[i], flavor, indent < 0 ? -1 : indent + 1);
         }
 

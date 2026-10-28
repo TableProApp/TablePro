@@ -12,6 +12,7 @@ using TablePro.Drivers.SqlServer;
 using TablePro.Drivers.ClickHouse;
 using TablePro.Drivers.Oracle;
 using TablePro.Drivers.Teradata;
+using TablePro.Drivers.MongoDb;
 using TablePro.Ssh;
 using TablePro.Storage;
 using TablePro.Storage.Connections;
@@ -66,7 +67,8 @@ public partial class App : Application
         .Register(new RedisDriver())
         .Register(new ClickHouseDriver())
         .Register(new OracleDriver())
-        .Register(new TeradataDriver());
+        .Register(new TeradataDriver())
+        .Register(new MongoDbDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

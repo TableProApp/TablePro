@@ -70,7 +70,7 @@ internal static class ExtendedJsonWrappers
                 value = BsonUndefined.Value;
                 return true;
             case "$symbol" when inner.IsString:
-                value = new BsonSymbol(inner.AsString);
+                value = BsonSymbol.Create(inner.AsString);
                 return true;
             case "$code" when inner.IsString:
                 value = new BsonJavaScript(inner.AsString);
@@ -105,12 +105,6 @@ internal static class ExtendedJsonWrappers
         if (inner.IsInt32 || inner.IsInt64)
         {
             value = new BsonDateTime(inner.ToInt64());
-            return true;
-        }
-
-        if (inner is BsonInt64 { } longMillis)
-        {
-            value = new BsonDateTime(longMillis.Value);
             return true;
         }
 
@@ -149,7 +143,7 @@ internal static class ExtendedJsonWrappers
             value = new BsonBinaryData(Convert.FromBase64String(base64), (BsonBinarySubType)subType);
             return true;
         }
-        catch (FormatException)
+        catch (Exception ex) when (ex is FormatException or ArgumentException)
         {
             return false;
         }

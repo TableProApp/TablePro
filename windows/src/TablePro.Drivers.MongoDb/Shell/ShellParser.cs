@@ -228,7 +228,7 @@ internal sealed class ShellParser
         throw Error($"Unexpected '{token.Text}'", token);
     }
 
-    private BsonDocument ReadObject()
+    private BsonValue ReadObject()
     {
         _index++;
         var document = new BsonDocument();
