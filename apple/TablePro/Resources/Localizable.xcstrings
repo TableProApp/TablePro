@@ -110134,6 +110134,9 @@
         }
       }
     },
+    "Monthly" : {
+
+    },
     "Moon" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -179617,6 +179620,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro signs you in with your license key the next time it reaches the server." : {
+
+    },
     "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -189932,6 +189938,9 @@
           }
         }
       }
+    },
+    "The server is busy. Try again in a few minutes." : {
+
     },
     "The server is rate limiting TablePro. Try again shortly." : {
       "localizations" : {
@@ -214579,6 +214588,9 @@
         }
       }
     },
+    "Yearly" : {
+
+    },
     "Yellow" : {
       "localizations" : {
         "fr" : {
@@ -214818,6 +214830,9 @@
           }
         }
       }
+    },
+    "You were signed out. Sign in again." : {
+
     },
     "Your account is not allowed to read the source of %@" : {
       "extractionState" : "manual",

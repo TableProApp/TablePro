@@ -22,6 +22,8 @@ struct LicenseSettingsView: View {
 
             if state.isSignedIn || state.entitlement != nil {
                 identitySection
+            } else if let legacy = state.legacy {
+                legacySection(legacy)
             } else {
                 landingSection
             }
@@ -80,6 +82,32 @@ struct LicenseSettingsView: View {
         }
     }
 
+    // The key exchange signs this Mac in, so a second sign-in here would leave the key unexchanged.
+    private func legacySection(_ legacy: LegacyEntitlement) -> some View {
+        let isValid = legacy.isValid(at: Date())
+        return Section {
+            HStack(spacing: 12) {
+                Image(systemName: isValid ? "checkmark.seal.fill" : "seal")
+                    .font(.largeTitle)
+                    .foregroundStyle(isValid ? Color.green : Color.secondary)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("License key")
+                        .font(.headline)
+
+                    Text(isValid
+                        ? String(localized: "TablePro signs you in with your license key the next time it reaches the server.")
+                        : String(localized: "Connect to the internet to verify your license."))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     private var landingSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 14) {
@@ -135,13 +163,35 @@ struct LicenseSettingsView: View {
         }
     }
 
-    // The plan and cycle are the server's words, shown as they come.
     private static func planLine(_ license: EntitlementLicense) -> String {
-        var parts = [license.plan.capitalized, license.cycle.capitalized]
-        if let team = license.team {
-            parts.append(team.name)
+        let line = String(format: String(localized: "%@, %@"), planName(license.plan), cycleName(license.cycle))
+        guard let team = license.team else { return line }
+        return String(format: String(localized: "%@, %@"), line, team.name)
+    }
+
+    // A plan or cycle a newer server adds shows as its code until the app learns its name.
+    private static func planName(_ code: String) -> String {
+        switch code {
+        case "starter":
+            return String(localized: "Starter")
+        case "team":
+            return String(localized: "Team")
+        default:
+            return code
         }
-        return parts.joined(separator: ", ")
+    }
+
+    private static func cycleName(_ code: String) -> String {
+        switch code {
+        case "monthly":
+            return String(localized: "Monthly")
+        case "yearly":
+            return String(localized: "Yearly")
+        case "lifetime":
+            return String(localized: "Lifetime")
+        default:
+            return code
+        }
     }
 }
 
