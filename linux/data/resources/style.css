@@ -70,6 +70,43 @@ columnview > listview > row > cell > tp-grid-cell > text:focus-within {
   background: #6f8396;
 }
 
+/* A connection's icon in the window's tree, in the connection's colour. */
+.tp-connection-icon.tp-tag-blue {
+  color: #3584e4;
+}
+
+.tp-connection-icon.tp-tag-teal {
+  color: #2190a4;
+}
+
+.tp-connection-icon.tp-tag-green {
+  color: #3a944a;
+}
+
+.tp-connection-icon.tp-tag-yellow {
+  color: #c88800;
+}
+
+.tp-connection-icon.tp-tag-orange {
+  color: #ed5b00;
+}
+
+.tp-connection-icon.tp-tag-red {
+  color: #e62d42;
+}
+
+.tp-connection-icon.tp-tag-pink {
+  color: #d56199;
+}
+
+.tp-connection-icon.tp-tag-purple {
+  color: #9141ac;
+}
+
+.tp-connection-icon.tp-tag-slate {
+  color: #6f8396;
+}
+
 /* A tag beside a connection's name: tinted with its colour, the name in
    the text colour, so it reads in both styles. */
 .tp-tag-pill {

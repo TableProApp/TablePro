@@ -133,22 +133,34 @@ impl TestApp {
             .join(OpenSessionsRecord::FILE_NAME)
     }
 
-    /// Write `keys` as the sessions open at the last quit.
+    /// Write `keys` as the sessions open at the last quit, each in a
+    /// window of its own.
     fn record(&self, keys: &[SessionKey]) {
+        self.record_windows(keys.iter().map(std::slice::from_ref));
+    }
+
+    /// Write each group of keys as one window's sessions at the last quit.
+    fn record_windows<'a>(&self, windows: impl IntoIterator<Item = &'a [SessionKey]>) {
         let path = self.record_path();
         std::fs::create_dir_all(path.parent().expect("a parent")).expect("the workspaces directory");
-        let bytes = encode_document(&OpenSessionsRecord::from_keys(keys)).expect("encode");
+        let bytes = encode_document(&OpenSessionsRecord::from_windows(windows)).expect("encode");
         std::fs::write(&path, bytes).expect("write the record");
     }
 
     /// The sessions recorded on disk, once every write has landed.
     fn recorded(&self) -> Vec<SessionKey> {
+        self.recorded_windows().into_iter().flatten().collect()
+    }
+
+    /// The sessions recorded on disk by window, once every write has
+    /// landed.
+    fn recorded_windows(&self) -> Vec<Vec<SessionKey>> {
         finish_on_main(WAIT, self.services().open_sessions().settled()).expect("the writes to land");
         let path = self.record_path();
         let bytes = std::fs::read(&path).expect("the record");
         decode_document::<OpenSessionsRecord>(&path, &bytes)
             .expect("a record")
-            .keys()
+            .windows()
     }
 
     /// The window that claims `key`.
@@ -177,7 +189,7 @@ impl TestApp {
         quit
     }
 
-    /// Wait for every key to show its workspace in a window of its own.
+    /// Wait for every key to show its workspace in a window.
     fn wait_for_sessions(&self, keys: &[SessionKey]) {
         let services = self.services();
         wait_until(WAIT, || {
@@ -334,6 +346,52 @@ fn activate_restores_the_recorded_sessions_in_order() {
         "a picker opened beside the restored windows"
     );
     assert_eq!(services.open_sessions().keys(), [first, second]);
+}
+
+#[gtk4::test]
+fn activate_restores_a_recorded_window_with_all_its_sessions() {
+    let test = TestApp::started("RestoreShared");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    let shared = [first.clone(), second.clone()];
+    test.record_windows([&shared[..]]);
+
+    test.app.activate();
+    test.wait_for_sessions(&shared);
+
+    let services = test.services();
+    let ids = [&first, &second].map(|key| services.sessions.window_for(key).expect("a window"));
+    assert_eq!(ids[0], ids[1], "the recorded window's sessions opened apart");
+    assert_eq!(test.app.windows().len(), 1, "a window opened beside the restored one");
+    assert_eq!(test.recorded_windows(), [shared.to_vec()]);
+}
+
+/// Opening a file that a window holds behind another of its sessions
+/// brings that session forward, not only its window.
+#[gtk4::test]
+fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
+    let test = TestApp::started("OpenHeldBehind");
+    let (first, second) = (test.database("first.db"), test.database("second.db"));
+    let shared = [first.clone(), second.clone()];
+    test.record_windows([&shared[..]]);
+    test.app.activate();
+    test.wait_for_sessions(&shared);
+    let window = test
+        .app
+        .active_window()
+        .and_downcast::<SessionWindow>()
+        .expect("the restored window");
+    let shell = window.shell().expect("the shell");
+    let front_key = || shell.front().and_then(|front| front.key());
+    window.send(crate::ui::SessionWindowInput::NewQueryIn(second.clone()));
+    wait_until(WAIT, || front_key().as_ref() == Some(&second)).expect("the second session in front with a tab");
+    let SessionKey::File(uri) = &first else {
+        unreachable!("a database file opens as a file key");
+    };
+
+    test.app.open(&[gio::File::for_uri(uri)], "");
+
+    wait_until(WAIT, || front_key().as_ref() == Some(&first)).expect("the file's session in front");
+    assert_eq!(test.app.windows().len(), 1, "the file opened another window");
 }
 
 #[gtk4::test]
@@ -946,6 +1004,32 @@ mod mcp {
         assert_eq!(test.app.windows().len(), 1, "a second open made another window");
         assert!(session.is_some());
         assert_eq!(open, [id]);
+    }
+
+    #[gtk4::test]
+    fn a_client_opens_a_second_connection_in_a_window_of_its_own() {
+        let test = TestApp::started("McpApart");
+        let host = test.app.answer_mcp(&test.services());
+        let (first, second) = (
+            saved_file(&test, "shop.db", ExternalAccess::ReadOnly),
+            saved_file(&test, "stock.db", ExternalAccess::ReadOnly),
+        );
+
+        let opened_first = opened(&test, &host, &first);
+        let opened_second = opened(&test, &host, &second);
+
+        assert!(matches!(opened_first, OpenOutcome::Open(_)), "{opened_first:?}");
+        assert!(matches!(opened_second, OpenOutcome::Open(_)), "{opened_second:?}");
+        assert_eq!(
+            test.app.windows().len(),
+            2,
+            "the agent's connection joined the sessions the user works in"
+        );
+        let services = test.services();
+        assert_ne!(
+            services.sessions.window_for(&SessionKey::Saved(first.id)),
+            services.sessions.window_for(&SessionKey::Saved(second.id))
+        );
     }
 
     #[gtk4::test]

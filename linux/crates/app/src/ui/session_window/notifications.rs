@@ -55,45 +55,51 @@ impl SessionWindow {
     }
 
     pub(super) fn on_work_completed(&self, work: CompletedWork) {
-        let Some(workspace) = self.workspace() else {
+        let Some(workspace) = self.workspace_with_tab(work.tab) else {
             return;
         };
         let Some(label) = workspace.notice_label(work.tab) else {
             return;
         };
         let active = self.window_is_active() && workspace.selected_tab() == Some(work.tab);
-        let connection = workspace.connection_name().unwrap_or_default();
+        let connection = workspace.connection_name();
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
             notifier.work_completed(&work, active, &label, &connection);
         }
     }
 
+    /// Also called after a session goes, whose tabs no session holds
+    /// any more.
     pub(super) fn on_tabs_changed(&self) {
         let notifier = self.imp().notifier.borrow();
         let Some(notifier) = notifier.as_ref().filter(|notifier| notifier.has_sent()) else {
             return;
         };
-        let Some(workspace) = self.workspace() else {
+        let workspaces = self.workspaces();
+        if workspaces.is_empty() {
             return;
-        };
-        if let Some(open) = workspace.open_tabs() {
-            notifier.withdraw_closed(|tab| open.contains(&tab));
+        }
+        // A session busy with its input cannot say which tabs it holds,
+        // and its notifications stay until it can.
+        if let Some(open) = workspaces.iter().map(Workspace::open_tabs).collect::<Option<Vec<_>>>() {
+            notifier.withdraw_closed(|tab| open.iter().any(|tabs| tabs.contains(&tab)));
         }
         if self.window_is_active()
-            && let Some(tab) = workspace.selected_tab()
+            && let Some(tab) = workspaces.iter().find_map(Workspace::selected_tab)
         {
             notifier.tab_became_active(tab);
         }
     }
 
     pub(super) fn on_focus_tab(&self, tab: Uuid) {
-        match self.workspace().and_then(|workspace| workspace.input()) {
+        match self.workspace_with_tab(tab).and_then(|workspace| workspace.sender()) {
             Some(input) => input.deliver(WorkspaceInput::FocusTab(tab)),
             None => tracing::debug!("a notification named a tab of a session the window no longer shows"),
         }
     }
 
-    /// Every notification names a tab of the session going away.
+    /// Every notification names a tab of a session the window no longer
+    /// holds, once the last one goes.
     pub(super) fn withdraw_notifications(&self) {
         if let Some(notifier) = self.imp().notifier.borrow().as_ref() {
             notifier.withdraw_all();

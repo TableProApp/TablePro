@@ -190,9 +190,9 @@ SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, wher
 
 ### Large-catalog case
 
-`crates/app/src/ui/workspace/tests/large_catalog.rs` fills PostgreSQL with 100 schemas of 500 tables, the default schema among them, and MySQL with one database of 50,000. It puts the sidebar and a SQL editor on screen over a session the app's own connector opens:
+`crates/app/src/ui/workspace/tests/large_catalog.rs` fills PostgreSQL with 100 schemas of 500 tables, the default schema among them, and MySQL with one database of 50,000. It puts the connection tree and a SQL editor on screen over a session the app's own connector opens:
 
-- The sidebar lists every schema's tables, read and indexed the way the workspace does, then its search takes `i`, `in` and an empty search.
+- The tree lists every schema's tables under the open connection, read and indexed the way the workspace does, then its search takes `i`, `in` and an empty search with a schema of the catalog open.
 - The editor's completion opens after `FROM `, narrows as `i` is typed, and opens again after a schema's dot.
 - Each step has a time bound, from the action to its result on screen, and none may stall the main loop past 100 ms, which `StallProbe` (`crates/app/src/test_support/stall_probe.rs`) measures as the longest gap between runs of a high-priority timeout. The catalog may not raise the resident peak (`ResidentPeak`) past a memory bound. The bounds are constants at the top of the file.
 

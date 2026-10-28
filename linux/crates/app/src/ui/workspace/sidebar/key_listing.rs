@@ -104,7 +104,7 @@ impl WorkspaceModel {
         let cancel = keys.start_listing();
         self.sidebar_read += 1;
         let read = self.sidebar_read;
-        let pattern = KeyScan::search(&self.table_search.text());
+        let pattern = KeyScan::search(&self.sidebar.key_search());
         let searched = pattern.is_some();
         let heading = database_heading(&session);
         let input = self.input.clone();
@@ -143,7 +143,6 @@ impl WorkspaceModel {
                     keys.limit_banner.set_revealed(!listed.complete);
                 }
                 self.sidebar.show_keys(listed.index, searched);
-                self.sync_sidebar_selection();
             }
             Err(message) => {
                 let title = crate::i18n::gettext_f("Could not list the keys: {error}", &[("error", &message)]);

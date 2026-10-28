@@ -37,6 +37,7 @@ mod preferences_dialog;
 mod result_pane;
 pub(crate) mod safe_mode;
 mod saved_queries_dialog;
+mod session_target;
 mod session_window;
 mod shell;
 mod ssh_inputs;

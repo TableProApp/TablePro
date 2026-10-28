@@ -7,8 +7,9 @@ use tablepro_test_support::{ConnectionScript, FakeReply};
 
 use super::super::sidebar::SidebarView;
 use super::super::{WorkspaceInput, WorkspaceTab};
+use super::shell_of;
 use crate::runtime::DeliverInput;
-use crate::test_support::{drain_main_context, first_descendant_of_type, wait_until};
+use crate::test_support::{drain_main_context, wait_until};
 use crate::ui::diagram::DiagramTab;
 use crate::ui::session_window::tests::{Script, TestWindow, WAIT};
 use crate::workspace::{DiagramPlace, TabRecord, WorkspaceRecord};
@@ -76,7 +77,7 @@ fn diagrams(test: &TestWindow) -> Vec<DiagramTab> {
 
 fn show_diagram(test: &TestWindow, schema: &str) {
     test.workspace()
-        .input()
+        .sender()
         .expect("the workspace's input")
         .deliver(WorkspaceInput::ShowDiagram {
             schema: Some(schema.to_owned()),
@@ -90,7 +91,7 @@ fn drawn(diagram: &DiagramTab) {
 #[gtk4::test]
 fn a_schema_has_one_diagram_tab_titled_for_it() {
     let test = TestWindow::connected_with("DiagramOneTab", sales);
-    let view = test.workspace().imp().tab_view.get();
+    let view = shell_of(&test.workspace()).imp().tab_view.get();
 
     show_diagram(&test, "sales");
     wait_until(WAIT, || diagrams(&test).len() == 1).expect("a diagram tab");
@@ -116,17 +117,17 @@ fn the_sidebar_shows_a_tables_schema_as_a_diagram() {
         .workspace()
         .read(|model| model.sidebar.clone())
         .expect("the sidebar");
-    wait_until(WAIT, || sidebar.shown() == 2).expect("the sidebar's tables");
-    let list: gtk4::ListView = first_descendant_of_type(sidebar.widget()).expect("the sidebar's list");
+    wait_until(WAIT, || crate::ui::workspace::sidebar::tests::listed(&sidebar) == 2).expect("the sidebar's tables");
     let key = (Some("sales".to_owned()), "orders".to_owned()).to_variant();
 
-    WidgetExt::activate_action(&list, "sidebar.show-diagram", Some(&key)).expect("the menu's Show ER Diagram");
+    sidebar.actions().activate_action("show-diagram", Some(&key));
 
     wait_until(WAIT, || diagrams(&test).len() == 1).expect("a diagram tab");
     let diagram = diagrams(&test).remove(0);
     assert_eq!(diagram.schema().as_deref(), Some("sales"));
-    WidgetExt::activate_action(&list, "sidebar.show-schema-diagram", Some(&Some("sales").to_variant()))
-        .expect("the section header's button");
+    sidebar
+        .actions()
+        .activate_action("show-schema-diagram", Some(&Some("sales").to_variant()));
     drain_main_context();
     assert_eq!(diagrams(&test).len(), 1);
 }
@@ -209,11 +210,11 @@ fn a_closed_diagram_reopens_and_a_saved_one_comes_back() {
         diagrams(&test)[0].places().contains(&placed()),
         "the moved table is back where it was put"
     );
-    let input = test.workspace().input().expect("the workspace's input");
+    let input = test.workspace().sender().expect("the workspace's input");
 
     input.deliver(WorkspaceInput::CloseActiveWorkspaceTab);
     wait_until(WAIT, || diagrams(&test).is_empty()).expect("the diagram closed");
-    input.deliver(WorkspaceInput::ReopenClosedTab);
+    WidgetExt::activate_action(&test.window, "win.reopen-closed-tab", None).expect("win.reopen-closed-tab");
 
     wait_until(WAIT, || diagrams(&test).len() == 1).expect("the diagram reopened");
     assert_eq!(diagrams(&test)[0].schema().as_deref(), Some("sales"));
@@ -238,7 +239,7 @@ fn a_change_to_a_table_marks_its_schemas_diagram_out_of_date() {
     let diagram = diagrams(&test).remove(0);
     drawn(&diagram);
     let banner = diagram.imp().outdated_banner.get();
-    let input = test.workspace().input().expect("the workspace's input");
+    let input = test.workspace().sender().expect("the workspace's input");
 
     input.deliver(WorkspaceInput::SchemaChanged {
         schema: Some("audit".to_owned()),

@@ -7,8 +7,8 @@ use super::{Accelerator, AcceleratorScope, ShortcutListing, ShortcutOwner, Short
 use AcceleratorScope::{Application, Component, Local, Stock};
 use ShortcutListing::{Listed, Unlisted};
 use ShortcutOwner::{
-    AssistantComposer, BrowseTab, CellEditor, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell, HistoryRow,
-    InlineSuggestion, PickerPage, PickerRow, SidebarList, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
+    AssistantComposer, BrowseTab, CellEditor, ConnectionTree, DiagramCanvas, DiagramTab, FilterStrip, Grid, GridCell,
+    HistoryRow, InlineSuggestion, PickerPage, PickerRow, SqlEditor, SqlEditorCursors, SqlEditorTab, StructureTab,
 };
 use ShortcutSection::{BrowseTable, DataGrid, ErDiagram, General, TableStructure, Tabs};
 
@@ -392,9 +392,9 @@ pub const ACCELERATORS: &[Accelerator] = &[
     ),
     local(FilterStrip, BUBBLE, "filter.close", &["Escape"], Unlisted),
     local(
-        SidebarList,
+        ConnectionTree,
         BUBBLE,
-        "sidebar.context-menu",
+        "tree.context-menu",
         &["Menu", "<Shift>F10"],
         Unlisted,
     ),
@@ -535,7 +535,7 @@ pub const fn controller_name(owner: ShortcutOwner) -> &'static str {
         SqlEditorTab => "tablepro-sql-editor-tab-shortcuts",
         StructureTab => "tablepro-structure-tab-shortcuts",
         FilterStrip => "tablepro-filter-strip-shortcuts",
-        SidebarList => "tablepro-sidebar-list-shortcuts",
+        ConnectionTree => "tablepro-connection-tree-shortcuts",
         HistoryRow => "tablepro-history-row-shortcuts",
         PickerRow => "tablepro-picker-row-shortcuts",
         DiagramTab => "tablepro-diagram-tab-shortcuts",

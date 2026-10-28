@@ -8,6 +8,7 @@ pub enum WindowLaunch {
     Connect(Box<SavedConnection>),
     /// A database file, from the file manager or the command line.
     OpenFile(gio::File),
-    /// A session that was open when the application last quit.
-    Restore(SessionKey),
+    /// The sessions one window held when the application last quit, in
+    /// the order it adopted them.
+    Restore(Vec<SessionKey>),
 }

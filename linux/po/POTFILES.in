@@ -448,8 +448,10 @@ crates/app/src/ui/result_pane/result_set_view.rs
 crates/app/src/ui/result_pane/result_summary.rs
 crates/app/src/ui/safe_mode.rs
 crates/app/src/ui/saved_queries_dialog.rs
+crates/app/src/ui/session_target.rs
 crates/app/src/ui/session_window/application_notification_sink.rs
 crates/app/src/ui/session_window/connect_failed_page.rs
+crates/app/src/ui/session_window/connect_failure_details.rs
 crates/app/src/ui/session_window/connect_failure_view.rs
 crates/app/src/ui/session_window/connect_flow.rs
 crates/app/src/ui/session_window/connecting_page.rs
@@ -473,6 +475,7 @@ crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
+crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
@@ -542,17 +545,15 @@ crates/app/src/ui/workspace/import.rs
 crates/app/src/ui/workspace/import_ledger.rs
 crates/app/src/ui/workspace/mod.rs
 crates/app/src/ui/workspace/references.rs
-crates/app/src/ui/workspace/row_ops.rs
 crates/app/src/ui/workspace/saves.rs
 crates/app/src/ui/workspace/session_watches.rs
-crates/app/src/ui/workspace/shell.rs
 crates/app/src/ui/workspace/sidebar/catalog_watch.rs
+crates/app/src/ui/workspace/sidebar/connection_tree.rs
 crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs
 crates/app/src/ui/workspace/sidebar/sidebar_affordances.rs
 crates/app/src/ui/workspace/sidebar/sidebar_event.rs
-crates/app/src/ui/workspace/sidebar/sidebar_header_factory.rs
 crates/app/src/ui/workspace/sidebar/sidebar_index.rs
 crates/app/src/ui/workspace/sidebar/sidebar_list.rs
 crates/app/src/ui/workspace/sidebar/sidebar_list_imp.rs
@@ -560,9 +561,12 @@ crates/app/src/ui/workspace/sidebar/sidebar_menu.rs
 crates/app/src/ui/workspace/sidebar/sidebar_model.rs
 crates/app/src/ui/workspace/sidebar/sidebar_object.rs
 crates/app/src/ui/workspace/sidebar/sidebar_object_imp.rs
-crates/app/src/ui/workspace/sidebar/sidebar_row_factory.rs
 crates/app/src/ui/workspace/sidebar/sidebar_view.rs
+crates/app/src/ui/workspace/sidebar/store_sync.rs
 crates/app/src/ui/workspace/sidebar/tests.rs
+crates/app/src/ui/workspace/sidebar/tree_menu.rs
+crates/app/src/ui/workspace/sidebar/tree_node.rs
+crates/app/src/ui/workspace/sidebar/tree_row.rs
 crates/app/src/ui/workspace/status_pages.rs
 crates/app/src/ui/workspace/structure.rs
 crates/app/src/ui/workspace/structure_target.rs
@@ -579,6 +583,8 @@ crates/app/src/ui/workspace/tests/keys.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs
 crates/app/src/ui/workspace/tests/mod.rs
 crates/app/src/ui/workspace/tests/references.rs
+crates/app/src/ui/workspace/tests/sessions.rs
+crates/app/src/ui/workspace/tests/shell.rs
 crates/app/src/ui/workspace/tests/tab_title.rs
 crates/app/src/ui/workspace/transaction_banner.rs
 crates/app/src/ui/workspace/unsaved_icon.rs
@@ -586,6 +592,8 @@ crates/app/src/ui/workspace/window_tabs.rs
 crates/app/src/ui/workspace/window_title.rs
 crates/app/src/ui/workspace/workspace_actions.rs
 crates/app/src/ui/workspace/workspace_persistence.rs
+crates/app/src/ui/workspace/workspace_shell.rs
+crates/app/src/ui/workspace/workspace_shell_imp.rs
 crates/app/src/ui/workspace/workspace_tab_view.rs
 crates/app/src/ui/workspace/workspace_tabs.rs
 crates/app/src/ui/write_confirmation.rs
@@ -691,4 +699,5 @@ data/resources/ui/ssh-section.ui
 data/resources/ui/structure-tab.ui
 data/resources/ui/tls-section.ui
 data/resources/ui/welcome-view.ui
+data/resources/ui/workspace-shell.ui
 data/resources/ui/workspace.ui

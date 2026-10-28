@@ -1,6 +1,5 @@
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::PendingSession;
-use tablepro_session::connect::AttemptGeneration;
 use tablepro_storage::SavedConnection;
 
 use crate::ui::error_text::TlsRemedy;
@@ -8,10 +7,10 @@ use crate::ui::error_text::TlsRemedy;
 /// What background work a window started brings back to it.
 #[derive(Debug)]
 pub(crate) enum SessionWindowCommand {
-    /// A connect attempt ended. Its generation says which one, so a
-    /// result that lands after the user moved on is discarded.
+    /// The connect `id` ended. A result for a connect the window no
+    /// longer runs is discarded.
     Attempt {
-        generation: AttemptGeneration,
+        id: u64,
         result: Result<Connected, AttemptError>,
     },
 }

@@ -1,5 +1,7 @@
 //! The order every connection picker shows the saved connections in.
 
+use std::cmp::Ordering;
+
 use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
 
 /// Sort the list the way every picker shows it.
@@ -17,6 +19,17 @@ pub(crate) fn sort(connections: &mut [SavedConnection]) {
             .then_with(|| recency_key(a).cmp(&recency_key(b)))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
+}
+
+/// The order of the window's connection tree: the picker's blocks, each
+/// by name rather than by recency, so a connect never moves an open
+/// connection's row away from under the pointer.
+pub(crate) fn by_name(a: &SavedConnection, b: &SavedConnection) -> Ordering {
+    group_key(a)
+        .cmp(&group_key(b))
+        .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        .then_with(|| a.name.cmp(&b.name))
+        .then_with(|| a.id.cmp(&b.id))
 }
 
 /// Ungrouped sorts before every group, and groups sort by name
@@ -159,6 +172,23 @@ mod tests {
 
         let names: Vec<String> = groups(&list).into_iter().map(String::from).collect();
         assert_eq!(names, ["Archive", "Work"]);
+    }
+
+    #[test]
+    fn the_name_order_keeps_the_blocks_and_ignores_recency() {
+        let mut list = vec![
+            connection("zeta", None, Some(1)),
+            connection("Beta", Some("work"), Some(1)),
+            connection("alpha", Some("Work"), Some(9)),
+            connection("Alpha", None, None),
+            connection("gamma", Some("Archive"), Some(2)),
+        ];
+
+        list.sort_by(by_name);
+
+        assert_eq!(names(&list), vec!["Alpha", "zeta", "gamma", "alpha", "Beta"]);
+        let groups: Vec<String> = groups(&list).into_iter().map(String::from).collect();
+        assert_eq!(groups, ["Archive", "Work", "work"], "the same groups as the picker's");
     }
 
     #[test]

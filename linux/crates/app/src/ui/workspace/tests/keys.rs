@@ -89,7 +89,33 @@ fn keys_window(name: &str, script: impl FnOnce(&mut ConnectionScript)) -> TestWi
 }
 
 fn shown(workspace: &Workspace) -> u32 {
-    workspace.read(|model| model.sidebar.shown()).unwrap_or_default()
+    workspace
+        .read(|model| crate::ui::workspace::sidebar::tests::listed(&model.sidebar))
+        .unwrap_or_default()
+}
+
+fn shell(workspace: &Workspace) -> crate::ui::workspace::WorkspaceShell {
+    super::shell_of(workspace)
+}
+
+/// Each key row on screen in the tree, and the type it shows beside its
+/// name.
+fn key_rows(workspace: &Workspace) -> Vec<(String, String)> {
+    let Some(tree) = shell(workspace).tree() else {
+        return Vec::new();
+    };
+    let mut rows: Vec<(String, String)> = crate::test_support::descendants(&tree.widget())
+        .into_iter()
+        .filter(|widget| widget.is_mapped() && widget.type_().name() == "TableProTreeRow")
+        .filter_map(|widget| {
+            let name = widget.first_child()?.next_sibling().and_downcast::<gtk4::Label>()?;
+            let kind = name.next_sibling().and_downcast::<gtk4::Label>()?;
+            kind.is_visible()
+                .then(|| (name.label().to_string(), kind.label().to_string()))
+        })
+        .collect();
+    rows.sort();
+    rows
 }
 
 fn key_tabs(workspace: &Workspace) -> Vec<String> {
@@ -109,7 +135,7 @@ fn key_tabs(workspace: &Workspace) -> Vec<String> {
 }
 
 fn open_key(workspace: &Workspace, name: &str) {
-    let input = workspace.input().expect("the workspace's input");
+    let input = workspace.sender().expect("the workspace's input");
     input.deliver(WorkspaceInput::SelectTable {
         schema: None,
         name: name.to_owned(),
@@ -126,14 +152,13 @@ fn a_key_value_session_lists_its_keys_with_their_types() {
 
     wait_until(WAIT, || shown(&workspace) == 3).expect("the keys listed");
 
-    let rows = workspace
-        .read(|model| model.sidebar.row_descriptions())
-        .unwrap_or_default();
+    wait_until(WAIT, || key_rows(&workspace).len() == 3).expect("the keys' rows in the tree");
+    let rows = key_rows(&workspace);
     assert!(rows.contains(&("user:1".to_owned(), "Hash".to_owned())), "{rows:?}");
     assert!(rows.contains(&("queue".to_owned(), "List".to_owned())), "{rows:?}");
-    let imp = workspace.imp();
-    assert_eq!(imp.table_search.placeholder_text().as_deref(), Some("Filter keys…"));
-    assert!(!imp.key_limit_banner.is_revealed());
+    let window_shell = shell(&workspace);
+    let imp = window_shell.imp();
+    assert!(!workspace.imp().key_limit_banner.is_revealed());
     assert_eq!(imp.empty_page.title(), "Select a Key");
     assert_eq!(imp.empty_editor_button.label().as_deref(), Some("Open Editor"));
     assert_eq!(
@@ -154,13 +179,14 @@ fn a_search_asks_the_server_for_the_keys_that_match() {
     let workspace = test.workspace();
     wait_until(WAIT, || shown(&workspace) == 3).expect("the keys listed");
 
-    workspace.imp().table_search.set_text("user");
+    let search = shell(&workspace).imp().table_search.get();
+    search.set_text("user");
 
     wait_until(WAIT, || shown(&workspace) == 1).expect("the matching key");
     let patterns = test.connection().observed_sql("scan_keys");
     assert_eq!(patterns.last().cloned().flatten().as_deref(), Some("*user*"));
 
-    workspace.imp().table_search.set_text("");
+    search.set_text("");
 
     wait_until(WAIT, || shown(&workspace) == 3).expect("every key again");
 }
@@ -190,7 +216,7 @@ fn a_key_opens_in_one_tab_that_reads_its_value() {
     wait_until(WAIT, || key_tabs(&workspace) == ["user:2"]).expect("the key's tab");
     open_key(&workspace, "user:2");
 
-    let view = workspace.imp().tab_view.get();
+    let view = shell(&workspace).tab_view();
     wait_until(Duration::from_millis(300), || view.n_pages() == 2).expect_err("a second tab for the same key");
     assert_eq!(view.n_pages(), 1);
     assert_eq!(

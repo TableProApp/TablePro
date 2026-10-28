@@ -11,7 +11,14 @@ use crate::ui::plain_toast;
 
 impl WorkspaceModel {
     pub(super) fn show_toast(&self, msg: &str) {
-        self.toast_overlay.add_toast(plain_toast(msg));
+        self.add_toast(plain_toast(msg));
+    }
+
+    /// In the window's toasts, which every session of the window shares.
+    pub(super) fn add_toast(&self, toast: adw::Toast) {
+        if let Some(shell) = self.shell.upgrade() {
+            shell.toast_overlay().add_toast(toast);
+        }
     }
 
     pub(super) fn show_error_alert(&self, title: &str, message: &str) {

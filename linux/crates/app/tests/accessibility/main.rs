@@ -240,29 +240,61 @@ fn connected(name: &str) -> Result<(World, adw::ApplicationWindow), String> {
     )?;
     let window = world.open(WindowLaunch::Connect(Box::new(world.saved.clone())))?;
     wait_until("the table in the sidebar", || {
-        shows(&window, "TableProWorkspace") && shows_text(window.upcast_ref(), TABLE)
+        shows(&window, "TableProWorkspaceShell") && table_row(&window).is_some()
     })?;
     Ok((world, window))
 }
 
-fn sidebar_action(window: &adw::ApplicationWindow, action: &str) -> Result<(), String> {
-    let sidebar = descendants(window.upcast_ref())
+/// The connection tree and the position of the table's row in it.
+fn table_row(window: &adw::ApplicationWindow) -> Option<(gtk4::ListView, u32)> {
+    descendants(window.upcast_ref())
         .into_iter()
-        .find(|widget| widget.is::<gtk4::ListView>())
-        .ok_or("the sidebar has no list")?;
-    let table = (Some("public".to_owned()), TABLE.to_owned()).to_variant();
-    sidebar
-        .activate_action(action, Some(&table))
-        .map_err(|error| format!("{action}: {error}"))
+        .filter_map(|widget| widget.downcast::<gtk4::ListView>().ok())
+        .find_map(|list| {
+            let model = list.model()?;
+            let position = (0..model.n_items()).find(|&position| {
+                model
+                    .item(position)
+                    .and_downcast::<gtk4::TreeListRow>()
+                    .and_then(|row| row.item())
+                    .is_some_and(|item| {
+                        item.find_property("name").is_some()
+                            && item.property_value("name").get::<String>().ok().as_deref() == Some(TABLE)
+                    })
+            })?;
+            Some((list, position))
+        })
 }
 
 fn open_table(window: &adw::ApplicationWindow) -> Result<(), String> {
-    sidebar_action(window, "sidebar.open-in-new-tab")?;
+    let (list, position) = table_row(window).ok_or("the tree has no row for the table")?;
+    list.activate_action("list.activate-item", Some(&position.to_variant()))
+        .map_err(|error| format!("list.activate-item: {error}"))?;
     wait_until("the table's rows", || shows_text(window.upcast_ref(), CELL))
 }
 
+/// Edit Structure from the table row's menu, as the Menu key opens it.
 fn open_structure(window: &adw::ApplicationWindow) -> Result<(), String> {
-    sidebar_action(window, "sidebar.edit-structure")?;
+    let (list, position) = table_row(window).ok_or("the tree has no row for the table")?;
+    list.model()
+        .and_downcast::<gtk4::SingleSelection>()
+        .ok_or("the tree has no selection")?
+        .set_selected(position);
+    list.activate_action("tree.context-menu", None)
+        .map_err(|error| format!("tree.context-menu: {error}"))?;
+    let mut menu = None;
+    wait_until("the row's menu", || {
+        menu = descendants(window.upcast_ref())
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk4::PopoverMenu>().ok())
+            .find(|popover| popover.is_visible());
+        menu.is_some()
+    })?;
+    let table = (Some("public".to_owned()), TABLE.to_owned()).to_variant();
+    let menu = menu.ok_or("no menu")?;
+    menu.activate_action("sidebar.edit-structure", Some(&table))
+        .map_err(|error| format!("sidebar.edit-structure: {error}"))?;
+    menu.popdown();
     wait_until("the table's structure", || {
         widgets_of(window.upcast_ref(), "TableProStructureTab")
             .iter()

@@ -13,6 +13,7 @@ use uuid::Uuid;
 use super::super::structure_target::StructureTarget;
 use super::super::tab_spec::TabSpec;
 use super::super::{Workspace, WorkspaceInput, WorkspaceTab};
+use super::{open_editor, shell_of, two_sessions};
 use crate::runtime::DeliverInput;
 use crate::services::pending_structure::PendingStructure;
 use crate::test_support::{finish_on_main, wait_until};
@@ -96,7 +97,10 @@ fn unsaved_marker_never_sets_needs_attention() {
     let (page, id) = new_table_tab(&workspace);
     WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
     wait_until(WAIT, || editors(&test.window).len() == 1).expect("an editor tab in front");
-    assert_ne!(workspace.imp().tab_view.selected_page().as_ref(), Some(&page));
+    assert_ne!(
+        shell_of(&workspace).imp().tab_view.selected_page().as_ref(),
+        Some(&page)
+    );
 
     edit_structure(&workspace, id, a_column_added());
     wait_until(WAIT, || modified(&page)).expect("the unsaved icon");
@@ -119,8 +123,7 @@ fn open_transaction_marks_editor_tab() {
 
     test.run_in_new_editor_tab();
 
-    let page = test
-        .workspace()
+    let page = shell_of(&test.workspace())
         .imp()
         .tab_view
         .selected_page()
@@ -137,7 +140,10 @@ fn another_tabs_open_transaction_is_bannered_until_its_tab_is_shown() {
         script.open_editor_session.always(FakeReply::ok(editor_session));
     });
     let workspace = test.workspace();
-    let (view, banner) = (workspace.imp().tab_view.get(), workspace.imp().transaction_banner.get());
+    let (view, banner) = (
+        shell_of(&workspace).imp().tab_view.get(),
+        workspace.imp().transaction_banner.get(),
+    );
 
     test.run_in_new_editor_tab();
     let owner = view.selected_page().expect("the editor's page");
@@ -191,7 +197,7 @@ fn restored_workspace_selects_saved_active_tab() {
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("workspace");
     let workspace = test.workspace();
-    wait_until(WAIT, || workspace.imp().tab_view.n_pages() == 2).expect("both tabs restored");
+    wait_until(WAIT, || shell_of(&workspace).imp().tab_view.n_pages() == 2).expect("both tabs restored");
 
     let selected = workspace
         .read(|model| {
@@ -234,9 +240,9 @@ fn a_restored_editor_tab_keeps_its_file_and_its_unsaved_changes() {
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
     test.wait_for_page("workspace");
     let workspace = test.workspace();
-    wait_until(WAIT, || workspace.imp().tab_view.n_pages() == 1).expect("the editor tab restored");
+    wait_until(WAIT, || shell_of(&workspace).imp().tab_view.n_pages() == 1).expect("the editor tab restored");
 
-    let page = workspace.imp().tab_view.nth_page(0);
+    let page = shell_of(&workspace).imp().tab_view.nth_page(0);
     let editor = editors(&test.window).pop().expect("the editor");
     assert_eq!(editor.file().and_then(|file| file.path()), Some(path.clone()));
     assert!(
@@ -262,7 +268,7 @@ fn window_title_follows_the_tab_in_front() {
         test.window.title().as_deref() == Some("Query 1 (Fake) - TablePro")
     })
     .expect("the tab's title");
-    let heading = test.workspace().imp().window_title.get();
+    let heading = shell_of(&test.workspace()).imp().window_title.get();
     assert_eq!(heading.title(), "Query 1");
     assert_eq!(heading.subtitle(), "Fake");
 }
@@ -308,7 +314,7 @@ fn tabs_name_the_schema_once_the_session_has_two() {
 #[gtk4::test]
 fn a_new_editor_tab_takes_the_lowest_number_no_open_tab_has() {
     let test = TestWindow::connected("LowestFreeQueryNumber");
-    let view = test.workspace().imp().tab_view.get();
+    let view = shell_of(&test.workspace()).imp().tab_view.get();
     let open = || {
         let before = editors(&test.window).len();
         WidgetExt::activate_action(&test.window, "win.new-editor-tab", None).expect("win.new-editor-tab");
@@ -327,4 +333,52 @@ fn a_new_editor_tab_takes_the_lowest_number_no_open_tab_has() {
         .collect();
     titles.sort();
     assert_eq!(titles, ["Query 1", "Query 2", "Query 3"]);
+}
+
+/// AdwTab shows a tooltip as Pango markup, so a connection named with
+/// an ampersand would leave the tab with none.
+#[gtk4::test]
+fn a_tab_beside_another_connections_names_its_own_in_plain_text() {
+    let sessions = two_sessions("SharedBarTitles", "R&D");
+    let view = sessions.shell.tab_view();
+    let ours = open_editor(&sessions.first);
+    assert_eq!(ours.title(), "Query 1", "a tab alone in the bar named its connection");
+    let theirs = open_editor(&sessions.second);
+
+    wait_until(WAIT, || {
+        theirs.title() == "Query 1 (R&D)" && ours.title() == "Query 1 (Fake)"
+    })
+    .expect("each tab to name its connection");
+    let tooltip = theirs.tooltip().map(|tooltip| tooltip.to_string()).unwrap_or_default();
+    let (_, text, _) = gtk4::pango::parse_markup(&tooltip, '\0').expect("the tooltip is markup");
+    assert_eq!(text.as_str(), "Query 1\nR&D");
+    assert_eq!(theirs.keyword().as_deref(), Some("R&D"));
+
+    view.close_page(&ours);
+
+    wait_until(WAIT, || theirs.title() == "Query 1").expect("the tab alone again to drop the name");
+}
+
+/// The session keeps the name it connected with, so the titles read the
+/// saved connection's.
+#[gtk4::test]
+fn a_renamed_connection_retitles_its_tabs_and_the_window() {
+    let test = TestWindow::connected("RenamedConnection");
+    let page = open_editor(&test.workspace());
+
+    test.services
+        .storage
+        .connections()
+        .upsert_blocking(tablepro_storage::SavedConnection {
+            name: "Shop".to_owned(),
+            ..test.saved.clone()
+        })
+        .expect("rename the connection");
+
+    wait_until(WAIT, || {
+        test.window.title().as_deref() == Some("Query 1 (Shop) - TablePro")
+    })
+    .expect("the window to take the new name");
+    assert_eq!(page.keyword().as_deref(), Some("Shop"));
+    assert_eq!(test.workspace().connection_name(), "Shop");
 }

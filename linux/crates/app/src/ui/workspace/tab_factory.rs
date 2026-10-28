@@ -14,12 +14,12 @@ use super::editor_label::EditorLabel;
 use super::structure_target::StructureTarget;
 use super::tab_index::TabIndex;
 use super::tab_spec::{TabSpec, TablePage};
-use super::tab_title::resolve_tab_title;
+use super::tab_title::{ConnectionLabel, apply_tab_title, resolve_tab_title};
 use super::table_naming::TableNaming;
 use super::workspace_persistence::WorkspaceTabs;
 use super::{
     DiagramTabSlot, EditorTabSlot, KeyTabSlot, OpenMode, StructureTabSlot, TableTabSlot, WorkspaceInput,
-    WorkspaceSender, WorkspaceTab, apply_tab_title,
+    WorkspaceSender, WorkspaceShell, WorkspaceTab,
 };
 use crate::runtime::DeliverInput;
 use crate::services::change_tracker_registry::ChangeTrackerRegistry;
@@ -41,6 +41,8 @@ pub(super) struct TabFactoryParts {
     pub tabs: WorkspaceTabs,
     pub index: Rc<TabIndex>,
     pub input: WorkspaceSender,
+    /// Told when a page comes to the front as it is appended.
+    pub shell: glib::WeakRef<WorkspaceShell>,
     pub toasts: glib::WeakRef<adw::ToastOverlay>,
     pub context: Rc<SessionContext>,
     pub settings: Rc<tablepro_storage::AppSettings>,
@@ -55,7 +57,9 @@ pub(super) struct TabFactoryParts {
     pub read_only: bool,
     /// Whether a tab's title names the table's schema.
     pub naming: Rc<Cell<TableNaming>>,
-    /// The window's assistant, which editor tabs ask.
+    /// The connection a tab's title and keyword name.
+    pub label: Rc<ConnectionLabel>,
+    /// The session's assistant, which editor tabs ask.
     pub assistant: Rc<crate::ui::assistant::AssistantAccess>,
     pub snippets: Rc<crate::services::snippet_library::SnippetLibrary>,
 }
@@ -130,7 +134,11 @@ impl TabFactory {
 
     fn insert(&self, id: Uuid, slot: WorkspaceTab) -> adw::TabPage {
         let page = slot.page().clone();
-        apply_tab_title(&page, &resolve_tab_title(&slot.identity(), self.parts.naming.get()));
+        apply_tab_title(
+            &page,
+            &resolve_tab_title(&slot.identity(), self.parts.naming.get()),
+            &self.parts.label,
+        );
         self.parts.tabs.borrow_mut().insert(id, slot);
         self.parts.input.deliver(WorkspaceInput::WorkspaceTabsChanged);
         page
@@ -142,6 +150,14 @@ impl TabFactory {
             None => self.parts.view.append(child),
         };
         self.parts.index.insert(&page, id);
+        // A view with no page selects the first one it gets while it is
+        // appended, before the index knows whose it is.
+        if page.is_selected() {
+            self.parts.index.note_selected(Some(&page));
+            if let Some(shell) = self.parts.shell.upgrade() {
+                shell.follow_selected_page();
+            }
+        }
         page
     }
 
