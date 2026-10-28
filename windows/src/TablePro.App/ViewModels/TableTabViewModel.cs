@@ -125,6 +125,27 @@ public sealed partial class TableTabViewModel : TabViewModel
     public partial IGridSource? TriggersGrid { get; set; }
 
     [ObservableProperty]
+    public partial IGridSource? ChecksGrid { get; set; }
+
+    [ObservableProperty]
+    public partial IGridSource? PartitionsGrid { get; set; }
+
+    [ObservableProperty]
+    public partial IGridSource? OptionsGrid { get; set; }
+
+    /// <summary>Why the checks, partitions and options are missing, when their read failed and the columns did not.</summary>
+    [ObservableProperty]
+    public partial string? DetailsError { get; set; }
+
+    /// <summary>Whether the engine reads checks, partitions and options for this object; only tables have them.</summary>
+    public bool HasTableDetails => Table.Kind == ObjectKind.Table && _context.Session.Database is ITableDetailsProvider;
+
+    /// <summary>The structure edits beyond columns, indexes and keys that the connected server takes.</summary>
+    public StructureEdits SupportedEdits => _context.Session.Database is ISchemaDdlProvider ddl && _context.Session.Dialect.IsSql ? ddl.SupportedEdits : StructureEdits.None;
+
+    public IReadOnlyList<TableOptionSpec> EditableTableOptions => (_context.Session.Database as ISchemaDdlProvider)?.EditableTableOptions ?? [];
+
+    [ObservableProperty]
     public partial string Definition { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -426,6 +447,8 @@ public sealed partial class TableTabViewModel : TabViewModel
                 _context.History.Record(profile, _context.Session.Database.CurrentDatabase, new StatementResult(statement, [], 1, DateTime.UtcNow - started), StatementKind.Write, "grid");
             }
 
+            // Journal what the save committed before the buffer forgets it, so Data Rewind can take it back.
+            RewindJournalService.Capture(_context.Session, Table.Name, _buffer, Structure?.PrimaryKey ?? []);
             _buffer.Discard();
             _context.Notify(string.Create(CultureInfo.CurrentCulture, $"Saved {changes.Count:N0} changes ({affected:N0} rows)."));
             await LoadAsync();
@@ -459,7 +482,18 @@ public sealed partial class TableTabViewModel : TabViewModel
             return false;
         }
 
-        var statements = ddl.BuildDdl(Table.Name, change);
+        IReadOnlyList<string> statements;
+        try
+        {
+            statements = ddl.BuildDdl(Table.Name, change);
+        }
+        catch (ArgumentException ex)
+        {
+            // A value the engine's grammar cannot take, such as a fill factor of 500, is refused before any SQL is shown.
+            await _context.Dialogs.ShowErrorAsync("Cannot make this change", ex.Message);
+            return false;
+        }
+
         if (statements.Count == 0)
         {
             await _context.Dialogs.ShowErrorAsync("Not supported", "This engine cannot express that change.");
@@ -528,6 +562,7 @@ public sealed partial class TableTabViewModel : TabViewModel
         try
         {
             var structure = await _context.Session.GetStructureAsync(Table.Name, CancellationToken.None, refresh);
+            structure = await WithDetailsAsync(structure);
             Structure = structure;
             FilterColumns.Clear();
             FilterColumns.Add(FilterRuleViewModel.AllColumns);
@@ -540,6 +575,9 @@ public sealed partial class TableTabViewModel : TabViewModel
             IndexesGrid = new ResultGridSource(StructureTables.Indexes(structure));
             ForeignKeysGrid = new ResultGridSource(StructureTables.ForeignKeys(structure));
             TriggersGrid = new ResultGridSource(StructureTables.Triggers(structure));
+            ChecksGrid = new ResultGridSource(StructureTables.Checks(structure));
+            PartitionsGrid = new ResultGridSource(StructureTables.Partitions(structure));
+            OptionsGrid = new ResultGridSource(StructureTables.Options(structure, EditableTableOptions));
             UpdateEditability();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -554,6 +592,30 @@ public sealed partial class TableTabViewModel : TabViewModel
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Definition = "-- " + ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Adds the checks, partitions and options, read on their own so a server that refuses that read, or a login
+    /// without the grant, still shows the columns.
+    /// </summary>
+    private async Task<TableStructure> WithDetailsAsync(TableStructure structure)
+    {
+        if (!HasTableDetails || _context.Session.Database is not ITableDetailsProvider details)
+        {
+            return structure;
+        }
+
+        try
+        {
+            var withDetails = structure.With(await details.GetTableDetailsAsync(Table.Name, CancellationToken.None));
+            DetailsError = null;
+            return withDetails;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            DetailsError = "Could not read the checks, partitions and options: " + ex.Message;
+            return structure;
         }
     }
 
@@ -622,6 +684,44 @@ internal static class StructureTables
     public static ResultSet Triggers(TableStructure s) => Build(
         ["Name", "Timing", "Event", "Definition"],
         s.Triggers.Select(t => new object?[] { t.Name, t.Timing, t.Event, t.Definition }));
+
+    public static ResultSet Checks(TableStructure s) => Build(
+        ["Name", "Expression", "Columns", "Validated"],
+        s.CheckConstraints.Select(c => new object?[] { c.Name, c.Expression, string.Join(", ", c.Columns), c.IsValidated ? "YES" : "NO" }));
+
+    /// <summary>Rows follow the partition list's order, so row N of the grid is partition N of the structure.</summary>
+    public static ResultSet Partitions(TableStructure s) => Build(
+        ["Name", "Subpartition Of", "Bound", "#", "Rows", "Size"],
+        (s.Partitioning?.Partitions ?? []).Select(p => new object?[]
+        {
+            p.Name,
+            p.Parent ?? string.Empty,
+            p.Bound,
+            p.Ordinal,
+            p.RowEstimate?.ToString("N0", CultureInfo.CurrentCulture),
+            p.SizeBytes is { } size ? Size(size) : null,
+        }));
+
+    public static ResultSet Options(TableStructure s, IReadOnlyList<TableOptionSpec> editable) => Build(
+        ["Option", "Value", "Editable"],
+        s.Options.Select(o => new object?[] { o.Name, o.Value, editable.Any(e => e.Name == o.Name) ? "YES" : string.Empty }));
+
+    /// <summary>Bytes in the binary units Windows Explorer uses.</summary>
+    public static string Size(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return unit == 0
+            ? string.Create(CultureInfo.CurrentCulture, $"{bytes:N0} B")
+            : string.Create(CultureInfo.CurrentCulture, $"{value:0.#} {units[unit]}");
+    }
 
     private static ResultSet Build(string[] names, IEnumerable<object?[]> rows)
     {

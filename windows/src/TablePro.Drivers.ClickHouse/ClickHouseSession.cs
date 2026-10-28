@@ -21,7 +21,7 @@ namespace TablePro.Drivers.ClickHouse;
 /// <see cref="SaveChangesAsync"/> replace the base class's for every caller: ClickHouse binds <c>{p0:String}</c>
 /// rather than the bare names Core writes, and it has no transaction for the base save to open.
 /// </remarks>
-public sealed class ClickHouseSession
+public sealed partial class ClickHouseSession
     : AdoNetSession, IDatabaseSession, ISchemaDdlProvider, IServerActivityProvider, IServerVariablesProvider, IUserListProvider, IDatabaseAdministration, IChangePreviewProvider
 {
     private readonly string _connectionString;

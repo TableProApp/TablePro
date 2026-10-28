@@ -184,6 +184,23 @@ internal static class DuckDbDdl
             "COMMENT ON COLUMN ", Qualify(table), ".", Dialect.QuoteIdentifier(column), " IS ",
             string.IsNullOrEmpty(comment) ? "NULL" : Dialect.StringLiteral(comment));
 
+    public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs = [new(TableOptionNames.Comment, TableOptionKind.Text)];
+
+    public static List<string> SetOptions(ObjectName table, IReadOnlyList<TableOptionChange> changes)
+    {
+        var statements = new List<string>(1);
+        foreach (var change in changes)
+        {
+            if (change.Name == TableOptionNames.Comment)
+            {
+                statements.Add(string.Concat(
+                    "COMMENT ON TABLE ", Qualify(table), " IS ", change.Clears ? "NULL" : Dialect.StringLiteral(change.After!.Trim())));
+            }
+        }
+
+        return statements;
+    }
+
     /// <summary>DuckDB stores a view as the CREATE VIEW it was made with; OR REPLACE lets the user run it back.</summary>
     public static string ReplaceableView(string sql)
     {

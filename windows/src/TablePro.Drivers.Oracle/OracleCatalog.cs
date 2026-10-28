@@ -126,6 +126,56 @@ internal static class OracleCatalog
 
     public const string AllUsers = "SELECT USERNAME, USER_ID, CREATED, ORACLE_MAINTAINED FROM SYS.ALL_USERS ORDER BY USERNAME";
 
+    // SEARCH_CONDITION is a LONG, read whole because the command fetches LONGs in full. A NOT NULL column is a
+    // check here too; the session leaves those out, as they are the column's nullability.
+    public const string CheckConstraints = """
+        SELECT c.CONSTRAINT_NAME, c.SEARCH_CONDITION, c.VALIDATED
+        FROM SYS.ALL_CONSTRAINTS c
+        WHERE c.OWNER = :owner AND c.TABLE_NAME = :tbl AND c.CONSTRAINT_TYPE = 'C'
+        ORDER BY c.CONSTRAINT_NAME
+        """;
+
+    public const string CheckConstraintColumns = """
+        SELECT cc.CONSTRAINT_NAME, cc.COLUMN_NAME
+        FROM SYS.ALL_CONS_COLUMNS cc
+        JOIN SYS.ALL_CONSTRAINTS c ON c.OWNER = cc.OWNER AND c.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+        WHERE c.OWNER = :owner AND c.TABLE_NAME = :tbl AND c.CONSTRAINT_TYPE = 'C'
+        ORDER BY cc.CONSTRAINT_NAME, cc.COLUMN_NAME
+        """;
+
+    public const string TableOptions = """
+        SELECT t.TABLESPACE_NAME, t.PCT_FREE, t.LOGGING, t.COMPRESSION, t.ROW_MOVEMENT, tc.COMMENTS
+        FROM SYS.ALL_TABLES t
+        LEFT JOIN SYS.ALL_TAB_COMMENTS tc ON tc.OWNER = t.OWNER AND tc.TABLE_NAME = t.TABLE_NAME
+        WHERE t.OWNER = :owner AND t.TABLE_NAME = :tbl
+        """;
+
+    public const string Partitioning = """
+        SELECT p.PARTITIONING_TYPE, p.SUBPARTITIONING_TYPE,
+               (SELECT LISTAGG(k.COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY k.COLUMN_POSITION)
+                FROM SYS.ALL_PART_KEY_COLUMNS k WHERE k.OWNER = p.OWNER AND k.NAME = p.TABLE_NAME AND k.OBJECT_TYPE = 'TABLE'),
+               (SELECT LISTAGG(k.COLUMN_NAME, ', ') WITHIN GROUP (ORDER BY k.COLUMN_POSITION)
+                FROM SYS.ALL_SUBPART_KEY_COLUMNS k WHERE k.OWNER = p.OWNER AND k.NAME = p.TABLE_NAME AND k.OBJECT_TYPE = 'TABLE')
+        FROM SYS.ALL_PART_TABLES p
+        WHERE p.OWNER = :owner AND p.TABLE_NAME = :tbl
+        """;
+
+    // HIGH_VALUE is a LONG holding the bound as SQL text, such as TO_DATE(' 2025-01-01 00:00:00', ...).
+    public const string Partitions = """
+        SELECT p.PARTITION_NAME, p.HIGH_VALUE, p.PARTITION_POSITION, p.NUM_ROWS, p.SUBPARTITION_COUNT
+        FROM SYS.ALL_TAB_PARTITIONS p
+        WHERE p.TABLE_OWNER = :owner AND p.TABLE_NAME = :tbl
+        ORDER BY p.PARTITION_POSITION
+        """;
+
+    // Every subpartition of the table in one read, grouped by the parent name in memory, rather than one read each.
+    public const string Subpartitions = """
+        SELECT s.PARTITION_NAME, s.SUBPARTITION_NAME, s.SUBPARTITION_POSITION, s.NUM_ROWS
+        FROM SYS.ALL_TAB_SUBPARTITIONS s
+        WHERE s.TABLE_OWNER = :owner AND s.TABLE_NAME = :tbl
+        ORDER BY s.PARTITION_NAME, s.SUBPARTITION_POSITION
+        """;
+
     /// <summary>
     /// Fixes the text forms of dates and numbers, so a value the grid sends as text converts the same way on every
     /// server whatever its NLS defaults.

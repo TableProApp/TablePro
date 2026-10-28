@@ -34,9 +34,7 @@ public sealed partial class TableTabView : UserControl
         PageSizeBox.SelectedIndex = Math.Max(0, Array.IndexOf(PageSizes, viewModel.PageSize));
         DefinitionEditor.Dialect = viewModel.Context.Session.Dialect;
 
-        // Structure edits need DDL; engines without SQL or without a DDL provider show their structure read-only.
-        var canEdit = viewModel.Context.Session.Database is ISchemaDdlProvider && viewModel.Context.Session.Dialect.IsSql;
-        StructureAdd.Visibility = StructureEdit.Visibility = StructureDrop.Visibility = canEdit ? Visibility.Visible : Visibility.Collapsed;
+        UpdateStructureCommands();
 
         RowsGrid.SortRequested += async (_, e) => await ViewModel.SortByAsync(e.Column, e.AddToExisting);
         RowsGrid.CellContextRequested += OnRowsContext;
@@ -86,10 +84,71 @@ public sealed partial class TableTabView : UserControl
             case nameof(TableTabViewModel.Definition):
                 DefinitionEditor.Text = ViewModel.Definition;
                 break;
-            case nameof(TableTabViewModel.ColumnsGrid) or nameof(TableTabViewModel.IndexesGrid) or nameof(TableTabViewModel.ForeignKeysGrid) or nameof(TableTabViewModel.TriggersGrid):
+            case nameof(TableTabViewModel.ColumnsGrid) or nameof(TableTabViewModel.IndexesGrid) or nameof(TableTabViewModel.ForeignKeysGrid) or nameof(TableTabViewModel.TriggersGrid)
+                or nameof(TableTabViewModel.ChecksGrid) or nameof(TableTabViewModel.PartitionsGrid) or nameof(TableTabViewModel.OptionsGrid):
                 ShowStructureGrid();
                 break;
+            case nameof(TableTabViewModel.Structure):
+                UpdateStructureSections();
+                break;
+            case nameof(TableTabViewModel.DetailsError):
+                DetailsErrorBar.Message = ViewModel.DetailsError ?? string.Empty;
+                DetailsErrorBar.IsOpen = ViewModel.DetailsError is not null;
+                break;
         }
+    }
+
+    /// <summary>
+    /// Checks and options are offered where the engine reads them for a table; partitions only on a partitioned table.
+    /// A section that disappears on refresh hands the selection back to Columns.
+    /// </summary>
+    private void UpdateStructureSections()
+    {
+        var structure = ViewModel.Structure;
+        ChecksSection.Visibility = ViewModel.HasTableDetails ? Visibility.Visible : Visibility.Collapsed;
+        PartitionsSection.Visibility = structure?.Partitioning is not null ? Visibility.Visible : Visibility.Collapsed;
+        OptionsSection.Visibility = ViewModel.HasTableDetails && structure?.Options.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (StructureSections.SelectedItem is { Visibility: Visibility.Collapsed })
+        {
+            StructureSections.SelectedItem = StructureSections.Items[0];
+        }
+
+        ShowStructureGrid();
+    }
+
+    /// <summary>
+    /// Each section offers only the edits its engine can make. Structure edits need DDL, so engines without SQL or
+    /// without a DDL provider show their structure read-only.
+    /// </summary>
+    private void UpdateStructureCommands()
+    {
+        var session = ViewModel.Context.Session;
+        var canEdit = session.Database is ISchemaDdlProvider && session.Dialect.IsSql;
+        var edits = ViewModel.SupportedEdits;
+        var partitioned = ViewModel.Structure?.Partitioning is not null;
+        var (add, edit, truncate, drop) = _structureSection switch
+        {
+            "Columns" => (true, true, false, true),
+            "Indexes" or "ForeignKeys" => (true, false, false, true),
+            "Checks" => (edits.HasFlag(StructureEdits.CheckConstraints), edits.HasFlag(StructureEdits.CheckConstraints), false, edits.HasFlag(StructureEdits.CheckConstraints)),
+            "Partitions" => (partitioned && edits.HasFlag(StructureEdits.AddPartition), false, edits.HasFlag(StructureEdits.TruncatePartition), edits.HasFlag(StructureEdits.DropPartition)),
+            "Options" => (false, edits.HasFlag(StructureEdits.TableOptions) && ViewModel.EditableTableOptions.Count > 0, false, false),
+            _ => (false, false, false, false),
+        };
+
+        StructureAdd.Visibility = canEdit && add ? Visibility.Visible : Visibility.Collapsed;
+        StructureEdit.Visibility = canEdit && edit ? Visibility.Visible : Visibility.Collapsed;
+        StructureTruncate.Visibility = canEdit && truncate ? Visibility.Visible : Visibility.Collapsed;
+        StructureDrop.Visibility = canEdit && drop ? Visibility.Visible : Visibility.Collapsed;
+        StructureCaption.Text = _structureSection switch
+        {
+            "Partitions" when ViewModel.Structure?.Partitioning is { } p => p.Subpartitioning is { } sub
+                ? $"Partitioned by {p}, subpartitioned by {sub}."
+                : $"Partitioned by {p}.",
+            "Checks" when !edits.HasFlag(StructureEdits.CheckConstraints) && canEdit => "This server cannot add or change check constraints here.",
+            _ => string.Empty,
+        };
+        StructureCaption.Visibility = StructureCaption.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -110,13 +169,20 @@ public sealed partial class TableTabView : UserControl
         ShowStructureGrid();
     }
 
-    private void ShowStructureGrid() => StructureGrid.Source = _structureSection switch
+    private void ShowStructureGrid()
     {
-        "Indexes" => ViewModel.IndexesGrid,
-        "ForeignKeys" => ViewModel.ForeignKeysGrid,
-        "Triggers" => ViewModel.TriggersGrid,
-        _ => ViewModel.ColumnsGrid,
-    };
+        StructureGrid.Source = _structureSection switch
+        {
+            "Indexes" => ViewModel.IndexesGrid,
+            "ForeignKeys" => ViewModel.ForeignKeysGrid,
+            "Checks" => ViewModel.ChecksGrid,
+            "Triggers" => ViewModel.TriggersGrid,
+            "Partitions" => ViewModel.PartitionsGrid,
+            "Options" => ViewModel.OptionsGrid,
+            _ => ViewModel.ColumnsGrid,
+        };
+        UpdateStructureCommands();
+    }
 
     private void UpdateSelectionText()
     {
@@ -343,7 +409,10 @@ public sealed partial class TableTabView : UserControl
         {
             "Indexes" => await IndexDialogAsync(),
             "ForeignKeys" => await ForeignKeyDialogAsync(),
-            _ => await ColumnDialogAsync(null),
+            "Checks" => await CheckDialogAsync(null),
+            "Partitions" => await PartitionDialogAsync(),
+            "Columns" => await ColumnDialogAsync(null),
+            _ => null,
         };
         if (change is not null)
         {
@@ -353,7 +422,33 @@ public sealed partial class TableTabView : UserControl
 
     private async void OnStructureEdit(object sender, RoutedEventArgs e)
     {
-        if (_structureSection != "Columns" || ViewModel.Structure is not { } structure || StructureGrid.ActiveCell is not { } cell || cell.Row >= structure.Columns.Count)
+        if (ViewModel.Structure is not { } structure)
+        {
+            return;
+        }
+
+        if (_structureSection == "Options")
+        {
+            if (await OptionsDialogAsync(structure) is { } options)
+            {
+                await ViewModel.ApplySchemaChangeAsync(options);
+            }
+
+            return;
+        }
+
+        if (_structureSection == "Checks")
+        {
+            if (StructureGrid.ActiveCell is { } row && row.Row < structure.CheckConstraints.Count
+                && await CheckDialogAsync(structure.CheckConstraints[row.Row].ToDefinition()) is { } check)
+            {
+                await ViewModel.ApplySchemaChangeAsync(check);
+            }
+
+            return;
+        }
+
+        if (_structureSection != "Columns" || StructureGrid.ActiveCell is not { } cell || cell.Row >= structure.Columns.Count)
         {
             return;
         }
@@ -390,12 +485,164 @@ public sealed partial class TableTabView : UserControl
             "Columns" when cell.Row < structure.Columns.Count => new DropColumn(structure.Columns[cell.Row].Name),
             "Indexes" when cell.Row < structure.Indexes.Count => new DropIndex(structure.Indexes[cell.Row].Name),
             "ForeignKeys" when cell.Row < structure.ForeignKeys.Count => new DropForeignKey(structure.ForeignKeys[cell.Row].Name),
+            "Checks" when cell.Row < structure.CheckConstraints.Count => new DropCheckConstraint(structure.CheckConstraints[cell.Row].Name),
+            "Partitions" when structure.Partitioning is { } partitioning && cell.Row < partitioning.Partitions.Count => new DropPartition(partitioning.Partitions[cell.Row]),
             _ => null,
         };
         if (change is not null)
         {
             await ViewModel.ApplySchemaChangeAsync(change);
         }
+    }
+
+    private async void OnStructureTruncate(object sender, RoutedEventArgs e)
+    {
+        if (_structureSection == "Partitions" && ViewModel.Structure?.Partitioning is { } partitioning
+            && StructureGrid.ActiveCell is { } cell && cell.Row < partitioning.Partitions.Count)
+        {
+            await ViewModel.ApplySchemaChangeAsync(new TruncatePartition(partitioning.Partitions[cell.Row]));
+        }
+    }
+
+    /// <summary>The name and expression of a check; editing one that exists produces the change from it to the new one.</summary>
+    private async Task<SchemaChange?> CheckDialogAsync(CheckConstraintDefinition? existing)
+    {
+        var name = new TextBox { Header = "Name", Text = existing?.Name ?? $"ck_{ViewModel.Table.Name.Name}_" };
+        var expression = new TextBox
+        {
+            Header = "Expression",
+            Text = existing?.Expression ?? string.Empty,
+            PlaceholderText = "for example price > 0 AND quantity >= 0",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 96,
+            FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["CodeFontFamily"],
+        };
+        var panel = new StackPanel { Spacing = 12, MinWidth = 420 };
+        panel.Children.Add(name);
+        panel.Children.Add(expression);
+        panel.Children.Add(new TextBlock
+        {
+            Style = (Style)Application.Current.Resources["StatusTextStyle"],
+            TextWrapping = TextWrapping.Wrap,
+            Text = existing is null
+                ? "Adding a check reads every row, and fails if one does not pass."
+                : "A new expression drops the check and adds it again, which reads every row. A new name alone does not.",
+        });
+
+        var dialogs = ViewModel.Context.Dialogs;
+        if (await dialogs.ShowAsync(dialogs.Create(existing is null ? "Add Check Constraint" : "Edit Check Constraint", panel, existing is null ? "Add" : "Save", "Cancel"))
+            != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        var check = new CheckConstraintDefinition(name.Text.Trim(), expression.Text.Trim());
+        if (!check.IsComplete)
+        {
+            await dialogs.ShowErrorAsync("Check constraint not saved", "A check needs both a name and an expression.");
+            return null;
+        }
+
+        if (existing is null)
+        {
+            return new AddCheckConstraint(check);
+        }
+
+        return check == existing ? null : new AlterCheckConstraint(existing, check);
+    }
+
+    /// <summary>
+    /// A new partition and its bound. The bound starts as the last partition's, which is already in the engine's own
+    /// syntax, so the user edits a value rather than recalling how the engine spells a range.
+    /// </summary>
+    private async Task<SchemaChange?> PartitionDialogAsync()
+    {
+        if (ViewModel.Structure?.Partitioning is not { } partitioning)
+        {
+            return null;
+        }
+
+        var last = partitioning.Partitions.LastOrDefault(p => !p.IsSubpartition && !string.IsNullOrEmpty(p.Bound) && !string.Equals(p.Bound, "DEFAULT", StringComparison.OrdinalIgnoreCase));
+        var name = new TextBox { Header = "Name", Text = $"{ViewModel.Table.Name.Name}_" };
+        var bound = new TextBox
+        {
+            Header = "Bound",
+            Text = last?.Bound ?? string.Empty,
+            PlaceholderText = "for example VALUES LESS THAN (2026), or FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
+            FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["CodeFontFamily"],
+        };
+        var panel = new StackPanel { Spacing = 12, MinWidth = 460 };
+        panel.Children.Add(new TextBlock { Text = $"Partitioned by {partitioning}.", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(name);
+        panel.Children.Add(bound);
+        panel.Children.Add(new TextBlock
+        {
+            Style = (Style)Application.Current.Resources["StatusTextStyle"],
+            TextWrapping = TextWrapping.Wrap,
+            Text = "Write the bound as the Bound column shows it. Leave it empty for a HASH or KEY partition.",
+        });
+
+        var dialogs = ViewModel.Context.Dialogs;
+        if (await dialogs.ShowAsync(dialogs.Create("Add Partition", panel, "Add", "Cancel")) != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text))
+        {
+            return null;
+        }
+
+        return new AddPartition(new PartitionDefinition(name.Text.Trim(), bound.Text.Trim()));
+    }
+
+    /// <summary>One field per option the engine can change, filled with the current values; only the ones edited become DDL.</summary>
+    private async Task<SchemaChange?> OptionsDialogAsync(TableStructure structure)
+    {
+        var specs = ViewModel.EditableTableOptions;
+        if (specs.Count == 0)
+        {
+            return null;
+        }
+
+        var fields = new List<(string Name, Func<string?> Read)>(specs.Count);
+        var panel = new StackPanel { Spacing = 12, MinWidth = 420 };
+        foreach (var spec in specs)
+        {
+            var current = structure.Option(spec.Name);
+            if (spec.Kind == TableOptionKind.Choice)
+            {
+                var box = new ComboBox
+                {
+                    Header = spec.Name,
+                    IsEditable = true,
+                    ItemsSource = spec.ChoiceList.ToList(),
+                    Text = current ?? string.Empty,
+                    PlaceholderText = spec.Placeholder ?? string.Empty,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                };
+                panel.Children.Add(box);
+                fields.Add((spec.Name, () => string.IsNullOrWhiteSpace(box.Text) ? box.SelectedItem as string : box.Text));
+            }
+            else
+            {
+                var box = new TextBox { Header = spec.Name, Text = current ?? string.Empty, PlaceholderText = spec.Placeholder ?? string.Empty };
+                if (spec.Kind == TableOptionKind.Number)
+                {
+                    box.InputScope = new InputScope { Names = { new InputScopeName(InputScopeNameValue.Number) } };
+                }
+
+                panel.Children.Add(box);
+                fields.Add((spec.Name, () => box.Text));
+            }
+        }
+
+        var dialogs = ViewModel.Context.Dialogs;
+        var content = new ScrollViewer { Content = panel, MaxHeight = 520 };
+        if (await dialogs.ShowAsync(dialogs.Create("Table Options", content, "Save", "Cancel")) != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        var edited = fields.ToDictionary(f => f.Name, f => f.Read(), StringComparer.OrdinalIgnoreCase);
+        var changes = TableOptionChange.Diff(structure.Options, edited);
+        return changes.Count == 0 ? null : new SetTableOptions(changes);
     }
 
     private async Task<SchemaChange?> ColumnDialogAsync(ColumnDefinition? existing)

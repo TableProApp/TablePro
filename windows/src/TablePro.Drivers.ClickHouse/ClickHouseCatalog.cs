@@ -37,6 +37,22 @@ internal static class ClickHouseCatalog
         WHERE database = {db:String} AND table = {table:String}
         """;
 
+    // ClickHouse has no constraint catalog; the checks are read out of create_table_query.
+    public const string TableDetails = """
+        SELECT engine, partition_key, sorting_key, primary_key, sampling_key, comment, create_table_query
+        FROM system.tables
+        WHERE database = {db:String} AND name = {table:String}
+        """;
+
+    // A partition is the set of active parts that share a partition id; partition holds the key's value as text.
+    public const string Partitions = """
+        SELECT partition_id, any(partition), sum(rows), sum(bytes_on_disk)
+        FROM system.parts
+        WHERE database = {db:String} AND table = {table:String} AND active
+        GROUP BY partition_id
+        ORDER BY partition_id
+        """;
+
     /// <summary>Columns a mutation may not assign.</summary>
     public const string KeyColumns = """
         SELECT name FROM system.columns

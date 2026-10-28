@@ -16,6 +16,11 @@ public static class ShortcutIds
     public const string FindAndReplace = "findAndReplace";
     public const string FindNext = "findNext";
     public const string FindPrevious = "findPrevious";
+    public const string GoToDefinition = "goToDefinition";
+    public const string RenameSymbol = "renameSymbol";
+    public const string NextQueryIssue = "nextQueryIssue";
+    public const string PreviousQueryIssue = "previousQueryIssue";
+    public const string ShowQuickInfo = "showQuickInfo";
 
     // Workspace window commands.
     public const string SearchDatabase = "searchDatabase";
@@ -32,6 +37,7 @@ public static class ShortcutIds
     public const string FocusObjectList = "focusObjectList";
     public const string ToggleTableBrowser = "toggleTableBrowser";
     public const string ToggleHistory = "toggleHistory";
+    public const string ToggleSqlFiles = "toggleSqlFiles";
     public const string ShowFavoritesList = "showFavoritesList";
     public const string ToggleAssistant = "toggleAssistant";
     public const string ServerDashboard = "serverDashboard";
@@ -61,6 +67,14 @@ public static class ShortcutCatalog
         Editor(ShortcutIds.FindAndReplace, "Find and Replace", KeyChord.Ctrl(ShortcutKey.H)),
         Editor(ShortcutIds.FindNext, "Find Next", new KeyChord(ShortcutKey.F3)),
         Editor(ShortcutIds.FindPrevious, "Find Previous", KeyChord.Shift(ShortcutKey.F3)),
+
+        // The language commands ship unbound here: the editor answers to F12, F2, F8, Shift+F8 and Ctrl+Shift+Space
+        // itself, the keys Visual Studio and Visual Studio Code use, so a chord set here only adds a second key.
+        Editor(ShortcutIds.GoToDefinition, "Go to Definition", KeyChord.None),
+        Editor(ShortcutIds.RenameSymbol, "Rename Symbol", KeyChord.None),
+        Editor(ShortcutIds.NextQueryIssue, "Next Query Issue", KeyChord.None),
+        Editor(ShortcutIds.PreviousQueryIssue, "Previous Query Issue", KeyChord.None),
+        Editor(ShortcutIds.ShowQuickInfo, "Show Quick Info", KeyChord.None),
         Window(ShortcutIds.RunSqlFile, "Run SQL File", ShortcutCategory.Editor, KeyChord.None),
         Window(ShortcutIds.ExportDatabase, "Export Database", ShortcutCategory.Editor, KeyChord.None),
 
@@ -76,6 +90,7 @@ public static class ShortcutCatalog
         Window(ShortcutIds.FocusObjectList, "Focus Object List", ShortcutCategory.Navigation, KeyChord.None),
         Window(ShortcutIds.ToggleTableBrowser, "Toggle Sidebar", ShortcutCategory.Navigation, new KeyChord(ShortcutKey.F9)),
         Window(ShortcutIds.ToggleHistory, "Toggle History", ShortcutCategory.Navigation, KeyChord.CtrlShift(ShortcutKey.H)),
+        Window(ShortcutIds.ToggleSqlFiles, "Toggle SQL Files", ShortcutCategory.Navigation, KeyChord.CtrlAlt(ShortcutKey.L)),
         Window(ShortcutIds.ShowFavoritesList, "Show Favorites", ShortcutCategory.Navigation, KeyChord.None),
         Window(ShortcutIds.ToggleAssistant, "Toggle Assistant", ShortcutCategory.Navigation, KeyChord.CtrlAlt(ShortcutKey.A)),
         Window(ShortcutIds.ServerDashboard, "Server Dashboard", ShortcutCategory.Navigation, KeyChord.None),

@@ -139,6 +139,7 @@
         <Grid x:Name="StructurePanel" Grid.Row="1" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <Grid Padding="8,4" ColumnSpacing="8">
@@ -150,16 +151,26 @@
                     <SelectorBarItem Text="Columns" Tag="Columns" IsSelected="True" />
                     <SelectorBarItem Text="Indexes" Tag="Indexes" />
                     <SelectorBarItem Text="Foreign Keys" Tag="ForeignKeys" />
+                    <SelectorBarItem x:Name="ChecksSection" Text="Checks" Tag="Checks" Visibility="Collapsed" />
                     <SelectorBarItem Text="Triggers" Tag="Triggers" />
+                    <SelectorBarItem x:Name="PartitionsSection" Text="Partitions" Tag="Partitions" Visibility="Collapsed" />
+                    <SelectorBarItem x:Name="OptionsSection" Text="Options" Tag="Options" Visibility="Collapsed" />
                 </SelectorBar>
                 <CommandBar Grid.Column="1" DefaultLabelPosition="Right" HorizontalAlignment="Right" Background="Transparent">
                     <AppBarButton x:Name="StructureAdd" Icon="Add" Label="Add" Click="OnStructureAdd" />
                     <AppBarButton x:Name="StructureEdit" Icon="Edit" Label="Edit" Click="OnStructureEdit" />
+                    <AppBarButton x:Name="StructureTruncate" Label="Truncate" Click="OnStructureTruncate" Visibility="Collapsed">
+                        <AppBarButton.Icon><FontIcon Glyph="&#xE894;" /></AppBarButton.Icon>
+                    </AppBarButton>
                     <AppBarButton x:Name="StructureDrop" Icon="Delete" Label="Drop" Click="OnStructureDrop" />
                     <AppBarButton Icon="Refresh" Label="Refresh" Command="{x:Bind ViewModel.RefreshStructureCommand}" />
                 </CommandBar>
             </Grid>
-            <grid:DataGridView x:Name="StructureGrid" Grid.Row="1" />
+            <StackPanel Grid.Row="1" Margin="8,0,8,6" Spacing="6">
+                <TextBlock x:Name="StructureCaption" Style="{StaticResource StatusTextStyle}" TextWrapping="Wrap" Visibility="Collapsed" IsTextSelectionEnabled="True" />
+                <InfoBar x:Name="DetailsErrorBar" IsOpen="False" IsClosable="True" Severity="Warning" />
+            </StackPanel>
+            <grid:DataGridView x:Name="StructureGrid" Grid.Row="2" />
         </Grid>
 
         <!--  Definition  -->

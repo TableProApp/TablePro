@@ -226,7 +226,7 @@ public sealed partial class MySqlSession
             : reader.GetString(ordinal) + ";";
     }
 
-    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => MySqlDdl.Build(table, change);
+    public IReadOnlyList<string> BuildDdl(ObjectName table, SchemaChange change) => MySqlDdl.Build(table, change, Server);
 
     public Task<ResultSet> GetActivityAsync(CancellationToken cancellationToken) => ReadResultAsync(MySqlCatalog.ProcessList, cancellationToken);
 

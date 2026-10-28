@@ -39,8 +39,50 @@ internal static class ClickHouseDdl
         RenameTable rename => [string.Concat("RENAME TABLE ", Dialect.Qualify(table), " TO ", Dialect.Qualify(table with { Name = rename.NewName }))],
         DropObject drop => DropObject(drop.Object) is { } sql ? [sql] : [],
         TruncateTable => ["TRUNCATE TABLE " + Dialect.Qualify(table)],
+        AddCheckConstraint add => add.Constraint.IsComplete ? [string.Concat(AlterTable(table), " ADD ", CheckClause(add.Constraint))] : [],
+        DropCheckConstraint drop => [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(drop.Name))],
+        AlterCheckConstraint alter => alter.After.IsComplete
+            ? [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(alter.Before.Name)), string.Concat(AlterTable(table), " ADD ", CheckClause(alter.After))]
+            : [],
+
+        // Partitions come from the partition key as rows arrive, so there is none to add; one is dropped by its id.
+        DropPartition drop => [string.Concat(AlterTable(table), " DROP PARTITION ID ", Dialect.StringLiteral(drop.Partition.Name))],
+        SetTableOptions options => options.Changes.FirstOrDefault(c => c.Name == TableOptionNames.Comment) is { } comment
+            ? [string.Concat(AlterTable(table), " MODIFY COMMENT ", Dialect.StringLiteral(comment.After?.Trim() ?? string.Empty))]
+            : [],
         _ => [],
     };
+
+    public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs = [new(TableOptionNames.Comment, TableOptionKind.Text)];
+
+    public static string CheckClause(CheckConstraintDefinition check) =>
+        string.Concat("CONSTRAINT ", Q(check.Name.Trim()), " CHECK ", check.Expression.Trim());
+
+    /// <summary>The CHECK constraints of a <c>create_table_query</c>; ASSUME constraints are hints to the optimizer, not checks.</summary>
+    public static List<CheckConstraintInfo> CheckConstraints(string createTableQuery)
+    {
+        var checks = new List<CheckConstraintInfo>();
+        foreach (var entry in ConstraintText.CreateTableEntries(createTableQuery, Dialect.LexerFeatures))
+        {
+            if (ConstraintText.ParseCheckEntry(entry, Dialect.LexerFeatures) is { Name: { } name } check)
+            {
+                checks.Add(new CheckConstraintInfo(name, check.Expression));
+            }
+        }
+
+        return checks;
+    }
+
+    public static List<TableOption> ReadOptions(string? engine, string? sortingKey, string? primaryKey, string? samplingKey, string? comment) =>
+    [
+        new(TableOptionNames.Engine, Blank(engine)),
+        new(TableOptionNames.SortingKey, Blank(sortingKey)),
+        new(TableOptionNames.PrimaryKey, Blank(primaryKey)),
+        new(TableOptionNames.SamplingKey, Blank(samplingKey)),
+        new(TableOptionNames.Comment, Blank(comment)),
+    ];
+
+    private static string? Blank(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     /// <summary>
     /// A MergeTree ordered by the primary key columns, or by nothing when there are none. Nullability lives in the

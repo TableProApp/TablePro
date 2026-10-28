@@ -109,4 +109,16 @@ internal static class DuckDbCatalog
         """;
 
     public const string Settings = "SELECT name, value, description, input_type, scope FROM duckdb_settings() ORDER BY name";
+
+    // expression is the check as DuckDB re-prints it; constraint_column_names lists the columns it reads.
+    public const string CheckConstraints = """
+        SELECT constraint_name, expression, constraint_column_names
+        FROM duckdb_constraints()
+        WHERE database_name = $catalog AND schema_name = $schema AND table_name = $table AND constraint_type = 'CHECK'
+        ORDER BY constraint_index
+        """;
+
+    public const string TableComment = """
+        SELECT comment FROM duckdb_tables() WHERE database_name = $catalog AND schema_name = $schema AND table_name = $table
+        """;
 }

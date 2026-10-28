@@ -53,6 +53,40 @@ internal static class MySqlCatalog
         ORDER BY TRIGGER_NAME
         """;
 
+    // TABLE_CONSTRAINTS carries the table; MySQL's CHECK_CONSTRAINTS does not. ENFORCED arrived with the checks, in 8.0.16.
+    public const string MySqlCheckConstraints = """
+        SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE, tc.ENFORCED
+        FROM information_schema.CHECK_CONSTRAINTS cc
+        JOIN information_schema.TABLE_CONSTRAINTS tc
+          ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+        WHERE cc.CONSTRAINT_SCHEMA = COALESCE(@schema, DATABASE()) AND tc.TABLE_NAME = @table AND tc.CONSTRAINT_TYPE = 'CHECK'
+        ORDER BY cc.CONSTRAINT_NAME
+        """;
+
+    // MariaDB's CHECK_CONSTRAINTS names the table itself and has no ENFORCED: every check it keeps is enforced.
+    public const string MariaDbCheckConstraints = """
+        SELECT CONSTRAINT_NAME, CHECK_CLAUSE, 'YES'
+        FROM information_schema.CHECK_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = COALESCE(@schema, DATABASE()) AND TABLE_NAME = @table
+        ORDER BY CONSTRAINT_NAME
+        """;
+
+    public const string TableOptions = """
+        SELECT ENGINE, TABLE_COLLATION, ROW_FORMAT, AUTO_INCREMENT, TABLE_COMMENT
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = COALESCE(@schema, DATABASE()) AND TABLE_NAME = @table
+        """;
+
+    // One row per subpartition, or per partition when there are none; an unpartitioned table has one row with no name.
+    public const string Partitions = """
+        SELECT PARTITION_NAME, SUBPARTITION_NAME, PARTITION_METHOD, PARTITION_EXPRESSION, PARTITION_DESCRIPTION,
+               PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION, TABLE_ROWS, DATA_LENGTH + INDEX_LENGTH,
+               SUBPARTITION_METHOD, SUBPARTITION_EXPRESSION
+        FROM information_schema.PARTITIONS
+        WHERE TABLE_SCHEMA = COALESCE(@schema, DATABASE()) AND TABLE_NAME = @table AND PARTITION_NAME IS NOT NULL
+        ORDER BY PARTITION_ORDINAL_POSITION, SUBPARTITION_ORDINAL_POSITION
+        """;
+
     public const string ReadOnlySession = "SET SESSION TRANSACTION READ ONLY";
 
     public const string ProcessList = "SHOW FULL PROCESSLIST";

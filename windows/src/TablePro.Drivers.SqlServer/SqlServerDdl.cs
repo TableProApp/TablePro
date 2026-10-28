@@ -30,6 +30,12 @@ internal static class SqlServerDdl
         RenameTable rename => [string.Concat("EXEC sys.sp_rename ", Literal(Dialect.Qualify(table)), ", ", Literal(rename.NewName))],
         DropObject drop => DropObject(drop.Object) is { } sql ? [sql] : [],
         TruncateTable => ["TRUNCATE TABLE " + Dialect.Qualify(table)],
+        AddCheckConstraint add => add.Constraint.IsComplete ? [string.Concat(AlterTable(table), " ADD ", CheckClause(add.Constraint))] : [],
+        DropCheckConstraint drop => [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(drop.Name))],
+        AlterCheckConstraint alter => AlterCheck(table, alter),
+        SetTableOptions options => SetOptions(table, options.Changes),
+
+        // A partition here belongs to a partition scheme shared by tables, so it is changed there, not on one table.
         _ => [],
     };
 
@@ -231,6 +237,99 @@ internal static class SqlServerDdl
             "    EXEC sys.sp_updateextendedproperty @name = N'MS_Description', ", value, ", ", target, "\n",
             "ELSE\n",
             "    EXEC sys.sp_addextendedproperty @name = N'MS_Description', ", value, ", ", target);
+    }
+
+    /// <summary>A table description is the MS_Description property at table level, added, updated or dropped as it stands.</summary>
+    public static string TableComment(ObjectName table, string? comment)
+    {
+        var target = string.Concat(
+            "@level0type = N'SCHEMA', @level0name = ", Literal(table.Schema ?? "dbo"),
+            ", @level1type = N'TABLE', @level1name = ", Literal(table.Name));
+        var exists = string.Concat(
+            "IF EXISTS (SELECT 1 FROM sys.fn_listextendedproperty(N'MS_Description', N'SCHEMA', ", Literal(table.Schema ?? "dbo"),
+            ", N'TABLE', ", Literal(table.Name), ", NULL, NULL))\n");
+        if (string.IsNullOrEmpty(comment))
+        {
+            return string.Concat(exists, "    EXEC sys.sp_dropextendedproperty @name = N'MS_Description', ", target);
+        }
+
+        var value = "@value = " + Literal(comment);
+        return string.Concat(
+            exists,
+            "    EXEC sys.sp_updateextendedproperty @name = N'MS_Description', ", value, ", ", target, "\n",
+            "ELSE\n",
+            "    EXEC sys.sp_addextendedproperty @name = N'MS_Description', ", value, ", ", target);
+    }
+
+    public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs =
+    [
+        new(TableOptionNames.Comment, TableOptionKind.Text),
+        new(TableOptionNames.DataCompression, TableOptionKind.Choice, ["NONE", "ROW", "PAGE"]),
+        new(TableOptionNames.LockEscalation, TableOptionKind.Choice, ["TABLE", "AUTO", "DISABLE"]),
+    ];
+
+    public static string CheckClause(CheckConstraintDefinition check) =>
+        string.Concat("CONSTRAINT ", Q(check.Name.Trim()), " CHECK (", check.Expression.Trim(), ")");
+
+    /// <summary>
+    /// A rename is sp_rename on the constraint, which leaves the rows unread. T-SQL cannot drop and add in one ALTER
+    /// TABLE, so a new expression takes two statements.
+    /// </summary>
+    public static List<string> AlterCheck(ObjectName table, AlterCheckConstraint alter)
+    {
+        if (alter.IsRenameOnly)
+        {
+            return
+            [
+                string.Concat(
+                    "EXEC sys.sp_rename ", Literal(Dialect.Qualify(table with { Name = alter.Before.Name })), ", ",
+                    Literal(alter.After.Name.Trim()), ", N'OBJECT'"),
+            ];
+        }
+
+        return alter.After.IsComplete
+            ? [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(alter.Before.Name)), string.Concat(AlterTable(table), " ADD ", CheckClause(alter.After))]
+            : [];
+    }
+
+    public static List<string> SetOptions(ObjectName table, IReadOnlyList<TableOptionChange> changes)
+    {
+        var statements = new List<string>(changes.Count);
+        foreach (var change in changes)
+        {
+            switch (change.Name)
+            {
+                case TableOptionNames.Comment:
+                    statements.Add(TableComment(table, change.After?.Trim()));
+                    break;
+
+                // Compression is a property of the stored rows, so changing it rewrites the table.
+                case TableOptionNames.DataCompression:
+                    statements.Add(string.Concat(AlterTable(table), " REBUILD WITH (DATA_COMPRESSION = ", Keyword(change, ["NONE", "ROW", "PAGE"]), ")"));
+                    break;
+                case TableOptionNames.LockEscalation:
+                    statements.Add(string.Concat(AlterTable(table), " SET (LOCK_ESCALATION = ", Keyword(change, ["TABLE", "AUTO", "DISABLE"]), ")"));
+                    break;
+            }
+        }
+
+        return statements;
+    }
+
+    public static List<TableOption> ReadOptions(string? comment, string? lockEscalation, string? compression, string? filegroup) =>
+    [
+        new(TableOptionNames.Comment, comment),
+        new(TableOptionNames.DataCompression, compression),
+        new(TableOptionNames.LockEscalation, lockEscalation),
+        new(TableOptionNames.Filegroup, filegroup),
+    ];
+
+    private static string Keyword(TableOptionChange change, string[] allowed)
+    {
+        var value = change.After?.Trim().ToUpperInvariant();
+        return value is not null && Array.IndexOf(allowed, value) >= 0
+            ? value
+            : throw new ArgumentException($"{change.Name} is one of {string.Join(", ", allowed)}.");
     }
 
     public static string Kill(object processId) =>

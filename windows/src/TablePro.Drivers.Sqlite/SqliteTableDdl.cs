@@ -1,5 +1,7 @@
 using System.Collections.Frozen;
+using System.Globalization;
 using System.Text;
+using TablePro.Core.Schema;
 using TablePro.Core.Sql;
 
 namespace TablePro.Drivers.Sqlite;
@@ -11,6 +13,9 @@ internal sealed record SqliteTableEntry(string Text, string? ColumnName)
 }
 
 internal sealed record SqliteCreateTable(IReadOnlyList<SqliteTableEntry> Entries, string Suffix, bool WithoutRowid);
+
+/// <summary>A table-level CHECK of the stored statement and the entry that holds it.</summary>
+internal sealed record SqliteCheck(string Name, string Expression, int EntryIndex, bool IsNamed);
 
 /// <summary>A constraint clause of one column definition, as a range of the definition's text.</summary>
 internal readonly record struct SqliteColumnClause(string Kind, string? ConstraintName, int Start, int End);
@@ -392,6 +397,44 @@ internal static class SqliteTableDdl
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The table-level CHECK constraints, which only the stored statement records. A check written on a column has no
+    /// name of its own and moves with the column, so it is left out. A table-level check without a name is shown under
+    /// a made-up one, as an unnamed foreign key is, and found again by its position.
+    /// </summary>
+    public static List<SqliteCheck> CheckConstraints(SqliteCreateTable table, string tableName)
+    {
+        var checks = new List<SqliteCheck>();
+        for (var i = 0; i < table.Entries.Count; i++)
+        {
+            var entry = table.Entries[i];
+            if (!entry.IsColumn && ConstraintText.ParseCheckEntry(entry.Text, Features) is { } check)
+            {
+                checks.Add(new SqliteCheck(check.Name ?? SynthesizedCheckName(tableName, checks.Count + 1), check.Expression, i, check.Name is not null));
+            }
+        }
+
+        return checks;
+    }
+
+    public static string SynthesizedCheckName(string table, int position) => string.Create(CultureInfo.InvariantCulture, $"ck_{table}_{position}");
+
+    /// <summary>Whether the options after the column list include STRICT, which makes SQLite enforce the declared types.</summary>
+    public static bool IsStrict(string suffix)
+    {
+        var span = suffix.AsSpan();
+        var lexer = new SqlLexer(span, Features);
+        while (lexer.TryRead(out var token))
+        {
+            if (token.Kind == SqlTokenKind.Word && token.Slice(span).Equals("STRICT", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Reads a trigger's timing and event out of its CREATE TRIGGER text, which is all SQLite keeps.</summary>

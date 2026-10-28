@@ -38,8 +38,158 @@ internal static class OracleDdl
         RenameTable rename => [string.Concat(AlterTable(table), " RENAME TO ", Q(rename.NewName))],
         DropObject drop => DropObject(drop.Object, drop.Cascade) is { } sql ? [sql] : [],
         TruncateTable truncate => [string.Concat("TRUNCATE TABLE ", Dialect.Qualify(table), truncate.Cascade ? " CASCADE" : string.Empty)],
+        AddCheckConstraint add => add.Constraint.IsComplete ? [string.Concat(AlterTable(table), " ADD ", CheckClause(add.Constraint))] : [],
+        DropCheckConstraint drop => [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(drop.Name))],
+        AlterCheckConstraint alter => AlterCheck(table, alter),
+        AddPartition add => AddPartition(table, add.Partition) is { } sql ? [sql] : [],
+        DropPartition drop => [PartitionStatement(table, "DROP", drop.Partition)],
+        TruncatePartition truncate => [PartitionStatement(table, "TRUNCATE", truncate.Partition)],
+        SetTableOptions options => SetOptions(table, options.Changes),
         _ => [],
     };
+
+    public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs =
+    [
+        new(TableOptionNames.Comment, TableOptionKind.Text),
+        new(TableOptionNames.Tablespace, TableOptionKind.Text, Placeholder: "USERS"),
+        new(TableOptionNames.PctFree, TableOptionKind.Number, Placeholder: "10"),
+        new(TableOptionNames.Logging, TableOptionKind.Choice, ["YES", "NO"]),
+        new(TableOptionNames.RowMovement, TableOptionKind.Choice, ["ENABLED", "DISABLED"]),
+    ];
+
+    public static string CheckClause(CheckConstraintDefinition check) =>
+        string.Concat("CONSTRAINT ", Q(check.Name.Trim()), " CHECK (", check.Expression.Trim(), ")");
+
+    /// <summary>A rename is one statement; Oracle cannot drop and add in one ALTER TABLE, so a new expression takes two.</summary>
+    public static List<string> AlterCheck(ObjectName table, AlterCheckConstraint alter)
+    {
+        if (alter.IsRenameOnly)
+        {
+            return [string.Concat(AlterTable(table), " RENAME CONSTRAINT ", Q(alter.Before.Name), " TO ", Q(alter.After.Name.Trim()))];
+        }
+
+        return alter.After.IsComplete
+            ? [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(alter.Before.Name)), string.Concat(AlterTable(table), " ADD ", CheckClause(alter.After))]
+            : [];
+    }
+
+    /// <summary>The bound as the partition list prints it, such as <c>VALUES LESS THAN (2025)</c>; a HASH partition states none.</summary>
+    public static string? AddPartition(ObjectName table, PartitionDefinition partition)
+    {
+        if (string.IsNullOrWhiteSpace(partition.Name))
+        {
+            return null;
+        }
+
+        var bound = partition.Bound.Trim();
+        return string.Concat(AlterTable(table), " ADD PARTITION ", Q(partition.Name.Trim()), bound.Length == 0 ? string.Empty : " " + bound);
+    }
+
+    /// <summary>
+    /// UPDATE GLOBAL INDEXES keeps the table's global indexes usable; without it Oracle marks them UNUSABLE and every
+    /// query that would use one fails until it is rebuilt.
+    /// </summary>
+    public static string PartitionStatement(ObjectName table, string verb, PartitionInfo partition) =>
+        string.Concat(AlterTable(table), " ", verb, partition.IsSubpartition ? " SUBPARTITION " : " PARTITION ", Q(partition.Name), " UPDATE GLOBAL INDEXES");
+
+    public static List<string> SetOptions(ObjectName table, IReadOnlyList<TableOptionChange> changes)
+    {
+        var statements = new List<string>(changes.Count);
+        foreach (var change in changes)
+        {
+            var value = change.After?.Trim();
+            switch (change.Name)
+            {
+                case TableOptionNames.Comment:
+                    statements.Add(string.Concat("COMMENT ON TABLE ", Dialect.Qualify(table), " IS ", Dialect.StringLiteral(value ?? string.Empty)));
+                    break;
+
+                // MOVE rewrites the segment and would leave every index UNUSABLE; UPDATE INDEXES (12.2) rebuilds them with it.
+                case TableOptionNames.Tablespace when !string.IsNullOrEmpty(value):
+                    statements.Add(string.Concat(AlterTable(table), " MOVE TABLESPACE ", DictionaryName(value), " UPDATE INDEXES"));
+                    break;
+                case TableOptionNames.PctFree:
+                    statements.Add(int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var percent) && percent <= 99
+                        ? string.Concat(AlterTable(table), " PCTFREE ", percent.ToString(CultureInfo.InvariantCulture))
+                        : throw new ArgumentException("Percent free is a whole number from 0 to 99."));
+                    break;
+                case TableOptionNames.Logging:
+                    statements.Add(string.Concat(AlterTable(table), value?.ToUpperInvariant() switch
+                    {
+                        "YES" or "LOGGING" => " LOGGING",
+                        "NO" or "NOLOGGING" => " NOLOGGING",
+                        _ => throw new ArgumentException("Logging is YES or NO."),
+                    }));
+                    break;
+                case TableOptionNames.RowMovement:
+                    statements.Add(string.Concat(AlterTable(table), value?.ToUpperInvariant() switch
+                    {
+                        "ENABLED" or "ENABLE" => " ENABLE ROW MOVEMENT",
+                        "DISABLED" or "DISABLE" => " DISABLE ROW MOVEMENT",
+                        _ => throw new ArgumentException("Row movement is ENABLED or DISABLED."),
+                    }));
+                    break;
+            }
+        }
+
+        return statements;
+    }
+
+    public static List<TableOption> ReadOptions(string? tablespace, int? pctFree, string? logging, string? compression, string? rowMovement, string? comment) =>
+    [
+        new(TableOptionNames.Comment, string.IsNullOrEmpty(comment) ? null : comment),
+        new(TableOptionNames.Tablespace, tablespace),
+        new(TableOptionNames.PctFree, pctFree?.ToString(CultureInfo.InvariantCulture)),
+        new(TableOptionNames.Logging, logging?.Trim()),
+        new(TableOptionNames.RowMovement, rowMovement?.Trim()),
+        new(TableOptionNames.Compression, compression?.Trim()),
+    ];
+
+    /// <summary>The NOT NULL of a column, which Oracle keeps as a check named by the system, written <c>"COL" IS NOT NULL</c>.</summary>
+    public static bool IsNotNullCheck(string condition)
+    {
+        var text = condition.Trim();
+        const string Suffix = " IS NOT NULL";
+        if (!text.EndsWith(Suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var column = text[..^Suffix.Length].Trim();
+        return column.Length > 2 && column[0] == '"' && column[^1] == '"' && column.IndexOf('"', 1) == column.Length - 1;
+    }
+
+    /// <summary>A RANGE bound is the upper limit and a LIST bound the values; HASH partitions state none.</summary>
+    public static string? PartitionBound(string? method, string? highValue)
+    {
+        var value = highValue?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        return method?.Trim().ToUpperInvariant() switch
+        {
+            "RANGE" => $"VALUES LESS THAN ({value})",
+            "LIST" => $"VALUES ({value})",
+            _ => null,
+        };
+    }
+
+    // A dictionary name such as a tablespace is stored in capitals; an unquoted name is folded the same way, so a plain
+    // name the user typed in lower case still matches, and anything else is quoted.
+    private static string DictionaryName(string name)
+    {
+        foreach (var c in name)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not '_' and not '$' and not '#')
+            {
+                return Q(name);
+            }
+        }
+
+        return char.IsAsciiLetter(name[0]) ? name.ToUpperInvariant() : Q(name);
+    }
 
     /// <summary>
     /// Auto-increment is <c>GENERATED BY DEFAULT ON NULL AS IDENTITY</c>, so an explicit key from an import still

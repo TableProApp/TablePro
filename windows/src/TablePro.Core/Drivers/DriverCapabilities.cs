@@ -15,6 +15,38 @@ public interface ISchemaDdlProvider
 
     /// <summary>The column types the structure editor offers, most common first.</summary>
     IReadOnlyList<string> CommonDataTypes { get; }
+
+    /// <summary>
+    /// The edits beyond columns, indexes and foreign keys that this server takes, so the structure tab offers only
+    /// those. It is a property of the connected server, not of the engine: MySQL before 8.0.16 parses a CHECK and
+    /// discards it, so offering one there would report a success that did nothing.
+    /// </summary>
+    StructureEdits SupportedEdits => StructureEdits.None;
+
+    /// <summary>The table options the structure tab may change, in the order its editor shows them.</summary>
+    IReadOnlyList<TableOptionSpec> EditableTableOptions => [];
+}
+
+/// <summary>Structure edits an engine may or may not express, beyond columns, indexes and foreign keys.</summary>
+[Flags]
+public enum StructureEdits
+{
+    None = 0,
+    CheckConstraints = 1,
+    AddPartition = 2,
+    DropPartition = 4,
+    TruncatePartition = 8,
+    TableOptions = 16,
+}
+
+/// <summary>
+/// Reads the check constraints, partitioning and table options of one table, which the structure tab shows beside
+/// the columns. It is a read of its own so an engine without these, or a server that refuses the query, still shows
+/// its columns.
+/// </summary>
+public interface ITableDetailsProvider
+{
+    Task<TableDetails> GetTableDetailsAsync(ObjectName table, CancellationToken cancellationToken);
 }
 
 /// <summary>The server dashboard: who is connected and what they run.</summary>

@@ -9,7 +9,7 @@ using TablePro.Core.Sql;
 
 namespace TablePro.Drivers.DuckDb;
 
-public sealed class DuckDbSession : AdoNetSession, ISchemaDdlProvider, IServerVariablesProvider
+public sealed partial class DuckDbSession : AdoNetSession, ISchemaDdlProvider, IServerVariablesProvider
 {
     private const string DefaultSchemaName = "main";
 
@@ -227,8 +227,9 @@ public sealed class DuckDbSession : AdoNetSession, ISchemaDdlProvider, IServerVa
         RenameTable rename => [DuckDbDdl.RenameTable(table, rename.NewName)],
         DropObject drop => DuckDbDdl.DropObject(drop.Object, drop.Cascade) is { } sql ? [sql] : [],
         TruncateTable => [DuckDbDdl.Truncate(table)],
+        SetTableOptions options => DuckDbDdl.SetOptions(table, options.Changes),
 
-        // DuckDB's ALTER TABLE cannot add or drop a foreign key; a key is only declared at CREATE TABLE.
+        // DuckDB's ALTER TABLE cannot add or drop a foreign key or a check; both are only declared at CREATE TABLE.
         _ => [],
     };
 

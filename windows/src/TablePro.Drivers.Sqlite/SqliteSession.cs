@@ -9,7 +9,7 @@ using TablePro.Core.Sql;
 
 namespace TablePro.Drivers.Sqlite;
 
-public sealed class SqliteSession : AdoNetSession, ISchemaDdlProvider
+public sealed partial class SqliteSession : AdoNetSession, ISchemaDdlProvider
 {
     private readonly string _connectionString;
     private readonly string[] _startupCommands;
@@ -247,6 +247,9 @@ public sealed class SqliteSession : AdoNetSession, ISchemaDdlProvider
         RenameTable rename => [SqliteDdl.RenameTable(table, rename.NewName)],
         DropObject drop => SqliteDdl.DropObject(drop.Object) is { } sql ? [sql] : [],
         TruncateTable => [SqliteDdl.Truncate(table)],
+        AddCheckConstraint add => add.Constraint.IsComplete ? BuildCheckRebuild(table, null, add.Constraint) : [],
+        DropCheckConstraint drop => BuildCheckRebuild(table, drop.Name, null),
+        AlterCheckConstraint alter => alter.After.IsComplete ? BuildCheckRebuild(table, alter.Before.Name, alter.After) : [],
         _ => [],
     };
 

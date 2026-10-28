@@ -30,8 +30,245 @@ internal static class PostgreSqlDdl
         RenameTable rename => [string.Concat(AlterTable(table), " RENAME TO ", Q(rename.NewName))],
         DropObject drop => DropObject(table, drop.Object, drop.Cascade) is { } sql ? [sql] : [],
         TruncateTable truncate => [string.Concat("TRUNCATE TABLE ", Dialect.Qualify(table), truncate.Cascade ? " CASCADE" : string.Empty)],
+        AddCheckConstraint add => add.Constraint.IsComplete ? [string.Concat(AlterTable(table), " ADD ", CheckClause(add.Constraint))] : [],
+        DropCheckConstraint drop => [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(drop.Name))],
+        AlterCheckConstraint alter => AlterCheck(table, alter),
+        AddPartition add => AddPartition(table, add.Partition) is { } sql ? [sql] : [],
+        DropPartition drop => drop.Partition.IsRelation ? ["DROP TABLE " + Dialect.Qualify(PartitionTable(table, drop.Partition))] : [],
+        TruncatePartition truncate => truncate.Partition.IsRelation ? ["TRUNCATE TABLE " + Dialect.Qualify(PartitionTable(table, truncate.Partition))] : [],
+        SetTableOptions options => SetOptions(table, options.Changes),
         _ => [],
     };
+
+    public static readonly IReadOnlyList<TableOptionSpec> TableOptionSpecs =
+    [
+        new(TableOptionNames.Comment, TableOptionKind.Text),
+        new(TableOptionNames.Tablespace, TableOptionKind.Text, Placeholder: "pg_default"),
+        new(TableOptionNames.FillFactor, TableOptionKind.Number, Placeholder: "100"),
+        new(TableOptionNames.Persistence, TableOptionKind.Choice, ["LOGGED", "UNLOGGED"]),
+        new(TableOptionNames.StorageParameters, TableOptionKind.Text, Placeholder: "autovacuum_enabled=false, toast_tuple_target=4096"),
+    ];
+
+    private const string FillFactorParameter = "fillfactor";
+
+    public static string CheckClause(CheckConstraintDefinition check) =>
+        string.Concat("CONSTRAINT ", Q(check.Name.Trim()), " CHECK (", check.Expression.Trim(), ")");
+
+    /// <summary>
+    /// A rename keeps the constraint as it is. A new expression drops and adds it in one ALTER TABLE, which PostgreSQL
+    /// runs atomically, so a row that fails the new check leaves the old one in place.
+    /// </summary>
+    public static List<string> AlterCheck(ObjectName table, AlterCheckConstraint alter)
+    {
+        if (alter.IsRenameOnly)
+        {
+            return [string.Concat(AlterTable(table), " RENAME CONSTRAINT ", Q(alter.Before.Name), " TO ", Q(alter.After.Name.Trim()))];
+        }
+
+        return alter.After.IsComplete
+            ? [string.Concat(AlterTable(table), " DROP CONSTRAINT ", Q(alter.Before.Name), ", ADD ", CheckClause(alter.After))]
+            : [];
+    }
+
+    /// <summary>
+    /// A new partition is a table created as a partition of this one, in the same schema. The bound is what
+    /// <c>pg_get_expr(relpartbound)</c> prints, so <c>FOR VALUES</c> is added when the user starts at FROM, IN or WITH.
+    /// </summary>
+    public static string? AddPartition(ObjectName table, PartitionDefinition partition)
+    {
+        var bound = partition.Bound.Trim();
+        if (string.IsNullOrWhiteSpace(partition.Name) || bound.Length == 0)
+        {
+            return null;
+        }
+
+        if (!bound.StartsWith("FOR VALUES", StringComparison.OrdinalIgnoreCase) && !bound.Equals("DEFAULT", StringComparison.OrdinalIgnoreCase))
+        {
+            bound = "FOR VALUES " + bound;
+        }
+
+        return string.Concat(
+            "CREATE TABLE ", Dialect.Qualify(table with { Name = partition.Name.Trim() }), " PARTITION OF ", Dialect.Qualify(table), " ", bound);
+    }
+
+    /// <summary>The storage parameters go in one SET and one RESET; the tablespace, persistence and comment have statements of their own.</summary>
+    public static List<string> SetOptions(ObjectName table, IReadOnlyList<TableOptionChange> changes)
+    {
+        var set = new List<string>();
+        var reset = new List<string>();
+        var statements = new List<string>();
+        foreach (var change in changes)
+        {
+            switch (change.Name)
+            {
+                case TableOptionNames.FillFactor when change.Clears:
+                    reset.Add(FillFactorParameter);
+                    break;
+                case TableOptionNames.FillFactor:
+                    set.Add(string.Concat(FillFactorParameter, "=", Number(change.After!, 10, 100, TableOptionNames.FillFactor)));
+                    break;
+                case TableOptionNames.StorageParameters:
+                    DiffParameters(change, set, reset);
+                    break;
+            }
+        }
+
+        if (set.Count > 0)
+        {
+            statements.Add(string.Concat(AlterTable(table), " SET (", string.Join(", ", set), ")"));
+        }
+
+        if (reset.Count > 0)
+        {
+            statements.Add(string.Concat(AlterTable(table), " RESET (", string.Join(", ", reset), ")"));
+        }
+
+        foreach (var change in changes)
+        {
+            switch (change.Name)
+            {
+                case TableOptionNames.Tablespace:
+                    statements.Add(string.Concat(AlterTable(table), " SET TABLESPACE ", Q(change.Clears ? "pg_default" : change.After!.Trim())));
+                    break;
+                case TableOptionNames.Persistence:
+                    var persistence = change.After?.Trim().ToUpperInvariant();
+                    statements.Add(persistence is "LOGGED" or "UNLOGGED"
+                        ? string.Concat(AlterTable(table), " SET ", persistence)
+                        : throw new ArgumentException("Persistence is LOGGED or UNLOGGED."));
+                    break;
+                case TableOptionNames.Comment:
+                    statements.Add(string.Concat(
+                        "COMMENT ON TABLE ", Dialect.Qualify(table), " IS ", change.Clears ? "NULL" : Dialect.StringLiteral(change.After!.Trim())));
+                    break;
+            }
+        }
+
+        return statements;
+    }
+
+    /// <summary>
+    /// The options the catalog row describes. Fill factor is shown on its own, so it is taken out of the storage
+    /// parameters it is stored among.
+    /// </summary>
+    public static List<TableOption> ReadOptions(string? tablespace, IReadOnlyList<string> relOptions, string persistence, string? comment)
+    {
+        string? fillFactor = null;
+        var others = new List<string>();
+        foreach (var option in relOptions)
+        {
+            var equals = option.IndexOf('=', StringComparison.Ordinal);
+            if (equals > 0 && option.AsSpan(0, equals).Equals(FillFactorParameter, StringComparison.OrdinalIgnoreCase))
+            {
+                fillFactor = option[(equals + 1)..];
+            }
+            else
+            {
+                others.Add(option);
+            }
+        }
+
+        return
+        [
+            new(TableOptionNames.Comment, comment),
+            new(TableOptionNames.Tablespace, tablespace),
+            new(TableOptionNames.FillFactor, fillFactor),
+            new(TableOptionNames.Persistence, persistence switch { "u" => "UNLOGGED", "t" => "TEMPORARY", _ => "LOGGED" }),
+            new(TableOptionNames.StorageParameters, others.Count == 0 ? null : string.Join(", ", others)),
+        ];
+    }
+
+    /// <summary>Splits <c>pg_get_partkeydef</c>'s <c>RANGE (created_at)</c> into the method and the key.</summary>
+    public static (string Method, string Key) SplitPartitionKey(string definition)
+    {
+        var text = definition.Trim();
+        var open = text.IndexOf('(', StringComparison.Ordinal);
+        if (open < 0 || !text.EndsWith(')'))
+        {
+            return (text, string.Empty);
+        }
+
+        return (text[..open].Trim(), text[(open + 1)..^1].Trim());
+    }
+
+    private static ObjectName PartitionTable(ObjectName table, PartitionInfo partition) =>
+        new(string.IsNullOrEmpty(partition.Schema) ? table.Schema : partition.Schema, partition.Name);
+
+    private static void DiffParameters(TableOptionChange change, List<string> set, List<string> reset)
+    {
+        var before = ParseParameters(change.Before);
+        var after = ParseParameters(change.After);
+        foreach (var (key, _) in before)
+        {
+            if (!after.Exists(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase)))
+            {
+                reset.Add(key);
+            }
+        }
+
+        foreach (var (key, value) in after)
+        {
+            if (!before.Exists(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase) && string.Equals(p.Value, value, StringComparison.Ordinal)))
+            {
+                set.Add(string.Concat(key, "=", ParameterValue(value)));
+            }
+        }
+    }
+
+    /// <summary>Reads <c>key=value</c> pairs separated by commas. A key is a plain or dotted name, such as <c>toast.autovacuum_enabled</c>.</summary>
+    public static List<(string Key, string Value)> ParseParameters(string? text)
+    {
+        var pairs = new List<(string, string)>();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return pairs;
+        }
+
+        foreach (var part in text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var equals = part.IndexOf('=', StringComparison.Ordinal);
+            var key = equals > 0 ? part[..equals].Trim() : string.Empty;
+            if (key.Length == 0 || !IsParameterName(key))
+            {
+                throw new ArgumentException($"\"{part}\" is not a storage parameter. Write each as name=value.");
+            }
+
+            pairs.Add((key.ToLowerInvariant(), part[(equals + 1)..].Trim()));
+        }
+
+        return pairs;
+    }
+
+    private static bool IsParameterName(string key)
+    {
+        foreach (var c in key)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not '_' and not '.')
+            {
+                return false;
+            }
+        }
+
+        return char.IsAsciiLetter(key[0]) || key[0] == '_';
+    }
+
+    // A number, true, false or a bare word goes in as written; anything else is quoted so it cannot end the list.
+    private static string ParameterValue(string value)
+    {
+        foreach (var c in value)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not '_' and not '.' and not '-' and not '+')
+            {
+                return Dialect.StringLiteral(value);
+            }
+        }
+
+        return value.Length == 0 ? Dialect.StringLiteral(value) : value;
+    }
+
+    private static string Number(string text, int min, int max, string name) =>
+        int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= min && value <= max
+            ? value.ToString(CultureInfo.InvariantCulture)
+            : throw new ArgumentException($"{name} is a whole number from {min} to {max}.");
 
     public static string ColumnSql(ColumnDefinition column, bool inlinePrimaryKey)
     {

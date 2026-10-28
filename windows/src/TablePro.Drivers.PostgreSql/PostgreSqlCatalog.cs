@@ -231,4 +231,40 @@ internal static class PostgreSqlCatalog
     public const string Settings = """
         SELECT name, setting, unit, category, short_desc, source, context FROM pg_catalog.pg_settings ORDER BY name
         """;
+
+    // pg_get_constraintdef is the supported reading of the text; consrc went away in PostgreSQL 12. conkey gives the
+    // columns from the catalog rather than from parsing the expression.
+    public const string CheckConstraints = """
+        SELECT con.conname, pg_catalog.pg_get_constraintdef(con.oid), con.convalidated,
+               ARRAY(SELECT a.attname::text FROM pg_catalog.pg_attribute a
+                     WHERE a.attrelid = con.conrelid AND a.attnum = ANY (con.conkey) ORDER BY a.attnum)
+        FROM pg_catalog.pg_constraint con
+        JOIN pg_catalog.pg_class c ON c.oid = con.conrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE con.contype = 'c' AND n.nspname = @schema AND c.relname = @table
+        ORDER BY con.conname
+        """;
+
+    public const string TableOptions = """
+        SELECT ts.spcname, c.reloptions, c.relpersistence::text, pg_catalog.obj_description(c.oid, 'pg_class'),
+               CASE WHEN c.relkind = 'p' THEN pg_catalog.pg_get_partkeydef(c.oid) END
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = c.reltablespace
+        WHERE n.nspname = @schema AND c.relname = @table
+        """;
+
+    // A partition need not live in its parent's schema, so the child's own namespace comes back with it. The DEFAULT
+    // partition sorts last, as it catches whatever the others do not. reltuples is -1 until the first ANALYZE.
+    public const string Partitions = """
+        SELECT cc.relname, cn.nspname, pg_catalog.pg_get_expr(cc.relpartbound, cc.oid), cc.relkind = 'p',
+               CASE WHEN cc.reltuples >= 0 THEN cc.reltuples::bigint END, pg_catalog.pg_total_relation_size(cc.oid)
+        FROM pg_catalog.pg_inherits i
+        JOIN pg_catalog.pg_class parent ON parent.oid = i.inhparent
+        JOIN pg_catalog.pg_namespace pn ON pn.oid = parent.relnamespace
+        JOIN pg_catalog.pg_class cc ON cc.oid = i.inhrelid
+        JOIN pg_catalog.pg_namespace cn ON cn.oid = cc.relnamespace
+        WHERE pn.nspname = @schema AND parent.relname = @table AND parent.relkind = 'p'
+        ORDER BY pg_catalog.pg_get_expr(cc.relpartbound, cc.oid) = 'DEFAULT', cc.relname
+        """;
 }

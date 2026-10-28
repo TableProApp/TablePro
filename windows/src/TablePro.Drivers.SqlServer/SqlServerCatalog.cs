@@ -219,4 +219,26 @@ internal static class SqlServerCatalog
         FROM sys.configurations
         ORDER BY name
         """;
+
+    // parent_column_id is 0 for a check over several columns, so the columns come from the expression dependencies,
+    // one row each, which lists them for both shapes and needs no FOR XML that would entity-escape a name.
+    public const string CheckConstraints = $"""
+        SELECT cc.name, cc.definition, cc.is_not_trusted, COL_NAME(d.referenced_id, d.referenced_minor_id)
+        FROM sys.check_constraints cc
+        LEFT JOIN sys.sql_expression_dependencies d ON d.referencing_id = cc.object_id AND d.referenced_minor_id > 0
+        WHERE cc.parent_object_id = {ObjectId}
+        ORDER BY cc.name, d.referenced_minor_id
+        """;
+
+    // Compression is per partition; the first partition of the heap or clustered index stands for the table.
+    public const string TableOptions = $"""
+        SELECT CAST(ep.value AS nvarchar(max)), t.lock_escalation_desc,
+               (SELECT TOP (1) p.data_compression_desc FROM sys.partitions p
+                WHERE p.object_id = t.object_id AND p.index_id IN (0, 1) ORDER BY p.partition_number),
+               (SELECT TOP (1) ds.name FROM sys.indexes i JOIN sys.data_spaces ds ON ds.data_space_id = i.data_space_id
+                WHERE i.object_id = t.object_id AND i.index_id IN (0, 1))
+        FROM sys.tables t
+        LEFT JOIN sys.extended_properties ep ON ep.class = 1 AND ep.major_id = t.object_id AND ep.minor_id = 0 AND ep.name = N'MS_Description'
+        WHERE t.object_id = {ObjectId}
+        """;
 }

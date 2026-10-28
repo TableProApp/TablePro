@@ -125,6 +125,52 @@ internal static class SqliteDdl
     // SQLite has no TRUNCATE; an unqualified DELETE takes its truncate optimization.
     public static string Truncate(ObjectName table) => "DELETE FROM " + Qualify(table);
 
+    public static string CheckEntry(CheckConstraintDefinition check) =>
+        string.Concat("CONSTRAINT ", Dialect.QuoteIdentifier(check.Name.Trim()), " CHECK (", check.Expression.Trim(), ")");
+
+    /// <summary>
+    /// The table's entries with one check removed, replaced or added. <paramref name="existing"/> names the check to
+    /// remove or replace, or is null to add <paramref name="replacement"/> at the end. Null when the check is not there.
+    /// </summary>
+    public static List<SqliteTableEntry>? WithCheck(SqliteCreateTable create, string table, string? existing, CheckConstraintDefinition? replacement)
+    {
+        var entries = new List<SqliteTableEntry>(create.Entries);
+        if (existing is null)
+        {
+            if (replacement is null)
+            {
+                return null;
+            }
+
+            entries.Add(new SqliteTableEntry(CheckEntry(replacement), null));
+            return entries;
+        }
+
+        var check = SqliteTableDdl.CheckConstraints(create, table).Find(c => string.Equals(c.Name, existing, StringComparison.OrdinalIgnoreCase));
+        if (check is null)
+        {
+            return null;
+        }
+
+        if (replacement is null)
+        {
+            entries.RemoveAt(check.EntryIndex);
+        }
+        else
+        {
+            entries[check.EntryIndex] = new SqliteTableEntry(CheckEntry(replacement), null);
+        }
+
+        return entries;
+    }
+
+    /// <summary>The options SQLite stores after the column list; they are fixed when the table is made.</summary>
+    public static List<TableOption> ReadOptions(SqliteCreateTable table) =>
+    [
+        new(TableOptionNames.WithoutRowid, table.WithoutRowid ? "YES" : "NO"),
+        new(TableOptionNames.Strict, SqliteTableDdl.IsStrict(table.Suffix) ? "YES" : "NO"),
+    ];
+
     public static string ForeignKeyEntry(ForeignKeyDefinition key)
     {
         var sql = new StringBuilder();
