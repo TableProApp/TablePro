@@ -5,7 +5,8 @@ namespace TablePro.Drivers.MySql;
 
 public sealed class MySqlDriver : IDatabaseDriver
 {
-    public IReadOnlyList<DatabaseEngine> Engines { get; } = [DatabaseEngine.MySql, DatabaseEngine.MariaDb];
+    // TiDB, OceanBase (MySQL mode) and Databend answer the MySQL protocol, as the macOS app reaches them.
+    public IReadOnlyList<DatabaseEngine> Engines { get; } = [DatabaseEngine.MySql, DatabaseEngine.MariaDb, DatabaseEngine.TiDb, DatabaseEngine.OceanBase, DatabaseEngine.Databend];
 
     public async Task<IDatabaseSession> ConnectAsync(ConnectionRequest request, CancellationToken cancellationToken)
     {

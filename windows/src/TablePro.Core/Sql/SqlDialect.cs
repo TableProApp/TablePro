@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using TablePro.Core.Browse;
@@ -14,6 +15,30 @@ public abstract class SqlDialect
     public abstract string Name { get; }
 
     public abstract SqlLexerFeatures LexerFeatures { get; }
+
+    /// <summary>
+    /// False for a command language (Redis, mongosh, etcdctl and the like): the editor then offers no SQL formatter
+    /// and the workspace never asks the dialect's SQL builders for a statement.
+    /// </summary>
+    public virtual bool IsSql => true;
+
+    /// <summary>What a line comment starts with, for the editor's comment toggle.</summary>
+    public virtual string LineComment => "--";
+
+    /// <summary>Splits a script into the units the engine runs one at a time.</summary>
+    public virtual ImmutableArray<SqlStatement> Split(string text) => SqlScript.SplitSql(text, this);
+
+    /// <summary>What a statement does, for Safe Mode and history.</summary>
+    public virtual StatementKind Classify(string statement) => StatementClassifier.ClassifySql(statement, this);
+
+    /// <summary>Whether the editor colors a word as a keyword or command.</summary>
+    public virtual bool IsKeyword(ReadOnlySpan<char> word) => SqlKeywords.IsKeyword(word);
+
+    /// <summary>The words completion offers beside the schema's names.</summary>
+    public virtual IEnumerable<string> CompletionKeywords => SqlKeywords.All;
+
+    /// <summary>Whether the formatter can lay this language out.</summary>
+    public virtual bool SupportsFormatting => IsSql;
 
     /// <summary>The line that ends a batch, such as SQL Server's <c>GO</c>. Null splits at <c>;</c>.</summary>
     public virtual string? BatchSeparator => null;

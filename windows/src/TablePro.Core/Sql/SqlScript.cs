@@ -16,10 +16,17 @@ public readonly record struct SqlStatement(int Start, int Length, string Text)
 /// </summary>
 public static class SqlScript
 {
+    /// <summary>Splits through the dialect, so a command language splits by its own rules.</summary>
     public static ImmutableArray<SqlStatement> Split(string text, SqlDialect dialect)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(dialect);
+        return dialect.Split(text);
+    }
+
+    /// <summary>The SQL rules every SQL dialect shares; a dialect's <see cref="SqlDialect.Split"/> calls it by default.</summary>
+    public static ImmutableArray<SqlStatement> SplitSql(string text, SqlDialect dialect)
+    {
 
         var builder = ImmutableArray.CreateBuilder<SqlStatement>();
         if (dialect.BatchSeparator is { } separator)

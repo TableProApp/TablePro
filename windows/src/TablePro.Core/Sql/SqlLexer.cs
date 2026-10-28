@@ -44,6 +44,10 @@ public ref struct SqlLexer
         {
             token = ReadLineComment(start);
         }
+        else if (c == '/' && Peek(1) == '/' && Has(SqlLexerFeatures.DoubleSlashComments))
+        {
+            token = ReadLineComment(start);
+        }
         else if (c == '/' && Peek(1) == '*')
         {
             token = ReadBlockComment(start);

@@ -43,4 +43,7 @@ public enum SqlLexerFeatures
 
     /// <summary>MySQL only treats <c>--</c> as a comment when whitespace or the end of the text follows it.</summary>
     DashCommentNeedsSpace = 1 << 7,
+
+    /// <summary><c>//</c> starts a line comment, as in mongosh, CQL and SurrealQL.</summary>
+    DoubleSlashComments = 1 << 8,
 }

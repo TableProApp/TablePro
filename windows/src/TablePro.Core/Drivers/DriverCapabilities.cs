@@ -46,3 +46,16 @@ public interface IServerVariablesProvider
 {
     Task<ResultSet> GetVariablesAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Keys are data, not a catalogue: a key-value engine can hold millions, so the sidebar sends its search to the server,
+/// which matches the pattern over all of them and stops at the limit.
+/// </summary>
+public interface IKeySearchProvider
+{
+    /// <summary>Keys matching a glob pattern such as <c>user:*</c>, at most <paramref name="limit"/> of them.</summary>
+    Task<KeySearchResult> SearchKeysAsync(string? database, string pattern, int limit, CancellationToken cancellationToken);
+}
+
+/// <summary>What a key search found, and whether it stopped at the limit with more keys left unscanned.</summary>
+public sealed record KeySearchResult(IReadOnlyList<DatabaseObject> Keys, bool IsTruncated);

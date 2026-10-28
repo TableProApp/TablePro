@@ -9,6 +9,15 @@ public enum ObjectKind
     Procedure,
     Sequence,
     Trigger,
+
+    /// <summary>A document collection (MongoDB, SurrealDB tables) or a search index.</summary>
+    Collection,
+
+    /// <summary>One key of a key-value engine; its value's type is in <see cref="DatabaseObject.Comment"/>.</summary>
+    Key,
+
+    /// <summary>A streaming topic.</summary>
+    Topic,
 }
 
 /// <summary>A schema-qualified name. Engines without schemas leave <see cref="Schema"/> null.</summary>
@@ -19,7 +28,7 @@ public readonly record struct ObjectName(string? Schema, string Name)
 
 public sealed record DatabaseObject(ObjectName Name, ObjectKind Kind, long? RowEstimate = null, string? Comment = null)
 {
-    public bool HasRows => Kind is ObjectKind.Table or ObjectKind.View or ObjectKind.MaterializedView;
+    public bool HasRows => Kind is ObjectKind.Table or ObjectKind.View or ObjectKind.MaterializedView or ObjectKind.Collection or ObjectKind.Key or ObjectKind.Topic;
 }
 
 public sealed record ColumnInfo(

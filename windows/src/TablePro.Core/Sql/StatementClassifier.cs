@@ -27,6 +27,12 @@ public static class StatementClassifier
     {
         ArgumentNullException.ThrowIfNull(sql);
         ArgumentNullException.ThrowIfNull(dialect);
+        return dialect.Classify(sql);
+    }
+
+    /// <summary>The SQL reading every SQL dialect shares; a command language overrides <see cref="SqlDialect.Classify"/>.</summary>
+    public static StatementKind ClassifySql(string sql, SqlDialect dialect)
+    {
         var span = sql.AsSpan();
         var lexer = new SqlLexer(span, dialect.LexerFeatures);
         StatementKind? result = null;

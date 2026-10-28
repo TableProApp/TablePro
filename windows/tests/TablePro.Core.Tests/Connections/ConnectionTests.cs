@@ -1,5 +1,6 @@
 using TablePro.Core.Connections;
 using TablePro.Core.Drivers;
+using TablePro.Core.Sql;
 
 namespace TablePro.Core.Tests.Connections;
 
@@ -33,8 +34,22 @@ public sealed class ConnectionTests
     }
 
     [Fact]
-    public void EnginesListsEveryEngineInEnumOrder() =>
-        Assert.Equal(Enum.GetValues<DatabaseEngine>(), EngineDescriptor.Engines.Select(d => d.Engine));
+    public void EnginesListsEveryEngineGroupedByFamilyThenInEnumOrder()
+    {
+        var engines = EngineDescriptor.Engines.ToArray();
+
+        Assert.Equal(Enum.GetValues<DatabaseEngine>().Order(), engines.Select(d => d.Engine).Order());
+        Assert.Equal(engines.OrderBy(d => d.Family).ThenBy(d => d.Engine), engines);
+    }
+
+    [Fact]
+    public void EveryEngineHasADialect()
+    {
+        foreach (var engine in Enum.GetValues<DatabaseEngine>())
+        {
+            Assert.NotNull(SqlDialects.For(engine));
+        }
+    }
 
     [Fact]
     public void UnknownEngineHasNoDescriptor() =>
