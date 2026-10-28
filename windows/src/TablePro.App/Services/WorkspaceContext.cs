@@ -26,6 +26,8 @@ public interface IWorkspacePreferences
     bool WordWrap { get; }
 
     bool VimMode { get; }
+
+    bool EmacsKeys { get; }
 }
 
 /// <summary>Everything a tab needs from its window, handed down instead of reached for through statics.</summary>

@@ -7,6 +7,8 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using TablePro.App.Helpers;
+using TablePro.Core.Editing.MultiCursor;
+using TablePro.Core.Shortcuts;
 using TablePro.Core.Sql;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -127,6 +129,8 @@ public sealed partial class SqlEditor : UserControl
         Grid.SetRow(_box, 1);
         Grid.SetColumn(_box, 1);
         root.Children.Add(_box);
+        _carets = new MultiCursorModel(new CaretBuffer(this));
+        InitializeCarets();
 
         _completionList = new ListView
         {
@@ -187,7 +191,7 @@ public sealed partial class SqlEditor : UserControl
     public void ShowSuggestion(string text, int caret)
     {
         // Tab accepts a suggestion, which outside Vim's insert mode would type into the text.
-        if (string.IsNullOrWhiteSpace(text) || caret != SelectionStart || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert)
+        if (string.IsNullOrWhiteSpace(text) || caret != SelectionStart || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert || HasExtraCarets)
         {
             return;
         }
@@ -228,7 +232,7 @@ public sealed partial class SqlEditor : UserControl
 
     private void OnTypingPaused()
     {
-        if (!SuggestionsEnabled || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert)
+        if (!SuggestionsEnabled || SelectionLength > 0 || _completionPopup.IsOpen || IsVimOutsideInsert || HasExtraCarets)
         {
             return;
         }
@@ -320,6 +324,7 @@ public sealed partial class SqlEditor : UserControl
 
     public void Select(int start, int length)
     {
+        CollapseCarets();
         _box.Document.Selection.SetRange(start, start + length);
         _box.Document.Selection.ScrollIntoView(PointOptions.None);
     }
@@ -328,6 +333,7 @@ public sealed partial class SqlEditor : UserControl
     public void InsertText(string text)
     {
         SyncText();
+        CollapseCarets();
         var insert = text.Replace("\r\n", "\r", StringComparison.Ordinal).Replace('\n', '\r');
         PushUndo(force: true);
         var selection = _box.Document.Selection;
@@ -423,8 +429,8 @@ public sealed partial class SqlEditor : UserControl
         menu.Items.Add(Item("Run All", "", () => RunRequested?.Invoke(this, RunScope.All), VirtualKey.F5, VirtualKeyModifiers.None));
         menu.Items.Add(Item("Explain", "", () => RunRequested?.Invoke(this, RunScope.Explain), VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(Item("Cut", "", () => _box.Document.Selection.Cut(), VirtualKey.X, VirtualKeyModifiers.Control));
-        menu.Items.Add(Item("Copy", "", () => _box.Document.Selection.Copy(), VirtualKey.C, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item("Cut", "", CutSelection, VirtualKey.X, VirtualKeyModifiers.Control));
+        menu.Items.Add(Item("Copy", "", CopySelection, VirtualKey.C, VirtualKeyModifiers.Control));
         menu.Items.Add(Item("Paste", "", PasteAsync, VirtualKey.V, VirtualKeyModifiers.Control));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Undo", "", Undo, VirtualKey.Z, VirtualKeyModifiers.Control));
@@ -555,6 +561,8 @@ public sealed partial class SqlEditor : UserControl
             _suppress = false;
         }
 
+        // The carets pointed into the text this replaced, so one caret remains, where the selection was put.
+        ResetCaretsToView();
         _highlightedText = "\u0001";
         Highlight();
         UpdateGutter();
@@ -590,15 +598,32 @@ public sealed partial class SqlEditor : UserControl
     /// </summary>
     private bool SyncText()
     {
+        // An input method's text is repeated at the other carets once it is committed, not while it is being composed.
+        if (_composing && HasExtraCarets)
+        {
+            return false;
+        }
+
         var text = ReadDocument();
         if (string.Equals(text, _text, StringComparison.Ordinal))
         {
             return false;
         }
 
+        if (HasExtraCarets && _applyingCarets == 0 && TryRepeatAtCarets(text))
+        {
+            return true;
+        }
+
         PushUndo(force: false);
         _text = text;
         UpdateGutter();
+        if (HasExtraCarets)
+        {
+            // An edit the other carets cannot repeat leaves their offsets pointing at text that moved.
+            ResetCaretsToView();
+        }
+
         return true;
     }
 
@@ -735,7 +760,57 @@ public sealed partial class SqlEditor : UserControl
         if (content.Contains(StandardDataFormats.Text))
         {
             // Plain text only: rich paste would bring fonts and colors from wherever it was copied.
-            InsertText(await content.GetTextAsync());
+            var text = await content.GetTextAsync();
+            SyncCaretsWithView();
+            if (HasExtraCarets)
+            {
+                _carets.Paste(text.Replace("\r\n", "\r", StringComparison.Ordinal).Replace('\n', '\r'));
+                return;
+            }
+
+            InsertText(text);
+        }
+    }
+
+    /// <summary>Maps a key press to a shortcut command id from the user's keyboard settings; null keeps the built-in keys.</summary>
+    public Func<VirtualKey, VirtualKeyModifiers, string?>? CommandForKey { get; set; }
+
+    private bool RunShortcut(string id)
+    {
+        switch (id)
+        {
+            case ShortcutIds.ExecuteQuery:
+                RunRequested?.Invoke(this, RunScope.Current);
+                return true;
+            case ShortcutIds.ExecuteAllStatements:
+                RunRequested?.Invoke(this, RunScope.All);
+                return true;
+            case ShortcutIds.ExplainQuery:
+                RunRequested?.Invoke(this, RunScope.Explain);
+                return true;
+            case ShortcutIds.FormatQuery:
+                FormatRequested?.Invoke(this, EventArgs.Empty);
+                return true;
+            case ShortcutIds.SaveFile:
+                SaveRequested?.Invoke(this, EventArgs.Empty);
+                return true;
+            case ShortcutIds.ToggleComment:
+                ToggleComment();
+                return true;
+            case ShortcutIds.Find:
+                ShowFind(replace: false);
+                return true;
+            case ShortcutIds.FindAndReplace:
+                ShowFind(replace: true);
+                return true;
+            case ShortcutIds.FindNext:
+                Find(_findBar.Query, _findBar.MatchCase, forward: true);
+                return true;
+            case ShortcutIds.FindPrevious:
+                Find(_findBar.Query, _findBar.MatchCase, forward: false);
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -774,18 +849,33 @@ public sealed partial class SqlEditor : UserControl
             return;
         }
 
+        var alt = IsDown(VirtualKey.Menu);
+        if (TryHandleEmacsKey(e, ctrl, alt, shift) || TryHandleCaretKey(e.Key, ctrl, shift, alt))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (CommandForKey is { } lookup && lookup(e.Key, ShortcutKeys.CurrentModifiers()) is { } command && RunShortcut(command))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // With the shortcut map installed these keys belong to it, so a remapped command frees its old chord.
+        var fixedKeys = CommandForKey is null;
         switch (e.Key)
         {
-            case VirtualKey.Enter when ctrl && shift:
+            case VirtualKey.Enter when fixedKeys && ctrl && shift:
                 RunRequested?.Invoke(this, RunScope.All);
                 break;
-            case VirtualKey.Enter when ctrl:
+            case VirtualKey.Enter when fixedKeys && ctrl:
                 RunRequested?.Invoke(this, RunScope.Current);
                 break;
-            case VirtualKey.F5:
+            case VirtualKey.F5 when fixedKeys:
                 RunRequested?.Invoke(this, shift ? RunScope.Current : RunScope.All);
                 break;
-            case VirtualKey.E when ctrl && shift:
+            case VirtualKey.E when fixedKeys && ctrl && shift:
                 RunRequested?.Invoke(this, RunScope.Explain);
                 break;
             case VirtualKey.Z when ctrl && shift:
@@ -795,22 +885,22 @@ public sealed partial class SqlEditor : UserControl
             case VirtualKey.Z when ctrl:
                 Undo();
                 break;
-            case VirtualKey.S when ctrl:
+            case VirtualKey.S when fixedKeys && ctrl:
                 SaveRequested?.Invoke(this, EventArgs.Empty);
                 break;
-            case VirtualKey.F when ctrl && shift:
+            case VirtualKey.F when fixedKeys && ctrl && shift:
                 FormatRequested?.Invoke(this, EventArgs.Empty);
                 break;
-            case VirtualKey.F when ctrl:
+            case VirtualKey.F when fixedKeys && ctrl:
                 ShowFind(replace: false);
                 break;
-            case VirtualKey.H when ctrl:
+            case VirtualKey.H when fixedKeys && ctrl:
                 ShowFind(replace: true);
                 break;
-            case VirtualKey.F3:
+            case VirtualKey.F3 when fixedKeys:
                 Find(_findBar.Query, _findBar.MatchCase, forward: !shift);
                 break;
-            case (VirtualKey)191 when ctrl:
+            case (VirtualKey)191 when fixedKeys && ctrl:
                 ToggleComment();
                 break;
             case VirtualKey.Space when ctrl:
@@ -841,7 +931,7 @@ public sealed partial class SqlEditor : UserControl
     private void OnCharacterReceived(UIElement sender, CharacterReceivedRoutedEventArgs e)
     {
         // Outside Vim's insert mode keys are commands, so completion must not open on them.
-        if (!CompletionEnabled || IsVimOutsideInsert)
+        if (!CompletionEnabled || IsVimOutsideInsert || HasExtraCarets)
         {
             return;
         }
@@ -872,6 +962,11 @@ public sealed partial class SqlEditor : UserControl
     private void ShowCompletion(bool force)
     {
         SyncText();
+        if (HasExtraCarets)
+        {
+            return;
+        }
+
         var caret = SelectionStart;
         var (start, items) = SqlCompletion.Suggest(_text, caret, _dialect, Catalog);
         var prefixLength = caret - start;

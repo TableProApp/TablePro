@@ -182,6 +182,14 @@ public sealed partial class SqlEditor
 
         // Typed characters may not have reached the cached text yet; the engine must see them.
         SyncText();
+
+        // As on macOS, Vim acts at the primary caret and its moves leave one caret; only insert mode's typing, which
+        // the engine hands back to the editor, still reaches every caret.
+        if (HasExtraCarets && !IsInsertModeTyping(vim, key))
+        {
+            CollapseCarets();
+        }
+
         _vimEdited = false;
         var consumed = vim.Process(key, shift);
         if (_vimEdited)
@@ -194,6 +202,9 @@ public sealed partial class SqlEditor
         UpdateVimCaret();
         return consumed;
     }
+
+    private static bool IsInsertModeTyping(VimEngine vim, char key) =>
+        vim.Mode.Kind == VimModeKind.Insert && (key is '\r' or '\b' or '\t' || !char.IsControl(key));
 
     private VimKeystroke ToVimKeystroke(KeyRoutedEventArgs e)
     {
@@ -370,6 +381,7 @@ public sealed partial class SqlEditor
         }
 
         UpdateGutter();
+        ResetCaretsToView();
         _vimEdited = true;
     }
 

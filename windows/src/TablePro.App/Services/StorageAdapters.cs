@@ -60,4 +60,6 @@ public sealed class SettingsPreferences(SettingsStore settings) : IWorkspacePref
     public bool WordWrap => settings.Current.Editor.WordWrap;
 
     public bool VimMode => settings.Current.Editor.VimMode;
+
+    public bool EmacsKeys => settings.Current.Editor.EmacsKeys;
 }
