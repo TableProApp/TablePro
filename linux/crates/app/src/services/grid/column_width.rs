@@ -1,5 +1,5 @@
 use tablepro_core::Value;
-use tablepro_core::column::{ColumnKind, TemporalZone};
+use tablepro_core::column::{ColumnKind, TemporalZone, TextLength};
 
 use super::display_text::display_text;
 use super::{CellDisplay, GridColumn};
@@ -9,6 +9,11 @@ const TEXT_MAX_CHARS: u32 = 40;
 /// `false`, the longer of the two values.
 const BOOL_CHARS: u32 = 5;
 const SAMPLE_ROWS: usize = 200;
+/// A value of a type that says nothing about its length, as wide as a
+/// name or a short code.
+const TYPICAL_CHARS: u32 = 20;
+/// `00000000-0000-0000-0000-000000000000`.
+const UUID_CHARS: u32 = 36;
 
 /// A column's starting width in characters: its header or its widest
 /// sampled value. Text is capped so one long value does not push the rest
@@ -21,6 +26,36 @@ pub fn default_width_chars<'a>(column: &GridColumn, sample: impl IntoIterator<It
         CellDisplay::Temporal => header.max(widest).max(temporal_chars(&column.column_type.kind)),
         CellDisplay::Text | CellDisplay::Json | CellDisplay::Binary => header.max(widest).min(TEXT_MAX_CHARS),
     }
+}
+
+/// A column's starting width in characters when a page arrived with no
+/// rows: its header or a value its declared type leads one to expect, so
+/// an empty table opens as wide as a full one would rather than shrunk to
+/// its headers. A bounded text type opens no wider than its bound.
+pub fn typical_width_chars(column: &GridColumn) -> u32 {
+    let header = char_count(&column.name).clamp(MIN_CHARS, TEXT_MAX_CHARS);
+    let kind = &column.column_type.kind;
+    let typical = match column.display() {
+        CellDisplay::Bool => BOOL_CHARS,
+        CellDisplay::Temporal => temporal_chars(kind),
+        CellDisplay::Number => match kind {
+            // The digits, a sign and a decimal point.
+            ColumnKind::Decimal {
+                precision: Some(precision),
+                ..
+            } => precision.saturating_add(2).min(TYPICAL_CHARS),
+            _ => TYPICAL_CHARS / 2,
+        },
+        CellDisplay::Text | CellDisplay::Json | CellDisplay::Binary => match kind {
+            ColumnKind::Text {
+                length: TextLength::Varying(length) | TextLength::Fixed(length),
+            } => (*length).min(TYPICAL_CHARS),
+            ColumnKind::Enum { labels, .. } => labels.iter().map(|label| char_count(label)).max().unwrap_or(0),
+            ColumnKind::Uuid => UUID_CHARS,
+            _ => TYPICAL_CHARS,
+        },
+    };
+    header.max(typical).min(TEXT_MAX_CHARS)
 }
 
 /// The width of a column that turned out to hold only numbers, as an
@@ -91,7 +126,7 @@ mod tests {
     use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth, TemporalZone, TextLength};
     use tablepro_core::value::{SqlDecimal, Temporal};
 
-    use super::{default_width_chars, number_width_chars, widest_text};
+    use super::{default_width_chars, number_width_chars, typical_width_chars, widest_text};
     use crate::services::grid::test_columns::result_only;
 
     fn text() -> ColumnKind {
@@ -221,5 +256,56 @@ mod tests {
             10
         );
         assert_eq!(default_width_chars(&result_only("at", stamped), &[]), 25);
+    }
+
+    #[test]
+    fn with_no_rows_a_column_opens_at_what_its_type_leads_one_to_expect() {
+        let bounded = |length| ColumnKind::Text { length };
+        let integer = ColumnKind::Integer(IntegerKind {
+            width: IntegerWidth::W64,
+            signed: true,
+        });
+        let money = ColumnKind::Decimal {
+            precision: Some(10),
+            scale: Some(2),
+        };
+        let state = ColumnKind::Enum {
+            labels: vec!["active".to_owned(), "suspended".to_owned()],
+            multiple: false,
+        };
+
+        assert_eq!(typical_width_chars(&result_only("realm", text())), 20, "unbounded text");
+        assert_eq!(
+            typical_width_chars(&result_only("code", bounded(TextLength::Varying(8)))),
+            8,
+            "no wider than its bound"
+        );
+        assert_eq!(
+            typical_width_chars(&result_only("name", bounded(TextLength::Varying(255)))),
+            20
+        );
+        assert_eq!(typical_width_chars(&result_only("id", ColumnKind::Uuid)), 36);
+        assert_eq!(typical_width_chars(&result_only("id", integer)), 10);
+        assert_eq!(typical_width_chars(&result_only("total", money)), 12);
+        assert_eq!(
+            typical_width_chars(&result_only("state", state)),
+            9,
+            "its longest label"
+        );
+        assert_eq!(
+            typical_width_chars(&result_only(
+                "created",
+                ColumnKind::Timestamp {
+                    fractional_digits: None,
+                    zone: TemporalZone::Offset,
+                }
+            )),
+            25
+        );
+        assert_eq!(
+            typical_width_chars(&result_only("a_column_with_a_name_far_longer_than_it_holds", text())),
+            40,
+            "the header, within the cap"
+        );
     }
 }

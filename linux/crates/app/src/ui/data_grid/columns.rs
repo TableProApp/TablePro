@@ -13,7 +13,7 @@ use super::server_sorter::ServerSorter;
 use super::{DataGrid, GridRow, GridSorting, TrackedValues, client_sorter, grid_menu, row_number_column};
 use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, merge_order, number_width_chars,
-    widest_text,
+    typical_width_chars, widest_text,
 };
 
 /// Rows sampled for a column's opening width.
@@ -50,6 +50,9 @@ pub struct ColumnSet {
     /// The widths the grid gave columns itself, which the layout does not
     /// keep: a better guess from other rows should still reach them.
     auto_widths: std::collections::HashMap<usize, i32>,
+    /// A page reached these columns. Until one does, no rows means the
+    /// rows are on their way, not that there are none.
+    rows_arrived: bool,
     handlers: Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>,
 }
 
@@ -225,6 +228,7 @@ impl DataGrid {
     fn opening_widths(&self) -> Vec<(usize, gtk::ColumnViewColumn, i32)> {
         let set = self.imp().columns.borrow();
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
+        let empty = set.rows_arrived && sample.is_empty();
         let metrics = self.column_view().pango_context().metrics(None, None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
         let mut widths = Vec::new();
@@ -238,9 +242,10 @@ impl DataGrid {
                 .iter()
                 .filter_map(|cells| cells.as_deref().and_then(|cells| cells.get(index)))
                 .collect();
-            let chars = match paint.numbers.get() {
-                true => number_width_chars(&paint.column, values.iter().copied()),
-                false => default_width_chars(&paint.column, values.iter().copied()),
+            let chars = match (empty, paint.numbers.get()) {
+                (true, _) => typical_width_chars(&paint.column),
+                (false, true) => number_width_chars(&paint.column, values.iter().copied()),
+                (false, false) => default_width_chars(&paint.column, values.iter().copied()),
             };
             let estimate = (f64::from(chars) * char_px).ceil() as i32;
             // A number is never cut, and its digits in tabular figures run
@@ -262,6 +267,7 @@ impl DataGrid {
     /// Rows came in: an untyped column may have turned out not to hold
     /// only numbers, and the row numbers may have grown a digit.
     pub(super) fn columns_took_rows(&self) {
+        self.imp().columns.borrow_mut().rows_arrived = true;
         self.detect_untyped_numbers();
         self.size_unsized_columns();
         row_number_column::fit(self);

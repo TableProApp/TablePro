@@ -431,3 +431,25 @@ fn a_column_left_behind_by_its_view_lets_go_of_the_grid() {
         "a column the view left behind kept the grid's columns"
     );
 }
+
+/// A table with no rows opens as wide as its types lead one to expect,
+/// not shrunk to its headers, and a page with rows still opens at what
+/// it holds: the grid sizes its columns before the first page arrives.
+#[gtk4::test]
+fn an_empty_table_opens_its_columns_at_their_types_width() {
+    let columns = || vec![named("realm", "text", true), named("created", "date", false)];
+
+    let empty = Grid::open(columns(), Vec::new());
+    let short = Grid::open(columns(), vec![vec![text("a"), Value::Null]]);
+
+    let realm = data_column(&empty, 0).fixed_width();
+    assert!(
+        realm > data_column(&short, 0).fixed_width(),
+        "the empty table's text column is no wider than one holding a single letter: {realm}"
+    );
+    assert_eq!(
+        data_column(&empty, 1).fixed_width(),
+        data_column(&short, 1).fixed_width(),
+        "a date is as wide as a date either way"
+    );
+}
