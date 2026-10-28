@@ -733,6 +733,21 @@
   platforms: [macos, ios]
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree). Copyright from a source header. Transitive via oracle-nio.
+- id: swift-http-types
+  name: swift-http-types
+  version: 1.8.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The Swift HTTP Types Project
+  - Copyright (c) 2023 Apple Inc. and the Swift project authors
+  homepageURL: https://github.com/apple/swift-http-types
+  licenseTextURL: https://github.com/apple/swift-http-types/blob/1.8.0/LICENSE.txt
+  textFile: texts/swift-http-types.txt
+  source: spm:swift-http-types
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Transitive via swift-openapi-runtime, linked by TableProCloudAPI.
 - id: swift-log
   name: swift-log
   version: 1.15.0
@@ -764,6 +779,22 @@
   notes: PLAIN Apache-2.0 (11358 bytes, no Runtime Library Exception). NO NOTICE.txt at this tag (checked
     the root tree), unlike its swift-nio siblings, so nothing to carry under 4(d). Copyright line taken
     from a source header, since the LICENSE names no holder.
+- id: swift-openapi-runtime
+  name: swift-openapi-runtime
+  version: 1.13.0
+  spdx: Apache-2.0
+  copyrights:
+  - Copyright 2023 The SwiftOpenAPIGenerator Project
+  - Copyright (c) 2023 Apple Inc. and the SwiftOpenAPIGenerator project authors
+  homepageURL: https://github.com/apple/swift-openapi-runtime
+  licenseTextURL: https://github.com/apple/swift-openapi-runtime/blob/1.13.0/LICENSE.txt
+  textFile: texts/swift-openapi-runtime.txt
+  source: spm:swift-openapi-runtime
+  patched: false
+  platforms: [macos]
+  notes: PLAIN Apache-2.0 (11359 bytes, no Runtime Library Exception). NOTICE.txt present; the text file
+    is LICENSE.txt then NOTICE.txt. Linked by TableProCloudAPI, the generated /v2 client. The generator
+    itself runs only at build time and ships nothing.
 - id: swift-service-context
   name: swift-service-context
   version: 1.3.0

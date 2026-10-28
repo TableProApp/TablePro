@@ -409,7 +409,7 @@ targets:
       - package: TableProCore
         products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
-        products: [TableProMCP, TableProSSHConfig, TableProUtilities]
+        products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md

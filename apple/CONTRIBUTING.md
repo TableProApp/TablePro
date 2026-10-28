@@ -129,6 +129,7 @@ The architecture is in the area rules under `.claude/rules/`, and its invariants
 | Sparkle | SPM | Updates, EdDSA-signed |
 | Yams | SPM | YAML for project folder import |
 | swift-nio, swift-nio-ssl, zstd | SPM | The Kafka plugin's transport, TLS and zstd codec |
+| swift-openapi-generator, swift-openapi-runtime | SPM, through `Packages/TableProMacCore` | `TableProCloudAPI`, the client generated from tablepro-cloud's `api/v2.json`; `scripts/update-cloud-api.sh` refreshes its copy |
 
 ## Adding a database driver
 

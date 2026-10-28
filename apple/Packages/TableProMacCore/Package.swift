@@ -20,10 +20,14 @@ let package = Package(
         .library(name: "TableProUtilities", targets: ["TableProUtilities"]),
         .library(name: "TableProSSHConfig", targets: ["TableProSSHConfig"]),
         .library(name: "TableProMCP", targets: ["TableProMCP"]),
-        .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"])
+        .library(name: "TableProMCPTestSupport", targets: ["TableProMCPTestSupport"]),
+        .library(name: "TableProCloudAPI", targets: ["TableProCloudAPI"])
     ],
     dependencies: [
-        .package(path: "../TableProCore")
+        .package(path: "../TableProCore"),
+        // Exact: the newest releases were under two weeks old when these were picked (clients.md, macOS).
+        .package(url: "https://github.com/apple/swift-openapi-generator", exact: "1.14.1"),
+        .package(url: "https://github.com/apple/swift-openapi-runtime", exact: "1.13.0")
     ],
     targets: [
         .target(
@@ -53,6 +57,18 @@ let package = Package(
             ],
             path: "Sources/TableProMCP",
             swiftSettings: appModuleSettings
+        ),
+        // openapi.json is a copy of tablepro-cloud's api/v2.json; scripts/update-cloud-api.sh refreshes it.
+        .target(
+            name: "TableProCloudAPI",
+            dependencies: [
+                .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime")
+            ],
+            path: "Sources/TableProCloudAPI",
+            swiftSettings: appModuleSettings,
+            plugins: [
+                .plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")
+            ]
         ),
         .target(
             name: "TableProMCPTestSupport",

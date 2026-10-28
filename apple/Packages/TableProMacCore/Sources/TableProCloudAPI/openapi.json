@@ -1,0 +1,5106 @@
+{
+  "components": {
+    "schemas": {
+      "Account": {
+        "properties": {
+          "email": {
+            "examples": [
+              "ada@example.com"
+            ],
+            "format": "email",
+            "type": "string"
+          },
+          "id": {
+            "description": "Account TypeID",
+            "examples": [
+              "acct_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Ada Lovelace"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "type": "object"
+      },
+      "AssignableRole": {
+        "enum": [
+          "admin",
+          "member"
+        ],
+        "type": "string"
+      },
+      "Checkout": {
+        "properties": {
+          "url": {
+            "description": "Polar's checkout: open it in Polar's embedded overlay, or go there when the overlay cannot load",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
+      "CheckoutRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "attribution": {
+            "description": "First-touch attribution, kept with the order: an object whose string members source, medium, campaign, term, content (each also with a utm_ prefix) and referrer are read. Anything else is ignored and never fails the request"
+          },
+          "cycle": {
+            "$ref": "#/components/schemas/Cycle"
+          },
+          "discount_code": {
+            "description": "A code /discounts/preview accepted. Without one, the regional discount applies; a code that no longer applies is dropped",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "locale": {
+            "description": "Language of Polar's checkout and emails, one of the public site's locales; en when absent or unknown",
+            "maxLength": 35,
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "seats": {
+            "description": "Per-seat plans: the seats to buy, at least the plan's min_seats",
+            "format": "int64",
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plan",
+          "cycle"
+        ],
+        "type": "object"
+      },
+      "Cycle": {
+        "enum": [
+          "monthly",
+          "yearly",
+          "lifetime"
+        ],
+        "type": "string"
+      },
+      "Device": {
+        "properties": {
+          "app_version": {
+            "examples": [
+              "2.0.0"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Device TypeID",
+            "examples": [
+              "dev_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "last_seen_at": {
+            "description": "Last registration or entitlement; devices not seen for 180 days are removed",
+            "format": "date-time",
+            "type": "string"
+          },
+          "licensed_at": {
+            "description": "When the device took one of the account's 3 license slots; absent while it holds none",
+            "format": "date-time",
+            "type": "string"
+          },
+          "machine_id": {
+            "description": "The machine ID the app reported, 64 lowercase hex characters",
+            "examples": [
+              "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Ada's MacBook Pro"
+            ],
+            "type": "string"
+          },
+          "offline_until": {
+            "description": "When the last valid offline file issued for the device expires; the device is kept until then",
+            "format": "date-time",
+            "type": "string"
+          },
+          "os_version": {
+            "examples": [
+              "26.0"
+            ],
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          }
+        },
+        "required": [
+          "id",
+          "machine_id",
+          "platform",
+          "name",
+          "app_version",
+          "os_version",
+          "created_at",
+          "last_seen_at"
+        ],
+        "type": "object"
+      },
+      "DeviceLimitProblem": {
+        "properties": {
+          "code": {
+            "description": "device_limit_reached",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Explanation specific to this occurrence",
+            "type": "string"
+          },
+          "devices": {
+            "description": "The devices that hold the account's license slots, in the order they took them",
+            "items": {
+              "$ref": "#/components/schemas/LicensedDevice"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short summary of the problem type",
+            "type": "string"
+          },
+          "type": {
+            "description": "Identifies the problem type, one per code",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "devices"
+        ],
+        "type": "object"
+      },
+      "DeviceList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Device"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "DeviceRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "description": "1 to 100 characters, cleaned like name",
+            "examples": [
+              "2.0.0"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "machine_id": {
+            "description": "The app's machine ID",
+            "examples": [
+              "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            ],
+            "pattern": "^[0-9a-f]{64}$",
+            "patternDescription": "64 lowercase hex characters",
+            "type": "string"
+          },
+          "name": {
+            "description": "1 to 100 characters once trimmed and stripped of control, format and line or paragraph separator characters",
+            "examples": [
+              "Ada's MacBook Pro"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "os_version": {
+            "description": "1 to 100 characters, cleaned like name",
+            "examples": [
+              "26.0"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          }
+        },
+        "required": [
+          "machine_id",
+          "platform",
+          "name",
+          "app_version",
+          "os_version"
+        ],
+        "type": "object"
+      },
+      "DeviceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "1 to 100 characters once trimmed and stripped of control, format and line or paragraph separator characters",
+            "examples": [
+              "Studio"
+            ],
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "DiscountAmountType": {
+        "enum": [
+          "percent",
+          "fixed"
+        ],
+        "type": "string"
+      },
+      "DiscountPreview": {
+        "properties": {
+          "amount": {
+            "description": "Percent off, or the fixed amount in minor units of currency",
+            "format": "double",
+            "type": "number"
+          },
+          "amount_type": {
+            "$ref": "#/components/schemas/DiscountAmountType"
+          },
+          "currency": {
+            "description": "A fixed amount's currency",
+            "examples": [
+              "USD"
+            ],
+            "type": "string"
+          },
+          "valid": {
+            "description": "Whether checkout would apply the code; the other members are absent when it would not",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "valid"
+        ],
+        "type": "object"
+      },
+      "DiscountPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "Entitlement": {
+        "properties": {
+          "expires_at": {
+            "description": "The token's exp: 14 days after issue at most, never past the end of a license it carries",
+            "format": "date-time",
+            "type": "string"
+          },
+          "refresh_after": {
+            "description": "When to ask for the next one: 24 hours after this one was issued",
+            "format": "date-time",
+            "type": "string"
+          },
+          "token": {
+            "description": "JWS compact serialization, typ tablepro-entitlement+jwt, signed with Ed25519; see the entitlement token in the API design",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expires_at",
+          "refresh_after"
+        ],
+        "type": "object"
+      },
+      "EntitlementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "description": "1 to 100 characters once trimmed and stripped of control, format and line or paragraph separator characters",
+            "examples": [
+              "2.0.0"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "os_version": {
+            "description": "1 to 100 characters, cleaned like app_version",
+            "examples": [
+              "26.0"
+            ],
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_version",
+          "os_version"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "properties": {
+          "location": {
+            "description": "Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'",
+            "type": "string"
+          },
+          "message": {
+            "description": "Error message text",
+            "type": "string"
+          },
+          "value": {
+            "description": "The value at the given location"
+          }
+        },
+        "type": "object"
+      },
+      "Invitation": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "examples": [
+              "grace@example.com"
+            ],
+            "format": "email",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "7 days after it was sent or last resent",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Invitation TypeID",
+            "examples": [
+              "inv_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "invited_by": {
+            "description": "Account TypeID of the inviter; absent when a team API token invited or the inviter's account was deleted",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssignableRole"
+          },
+          "with_seat": {
+            "description": "Whether the invitation reserves a seat, which accepting gives. One whose reservation was taken back reserves none, and accepting it needs a free seat",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "with_seat",
+          "expires_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "InvitationList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Invitation"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "InvitationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "examples": [
+              "grace@example.com"
+            ],
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssignableRole"
+          },
+          "with_seat": {
+            "description": "Whether accepting gives a seat; a pending invitation with a seat reserves it",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "role",
+          "with_seat"
+        ],
+        "type": "object"
+      },
+      "LibraryChange": {
+        "properties": {
+          "client_id": {
+            "description": "The item's ID, chosen by the app that created it",
+            "examples": [
+              "4C6B1E2A-0D8F-4F43-9A51-7C1B2E3D4F50"
+            ],
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": {},
+            "description": "The item, absent when deleted. A connection: the app's connection settings, never a secret. A folder: name, parent_client_id, sort_order. A query: name, query, keyword, folder_client_id, connection_client_id, sort_order",
+            "type": "object"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LibraryItemKind"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updated_by": {
+            "description": "Account TypeID of the last writer; absent once that account is deleted",
+            "type": "string"
+          },
+          "version": {
+            "description": "Goes up by one with every write of the item",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "client_id",
+          "version",
+          "deleted",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "LibraryChanges": {
+        "properties": {
+          "changes": {
+            "description": "Without a cursor, every live item; with one, what changed after it, deletions included",
+            "items": {
+              "$ref": "#/components/schemas/LibraryChange"
+            },
+            "type": "array"
+          },
+          "cursor": {
+            "description": "Pass as cursor to get what changes next",
+            "type": "string"
+          },
+          "has_more": {
+            "description": "More changes wait; ask again with cursor right away",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "changes",
+          "cursor",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "LibraryEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "description": "The version the edit starts from; null or absent for a new item",
+            "format": "int64",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "client_id": {
+            "examples": [
+              "4C6B1E2A-0D8F-4F43-9A51-7C1B2E3D4F50"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": {},
+            "description": "The item, for upsert, in the shape LibraryChange.data describes; secret-bearing keys are refused",
+            "type": "object"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LibraryItemKind"
+          },
+          "op": {
+            "$ref": "#/components/schemas/LibraryEditOp"
+          }
+        },
+        "required": [
+          "kind",
+          "client_id",
+          "op"
+        ],
+        "type": "object"
+      },
+      "LibraryEditOp": {
+        "enum": [
+          "upsert",
+          "delete"
+        ],
+        "type": "string"
+      },
+      "LibraryItemKind": {
+        "enum": [
+          "connection",
+          "folder",
+          "query"
+        ],
+        "type": "string"
+      },
+      "LibraryPush": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "description": "Applied in one transaction, judged item by item",
+            "items": {
+              "$ref": "#/components/schemas/LibraryEdit"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "type": "object"
+      },
+      "LibraryPushResult": {
+        "properties": {
+          "cursor": {
+            "description": "Covers every change committed up to this push, other writers' too. Keep pulling from the cursor of the last pull: pulling from this one would skip their changes",
+            "type": "string"
+          },
+          "results": {
+            "description": "One per change, in the order sent",
+            "items": {
+              "$ref": "#/components/schemas/LibraryResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results",
+          "cursor"
+        ],
+        "type": "object"
+      },
+      "LibraryResult": {
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/LibraryChange",
+            "description": "On a conflict, the item as stored"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LibraryItemKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LibraryResultStatus",
+            "description": "conflict: base_version was not the stored version, so nothing changed"
+          },
+          "version": {
+            "description": "The item's version after the push: the new one when applied, the stored one on a conflict",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "client_id",
+          "status",
+          "version"
+        ],
+        "type": "object"
+      },
+      "LibraryResultStatus": {
+        "enum": [
+          "applied",
+          "conflict"
+        ],
+        "type": "string"
+      },
+      "License": {
+        "properties": {
+          "cycle": {
+            "$ref": "#/components/schemas/Cycle"
+          },
+          "ends_at": {
+            "description": "Absent for a license without an end, such as a renewing subscription or a lifetime purchase",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "License TypeID",
+            "examples": [
+              "lic_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LicenseSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LicenseStatus",
+            "description": "past_due: a renewal failed and Polar retries it; canceling: the license ends at ends_at"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamRef",
+            "description": "The team that owns the license; absent for a personal one"
+          }
+        },
+        "required": [
+          "id",
+          "plan",
+          "cycle",
+          "source",
+          "status"
+        ],
+        "type": "object"
+      },
+      "LicenseSource": {
+        "enum": [
+          "subscription",
+          "order",
+          "manual",
+          "legacy"
+        ],
+        "type": "string"
+      },
+      "LicenseStatus": {
+        "enum": [
+          "active",
+          "past_due",
+          "canceling"
+        ],
+        "type": "string"
+      },
+      "LicensedDevice": {
+        "properties": {
+          "app_version": {
+            "examples": [
+              "2.0.0"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Device TypeID",
+            "examples": [
+              "dev_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "licensed_at": {
+            "description": "When the device took its license slot",
+            "format": "date-time",
+            "type": "string"
+          },
+          "machine_id": {
+            "examples": [
+              "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Ada's MacBook Pro"
+            ],
+            "type": "string"
+          },
+          "os_version": {
+            "examples": [
+              "26.0"
+            ],
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          }
+        },
+        "required": [
+          "id",
+          "machine_id",
+          "platform",
+          "name",
+          "app_version",
+          "os_version",
+          "licensed_at",
+          "created_at",
+          "last_seen_at"
+        ],
+        "type": "object"
+      },
+      "Me": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/Account"
+          },
+          "licenses": {
+            "description": "The licenses whose features the account can use: its own, and those of teams where it holds a seat",
+            "items": {
+              "$ref": "#/components/schemas/License"
+            },
+            "type": "array"
+          },
+          "teams": {
+            "description": "Every team the account belongs to, in the order it joined them",
+            "items": {
+              "$ref": "#/components/schemas/Membership"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "teams",
+          "licenses"
+        ],
+        "type": "object"
+      },
+      "Member": {
+        "properties": {
+          "account_id": {
+            "description": "Account TypeID",
+            "examples": [
+              "acct_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "email": {
+            "examples": [
+              "grace@example.com"
+            ],
+            "format": "email",
+            "type": "string"
+          },
+          "has_seat": {
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Member TypeID",
+            "examples": [
+              "mem_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Grace Hopper"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TeamRole"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "email",
+          "role",
+          "has_seat",
+          "joined_at"
+        ],
+        "type": "object"
+      },
+      "MemberList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "MemberUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "has_seat": {
+            "description": "Absent keeps the seat; true needs a free seat",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssignableRole",
+            "description": "Absent keeps the role"
+          }
+        },
+        "type": "object"
+      },
+      "Membership": {
+        "properties": {
+          "has_seat": {
+            "description": "Whether the account holds one of the team's seats, which gives it the team's features",
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TeamRole"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamRef"
+          }
+        },
+        "required": [
+          "team",
+          "role",
+          "has_seat"
+        ],
+        "type": "object"
+      },
+      "NewsletterStats": {
+        "properties": {
+          "subscribers": {
+            "description": "Contacts in the newsletter segment who have not unsubscribed, counted at most once an hour",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscribers"
+        ],
+        "type": "object"
+      },
+      "NewsletterSubscriptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          },
+          "locale": {
+            "description": "Language of the confirmation email, one of the public site's locales; en when absent or unknown",
+            "maxLength": 16,
+            "type": "string"
+          },
+          "turnstile_token": {
+            "description": "Token from the Turnstile widget, action newsletter",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "turnstile_token"
+        ],
+        "type": "object"
+      },
+      "Plan": {
+        "enum": [
+          "starter",
+          "team"
+        ],
+        "type": "string"
+      },
+      "PlanPrice": {
+        "properties": {
+          "amount": {
+            "description": "List price in minor units of currency, per seat when per_seat",
+            "format": "int64",
+            "type": "integer"
+          },
+          "currency": {
+            "examples": [
+              "USD"
+            ],
+            "type": "string"
+          },
+          "cycle": {
+            "$ref": "#/components/schemas/Cycle"
+          },
+          "discount_percent": {
+            "description": "The regional discount checkout applies without a discount code, 0 for none",
+            "format": "int64",
+            "maximum": 90,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "discounted_amount": {
+            "description": "amount less the regional discount, rounded half up as Polar rounds it. Per seat when per_seat, rounded per seat: Polar takes the percentage off all the seats at once, so seats times this can be a few cents off; discounted_total is exact",
+            "format": "int64",
+            "type": "integer"
+          },
+          "discounted_total": {
+            "description": "What checkout charges for min_seats before tax: amount times min_seats, less discount_percent of that rounded half up once. Any other seat count is priced the same way",
+            "format": "int64",
+            "type": "integer"
+          },
+          "features": {
+            "description": "Feature codes the plan unlocks",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "max_seats": {
+            "description": "The most seats a checkout sells, from the plan's Polar seat tiers; 1 unless per_seat, null when the tiers set no maximum",
+            "format": "int64",
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_seats": {
+            "description": "The fewest seats a checkout sells; 1 unless per_seat",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "per_seat": {
+            "type": "boolean"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          }
+        },
+        "required": [
+          "plan",
+          "cycle",
+          "currency",
+          "amount",
+          "per_seat",
+          "min_seats",
+          "max_seats",
+          "features",
+          "discount_percent",
+          "discounted_amount",
+          "discounted_total"
+        ],
+        "type": "object"
+      },
+      "Platform": {
+        "enum": [
+          "macos",
+          "linux"
+        ],
+        "type": "string"
+      },
+      "Pricing": {
+        "properties": {
+          "country": {
+            "description": "From CF-IPCountry: XX when unknown, T1 for Tor, neither of which gets a regional discount",
+            "examples": [
+              "VN"
+            ],
+            "type": "string"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanPrice"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "country",
+          "plans"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": true,
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable problem code",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Explanation specific to this occurrence",
+            "type": "string"
+          },
+          "errors": {
+            "description": "Individual validation errors",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "HTTP status code",
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short summary of the problem type",
+            "type": "string"
+          },
+          "type": {
+            "description": "Identifies the problem type, one per code",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "type": "object"
+      },
+      "Seats": {
+        "properties": {
+          "available": {
+            "description": "total minus used and reserved; below zero when the pool shrank under what is in use",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reserved": {
+            "description": "Pending invitations that include a seat, expired ones included",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "description": "Seats on the team's active licenses",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "used": {
+            "description": "Members holding a seat",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "used",
+          "reserved",
+          "available"
+        ],
+        "type": "object"
+      },
+      "Team": {
+        "properties": {
+          "has_seat": {
+            "description": "Whether the caller holds one of the team's seats",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Team TypeID",
+            "examples": [
+              "team_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Acme"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TeamRole",
+            "description": "The caller's role"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "has_seat"
+        ],
+        "type": "object"
+      },
+      "TeamDetail": {
+        "properties": {
+          "has_seat": {
+            "description": "Whether the caller holds a seat; absent for a team API token",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Team TypeID",
+            "examples": [
+              "team_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Acme"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/TeamRole",
+            "description": "The caller's role; absent for a team API token"
+          },
+          "seats": {
+            "$ref": "#/components/schemas/Seats"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "seats"
+        ],
+        "type": "object"
+      },
+      "TeamList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Team"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as cursor for the next page; absent on the last page",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "TeamRef": {
+        "properties": {
+          "id": {
+            "description": "Team TypeID",
+            "examples": [
+              "team_01jbvh7pn9e3sv4bzq4rqk4kzh"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Acme"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "TeamRole": {
+        "enum": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "type": "string"
+      }
+    },
+    "securitySchemes": {
+      "oauth": {
+        "description": "An access token from the TablePro app's sign-in.",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://account.tablepro.app/oauth/authorize",
+            "refreshUrl": "https://account.tablepro.app/oauth/token",
+            "scopes": {
+              "app": "Use the API as the TablePro app"
+            },
+            "tokenUrl": "https://account.tablepro.app/oauth/token"
+          }
+        },
+        "type": "oauth2"
+      },
+      "team_token": {
+        "bearerFormat": "tpt_...",
+        "description": "A team API token, created by the team's owner or admins in the portal.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "TablePro API",
+    "version": "2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/checkouts": {
+      "post": {
+        "description": "Creates Polar's checkout for a guest. The price is the catalog's, less the discount code's discount or, without a code, the regional discount GET /pricing shows; tax and currency follow the caller's IP address.",
+        "operationId": "create-checkout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Checkout"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Start a checkout",
+        "tags": [
+          "Checkout"
+        ]
+      }
+    },
+    "/devices": {
+      "get": {
+        "description": "Every device that was not removed, oldest first.",
+        "operationId": "list-devices",
+        "parameters": [
+          {
+            "description": "Devices per page",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Devices per page",
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page; absent for the first page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page; absent for the first page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected the next_cursor of a previous page",
+                          "location": "query.cursor",
+                          "value": "abc"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "The account's devices",
+        "tags": [
+          "Devices"
+        ]
+      },
+      "post": {
+        "description": "Registers the machine the app runs on, or updates the account's device for it, and binds the refresh token family of the caller's sign-in to the device: access tokens refreshed afterwards carry dev, which the entitlement needs. Answers 201 for a new device and 200 when the machine was registered already. A sign-in already bound to another device is refused. 10 an hour per account.",
+        "operationId": "register-device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "The machine was registered already; its name, platform and versions are updated"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "This sign-in belongs to another device. Sign in again on this one."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected string to match pattern ^[0-9a-f]{64}$",
+                          "location": "body.machine_id",
+                          "value": "MAC-1"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Register this device",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/devices/{device_id}": {
+      "delete": {
+        "description": "Frees its license slot and revokes its refresh tokens, so the app on it signs out at its next refresh. Its entitlement stays valid until it expires. A device with an offline file that has not expired (offline_until) keeps its slot until its last valid file expires and is refused with offline_file_active.",
+        "operationId": "delete-device",
+        "parameters": [
+          {
+            "description": "Device TypeID",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "description": "Device TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "This account has no such device."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "offline_file_active": {
+                    "summary": "Offline file active",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/offline-file-active",
+                      "title": "Offline file active",
+                      "status": 409,
+                      "code": "offline_file_active",
+                      "detail": "This device's offline file has not expired, so it keeps its license slot until offline_until."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Remove a device",
+        "tags": [
+          "Devices"
+        ]
+      },
+      "patch": {
+        "operationId": "update-device",
+        "parameters": [
+          {
+            "description": "Device TypeID",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "description": "Device TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Device"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "This account has no such device."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected a name of 1 to 100 characters",
+                          "location": "body.name",
+                          "value": "\t"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Rename a device",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/devices/{device_id}/entitlement": {
+      "post": {
+        "description": "Answers only for the device the caller's token is bound to: register the device, refresh the token, then ask. When the account has a license and the device holds none of its 3 slots, the device takes one, or the answer is device_limit_reached with the devices that hold them. An account without licenses gets a token with no features.",
+        "operationId": "issue-entitlement",
+        "parameters": [
+          {
+            "description": "Device TypeID; must be the device the caller's token is bound to (its dev claim)",
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "description": "Device TypeID; must be the device the caller's token is bound to (its dev claim)",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntitlementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entitlement"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "account_locked": {
+                    "summary": "Account locked",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/account-locked",
+                      "title": "Account locked",
+                      "status": 403,
+                      "code": "account_locked",
+                      "detail": "This account is locked."
+                    }
+                  },
+                  "device_revoked": {
+                    "summary": "Device revoked",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/device-revoked",
+                      "title": "Device revoked",
+                      "status": 403,
+                      "code": "device_revoked",
+                      "detail": "This device was removed from the account. Sign in again to use it."
+                    }
+                  },
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "This token is not bound to that device. Register this device, refresh the token, and ask again."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "device_limit_reached": {
+                    "summary": "Device limit reached",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/device-limit-reached",
+                      "title": "Device limit reached",
+                      "status": 409,
+                      "code": "device_limit_reached",
+                      "detail": "The license is already used on 3 devices.",
+                      "devices": [
+                        {
+                          "id": "dev_01k8djrfaefw08m00000000001",
+                          "machine_id": "0000000000000000000000000000000000000000000000000000000000000001",
+                          "platform": "macos",
+                          "name": "Ada's MacBook Pro",
+                          "app_version": "2.0.0",
+                          "os_version": "26.0",
+                          "licensed_at": "2026-10-01T09:00:00Z",
+                          "created_at": "2026-10-01T09:00:00Z",
+                          "last_seen_at": "2026-10-21T09:00:00Z"
+                        },
+                        {
+                          "id": "dev_01k8djrfaefw08m00000000002",
+                          "machine_id": "0000000000000000000000000000000000000000000000000000000000000002",
+                          "platform": "macos",
+                          "name": "Studio",
+                          "app_version": "2.0.0",
+                          "os_version": "26.0",
+                          "licensed_at": "2026-10-02T09:00:00Z",
+                          "created_at": "2026-10-02T09:00:00Z",
+                          "last_seen_at": "2026-10-22T09:00:00Z"
+                        },
+                        {
+                          "id": "dev_01k8djrfaefw08m00000000003",
+                          "machine_id": "0000000000000000000000000000000000000000000000000000000000000003",
+                          "platform": "linux",
+                          "name": "Workstation",
+                          "app_version": "2.0.0",
+                          "os_version": "Fedora 43",
+                          "licensed_at": "2026-10-03T09:00:00Z",
+                          "created_at": "2026-10-03T09:00:00Z",
+                          "last_seen_at": "2026-10-23T09:00:00Z"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLimitProblem"
+                }
+              }
+            },
+            "description": "Every license slot is taken by another device"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "An entitlement for this device",
+        "tags": [
+          "Devices"
+        ]
+      }
+    },
+    "/discounts/preview": {
+      "post": {
+        "description": "Answers whether checkout would apply the code, and how much it takes off. An unknown code is not an error.",
+        "operationId": "preview-discount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountPreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Check a discount code",
+        "tags": [
+          "Checkout"
+        ]
+      }
+    },
+    "/me": {
+      "get": {
+        "description": "The account, the teams it belongs to with its role and seat in each, and the licenses whose features it can use.",
+        "operationId": "get-me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "The signed-in account",
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/newsletter/stats": {
+      "get": {
+        "operationId": "get-newsletter-stats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsletterStats"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Count the newsletter's subscribers",
+        "tags": [
+          "Newsletter"
+        ]
+      }
+    },
+    "/newsletter/subscriptions": {
+      "post": {
+        "description": "Emails a confirmation link. Answers 202 whether or not the address is subscribed and whether or not the Turnstile check passed, so it reveals nothing.",
+        "operationId": "create-newsletter-subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewsletterSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Sign up for the newsletter",
+        "tags": [
+          "Newsletter"
+        ]
+      }
+    },
+    "/pricing": {
+      "get": {
+        "description": "What checkout charges the caller without a discount code, regional discount included. Answered for the caller's country, so it is never cached.",
+        "operationId": "get-pricing",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pricing"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Prices in the caller's country",
+        "tags": [
+          "Checkout"
+        ]
+      }
+    },
+    "/teams": {
+      "get": {
+        "description": "With the caller's role and seat in each, in the order the account joined them. App sign-ins only.",
+        "operationId": "list-teams",
+        "parameters": [
+          {
+            "description": "Items per page",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Items per page",
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page; absent for the first page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page; absent for the first page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected the next_cursor of a previous page",
+                          "location": "query.cursor",
+                          "value": "abc"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "The teams the account belongs to",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}": {
+      "get": {
+        "description": "Its name, the caller's role and its seats. Any member, or a team API token of the team with any scope.",
+        "operationId": "get-team",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "A team",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/invitations": {
+      "get": {
+        "description": "Owners and admins, or a team API token of the team with the invitations:read scope. Neither accepted nor revoked, expired ones included, in the order they were created.",
+        "operationId": "list-team-invitations",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Items per page",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Items per page",
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page; absent for the first page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page; absent for the first page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the invitations:read scope.",
+                      "scope": "invitations:read"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected the next_cursor of a previous page",
+                          "location": "query.cursor",
+                          "value": "abc"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "A team's pending invitations",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "post": {
+        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. Emails a link valid for 7 days. With a seat, it needs a free one and reserves it while pending. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team.",
+        "operationId": "create-team-invitation",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the invitations:write scope.",
+                      "scope": "invitations:write"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "already_member": {
+                    "summary": "Already member",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/already-member",
+                      "title": "Already member",
+                      "status": 409,
+                      "code": "already_member",
+                      "detail": "That address belongs to a member of the team already."
+                    }
+                  },
+                  "invitation_pending": {
+                    "summary": "Invitation pending",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/invitation-pending",
+                      "title": "Invitation pending",
+                      "status": 409,
+                      "code": "invitation_pending",
+                      "detail": "That address has a pending invitation already. Resend it instead."
+                    }
+                  },
+                  "seat_limit_reached": {
+                    "summary": "Seat limit reached",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/seat-limit-reached",
+                      "title": "Seat limit reached",
+                      "status": 409,
+                      "code": "seat_limit_reached",
+                      "detail": "Every seat of the team is in use. Buy more seats in the portal."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected an email address",
+                          "location": "body.email",
+                          "value": "grace@localhost"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "Invite someone to a team",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/invitations/{invitation_id}": {
+      "delete": {
+        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. Its link stops working and the seat it reserved is free again.",
+        "operationId": "delete-team-invitation",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Invitation TypeID",
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "description": "Invitation TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the invitations:write scope.",
+                      "scope": "invitations:write"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "The team has no such pending invitation."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "Revoke an invitation",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/invitations/{invitation_id}/resend": {
+      "post": {
+        "description": "Owners and admins, or a team API token of the team with the invitations:write scope. The new link replaces the old one and lasts 7 days. An invitation is sent at most once every 10 minutes. It keeps its seat as it is: an expired one still holds its reservation, and one whose reservation was taken back stays without a seat, so accepting it needs a free seat at that moment. Creating and resending together: 50 an hour per caller and team, and 100 an hour per team, whoever sends them; one that fails is not counted against the team.",
+        "operationId": "resend-team-invitation",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Invitation TypeID",
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "description": "Invitation TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invitation"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the invitations:write scope.",
+                      "scope": "invitations:write"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "The team has no such pending invitation."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "seat_limit_reached": {
+                    "summary": "Seat limit reached",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/seat-limit-reached",
+                      "title": "Seat limit reached",
+                      "status": 409,
+                      "code": "seat_limit_reached",
+                      "detail": "Every seat of the team is in use. Buy more seats in the portal."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  },
+                  "rate_limited_2": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "The invitation was sent less than 10 minutes ago. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "Send an invitation again",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/library/changes": {
+      "get": {
+        "description": "Needs a seat in the team and the team_library feature. A cursor older than the 90 days deletions are kept answers cursor_expired; pull a snapshot then.",
+        "operationId": "list-library-changes",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "cursor of the previous pull; absent for a snapshot of every live item",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "cursor of the previous pull; absent for a snapshot of every live item",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Changes per response",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "description": "Changes per response",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryChanges"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "feature_required": {
+                    "summary": "Feature required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/feature-required",
+                      "title": "Feature required",
+                      "status": 403,
+                      "code": "feature_required",
+                      "detail": "The team's plan does not include team_library."
+                    }
+                  },
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The library needs a seat in the team."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "cursor_expired": {
+                    "summary": "Cursor expired",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/cursor-expired",
+                      "title": "Cursor expired",
+                      "status": 410,
+                      "code": "cursor_expired",
+                      "detail": "This cursor is older than the deletions kept. Pull a snapshot without a cursor."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected the cursor of a previous pull",
+                          "location": "query.cursor",
+                          "value": "abc"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Pull a team's library",
+        "tags": [
+          "Team library"
+        ]
+      },
+      "post": {
+        "description": "Owners and admins with a seat and the team_library feature. Up to 500 changes, applied in one transaction and judged item by item. An item's data is at most 256 KiB of JSON and the body at most 4 MiB. A change the server refuses, such as data with a secret-bearing key, refuses the whole push.",
+        "operationId": "push-library-changes",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryPush"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPushResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "feature_required": {
+                    "summary": "Feature required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/feature-required",
+                      "title": "Feature required",
+                      "status": 403,
+                      "code": "feature_required",
+                      "detail": "The team's plan does not include team_library."
+                    }
+                  },
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The library needs a seat in the team."
+                    }
+                  },
+                  "library_write_forbidden": {
+                    "summary": "Library write forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/library-write-forbidden",
+                      "title": "Library write forbidden",
+                      "status": 403,
+                      "code": "library_write_forbidden",
+                      "detail": "Only the team's owner and admins publish to its library."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "request_entity_too_large": {
+                    "summary": "Request entity too large",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/request-entity-too-large",
+                      "title": "Request entity too large",
+                      "status": 413,
+                      "code": "request_entity_too_large",
+                      "detail": "request body is too large limit=4194305 bytes"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "secret-bearing keys are refused; the library never stores a secret",
+                          "location": "body.changes[0].data.password",
+                          "value": "password"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          }
+        ],
+        "summary": "Push changes to a team's library",
+        "tags": [
+          "Team library"
+        ]
+      }
+    },
+    "/teams/{team_id}/members": {
+      "get": {
+        "description": "Owners and admins, or a team API token of the team with the members:read scope. In the order they joined.",
+        "operationId": "list-team-members",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Items per page",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Items per page",
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor of the previous page; absent for the first page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor of the previous page; absent for the first page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the members:read scope.",
+                      "scope": "members:read"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "validation_failed": {
+                    "summary": "Validation failed",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/validation-failed",
+                      "title": "Validation failed",
+                      "status": 422,
+                      "code": "validation_failed",
+                      "detail": "validation failed",
+                      "errors": [
+                        {
+                          "message": "expected the next_cursor of a previous page",
+                          "location": "query.cursor",
+                          "value": "abc"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "A team's members",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/members/{member_id}": {
+      "delete": {
+        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner cannot be removed.",
+        "operationId": "delete-team-member",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Member TypeID",
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "description": "Member TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "forbidden_3": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The owner stays until ownership is transferred in the portal."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the members:write scope.",
+                      "scope": "members:write"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "The team has no such member."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "Remove a member",
+        "tags": [
+          "Teams"
+        ]
+      },
+      "patch": {
+        "description": "Owners and admins, or a team API token of the team with the members:write scope. The owner's role changes only by a transfer in the portal, and only the owner changes its own seat.",
+        "operationId": "update-team-member",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Member TypeID",
+            "in": "path",
+            "name": "member_id",
+            "required": true,
+            "schema": {
+              "description": "Member TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "forbidden_3": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The owner stays until ownership is transferred in the portal."
+                    }
+                  },
+                  "forbidden_4": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the members:write scope.",
+                      "scope": "members:write"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "The team has no such member."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "seat_limit_reached": {
+                    "summary": "Seat limit reached",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/seat-limit-reached",
+                      "title": "Seat limit reached",
+                      "status": 409,
+                      "code": "seat_limit_reached",
+                      "detail": "Every seat of the team is in use. Buy more seats in the portal."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "Change a member's role or seat",
+        "tags": [
+          "Teams"
+        ]
+      }
+    },
+    "/teams/{team_id}/seats": {
+      "get": {
+        "description": "Owners and admins, or a team API token of the team with the seats:read scope.",
+        "operationId": "get-team-seats",
+        "parameters": [
+          {
+            "description": "Team TypeID",
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "description": "Team TypeID",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Seats"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Unauthorized",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/unauthorized",
+                      "title": "Unauthorized",
+                      "status": 401,
+                      "code": "unauthorized",
+                      "detail": "The token is invalid or has expired."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "The token lacks the app scope."
+                    }
+                  },
+                  "forbidden_2": {
+                    "summary": "Forbidden",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/forbidden",
+                      "title": "Forbidden",
+                      "status": 403,
+                      "code": "forbidden",
+                      "detail": "Only the team's owner and admins can do this."
+                    }
+                  },
+                  "insufficient_scope": {
+                    "summary": "Insufficient scope",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/insufficient-scope",
+                      "title": "Insufficient scope",
+                      "status": 403,
+                      "code": "insufficient_scope",
+                      "detail": "The team API token lacks the seats:read scope.",
+                      "scope": "seats:read"
+                    }
+                  },
+                  "interactive_sign_in_required": {
+                    "summary": "Interactive sign in required",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/interactive-sign-in-required",
+                      "title": "Interactive sign in required",
+                      "status": 403,
+                      "code": "interactive_sign_in_required",
+                      "detail": "This app signed in with a license key. Sign in with your account to manage teams."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "not_found": {
+                    "summary": "Not found",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/not-found",
+                      "title": "Not found",
+                      "status": 404,
+                      "code": "not_found",
+                      "detail": "No such team, or the caller is not in it."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "rate_limited": {
+                    "summary": "Rate limited",
+                    "value": {
+                      "type": "https://api.tablepro.app/problems/rate-limited",
+                      "title": "Rate limited",
+                      "status": 429,
+                      "code": "rate_limited",
+                      "detail": "Too many requests. Try again later."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "oauth": [
+              "app"
+            ]
+          },
+          {
+            "team_token": []
+          }
+        ],
+        "summary": "A team's seats",
+        "tags": [
+          "Teams"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.tablepro.app/v2"
+    }
+  ]
+}
