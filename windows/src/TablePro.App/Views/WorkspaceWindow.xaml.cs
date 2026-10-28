@@ -58,6 +58,7 @@ public sealed partial class WorkspaceWindow : Window
         AddAccelerator(VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ShowHistory);
         AddAccelerator(VirtualKey.A, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, ShowAssistant);
         AddAccelerator(VirtualKey.F9, VirtualKeyModifiers.None, ToggleSidebar);
+        AddAccelerator(VirtualKey.F, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, OpenSearch);
         AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleTabs(1));
         AddAccelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleTabs(-1));
 
@@ -200,6 +201,23 @@ public sealed partial class WorkspaceWindow : Window
 
             case ServerTabViewModel server:
                 return new ServerTabView(server);
+
+            case SearchTabViewModel search:
+            {
+                var view = new SearchTabView(search);
+                view.HitOpened += async (_, hit) =>
+                {
+                    var table = ViewModel.OpenTable(hit.Table);
+                    table.Filters.Clear();
+                    table.Filters.Add(new FilterRuleViewModel(table.FilterColumns) { Column = FilterRuleViewModel.AllColumns, Operator = FilterOperator.Contains, Value = search.Query.Trim() });
+                    table.Offset = 0;
+                    if (table.Rows is not null)
+                    {
+                        await table.LoadAsync();
+                    }
+                };
+                return view;
+            }
 
             case DiagramTabViewModel diagram:
             {
@@ -475,6 +493,27 @@ public sealed partial class WorkspaceWindow : Window
         }
 
         var tab = new ServerTabViewModel(ViewModel.Context);
+        ViewModel.Tabs.Add(tab);
+        ViewModel.SelectedTab = tab;
+    }
+
+    private void OnSearchDatabase(object sender, RoutedEventArgs e) => OpenSearch();
+
+    private void OpenSearch()
+    {
+        if (!ViewModel.IsSql)
+        {
+            return;
+        }
+
+        var existing = ViewModel.Tabs.OfType<SearchTabViewModel>().FirstOrDefault();
+        if (existing is not null)
+        {
+            ViewModel.SelectedTab = existing;
+            return;
+        }
+
+        var tab = new SearchTabViewModel(ViewModel.Context);
         ViewModel.Tabs.Add(tab);
         ViewModel.SelectedTab = tab;
     }
