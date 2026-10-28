@@ -9,6 +9,9 @@ using TablePro.Drivers.PostgreSql;
 using TablePro.Drivers.Redis;
 using TablePro.Drivers.Sqlite;
 using TablePro.Drivers.SqlServer;
+using TablePro.Drivers.ClickHouse;
+using TablePro.Drivers.Oracle;
+using TablePro.Drivers.Teradata;
 using TablePro.Ssh;
 using TablePro.Storage;
 using TablePro.Storage.Connections;
@@ -60,7 +63,10 @@ public partial class App : Application
         .Register(new SqlServerDriver())
         .Register(new SqliteDriver())
         .Register(new DuckDbDriver())
-        .Register(new RedisDriver());
+        .Register(new RedisDriver())
+        .Register(new ClickHouseDriver())
+        .Register(new OracleDriver())
+        .Register(new TeradataDriver());
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

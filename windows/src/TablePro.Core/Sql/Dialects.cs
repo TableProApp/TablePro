@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using TablePro.Core.Connections;
@@ -155,7 +156,8 @@ public sealed class ClickHouseDialect : SqlDialect
     public override string StringLiteral(string value) =>
         string.Concat("'", value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("'", "\\'", StringComparison.Ordinal), "'");
 
-    public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"p{index}");
+    // The driver rewrites @pN to ClickHouse's {pN:String}; the @ makes it a parameter token so change previews fill it in.
+    public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $"@p{index}");
 
     public override string CastToText(string quotedColumn) => $"toString({quotedColumn})";
 
@@ -175,6 +177,9 @@ public sealed class OracleDialect : SqlDialect
     public override SqlLexerFeatures LexerFeatures => SqlLexerFeatures.None;
 
     public override string ParameterName(int index) => string.Create(CultureInfo.InvariantCulture, $":p{index}");
+
+    // PL/SQL blocks hold semicolons of their own and end at a lone slash, as in SQL*Plus.
+    public override ImmutableArray<SqlStatement> Split(string text) => OracleScript.Split(text);
 
     public override string BinaryLiteral(ReadOnlySpan<byte> value) => string.Concat("HEXTORAW('", Convert.ToHexString(value), "')");
 

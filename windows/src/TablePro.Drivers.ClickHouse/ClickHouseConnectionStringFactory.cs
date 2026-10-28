@@ -8,7 +8,7 @@ using CoreSslMode = TablePro.Core.Connections.SslMode;
 namespace TablePro.Drivers.ClickHouse;
 
 /// <summary>Builds the ClickHouse.Client connection string and the HTTP handler a session shares.</summary>
-internal static class ClickHouseConnectionFactory
+internal static class ClickHouseConnectionStringFactory
 {
     public const int HttpPort = 8123;
     public const int HttpsPort = 8443;

@@ -7,6 +7,18 @@ namespace TablePro.Core.Tests.Connections;
 public sealed class ConnectionTests
 {
     [Theory]
+    [InlineData(SslMode.Preferred, 0, 8123)]
+    [InlineData(SslMode.Required, 0, 8443)]
+    [InlineData(SslMode.VerifyIdentity, 0, 8443)]
+    [InlineData(SslMode.Required, 9440, 9440)]
+    public void ClickHouseDefaultsToItsTlsPortWhenTlsIsRequired(SslMode ssl, int port, int expected)
+    {
+        var profile = new ConnectionProfile { Name = "ch", Engine = DatabaseEngine.ClickHouse, SslMode = ssl, Port = port };
+
+        Assert.Equal(expected, profile.EffectivePort);
+    }
+
+    [Theory]
     [InlineData(DatabaseEngine.PostgreSql, "PostgreSQL", 5432, false, true, "postgres")]
     [InlineData(DatabaseEngine.MySql, "MySQL", 3306, false, false, "root")]
     [InlineData(DatabaseEngine.MariaDb, "MariaDB", 3306, false, false, "root")]

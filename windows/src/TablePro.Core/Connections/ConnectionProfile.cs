@@ -41,7 +41,7 @@ public sealed record ConnectionProfile
 
     public EngineDescriptor Descriptor => EngineDescriptor.For(Engine);
 
-    public int EffectivePort => Port > 0 ? Port : Descriptor.DefaultPort;
+    public int EffectivePort => Port > 0 ? Port : SslMode >= SslMode.Required && Descriptor.TlsDefaultPort is { } tls ? tls : Descriptor.DefaultPort;
 
     /// <summary>What the picker shows under the name.</summary>
     public string Subtitle => Descriptor.IsFileBased

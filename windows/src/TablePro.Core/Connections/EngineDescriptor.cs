@@ -22,7 +22,7 @@ public sealed record EngineDescriptor(
         new(DatabaseEngine.DuckDb, "DuckDB", 0, true, true, "", ".duckdb;.ddb") { Family = EngineFamily.Files },
         new(DatabaseEngine.Redis, "Redis", 6379, false, true, "", "") { Family = EngineFamily.KeyValue, DataModel = DataModel.KeyValue, QueryLanguage = "Redis CLI", UsernameRequired = false },
         new(DatabaseEngine.MongoDb, "MongoDB", 27017, false, true, "", "") { Family = EngineFamily.Document, DataModel = DataModel.Document, QueryLanguage = "MQL", UsernameRequired = false },
-        new(DatabaseEngine.ClickHouse, "ClickHouse", 8123, false, true, "default", "") { Family = EngineFamily.Analytical },
+        new(DatabaseEngine.ClickHouse, "ClickHouse", 8123, false, true, "default", "") { Family = EngineFamily.Analytical, TlsDefaultPort = 8443 },
         new(DatabaseEngine.Oracle, "Oracle", 1521, false, true, "system", "") { QueryLanguage = "SQL and PL/SQL" },
         new(DatabaseEngine.Cassandra, "Cassandra", 9042, false, true, "cassandra", "") { Family = EngineFamily.WideColumn, DataModel = DataModel.WideColumn, QueryLanguage = "CQL", UsernameRequired = false },
         new(DatabaseEngine.ScyllaDb, "ScyllaDB", 9042, false, true, "cassandra", "") { Family = EngineFamily.WideColumn, DataModel = DataModel.WideColumn, QueryLanguage = "CQL", UsernameRequired = false },
@@ -58,6 +58,9 @@ public sealed record EngineDescriptor(
     public DataModel DataModel { get; init; } = DataModel.Relational;
 
     public string QueryLanguage { get; init; } = "SQL";
+
+    /// <summary>The port a server listens on for TLS when it differs from <see cref="DefaultPort"/>, as ClickHouse's HTTPS on 8443.</summary>
+    public int? TlsDefaultPort { get; init; }
 
     /// <summary>Engines that accept a connection without a login leave the user field optional in the form.</summary>
     public bool UsernameRequired { get; init; } = true;

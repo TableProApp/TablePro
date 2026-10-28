@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(TableProTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>TablePro.Drivers.Analytics.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/TablePro.Core/TablePro.Core.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.ClickHouse/TablePro.Drivers.ClickHouse.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Oracle/TablePro.Drivers.Oracle.csproj" />
+    <ProjectReference Include="../../src/TablePro.Drivers.Teradata/TablePro.Drivers.Teradata.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>
