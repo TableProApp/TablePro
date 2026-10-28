@@ -26,7 +26,8 @@ struct AccountSessionTests {
     private static func signedIn(_ server: FakeAccountServer, keychain: InMemoryKeychain) async throws -> AccountSession {
         let session = session(server, keychain: keychain)
         let request = AuthorizationRequest.make(configuration: configuration, machine: FakeAccountServer.machine)
-        let callback = try #require(URL(string: "app.tablepro:/oauth/callback?code=code-1&state=\(request.state)"))
+        let code = await server.authorize(request.url)
+        let callback = try #require(URL(string: "app.tablepro:/oauth/callback?code=\(code)&state=\(request.state)"))
         try await session.completeSignIn(request, callback: callback)
         return session
     }
@@ -96,6 +97,22 @@ struct AccountSessionTests {
             return
         }
         #expect(stored.hasPrefix("refresh-"))
+    }
+
+    @Test("A code exchange whose verifier does not match the challenge is refused and stores nothing")
+    func wrongVerifierIsRefused() async throws {
+        let server = FakeAccountServer()
+        let keychain = InMemoryKeychain()
+        let session = Self.session(server, keychain: keychain)
+        let request = AuthorizationRequest.make(configuration: Self.configuration, machine: FakeAccountServer.machine)
+        let code = await server.authorize(request.url)
+        let callback = try #require(URL(string: "app.tablepro:/oauth/callback?code=\(code)&state=\(request.state)"))
+        let other = AuthorizationRequest(url: request.url, state: request.state, verifier: "another-verifier")
+
+        await #expect(throws: AccountError.oauth("invalid_grant", description: nil)) {
+            try await session.completeSignIn(other, callback: callback)
+        }
+        #expect(!session.isSignedIn)
     }
 
     @Test("Concurrent callers share one refresh")

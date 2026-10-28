@@ -34,10 +34,15 @@ actor FakeAccountServer {
     var refusesRefresh = false
     var deviceLimitReached = false
     var deviceRevoked = false
+    var refusesRegistration = false
+    var unauthorizedOnce = false
     var entitlementLifetime: TimeInterval = 14 * 24 * 60 * 60
     var refreshGate: AsyncGate?
+    var entitlementGate: AsyncGate?
     private(set) var requests: [Request] = []
     private(set) var familyBound = false
+    private var familyMethod = "interactive"
+    private var challenges: [String: String] = [:]
     private var refreshCounter = 0
     private let now: @Sendable () -> Date
 
@@ -59,6 +64,16 @@ actor FakeAccountServer {
 
     // MARK: - OAuth
 
+    // What the authorize page does: keeps the PKCE challenge under the code it hands back.
+    func authorize(_ url: URL) -> String {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let code = "code-\(challenges.count + 1)"
+        if query.first(where: { $0.name == "code_challenge_method" })?.value == "S256" {
+            challenges[code] = query.first { $0.name == "code_challenge" }?.value
+        }
+        return code
+    }
+
     func oauth(_ request: URLRequest) async throws -> (Data, URLResponse) {
         let form = Self.parseForm(request.httpBody ?? Data())
         let path = request.url?.path ?? ""
@@ -70,23 +85,29 @@ actor FakeAccountServer {
         }
         switch form["grant_type"] {
         case "authorization_code":
-            guard form["code"] == "code-1", form["code_verifier"] != nil else {
+            guard let code = form["code"], let challenge = challenges.removeValue(forKey: code),
+                  let verifier = form["code_verifier"],
+                  Base64URL.encode(Data(SHA256.hash(data: Data(verifier.utf8)))) == challenge
+            else {
                 return Self.http(request, status: 400, body: ["error": "invalid_grant"])
             }
-            return tokens(request, device: false, method: "interactive")
+            familyBound = false
+            familyMethod = "interactive"
+            return tokens(request, device: false, method: familyMethod)
         case "refresh_token":
             refreshCounter += 1
             if let refreshGate { await refreshGate.wait() }
             guard !refusesRefresh, form["refresh_token"]?.hasPrefix("refresh-") == true else {
                 return Self.http(request, status: 400, body: ["error": "invalid_grant"])
             }
-            return tokens(request, device: familyBound, method: "interactive")
+            return tokens(request, device: familyBound, method: familyMethod)
         case OAuthTokenClient.tokenExchangeGrant:
             guard form["subject_token"] == Self.validKey else {
                 return Self.http(request, status: 400, body: ["error": "invalid_grant"])
             }
             familyBound = true
-            return tokens(request, device: true, method: "license_key")
+            familyMethod = "license_key"
+            return tokens(request, device: true, method: familyMethod)
         default:
             return Self.http(request, status: 400, body: ["error": "unsupported_grant_type"])
         }
@@ -118,10 +139,17 @@ actor FakeAccountServer {
         let authorization = request.headerFields[.authorization]
         requests.append(Request(method: request.method.rawValue, path: path, form: [:], json: json, authorization: authorization))
         if isOffline { throw URLError(.notConnectedToInternet) }
+        if unauthorizedOnce {
+            unauthorizedOnce = false
+            return Self.problem(status: 401, code: "invalid_token")
+        }
 
         let claims = authorization.flatMap { Self.claims(ofBearer: $0) } ?? [:]
         switch (request.method, path) {
         case (.post, "/devices"):
+            if refusesRegistration {
+                return Self.problem(status: 500, code: "internal")
+            }
             familyBound = true
             return Self.json(status: .created, [
                 "id": Self.deviceID, "machine_id": json["machine_id"] ?? "", "platform": "macos",
@@ -130,6 +158,7 @@ actor FakeAccountServer {
                 "last_seen_at": "2026-10-28T09:00:00.123456Z"
             ])
         case (.post, "/devices/\(Self.deviceID)/entitlement"):
+            if let entitlementGate { await entitlementGate.wait() }
             if deviceRevoked {
                 return Self.problem(status: 403, code: "device_revoked")
             }
@@ -250,14 +279,13 @@ struct FakeTransport: ClientTransport {
 
 @MainActor
 struct FakeAuthenticator: WebAuthenticating {
-    var answer: (URL) -> URL = { request in
-        let state = URLComponents(url: request, resolvingAgainstBaseURL: false)?
-            .queryItems?.first { $0.name == "state" }?.value ?? ""
-        return URL(string: "app.tablepro:/oauth/callback?code=code-1&state=\(state)")!
-    }
+    let server: FakeAccountServer
 
     func authenticate(url: URL, callbackScheme: String) async throws(AccountError) -> URL {
-        answer(url)
+        let state = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "state" }?.value ?? ""
+        let code = await server.authorize(url)
+        return URL(string: "app.tablepro:/oauth/callback?code=\(code)&state=\(state)")!
     }
 }
 
@@ -270,6 +298,7 @@ struct AccountFixture {
     let defaults: EphemeralDefaults
     let entitlementFile: URL
     let access: FeatureAccess
+    let clock = ManualClock()
 
     init(
         now: @escaping @Sendable () -> Date = { Date() },
@@ -308,7 +337,7 @@ struct AccountFixture {
                 verify: verifyLegacy
             ),
             access: access,
-            clock: ManualClock(),
+            clock: clock,
             now: now
         )
     }
@@ -333,6 +362,10 @@ struct AccountFixture {
             cachedOnMachineId: FakeAccountServer.machine.machineID
         )
         defaults.defaults.set(try JSONEncoder().encode(cached), forKey: LegacyLicenseStore.payloadKey)
+    }
+
+    func signIn() async throws {
+        try await services.signIn(using: FakeAuthenticator(server: server))
     }
 
     var hasLegacyLicense: Bool {

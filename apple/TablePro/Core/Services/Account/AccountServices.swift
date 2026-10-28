@@ -9,6 +9,8 @@ import TableProCloudAPI
 
 internal enum LegacyMigrationOutcome: Equatable, Sendable {
     case nothingToMigrate
+    // An interactive sign-in owns this Mac's session, so the key is neither exchanged nor deleted.
+    case keptWhileSignedIn
     case migrated
     case keyRejected
     case retryLater(AccountError)
@@ -39,6 +41,8 @@ internal final class AccountServices {
     private var legacyEntitlement: LegacyEntitlement?
     private var refreshTask: Task<EntitlementRefreshState, Never>?
     private var scheduleTask: Task<Void, Never>?
+    // Bumped by sign-out, so a refresh still out at that moment adopts nothing it brings back.
+    private var sessionGeneration = 0
 
     init(
         configuration: AccountConfiguration,
@@ -114,6 +118,9 @@ internal final class AccountServices {
     }
 
     func signOut() async {
+        sessionGeneration += 1
+        refreshTask?.cancel()
+        refreshTask = nil
         await session.signOut()
         dropEntitlement()
         legacy.clear()
@@ -128,13 +135,23 @@ internal final class AccountServices {
         }
         let task = Task { await self.performRefresh() }
         refreshTask = task
-        defer { refreshTask = nil }
-        return await task.value
+        let outcome = await task.value
+        if refreshTask == task {
+            refreshTask = nil
+        }
+        return outcome
     }
 
     func migrateLegacyKeyIfNeeded() async -> LegacyMigrationOutcome {
         guard let key = legacy.licenseKey() else { return .nothingToMigrate }
-        if !session.isSignedIn {
+        if session.isSignedIn {
+            // A session the exchange started, whose registration or fetch failed, finishes here without a new exchange.
+            do throws(AccountError) {
+                guard try await session.accessToken().isFromLicenseKey else { return .keptWhileSignedIn }
+            } catch {
+                return .retryLater(error)
+            }
+        } else {
             do throws(AccountError) {
                 try await session.signIn(licenseKey: key, machine: machine)
             } catch .oauth("invalid_grant", _) {
@@ -191,7 +208,7 @@ internal final class AccountServices {
             return false
         case .migrated, .keyRejected:
             return true
-        case .nothingToMigrate:
+        case .nothingToMigrate, .keptWhileSignedIn:
             break
         }
         guard session.isSignedIn else {
@@ -205,14 +222,32 @@ internal final class AccountServices {
     }
 
     private func performRefresh() async -> EntitlementRefreshState {
-        let outcome: EntitlementRefreshState
+        let generation = sessionGeneration
+        let fetched: Result<EntitlementFetchResult, AccountError>
         do throws(AccountError) {
-            outcome = try await fetchEntitlement()
-        } catch let error where error.problemCode == "device_revoked" {
+            fetched = .success(try await fetchEntitlement())
+        } catch {
+            fetched = .failure(error)
+        }
+        guard generation == sessionGeneration else { return .idle }
+
+        let outcome: EntitlementRefreshState
+        switch fetched {
+        case .success(.issued(let issued)):
+            do {
+                try entitlements.save(issued)
+            } catch {
+                Self.logger.error("Could not store the entitlement: \(error.publicLogShape, privacy: .public)")
+            }
+            entitlement = issued
+            outcome = .succeeded(now())
+        case .success(.deviceLimitReached(let holders)):
+            outcome = .deviceLimitReached(holders)
+        case .failure(let error) where error.problemCode == "device_revoked":
             Self.logger.notice("This device was removed from the account; signing out on this Mac")
             await session.discard()
             outcome = .failed(error)
-        } catch {
+        case .failure(let error):
             Self.logger.warning("Entitlement refresh failed: \(error.publicLogShape, privacy: .public)")
             outcome = .failed(error)
         }
@@ -220,25 +255,14 @@ internal final class AccountServices {
         return outcome
     }
 
-    private func fetchEntitlement() async throws(AccountError) -> EntitlementRefreshState {
+    private func fetchEntitlement() async throws(AccountError) -> EntitlementFetchResult {
         var token = try await session.accessToken()
         if token.deviceID == nil {
             _ = try await devices.register()
             token = try await session.refreshNow()
         }
         guard let deviceID = token.deviceID else { throw .invalidResponse }
-        switch try await entitlements.fetch(api: api, deviceID: deviceID) {
-        case .issued(let issued):
-            do {
-                try entitlements.save(issued)
-            } catch {
-                Self.logger.error("Could not store the entitlement: \(error.publicLogShape, privacy: .public)")
-            }
-            entitlement = issued
-            return .succeeded(now())
-        case .deviceLimitReached(let holders):
-            return .deviceLimitReached(holders)
-        }
+        return try await entitlements.fetch(api: api, deviceID: deviceID)
     }
 
     private func dropEntitlement() {
