@@ -11,7 +11,7 @@ using TablePro.Core.Sql;
 namespace TablePro.Drivers.MySql;
 
 /// <summary>Serves MySQL and MariaDB, which share the protocol, the catalog and SHOW CREATE.</summary>
-public sealed class MySqlSession
+public sealed partial class MySqlSession
     : AdoNetSession, ISchemaDdlProvider, IServerActivityProvider, IUserListProvider, IDatabaseAdministration, IServerVariablesProvider
 {
     private readonly string _connectionString;

@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Helpers;
 using TablePro.App.ViewModels;
@@ -16,6 +17,10 @@ public sealed partial class ServerTabView : UserControl
             {
                 Grid.Source = viewModel.Grid;
             }
+            else if (e.PropertyName == nameof(ServerTabViewModel.ShowsUsersEditor))
+            {
+                ShowUsersEditor();
+            }
         };
         Grid.CellContextRequested += (_, e) =>
         {
@@ -31,7 +36,8 @@ public sealed partial class ServerTabView : UserControl
         };
         Loaded += async (_, _) =>
         {
-            if (viewModel.Grid is null)
+            ShowUsersEditor();
+            if (viewModel.Grid is null && !viewModel.ShowsUsersEditor)
             {
                 await viewModel.RefreshAsync();
             }
@@ -39,6 +45,22 @@ public sealed partial class ServerTabView : UserControl
     }
 
     public ServerTabViewModel ViewModel { get; }
+
+    /// <summary>
+    /// Swaps the read-only grid for the Users and Roles editor where the engine has one. The view is made once per editor,
+    /// which a database switch replaces.
+    /// </summary>
+    private void ShowUsersEditor()
+    {
+        var editor = ViewModel.ShowsUsersEditor ? ViewModel.UsersRoles : null;
+        if (editor is not null && (UsersHost.Content as UsersRolesView)?.ViewModel != editor)
+        {
+            UsersHost.Content = new UsersRolesView(editor, ViewModel.Context.Dialogs);
+        }
+
+        UsersHost.Visibility = editor is null ? Visibility.Collapsed : Visibility.Visible;
+        Grid.Visibility = AutoRefreshSwitch.Visibility = editor is null ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void OnSectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {

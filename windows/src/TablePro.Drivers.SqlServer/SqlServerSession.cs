@@ -9,7 +9,7 @@ using TablePro.Core.Sql;
 
 namespace TablePro.Drivers.SqlServer;
 
-public sealed class SqlServerSession
+public sealed partial class SqlServerSession
     : AdoNetSession, ISchemaDdlProvider, IServerActivityProvider, IUserListProvider, IDatabaseAdministration, IServerVariablesProvider
 {
     private const string DefaultSchemaName = "dbo";

@@ -1,0 +1,286 @@
+<UserControl
+    x:Class="TablePro.App.Views.UsersRolesView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:TablePro.App.ViewModels">
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280" MinWidth="200" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Principal list -->
+            <Grid BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBox
+                    Margin="8"
+                    PlaceholderText="Filter users and roles"
+                    AutomationProperties.Name="Filter users and roles"
+                    Text="{x:Bind ViewModel.PrincipalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <ListView
+                    x:Name="PrincipalList"
+                    Grid.Row="1"
+                    SelectionMode="Single"
+                    AutomationProperties.Name="Users and roles"
+                    ItemsSource="{x:Bind ViewModel.Rows}"
+                    SelectedItem="{x:Bind ViewModel.SelectedRow, Mode=TwoWay}"
+                    RightTapped="OnPrincipalRightTapped">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PrincipalRowItem">
+                            <Grid Padding="0,6" ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{x:Bind Glyph, Mode=OneWay}" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Grid.Column="1" Spacing="1" Opacity="{x:Bind TitleOpacity, Mode=OneWay}">
+                                    <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Text="{x:Bind Summary, Mode=OneWay}"
+                                        Visibility="{x:Bind SummaryVisibility, Mode=OneWay}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <FontIcon
+                                    Grid.Column="2"
+                                    Glyph="{x:Bind StageGlyph, Mode=OneWay}"
+                                    FontSize="12"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Visibility="{x:Bind StageVisibility, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind StageDescription, Mode=OneWay}"
+                                    AutomationProperties.Name="{x:Bind StageDescription, Mode=OneWay}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <ProgressRing Grid.Row="1" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <InfoBar
+                    Grid.Row="1"
+                    Margin="8"
+                    VerticalAlignment="Top"
+                    Severity="Error"
+                    Title="Unable to load users and roles"
+                    IsClosable="False"
+                    IsOpen="{x:Bind ViewModel.LoadError, Mode=OneWay, Converter={StaticResource NotNullConverter}}"
+                    Message="{x:Bind ViewModel.LoadError, Mode=OneWay}">
+                    <InfoBar.ActionButton>
+                        <Button Content="Retry" Command="{x:Bind ViewModel.RefreshCommand}" />
+                    </InfoBar.ActionButton>
+                </InfoBar>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Padding="6,4" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateClicked" AutomationProperties.Name="New user or role" ToolTipService.ToolTip="New user or role">
+                        <FontIcon FontSize="14" Glyph="&#xE710;" />
+                    </Button>
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Click="OnDropClicked" IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" AutomationProperties.Name="Drop" ToolTipService.ToolTip="Drop">
+                        <FontIcon FontSize="14" Glyph="&#xE738;" />
+                    </Button>
+                    <Button Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}" AutomationProperties.Name="Refresh" ToolTipService.ToolTip="Refresh">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Detail -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid x:Name="DetailHeader" Padding="12,4" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon x:Name="DetailGlyph" FontSize="14" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock x:Name="DetailTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="DetailModified" Text="Modified" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <SelectorBar x:Name="Segments" Grid.Column="2" SelectionChanged="OnSegmentChanged">
+                        <SelectorBarItem Text="Privileges" Tag="Privileges" IsSelected="True" />
+                        <SelectorBarItem Text="Attributes" Tag="Attributes" />
+                    </SelectorBar>
+                </Grid>
+
+                <TextBlock
+                    x:Name="NoSelection"
+                    Grid.Row="1"
+                    Text="Select a user or role to view its privileges."
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                <!-- Privileges: the scope tree beside the checklist -->
+                <Grid x:Name="PrivilegesPane" Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="320" MinWidth="220" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="8" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="ScopeSearch"
+                                PlaceholderText="Search tables"
+                                AutomationProperties.Name="Search tables"
+                                Text="{x:Bind ViewModel.ScopeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <ComboBox x:Name="ScopeModes" Grid.Column="1" SelectedIndex="0" SelectionChanged="OnScopeModeChanged" AutomationProperties.Name="Show">
+                                <x:String>All objects</x:String>
+                                <x:String>Granted</x:String>
+                            </ComboBox>
+                        </Grid>
+                        <TreeView
+                            x:Name="ScopeTree"
+                            Grid.Row="1"
+                            SelectionMode="Single"
+                            AutomationProperties.Name="Objects"
+                            ItemsSource="{x:Bind ViewModel.ScopeRoots}"
+                            Expanding="OnScopeExpanding"
+                            SelectionChanged="OnScopeSelectionChanged">
+                            <TreeView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ScopeNodeItem">
+                                    <TreeViewItem ItemsSource="{x:Bind Children}" HasUnrealizedChildren="{x:Bind HasUnrealizedChildren, Mode=OneWay}" AutomationProperties.Name="{x:Bind Title}">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Glyph="{x:Bind Glyph}" FontSize="12" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Grid.Column="1" Text="{x:Bind Title}" VerticalAlignment="Center" />
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                Text="{x:Bind Summary, Mode=OneWay}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                VerticalAlignment="Center"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <ProgressRing Grid.Column="3" Width="14" Height="14" IsActive="{x:Bind IsLoading, Mode=OneWay}" />
+                                        </Grid>
+                                    </TreeViewItem>
+                                </DataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </Grid>
+
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid x:Name="ChecklistHeader" Margin="12,8" RowSpacing="6" ColumnSpacing="8">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ScopeTitle" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <Button Grid.Column="1" Style="{StaticResource ToolbarButtonStyle}" AutomationProperties.Name="Bulk actions" ToolTipService.ToolTip="Bulk actions">
+                                <FontIcon FontSize="14" Glyph="&#xE712;" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="Grant all" Click="OnGrantAllClicked" />
+                                        <MenuFlyoutItem Text="Revoke all" Click="OnRevokeAllClicked" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                            <TextBox
+                                Grid.Row="1"
+                                Grid.ColumnSpan="2"
+                                PlaceholderText="Filter privileges"
+                                AutomationProperties.Name="Filter privileges"
+                                Text="{x:Bind ViewModel.PrivilegeFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                        <ScrollViewer Grid.Row="1" Padding="12,0,12,12">
+                            <StackPanel x:Name="Checklist" Spacing="4" />
+                        </ScrollViewer>
+                        <TextBlock
+                            x:Name="ChecklistPlaceholder"
+                            Grid.RowSpan="2"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap"
+                            MaxWidth="320"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <InfoBar
+                            x:Name="GrantsErrorBar"
+                            Grid.Row="1"
+                            Margin="12"
+                            VerticalAlignment="Top"
+                            Severity="Error"
+                            Title="Unable to load privileges"
+                            IsClosable="False">
+                            <InfoBar.ActionButton>
+                                <Button Content="Retry" Click="OnRetryGrantsClicked" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
+                    </Grid>
+                </Grid>
+
+                <!-- Attributes -->
+                <ScrollViewer x:Name="AttributesPane" Grid.Row="1" Visibility="Collapsed">
+                    <StackPanel x:Name="AttributesForm" Padding="24,16" Spacing="8" MaxWidth="640" HorizontalAlignment="Left" />
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- Pending changes -->
+        <Grid Grid.Row="1" Padding="12,8" ColumnSpacing="8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon Glyph="&#xE70F;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.PendingTitle, Mode=OneWay}" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="UndoButton"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    Command="{x:Bind ViewModel.UndoCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanUndo, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind ViewModel.UndoLabel, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.UndoLabel, Mode=OneWay}">
+                    <FontIcon FontSize="14" Glyph="&#xE7A7;" />
+                </Button>
+                <Button
+                    x:Name="RedoButton"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    Command="{x:Bind ViewModel.RedoCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanRedo, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind ViewModel.RedoLabel, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.RedoLabel, Mode=OneWay}">
+                    <FontIcon FontSize="14" Glyph="&#xE7A6;" />
+                </Button>
+                <Button Content="Discard" Command="{x:Bind ViewModel.DiscardCommand}" IsEnabled="{x:Bind ViewModel.HasChanges, Mode=OneWay}" />
+                <Button Content="Review &amp; Apply…" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.ApplyCommand}" IsEnabled="{x:Bind ViewModel.HasChanges, Mode=OneWay}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

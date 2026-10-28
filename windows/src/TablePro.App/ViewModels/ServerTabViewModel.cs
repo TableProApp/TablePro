@@ -14,11 +14,16 @@ public enum ServerSection
     Users,
 }
 
-/// <summary>The server dashboard: sessions and what they run, server variables, and logins.</summary>
+/// <summary>
+/// The server dashboard: sessions and what they run, server variables, and logins. Where the engine has a Users and
+/// Roles editor, the Users section is that editor rather than a read-only list.
+/// </summary>
 public sealed partial class ServerTabViewModel : TabViewModel
 {
     private readonly WorkspaceContext _context;
     private CancellationTokenSource? _autoRefresh;
+    private UsersRolesViewModel? _usersRoles;
+    private IDatabaseSession? _usersRolesSession;
 
     public ServerTabViewModel(WorkspaceContext context)
     {
@@ -35,9 +40,35 @@ public sealed partial class ServerTabViewModel : TabViewModel
 
     public bool SupportsVariables => _context.Session.Database is IServerVariablesProvider;
 
-    public bool SupportsUsers => _context.Session.Database is IUserListProvider;
+    public bool SupportsUsers => _context.Session.Database is IUserListProvider || UsersRoles is not null;
+
+    /// <summary>
+    /// The Users and Roles editor, or null where the engine has none. A database switch replaces the session it reads
+    /// through, so the editor is made again for the new one.
+    /// </summary>
+    public UsersRolesViewModel? UsersRoles
+    {
+        get
+        {
+            var database = _context.Session.Database;
+            if (!ReferenceEquals(database, _usersRolesSession))
+            {
+                _usersRolesSession = database;
+                _usersRoles = database is IUserAdministration { Features: { } features } administration
+                    ? new UsersRolesViewModel(_context, administration, features)
+                    : null;
+            }
+
+            return _usersRoles;
+        }
+    }
+
+    public bool ShowsUsersEditor => Section == ServerSection.Users && UsersRoles is not null;
+
+    public override string? UnsavedWork => _usersRoles?.UnsavedWork;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsUsersEditor))]
     public partial ServerSection Section { get; set; }
 
     [ObservableProperty]
@@ -50,8 +81,20 @@ public sealed partial class ServerTabViewModel : TabViewModel
     public partial string? Message { get; set; }
 
     [RelayCommand]
-    public async Task RefreshAsync()
+    public Task RefreshAsync() => ShowSectionAsync(reload: true);
+
+    private async Task ShowSectionAsync(bool reload)
     {
+        if (ShowsUsersEditor)
+        {
+            // The editor keeps what it staged across a reload, so Refresh never loses work.
+            Grid = null;
+            Message = null;
+            StatusText = null;
+            await UsersRoles!.LoadAsync(force: reload);
+            return;
+        }
+
         IsBusy = true;
         Message = null;
         try
@@ -126,7 +169,8 @@ public sealed partial class ServerTabViewModel : TabViewModel
         return base.DisposeAsync();
     }
 
-    async partial void OnSectionChanged(ServerSection value) => await RefreshAsync();
+    // Coming back to the editor shows what was staged there; only Refresh rereads the server.
+    async partial void OnSectionChanged(ServerSection value) => await ShowSectionAsync(reload: false);
 
     async partial void OnAutoRefreshChanged(bool value)
     {
@@ -143,7 +187,11 @@ public sealed partial class ServerTabViewModel : TabViewModel
         {
             while (await timer.WaitForNextTickAsync(token))
             {
-                await RefreshAsync();
+                // Rereading every principal and grant every few seconds would only fight the editor.
+                if (!ShowsUsersEditor)
+                {
+                    await RefreshAsync();
+                }
             }
         }
         catch (OperationCanceledException)
