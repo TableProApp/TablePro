@@ -8615,7 +8615,7 @@ SOFTWARE.
 
 Used by:
 
-- rust_xlsxwriter 0.99.1
+- rust_xlsxwriter 0.102.0
 
 ~~~~text
 MIT License
@@ -9082,7 +9082,7 @@ SOFTWARE.
 Used by:
 
 - tracing-core 0.1.36
-- zip 8.6.0
+- zip 9.0.5
 
 ~~~~text
 The MIT License (MIT)
