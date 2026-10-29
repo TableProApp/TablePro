@@ -183,8 +183,8 @@ struct SchemaStatementGenerator {
             + constraintAdds + commentChanges
     }
 
-    // Dropping a key column takes the key with it on PostgreSQL and MySQL, so the key's own DROP would then fail: a key
-    // that loses a dropped column is dropped before the columns and added back after the columns are added.
+    // Dropping a key column takes the key with it, so the key's own DROP would then fail. A key whose every column is
+    // dropped is left to the database and only the new key is added; one that keeps some is dropped first.
     private static func keyDropsBeforeColumnDrops(
         _ keyChanges: [SchemaChange],
         columnDeletes: [SchemaChange]
@@ -200,7 +200,9 @@ struct SchemaStatementGenerator {
                 adds.append(change)
                 continue
             }
-            drops.append(.modifyPrimaryKey(old: old, new: []))
+            if !old.allSatisfy(dropped.contains) {
+                drops.append(.modifyPrimaryKey(old: old, new: []))
+            }
             if !new.isEmpty {
                 adds.append(.modifyPrimaryKey(old: [], new: new))
             }

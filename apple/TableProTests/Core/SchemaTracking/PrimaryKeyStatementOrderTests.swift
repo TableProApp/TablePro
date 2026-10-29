@@ -38,9 +38,9 @@ struct PrimaryKeyStatementOrderTests {
         EditableColumnDefinition.from(ColumnInfo(name: name, dataType: "INT", isNullable: false, isPrimaryKey: false))
     }
 
-    // Dropping a key column drops the key with it, so the key's own DROP has to run first.
-    @Test("A key that loses a dropped column is dropped before the column and added after the new columns")
-    func keyDropRunsBeforeTheColumnDrop() throws {
+    // The column's drop takes the key with it, and on MySQL an AUTO_INCREMENT key cannot be dropped ahead of its column.
+    @Test("A key whose every column is dropped is left to the drop, and the new key is added after the columns")
+    func fullyDroppedKeyIsNotDroppedAgain() throws {
         let statements = try SchemaStatementGenerator(tableName: "orders", pluginDriver: KeyDDLDriver())
             .generate(changes: [
                 .deleteColumn(column("a")),
@@ -50,9 +50,24 @@ struct PrimaryKeyStatementOrderTests {
             .map(\.sql)
 
         #expect(statements == [
-            "ALTER TABLE orders DROP CONSTRAINT pk;",
             "ALTER TABLE orders DROP COLUMN a;",
             "ALTER TABLE orders ADD COLUMN c;",
+            "ALTER TABLE orders ADD PRIMARY KEY (b, c);",
+        ])
+    }
+
+    @Test("A key that keeps some columns is dropped before a dropped member goes")
+    func partlyDroppedKeyIsDroppedFirst() throws {
+        let statements = try SchemaStatementGenerator(tableName: "orders", pluginDriver: KeyDDLDriver())
+            .generate(changes: [
+                .deleteColumn(column("a")),
+                .modifyPrimaryKey(old: ["a", "b"], new: ["b", "c"]),
+            ])
+            .map(\.sql)
+
+        #expect(statements == [
+            "ALTER TABLE orders DROP CONSTRAINT pk;",
+            "ALTER TABLE orders DROP COLUMN a;",
             "ALTER TABLE orders ADD PRIMARY KEY (b, c);",
         ])
     }

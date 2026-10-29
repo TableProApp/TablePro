@@ -1073,7 +1073,10 @@ final class StructureChangeManager: ObservableObject, ChangeManaging {
         let ordered = loadedIDs.compactMap { id in members.first { $0.id == id } }
             + members.filter { !loadedIDs.contains($0.id) }
         workingPrimaryKey = ordered.map(\.name)
-        if ordered.map(\.id) == loadedIDs {
+        // A key that only loses columns being dropped needs no statement: the database takes them out with the column,
+        // and on MySQL an AUTO_INCREMENT key cannot be dropped before its column.
+        let survivingLoadedIDs = loadedIDs.filter { !isPendingDeletion(.column($0)) }
+        if ordered.map(\.id) == loadedIDs || ordered.map(\.id) == survivingLoadedIDs {
             pendingChanges.removeValue(forKey: key)
             untrackChangeKey(key)
         } else {

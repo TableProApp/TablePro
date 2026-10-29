@@ -262,4 +262,12 @@ struct StructureChangeManagerStagingTests {
         #expect(!manager.getChangesArray().contains { if case .modifyPrimaryKey = $0 { true } else { false } })
         #expect(manager.workingPrimaryKey == ["order_id"])
     }
+
+    @Test("Deleting the key column alone stages no key change, as the database drops it with the column")
+    func deletingKeyColumnAloneStagesNoKeyChange() {
+        let manager = loadedManager()
+        manager.deleteColumn(id: column("id", in: manager).id)
+
+        #expect(!manager.getChangesArray().contains { if case .modifyPrimaryKey = $0 { true } else { false } })
+    }
 }
