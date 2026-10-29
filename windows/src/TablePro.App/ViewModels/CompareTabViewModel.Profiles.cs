@@ -374,5 +374,5 @@ public sealed partial class CompareTabViewModel
 
     // The store raises Changed on whichever thread saved, which can be another window's.
     private void OnProfilesChanged(object? sender, EventArgs e) =>
-        _dispatcher.TryEnqueue(() => SavedProfiles = _endpoints.ProfileStore.Profiles);
+        _dispatcher.TryEnqueueLogged(() => SavedProfiles = _endpoints.ProfileStore.Profiles);
 }

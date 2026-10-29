@@ -24,10 +24,6 @@
     <value>Read-only</value>
     <comment>Small badge in the title bar when the connection is read-only. Keep it short.</comment>
   </data>
-  <data name="BadgeSafeMode" xml:space="preserve">
-    <value>Safe Mode</value>
-    <comment>Small badge in the title bar when the connection asks before writes. Keep it short.</comment>
-  </data>
   <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Close</value>
     <comment>Button that closes the side pane (history, favorites, assistant).</comment>

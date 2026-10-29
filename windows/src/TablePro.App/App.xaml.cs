@@ -55,7 +55,7 @@ public partial class App : Application
         UnhandledException += (_, e) =>
         {
             CrashLog.Write("Unhandled UI exception", e.Exception);
-            e.Handled = e.Exception is not (OutOfMemoryException or AccessViolationException);
+            e.Handled = CrashLog.IsRecoverable(e.Exception);
         };
         // XAML reports these through events, not exceptions; logging them turns a silent fail-fast into a readable line.
         DebugSettings.XamlResourceReferenceFailed += (_, e) => CrashLog.Write("XAML resource reference failed", new InvalidOperationException(e.Message));

@@ -128,7 +128,7 @@ internal sealed partial class HeaderCell : Grid
         e.Handled = true;
 
         // The tap that ends a drag must not also sort, so the flag clears after the tap is dispatched.
-        DispatcherQueue.TryEnqueue(() => _resizing = false);
+        DispatcherQueue.TryEnqueueLogged(() => _resizing = false);
     }
 
     /// <summary>

@@ -31,7 +31,7 @@ internal sealed class DispatcherQueueTimerHolder
             _timer = queue.CreateTimer();
             _timer.IsRepeating = false;
             _timer.Interval = _delay;
-            _timer.Tick += (_, _) => _action();
+            _timer.Tick += (_, _) => DispatcherQueueGuard.Run(() => _action());
         }
 
         _timer.Stop();

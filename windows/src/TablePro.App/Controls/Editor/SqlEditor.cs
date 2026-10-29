@@ -277,6 +277,13 @@ public sealed partial class SqlEditor : UserControl
             {
                 _catalog = value ?? CompletionCatalog.Empty;
                 ScheduleAnalysis();
+
+                // Columns arrive a moment after "o." is typed when the table was not loaded yet; the open list, or the
+                // one that found nothing, catches up instead of staying empty.
+                if (CompletionEnabled && !IsVimOutsideInsert && _box.FocusState != FocusState.Unfocused && (_completionPopup.IsOpen || CaretFollowsDot()))
+                {
+                    ShowCompletion(force: false);
+                }
             }
         }
     }
@@ -586,7 +593,7 @@ public sealed partial class SqlEditor : UserControl
         _highlightedText = "\u0001";
         Highlight();
         UpdateGutter();
-        TextChanged?.Invoke(this, EventArgs.Empty);
+        RaiseTextChanged();
     }
 
     private string ReadDocument()
@@ -599,17 +606,37 @@ public sealed partial class SqlEditor : UserControl
 
     private void OnTextChanged(object sender, RoutedEventArgs e)
     {
-        if (!_suppress && SyncText())
+        if (_suppress)
         {
-            _highlightTimer.Restart();
-            HideSuggestion();
-            if (SuggestionsEnabled)
-            {
-                _pauseTimer.Restart();
-            }
-
-            TextChanged?.Invoke(this, EventArgs.Empty);
+            return;
         }
+
+        // Compared with the text last announced, not with the cache: a key handler that synced the cache first (the
+        // completion list does, on every character) left SyncText nothing to report here, so TextChanged went
+        // unraised for typed text and the tab's listeners (the view model's text, diagnostics, the column loading
+        // completion needs) missed the edit.
+        SyncText();
+        if (string.Equals(_text, _announcedText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _highlightTimer.Restart();
+        HideSuggestion();
+        if (SuggestionsEnabled)
+        {
+            _pauseTimer.Restart();
+        }
+
+        RaiseTextChanged();
+    }
+
+    private string _announcedText = string.Empty;
+
+    private void RaiseTextChanged()
+    {
+        _announcedText = _text;
+        TextChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -998,7 +1025,7 @@ public sealed partial class SqlEditor : UserControl
         var c = e.Character;
         if (c == '.' || (char.IsLetter(c) && WordBeforeCaretLength() >= 1))
         {
-            DispatcherQueue.TryEnqueue(() => ShowCompletion(force: false));
+            DispatcherQueue.TryEnqueueLogged(() => ShowCompletion(force: false));
         }
         else if (!char.IsLetterOrDigit(c) && c != '_')
         {
@@ -1018,6 +1045,19 @@ public sealed partial class SqlEditor : UserControl
         return caret - i;
     }
 
+    /// <summary>Whether the caret sits right after "name." with at most a partial word typed since.</summary>
+    private bool CaretFollowsDot()
+    {
+        SyncText();
+        var i = Math.Min(SelectionStart, _text.Length);
+        while (i > 0 && SqlLexer.IsWordPart(_text[i - 1]))
+        {
+            i--;
+        }
+
+        return i > 1 && _text[i - 1] == '.' && SqlLexer.IsWordPart(_text[i - 2]);
+    }
+
     private void ShowCompletion(bool force)
     {
         SyncText();
@@ -1027,6 +1067,12 @@ public sealed partial class SqlEditor : UserControl
         }
 
         var caret = SelectionStart;
+        if (!force && SqlCompletion.SuppressesAutomatic(_text, caret, _dialect))
+        {
+            HideCompletion();
+            return;
+        }
+
         var (start, items) = SqlCompletion.Suggest(_text, caret, _dialect, Catalog);
         var prefixLength = caret - start;
         if (items.Count == 0 || (!force && prefixLength < 2 && (start == 0 || _text[start - 1] != '.')))
@@ -1076,6 +1122,11 @@ public sealed partial class SqlEditor : UserControl
                 _completionList.SelectedIndex = Math.Max(_completionList.SelectedIndex - 1, 0);
                 _completionList.ScrollIntoView(_completionList.SelectedItem);
                 return true;
+            case VirtualKey.Enter when TypedWordIsSelectedItem():
+                // The word is already complete ("DESC" typed, DESC selected): Enter closes the list and starts the new
+                // line the user asked for, instead of accepting a change of nothing and eating the line break.
+                HideCompletion();
+                return false;
             case VirtualKey.Enter or VirtualKey.Tab:
                 AcceptCompletion((_completionList.SelectedItem as ListViewItem)?.Tag);
                 return true;
@@ -1085,6 +1136,19 @@ public sealed partial class SqlEditor : UserControl
             default:
                 return false;
         }
+    }
+
+    private bool TypedWordIsSelectedItem()
+    {
+        if ((_completionList.SelectedItem as ListViewItem)?.Tag is not CompletionItem item)
+        {
+            return false;
+        }
+
+        SyncText();
+        var caret = Math.Min(SelectionStart, _text.Length);
+        var start = Math.Clamp(_completionStart, 0, caret);
+        return string.Equals(_text[start..caret], item.Text, StringComparison.OrdinalIgnoreCase);
     }
 
     private void AcceptCompletion(object? selected)

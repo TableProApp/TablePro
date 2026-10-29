@@ -124,7 +124,7 @@ internal sealed partial class FavoritesPane : UserControl
         await store.UpsertFavoriteAsync(favorite);
     }
 
-    private void OnStoreChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(Rebuild);
+    private void OnStoreChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueueLogged(Rebuild);
 
     private void Rebuild()
     {

@@ -92,7 +92,7 @@ public sealed partial class UsersRolesView : UserControl
 
         if (focused is not null)
         {
-            DispatcherQueue.TryEnqueue(() => RestoreFocus(panel, focused));
+            DispatcherQueue.TryEnqueueLogged(() => RestoreFocus(panel, focused));
         }
     }
 
@@ -445,10 +445,19 @@ public sealed partial class UsersRolesView : UserControl
         }
     }
 
+    // A click selects the row before TreeView.SelectedItem catches up, so in single selection the item the event
+    // added is the one picked; reading SelectedItem there left the editor on "Select an object".
     private void OnScopeSelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args) =>
         ViewModel.SelectScopes(sender.SelectionMode == TreeViewSelectionMode.Multiple
-            ? [.. sender.SelectedItems.OfType<ScopeNodeItem>()]
-            : sender.SelectedItem is ScopeNodeItem node ? [node] : []);
+            ? [.. sender.SelectedItems.Select(ScopeOf).OfType<ScopeNodeItem>()]
+            : (args.AddedItems.Select(ScopeOf).OfType<ScopeNodeItem>().FirstOrDefault() ?? ScopeOf(sender.SelectedItem)) is { } node ? [node] : []);
+
+    private static ScopeNodeItem? ScopeOf(object? item) => item switch
+    {
+        ScopeNodeItem node => node,
+        TreeViewNode { Content: ScopeNodeItem content } => content,
+        _ => null,
+    };
 
     /// <summary>
     /// TreeView has no Ctrl-click selection, only single or check-box selection, so several objects are picked by

@@ -124,11 +124,15 @@ public sealed partial class WorkspaceViewModel : ObservableObject, IAsyncDisposa
     // Engines whose databases are listed as schemas (Redis's numbered ones) return none, so the empty box is hidden.
     public bool ShowDatabaseSwitcher => CanSwitchDatabase && Databases.Count > 0;
 
+    /// <summary>The title bar badge: the connection's level by the name the connection form gives it, as macOS shows it.</summary>
     public string SafeModeText => Profile.SafeMode switch
     {
         SafeModeLevel.Silent => string.Empty,
-        SafeModeLevel.ReadOnly => Strings.Get("Workspace/BadgeReadOnly"),
-        _ => Strings.Get("Workspace/BadgeSafeMode"),
+        SafeModeLevel.Alert => Strings.Get("Connection/SafeModeAlert"),
+        SafeModeLevel.AlertFull => Strings.Get("Connection/SafeModeAlertFull"),
+        SafeModeLevel.SafeMode => Strings.Get("Connection/SafeModeSafe"),
+        SafeModeLevel.SafeModeFull => Strings.Get("Connection/SafeModeSafeFull"),
+        _ => Strings.Get("Workspace/BadgeReadOnly"),
     };
 
     [ObservableProperty]

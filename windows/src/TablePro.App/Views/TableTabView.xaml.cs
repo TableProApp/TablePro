@@ -664,12 +664,14 @@ public sealed partial class TableTabView : UserControl
             var current = structure.Option(spec.Name);
             if (spec.Kind == TableOptionKind.Choice)
             {
+                // An unset option stays empty rather than opening on the first choice, which would read as a change.
+                var (items, index) = current is null ? ((IReadOnlyList<string>)spec.ChoiceList.ToList(), -1) : Core.Schema.EditableChoices.Build(spec.ChoiceList.ToList(), current);
                 var box = new ComboBox
                 {
                     Header = TableOptionNames.DisplayName(spec.Name),
                     IsEditable = true,
-                    ItemsSource = spec.ChoiceList.ToList(),
-                    Text = current ?? string.Empty,
+                    ItemsSource = items,
+                    SelectedIndex = index,
                     PlaceholderText = spec.Placeholder ?? string.Empty,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                 };
@@ -705,7 +707,8 @@ public sealed partial class TableTabView : UserControl
     {
         var types = (ViewModel.Context.Session.Database as ISchemaDdlProvider)?.CommonDataTypes ?? [];
         var name = new TextBox { Header = Strings.Get("Common/Name"), Text = existing?.Name ?? string.Empty };
-        var type = new ComboBox { Header = Strings.Get("Common/Type"), IsEditable = true, ItemsSource = types.ToList(), Text = existing?.DataType ?? (types.Count > 0 ? types[0] : "text"), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var (typeItems, typeIndex) = Core.Schema.EditableChoices.Build(types, existing?.DataType, "text");
+        var type = new ComboBox { Header = Strings.Get("Common/Type"), IsEditable = true, ItemsSource = typeItems, SelectedIndex = typeIndex, HorizontalAlignment = HorizontalAlignment.Stretch };
         var nullable = new CheckBox { Content = Strings.Get("Table/AllowsNull"), IsChecked = existing?.IsNullable ?? true };
         var defaultValue = new TextBox { Header = Strings.Get("Table/DefaultExpressionHeader"), Text = existing?.DefaultExpression ?? string.Empty, PlaceholderText = Strings.Get("Table/DefaultExpressionPlaceholder") };
         var comment = new TextBox { Header = Strings.Get("Table/CommentHeader"), Text = existing?.Comment ?? string.Empty };

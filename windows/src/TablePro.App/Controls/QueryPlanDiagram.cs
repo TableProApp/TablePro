@@ -65,7 +65,7 @@ public sealed partial class QueryPlanDiagram : UserControl
             _selected = null;
             Build();
             _needsInitialFit = value is not null;
-            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, FitInitially);
+            DispatcherQueue.TryEnqueueLogged(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, FitInitially);
         }
     }
 

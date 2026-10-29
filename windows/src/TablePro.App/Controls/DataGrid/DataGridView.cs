@@ -610,7 +610,7 @@ public sealed partial class DataGridView : UserControl
 
     private void OnSourceChanged(object? sender, EventArgs e)
     {
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueueLogged(() =>
         {
             ClampSelection();
             UpdateExtent();

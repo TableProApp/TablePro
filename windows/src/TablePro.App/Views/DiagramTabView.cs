@@ -176,7 +176,7 @@ public sealed partial class DiagramTabView : UserControl
         _canvas.Width = Gap + (columns * (CardWidth + Gap));
         _canvas.Height = columnHeights.Max() + Gap;
         UpdateLinks();
-        DispatcherQueue.TryEnqueue(Fit);
+        DispatcherQueue.TryEnqueueLogged(Fit);
     }
 
     private static int Index(TableStructure structure, string column)

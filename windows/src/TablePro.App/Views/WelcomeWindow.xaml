@@ -52,31 +52,35 @@
                 <TextBlock Text="{x:Bind ViewModel.Version}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
             <StackPanel Grid.Row="2" Spacing="6" VerticalAlignment="Center">
-                <Button Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnNewConnection" Padding="12,8">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon FontSize="16" Glyph="&#xE710;" />
-                        <TextBlock x:Uid="/Welcome/NewConnection" />
-                    </StackPanel>
+                <Button Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnNewConnection" Padding="12,8">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE710;" />
+                        <TextBlock Grid.Column="1" x:Uid="/Welcome/NewConnection" TextWrapping="WrapWholeWords" VerticalAlignment="Center" />
+                    </Grid>
                     <Button.KeyboardAccelerators><KeyboardAccelerator Key="N" Modifiers="Control" /></Button.KeyboardAccelerators>
                 </Button>
-                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnOpenFile" Padding="12,8">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon FontSize="16" Glyph="&#xE8E5;" />
-                        <TextBlock x:Uid="/Welcome/OpenDatabaseFile" />
-                    </StackPanel>
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnOpenFile" Padding="12,8">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8E5;" />
+                        <TextBlock Grid.Column="1" x:Uid="/Welcome/OpenDatabaseFile" TextWrapping="WrapWholeWords" VerticalAlignment="Center" />
+                    </Grid>
                     <Button.KeyboardAccelerators><KeyboardAccelerator Key="O" Modifiers="Control" /></Button.KeyboardAccelerators>
                 </Button>
-                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnImport" Padding="12,8">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon FontSize="16" Glyph="&#xE8B5;" />
-                        <TextBlock x:Uid="/Welcome/ImportConnections" />
-                    </StackPanel>
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnImport" Padding="12,8">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8B5;" />
+                        <TextBlock Grid.Column="1" x:Uid="/Welcome/ImportConnections" TextWrapping="WrapWholeWords" VerticalAlignment="Center" />
+                    </Grid>
                 </Button>
-                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OnNewGroup" Padding="12,8">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <FontIcon FontSize="16" Glyph="&#xE8F4;" />
-                        <TextBlock x:Uid="/Welcome/NewGroup" />
-                    </StackPanel>
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Click="OnNewGroup" Padding="12,8">
+                    <Grid ColumnSpacing="10">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <FontIcon VerticalAlignment="Center" FontSize="16" Glyph="&#xE8F4;" />
+                        <TextBlock Grid.Column="1" x:Uid="/Welcome/NewGroup" TextWrapping="WrapWholeWords" VerticalAlignment="Center" />
+                    </Grid>
                 </Button>
             </StackPanel>
             <HyperlinkButton x:Uid="/Welcome/Settings" Grid.Row="3" Click="OnSettings" Padding="0" />

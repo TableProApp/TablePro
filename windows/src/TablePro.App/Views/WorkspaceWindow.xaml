@@ -94,29 +94,47 @@
                     KeyDown="OnObjectKeyDown"
                     Padding="0,0,4,0" />
                 <ProgressBar Grid.Row="4" VerticalAlignment="Top" IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
-                <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="2">
-                    <Button x:Uid="/Workspace/NewQueryButton" x:Name="NewQueryButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.NewQueryTabCommand}">
+                <!--  Equal columns, so every button fits the default sidebar width and shrinks with it instead of the last one being cut off.  -->
+                <Grid Grid.Row="5" ColumnSpacing="2">
+                    <Grid.Resources>
+                        <Style TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
+                            <Setter Property="HorizontalAlignment" Value="Stretch" />
+                            <Setter Property="MinWidth" Value="0" />
+                            <Setter Property="Padding" Value="4,5" />
+                        </Style>
+                    </Grid.Resources>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Uid="/Workspace/NewQueryButton" x:Name="NewQueryButton" Command="{x:Bind ViewModel.NewQueryTabCommand}">
                         <FontIcon FontSize="16" Glyph="&#xE710;" />
                     </Button>
-                    <Button x:Uid="/Workspace/RefreshButton" Style="{StaticResource ToolbarButtonStyle}" Command="{x:Bind ViewModel.RefreshCommand}">
+                    <Button Grid.Column="1" x:Uid="/Workspace/RefreshButton" Command="{x:Bind ViewModel.RefreshCommand}">
                         <FontIcon FontSize="16" Glyph="&#xE72C;" />
                     </Button>
-                    <Button x:Uid="/Workspace/CreateTableButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}">
+                    <Button Grid.Column="2" x:Uid="/Workspace/CreateTableButton" Click="OnCreateTable" Visibility="{x:Bind ViewModel.CanEditStructure}">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
                     </Button>
-                    <Button x:Uid="/Workspace/HistoryButton" x:Name="HistoryButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowHistory">
+                    <Button Grid.Column="3" x:Uid="/Workspace/HistoryButton" x:Name="HistoryButton" Click="OnShowHistory">
                         <FontIcon FontSize="16" Glyph="&#xE81C;" />
                     </Button>
-                    <Button x:Uid="/Workspace/SqlFilesButton" x:Name="SqlFilesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowSqlFiles">
+                    <Button Grid.Column="4" x:Uid="/Workspace/SqlFilesButton" x:Name="SqlFilesButton" Click="OnShowSqlFiles">
                         <FontIcon FontSize="16" Glyph="&#xE8B7;" />
                     </Button>
-                    <Button x:Uid="/Workspace/FavoritesButton" x:Name="FavoritesButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowFavorites">
+                    <Button Grid.Column="5" x:Uid="/Workspace/FavoritesButton" x:Name="FavoritesButton" Click="OnShowFavorites">
                         <FontIcon FontSize="16" Glyph="&#xE734;" />
                     </Button>
-                    <Button x:Uid="/Workspace/AssistantButton" x:Name="AssistantButton" Style="{StaticResource ToolbarButtonStyle}" Click="OnShowAssistant">
+                    <Button Grid.Column="6" x:Uid="/Workspace/AssistantButton" x:Name="AssistantButton" Click="OnShowAssistant">
                         <FontIcon FontSize="16" Glyph="&#xE8BD;" />
                     </Button>
-                    <Button x:Uid="/Workspace/MoreButton" Style="{StaticResource ToolbarButtonStyle}">
+                    <Button Grid.Column="7" x:Uid="/Workspace/MoreButton">
                         <FontIcon FontSize="16" Glyph="&#xE712;" />
                         <Button.Flyout>
                             <MenuFlyout Placement="TopEdgeAlignedLeft">
@@ -162,7 +180,7 @@
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
-                </StackPanel>
+                </Grid>
             </Grid>
 
             <controls:PaneSplitter Grid.Column="1" Orientation="Vertical" TargetIndex="0" />

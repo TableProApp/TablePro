@@ -199,9 +199,15 @@ public sealed partial class JoinBuilderTabView : UserControl
         };
 
         var body = new Grid();
-        body.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(240) });
+        body.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(Core.JoinBuilder.JoinBuilderLayout.ListWidth) });
         body.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(1, GridUnitType.Star) });
-        body.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(380) });
+        body.ColumnDefinitions.Add(new GridColumn { Width = new GridLength(Core.JoinBuilder.JoinBuilderLayout.DetailsWidth) });
+        body.SizeChanged += (_, e) =>
+        {
+            var (list, details) = Core.JoinBuilder.JoinBuilderLayout.Columns(e.NewSize.Width);
+            body.ColumnDefinitions[0].Width = new GridLength(list);
+            body.ColumnDefinitions[2].Width = new GridLength(details);
+        };
         body.Children.Add(leftBorder);
         Grid.SetColumn(center, 1);
         body.Children.Add(center);
@@ -237,7 +243,7 @@ public sealed partial class JoinBuilderTabView : UserControl
         }
 
         _rebuildQueued = true;
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueueLogged(() =>
         {
             _rebuildQueued = false;
             Rebuild();

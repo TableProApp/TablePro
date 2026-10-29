@@ -99,7 +99,7 @@ public sealed partial class SqlEditor
 
         // Deferred, so a pointer handler sees the carets as they were before RichEdit moved its selection for the click.
         _caretSyncQueued = true;
-        DispatcherQueue.TryEnqueue(() =>
+        DispatcherQueue.TryEnqueueLogged(() =>
         {
             _caretSyncQueued = false;
             SyncCaretsWithView();
@@ -211,7 +211,7 @@ public sealed partial class SqlEditor
         UpdateGutter();
         HideSuggestion();
         _highlightTimer.Restart();
-        TextChanged?.Invoke(this, EventArgs.Empty);
+        RaiseTextChanged();
     }
 
     private void OnCaretsChanged()

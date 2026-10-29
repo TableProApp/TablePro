@@ -52,7 +52,6 @@ public sealed partial class QueryTabView : UserControl
         Editor.VimTabRequested += (_, position) => TabRequested?.Invoke(this, position);
         Editor.VimAdjacentTabRequested += (_, offset) => AdjacentTabRequested?.Invoke(this, offset);
 
-        viewModel.Context.Session.CatalogChanged += OnCatalogChanged;
         viewModel.Results.CollectionChanged += OnResultsChanged;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
@@ -61,7 +60,17 @@ public sealed partial class QueryTabView : UserControl
 
         // A shape clicked on the map selects its row in the grid, so switching back shows the row it came from.
         Map.RowSelected += (_, row) => ResultGrid.SelectCell(row, 0);
-        Loaded += (_, _) => Editor.FocusEditor();
+        // The tab view unloads whenever another tab is shown and loads again when it comes back. Subscribing once in
+        // the constructor and leaving on the first Unloaded left the editor on the catalog it had then, so columns
+        // loaded later, the ones completion after an alias needs, never reached it.
+        Loaded += (_, _) =>
+        {
+            viewModel.Context.Session.CatalogChanged -= OnCatalogChanged;
+            viewModel.Context.Session.CatalogChanged += OnCatalogChanged;
+            Editor.Catalog = viewModel.Context.CompletionCatalog;
+            Editor.FocusEditor();
+            WarmColumns();
+        };
         Unloaded += (_, _) => viewModel.Context.Session.CatalogChanged -= OnCatalogChanged;
         UpdateResultView();
     }
@@ -150,10 +159,40 @@ public sealed partial class QueryTabView : UserControl
         _syncingText = true;
         ViewModel.Text = Editor.Text;
         _syncingText = false;
+        _warmColumns ??= new Helpers.DispatcherQueueTimerHolder(this, TimeSpan.FromMilliseconds(300), WarmColumns);
+        _warmColumns.Restart();
+    }
+
+    // Completion after an alias needs the aliased table's columns, which the session only had for tables opened in a
+    // tab; loading them for the tables the text names makes "o." offer the columns of orders.
+    private Helpers.DispatcherQueueTimerHolder? _warmColumns;
+    private CancellationTokenSource? _warming;
+
+    private async void WarmColumns()
+    {
+        var tables = Core.Sql.SqlCompletion.ReferencedTables(Editor.Text, ViewModel.Dialect);
+        if (tables.Count == 0)
+        {
+            return;
+        }
+
+        _warming?.Cancel();
+        _warming = new CancellationTokenSource();
+        try
+        {
+            await ViewModel.Context.Session.WarmColumnsAsync(tables, _warming.Token);
+
+            // Back on the UI thread: hand the editor the columns now, rather than wait for the catalog event's turn.
+            Editor.Catalog = ViewModel.Context.CompletionCatalog;
+        }
+        catch (OperationCanceledException)
+        {
+            // Newer text started its own load.
+        }
     }
 
     private void OnCatalogChanged(object? sender, EventArgs e) =>
-        DispatcherQueue.TryEnqueue(() => Editor.Catalog = ViewModel.Context.CompletionCatalog);
+        DispatcherQueue.TryEnqueueLogged(() => Editor.Catalog = ViewModel.Context.CompletionCatalog);
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {

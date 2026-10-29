@@ -131,9 +131,9 @@ public sealed partial class McpClientsPane : UserControl
     }
 
     // Raised on the server's threads; the refresh waits for a quiet moment so a busy client does not redraw per call.
-    private void OnServerActivity(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(_refreshSoon.Restart);
+    private void OnServerActivity(object? sender, EventArgs e) => DispatcherQueue.TryEnqueueLogged(_refreshSoon.Restart);
 
-    private void OnServerActivity(object? sender, McpAuditEntry e) => DispatcherQueue.TryEnqueue(_refreshSoon.Restart);
+    private void OnServerActivity(object? sender, McpAuditEntry e) => DispatcherQueue.TryEnqueueLogged(_refreshSoon.Restart);
 
     /// <summary>Runs work on the running server's registry, or on one loaded for the purpose while the server is off.</summary>
     private async Task<T> WithClientsAsync<T>(Func<McpClientRegistry, Task<T>> work)

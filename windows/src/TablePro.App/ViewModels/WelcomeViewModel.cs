@@ -56,16 +56,7 @@ public sealed class ConnectionListItem
         null,
         isTeam: true);
 
-    public static string EngineBadge(DatabaseEngine engine) => engine switch
-    {
-        DatabaseEngine.PostgreSql => "Pg",
-        DatabaseEngine.MySql => "My",
-        DatabaseEngine.MariaDb => "Ma",
-        DatabaseEngine.SqlServer => "Ms",
-        DatabaseEngine.Sqlite => "Sl",
-        DatabaseEngine.DuckDb => "Dk",
-        _ => "?",
-    };
+    public static string EngineBadge(DatabaseEngine engine) => Core.Connections.EngineBadge.For(engine);
 
     private static string Relative(DateTimeOffset at)
     {
@@ -91,7 +82,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
     public WelcomeViewModel(AppHost host)
     {
         Host = host;
-        host.Connections.Changed += (_, _) => Dispatcher?.TryEnqueue(Rebuild);
+        host.Connections.Changed += (_, _) => Dispatcher?.TryEnqueueLogged(Rebuild);
         SqlLibraryHost.TeamChanged += OnTeamChanged;
         Rebuild();
     }
@@ -210,7 +201,7 @@ public sealed partial class WelcomeViewModel : ObservableObject
         }
     }
 
-    private void OnTeamChanged(object? sender, EventArgs e) => Dispatcher?.TryEnqueue(Rebuild);
+    private void OnTeamChanged(object? sender, EventArgs e) => Dispatcher?.TryEnqueueLogged(Rebuild);
 
     public async Task ConnectAsync(ConnectionProfile profile)
     {

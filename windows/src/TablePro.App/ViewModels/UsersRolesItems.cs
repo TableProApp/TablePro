@@ -80,6 +80,13 @@ public sealed partial class PrincipalRowItem : ObservableObject
         TitleOpacity = row.Stage == PrincipalStage.Dropped ? 0.5 : 1;
         KindTitle = UsersNames.KindTitle(row.Info.IsRole);
     }
+
+    /// <summary>
+    /// What UI Automation reads for the row: the list item's peer names an item by ToString when nothing else names it,
+    /// which announced every principal as this class's name.
+    /// </summary>
+    public override string ToString() =>
+        string.Join(", ", new[] { Title, KindTitle, StageDescription }.Where(s => s.Length > 0));
 }
 
 /// <summary>Whether a scope's children can be listed.</summary>

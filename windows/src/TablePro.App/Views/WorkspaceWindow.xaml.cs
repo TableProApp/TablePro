@@ -117,7 +117,7 @@ public sealed partial class WorkspaceWindow : Window
     {
         if (!ReferenceEquals(value.Shortcuts, _shortcutSource))
         {
-            DispatcherQueue.TryEnqueue(() => ApplyShortcuts(value.Shortcuts));
+            DispatcherQueue.TryEnqueueLogged(() => ApplyShortcuts(value.Shortcuts));
         }
     }
 

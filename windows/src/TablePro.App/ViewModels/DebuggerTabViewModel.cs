@@ -217,7 +217,7 @@ public sealed partial class DebuggerTabViewModel : TabViewModel
         }
         else
         {
-            _dispatcher.TryEnqueue(Refresh);
+            _dispatcher.TryEnqueueLogged(Refresh);
         }
     }
 

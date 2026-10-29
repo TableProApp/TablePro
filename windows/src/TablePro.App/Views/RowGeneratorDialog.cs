@@ -260,7 +260,7 @@ public sealed class RowGeneratorDialog
             if (kind.SelectedIndex >= 0)
             {
                 _model.SetKind(column.Name, kinds[kind.SelectedIndex]);
-                _options.DispatcherQueue.TryEnqueue(BuildOptions);
+                _options.DispatcherQueue.TryEnqueueLogged(BuildOptions);
             }
         };
         _options.Children.Add(kind);

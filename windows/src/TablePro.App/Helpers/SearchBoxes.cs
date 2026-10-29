@@ -26,7 +26,7 @@ internal static class SearchBoxes
         if (!TryName(box))
         {
             // The inner TextBox can apply its template after the box itself reports Loaded.
-            box.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => TryName(box));
+            box.DispatcherQueue.TryEnqueueLogged(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => TryName(box));
         }
     }
 

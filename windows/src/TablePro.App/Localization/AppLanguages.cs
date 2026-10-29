@@ -35,7 +35,13 @@ internal static class AppLanguages
         Override = language;
         try
         {
-            Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = language;
+            // Empty is not a value MRT Core accepts in an unpackaged app (it throws E_INVALIDARG), and there it never
+            // holds an override from an earlier launch, so following Windows means leaving it alone. A packaged build
+            // keeps the override between launches; only then is there one to clear, and clearing it there takes "".
+            if (language.Length > 0 || !string.IsNullOrEmpty(Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride))
+            {
+                Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = language;
+            }
         }
         catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or ArgumentException)
         {
@@ -45,10 +51,14 @@ internal static class AppLanguages
 
         if (language.Length > 0)
         {
-            // Plural forms and .NET's own messages follow the UI language; number and date formats keep the user's region.
+            // Plural forms and .NET's own messages follow the UI language. Formats pair that language with the Windows
+            // region, as macOS does, so a French window groups digits the French way on any region.
             var culture = CultureInfo.GetCultureInfo(language);
             CultureInfo.DefaultThreadCurrentUICulture = culture;
             CultureInfo.CurrentUICulture = culture;
+            var formatting = Core.Localization.FormattingCulture.For(language, RegionInfo.CurrentRegion.TwoLetterISORegionName, CultureInfo.CurrentCulture);
+            CultureInfo.DefaultThreadCurrentCulture = formatting;
+            CultureInfo.CurrentCulture = formatting;
         }
     }
 }

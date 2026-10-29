@@ -380,7 +380,7 @@ public sealed partial class SqlEditor
         HideLink();
 
         // RichEdit places the caret for this click after the handler returns; navigating afterwards keeps the jump's selection.
-        DispatcherQueue.TryEnqueue(() => NavigateTo(definition));
+        DispatcherQueue.TryEnqueueLogged(() => NavigateTo(definition));
     }
 
     private void OnLanguageKeyUp(object sender, KeyRoutedEventArgs e)
@@ -636,7 +636,7 @@ public sealed partial class SqlEditor
 
         // Low priority runs after RichEdit has laid out the edit, so the rectangles are measured on the new text.
         _squiggleUpdateQueued = true;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        DispatcherQueue.TryEnqueueLogged(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             _squiggleUpdateQueued = false;
             UpdateSquiggles();

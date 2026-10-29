@@ -26,6 +26,7 @@ public sealed partial class ResultChart : UserControl
     public const int MaxPoints = 500;
 
     private readonly Canvas _canvas = new();
+    private readonly Border _host;
     private readonly ComboBox _kind = new() { MinWidth = 110 };
     private readonly ComboBox _category = new() { MinWidth = 160, Header = null };
     private readonly ComboBox _series = new() { MinWidth = 160 };
@@ -57,12 +58,16 @@ public sealed partial class ResultChart : UserControl
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.Children.Add(toolbar);
-        var host = new Border { Child = _canvas, Margin = new Thickness(12, 0, 12, 12) };
-        Grid.SetRow(host, 1);
-        root.Children.Add(host);
-        host.SizeChanged += (_, _) => Draw();
+        _host = new Border { Child = _canvas, Margin = new Thickness(12, 0, 12, 12) };
+        Grid.SetRow(_host, 1);
+        root.Children.Add(_host);
+        _host.SizeChanged += (_, _) => Draw();
         Content = root;
         ActualThemeChanged += (_, _) => Draw();
+
+        // The license gate keeps the chart out of the tree while it is locked, and results still arrive then; it draws
+        // what it holds once it is back in a window.
+        Loaded += (_, _) => Draw();
     }
 
     public ResultSet? Result
@@ -101,9 +106,9 @@ public sealed partial class ResultChart : UserControl
     private void Draw()
     {
         _canvas.Children.Clear();
-        var width = _canvas.ActualWidth > 0 ? _canvas.ActualWidth : ((FrameworkElement)_canvas.Parent).ActualWidth;
-        var height = ((FrameworkElement)_canvas.Parent).ActualHeight;
-        if (_result is null || !CanChart || width < 80 || height < 80 || _category.SelectedIndex < 0 || _series.SelectedIndex < 0)
+        var width = _canvas.ActualWidth > 0 ? _canvas.ActualWidth : _host.ActualWidth;
+        var height = _host.ActualHeight;
+        if (!IsLoaded || _result is null || !CanChart || width < 80 || height < 80 || _category.SelectedIndex < 0 || _series.SelectedIndex < 0)
         {
             _note.Text = _result is not null && !CanChart ? Strings.Get("Results/ChartNoNumericColumn") : string.Empty;
             return;

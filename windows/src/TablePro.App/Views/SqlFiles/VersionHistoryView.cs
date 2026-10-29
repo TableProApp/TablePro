@@ -64,7 +64,7 @@ internal sealed partial class VersionHistoryView : UserControl
                 _openInEditor(detail.Content);
             }
         };
-        _browser.Changed += (_, _) => DispatcherQueue.TryEnqueue(Render);
+        _browser.Changed += (_, _) => DispatcherQueue.TryEnqueueLogged(Render);
 
         Content = Layout();
         Loaded += async (_, _) => await _browser.LoadAsync();

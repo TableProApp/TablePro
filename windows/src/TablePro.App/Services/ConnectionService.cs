@@ -334,7 +334,7 @@ public sealed class ConnectionService
     private static Task ShowDeviceCodeAsync(DispatcherQueue dispatcher, DeviceCodePrompt prompt)
     {
         var shown = new TaskCompletionSource();
-        if (!dispatcher.TryEnqueue(() =>
+        if (!dispatcher.TryEnqueueLogged(() =>
         {
             try
             {

@@ -550,8 +550,7 @@ internal static class ConnectionEditor
                 {
                     GroupName = "connection-color",
                     Tag = color,
-                    MinWidth = 0,
-                    Padding = new Thickness(0),
+                    Style = (Style)Application.Current.Resources["ColorSwatchRadioButtonStyle"],
                     Content = new Microsoft.UI.Xaml.Shapes.Ellipse
                     {
                         Width = 18,
@@ -562,6 +561,7 @@ internal static class ConnectionEditor
                     },
                 };
                 ToolTipService.SetToolTip(swatch, ConnectionNames.Color(color));
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(swatch, ConnectionNames.Color(color));
                 swatch.Checked += (_, _) => _color = color;
                 _colors.Children.Add(swatch);
             }
@@ -778,6 +778,7 @@ internal static class ConnectionEditor
             _network.Visibility = Visible(!descriptor.IsFileBased);
             _fileRow.Visibility = Visible(descriptor.IsFileBased || form.FileLabel is not null);
             _file.Header = form.FileLabel ?? Strings.Get("Connection/FileHeader");
+            _file.PlaceholderText = form.FilePlaceholder;
             _host_.Header = form.HostLabel;
             _host_.PlaceholderText = form.HostPlaceholder;
             _port.Visibility = Visible(form.ShowPort);

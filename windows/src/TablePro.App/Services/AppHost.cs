@@ -55,7 +55,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         _dispatcher = dispatcher;
         HistoryRecorder = new HistoryRecorder(history);
         Preferences = new SettingsPreferences(settings);
-        settings.Changed += (_, value) => _dispatcher.TryEnqueue(() => ApplySettings(value));
+        settings.Changed += (_, value) => _dispatcher.TryEnqueueLogged(() => ApplySettings(value));
 
         // Saved import mappings belong to their connection, so they go when it does, however it was deleted.
         _forgetDeletedMappings = Views.ImportMappingDialog.Mappings.ForgetDeletedConnections(connections);
@@ -327,7 +327,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
         var pending = _mcpConnects.GetOrAdd(connectionId, id =>
         {
             var source = new TaskCompletionSource<McpOpenResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _dispatcher.TryEnqueue(async () =>
+            _dispatcher.TryEnqueueLogged(async () =>
             {
                 try
                 {
@@ -353,7 +353,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     Task<bool> IMcpHost.RequestWriteApprovalAsync(McpWriteApprovalRequest request, CancellationToken cancellationToken)
     {
         var source = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _dispatcher.TryEnqueue(async () =>
+        _dispatcher.TryEnqueueLogged(async () =>
         {
             var window = FindWorkspace(request.Profile.Id);
             if (window is null)
@@ -389,7 +389,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     Task<McpPairingApproval?> IMcpHost.RequestPairingApprovalAsync(McpPairingRequest request, CancellationToken cancellationToken)
     {
         var source = new TaskCompletionSource<McpPairingApproval?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _dispatcher.TryEnqueue(async () =>
+        _dispatcher.TryEnqueueLogged(async () =>
         {
             // The window the user is most likely looking at: Settings while they set a client up, else a workspace.
             Window? window = (Window?)_settingsWindow ?? (Window?)_workspaces.LastOrDefault() ?? _welcome;
@@ -402,7 +402,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
             var dialogs = window is WorkspaceWindow workspace ? workspace.ViewModel.Context.Dialogs : new DialogService(window);
             var form = new McpPairingForm(request, Connections.Connections.Where(c => c.ExternalAccess != ExternalAccessLevel.Blocked).ToList());
             var dialog = dialogs.Create(Strings.Get("Mcp/PairingApprovalTitle"), form.Content, Strings.Get("Mcp/Allow"), Strings.Get("Mcp/Deny"));
-            using var hide = cancellationToken.Register(() => _dispatcher.TryEnqueue(dialog.Hide));
+            using var hide = cancellationToken.Register(() => _dispatcher.TryEnqueueLogged(dialog.Hide));
             window.Activate();
             try
             {

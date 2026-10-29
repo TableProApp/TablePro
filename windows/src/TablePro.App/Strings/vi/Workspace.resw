@@ -21,9 +21,6 @@
   <data name="BadgeReadOnly" xml:space="preserve">
     <value>Chỉ đọc</value>
   </data>
-  <data name="BadgeSafeMode" xml:space="preserve">
-    <value>Chế độ an toàn</value>
-  </data>
   <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Đóng</value>
   </data>

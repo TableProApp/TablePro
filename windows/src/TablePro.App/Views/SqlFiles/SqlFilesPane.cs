@@ -32,6 +32,7 @@ internal sealed partial class SqlFilesPane : UserControl
     private readonly AutoSuggestBox _search = new AutoSuggestBox { PlaceholderText = Strings.Get("SqlFiles/SearchPlaceholder"),QueryIcon = new SymbolIcon(Symbol.Find) }.WithLocalizedQueryButton();
     private readonly HashSet<string> _collapsed = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedDirectories = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Core.Interaction.RepeatClickFilter _folderClicks = new(TimeSpan.FromMilliseconds(Helpers.NativeInput.DoubleClickMilliseconds));
 
     public SqlFilesPane(WorkspaceViewModel workspace, IWorkspaceHost host, Action<string> insert)
         : this(SqlLibraryHost.Shared, workspace, host, insert)
@@ -46,7 +47,17 @@ internal sealed partial class SqlFilesPane : UserControl
         _insert = insert;
 
         _search.TextChanged += (_, _) => Rebuild();
-        _list.ItemClick += async (_, e) => await ActivateAsync((e.ClickedItem as FrameworkElement)?.Tag);
+        _list.ItemClick += async (_, e) =>
+        {
+            // A folder toggles on each click; the second click of a double-click must not close it again.
+            var tag = (e.ClickedItem as FrameworkElement)?.Tag;
+            if (tag is LinkedSqlFolder or DirectoryTag && !_folderClicks.ShouldAct(tag, TimeSpan.FromMilliseconds(Environment.TickCount64)))
+            {
+                return;
+            }
+
+            await ActivateAsync(tag);
+        };
         _list.KeyDown += OnListKeyDown;
         AutomationProperties.SetName(_list, Strings.Get("SqlFiles/ListName"));
 
@@ -107,7 +118,7 @@ internal sealed partial class SqlFilesPane : UserControl
         }
     }
 
-    private void OnLibraryChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(Rebuild);
+    private void OnLibraryChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueueLogged(Rebuild);
 
     private void Rebuild()
     {

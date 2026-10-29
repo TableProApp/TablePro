@@ -249,7 +249,7 @@ public sealed partial class DebuggerTabView : UserControl
 
         body.Children.Add(DialogService.CodeBlock(string.Join(";\n", preparation.Statements), 160));
         var dialog = Dialogs.Create(preparation.Message, body, preparation.ActionTitle, Strings.Get("Common/Cancel"));
-        await using var registration = cancellationToken.Register(() => DispatcherQueue.TryEnqueue(dialog.Hide));
+        await using var registration = cancellationToken.Register(() => DispatcherQueue.TryEnqueueLogged(dialog.Hide));
         return await Dialogs.ShowAsync(dialog) == ContentDialogResult.Primary && !cancellationToken.IsCancellationRequested;
     }
 }

@@ -51,7 +51,7 @@ public sealed partial class SettingsWindow
         {
             if (Interlocked.Exchange(ref queued, 1) == 0)
             {
-                DispatcherQueue.TryEnqueue(Render);
+                DispatcherQueue.TryEnqueueLogged(Render);
             }
         }
 
@@ -86,7 +86,7 @@ public sealed partial class SettingsWindow
         body.Children.Add(IdentityCard(license, held, status));
         if (LicensePresentation.ShowsRenewalField(status))
         {
-            body.Children.Add(CardOf(form.Root));
+            body.Children.Add(form.PlaceInCard());
         }
 
         body.Children.Add(Card(Strings.Get("License/LicenseKey"), null, KeyRow(held.Key)));
@@ -147,7 +147,7 @@ public sealed partial class SettingsWindow
         }
 
         form.Root.Margin = new Thickness(0, 8, 0, 0);
-        content.Children.Add(form.Root);
+        form.PlaceIn(content);
         return CardOf(content);
     }
 
@@ -561,18 +561,40 @@ public sealed partial class SettingsWindow
 
         public StackPanel Root { get; } = new() { Spacing = 10 };
 
+        // Where the last render put the form. FrameworkElement.Parent cannot be trusted for this: once a render clears
+        // the page, the old card leaves the tree and Parent reads null while the old panel still holds the form, so
+        // the next Add failed with "already the child of another element" and the page crashed the app.
+        private Panel? _panel;
+        private Border? _border;
+
         /// <summary>Takes the form out of the card it sat in, so the next render can place it.</summary>
         public void Detach()
         {
-            switch (Root.Parent)
+            _panel?.Children.Remove(Root);
+            if (_border is not null && ReferenceEquals(_border.Child, Root))
             {
-                case Panel panel:
-                    panel.Children.Remove(Root);
-                    break;
-                case Border border:
-                    border.Child = null;
-                    break;
+                _border.Child = null;
             }
+
+            _panel = null;
+            _border = null;
+        }
+
+        /// <summary>Puts the form at the end of <paramref name="panel"/>, out of wherever it was.</summary>
+        public void PlaceIn(Panel panel)
+        {
+            Detach();
+            panel.Children.Add(Root);
+            _panel = panel;
+        }
+
+        /// <summary>The form alone in a card, out of wherever it was.</summary>
+        public Border PlaceInCard()
+        {
+            Detach();
+            var card = CardOf(Root);
+            _border = card;
+            return card;
         }
 
         private void UpdateEnabled() => _activate.IsEnabled = !_activating && _entry.Text.Trim().Length > 0;

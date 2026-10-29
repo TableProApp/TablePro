@@ -70,6 +70,58 @@
     <CornerRadius x:Key="PaneCornerRadius">8</CornerRadius>
     <Thickness x:Key="PanePadding">12</Thickness>
 
+    <!--
+        A colour swatch in a row of radio choices, as the macOS connection form draws its colour picker: the swatch
+        itself, with an accent ring around the chosen one and a faint ring under the pointer, no radio circle.
+    -->
+    <Style x:Key="ColorSwatchRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="FocusVisualMargin" Value="-2" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid x:Name="RootGrid" Width="28" Height="28" Background="Transparent">
+                        <Ellipse x:Name="Ring" Stroke="{ThemeResource AccentFillColorDefaultBrush}" StrokeThickness="2" Opacity="0" />
+                        <Ellipse x:Name="HoverRing" Stroke="{ThemeResource ControlStrongStrokeColorDefaultBrush}" StrokeThickness="1" Opacity="0" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverRing.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="RootGrid.Opacity" Value="0.4" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="Ring.Opacity" Value="1" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- A card on the backdrop: the Fluent layer fill with its hairline stroke. -->
     <Style x:Key="PaneBorderStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource LayerFillColorDefaultBrush}" />

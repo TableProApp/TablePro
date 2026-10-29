@@ -25,6 +25,9 @@ internal sealed record EngineForm
 
     public string? FileLabel { get; init; }
 
+    /// <summary>An example path for the file field, the kind of file the engine reads there.</summary>
+    public string FilePlaceholder { get; init; } = "C:\\data\\app.sqlite";
+
     public string? OptionsHint { get; init; }
 
     /// <summary>The sign-in methods the Authentication picker offers; one entry means the picker stays hidden.</summary>
@@ -66,9 +69,9 @@ internal sealed record EngineForm
         DatabaseEngine.MongoDb => new() { UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "authSource=admin\nsrv=true\nreplicaSet=rs0" },
         DatabaseEngine.Oracle or DatabaseEngine.Dameng => new() { DatabaseLabel = Strings.Get("Connection/ServiceNameHeader"), OptionsHint = "sid=ORCL\ndbaPrivilege=SYSDBA" },
         DatabaseEngine.Cassandra or DatabaseEngine.ScyllaDb => new() { DatabaseLabel = Strings.Get("Connection/KeyspaceHeader"), UserLabel = Strings.Get("Connection/UserOptionalHeader"), OptionsHint = "localDatacenter=datacenter1\ncontactPoints=10.0.0.1,10.0.0.2\nconsistency=LOCAL_QUORUM" },
-        DatabaseEngine.Snowflake => new() { HostLabel = Strings.Get("Connection/AccountHeader"), HostPlaceholder = "xy12345.eu-central-1", ShowPort = false, FileLabel = Strings.Get("Connection/SnowflakeKeyFileHeader"), OptionsHint = "warehouse=COMPUTE_WH\nrole=ANALYST\nauthenticator=externalbrowser" },
-        DatabaseEngine.BigQuery => new() { HostLabel = Strings.Get("Connection/ProjectHeader"), HostPlaceholder = "my-gcp-project", ShowPort = false, ShowUser = false, PasswordLabel = Strings.Get("Connection/PasswordUnusedHeader"), FileLabel = Strings.Get("Connection/BigQueryKeyFileHeader"), OptionsHint = "maxBytesBilled=10000000000\nlocation=EU" },
-        DatabaseEngine.Spanner => new() { HostLabel = Strings.Get("Connection/DatabasePathHeader"), HostPlaceholder = "projects/p/instances/i/databases/d", ShowPort = false, ShowUser = false, FileLabel = Strings.Get("Connection/ServiceAccountJsonHeader"), OptionsHint = "emulatorHost=localhost:9010" },
+        DatabaseEngine.Snowflake => new() { HostLabel = Strings.Get("Connection/AccountHeader"), HostPlaceholder = "xy12345.eu-central-1", ShowPort = false, FileLabel = Strings.Get("Connection/SnowflakeKeyFileHeader"), FilePlaceholder = "C:\\keys\\rsa_key.p8", OptionsHint = "warehouse=COMPUTE_WH\nrole=ANALYST\nauthenticator=externalbrowser" },
+        DatabaseEngine.BigQuery => new() { HostLabel = Strings.Get("Connection/ProjectHeader"), HostPlaceholder = "my-gcp-project", ShowPort = false, ShowUser = false, PasswordLabel = Strings.Get("Connection/PasswordUnusedHeader"), FileLabel = Strings.Get("Connection/BigQueryKeyFileHeader"), FilePlaceholder = "C:\\keys\\service-account.json", OptionsHint = "maxBytesBilled=10000000000\nlocation=EU" },
+        DatabaseEngine.Spanner => new() { HostLabel = Strings.Get("Connection/DatabasePathHeader"), HostPlaceholder = "projects/p/instances/i/databases/d", ShowPort = false, ShowUser = false, FileLabel = Strings.Get("Connection/ServiceAccountJsonHeader"), FilePlaceholder = "C:\\keys\\service-account.json", OptionsHint = "emulatorHost=localhost:9010" },
         DatabaseEngine.Trino => new() { DatabaseLabel = Strings.Get("Connection/CatalogHeader"), OptionsHint = "catalog=hive\nschema=default" },
         DatabaseEngine.DynamoDb => new() { HostLabel = Strings.Get("Connection/RegionHeader"), HostPlaceholder = "us-east-1", ShowPort = false, UserLabel = Strings.Get("Connection/AccessKeyIdOptionalHeader"), PasswordLabel = Strings.Get("Connection/SecretAccessKeyHeader"), OptionsHint = "profile=default\nendpoint=http://localhost:8000\nsessionToken=" },
         DatabaseEngine.Elasticsearch => new() { UserLabel = Strings.Get("Connection/UserOptionalHeader"), PasswordLabel = Strings.Get("Connection/PasswordOrApiKeyHeader"), OptionsHint = "auth=apikey\ncloudId=" },
@@ -79,7 +82,8 @@ internal sealed record EngineForm
         DatabaseEngine.CloudflareD1 or DatabaseEngine.CloudflareR2Sql => new() { HostLabel = Strings.Get("Connection/AccountIdHeader"), HostPlaceholder = "0123456789abcdef", ShowPort = false, ShowUser = false, DatabaseLabel = Strings.Get("Connection/DatabaseIdHeader"), PasswordLabel = Strings.Get("Connection/ApiTokenHeader") },
         DatabaseEngine.LibSql or DatabaseEngine.Turso => new() { HostLabel = Strings.Get("Connection/LibSqlUrlHeader"), HostPlaceholder = "libsql://my-db-me.turso.io", ShowPort = engine == DatabaseEngine.LibSql, ShowUser = false, PasswordLabel = Strings.Get("Connection/AuthTokenHeader") },
         DatabaseEngine.Teradata => new() { DatabaseLabel = Strings.Get("Connection/DefaultDatabaseHeader"), OptionsHint = "logmech=LDAP\nSession Mode=ANSI" },
-        DatabaseEngine.Beancount => new() { OptionsHint = "backend=python\npython=py\nrledger=C:\\Tools\\rledger.exe\nbeancountRunLedgerPlugins=true" },
+        DatabaseEngine.DuckDb => new() { FilePlaceholder = "C:\\data\\analytics.duckdb" },
+        DatabaseEngine.Beancount => new() { FilePlaceholder = "C:\\ledger\\main.beancount", OptionsHint = "backend=python\npython=py\nrledger=C:\\Tools\\rledger.exe\nbeancountRunLedgerPlugins=true" },
         DatabaseEngine.ClickHouse => new() { OptionsHint = "set_max_execution_time=60" },
         _ => new(),
     };

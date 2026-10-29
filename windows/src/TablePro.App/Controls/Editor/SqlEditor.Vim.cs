@@ -196,7 +196,7 @@ public sealed partial class SqlEditor
         {
             _vimEdited = false;
             _highlightTimer.Restart();
-            TextChanged?.Invoke(this, EventArgs.Empty);
+            RaiseTextChanged();
         }
 
         UpdateVimCaret();

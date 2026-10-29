@@ -124,6 +124,98 @@ public static class SqlCompletion
         return (wordStart, Filter(all, prefix));
     }
 
+    /// <summary>
+    /// Whether the word at <paramref name="caret"/> is a name being made up, right after AS, where a list that opens
+    /// by itself only gets in the way: Enter, which accepts the selected item as Return does on macOS, would replace
+    /// the new alias with whatever it happened to match. Ctrl+Space still opens the list there.
+    /// </summary>
+    public static bool SuppressesAutomatic(string text, int caret, SqlDialect dialect)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(dialect);
+        caret = Math.Clamp(caret, 0, text.Length);
+        var wordStart = caret;
+        while (wordStart > 0 && SqlLexer.IsWordPart(text[wordStart - 1]))
+        {
+            wordStart--;
+        }
+
+        // Inside a comment or a string the words are prose or data, as macOS treats them: a list there turned the
+        // "items" of a comment into order_items when Enter ended the line.
+        var upToCaret = text.AsSpan(0, caret);
+        var caretLexer = new SqlLexer(upToCaret, dialect.LexerFeatures);
+        SqlToken? last = null;
+        while (caretLexer.TryRead(out var token))
+        {
+            last = token;
+        }
+
+        if (last is { } final && final.End == caret
+            && (final.Kind is SqlTokenKind.LineComment || ((final.Kind is SqlTokenKind.BlockComment or SqlTokenKind.String) && final.IsUnterminated)))
+        {
+            return true;
+        }
+
+        if (wordStart > 0 && text[wordStart - 1] == '.')
+        {
+            return false;
+        }
+
+        // The word before each open parenthesis, so CAST(x AS ...), where a type is wanted, keeps its list.
+        string? previous = null;
+        string? beforeParen = null;
+        var openers = new Stack<string?>();
+        var span = text.AsSpan(0, wordStart);
+        var lexer = new SqlLexer(span, dialect.LexerFeatures);
+        while (lexer.TryRead(out var token))
+        {
+            if (token.IsTrivia)
+            {
+                continue;
+            }
+
+            switch (token.Kind)
+            {
+                case SqlTokenKind.OpenParen:
+                    openers.Push(beforeParen);
+                    break;
+                case SqlTokenKind.CloseParen when openers.Count > 0:
+                    openers.Pop();
+                    break;
+            }
+
+            previous = token.Kind == SqlTokenKind.Word ? token.Slice(span).ToString() : null;
+            beforeParen = previous;
+        }
+
+        if (!string.Equals(previous, "AS", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var enclosing = openers.Count > 0 ? openers.Peek() : null;
+        return enclosing is null || !(enclosing.Equals("CAST", StringComparison.OrdinalIgnoreCase)
+            || enclosing.Equals("TRY_CAST", StringComparison.OrdinalIgnoreCase)
+            || enclosing.Equals("SAFE_CAST", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The tables every statement in <paramref name="text"/> names in FROM, JOIN, UPDATE and INTO, unqualified and
+    /// without aliases: the ones whose columns completion needs loaded to offer them after an alias.
+    /// </summary>
+    public static IReadOnlyList<string> ReferencedTables(string text, SqlDialect dialect)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(dialect);
+        var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var statement in SqlScript.Split(text, dialect))
+        {
+            tables.UnionWith(ReadTableReferences(statement.Text, dialect).Values);
+        }
+
+        return [.. tables];
+    }
+
     /// <summary>Table names keyed by themselves and by their alias, from FROM, JOIN, UPDATE and INTO clauses.</summary>
     internal static Dictionary<string, string> ReadTableReferences(string statement, SqlDialect dialect)
     {

@@ -13,6 +13,12 @@ public static class CrashLog
 
     public static string FilePath { get; } = Path.Combine(Storage.AppPaths.Default.Root, "logs", "errors.log");
 
+    /// <summary>
+    /// Whether the UI thread may carry on after <paramref name="exception"/> reached the top of a callback. Memory
+    /// exhaustion and access violations leave the process in no state to continue.
+    /// </summary>
+    public static bool IsRecoverable(Exception exception) => exception is not (OutOfMemoryException or AccessViolationException);
+
     public static void Write(string context, Exception exception)
     {
         try

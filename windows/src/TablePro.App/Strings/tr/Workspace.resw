@@ -21,9 +21,6 @@
   <data name="BadgeReadOnly" xml:space="preserve">
     <value>Salt okunur</value>
   </data>
-  <data name="BadgeSafeMode" xml:space="preserve">
-    <value>Güvenli Mod</value>
-  </data>
   <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Kapat</value>
   </data>

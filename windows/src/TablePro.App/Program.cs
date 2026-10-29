@@ -21,7 +21,15 @@ public static class Program
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(callback =>
         {
-            SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
+            // An exception escaping a dispatcher callback (an async void handler's continuation, for one) ends the
+            // process without Application.UnhandledException; the guard logs it first and keeps the app running when
+            // it can, as that event's handler does.
+            var dispatcherContext = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+            SynchronizationContext.SetSynchronizationContext(new Core.Threading.GuardedSynchronizationContext(dispatcherContext, ex =>
+            {
+                Services.CrashLog.Write("Unhandled exception in a UI callback", ex);
+                return Services.CrashLog.IsRecoverable(ex);
+            }));
             _ = new App();
         });
         return 0;

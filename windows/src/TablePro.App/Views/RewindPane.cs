@@ -85,7 +85,7 @@ public sealed partial class RewindPane : UserControl
         };
 
         // The journal changes on a thread-pool thread when any tab saves; the list reloads on the UI thread.
-        EventHandler onJournalChanged = (_, _) => _dispatcher.TryEnqueue(async () => await viewModel.RefreshAsync());
+        EventHandler onJournalChanged = (_, _) => _dispatcher.TryEnqueueLogged(async () => await viewModel.RefreshAsync());
         // The kept saves stay listed without the license, as macOS keeps them in history; activating or removing one
         // with the pane open rewords it and its empty state at once.
         IDisposable? licenseWatch = null;

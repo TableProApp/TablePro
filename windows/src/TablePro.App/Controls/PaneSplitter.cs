@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using TablePro.Core.Interaction;
 
 namespace TablePro.App.Controls;
 
@@ -25,6 +26,7 @@ public sealed partial class PaneSplitter : Grid
     private double _start;
     private double _startSize;
     private bool _dragging;
+    private uint _pointerId;
 
     public PaneSplitter()
     {
@@ -33,6 +35,7 @@ public sealed partial class PaneSplitter : Grid
         PointerPressed += OnPressed;
         PointerMoved += OnMoved;
         PointerReleased += OnReleased;
+        PointerCaptureLost += (_, _) => _dragging = false;
         PointerEntered += (_, _) => _line.Opacity = 1;
         PointerExited += (_, _) => _line.Opacity = _dragging ? 1 : 0.5;
         Loaded += (_, _) =>
@@ -85,6 +88,7 @@ public sealed partial class PaneSplitter : Grid
         var point = e.GetCurrentPoint(grid).Position;
         _start = Orientation == Orientation.Vertical ? point.X : point.Y;
         _startSize = Orientation == Orientation.Vertical ? grid.ColumnDefinitions[TargetIndex].ActualWidth : grid.RowDefinitions[TargetIndex].ActualHeight;
+        _pointerId = e.Pointer.PointerId;
         CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -96,18 +100,33 @@ public sealed partial class PaneSplitter : Grid
             return;
         }
 
-        var point = e.GetCurrentPoint(grid).Position;
+        // While captured the splitter also receives moves bubbled from hover changes elsewhere in the window, with
+        // no button down and a position far from the pointer (a TextBlock's, at the top of the tab). Taking one of
+        // those as the drag threw the results pane to its largest size, which read as the splitter moving the wrong
+        // way, and the next real move snapped it back, which read as sticking. Only the pressed pointer, still
+        // pressed, drags.
+        var current = e.GetCurrentPoint(grid);
+        if (e.Pointer.PointerId != _pointerId || !e.Pointer.IsInContact)
+        {
+            return;
+        }
+
+        var point = current.Position;
         var delta = (Orientation == Orientation.Vertical ? point.X : point.Y) - _start;
-        var size = Math.Max(48, _startSize + (Invert ? -delta : delta));
+        var desired = _startSize + (Invert ? -delta : delta);
         if (Orientation == Orientation.Vertical)
         {
-            var column = grid.ColumnDefinitions[TargetIndex];
-            column.Width = new GridLength(Math.Min(size, Math.Max(48, grid.ActualWidth - 160)));
+            var columns = grid.ColumnDefinitions;
+            var others = columns.Where((_, i) => i != TargetIndex).Select(c => new SplitterTrack(c.ActualWidth, c.MinWidth, c.Width.IsStar));
+            var target = columns[TargetIndex];
+            target.Width = new GridLength(SplitterMath.Clamp(desired, grid.ActualWidth, new SplitterTrack(target.ActualWidth, target.MinWidth, false), others, starFloor: 160));
         }
         else
         {
-            var row = grid.RowDefinitions[TargetIndex];
-            row.Height = new GridLength(Math.Min(size, Math.Max(48, grid.ActualHeight - 80)));
+            var rows = grid.RowDefinitions;
+            var others = rows.Where((_, i) => i != TargetIndex).Select(r => new SplitterTrack(r.ActualHeight, r.MinHeight, r.Height.IsStar));
+            var target = rows[TargetIndex];
+            target.Height = new GridLength(SplitterMath.Clamp(desired, grid.ActualHeight, new SplitterTrack(target.ActualHeight, target.MinHeight, false), others, starFloor: 80));
         }
 
         e.Handled = true;

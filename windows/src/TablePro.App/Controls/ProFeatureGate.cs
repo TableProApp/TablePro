@@ -101,7 +101,7 @@ public sealed partial class ProFeatureGate : UserControl
         }
 
         var monitor = new ProFeatureMonitor(license, feature);
-        monitor.AccessChanged += (_, _) => dispatcher.TryEnqueue(() => changed());
+        monitor.AccessChanged += (_, _) => dispatcher.TryEnqueueLogged(() => changed());
         return new ProFeatureWatch(monitor);
     }
 
@@ -203,7 +203,7 @@ public sealed partial class ProFeatureGate : UserControl
     }
 
     // The license changes on whichever thread ran the check; the overlay is rebuilt on the UI thread.
-    private void OnAccessChanged(object? sender, EventArgs e) => _dispatcher.TryEnqueue(Render);
+    private void OnAccessChanged(object? sender, EventArgs e) => _dispatcher.TryEnqueueLogged(Render);
 
     private void Render()
     {

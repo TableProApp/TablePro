@@ -21,9 +21,6 @@
   <data name="BadgeReadOnly" xml:space="preserve">
     <value>只读</value>
   </data>
-  <data name="BadgeSafeMode" xml:space="preserve">
-    <value>安全模式</value>
-  </data>
   <data name="CloseSidePaneButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>关闭</value>
   </data>
