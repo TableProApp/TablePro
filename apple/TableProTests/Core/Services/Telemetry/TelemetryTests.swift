@@ -96,6 +96,44 @@ final class TelemetryFixture {
 
     var client: RecordingTelemetryClient? { clients.last }
 
+    func appServices() -> AppServices {
+        let live = AppServices.live
+        return AppServices(
+            appEvents: live.appEvents,
+            appSettings: live.appSettings,
+            appSettingsStorage: live.appSettingsStorage,
+            connectionStorage: live.connectionStorage,
+            databaseManager: live.databaseManager,
+            pluginManager: live.pluginManager,
+            schemaService: live.schemaService,
+            schemaRefreshService: live.schemaRefreshService,
+            schemaProviderRegistry: live.schemaProviderRegistry,
+            catalogChangeService: live.catalogChangeService,
+            sqlFavoriteManager: live.sqlFavoriteManager,
+            favoriteTablesStorage: live.favoriteTablesStorage,
+            favoriteDatabasesStorage: live.favoriteDatabasesStorage,
+            tableFolderStorage: live.tableFolderStorage,
+            aiChatStorage: live.aiChatStorage,
+            aiKeyStorage: live.aiKeyStorage,
+            aiAccessApprovals: live.aiAccessApprovals,
+            groupStorage: live.groupStorage,
+            tagStorage: live.tagStorage,
+            sshProfileStorage: live.sshProfileStorage,
+            credentialProfileStorage: live.credentialProfileStorage,
+            featureAccess: live.featureAccess,
+            syncMetadataStorage: live.syncMetadataStorage,
+            favoritesExpansionState: live.favoritesExpansionState,
+            linkedFolderWatcher: live.linkedFolderWatcher,
+            queryHistoryManager: live.queryHistoryManager,
+            dateFormattingService: live.dateFormattingService,
+            copilotService: live.copilotService,
+            mcpServerManager: live.mcpServerManager,
+            syncTracker: live.syncTracker,
+            welcomeRouter: live.welcomeRouter,
+            telemetry: telemetry
+        )
+    }
+
     func start() {
         telemetry.start(sharesUsageData: sharesUsageData.eraseToAnyPublisher(), account: account.services)
     }
@@ -345,13 +383,11 @@ struct TelemetryTests {
     func editorQueryNamesItsConnectionType() async throws {
         let fixture = try TelemetryFixture()
         fixture.start()
-        var services = AppServices.live
-        services.telemetry = fixture.telemetry
         let connection = TestFixtures.makeConnection(type: .mssql)
         let window = CoordinatorFixture(
             connection: connection,
             driver: MockDatabaseDriver(connection: connection),
-            services: services
+            services: fixture.appServices()
         )
         window.addTab(QueryTab(title: "Query 1", query: "SELECT 1", tabType: .query))
 

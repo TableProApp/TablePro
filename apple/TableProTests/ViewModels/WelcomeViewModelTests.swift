@@ -106,7 +106,8 @@ final class WelcomeViewModelTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            welcomeRouter: welcomeRouter
+            welcomeRouter: welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 

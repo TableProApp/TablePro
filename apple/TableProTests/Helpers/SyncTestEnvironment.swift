@@ -78,7 +78,7 @@ final class SyncTestEnvironment {
         )
     }
 
-    /// Licensed for sync by default, so no test depends on the license of the Mac running it.
+    // Licensed for sync by default, so no test depends on the license of the Mac running it.
     func makeCoordinator(
         transport: ScriptedSyncTransport,
         favorites: SQLFavoriteManager? = nil,
@@ -128,7 +128,8 @@ final class SyncTestEnvironment {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
-            welcomeRouter: live.welcomeRouter
+            welcomeRouter: live.welcomeRouter,
+            telemetry: live.telemetry
         )
         return SyncCoordinator(
             services: services,

@@ -34,7 +34,7 @@ struct AppServices {
     let mcpServerManager: MCPServerManager
     let syncTracker: SyncChangeTracker
     let welcomeRouter: WelcomeRouter
-    var telemetry: Telemetry = .shared
+    let telemetry: Telemetry
 
     static let live = AppServices(
         appEvents: .shared,
@@ -67,7 +67,8 @@ struct AppServices {
         copilotService: .shared,
         mcpServerManager: .shared,
         syncTracker: .shared,
-        welcomeRouter: .shared
+        welcomeRouter: .shared,
+        telemetry: .shared
     )
 }
 

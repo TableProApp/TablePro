@@ -409,7 +409,8 @@ struct SchemaGroupedRefreshCostTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            welcomeRouter: live.welcomeRouter
+            welcomeRouter: live.welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 }

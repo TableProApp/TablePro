@@ -446,7 +446,8 @@ private extension AppServices {
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
             syncTracker: syncTracker,
-            welcomeRouter: welcomeRouter
+            welcomeRouter: welcomeRouter,
+            telemetry: telemetry
         )
     }
 }
