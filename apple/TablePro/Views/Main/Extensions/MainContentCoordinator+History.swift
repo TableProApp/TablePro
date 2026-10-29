@@ -10,6 +10,9 @@ extension MainContentCoordinator {
             if #available(macOS 14.0, *) {
                 FeatureTipSignals.editorQueryRan()
             }
+            if request.wasSuccessful {
+                MacAnalyticsProvider.shared.markFirstQueryExecuted()
+            }
         }
         let recorder = services.queryHistoryManager
         return Task(priority: .utility) {

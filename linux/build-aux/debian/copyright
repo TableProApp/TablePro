@@ -6996,7 +6996,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/rust_xlsxwriter-0.99.1/*
+Files: vendor/rust_xlsxwriter-0.102.0/*
 Copyright: 2022-2026 John McNamara <jmcnamara@cpan.org>
 License: Apache-2.0 or Expat
  MIT License
@@ -8968,7 +8968,7 @@ License: Apache-2.0 or Expat
  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-Files: vendor/zip-8.6.0/*
+Files: vendor/zip-9.0.5/*
 Copyright: 2014 Mathijs van de Nes
 License: Expat
  The MIT License (MIT)

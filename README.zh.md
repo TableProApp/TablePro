@@ -146,5 +146,5 @@ TablePro 由用户和以下赞助者支持。[成为赞助者](https://tablepro.
 
 ## 许可证
 
-本项目采用 [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE) 许可。
+本项目采用 [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE) 许可。TablePro 名称和图标不在该许可范围内，使用方式见 [TRADEMARKS.md](TRADEMARKS.md)。
 
