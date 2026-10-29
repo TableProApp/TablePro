@@ -12,6 +12,8 @@ private struct ProbeConfig: Decodable {
 
 private struct LibraryConfig: Decodable {
     let teamName: String
+    let ownerName: String
+    let adminEmail: String
     let teamUUID: String
     let teamKey: String
     let adminKey: String
@@ -476,14 +478,21 @@ private final class Probe {
             ownerCalls.joined(separator: ", ")
         )
 
-        await memberPulls(customers: customers.name, teamID: teamID(of: mine), directory: directory)
+        let member = await memberPulls(customers: customers.name, teamID: teamID(of: mine), directory: directory)
         guard let admin = await adminConflicts(orders: orders, others: [customers], folder: folder, mine: mine, directory: directory) else {
             return
         }
+        _ = await member.sync()
+        let ordersSeen = member.content.queries.first { $0.id == queryID.uuidString.lowercased() }
+        report.expect(
+            ordersSeen != nil && ordersSeen?.lastWriter == nil,
+            "a member's pull names no writer for the admin, who has no name and whose address members never see",
+            "\(String(describing: ordersSeen))"
+        )
         await folderDeletes(mine: mine, admin: admin, queryID: queryID, customers: customers, reports: folder)
     }
 
-    private func memberPulls(customers: String, teamID: String, directory: URL) async {
+    private func memberPulls(customers: String, teamID: String, directory: URL) async -> TeamLibrarySync {
         let log = CallLog()
         let member = await keyAccount(library.memberKey, log: log, machine: "Probe Second Mac")
         let theirs = TeamLibrarySync(account: member, store: store(in: directory.appendingPathComponent("member", isDirectory: true)))
@@ -494,6 +503,12 @@ private final class Probe {
                 && theirs.content.connections.map(\.settings.name) == ["Probe Production"],
             "a member's second device pulls what this Mac pushed",
             "\(theirs.content)"
+        )
+        let customersSeen = theirs.content.queries.first { $0.name == customers }
+        report.expect(
+            customersSeen?.lastWriter == library.ownerName && customersSeen?.detail == library.ownerName,
+            "a member's pull names this Mac's account as the query's last writer",
+            "\(String(describing: customersSeen))"
         )
         report.expect(!theirs.canPublish, "a member may only pull")
         var refusal = "published"
@@ -508,6 +523,7 @@ private final class Probe {
         }
         let pushes = await log.lines.filter { $0.hasPrefix("POST") && $0.contains("/library/changes") }
         report.expect(pushes.isEmpty && refusal == "notWritable", "a member's publish is refused before anything is pushed", refusal)
+        return theirs
     }
 
     private func adminConflicts(
@@ -547,6 +563,11 @@ private final class Probe {
             "the admin's stale push comes back as a conflict holding this Mac's copy",
             "\(staged.conflicts)"
         )
+        report.expect(
+            conflict?.current?.lastWriter == library.ownerName,
+            "the conflict's current copy names this Mac's account as its writer",
+            "\(String(describing: conflict?.current?.updatedByName))"
+        )
         guard let conflict else { return nil }
         await staged.resolve(conflict, keepingMine: true)
         _ = await mine.sync()
@@ -554,6 +575,12 @@ private final class Probe {
             staged.conflicts.isEmpty && mine.content.queries.first { $0.id == queryID.uuidString.lowercased() }?.query == "select 'admin'",
             "Keep Mine on the admin's device lands on this Mac's next pull",
             "\(mine.content.queries)"
+        )
+        let adminWrote = mine.content.queries.first { $0.id == queryID.uuidString.lowercased() }
+        report.expect(
+            adminWrote?.lastWriter?.lowercased() == library.adminEmail.lowercased(),
+            "the owner's pull names the admin, who has no name, by address",
+            "\(String(describing: adminWrote?.lastWriter))"
         )
         return staged
     }

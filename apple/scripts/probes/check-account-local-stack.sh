@@ -7,10 +7,11 @@
 # refresh token, a seeded legacy key migrating with no refresh, an unknown key refused, and a fourth device answered
 # with device_limit_reached and its 3 holders, one of which it then removes to take the slot. Then the team library:
 # an old build publishes over /v1 with a team's license key and caches its pull, the update exchanges the key and its
-# first /v2 sync takes that cache over item by item, this Mac pushes, a member's second device pulls and cannot push,
-# an admin's stale push comes back as a conflict that Keep Mine resolves, deleting the folder the old build published
-# deletes it from the team, and deleting a folder that holds the admin's query moves that query up and leaves it the
-# admin's.
+# first /v2 sync takes that cache over item by item, this Mac pushes, a member's second device pulls with this Mac's
+# account named as each item's writer and cannot push, an admin's stale push comes back as a conflict naming that
+# writer, which Keep Mine resolves, the owner then sees the nameless admin by address and the member sees no name,
+# deleting the folder the old build published deletes it from the team, and deleting a folder that holds the admin's
+# query moves that query up and leaves it the admin's.
 #
 # account-local-stack/main.swift drives the app's own Core/Services/Account and Core/Services/TeamLibrary sources,
 # built into a SwiftPM executable beside AppStubs.swift. seed.cjs and seed-library.cjs insert the accounts and the team

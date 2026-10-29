@@ -1,6 +1,7 @@
 // Usage: node seed-library.cjs <config.json to write> <email domain>
 // Inserts, never deletes: a team on a lifetime Team license with an owner, an admin and a member, each seated. The
-// team license's own key signs the owner in, as an old build kept it; the admin and the member get seat keys. The
+// team license's own key signs the owner in, as an old build kept it; the admin and the member get seat keys. Only the
+// owner has a name, so the library names the admin by address to owners and admins and not at all to members. The
 // rows are the ones seed.ts and the server's import write. DATABASE_URL names the local stack's database.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -23,6 +24,7 @@ async function insertKey(client, licenseID, memberID, key) {
 (async () => {
   const config = {
     teamName: `Probe Library ${suffix}`,
+    ownerName: `Probe Owner ${suffix}`,
     ownerEmail: `probe-lib-owner-${suffix}@${domain}`,
     adminEmail: `probe-lib-admin-${suffix}@${domain}`,
     memberEmail: `probe-lib-member-${suffix}@${domain}`,
@@ -43,12 +45,15 @@ async function insertKey(client, licenseID, memberID, key) {
       [config.teamUUID, product.rows[0].id],
     );
     const licenseID = license.rows[0].id;
-    for (const [email, role, key] of [
-      [config.ownerEmail, 'owner', null],
-      [config.adminEmail, 'admin', config.adminKey],
-      [config.memberEmail, 'member', config.memberKey],
+    for (const [email, name, role, key] of [
+      [config.ownerEmail, config.ownerName, 'owner', null],
+      [config.adminEmail, null, 'admin', config.adminKey],
+      [config.memberEmail, null, 'member', config.memberKey],
     ]) {
-      const account = await client.query('insert into accounts (email, email_verified_at) values ($1, now()) returning id', [email]);
+      const account = await client.query(
+        'insert into accounts (email, name, email_verified_at) values ($1, $2, now()) returning id',
+        [email, name],
+      );
       const member = await client.query(
         'insert into team_members (team_id, account_id, role, has_seat) values ($1, $2, $3, true) returning id',
         [config.teamUUID, account.rows[0].id, role],
