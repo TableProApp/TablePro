@@ -205,8 +205,10 @@ actor FakeAccountServer {
         case (.delete, let devicePath) where devicePath.hasPrefix("/devices/"):
             return removeDevice(String(devicePath.dropFirst("/devices/".count)))
         case (.get, let libraryPath) where libraryPath.hasPrefix("/teams/"):
+            if let gate = library.pullGate { await gate.wait() }
             return library.pull(path: libraryPath, memberships: memberships)
         case (.post, let libraryPath) where libraryPath.hasPrefix("/teams/"):
+            if let gate = library.pushGate { await gate.wait() }
             return library.push(path: libraryPath, body: data, memberships: memberships)
         default:
             return Self.problem(status: 404, code: "not_found")

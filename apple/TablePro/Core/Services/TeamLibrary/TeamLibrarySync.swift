@@ -136,7 +136,7 @@ internal final class TeamLibrarySync: ObservableObject {
         _ connections: [TeamLibraryPublishPlan.Connection],
         to teamID: String
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
-        try await publish(to: teamID) { try TeamLibraryPublishPlan.connections(connections, in: $0) }
+        try await publish(to: teamID, owns: { _ in true }) { try TeamLibraryPublishPlan.connections(connections, in: $0) }
     }
 
     func publishSavedQueries(
@@ -144,7 +144,8 @@ internal final class TeamLibrarySync: ObservableObject {
         folders: [SQLFavoriteFolder],
         to teamID: String
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
-        try await publish(to: teamID) {
+        let local = TeamLibraryPublishPlan.keys(favorites: favorites, folders: folders)
+        return try await publish(to: teamID, owns: { local.contains($0) }) {
             try TeamLibraryPublishPlan.savedQueries(favorites: favorites, folders: folders, in: $0)
         }
     }
@@ -165,6 +166,9 @@ internal final class TeamLibrarySync: ObservableObject {
             edit.clientId = stored?.clientId ?? edit.clientId
             if edit.op == .upsert || stored?.deleted == false {
                 state.pending.append(edit)
+                if conflict.isMove {
+                    state.moves.insert(conflict.key)
+                }
                 pushes = true
             }
         }
@@ -357,6 +361,8 @@ internal final class TeamLibrarySync: ObservableObject {
 
     private func apply(_ result: Components.Schemas.LibraryResult, of edit: TeamLibraryEdit, to state: inout TeamLibraryTeamState) {
         let key = TeamLibraryKey(edit)
+        // Moving someone else's item out of a deleted folder never makes it this Mac's to remove later.
+        let isMove = state.moves.contains(key)
         switch result.status {
         case "applied":
             state.conflicts.removeAll { $0.key == key }
@@ -371,18 +377,22 @@ internal final class TeamLibrarySync: ObservableObject {
             if edit.op == .delete {
                 state.published.remove(key)
             } else {
-                state.published.insert(key)
+                if !isMove {
+                    state.published.insert(key)
+                }
                 state.declined.remove(key)
             }
         case "conflict":
             state.items[key] = result.current
             state.conflicts.removeAll { $0.key == key }
             if Self.holds(result.current, as: edit) {
-                if edit.op == .upsert {
+                if edit.op == .upsert, !isMove {
                     state.published.insert(key)
                 }
             } else {
-                state.conflicts.append(TeamLibraryConflict(teamID: state.teamID, edit: edit, current: result.current))
+                state.conflicts.append(TeamLibraryConflict(
+                    teamID: state.teamID, edit: edit, current: result.current, isMove: isMove
+                ))
             }
         default:
             Self.logger.warning("Unknown team library result status \(result.status, privacy: .public)")
@@ -436,19 +446,22 @@ internal final class TeamLibrarySync: ObservableObject {
 
     // MARK: - Publish
 
+    // `owns` tells this Mac's own items from someone else's that a publish only moves.
     private func publish(
         to teamID: String,
+        owns: @escaping (TeamLibraryKey) -> Bool,
         plan: @escaping (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async throws(TeamLibraryPublishError) -> TeamLibraryPublishResult {
         let result = await serially { [weak self] () -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> in
             guard let self else { return .failure(.failed(.signedOut)) }
-            return await self.performPublish(to: teamID, plan: plan)
+            return await self.performPublish(to: teamID, owns: owns, plan: plan)
         }.value
         return try result.get()
     }
 
     private func performPublish(
         to teamID: String,
+        owns: (TeamLibraryKey) -> Bool,
         plan: (TeamLibraryTeamState) throws -> [TeamLibraryEdit]
     ) async -> Result<TeamLibraryPublishResult, TeamLibraryPublishError> {
         let outcome = await performSync()
@@ -476,6 +489,7 @@ internal final class TeamLibrarySync: ObservableObject {
 
         var queued = state
         queued.pending += edits
+        queued.moves.formUnion(edits.compactMap { $0.op == .upsert && !owns(TeamLibraryKey($0)) ? TeamLibraryKey($0) : nil })
         commit(queued)
         do throws(TeamLibraryFailure) {
             try await push(teamID)
@@ -505,6 +519,11 @@ internal final class TeamLibrarySync: ObservableObject {
     }
 
     private func commit(_ state: TeamLibraryTeamState) {
+        var state = state
+        // A move stays marked only while its edit waits to be pushed.
+        if !state.moves.isEmpty {
+            state.moves.formIntersection(state.pending.map { TeamLibraryKey($0) })
+        }
         teams[state.teamID] = state
         store.save(state)
     }

@@ -14,12 +14,28 @@ internal struct TeamLibraryConflict: Codable, Equatable, Identifiable, Sendable 
     let edit: TeamLibraryEdit
     // The item as the team holds it; nil when the team has no such item any more.
     let current: TeamLibraryChange?
+    // The edit only moved someone else's item out of a folder this Mac deleted.
+    let isMove: Bool
 
-    init(id: UUID = UUID(), teamID: String, edit: TeamLibraryEdit, current: TeamLibraryChange?) {
+    init(id: UUID = UUID(), teamID: String, edit: TeamLibraryEdit, current: TeamLibraryChange?, isMove: Bool = false) {
         self.id = id
         self.teamID = teamID
         self.edit = edit
         self.current = current
+        self.isMove = isMove
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, teamID, edit, current, isMove
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        teamID = try container.decode(String.self, forKey: .teamID)
+        edit = try container.decode(TeamLibraryEdit.self, forKey: .edit)
+        current = try container.decodeIfPresent(TeamLibraryChange.self, forKey: .current)
+        isMove = try container.decodeIfPresent(Bool.self, forKey: .isMove) ?? false
     }
 
     var key: TeamLibraryKey {
@@ -39,6 +55,8 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
     var conflicts: [TeamLibraryConflict]
     // What this Mac published, so publishing saved queries again removes only the ones it put there.
     var published: Set<TeamLibraryKey>
+    // Pending edits that only move someone else's item out of a folder this Mac deleted: pushing one leaves it theirs.
+    var moves: Set<TeamLibraryKey>
     // Items deleted on the team whose deletion Keep Theirs accepted, so publishing saved queries leaves them deleted.
     var declined: Set<TeamLibraryKey>
     var syncedAt: Date?
@@ -52,12 +70,13 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         self.pending = []
         self.conflicts = []
         self.published = []
+        self.moves = []
         self.declined = []
         self.syncedAt = nil
     }
 
     enum CodingKeys: String, CodingKey {
-        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, declined, syncedAt
+        case teamID, teamName, canWrite, cursor, items, pending, conflicts, published, moves, declined, syncedAt
     }
 
     init(from decoder: any Decoder) throws {
@@ -71,6 +90,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         pending = try container.decode([TeamLibraryEdit].self, forKey: .pending)
         conflicts = try container.decode([TeamLibraryConflict].self, forKey: .conflicts)
         published = try container.decode(Set<TeamLibraryKey>.self, forKey: .published)
+        moves = try container.decodeIfPresent(Set<TeamLibraryKey>.self, forKey: .moves) ?? []
         declined = try container.decodeIfPresent(Set<TeamLibraryKey>.self, forKey: .declined) ?? []
         syncedAt = try container.decodeIfPresent(Date.self, forKey: .syncedAt)
     }
@@ -85,6 +105,7 @@ internal struct TeamLibraryTeamState: Codable, Equatable, Sendable {
         try container.encode(pending, forKey: .pending)
         try container.encode(conflicts, forKey: .conflicts)
         try container.encode(published, forKey: .published)
+        try container.encode(moves, forKey: .moves)
         try container.encode(declined, forKey: .declined)
         try container.encodeIfPresent(syncedAt, forKey: .syncedAt)
     }

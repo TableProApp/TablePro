@@ -102,6 +102,12 @@ internal enum TeamLibraryPublishPlan {
         return edits
     }
 
+    // The saved queries and folders this Mac holds: any other item a publish pushes is someone else's, moved.
+    static func keys(favorites: [SQLFavorite], folders: [SQLFavoriteFolder]) -> Set<TeamLibraryKey> {
+        Set(favorites.map { TeamLibraryKey(kind: TeamLibraryKind.query, clientID: TeamLibraryID.of($0.id)) })
+            .union(folders.map { TeamLibraryKey(kind: TeamLibraryKind.folder, clientID: TeamLibraryID.of($0.id)) })
+    }
+
     private static func upsert(
         _ kind: Components.Schemas.LibraryItemKind,
         key: TeamLibraryKey,

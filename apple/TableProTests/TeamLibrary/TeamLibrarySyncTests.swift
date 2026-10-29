@@ -203,6 +203,59 @@ struct TeamLibrarySyncTests {
         #expect(await fixture.server.library.item(Self.team, kind: "folder", clientID: childID)?.deleted == true)
     }
 
+    @Test("Moving someone else's query out of a deleted folder leaves it theirs: publishing again removes nothing")
+    func movedQueryStaysTheirs() async throws {
+        let folder = SQLFavoriteFolder(id: UUID(), name: "Archive")
+        let mine = TeamLibraryFixture.favorite(name: "Mine", folder: folder.id)
+        let fixture = try await TeamLibraryFixture()
+        _ = try await fixture.sync.publishSavedQueries(favorites: [mine], folders: [folder], to: Self.team)
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "theirs", data: TeamLibraryFixture.queryData("Theirs", folder: folder.id.uuidString.lowercased()))
+        }
+        let moved = TeamLibraryFixture.favorite(mine.id, name: "Mine")
+        let deleted = try await fixture.sync.publishSavedQueries(favorites: [moved], folders: [], to: Self.team)
+        #expect(deleted == .published(3))
+
+        let again = try await fixture.sync.publishSavedQueries(favorites: [moved], folders: [], to: Self.team)
+
+        #expect(again == .unchanged)
+        #expect(await fixture.pushes().count == 2)
+        let theirs = try #require(await fixture.server.library.item(Self.team, kind: "query", clientID: "theirs"))
+        #expect(!theirs.deleted)
+        #expect(theirs.data?["folder_client_id"] == nil, "Moved to the top level")
+    }
+
+    @Test("Keep Mine on a move that conflicted pushes the move, and the query stays someone else's")
+    func keepMineOnAMove() async throws {
+        let folder = SQLFavoriteFolder(id: UUID(), name: "Archive")
+        let folderID = folder.id.uuidString.lowercased()
+        let fixture = try await TeamLibraryFixture()
+        _ = try await fixture.sync.publishSavedQueries(favorites: [], folders: [folder], to: Self.team)
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "theirs", data: TeamLibraryFixture.queryData("Theirs", folder: folderID))
+        }
+        let gate = AsyncGate()
+        await fixture.library { $0.pushGate = gate }
+        let deleting = Task { try await fixture.sync.publishSavedQueries(favorites: [], folders: [], to: Self.team) }
+        await gate.arrived(1)
+        // Another admin edits the query while the push is out, so the move's base version is stale.
+        await fixture.library {
+            $0.write(Self.team, kind: "query", clientID: "theirs", data: TeamLibraryFixture.queryData("Theirs, edited", folder: folderID))
+        }
+        await gate.open()
+        #expect(try await deleting.value == .conflicts(1))
+        let conflict = try #require(fixture.sync.conflicts.first)
+        #expect(conflict.isMove)
+
+        await fixture.sync.resolve(conflict, keepingMine: true)
+        let again = try await fixture.sync.publishSavedQueries(favorites: [], folders: [], to: Self.team)
+
+        #expect(again == .unchanged)
+        let theirs = try #require(await fixture.server.library.item(Self.team, kind: "query", clientID: "theirs"))
+        #expect(!theirs.deleted)
+        #expect(theirs.data?["folder_client_id"] == nil)
+    }
+
     // MARK: - Conflicts
 
     @Test("A push over an item someone changed since the pull leaves a conflict holding their copy")

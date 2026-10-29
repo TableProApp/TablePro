@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProCloudAPI
+import TableProTestSupport
 
 // GET and POST /v2/teams/{team_id}/library/changes as tablepro-cloud's library use cases answer them: a seat reads, an
 // owner or admin writes, items are keyed by kind and the client ID exactly as sent, and every write takes the next
@@ -36,6 +37,9 @@ struct FakeTeamLibrary: Sendable {
     var faults: [Int] = []
     var pushFaults: [Int] = []
     var pushCursorOffset = 0
+    // Hold each pull or push until the test opens it.
+    var pullGate: AsyncGate?
+    var pushGate: AsyncGate?
 
     func live(_ team: String) -> [Item] {
         (items[team] ?? []).filter { !$0.deleted }
