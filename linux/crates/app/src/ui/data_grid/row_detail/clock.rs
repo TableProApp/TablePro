@@ -114,6 +114,8 @@ pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, t
 impl RowDetailPane {
     pub(super) fn connect_clock(&self) {
         let imp = self.imp();
+        // Centred below a button at the window's edge, the clock would run past it.
+        imp.clock_button.set_direction(self.toward_rows());
         imp.clock_popover.connect_show(glib::clone!(
             #[weak(rename_to = pane)]
             self,

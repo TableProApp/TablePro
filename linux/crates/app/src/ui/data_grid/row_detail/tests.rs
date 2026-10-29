@@ -1089,6 +1089,11 @@ fn the_clock_opens_on_the_value_and_sets_its_time() {
     take_keyboard(&grid);
     grid.focus(0, 1);
     assert!(pane.imp().clock_button.is_visible(), "a timestamp has no clock");
+    assert_eq!(
+        pane.imp().clock_button.direction(),
+        gtk::ArrowType::Left,
+        "a clock centred below the pane's button runs past the window"
+    );
 
     open_clock(&pane);
     assert_eq!(

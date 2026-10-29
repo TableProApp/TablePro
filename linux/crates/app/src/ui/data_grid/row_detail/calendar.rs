@@ -48,10 +48,7 @@ impl RowDetailPane {
         // Dropped below a button halfway down the pane, the calendar fits
         // neither below nor above it on a short screen and GTK closes it;
         // opened toward the rows, it slides up or down to fit.
-        imp.calendar_button.set_direction(match self.direction() {
-            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
-            _ => gtk::ArrowType::Left,
-        });
+        imp.calendar_button.set_direction(self.toward_rows());
         imp.calendar_popover.connect_show(glib::clone!(
             #[weak(rename_to = pane)]
             self,
@@ -95,6 +92,13 @@ impl RowDetailPane {
             }
         ));
         imp.calendar.add_controller(keys);
+    }
+
+    pub(super) fn toward_rows(&self) -> gtk::ArrowType {
+        match self.direction() {
+            gtk::TextDirection::Rtl => gtk::ArrowType::Right,
+            _ => gtk::ArrowType::Left,
+        }
     }
 
     /// The calendar opens on the value's day, else on today, for the row
