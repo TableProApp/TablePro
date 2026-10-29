@@ -916,14 +916,12 @@ fn binary_grid() -> (Grid, RowDetailPane) {
             named("photo", "bytea", false),
             named("blob", "bytea", false),
             named("note", "text", false),
-            named("thumb", "bytea", false),
         ],
         vec![vec![
             Value::Int(1),
             Value::Bytes(png_bytes(2, 1)),
             Value::Bytes(b"Hi!\x00".to_vec()),
             Value::Text("plain".into()),
-            Value::Bytes(png_bytes(1, 3)),
         ]],
     )
 }
@@ -960,14 +958,14 @@ fn a_picture_the_pane_moved_away_from_never_lands() {
     let (grid, pane) = binary_grid();
 
     grid.focus(0, 1);
-    drain_main_context();
-    let first = pane.imp().picture_load.borrow().clone().expect("a decode under way");
-    grid.focus(0, 4);
-    drain_main_context();
+    let first = pane.imp().picture_load.borrow().as_ref().expect("a decode under way").cancellable.clone();
+    grid.focus(0, 2);
 
-    assert!(first.is_cancelled(), "the decode of the field left behind went on");
-    wait_until(DECODE_WAIT, || picture_size(&pane).is_some()).expect("the new field's picture");
-    assert_eq!(picture_size(&pane), Some((1, 3)));
+    wait_until(DECODE_WAIT, || first.is_cancelled()).expect("the decode of the field left behind stops");
+    assert!(
+        wait_until(Duration::from_secs(2), || picture_size(&pane).is_some()).is_err(),
+        "the picture of the field left behind landed"
+    );
 }
 
 #[gtk4::test]

@@ -7,6 +7,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 
 use super::Shown;
+use super::picture::PictureLoad;
 use super::value_editor::{Loaded, OpenEdit, Placeholders};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::handler_guard::HandlerGuard;
@@ -74,8 +75,7 @@ pub struct RowDetailPane {
     pub loaded: RefCell<Option<Loaded>>,
     pub placeholders: RefCell<Placeholders>,
     pub edit: RefCell<Option<OpenEdit>>,
-    /// Stops the decode of a picture the pane no longer shows.
-    pub picture_load: RefCell<Option<gio::Cancellable>>,
+    pub picture_load: RefCell<Option<PictureLoad>>,
     /// Set while the pane writes the buffer itself, which is no edit.
     pub loading: Cell<bool>,
     /// Set while the pane selects a field itself, which moves no focus.
@@ -114,7 +114,7 @@ impl ObjectSubclass for RowDetailPane {
 impl ObjectImpl for RowDetailPane {
     fn dispose(&self) {
         if let Some(load) = self.picture_load.take() {
-            load.cancel();
+            load.stop();
         }
         self.guards.take();
         self.obj().stop_watching_columns();

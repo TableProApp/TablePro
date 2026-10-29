@@ -1,6 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
+use tablepro_session::runtime::Tasks;
 
 use super::RowDetailPane;
 
@@ -16,12 +17,26 @@ pub(super) fn may_be_image(bytes: &[u8]) -> bool {
     gio::content_type_get_mime_type(&content_type).is_some_and(|mime| mime.starts_with("image/"))
 }
 
+#[derive(Debug)]
+pub struct PictureLoad {
+    pub(super) cancellable: gio::Cancellable,
+    tasks: Tasks,
+}
+
+impl PictureLoad {
+    // glycin's cancel handler spawns on the runtime, which the GTK thread has not entered.
+    pub fn stop(self) {
+        let Self { cancellable, tasks } = self;
+        drop(tasks.spawn_task(async move { cancellable.cancel() }));
+    }
+}
+
 impl RowDetailPane {
     // Database bytes are untrusted, so they decode in glycin's sandbox, never in this process.
     pub(super) fn show_picture(&self, bytes: Option<&[u8]>) {
         let imp = self.imp();
         if let Some(superseded) = imp.picture_load.take() {
-            superseded.cancel();
+            superseded.stop();
         }
         let picture = imp.value_picture.get();
         picture.set_paintable(None::<&gdk::Paintable>);
@@ -33,15 +48,20 @@ impl RowDetailPane {
             return;
         };
         let cancellable = gio::Cancellable::new();
-        imp.picture_load.replace(Some(cancellable.clone()));
-        let decode = decode(glib::Bytes::from(bytes), cancellable.clone());
+        let decode = tasks.spawn_task(decode(glib::Bytes::from(bytes), cancellable.clone()));
+        imp.picture_load.replace(Some(PictureLoad {
+            cancellable: cancellable.clone(),
+            tasks,
+        }));
         let pane = self.downgrade();
         glib::spawn_future_local(async move {
-            let decoded = tasks.spawn_task(decode).await;
+            let decoded = decode.await;
             let Some(pane) = pane.upgrade() else {
                 return;
             };
-            if cancellable.is_cancelled() {
+            // The stop of a superseded decode lands on the runtime later than this may.
+            let current = pane.imp().picture_load.borrow().as_ref().is_some_and(|load| load.cancellable == cancellable);
+            if !current {
                 return;
             }
             pane.imp().picture_load.take();
