@@ -24,11 +24,24 @@ struct EntitlementVerifierTests {
         }
 
         struct Claims: Decodable {
+            struct License: Decodable {
+                let id: String
+                let renewsAt: String?
+                let endsAt: String?
+
+                enum CodingKeys: String, CodingKey {
+                    case id
+                    case renewsAt = "renews_at"
+                    case endsAt = "ends_at"
+                }
+            }
+
             let sub: String
             let dev: String
             let features: [String]
             let exp: Int64
             let offline: Bool
+            let licenses: [License]
         }
 
         let key: Key
@@ -80,7 +93,23 @@ struct EntitlementVerifierTests {
             #expect(entitlement.features == Set(claims.features), "\(vector.name)")
             #expect(entitlement.expiresAt == Date(timeIntervalSince1970: TimeInterval(claims.exp)), "\(vector.name)")
             #expect(entitlement.isOffline == claims.offline, "\(vector.name)")
+            #expect(entitlement.licenses.map { $0.id } == claims.licenses.map { $0.id }, "\(vector.name)")
+            for (license, claim) in zip(entitlement.licenses, claims.licenses) {
+                #expect(license.renewsAt == claim.renewsAt.flatMap { try? Date($0, strategy: .iso8601) }, "\(vector.name)")
+                #expect(license.endsAt == claim.endsAt.flatMap { try? Date($0, strategy: .iso8601) }, "\(vector.name)")
+            }
         }
+    }
+
+    @Test("The vectors include a subscription that renews, so renews_at is read from a real token")
+    func vectorsCarryARenewal() throws {
+        let vectors = try Self.vectors()
+        let verifier = try Self.verifier(vectors)
+        let now = Date(timeIntervalSince1970: TimeInterval(vectors.now))
+        let renewals = try vectors.valid.flatMap { vector in
+            try verifier.verify(vector.token, machineID: vectors.machineID, now: now).licenses.compactMap(\.renewsAt)
+        }
+        #expect(renewals == [try Date("2026-11-14T10:00:00Z", strategy: .iso8601)])
     }
 
     @Test("Every invalid vector fails the check it names")

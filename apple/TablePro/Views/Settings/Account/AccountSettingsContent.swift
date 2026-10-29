@@ -18,6 +18,7 @@ internal struct AccountSettingsContent: Equatable {
     enum PlanStatus: Equatable {
         case active
         case lifetime
+        case renewsOn(Date)
         case endsOn(Date)
         case canceling(endsAt: Date?)
         case paymentProblem
@@ -220,6 +221,9 @@ internal struct AccountSettingsContent: Equatable {
         case "active":
             if let endsAt = license.endsAt {
                 return .endsOn(endsAt)
+            }
+            if let renewsAt = license.renewsAt {
+                return .renewsOn(renewsAt)
             }
             return isBilled && license.cycle == "lifetime" ? .lifetime : .active
         default:

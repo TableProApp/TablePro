@@ -23,10 +23,13 @@ struct AccountSettingsContentTests {
         cycle: String = "lifetime",
         source: String = "order",
         status: String = "active",
+        renewsAt: Date? = nil,
         endsAt: Date? = nil,
         team: EntitlementLicense.Team? = nil
     ) -> EntitlementLicense {
-        EntitlementLicense(id: id, plan: plan, cycle: cycle, source: source, status: status, endsAt: endsAt, team: team)
+        EntitlementLicense(
+            id: id, plan: plan, cycle: cycle, source: source, status: status, renewsAt: renewsAt, endsAt: endsAt, team: team
+        )
     }
 
     static func entitlement(
@@ -142,6 +145,22 @@ struct AccountSettingsContentTests {
         let unknown = try plan(Self.license(cycle: "monthly", source: "voucher"))
         #expect(unknown.title == "Starter")
         #expect(unknown.billing == nil)
+    }
+
+    @Test("An active subscription renews on its renews_at, which the entitlement carries, so an offline Mac shows it too")
+    func renewsOn() throws {
+        let renewsAt = Self.now.addingTimeInterval(20 * Self.day)
+        let subscription = Self.license(cycle: "monthly", source: "subscription", renewsAt: renewsAt)
+        let online = Self.make(AccountState(
+            isSignedIn: true, entitlement: Self.entitlement([subscription]), refresh: .succeeded(Self.now)
+        ))
+        let offline = Self.make(AccountState(
+            isSignedIn: true, entitlement: Self.entitlement([subscription]), refresh: .failed(.network("offline"))
+        ))
+
+        #expect(try #require(online.plans.first).status == .renewsOn(renewsAt))
+        #expect(try #require(offline.plans.first).status == .renewsOn(renewsAt))
+        #expect(try #require(online.plans.first).title == "Starter, Monthly")
     }
 
     @Test("A signed-in account without licenses is on Free")

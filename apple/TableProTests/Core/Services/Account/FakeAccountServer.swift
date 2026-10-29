@@ -237,11 +237,13 @@ actor FakeAccountServer {
         cycle: String = "lifetime",
         source: String = "order",
         status: String = "active",
+        renewsAt: String? = nil,
         endsAt: String? = nil,
         team: (id: String, name: String)? = nil
     ) -> [String: Any] {
         [
             "id": id, "plan": plan, "cycle": cycle, "source": source, "status": status,
+            "renews_at": renewsAt ?? NSNull(),
             "ends_at": endsAt ?? NSNull(),
             "team": team.map { ["id": $0.id, "name": $0.name] } ?? NSNull()
         ]

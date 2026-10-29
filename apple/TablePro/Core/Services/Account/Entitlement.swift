@@ -16,6 +16,8 @@ internal struct EntitlementLicense: Equatable, Sendable {
     let cycle: String
     let source: String
     let status: String
+    // An active subscription's period end; nil for every other license.
+    let renewsAt: Date?
     let endsAt: Date?
     let team: Team?
 }
@@ -52,11 +54,13 @@ extension Entitlement {
             let cycle: String
             let source: String
             let status: String
+            let renewsAt: String?
             let endsAt: String?
             let team: Team?
 
             enum CodingKeys: String, CodingKey {
                 case id, plan, cycle, source, status, team
+                case renewsAt = "renews_at"
                 case endsAt = "ends_at"
             }
         }
@@ -82,18 +86,14 @@ extension Entitlement {
     init(token: String, claims: Claims) throws(EntitlementVerifier.Failure) {
         var licenses: [EntitlementLicense] = []
         for license in claims.licenses ?? [] {
-            var endsAt: Date?
-            if let text = license.endsAt {
-                guard let date = try? Date(text, strategy: .iso8601) else { throw .malformed }
-                endsAt = date
-            }
             licenses.append(EntitlementLicense(
                 id: license.id,
                 plan: license.plan,
                 cycle: license.cycle,
                 source: license.source,
                 status: license.status,
-                endsAt: endsAt,
+                renewsAt: try Self.date(license.renewsAt),
+                endsAt: try Self.date(license.endsAt),
                 team: license.team.map { EntitlementLicense.Team(id: $0.id, name: $0.name) }
             ))
         }
@@ -112,5 +112,11 @@ extension Entitlement {
             expiresAt: Date(timeIntervalSince1970: TimeInterval(claims.exp)),
             isOffline: claims.offline ?? false
         )
+    }
+
+    private static func date(_ text: String?) throws(EntitlementVerifier.Failure) -> Date? {
+        guard let text else { return nil }
+        guard let date = try? Date(text, strategy: .iso8601) else { throw .malformed }
+        return date
     }
 }

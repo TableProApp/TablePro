@@ -19,7 +19,7 @@ struct FeatureAccessTests {
             features: features,
             licenses: licensed
                 ? [EntitlementLicense(id: "lic", plan: "starter", cycle: "lifetime", source: "order",
-                                      status: "active", endsAt: nil, team: nil)]
+                                      status: "active", renewsAt: nil, endsAt: nil, team: nil)]
                 : [],
             email: "ada@m16.example",
             name: nil,

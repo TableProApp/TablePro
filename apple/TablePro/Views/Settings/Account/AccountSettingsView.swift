@@ -481,6 +481,9 @@ private struct AccountPlanStatusLabel: View {
         case .lifetime:
             Text("Lifetime")
                 .foregroundStyle(.secondary)
+        case .renewsOn(let date):
+            Text(String(format: String(localized: "Renews on %@"), date.formatted(date: .abbreviated, time: .omitted)))
+                .foregroundStyle(.secondary)
         case .endsOn(let date), .canceling(endsAt: .some(let date)):
             Text(String(format: String(localized: "Ends on %@"), date.formatted(date: .abbreviated, time: .omitted)))
                 .foregroundStyle(.secondary)

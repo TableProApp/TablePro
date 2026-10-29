@@ -147247,6 +147247,9 @@
         }
       }
     },
+    "Renews on %@" : {
+
+    },
     "Reopen Closed Tab" : {
       "localizations" : {
         "fr" : {
