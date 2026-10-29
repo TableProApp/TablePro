@@ -13,24 +13,24 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | DuckDB | Built | DuckDB.NET with DuckDB 1.5 |
 | CockroachDB, Redshift, PGlite | Built | Through the PostgreSQL driver |
 | TiDB, OceanBase, Databend | Built | Through the MySQL driver |
-| Redis | Partial | StackExchange.Redis. Keys by type, MULTI/EXEC saves, INFO and CLIENT LIST. No Cluster or Sentinel; filters and sorts apply to the loaded page |
+| Redis | Partial | StackExchange.Redis. Standalone, Sentinel (primary group, own Sentinel login, failover followed) and Cluster (seed list; DBSIZE, KEYS, SCAN and FLUSHDB across primaries; multi-key commands split by hash slot; single-slot transactions), set with `mode`, `sentinelHosts`, `sentinelMasterName` and `clusterHosts` options. TLS with a private CA and a client certificate. Keys by type, MULTI/EXEC saves, Delete (`DEL`) and F2 (`RENAME`) on sidebar keys, INFO and CLIENT LIST. A cluster serves db0 only. No TTL cell to edit, no key type filter and no ElastiCache IAM sign-in, which macOS has. Filters and sorts inside a key apply to the loaded page; macOS has no server-side filter inside a key either |
 | MongoDB | Built | Official driver. A mongosh parser for the editor, inferred columns, saves in a transaction on replica sets; the review shows mongosh commands |
 | ClickHouse | Built | ClickHouse.Client over HTTP. Saves are synchronous mutations probed to touch one row; no ON CLUSTER |
 | Oracle | Built | ODP.NET managed. PL/SQL blocks end at a lone /. DBMS_OUTPUT and SQL*Plus commands are not handled |
-| Teradata | Partial | Teradata .NET provider. No activity view; paging orders by a constant until the browse passes its sort to paging |
+| Teradata | Built | Teradata .NET provider. The first page reads TOP n; later pages number rows with QUALIFY ROW_NUMBER over the browse sort, or the key (else the first column) when unsorted, as macOS does. No activity view, which macOS lacks too |
 | Cassandra, ScyllaDB | Built | DataStax driver. Values go through romJson, saves are one logged batch, paging by paging state; Amazon Keyspaces SigV4 |
 | DynamoDB | Built | AWS SDK. Scan paging, filter expressions, conditional TransactWriteItems saves, PartiQL editor; no GSI query path |
-| Snowflake | Partial | Snowflake.Data. Key-pair and browser sign-in; structure is read-only |
+| Snowflake | Built | Snowflake.Data. Key-pair and browser sign-in. Structure editing within Snowflake's ALTER rules as macOS has them: a VARCHAR only widens, a NUMBER keeps its scale, a default can only be dropped; no indexes, and foreign keys only in CREATE TABLE |
 | BigQuery | Built | Google client. Dry-run byte limit, saves as one script in a transaction; nested fields are read-only |
 | Spanner | Built | Google client. DDL through the admin API, saves retried on abort; GoogleSQL databases only |
-| Trino | Partial | REST protocol. Values are typed literals since the protocol cannot bind; saves are probed but not atomic |
+| Trino | Built | REST protocol. Values are typed literals since the protocol cannot bind. Saves count each keyed row first but are not atomic: most connectors refuse writes inside a transaction, and macOS runs them one at a time the same way |
 | Elasticsearch | Built | REST. Deep paging with a point in time, bulk saves, tasks with cancel |
 | Typesense, Weaviate | Built | REST and GraphQL. Weaviate writes one request at a time |
-| SurrealDB | Partial | HTTP /sql. Saves in one transaction; datetimes and decimals arrive as text |
-| Kafka | Partial | Confluent.Kafka. Topics browse merged by timestamp, KafkaQL editor, consumer groups with lag; inserts only. librdkafka has no win-arm64 build, so Kafka does not load on Arm64 |
+| SurrealDB | Built | SurrealDB 2 over the RPC in CBOR, as macOS, so datetimes, decimals and record ids arrive typed; SurrealDB 1, which macOS does not support, over HTTP /sql, where declared datetime and decimal fields are read typed. Saves in one transaction |
+| Kafka | Partial | Confluent.Kafka. Topics browse merged by timestamp, KafkaQL editor (CREATE and DROP TOPIC, PRODUCE), grid inserts, consumer groups with lag and deleting empty groups, Delete on a sidebar topic drops it. Messages cannot be edited or deleted, and there is no schema registry or topic config editing; macOS has none of these either and does fewer writes. macOS can dial only the bootstrap address through a tunnel, which librdkafka cannot. librdkafka has no win-arm64 build, so Kafka does not load on Arm64 |
 | etcd | Built | v3 JSON gateway. Prefix browsing, etcdctl editor, saves as compare-and-swap transactions |
 | Cloudflare D1, R2 SQL | Built | REST. D1 saves are one checked batch; R2 SQL is read-only and stops at 10,000 rows |
-| libSQL, Turso | Partial | Hrana over HTTP with a stream per tab. No local file mode or structure editor |
+| libSQL, Turso | Partial | Hrana over HTTP with a stream per tab, and local files (a `file:` URL, or macOS's `libsqlMode=local`) through the SQLite driver with its full structure editor. Remote structure edits are the one-statement ones; a type, nullability, default, foreign key or check change needs a table rebuild, which macOS also runs only on a local file. Local files have no loadable extensions, as the SQLite connection has none |
 | Dameng, SAP HANA | Partial | Through the vendor's 64-bit ODBC driver, installed with its client. Catalog, DDL, saves in a transaction, activity with kill; written from vendor documentation and not yet run against a server |
 | Beancount | Built | Read-only. The ledger and its includes are projected into SQLite by beancount or rledger, rebuilt when a file changes; BQL needs rledger |
 | Plugin system | Not planned | Drivers are compiled in, as on Linux (`linux/docs/decisions/0001-no-plugin-system.md`) |
@@ -49,7 +49,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Import and export connections | Built | macOS format 1 and 2, with the macOS passphrase encryption carrying saved passwords; imported tunnel commands start turned off |
 | Database switcher, schema switcher | Built | |
 | SOCKS and HTTP proxy, Cloud SQL proxy, Cloudflare tunnel, tunnel command | Built | Managed loopback forwarders and child processes; commands run without a shell. Not run against live services yet |
-| Kerberos, Microsoft Entra ID, IAM sign-in | Partial | Entra ID for SQL Server and Azure PostgreSQL/MySQL, AWS RDS IAM, Kerberos with the Windows logon ticket. No Google Cloud IAM or Redshift IAM |
+| Kerberos, Microsoft Entra ID, IAM sign-in | Built | Entra ID for SQL Server and Azure PostgreSQL/MySQL, AWS RDS IAM, Kerberos with the Windows logon ticket. Google Cloud IAM for Cloud SQL PostgreSQL and MySQL, from application default credentials or a service account key (a file path or the JSON). Redshift IAM from an access key, profile or SSO: `GetClusterCredentials` for a named user, `GetClusterCredentialsWithIAM` without one, and Serverless `GetCredentials`, with an endpoint field for port forwards. A gcloud user login keeps the scopes it was granted, where macOS narrows it to Cloud SQL sign-in |
 | iCloud sync | Not planned | Apple-only service |
 
 ## Sidebar
@@ -111,12 +111,12 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | Save in one transaction, refused when a change would touch other than one row | Built | Safe Mode shows the statements first |
 | CSV import | Built | Header names map to columns |
 | JSON, NDJSON and JSON Lines import | Built | Arrays are streamed; keys map to columns |
-| SQL import, import mapping editor | Partial | Streamed SQL import with a transaction and progress; a mapping editor for CSV and JSON into an existing or new table. Insert only, mappings are not remembered |
+| SQL import, import mapping editor | Partial | Streamed SQL import with a transaction, progress and an encoding picker that starts on the dump's declared encoding (`SET NAMES`, `client_encoding`). A mapping editor for CSV and JSON into an existing or new table, with Insert, Update, Insert or Update, and Insert, Skip Existing, matched on the primary key or a unique index as on macOS. Mappings are remembered per table. Missing: the remembered encoding, guessing the encoding from the bytes, and "delete existing rows first", since rows commit a batch at a time |
 | Structure: columns, indexes, foreign keys, triggers | Built | |
 | Structure editing: add, edit, rename, drop columns, add and drop indexes and foreign keys | Built | DDL is reviewed before it runs |
 | Check constraints, partitions, table options editors | Built | PostgreSQL, MySQL and MariaDB, SQL Server, SQLite, DuckDB, Oracle, ClickHouse as each allows. No SQL Server partitions; an unpartitioned table cannot be partitioned |
 | Definition view | Built | |
-| Data Rewind, Compare and Sync | Partial | One table pair per compare with a reviewed sync plan, schema compare with migration DDL, and an encrypted local journal that undoes grid saves. No saved compare profiles or multi-table scopes |
+| Data Rewind, Compare and Sync | Partial | Data compare of one table pair, a chosen set of tables or the whole schema, with each side's connection and schema, a per-table key, column, filter and row-limit scope, per-table counts, drill-in to a table's rows and one reviewed sync script ordered by foreign keys. Saved comparison profiles reopen both sides, the scope and the options. Schema compare with migration DDL, and an encrypted local journal that undoes grid saves. A multi-table sync commits each table's inserts, updates and deletes on their own, where macOS runs the whole script in one transaction; no last-setup restore |
 
 ## Workspace
 
@@ -130,10 +130,10 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 | ER diagram | Built | Up to 150 tables, draggable |
 | Export a whole schema to a SQL file | Built | Structure and data |
 | Run a SQL file | Built | |
-| Users and roles editing | Partial | PostgreSQL, MySQL and MariaDB, SQL Server: principals, attributes, memberships and grants at every scope, staged with undo and reviewed before apply. Other engines list users only; one principal selected at a time |
+| Users and roles editing | Built | PostgreSQL, MySQL and MariaDB, SQL Server and Oracle: principals, attributes, memberships and grants at every scope, staged with undo and reviewed before apply. Typesense API keys are listed with their grants, created and deleted; keys cannot change, as on macOS. Several principals can be dropped together, and several objects of one kind granted on at once. Other engines list users only, as on macOS |
 | Routine debugger | Built | PL/pgSQL through pldebugger and Oracle PL/SQL through DBMS_DEBUG, with breakpoints, stepping, call stack and variables. No DBMS_DEBUG_JDWP; not yet run against a server |
 | Join builder, row generator, object copy between connections | Built | Foreign-key join suggestions on a canvas, seeded test data with foreign keys and unique columns, and copies that add foreign keys after the rows. A copy is not one transaction |
-| Git and version history for SQL files, linked folders, team library | Partial | Watched folders, local versions on save, Git log, diff, restore, commit, pull and push through git.exe. The team library client is ported but hidden until licensing exists on Windows |
+| Git and version history for SQL files, linked folders, team library | Partial | Watched folders, local versions on save, Git log, diff, restore, commit, pull and push through git.exe. The team library shows in the SQL files pane while an active Team license grants it: pulled on activation and weekly, cleared on deactivation, saved queries published from Favorites. Team connections are not yet listed on the welcome window |
 
 ## AI and MCP
 
@@ -152,6 +152,7 @@ What the Windows app has, compared with the macOS app feature by feature, and wh
 |---|---|---|
 | Fluent Design: acrylic, Mica, Mica Alt, light, dark, high contrast | Built | |
 | Settings | Built | |
+| Licensing | Partial | The macOS license service and rules: RSA-SHA256 payload checks with the macOS public key, activation by key or team invite, deactivation, seat release, machine binding to the SMBIOS UUID, weekly checks with 30 days offline grace, the key in Credential Manager, and Settings > License with devices, team roster and plans. The team library is gated; Result Charts, Compare & Sync, Data Rewind and Encrypted Export are listed as Starter features but not yet gated where they run |
 | Crash log on disk | Built | `%LOCALAPPDATA%\TablePro\logs\errors.log` |
 | Keyboard shortcut customization | Built | Settings > Keyboard records chords, warns about conflicts and applies at once; grid keys are fixed |
 | Translations | Partial | English, French, Korean, Turkish, Vietnamese, Simplified and Traditional Chinese, as on macOS, with a language picker in Settings > General. Text composed in Core, Storage and the drivers (validation messages, plan and analyzer notes, engine errors) is still English, and translations made for Windows alone await native review |
