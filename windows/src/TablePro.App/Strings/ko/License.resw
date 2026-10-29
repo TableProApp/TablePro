@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Activate" xml:space="preserve">
+    <value>활성화</value>
+    <comment>Button that activates the license key typed above it (verb).</comment>
+  </data>
+  <data name="BuyLicense" xml:space="preserve">
+    <value>라이선스 구매</value>
+  </data>
+  <data name="CopyKey" xml:space="preserve">
+    <value>키 복사</value>
+    <comment>Button that copies the license key.</comment>
+  </data>
+  <data name="Deactivate" xml:space="preserve">
+    <value>비활성화</value>
+    <comment>Confirmation button (verb).</comment>
+  </data>
+  <data name="DeactivateButton" xml:space="preserve">
+    <value>이 PC에서 비활성화…</value>
+    <comment>Button that gives up this computer's seat on the license.</comment>
+  </data>
+  <data name="DeactivateMessage" xml:space="preserve">
+    <value>유료 기능이 이 PC에서 즉시 중지됩니다. 나중에 이 라이선스를 다시 활성화할 수 있습니다.</value>
+  </data>
+  <data name="DeactivateTitle" xml:space="preserve">
+    <value>이 라이선스를 비활성화하시겠습니까?</value>
+  </data>
+  <data name="DeviceCount" xml:space="preserve">
+    <value>기기 {1}대 중 {0}대</value>
+    <comment>{0} is the number of activated devices, {1} the license's limit.</comment>
+  </data>
+  <data name="DevicesHeader" xml:space="preserve">
+    <value>기기</value>
+  </data>
+  <data name="ErrorActivationLimit" xml:space="preserve">
+    <value>이 라이선스는 활성화 한도에 도달했습니다. 계정에서 기기를 하나 제거한 후 다시 활성화하십시오.</value>
+  </data>
+  <data name="ErrorDecoding" xml:space="preserve">
+    <value>서버 응답을 읽을 수 없습니다. 잠시 후 다시 시도하십시오.</value>
+  </data>
+  <data name="ErrorExpired" xml:space="preserve">
+    <value>이 라이선스는 만료되었습니다. 유료 기능을 계속 사용하려면 갱신하십시오.</value>
+  </data>
+  <data name="ErrorInvalidKey" xml:space="preserve">
+    <value>올바른 라이선스 키가 아닌 것 같습니다. 오타가 있는지 확인하고 다시 시도하십시오.</value>
+  </data>
+  <data name="ErrorKeyFormat" xml:space="preserve">
+    <value>라이선스 키 형식이 올바르지 않습니다. 오타를 확인한 후 다시 시도하십시오.</value>
+  </data>
+  <data name="ErrorMachineMismatch" xml:space="preserve">
+    <value>이 라이선스는 다른 컴퓨터에서 활성화되었습니다. 여기에서 활성화하면 유료 기능을 사용할 수 있습니다.</value>
+  </data>
+  <data name="ErrorNetwork" xml:space="preserve">
+    <value>라이선스 서버에 연결할 수 없습니다. 인터넷 연결을 확인한 후 다시 시도하십시오.</value>
+  </data>
+  <data name="ErrorNotActivated" xml:space="preserve">
+    <value>이 컴퓨터에서는 이 라이선스가 활성화되어 있지 않습니다.</value>
+  </data>
+  <data name="ErrorSeatUnconfirmed" xml:space="preserve">
+    <value>라이선스 서버에 연결하지 못해 해당 좌석이 만료될 때까지 사용 중으로 남을 수 있습니다.</value>
+  </data>
+  <data name="ErrorServer" xml:space="preserve">
+    <value>문제가 발생했습니다(오류 {0}). 잠시 후 다시 시도하십시오.</value>
+    <comment>{0} is an HTTP status code.</comment>
+  </data>
+  <data name="ErrorSuspended" xml:space="preserve">
+    <value>이 라이선스는 정지되었습니다. 지원팀에 문의하십시오.</value>
+  </data>
+  <data name="ErrorVerification" xml:space="preserve">
+    <value>라이선스를 확인하지 못했습니다. 앱을 최신 버전으로 업데이트해 보십시오.</value>
+  </data>
+  <data name="ExpiresOn" xml:space="preserve">
+    <value>{0} 만료</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="FeatureCompareSync" xml:space="preserve">
+    <value>비교 및 동기화</value>
+  </data>
+  <data name="FeatureCompareSyncDescription" xml:space="preserve">
+    <value>두 연결 사이의 구조 또는 데이터를 비교하고 동기화 스크립트를 생성합니다.</value>
+  </data>
+  <data name="FeatureDataRewind" xml:space="preserve">
+    <value>데이터 되감기</value>
+  </data>
+  <data name="FeatureDataRewindDescription" xml:space="preserve">
+    <value>이미 저장한 행의 이전 값을 복원합니다.</value>
+  </data>
+  <data name="FeatureEncryptedExport" xml:space="preserve">
+    <value>암호화된 내보내기</value>
+  </data>
+  <data name="FeatureEncryptedExportDescription" xml:space="preserve">
+    <value>암호화된 자격 증명과 함께 연결을 내보냅니다.</value>
+  </data>
+  <data name="FeatureResultCharts" xml:space="preserve">
+    <value>결과 차트</value>
+  </data>
+  <data name="FeatureResultChartsDescription" xml:space="preserve">
+    <value>불러온 쿼리 결과를 막대, 선, 영역 차트로 그립니다.</value>
+  </data>
+  <data name="FeatureTeamLibrary" xml:space="preserve">
+    <value>팀 라이브러리</value>
+  </data>
+  <data name="FeatureTeamLibraryDescription" xml:space="preserve">
+    <value>계정을 통해 연결 및 저장된 쿼리를 팀과 공유하십시오. 암호는 절대 포함되지 않습니다.</value>
+  </data>
+  <data name="Included" xml:space="preserve">
+    <value>포함됨</value>
+    <comment>Shown beside a plan the current license includes.</comment>
+  </data>
+  <data name="IncludesEverything" xml:space="preserve">
+    <value>{0}의 모든 기능을 포함합니다.</value>
+    <comment>{0} is a lower plan's name.</comment>
+  </data>
+  <data name="KeyPlaceholder" xml:space="preserve">
+    <value>라이선스 키 또는 초대 코드</value>
+    <comment>Placeholder of the box a license key or a team invite code is typed into.</comment>
+  </data>
+  <data name="LandingMessage" xml:space="preserve">
+    <value>나머지 기능은 라이선스 없이도 계속 작동하며, 남은 기간을 세지 않습니다.</value>
+  </data>
+  <data name="LandingTitle" xml:space="preserve">
+    <value>유료 기능 잠금 해제</value>
+    <comment>Heading on the license page when no license is active.</comment>
+  </data>
+  <data name="LastUsed" xml:space="preserve">
+    <value>마지막 사용 {0}</value>
+    <comment>{0} is a date.</comment>
+  </data>
+  <data name="LearnMore" xml:space="preserve">
+    <value>라이선스에 대해 자세히 알아보기</value>
+  </data>
+  <data name="LicenseKey" xml:space="preserve">
+    <value>라이선스 키</value>
+  </data>
+  <data name="LicenseKeyHidden" xml:space="preserve">
+    <value>라이선스 키, 가려짐</value>
+    <comment>Screen reader text for the masked license key.</comment>
+  </data>
+  <data name="LoadingDevices" xml:space="preserve">
+    <value>기기를 불러오는 중…</value>
+  </data>
+  <data name="LoadingTeam" xml:space="preserve">
+    <value>팀을 불러오는 중…</value>
+  </data>
+  <data name="ManageAccount" xml:space="preserve">
+    <value>계정 관리</value>
+    <comment>Link to the account page on tablepro.app.</comment>
+  </data>
+  <data name="ManageDevices" xml:space="preserve">
+    <value>기기 관리</value>
+    <comment>Link to the account page listing the devices a license is activated on.</comment>
+  </data>
+  <data name="MemberCount" xml:space="preserve">
+    <value>멤버 {1}명 중 {0}명</value>
+    <comment>{0} is the number of members, {1} the team's seats.</comment>
+  </data>
+  <data name="NoDevices" xml:space="preserve">
+    <value>이 라이선스로 활성화된 기기가 없습니다.</value>
+  </data>
+  <data name="NoMembers" xml:space="preserve">
+    <value>아직 이 팀에 참여한 사람이 없습니다.</value>
+  </data>
+  <data name="NoticeExpiredMessage" xml:space="preserve">
+    <value>유료 기능을 다시 사용하려면 갱신하십시오. 나머지 기능은 계속 작동합니다.</value>
+  </data>
+  <data name="NoticeExpiredTitle" xml:space="preserve">
+    <value>라이선스가 만료되었습니다</value>
+  </data>
+  <data name="NoticeExpiresInDays" xml:space="preserve">
+    <value>이 라이선스는 {0}일 후 만료됩니다.</value>
+    <comment>{0} is a number of days, from 2 to 7.</comment>
+  </data>
+  <data name="NoticeExpiresToday" xml:space="preserve">
+    <value>이 라이선스는 오늘 만료됩니다.</value>
+  </data>
+  <data name="NoticeExpiresTomorrow" xml:space="preserve">
+    <value>이 라이선스는 내일 만료됩니다.</value>
+  </data>
+  <data name="NoticeExpiringTitle" xml:space="preserve">
+    <value>라이선스가 곧 만료됩니다</value>
+  </data>
+  <data name="NoticeNotRecognizedMessage" xml:space="preserve">
+    <value>서버가 이 라이선스 키를 더 이상 알지 못합니다.</value>
+  </data>
+  <data name="NoticeNotRecognizedTitle" xml:space="preserve">
+    <value>라이선스를 인식할 수 없습니다</value>
+  </data>
+  <data name="NoticeRemovedMessage" xml:space="preserve">
+    <value>이 PC는 더 이상 좌석을 보유하지 않습니다.</value>
+  </data>
+  <data name="NoticeRemovedTitle" xml:space="preserve">
+    <value>라이선스 제거됨</value>
+  </data>
+  <data name="NoticeSuspendedMessage" xml:space="preserve">
+    <value>문의해 주시면 해결해 드리겠습니다.</value>
+  </data>
+  <data name="NoticeSuspendedTitle" xml:space="preserve">
+    <value>라이선스가 정지되었습니다</value>
+  </data>
+  <data name="NoticeValidationMessage" xml:space="preserve">
+    <value>TablePro가 30일 동안 라이선스 서버에 연결하지 못해 유료 기능이 일시 중지되었습니다.</value>
+  </data>
+  <data name="NoticeValidationTitle" xml:space="preserve">
+    <value>이 라이선스를 확인하지 못했습니다</value>
+  </data>
+  <data name="OneTime" xml:space="preserve">
+    <value>일회성</value>
+    <comment>A license bought once that never expires.</comment>
+  </data>
+  <data name="PageTitle" xml:space="preserve">
+    <value>라이선스</value>
+    <comment>Settings page and navigation item for the TablePro license.</comment>
+  </data>
+  <data name="PlanTitle" xml:space="preserve">
+    <value>{0} 요금제</value>
+    <comment>{0} is a plan name, Starter or Team.</comment>
+  </data>
+  <data name="Release" xml:space="preserve">
+    <value>해제</value>
+    <comment>Confirmation button that frees a device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseAutomation" xml:space="preserve">
+    <value>{0}의 좌석 해제</value>
+    <comment>Screen reader name of the Release button. {0} is a device name.</comment>
+  </data>
+  <data name="ReleaseButton" xml:space="preserve">
+    <value>해제…</value>
+    <comment>Button that frees another device's seat (verb).</comment>
+  </data>
+  <data name="ReleaseMessage" xml:space="preserve">
+    <value>해당 기기는 7일 이내의 다음 확인까지 계속 작동하며, 그 후 유료 기능이 일시 중지됩니다.</value>
+  </data>
+  <data name="ReleaseTitle" xml:space="preserve">
+    <value>“{0}”의 좌석을 해제하시겠습니까?</value>
+    <comment>{0} is a device name.</comment>
+  </data>
+  <data name="RenewLicense" xml:space="preserve">
+    <value>라이선스 갱신</value>
+  </data>
+  <data name="RoleAdmin" xml:space="preserve">
+    <value>관리자</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleMember" xml:space="preserve">
+    <value>멤버</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleOwner" xml:space="preserve">
+    <value>소유자</value>
+    <comment>Role on a team license.</comment>
+  </data>
+  <data name="RoleYou" xml:space="preserve">
+    <value>{0} (나)</value>
+    <comment>{0} is a role on the team, marking the license owner's row.</comment>
+  </data>
+  <data name="TeamHeader" xml:space="preserve">
+    <value>팀</value>
+    <comment>Heading of the team roster.</comment>
+  </data>
+  <data name="TeamSeatsFooter" xml:space="preserve">
+    <value>팀 라이선스의 좌석은 tablepro.app에서 관리합니다.</value>
+  </data>
+  <data name="ThisDevice" xml:space="preserve">
+    <value>이 PC</value>
+    <comment>Marks the computer the app is running on in the device list.</comment>
+  </data>
+  <data name="TierStarter" xml:space="preserve">
+    <value>Starter</value>
+    <comment>Name of the Starter plan.</comment>
+  </data>
+  <data name="TierTeam" xml:space="preserve">
+    <value>팀</value>
+    <comment>Name of the Team plan.</comment>
+  </data>
+  <data name="TryAgain" xml:space="preserve">
+    <value>다시 시도</value>
+  </data>
+  <data name="UpgradePlan" xml:space="preserve">
+    <value>요금제 업그레이드</value>
+  </data>
+</root>

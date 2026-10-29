@@ -103,6 +103,11 @@ public sealed class HttpTeamLibraryApiClient(HttpClient http) : ITeamLibraryApiC
         {
             throw new TeamLibraryException("The team library could not be reached: " + ex.Message, ex);
         }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // HttpClient reports its own timeout as a cancellation; only the caller's token is a real one.
+            throw new TeamLibraryException("The team library did not answer in time.", ex);
+        }
 
         if (response.IsSuccessStatusCode)
         {

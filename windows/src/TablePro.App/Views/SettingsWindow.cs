@@ -38,6 +38,7 @@ public sealed partial class SettingsWindow : Window
         }
 
         navigation.MenuItems.Insert(2, new NavigationViewItem { Content = PageTitle(KeyboardPage), Tag = KeyboardPage, Icon = new FontIcon { Glyph = "" } });
+        navigation.MenuItems.Add(new NavigationViewItem { Content = PageTitle(LicensePage), Tag = LicensePage, Icon = new FontIcon { Glyph = "\xEB95" } });
         navigation.SelectionChanged += (_, args) => ShowPage((args.SelectedItem as NavigationViewItem)?.Tag as string ?? "General");
         _titleBar.Children.Add(new TextBlock { Text = Strings.Get("Common/Settings"),VerticalAlignment = VerticalAlignment.Center, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
         var root = new Grid();
@@ -62,7 +63,7 @@ public sealed partial class SettingsWindow : Window
     private Task Update(Func<AppSettings, AppSettings> change) => _host.Settings.UpdateAsync(change);
 
     /// <summary>A page's heading, looked up by its tag, which stays English because it names the page in code.</summary>
-    private static string PageTitle(string name) => Strings.Get("Settings/Page" + name);
+    private static string PageTitle(string name) => name == LicensePage ? Strings.Get("License/PageTitle") : Strings.Get("Settings/Page" + name);
 
     private void ShowPage(string name)
     {
@@ -109,6 +110,9 @@ public sealed partial class SettingsWindow : Window
                 break;
             case "MCP":
                 BuildMcpPage(page);
+                break;
+            case LicensePage:
+                BuildLicensePage(page);
                 break;
         }
 

@@ -98,7 +98,7 @@ public partial class App : Application
         .Register(new SurrealDbDriver())
         .Register(new KafkaDriver())
         .Register(new EtcdDriver())
-        .Register(new LibSqlDriver())
+        .Register(new LibSqlDriver(localFiles: new SqliteDriver()))
         .Register(new CloudflareDriver())
         .Register(new BeancountDriver())
         .Register(new DamengDriver())
@@ -144,6 +144,20 @@ public partial class App : Application
         host.Updates = new UpdateService(AppPaths.Default.Root, host.ConfirmQuitAsync, Exit);
         host.Updates.Changed += (_, _) => OnUpdatesChanged(host);
         host.Updates.Start();
+
+        // The cached license is verified offline here; the server is asked only when its weekly check is due.
+        host.Licensing = Storage.Licensing.LicenseService.CreateDefault(AppPaths.Default, host.Secrets, host.Updates.CurrentVersion.ToString());
+        Views.SqlFiles.SqlLibraryHost.UseLicense(host.Licensing);
+        try
+        {
+            await host.Licensing.LoadAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            CrashLog.Write("Loading the license", ex);
+        }
+
+        host.Licensing.StartPeriodicValidation();
 
         try
         {

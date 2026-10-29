@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using TablePro.Storage.Favorites;
+using TablePro.Storage.Licensing;
 
 namespace TablePro.Storage.Library.Team;
 
@@ -74,6 +75,45 @@ public sealed class TeamLibrarySync(ITeamLibraryApiClient api, TeamLibraryStore 
         catch (TeamLibraryException ex)
         {
             return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the library in step with the license, as the macOS coordinator does: a license that starts granting the
+    /// library pulls it at once, a server confirmation pulls when a pull is due, and a license removed from this machine
+    /// takes the team's library with it. Every status change raises <see cref="Changed"/>, so panes show or hide the
+    /// team section as the grant comes and goes.
+    /// </summary>
+    public void Follow(LicenseService license)
+    {
+        ArgumentNullException.ThrowIfNull(license);
+        var wasAvailable = IsAvailable;
+        license.StatusChanged += async (_, _) =>
+        {
+            var isAvailable = IsAvailable;
+            var becameAvailable = isAvailable && !wasAvailable;
+            wasAvailable = isAvailable;
+            Changed?.Invoke(this, EventArgs.Empty);
+            if (becameAvailable)
+            {
+                await QuietlyAsync(() => PullAsync());
+            }
+        };
+        license.Confirmed += async (_, _) => await QuietlyAsync(() => PullIfDueAsync());
+        license.Removed += async (_, _) => await QuietlyAsync(() => ClearAsync());
+    }
+
+    // A pull reports its own failure; the cache files and an HTTP timeout are what is left to throw, and a background
+    // license event has nobody to tell.
+    private static async Task QuietlyAsync(Func<Task> work)
+    {
+        try
+        {
+            await work();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TeamLibraryException or OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine(ex.Message);
         }
     }
 

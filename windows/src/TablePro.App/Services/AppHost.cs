@@ -32,6 +32,7 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     private McpServer? _mcp;
     private Storage.Mcp.McpClientStore? _mcpClientStore;
     private Storage.Mcp.McpAuditStore? _mcpAuditStore;
+    private Storage.Compare.CompareProfileStore? _compareProfiles;
 
     public AppHost(
         ConnectionStore connections,
@@ -69,6 +70,10 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
     public ConnectionService Connector { get; }
 
     public WorkspaceStateStore WorkspaceStates { get; }
+
+    /// <summary>Saved comparisons, opened on first use so an app that never compares never reads the file.</summary>
+    public Storage.Compare.CompareProfileStore CompareProfiles =>
+        LazyInitializer.EnsureInitialized(ref _compareProfiles, () => new Storage.Compare.CompareProfileStore(Storage.AppPaths.Default));
 
     public IHistoryRecorder HistoryRecorder { get; }
 
@@ -149,6 +154,9 @@ public sealed class AppHost : IWorkspaceHost, IMcpHost, IAsyncDisposable
 
     /// <summary>The update checker, or null until launch creates it.</summary>
     public UpdateService? Updates { get; set; }
+
+    /// <summary>The license on this PC and the paid features it grants, or null until launch loads it.</summary>
+    public Storage.Licensing.LicenseService? Licensing { get; set; }
 
     /// <summary>Asks every window about unsaved tabs before the app quits; false when the user keeps one open.</summary>
     public async Task<bool> ConfirmQuitAsync()
