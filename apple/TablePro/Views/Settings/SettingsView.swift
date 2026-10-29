@@ -24,7 +24,7 @@ enum SettingsPane: String, CaseIterable {
         case .sync: String(localized: "Sync")
         /// The stored rawValue stays "account": it is the tab item identifier and the pane the
         /// window restores, so renaming it would silently reset everyone's last-used pane.
-        case .account: String(localized: "License")
+        case .account: String(localized: "Account")
         }
     }
 
@@ -41,7 +41,7 @@ enum SettingsPane: String, CaseIterable {
         case .mcp: "network"
         case .plugins: "puzzlepiece.extension"
         case .sync: "arrow.triangle.2.circlepath"
-        case .account: "key"
+        case .account: "person.crop.circle"
         }
     }
 }

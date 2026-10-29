@@ -68,3 +68,22 @@ internal struct AccountConfiguration: Sendable {
         )
     }
 }
+
+// Pages of the account portal (tablepro-cloud web/apps/portal/src/routes).
+extension AccountConfiguration {
+    var portalBilling: URL {
+        accountURL.appendingPathComponent("billing")
+    }
+
+    var portalDevices: URL {
+        accountURL.appendingPathComponent("devices")
+    }
+
+    func portalTeam(_ teamID: String) -> URL {
+        accountURL.appendingPathComponent("teams").appendingPathComponent(teamID)
+    }
+
+    func portalTeamBilling(_ teamID: String) -> URL {
+        portalTeam(teamID).appendingPathComponent("billing")
+    }
+}

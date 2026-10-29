@@ -408,7 +408,7 @@ final class WelcomeViewModelTests {
     @Test func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
         AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
         viewModel.setUp()
-        viewModel.activeSheet = .activation
+        viewModel.activeSheet = .importFromApp
 
         viewModel.handle(.showWelcomeSheet)
 

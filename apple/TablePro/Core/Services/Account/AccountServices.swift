@@ -40,6 +40,7 @@ internal final class AccountServices {
     private var entitlement: Entitlement?
     private var legacyEntitlement: LegacyEntitlement?
     private var refreshTask: Task<EntitlementRefreshState, Never>?
+    private var checkTask: Task<Bool, Never>?
     private var scheduleTask: Task<Void, Never>?
     // Bumped by sign-out, so a refresh still out at that moment adopts nothing it brings back.
     private var sessionGeneration = 0
@@ -84,7 +85,7 @@ internal final class AccountServices {
         scheduleTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let succeeded = await self.runScheduledWork()
+                let succeeded = await self.checkNow()
                 let delay = succeeded ? Self.refreshInterval : Self.retryInterval
                 do {
                     try await self.clock.sleep(for: delay)
@@ -140,6 +141,57 @@ internal final class AccountServices {
             refreshTask = nil
         }
         return outcome
+    }
+
+    // The schedule, the gates' Try Again and Settings' Refresh: a stored key still waiting for its exchange is
+    // retried before any entitlement refresh, which a Mac without a session could not run. One at a time.
+    @discardableResult
+    func checkNow() async -> Bool {
+        if let checkTask {
+            return await checkTask.value
+        }
+        let task = Task { await self.runScheduledWork() }
+        checkTask = task
+        let succeeded = await task.value
+        if checkTask == task {
+            checkTask = nil
+        }
+        return succeeded
+    }
+
+    var storedLicenseKey: String? {
+        legacy.licenseKey()
+    }
+
+    var machineID: String {
+        machine.machineID
+    }
+
+    // Use License Key…: the key's account replaces any session on this Mac, and a stored key it matches is deleted.
+    func useLicenseKey(_ key: String) async throws(AccountError) -> EntitlementRefreshState {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let replacesSession = session.isSignedIn
+        try await session.signIn(licenseKey: key, machine: machine)
+        sessionGeneration += 1
+        refreshTask = nil
+        if replacesSession {
+            dropEntitlement()
+        }
+        if key == legacy.licenseKey() {
+            legacy.clear()
+            legacyEntitlement = nil
+        }
+        publish(refresh: .idle)
+        _ = try await devices.register()
+        return await refreshEntitlement()
+    }
+
+    func fetchProfile() async throws(AccountError) -> AccountProfile {
+        try await AccountProfile.fetch(api: api)
+    }
+
+    func fetchDevices() async throws(AccountError) -> [AccountDevice] {
+        try await devices.list().map(AccountDevice.init)
     }
 
     func migrateLegacyKeyIfNeeded() async -> LegacyMigrationOutcome {

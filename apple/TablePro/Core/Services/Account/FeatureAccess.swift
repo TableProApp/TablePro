@@ -58,6 +58,14 @@ internal final class FeatureAccess: ObservableObject {
         Self.resolveSupportAudience(state: state)
     }
 
+    // A licensed account whose 3 slots other devices hold: the gates point at Settings, not at a purchase.
+    var isPastDeviceLimit: Bool {
+        if case .deviceLimitReached = state.refresh {
+            return true
+        }
+        return false
+    }
+
     var currentEntitlement: Entitlement? {
         state.entitlement.flatMap { $0.isValid(at: now()) ? $0 : nil }
     }

@@ -4,6 +4,7 @@ import os
 // Read only under the storage sandbox, so a shipped build ignores every variable here.
 internal enum UITestLaunchEnvironment {
     internal static let welcomeSheetVariable = "TABLEPRO_UI_TEST_SHOW_WELCOME_SHEET"
+    internal static let signInPromptVariable = "TABLEPRO_UI_TEST_SHOW_SIGN_IN_PROMPT"
     internal static let dataFileVariable = "TABLEPRO_UI_TEST_OPEN_FILE"
     internal static let connectionShareVariable = "TABLEPRO_UI_TEST_OPEN_CONNECTION_SHARE"
     internal static let openURLVariable = "TABLEPRO_UI_TEST_OPEN_URL"
@@ -12,6 +13,10 @@ internal enum UITestLaunchEnvironment {
 
     internal static var requestsWelcomeSheet: Bool {
         isSet(welcomeSheetVariable)
+    }
+
+    internal static var requestsSignInPrompt: Bool {
+        isSet(signInPromptVariable)
     }
 
     // Delivered as intents, so `runStartupBehaviorIfNeeded(skipping:)` skips the startup behaviour instead of racing it.

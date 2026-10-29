@@ -37,6 +37,16 @@ actor FakeAccountServer {
     var refusesRegistration = false
     var unauthorizedOnce = false
     var entitlementLifetime: TimeInterval = 14 * 24 * 60 * 60
+    var licenses: [[String: Any]] = [FakeAccountServer.license()]
+    var accountClaim: [String: Any] = ["email": "ada@m16.example", "name": "Ada"]
+    var memberships: [[String: Any]] = []
+    var devices: [[String: Any]] = [FakeAccountServer.device(id: FakeAccountServer.deviceID, name: "Test Mac", machineID: FakeAccountServer.machine.machineID)]
+    var limitHolders: [[String: Any]] = [FakeAccountServer.device(
+        id: "dev_other", name: "Workstation", machineID: String(repeating: "0", count: 64),
+        platform: "linux", osVersion: "Fedora 43", licensed: true
+    )]
+    // Removing a device that holds a slot frees it, so the next entitlement answers.
+    var removalFreesSlot = true
     var refreshGate: AsyncGate?
     var entitlementGate: AsyncGate?
     private(set) var requests: [Request] = []
@@ -169,21 +179,83 @@ actor FakeAccountServer {
                 return Self.json(status: .conflict, contentType: "application/problem+json", [
                     "type": "https://api.tablepro.app/problems/device-limit-reached",
                     "title": "Device limit reached", "status": 409, "code": "device_limit_reached",
-                    "devices": [[
-                        "id": "dev_other", "machine_id": String(repeating: "0", count: 64), "platform": "linux",
-                        "name": "Workstation", "app_version": "2.0.0", "os_version": "Fedora 43",
-                        "licensed_at": "2026-10-03T09:00:00Z", "created_at": "2026-10-03T09:00:00Z",
-                        "last_seen_at": "2026-10-23T09:00:00Z"
-                    ]]
+                    "devices": limitHolders.map { $0.filter { $0.key != "offline_until" } }
                 ])
             }
             let token = signedEntitlement()
             return Self.json(status: .ok, [
                 "token": token, "expires_at": "2026-11-10T00:00:00Z", "refresh_after": "2026-10-30T00:00:00Z"
             ])
+        case (.get, "/me"):
+            var account = accountClaim
+            account["id"] = "acct_test"
+            return Self.json(status: .ok, [
+                "account": account,
+                "teams": memberships,
+                "licenses": licenses.map { $0.filter { !($0.value is NSNull) } }
+            ])
+        case (.get, let listPath) where listPath.hasPrefix("/devices?") || listPath == "/devices":
+            return Self.json(status: .ok, ["data": devices])
+        case (.delete, let devicePath) where devicePath.hasPrefix("/devices/"):
+            return removeDevice(String(devicePath.dropFirst("/devices/".count)))
         default:
             return Self.problem(status: 404, code: "not_found")
         }
+    }
+
+    private func removeDevice(_ id: String) -> (HTTPResponse, HTTPBody?) {
+        let all = devices + limitHolders
+        guard let device = all.first(where: { $0["id"] as? String == id }) else {
+            return Self.problem(status: 404, code: "not_found")
+        }
+        if let until = (device["offline_until"] as? String).flatMap({ try? Date($0, strategy: .iso8601) }), until > now() {
+            return Self.problem(status: 409, code: "offline_file_active")
+        }
+        devices.removeAll { $0["id"] as? String == id }
+        limitHolders.removeAll { $0["id"] as? String == id }
+        if removalFreesSlot {
+            deviceLimitReached = false
+        }
+        return (HTTPResponse(status: .noContent), nil)
+    }
+
+    static func license(
+        id: String = "lic_test",
+        plan: String = "starter",
+        cycle: String = "lifetime",
+        source: String = "order",
+        status: String = "active",
+        endsAt: String? = nil,
+        team: (id: String, name: String)? = nil
+    ) -> [String: Any] {
+        [
+            "id": id, "plan": plan, "cycle": cycle, "source": source, "status": status,
+            "ends_at": endsAt ?? NSNull(),
+            "team": team.map { ["id": $0.id, "name": $0.name] } ?? NSNull()
+        ]
+    }
+
+    static func device(
+        id: String,
+        name: String,
+        machineID: String,
+        platform: String = "macos",
+        osVersion: String = "26.1",
+        lastSeen: String = "2026-10-28T09:00:00Z",
+        licensed: Bool = true,
+        offlineUntil: String? = nil
+    ) -> [String: Any] {
+        var device: [String: Any] = [
+            "id": id, "machine_id": machineID, "platform": platform, "name": name, "app_version": "2.0.0",
+            "os_version": osVersion, "created_at": "2026-10-01T09:00:00Z", "last_seen_at": lastSeen
+        ]
+        if licensed { device["licensed_at"] = "2026-10-01T09:00:00Z" }
+        if let offlineUntil { device["offline_until"] = offlineUntil }
+        return device
+    }
+
+    static func membership(teamID: String, name: String, role: String, hasSeat: Bool) -> [String: Any] {
+        ["team": ["id": teamID, "name": name], "role": role, "has_seat": hasSeat]
     }
 
     func signedEntitlement(machineID: String = FakeAccountServer.machine.machineID, offline: Bool = false) -> String {
@@ -193,11 +265,8 @@ actor FakeAccountServer {
             "jti": UUID().uuidString, "iat": issued, "nbf": issued,
             "exp": issued + Int64(entitlementLifetime), "dev": Self.deviceID, "mid": machineID,
             "features": features.sorted(),
-            "licenses": [[
-                "id": "lic_test", "plan": "starter", "cycle": "lifetime", "source": "order",
-                "status": "active", "ends_at": NSNull(), "team": NSNull()
-            ]],
-            "account": ["email": "ada@m16.example", "name": "Ada"],
+            "licenses": licenses,
+            "account": accountClaim,
             "offline": offline
         ], key: signingKey)
     }

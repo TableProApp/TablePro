@@ -27,7 +27,6 @@ enum WelcomeActiveSheet: Identifiable {
     /// Carries the group as it was when the sheet opened, so a sync that deletes it meanwhile
     /// leaves the sheet open with an error on Save rather than empty.
     case editGroup(ConnectionGroup)
-    case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
@@ -41,7 +40,6 @@ enum WelcomeActiveSheet: Identifiable {
             "newGroup-\(request.parentId?.uuidString ?? "root")-"
                 + request.movingConnectionIds.map(\.uuidString).joined(separator: ",")
         case .editGroup(let group): "editGroup-\(group.id.uuidString)"
-        case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"

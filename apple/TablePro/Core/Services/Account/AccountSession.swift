@@ -58,9 +58,21 @@ internal actor AccountSession {
         try adopt(tokens)
     }
 
+    // A session already on this Mac is replaced and revoked only once the key is accepted.
     func signIn(licenseKey: String, machine: MachineDescription) async throws(AccountError) {
+        let replaced = storedRefreshToken
         let tokens = try await client.exchangeLicenseKey(licenseKey, machine: machine)
+        refreshTask?.cancel()
+        refreshTask = nil
+        access = nil
         try adopt(tokens)
+        if let replaced, replaced != storedRefreshToken {
+            do {
+                try await client.revoke(replaced)
+            } catch {
+                Self.logger.warning("Revoking the replaced refresh token failed: \(error.publicLogShape, privacy: .public)")
+            }
+        }
     }
 
     func accessToken() async throws(AccountError) -> AccessToken {
@@ -88,8 +100,12 @@ internal actor AccountSession {
         }
         let task = Task { [client] () async throws -> AccessToken in
             do throws(AccountError) {
-                return try self.adopt(await client.refresh(refreshToken))
+                let tokens = try await client.refresh(refreshToken)
+                // Sign-out or a key exchange canceled this refresh; its tokens belong to a session that is gone.
+                guard !Task.isCancelled else { throw AccountError.canceled }
+                return try self.adopt(tokens)
             } catch .oauth("invalid_grant", _) {
+                guard !Task.isCancelled else { throw AccountError.canceled }
                 Self.logger.notice("The refresh token was refused; signing out on this Mac")
                 self.discard()
                 throw AccountError.signedOut

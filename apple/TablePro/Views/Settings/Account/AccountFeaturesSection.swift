@@ -1,23 +1,24 @@
 //
-//  LicenseFeaturesSections.swift
+//  AccountFeaturesSection.swift
 //  TablePro
 //
 
 import SwiftUI
 
-struct LicenseFeaturesSections: View {
-    @ObservedObject var featureAccess: FeatureAccess
+struct AccountFeaturesSection: View {
+    @ObservedObject var access: FeatureAccess
+    let offersPurchase: Bool
 
     var body: some View {
         Section {
             ForEach(ProFeature.allCases, id: \.self) { feature in
-                LicenseFeatureRow(feature: feature, isIncluded: featureAccess.isAvailable(feature))
+                AccountFeatureRow(feature: feature, isIncluded: access.isAvailable(feature))
             }
         } header: {
             Text("Features")
         } footer: {
             HStack(spacing: 16) {
-                if featureAccess.supportAudience == .prospect {
+                if offersPurchase {
                     Link("Buy a License", destination: SupportLinks.pricing(.licenseSettings))
                 }
 
@@ -28,7 +29,7 @@ struct LicenseFeaturesSections: View {
     }
 }
 
-private struct LicenseFeatureRow: View {
+private struct AccountFeatureRow: View {
     let feature: ProFeature
     let isIncluded: Bool
 

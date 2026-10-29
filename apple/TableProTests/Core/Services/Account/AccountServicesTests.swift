@@ -355,4 +355,77 @@ struct AccountServicesTests {
         #expect(await fixture.services.migrateLegacyKeyIfNeeded() == .nothingToMigrate)
         #expect(fixture.access.check(.iCloudSync) == .signedOut)
     }
+
+    @Test("Try Again on an expired payload from an older build retries its key exchange, not an entitlement refresh")
+    func checkNowRetriesTheKeyExchange() async throws {
+        let fixture = try AccountFixture()
+        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey, issuedAt: Date().addingTimeInterval(-40 * 24 * 60 * 60))
+        fixture.services.loadStoredState()
+        #expect(fixture.access.check(.iCloudSync) == .expired)
+
+        #expect(await fixture.services.checkNow())
+
+        let grants = await fixture.server.requests(to: "/oauth/token").map { $0.form["grant_type"] ?? "" }
+        #expect(grants == [OAuthTokenClient.tokenExchangeGrant])
+        #expect(!fixture.hasLegacyLicense)
+        #expect(fixture.access.isAvailable(.iCloudSync))
+    }
+
+    @Test("A check started while another runs joins it, so a stored key is exchanged once")
+    func checkNowIsSingleFlight() async throws {
+        let fixture = try AccountFixture()
+        try fixture.storeLegacyLicense(key: FakeAccountServer.validKey)
+        let gate = AsyncGate()
+        await fixture.server.set { $0.entitlementGate = gate }
+
+        let first = Task { await fixture.services.checkNow() }
+        await gate.arrived(1)
+        let second = Task { await fixture.services.checkNow() }
+        await gate.open()
+        _ = await (first.value, second.value)
+
+        let exchanges = await fixture.server.requests(to: "/oauth/token")
+            .filter { $0.form["grant_type"] == OAuthTokenClient.tokenExchangeGrant }
+        #expect(exchanges.count == 1)
+        #expect(await fixture.server.requests(to: "/devices/\(FakeAccountServer.deviceID)/entitlement").count == 1)
+    }
+
+    @Test("A key typed on a signed-out Mac signs it in, registers it without a refresh and fetches the entitlement")
+    func useLicenseKeySignedOut() async throws {
+        let fixture = try AccountFixture()
+
+        let outcome = try await fixture.services.useLicenseKey(FakeAccountServer.validKey)
+
+        guard case .succeeded = outcome else {
+            Issue.record("Expected an entitlement, got \(outcome)")
+            return
+        }
+        let paths = await fixture.server.requests.map { "\($0.method) \($0.path) \($0.form["grant_type"] ?? "")" }
+        #expect(paths == [
+            "POST /oauth/token \(OAuthTokenClient.tokenExchangeGrant)",
+            "POST /devices ",
+            "POST /devices/\(FakeAccountServer.deviceID)/entitlement "
+        ])
+        #expect(fixture.access.state.isSignedIn)
+    }
+
+    @Test("A refresh that answers after a key replaced the session stores nothing from the old session")
+    func refreshDuringKeyExchange() async throws {
+        let fixture = try AccountFixture()
+        try await fixture.signIn()
+        let gate = AsyncGate()
+        await fixture.server.set { $0.entitlementGate = gate }
+
+        let refresh = Task { await fixture.services.refreshEntitlement() }
+        await gate.arrived(1)
+        let exchange = Task { try await fixture.services.useLicenseKey(FakeAccountServer.validKey) }
+        await gate.arrived(2)
+        await gate.open()
+        #expect(await refresh.value == .idle)
+        guard case .succeeded = try await exchange.value else {
+            Issue.record("Expected the key's entitlement")
+            return
+        }
+        #expect(try await fixture.services.session.accessToken().isFromLicenseKey)
+    }
 }

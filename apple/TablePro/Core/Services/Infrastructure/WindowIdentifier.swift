@@ -17,6 +17,7 @@ internal enum WindowIdentifier {
     internal static let acknowledgements = "acknowledgements"
     internal static let support = "support"
     internal static let compareSync = "compare-sync"
+    internal static let signIn = "sign-in"
 
     internal static let connection = "main"
     internal static let dataFile = "main-data-file"

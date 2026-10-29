@@ -128,4 +128,15 @@ struct FeatureAccessTests {
         let lapsed = AccountState(entitlement: Self.entitlement(features: ["icloud_sync"], expiresIn: -1))
         #expect(FeatureAccess.resolveSupportAudience(state: lapsed) == .supporter)
     }
+
+    @Test("Past the device limit the gates point at Settings instead of a purchase")
+    @MainActor
+    func pastDeviceLimit() {
+        let access = FeatureAccess(state: AccountState(isSignedIn: true, refresh: .deviceLimitReached([])), now: { Self.now })
+        #expect(access.isPastDeviceLimit)
+        #expect(access.check(.iCloudSync) == .notIncluded)
+
+        access.update(AccountState(isSignedIn: true, refresh: .failed(.network("offline"))))
+        #expect(!access.isPastDeviceLimit)
+    }
 }

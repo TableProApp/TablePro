@@ -10,8 +10,6 @@ struct ProFeatureGateModifier: ViewModifier {
 
     @ObservedObject private var featureAccess = FeatureAccess.shared
 
-    @State private var showSignInSheet = false
-
     func body(content: Content) -> some View {
         let access = featureAccess.check(feature)
 
@@ -21,9 +19,6 @@ struct ProFeatureGateModifier: ViewModifier {
                 if access != .available {
                     lockedOverlay(access)
                 }
-            }
-            .sheet(isPresented: $showSignInSheet) {
-                AccountSignInSheet()
             }
     }
 
@@ -49,11 +44,22 @@ struct ProFeatureGateModifier: ViewModifier {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button(String(localized: "Sign In")) {
-                        showSignInSheet = true
+                        SignInWindowController.present()
                     }
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
                         .font(.subheadline)
+                case .notIncluded where featureAccess.isPastDeviceLimit:
+                    Text("Your plan is in use on 3 other devices")
+                        .font(.headline)
+                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
+                    Text("Remove one in Settings to use your plan on this Mac.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Open Account Settings…")) {
+                        WindowOpener.shared.openSettings(tab: .account)
+                    }
+                    .buttonStyle(.borderedProminent)
                 case .notIncluded:
                     Text(feature.paidPlanRequirement)
                         .font(.headline)
@@ -69,8 +75,9 @@ struct ProFeatureGateModifier: ViewModifier {
                     Text(feature.featureDescription)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    // An expired payload from an older build retries its key exchange, not a refresh it has no session for.
                     Button(String(localized: "Try Again")) {
-                        Task { await AccountServices.shared.refreshEntitlement() }
+                        Task { await AccountServices.shared.checkNow() }
                     }
                     .buttonStyle(.borderedProminent)
                     Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.featureGate(feature)))
@@ -82,7 +89,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Button(String(localized: "Retry Validation")) {
-                        Task { await AccountServices.shared.refreshEntitlement() }
+                        Task { await AccountServices.shared.checkNow() }
                     }
                     .buttonStyle(.borderedProminent)
                 }

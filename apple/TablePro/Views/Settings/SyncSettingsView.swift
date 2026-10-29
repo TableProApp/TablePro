@@ -98,7 +98,7 @@ private struct SyncNoticeSection: View {
             Link(action.title, destination: SupportLinks.pricing(.licenseSettings))
         case .checkLicenseAgain:
             Button(action.title) {
-                Task { await AccountServices.shared.refreshEntitlement() }
+                Task { await AccountServices.shared.checkNow() }
             }
         }
     }

@@ -16,6 +16,8 @@ enum PreferenceKeys {
     /// The app version this Mac last showed the welcome window for. Device-local: it records what
     /// has been shown here, not a preference, so it must not sync to another Mac that has not.
     static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
+    /// Device-local: the sign-in window shows once per Mac, whatever another Mac has seen.
+    static let signInPromptShown = DefaultsKey<Bool>("com.TablePro.account.signInPromptShown")
     static let connectionListSortMode = DefaultsKey<String>("com.TablePro.connectionList.sortMode")
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
     static let connectionListShowsRecent = DefaultsKey<Bool>("com.TablePro.connectionList.showsRecent")
@@ -40,6 +42,7 @@ enum PreferenceKeys {
         queryPlanBarMetric.name,
         lastBackupDirectory.name,
         lastSeenAppVersion.name,
+        signInPromptShown.name,
         receivesBetaUpdates.name,
     ]
 

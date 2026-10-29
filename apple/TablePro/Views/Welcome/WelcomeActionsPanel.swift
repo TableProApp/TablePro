@@ -4,7 +4,7 @@ import SwiftUI
 struct WelcomeActionsPanel: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updater = SoftwareUpdater.shared
-    let onActivateLicense: () -> Void
+    let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
     let onImportFromURL: () -> Void
@@ -130,7 +130,7 @@ struct WelcomeActionsPanel: View {
                 .foregroundStyle(.orange)
                 .help(String(localized: "Connect to the internet to verify your license."))
         } else if !state.isSignedIn, state.legacy == nil {
-            Button(action: onActivateLicense) {
+            Button(action: onSignIn) {
                 Text(String(localized: "Sign In"))
             }
             .buttonStyle(.link)

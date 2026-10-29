@@ -33,4 +33,23 @@ struct AccountErrorPresentationTests {
     func otherOAuthErrorsAreUnreadable() {
         #expect(AccountError.oauth("invalid_grant", description: nil).friendlyDescription == Self.unreadable)
     }
+
+    @Test("A refused key, an offline file for another Mac and a device with an offline file each say what happened")
+    func actionsSayWhatHappened() throws {
+        let refusedKey = try #require(AccountError.oauth("invalid_grant", description: nil).licenseKeyDescription)
+        #expect(refusedKey != Self.unreadable)
+        let otherMachine = try #require(AccountError.entitlementRejected(.machine).offlineFileDescription)
+        let expired = try #require(AccountError.entitlementRejected(.expired).offlineFileDescription)
+        let damaged = try #require(AccountError.entitlementRejected(.signature).offlineFileDescription)
+        #expect(Set([otherMachine, expired, damaged]).count == 3)
+        let offlineDevice = try #require(AccountError.server(status: 409, code: "offline_file_active").deviceRemovalDescription)
+        #expect(offlineDevice != AccountError.server(status: 409, code: nil).deviceRemovalDescription)
+    }
+
+    @Test("Closing the sheet or a dropped connection reads the same in every action")
+    func actionsFallBackToTheGeneralText() {
+        #expect(AccountError.canceled.licenseKeyDescription == nil)
+        #expect(AccountError.network("offline").offlineFileDescription == AccountError.network("offline").friendlyDescription)
+        #expect(AccountError.network("offline").deviceRemovalDescription == AccountError.network("offline").friendlyDescription)
+    }
 }
