@@ -37,14 +37,12 @@ impl ClockField {
     }
 }
 
-// A timestamp's clock follows its day and a space or `T`; it may lack seconds.
-fn clock_span(text: &str, field: ClockField) -> Option<Range<usize>> {
-    let start = match field.dated {
-        true => {
-            let day = day_len(text)?;
-            matches!(text.as_bytes().get(day), Some(b' ' | b'T')).then_some(day + 1)?
-        }
-        false => 0,
+// By the text's own form: SQLite keeps any date or time text in a DATE, TIME or DATETIME column.
+fn clock_span(text: &str) -> Option<Range<usize>> {
+    let lead = text.len() - text.trim_start().len();
+    let start = match day_len(text.get(lead..)?) {
+        Some(day) => matches!(text.as_bytes().get(lead + day), Some(b' ' | b'T')).then_some(lead + day + 1)?,
+        None => lead,
     };
     let digits = |at: usize| {
         text.get(start + at..start + at + 2)
@@ -68,8 +66,8 @@ fn day_len(text: &str) -> Option<usize> {
     (year >= 4 && dated).then_some(year + 6)
 }
 
-pub fn time_of(text: &str, field: ClockField) -> Option<NaiveTime> {
-    let clock = text.get(clock_span(text, field)?)?;
+pub fn time_of(text: &str) -> Option<NaiveTime> {
+    let clock = text.get(clock_span(text)?)?;
     NaiveTime::parse_from_str(clock, "%H:%M:%S")
         .or_else(|_| NaiveTime::parse_from_str(clock, "%H:%M"))
         .ok()
@@ -78,12 +76,12 @@ pub fn time_of(text: &str, field: ClockField) -> Option<NaiveTime> {
 // A value with no clock yet takes `today` for a missing day and `zone`'s offset then.
 pub fn with_time<Tz: TimeZone>(text: &str, time: NaiveTime, field: ClockField, today: NaiveDate, zone: &Tz) -> String {
     let clock = time.format("%H:%M:%S").to_string();
-    if let Some(span) = clock_span(text, field) {
+    if let Some(span) = clock_span(text) {
         let mut text = text.to_owned();
         text.replace_range(span, &clock);
         return text;
     }
-    let day = day_of(text).filter(|_| field.dated).unwrap_or(today);
+    let day = day_of(text.trim_start()).filter(|_| field.dated).unwrap_or(today);
     let offset = field
         .with_offset
         .then(|| offset_at(zone, day.and_time(time)).to_string())
@@ -123,10 +121,7 @@ impl RowDetailPane {
     fn clock_opens(&self) {
         let imp = self.imp();
         imp.clock_target.replace(self.current_pin().zip(imp.field.get()));
-        let time = self
-            .clock_field()
-            .and_then(|field| time_of(&self.typed_text(), field))
-            .unwrap_or_else(|| Local::now().time());
+        let time = time_of(&self.typed_text()).unwrap_or_else(|| Local::now().time());
         imp.hour.set_value(f64::from(time.hour()));
         imp.minute.set_value(f64::from(time.minute()));
         imp.second.set_value(f64::from(time.second()));

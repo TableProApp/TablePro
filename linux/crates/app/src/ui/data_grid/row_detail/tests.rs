@@ -952,6 +952,13 @@ fn the_clock_sets_only_the_time_a_value_shows() {
         "a year past 9999 lost its day"
     );
     assert_eq!(set_at_nine("13:45:07.5+01", TIMETZ), "09:05:30.5+01");
+    assert_eq!(
+        set_at_nine("2024-03-10T02:30:00.125-08:00", TIME),
+        "2024-03-10T09:05:30.125-08:00",
+        "SQLite keeps a timestamp in a TIME column"
+    );
+    assert_eq!(set_at_nine("10:00", NAIVE), "09:05:30", "a time in a DATETIME column");
+    assert_eq!(set_at_nine("  2024-01-01 10:00:00", NAIVE), "  2024-01-01 09:05:30");
     assert_eq!(set_at_nine("24:00:00+01", TIMETZ), "09:05:30+01");
 }
 
@@ -960,6 +967,7 @@ fn the_clock_starts_a_value_that_has_no_time() {
     assert_eq!(set_at_nine("", NAIVE), "2026-10-29 09:05:30");
     assert_eq!(set_at_nine("infinity", NAIVE), "2026-10-29 09:05:30");
     assert_eq!(set_at_nine("2024-02-29", NAIVE), "2024-02-29 09:05:30");
+    assert_eq!(set_at_nine(" 2024-02-29", NAIVE), "2024-02-29 09:05:30");
     assert_eq!(set_at_nine("", TIME), "09:05:30");
     let zoned = set_at_nine("", ZONED);
     assert_eq!(zoned, "2026-10-29 09:05:30+02:00");
@@ -999,14 +1007,15 @@ fn a_new_zoned_time_takes_the_offset_of_its_own_moment() {
 
 #[test]
 fn the_clock_reads_the_time_a_value_shows() {
-    assert_eq!(time_of("2024-02-29 23:59:58.125", NAIVE), Some(a_time(23, 59, 58)));
-    assert_eq!(time_of("12000-01-01 10:00:00", NAIVE), Some(a_time(10, 0, 0)));
-    assert_eq!(time_of("2024-02-29 10:30", NAIVE), Some(a_time(10, 30, 0)));
-    assert_eq!(time_of("13:45:07.5+01", TIMETZ), Some(a_time(13, 45, 7)));
-    assert_eq!(time_of("24:00:00", TIME), None);
-    assert_eq!(time_of("10:00:00", NAIVE), None, "a timestamp with no day");
-    assert_eq!(time_of("2024-02-2é 10:00:00", NAIVE), None, "a cut inside a character");
-    assert_eq!(time_of("not a time", TIME), None);
+    assert_eq!(time_of("2024-02-29 23:59:58.125"), Some(a_time(23, 59, 58)));
+    assert_eq!(time_of("12000-01-01 10:00:00"), Some(a_time(10, 0, 0)));
+    assert_eq!(time_of("2024-02-29 10:30"), Some(a_time(10, 30, 0)));
+    assert_eq!(time_of("13:45:07.5+01"), Some(a_time(13, 45, 7)));
+    assert_eq!(time_of(" 2024-02-29T10:00:00Z"), Some(a_time(10, 0, 0)));
+    assert_eq!(time_of("24:00:00"), None);
+    assert_eq!(time_of("2024-02-29"), None);
+    assert_eq!(time_of("2024-02-2é 10:00:00"), None, "a cut inside a character");
+    assert_eq!(time_of("not a time"), None);
 }
 
 #[test]
